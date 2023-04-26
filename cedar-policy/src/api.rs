@@ -45,9 +45,7 @@ impl SlotId {
 }
 
 impl std::fmt::Display for SlotId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{}", self.0) }
 }
 
 impl From<ast::SlotId> for SlotId {
