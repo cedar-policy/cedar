@@ -1,0 +1,9 @@
+@A("")
+@m("")
+permit(
+  principal,
+  action,
+  resource
+) when {
+  ((true && action) && ((principal && principal) || principal)) && principal
+};

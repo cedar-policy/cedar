@@ -1,0 +1,26 @@
+[
+  {
+    "uid": {
+      "type": "G666E66",
+      "id": "&"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "G666E66",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "G666E66",
+      "id": "\u0000\u0002"
+    },
+    "attrs": {},
+    "parents": []
+  }
+]

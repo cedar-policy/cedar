@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_f93f63d216acc608101bc400cb436f26296bf478.json",
+  "policies": "./corpus_tests/policies_f93f63d216acc608101bc400cb436f26296bf478.txt",
+  "should_validate": false,
+  "entities": "./corpus_tests/entities_f93f63d216acc608101bc400cb436f26296bf478.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "G666666::\"\\0\\u{2}\"",
+      "action": "Action::\"action\"",
+      "resource": "G666666::\"\\0\\u{2}\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type G666666)"
+      ]
+    },
+    {
+      "desc": "Query 1",
+      "principal": "G666666::\"\\0\\u{2}\"",
+      "action": "Action::\"action\"",
+      "resource": "G666666::\"\\0\\u{2}\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type G666666)"
+      ]
+    },
+    {
+      "desc": "Query 2",
+      "principal": "G666666::\"\\0\\u{2}\"",
+      "action": "Action::\"action\"",
+      "resource": "G666666::\"\\0\\u{2}\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type G666666)"
+      ]
+    },
+    {
+      "desc": "Query 3",
+      "principal": "G666666::\"\\0\\u{2}\"",
+      "action": "Action::\"action\"",
+      "resource": "G666666::\"\\0\\u{2}\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type G666666)"
+      ]
+    },
+    {
+      "desc": "Query 4",
+      "principal": "G666666::\"\\0\\u{2}\"",
+      "action": "Action::\"action\"",
+      "resource": "G666666::\"\\0\\u{2}\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type G666666)"
+      ]
+    },
+    {
+      "desc": "Query 5",
+      "principal": "G666666::\"\\0\\u{2}\"",
+      "action": "Action::\"action\"",
+      "resource": "G666666::\"\\0\\u{2}\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type G666666)"
+      ]
+    },
+    {
+      "desc": "Query 6",
+      "principal": "G666666::\"\\0\\u{2}\"",
+      "action": "Action::\"action\"",
+      "resource": "G666666::\"\\0\\u{2}\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type G666666)"
+      ]
+    },
+    {
+      "desc": "Query 7",
+      "principal": "G666666::\"\\0\\u{2}\"",
+      "action": "Action::\"action\"",
+      "resource": "G666666::\"\\0\\u{2}\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type G666666)"
+      ]
+    }
+  ]
+}

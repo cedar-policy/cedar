@@ -1,0 +1,28 @@
+[
+    {
+        "uid": { "type":"User", "id":"bob" },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": {  "type":"Action", "id":"view" },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": { "type":"Action", "id":"edit" },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": { "type":"Photo", "id":"VacationPhoto94.jpg"},
+        "attrs": {},
+        "parents": []
+
+    },
+    {
+        "uid": {  "type":"Album", "id":"jane_vacation"},
+        "attrs": {},
+        "parents": []
+    }
+]

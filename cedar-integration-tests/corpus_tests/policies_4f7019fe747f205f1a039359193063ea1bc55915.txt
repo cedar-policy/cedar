@@ -1,0 +1,7 @@
+forbid(
+  principal in yalupalt36x77::a::"",
+  action in [yalupalt36x77::Action::"action"],
+  resource in yalupalt36x77::a::""
+) when {
+  true
+};

@@ -1,0 +1,836 @@
+//! Contains test for typechecking complete Cedar policies with schema
+//! files.
+#![cfg(test)]
+// GRCOV_STOP_COVERAGE
+
+use std::sync::Arc;
+
+use cedar_policy_core::{
+    ast::{EntityUID, Expr, StaticPolicy, Template, Var},
+    parser::{parse_expr, parse_policy, parse_policy_template},
+};
+
+use super::test_utils::{
+    assert_policy_typecheck_fails, assert_policy_typechecks, assert_typechecks,
+    with_typechecker_from_schema,
+};
+use crate::{
+    schema::NamespaceDefinitionWithActionGroups, type_error::TypeError,
+    typecheck::test_utils::static_to_template, typecheck::PolicyCheck, types::Type,
+    NamespaceDefinition, ValidatorSchema,
+};
+
+fn simple_schema_file() -> NamespaceDefinitionWithActionGroups {
+    serde_json::from_value(serde_json::json!(
+        {
+            "entityTypes": {
+                "User": {
+                    "memberOfTypes": [ "Group" ],
+                    "shape": {
+                        "type": "Record",
+                        "additionalAttributes": false,
+                        "attributes": {
+                            "name": { "type": "String", "required": true},
+                            "age": { "type": "Long", "required": true},
+                            "favorite": { "type": "Entity", "name": "Photo", "required": true}
+                        }
+                    }
+                },
+                "Group": {
+                    "memberOfTypes": [],
+                    "shape": {
+                        "type": "Record",
+                        "additionalAttributes": false,
+                        "attributes": {
+                            "name": { "type": "String", "required": true}
+                        }
+                    }
+                },
+                "Photo": {
+                    "memberOfTypes": [ "Album" ],
+                    "shape": {
+                        "type": "Record",
+                        "additionalAttributes": false,
+                        "attributes": {
+                            "file_type": { "type": "String", "required": true},
+                            "owner": { "type": "Entity", "name": "User", "required": true}
+                        }
+                    }
+                },
+                "Album": {
+                    "memberOfTypes": [],
+                    "shape": {
+                        "type": "Record",
+                        "additionalAttributes": false,
+                        "attributes": { }
+                    }
+                }
+            },
+            "actions": {
+                "view_photo": {
+                    "memberOf": [],
+                    "appliesTo": {
+                        "principalTypes": ["User", "Group"],
+                        "resourceTypes": ["Photo"]
+                    }
+                },
+                "delete_group": {
+                    "memberOf": [],
+                    "appliesTo": {
+                        "principalTypes": ["User"],
+                        "resourceTypes": ["Group"]
+                    }
+                }
+            }
+        }
+    ))
+    .expect("Expected valid schema")
+}
+
+fn assert_typechecks_simple_schema(expr: Expr, expected: Type) {
+    assert_typechecks(simple_schema_file(), expr, expected)
+}
+
+fn assert_policy_typechecks_simple_schema(p: impl Into<Arc<Template>>) {
+    assert_policy_typechecks(simple_schema_file(), p)
+}
+
+fn assert_policy_typecheck_fails_simple_schema(
+    p: StaticPolicy,
+    expected_type_errors: Vec<TypeError>,
+) {
+    assert_policy_typecheck_fails(simple_schema_file(), p, expected_type_errors)
+}
+
+#[test]
+fn entity_literal_typechecks() {
+    assert_typechecks_simple_schema(
+        Expr::val(
+            EntityUID::with_eid_and_type("Group", "friends")
+                .expect("EUID component failed to parse."),
+        ),
+        Type::named_entity_reference_from_str("Group"),
+    )
+}
+
+#[test]
+fn policy_checked_in_multiple_envs() {
+    let t = static_to_template(parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action == Action::"view_photo", resource) when { resource.file_type == "jpg" };"#
+    ).expect("Policy should parse."));
+    with_typechecker_from_schema(simple_schema_file(), |typechecker| {
+        let env_checks = typechecker.typecheck_by_request_env(t.as_ref());
+        // There are 3 possible envs in schema:
+        // - User, "view_photo", Photo
+        // - Group, "view_photo", Photo
+        // - User, "delete_group", Group
+        assert!(env_checks.len() == 3);
+        // Policy is always false for "delete_group"
+        assert!(
+            env_checks
+                .iter()
+                .filter(|(_, check)| { matches!(check, PolicyCheck::Irrelevant(_)) })
+                .count()
+                == 1
+        );
+    });
+    let t = static_to_template(parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action == Action::"delete_group", resource) when { resource.file_type == "jpg" };"#
+    ).expect("Policy should parse."));
+    with_typechecker_from_schema(simple_schema_file(), |typechecker| {
+        let env_checks = typechecker.typecheck_by_request_env(t.as_ref());
+        // With the new action, policy is always false for the other two
+        assert!(
+            env_checks
+                .iter()
+                .filter(|(_, check)| { matches!(check, PolicyCheck::Irrelevant(_)) })
+                .count()
+                == 2
+        );
+        // and fails by not updating usage of resource
+        assert!(
+            env_checks
+                .iter()
+                .filter(|(_, check)| { matches!(check, PolicyCheck::Fail(_)) })
+                .count()
+                == 1
+        );
+    });
+}
+
+#[test]
+fn policy_single_action_attribute_access() {
+    assert_policy_typechecks_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action == Action::"view_photo", resource) when { resource.file_type == "jpg" };"#
+        ).expect("Policy should parse."));
+}
+
+#[test]
+fn policy_principal_action_attribute_access() {
+    // The principal for Action::"view_photo" is ordinarily User or Group, but the
+    // principal condition refines this to User, so we can access the age
+    // attribute.
+    assert_policy_typechecks_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal == User::"alice", action == Action::"view_photo", resource) when { principal.age > 21 };"#
+        ).expect("Policy should parse."));
+}
+
+#[test]
+fn policy_action_multiple_principal_attribute_access() {
+    // The attribute name is defined for User and Group.
+    assert_policy_typechecks_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action == Action::"view_photo", resource) when { principal.name == "alice" };"#
+        ).expect("Policy should parse."));
+}
+
+#[test]
+fn policy_no_conditions_attribute_access() {
+    // Both actions in the schema apply to principals with the attribute name,
+    // so the action condition isn't required either.
+    assert_policy_typechecks_simple_schema(
+        parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action, resource) when { principal.name == "alice" };"#,
+        )
+        .expect("Policy should parse."),
+    );
+}
+
+#[test]
+fn policy_resource_narrows_principal() {
+    // The resource condition doesn't match the resource applies_to set for
+    // "view_photo", so we know the action is "delete_group", which only
+    // accepts User as the principal.
+    assert_policy_typechecks_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action, resource == Group::"jane_friends") when { principal.age > 22};"#
+        ).expect("Policy should parse."));
+}
+
+#[test]
+fn policy_action_in() {
+    assert_policy_typechecks_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action in [Action::"delete_group", Action::"view_photo"], resource in Album::"vacation_photos") when { resource.file_type == "png" };"#
+        ).expect("Policy should parse."));
+}
+
+#[test]
+fn policy_invalid_attribute() {
+    assert_policy_typecheck_fails_simple_schema(
+            parse_policy(
+                Some("0".to_string()),
+                r#"permit(principal, action in [Action::"delete_group", Action::"view_photo"], resource) when { resource.file_type == "jpg" };"#
+            ).expect("Policy should parse."),
+            vec![
+                TypeError::missing_attribute(Expr::get_attr(Expr::var(Var::Resource), "file_type".into()), "file_type".into(), Some("name".into()))
+            ],
+        );
+}
+
+#[test]
+fn policy_invalid_attribute_2() {
+    assert_policy_typecheck_fails_simple_schema(
+            parse_policy(
+                Some("0".to_string()),
+                r#"permit(principal, action == Action::"view_photo", resource) when { principal.age > 21 };"#
+            ).expect("Policy should parse."),
+            vec![
+                TypeError::missing_attribute(Expr::get_attr(Expr::var(Var::Principal), "age".into()), "age".into(), Some("name".into()))
+            ]
+        );
+}
+
+#[test]
+fn policy_entity_type_attr() {
+    assert_policy_typechecks_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action == Action::"view_photo", resource) when { resource.owner.age > 0 };"#
+        ).expect("Policy should parse."));
+}
+
+#[test]
+fn policy_entity_type_action_in() {
+    assert_policy_typechecks_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action in Action::"view_photo", resource) when { resource.owner.age > 0 };"#
+        ).expect("Policy should parse."));
+}
+
+#[test]
+fn policy_entity_type_action_in_body() {
+    assert_policy_typechecks_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action, resource) when { action in Action::"view_photo" && resource.owner.age > 0 };"#
+        ).expect("Policy should parse."));
+}
+
+#[test]
+fn policy_entity_type_action_in_set() {
+    assert_policy_typechecks_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action in [Action::"view_photo"], resource) when { resource.owner.age > 0 };"#
+        ).expect("Policy should parse."));
+}
+
+#[test]
+fn policy_entity_type_principal_in_set() {
+    assert_policy_typechecks_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action, resource) when { principal in [User::"admin", Group::"admin"] || true};"#
+        ).expect("Policy should parse."));
+}
+
+#[test]
+fn policy_entity_type_principal_in_set_user_only() {
+    assert_policy_typechecks_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action, resource) when { principal in [User::"admin"] && principal.age == 0};"#
+        ).expect("Policy should parse."));
+}
+
+#[test]
+fn policy_lub_entity_type_attr() {
+    assert_policy_typechecks_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action == Action::"view_photo", resource) when { resource.owner.favorite.file_type == "png" };"#
+        ).expect("Policy should parse."));
+}
+
+#[test]
+fn policy_impossible_head() {
+    let p = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal == Group::"foo", action == Action::"delete_group", resource);"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typecheck_fails_simple_schema(
+        p.clone(),
+        vec![TypeError::impossible_policy(p.condition())],
+    );
+}
+
+#[test]
+fn policy_impossible_literal_euids() {
+    let p = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action, resource) when { Group::"foo" in User::"bar" };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typecheck_fails_simple_schema(
+        p.clone(),
+        vec![TypeError::impossible_policy(p.condition())],
+    );
+}
+
+#[test]
+fn policy_impossible_not_has() {
+    let p = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action, resource) when { ! ({name: "alice"} has name)};"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typecheck_fails_simple_schema(
+        p.clone(),
+        vec![TypeError::impossible_policy(p.condition())],
+    );
+}
+
+#[test]
+fn policy_if_entities_lub() {
+    assert_policy_typechecks_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action, resource) when { (if principal.name == "foo" then User::"alice" else User::"bob").age > 21};"#
+        ).expect("Policy should parse."));
+}
+
+#[test]
+fn policy_in_action_impossible() {
+    let p = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action, resource) when { User::"alice" in [action] };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typecheck_fails_simple_schema(
+        p.clone(),
+        vec![TypeError::impossible_policy(p.condition())],
+    );
+}
+
+#[test]
+fn policy_entity_has_then_get() {
+    assert_policy_typechecks_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action, resource) when { principal has age && principal.age > 0};"#,
+        ).expect("Policy should parse."));
+}
+
+#[test]
+fn policy_entity_top_has() {
+    assert_policy_typechecks_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action, resource) when { (if principal.name == "foo" then principal else resource) has name || true };"#,
+        ).expect("Policy should parse."));
+}
+
+#[test]
+fn entity_lub_access_attribute() {
+    assert_policy_typechecks_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action, resource) when { (if 1 > 0 then User::"alice" else Group::"alice_friends").name like "foo" || true };"#
+        ).expect("Policy should parse."));
+}
+
+#[test]
+fn entity_lub_no_common_attributes_is_entity() {
+    assert_policy_typechecks_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action, resource) when { principal in (if 1 > 0 then User::"alice" else Photo::"vacation.jpg") || true };"#
+        ).expect("Policy should parse."));
+}
+
+#[test]
+fn entity_lub_cant_access_attribute_not_shared() {
+    let p = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action, resource == Group::"foo") when { (if 1 > 0 then User::"alice" else Photo::"vacation.jpg").name == "bob"};"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typecheck_fails_simple_schema(
+        p,
+        vec![
+            TypeError::missing_attribute(
+                parse_expr(r#"(if 1 > 0 then User::"alice" else Photo::"vacation.jpg").name"#)
+                    .unwrap(),
+                "name".into(),
+                None,
+            ),
+            TypeError::types_must_match(
+                parse_expr(r#"if 1 > 0 then User::"alice" else Photo::"vacation.jpg""#).unwrap(),
+                [
+                    Type::named_entity_reference_from_str("User"),
+                    Type::named_entity_reference_from_str("Photo"),
+                ],
+            ),
+        ],
+    );
+}
+
+#[test]
+fn entity_attribute_recommendation() {
+    let p = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action == Action::"view_photo", resource) when {resource.filetype like "*jpg" }; "#
+    ).expect("Policy should parse");
+    let expected = TypeError::missing_attribute(
+        Expr::get_attr(Expr::var(Var::Resource), "filetype".into()),
+        "filetype".into(),
+        Some("file_type".into()),
+    );
+    assert_policy_typecheck_fails_simple_schema(p, vec![expected]);
+}
+
+#[test]
+fn entity_lub_no_common_attributes_might_have_declared_attribute() {
+    assert_policy_typechecks_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action, resource) when { (if 1 > 0 then User::"alice" else Photo::"vacation.jpg") has age || true };"#
+        ).expect("Policy should parse."));
+}
+
+#[test]
+fn entity_lub_cant_have_undeclared_attribute() {
+    let p = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action, resource) when { (if 1 > 0 then User::"alice" else Photo::"vacation.jpg") has foo};"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typecheck_fails_simple_schema(
+        p.clone(),
+        vec![TypeError::impossible_policy(p.condition())],
+    );
+}
+
+#[test]
+fn entity_record_lub_is_none() {
+    assert_policy_typecheck_fails_simple_schema(parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action, resource) when { (if 1 > 0 then User::"alice" else {name: "bob"}).name == "jane" };"#
+        ).expect("Policy should parse."),
+        vec![
+            TypeError::incompatible_types(
+                parse_expr(r#"if 1 > 0 then User::"alice" else {name: "bob"}"#).unwrap(),
+                [
+                    Type::record_with_required_attributes([("name".into(), Type::primitive_string())]),
+                    Type::named_entity_reference_from_str("User"),
+                ]
+            )
+        ],
+    );
+}
+
+#[test]
+fn optional_attr_fail() {
+    let schema: NamespaceDefinition = serde_json::from_str(
+        r#"
+        {
+            "entityTypes": {
+                "User": {
+                    "memberOfTypes": [ ],
+                    "shape": {
+                        "type": "Record",
+                        "additionalAttributes": false,
+                        "attributes": {
+                            "name": { "type": "String", "required": false}
+                        }
+                    }
+                }
+            },
+            "actions": {
+                "view_photo": {
+                    "appliesTo": {
+                        "principalTypes": ["User"],
+                        "resourceTypes": ["User"],
+                        "context": {
+                            "type": "Record",
+                            "additionalAttributes": false,
+                            "attributes": { }
+                        }
+                    }
+                }
+            }
+        }"#,
+    )
+    .expect("Expected valid schema");
+    let policy = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action, resource) when { principal.name == "foo" };"#,
+    )
+    .expect("Policy should parse.");
+    let optional_attr: String = "name".into();
+    assert_policy_typecheck_fails(
+        schema,
+        policy,
+        vec![TypeError::unsafe_optional_attribute_access(
+            Expr::get_attr(Expr::var(Var::Principal), optional_attr.clone().into()),
+            optional_attr,
+        )],
+    );
+}
+
+#[test]
+fn action_as_resource() {
+    let schema: NamespaceDefinitionWithActionGroups = serde_json::from_str(
+        r#"
+        {
+            "entityTypes": {
+                "Principal": { },
+                "Action": {
+                    "shape": {
+                        "type": "Record",
+                        "additionalAttributes": false,
+                        "attributes": {
+                            "attr": { "type": "Boolean" }
+                        }
+                    }
+                }
+            },
+            "actions": {
+                "act": {
+                    "memberOf": [],
+                    "appliesTo": {
+                        "principalTypes": ["Principal"],
+                        "resourceTypes": ["Action"]
+                    }
+                }
+            }
+        }"#,
+    )
+    .expect("Expected valid schema");
+    let policy = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action == Action::"act", resource) when { resource.attr };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typechecks(schema, policy);
+}
+
+#[test]
+fn action_as_principal() {
+    let schema: NamespaceDefinitionWithActionGroups = serde_json::from_str(
+        r#"
+        {
+            "entityTypes": {
+                "Resource": { },
+                "Action": {
+                    "shape": {
+                        "type": "Record",
+                        "additionalAttributes": false,
+                        "attributes": {
+                            "attr": { "type": "Boolean" }
+                        }
+                    }
+                }
+            },
+            "actions": {
+                "act": {
+                    "memberOf": [],
+                    "appliesTo": {
+                        "principalTypes": ["Action"],
+                        "resourceTypes": ["Resource"]
+                    }
+                }
+            }
+        }"#,
+    )
+    .expect("Expected valid schema");
+    let policy = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action == Action::"act", resource) when { principal.attr };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typechecks(schema, policy);
+}
+
+#[test]
+fn type_error_is_not_reported_for_every_cross_product_element() {
+    let schema: NamespaceDefinition = serde_json::from_str(
+        r#"
+        {
+            "entityTypes": {
+                "Foo": {},
+                "Bar": {},
+                "Baz": {},
+                "Buz": {}
+            },
+            "actions": { "act": {} }
+        }"#,
+    )
+    .expect("Expected valid schema");
+    let policy = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action, resource) when { 1 > true };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typecheck_fails(
+        schema,
+        policy,
+        vec![TypeError::expected_type(
+            Expr::val(true),
+            Type::primitive_long(),
+            Type::True,
+        )],
+    );
+}
+
+#[test]
+fn action_groups() {
+    let schema: NamespaceDefinitionWithActionGroups = serde_json::from_str(
+        r#"
+        {
+            "entityTypes": { "Entity": {} },
+            "actions": {
+                "group": { },
+                "act": {
+                    "memberOf": [ {"id": "group"} ]
+                }
+            }
+        }"#,
+    )
+    .expect("Expected valid schema");
+    TryInto::<ValidatorSchema>::try_into(schema.0.clone())
+        .expect_err("Schema uses an action group, so it should be rejected if we prohibit groups.");
+
+    // Two good cases for `action in`.
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action in Action::"group", resource);"#,
+        )
+        .expect("Policy should parse."),
+    );
+
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action in Action::"act", resource);"#,
+        )
+        .expect("Policy should parse."),
+    );
+
+    // Four test cases that I think might have failed before namespaces were
+    // added to the schema. Prior to that change, actions were identified only
+    // by their Uid without considering the type, so `Entity::"group"` might
+    // have been treated the same as `Action::"group"` in some cases.
+    let policy = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action, resource) when { action in Entity::"group" };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typecheck_fails(
+        schema.clone(),
+        policy.clone(),
+        vec![TypeError::impossible_policy(policy.condition())],
+    );
+
+    let policy = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action, resource) when { action in Entity::"act" };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typecheck_fails(
+        schema.clone(),
+        policy.clone(),
+        vec![TypeError::impossible_policy(policy.condition())],
+    );
+
+    let policy = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action, resource) when { Entity::"group" in action };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typecheck_fails(
+        schema.clone(),
+        policy.clone(),
+        vec![TypeError::impossible_policy(policy.condition())],
+    );
+
+    let policy = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action, resource) when { Entity::"act" in action };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typecheck_fails(
+        schema,
+        policy.clone(),
+        vec![TypeError::impossible_policy(policy.condition())],
+    );
+}
+
+// Example demonstrating Non-terminating LUB computation
+#[test]
+fn record_entity_lub_non_term() {
+    let schema: NamespaceDefinition = serde_json::from_value(serde_json::json!(
+    {
+        "entityTypes": {
+          "U": {
+            "shape": {
+              "type": "Record",
+              "attributes": {
+                "foo": {
+                  "type": "Record",
+                  "attributes" : {
+                    "foo" : { "type" : "Entity", "name" : "U" }
+                  }
+                },
+                "bar": { "type": "Boolean" }
+              }
+            }
+          }
+        },
+        "actions": {
+          "view": {
+            "appliesTo": {
+              "principalTypes": ["U"],
+              "resourceTypes": null
+            }
+          }
+        }
+      }))
+    .unwrap();
+    let policy = parse_policy(
+         None,
+         r#"permit(principal, action, resource) when {if principal.bar then principal.foo else U::"b"};"#,
+    ).expect("Policy should parse.");
+    assert_policy_typecheck_fails(
+        schema,
+        policy,
+        vec![TypeError::incompatible_types(
+            parse_expr(r#"if principal.bar then principal.foo else U::"b""#).unwrap(),
+            [
+                Type::record_with_required_attributes([(
+                    "foo".into(),
+                    Type::named_entity_reference_from_str("U"),
+                )]),
+                Type::named_entity_reference_from_str("U"),
+            ],
+        )],
+    );
+}
+
+#[test]
+fn validate_policy_with_typedef_schema() {
+    let namespace_def: NamespaceDefinition = serde_json::from_value(serde_json::json!(
+    {
+        "commonTypes": {
+            "SharedAttrs": {
+                "type": "Record",
+                "attributes": {
+                    "flag": {"type": "Boolean"}
+                }
+            }
+        },
+        "entityTypes": {
+            "Entity": {
+                "shape": {
+                    "type": "SharedAttrs",
+                }
+            }
+        },
+        "actions": {
+          "act": {
+            "appliesTo": {
+              "principalTypes": ["Entity"],
+              "resourceTypes": null
+            }
+          }
+        }
+    }))
+    .unwrap();
+
+    assert_policy_typechecks(
+        namespace_def,
+        parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action == Action::"act", resource) when { principal.flag };"#,
+        )
+        .expect("Policy should parse."),
+    );
+}
+
+#[test]
+fn entity_eq_slot() {
+    assert_policy_typechecks_simple_schema(
+        parse_policy_template(
+            None,
+            r#"permit(principal == ?principal, action, resource);"#,
+        )
+        .unwrap(),
+    );
+    assert_policy_typechecks_simple_schema(
+        parse_policy_template(None, r#"permit(principal, action, resource == ?resource);"#)
+            .unwrap(),
+    );
+}
+
+#[test]
+fn entity_in_slot() {
+    assert_policy_typechecks_simple_schema(
+        parse_policy_template(
+            None,
+            r#"permit(principal in ?principal, action, resource);"#,
+        )
+        .unwrap(),
+    );
+    assert_policy_typechecks_simple_schema(
+        parse_policy_template(None, r#"permit(principal, action, resource in ?resource);"#)
+            .unwrap(),
+    );
+}

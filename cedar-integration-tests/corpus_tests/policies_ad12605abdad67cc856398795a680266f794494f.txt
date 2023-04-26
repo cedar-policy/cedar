@@ -1,0 +1,7 @@
+forbid(
+  principal in Gxt833777::a::"",
+  action in [Gxt833777::Action::"action"],
+  resource in Gxt833777::a::""
+) when {
+  true
+};

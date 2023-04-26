@@ -1,0 +1,7 @@
+permit(
+  principal in a::"\u{8}\u{8}\u{8}",
+  action in [],
+  resource in a::"\u{8}\u{8}\u{8}"
+) when {
+  (true && principal) && (principal == principal)
+};

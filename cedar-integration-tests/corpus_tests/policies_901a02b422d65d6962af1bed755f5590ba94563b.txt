@@ -1,0 +1,7 @@
+permit(
+  principal,
+  action in [K::Action::"action"],
+  resource in K::a::"\0j\0\u{8}"
+) when {
+  true
+};

@@ -1,0 +1,7 @@
+forbid(
+  principal == a::"\0\0FFFFF\0\0",
+  action in [Action::"action"],
+  resource == a::"\0\0FFFFF\0\0"
+) when {
+  ((true && 4605510) && principal) && principal
+};

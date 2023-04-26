@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_defd5589c286ff2dda5865ae0a230c9ef13d90ab.json",
+  "policies": "./corpus_tests/policies_defd5589c286ff2dda5865ae0a230c9ef13d90ab.txt",
+  "should_validate": false,
+  "entities": "./corpus_tests/entities_defd5589c286ff2dda5865ae0a230c9ef13d90ab.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "C22::C233::a::\"\"",
+      "action": "C22::C233::Action::\"action\"",
+      "resource": "C22::C233::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type C22::C233::a)"
+      ]
+    },
+    {
+      "desc": "Query 1",
+      "principal": "C22::C233::a::\"\"",
+      "action": "C22::C233::Action::\"action\"",
+      "resource": "C22::C233::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type C22::C233::a)"
+      ]
+    },
+    {
+      "desc": "Query 2",
+      "principal": "C22::C233::a::\"\"",
+      "action": "C22::C233::Action::\"action\"",
+      "resource": "C22::C233::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type C22::C233::a)"
+      ]
+    },
+    {
+      "desc": "Query 3",
+      "principal": "C22::C233::a::\"\"",
+      "action": "C22::C233::Action::\"action\"",
+      "resource": "C22::C233::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type C22::C233::a)"
+      ]
+    },
+    {
+      "desc": "Query 4",
+      "principal": "C22::C233::a::\"\"",
+      "action": "C22::C233::Action::\"action\"",
+      "resource": "C22::C233::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type C22::C233::a)"
+      ]
+    },
+    {
+      "desc": "Query 5",
+      "principal": "C22::C233::a::\"\"",
+      "action": "C22::C233::Action::\"action\"",
+      "resource": "C22::C233::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type C22::C233::a)"
+      ]
+    },
+    {
+      "desc": "Query 6",
+      "principal": "C22::C233::a::\"\"",
+      "action": "C22::C233::Action::\"action\"",
+      "resource": "C22::C233::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type C22::C233::a)"
+      ]
+    },
+    {
+      "desc": "Query 7",
+      "principal": "C22::C233::a::\"\"",
+      "action": "C22::C233::Action::\"action\"",
+      "resource": "C22::C233::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type C22::C233::a)"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+permit (
+  principal == User::"bob",
+  action == Action::"view",
+  resource
+)
+when { [Action::"edit", Action::"view"].contains(action) };

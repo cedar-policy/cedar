@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_a596945828158d5e9660026876c9978689c098de.json",
+  "policies": "./corpus_tests/policies_a596945828158d5e9660026876c9978689c098de.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_a596945828158d5e9660026876c9978689c098de.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "cP::v::vxCxz::\"\"",
+      "action": "cP::v::Action::\"zd\"",
+      "resource": null,
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": "cP::v::vxCxz::\"\"",
+      "action": "cP::v::Action::\"zd\"",
+      "resource": null,
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": "cP::v::vxCxz::\"\"",
+      "action": "cP::v::Action::\"zd\"",
+      "resource": null,
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": "cP::v::vxCxz::\"\"",
+      "action": "cP::v::Action::\"zd\"",
+      "resource": null,
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": "cP::v::vxCxz::\"\"",
+      "action": "cP::v::Action::\"zd\"",
+      "resource": null,
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": "cP::v::vxCxz::\"\"",
+      "action": "cP::v::Action::\"zd\"",
+      "resource": null,
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": "cP::v::vxCxz::\"\"",
+      "action": "cP::v::Action::\"zd\"",
+      "resource": null,
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": "cP::v::vxCxz::\"\"",
+      "action": "cP::v::Action::\"zd\"",
+      "resource": null,
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

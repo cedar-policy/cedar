@@ -1,0 +1,7 @@
+permit(
+  principal == a::"L\0\0\0\0\0\u{2}\u{1}\0\0\0\0\0\0\0\0\0\0",
+  action == Action::"action",
+  resource
+) when {
+  true
+};

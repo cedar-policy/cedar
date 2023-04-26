@@ -1,0 +1,7 @@
+permit(
+  principal == a::"RR\0\0",
+  action == Action::"action",
+  resource == a::"RR\0\0"
+) when {
+  (true && ((("" has "") == (if principal then principal else principal)) == principal)) && principal
+};

@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_76a183abe57b42df274fdc83a8adc4a76a86e972.json",
+  "policies": "./corpus_tests/policies_76a183abe57b42df274fdc83a8adc4a76a86e972.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_76a183abe57b42df274fdc83a8adc4a76a86e972.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "bLD000aw988::r09::A::Fww33333::a::\"\"",
+      "action": "bLD000aw988::r09::A::Fww33333::Action::\"action\"",
+      "resource": "bLD000aw988::r09::A::Fww33333::a::\"\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": "bLD000aw988::r09::A::Fww33333::a::\"\"",
+      "action": "bLD000aw988::r09::A::Fww33333::Action::\"action\"",
+      "resource": "bLD000aw988::r09::A::Fww33333::a::\"\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": "bLD000aw988::r09::A::Fww33333::a::\"\"",
+      "action": "bLD000aw988::r09::A::Fww33333::Action::\"action\"",
+      "resource": "bLD000aw988::r09::A::Fww33333::a::\"\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": "bLD000aw988::r09::A::Fww33333::a::\"\"",
+      "action": "bLD000aw988::r09::A::Fww33333::Action::\"action\"",
+      "resource": "bLD000aw988::r09::A::Fww33333::a::\"\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": "bLD000aw988::r09::A::Fww33333::a::\"\"",
+      "action": "bLD000aw988::r09::A::Fww33333::Action::\"action\"",
+      "resource": "bLD000aw988::r09::A::Fww33333::a::\"\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": "bLD000aw988::r09::A::Fww33333::a::\"\"",
+      "action": "bLD000aw988::r09::A::Fww33333::Action::\"action\"",
+      "resource": "bLD000aw988::r09::A::Fww33333::a::\"\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": "bLD000aw988::r09::A::Fww33333::a::\"\"",
+      "action": "bLD000aw988::r09::A::Fww33333::Action::\"action\"",
+      "resource": "bLD000aw988::r09::A::Fww33333::a::\"\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": "bLD000aw988::r09::A::Fww33333::a::\"\"",
+      "action": "bLD000aw988::r09::A::Fww33333::Action::\"action\"",
+      "resource": "bLD000aw988::r09::A::Fww33333::a::\"\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

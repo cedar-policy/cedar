@@ -1,0 +1,7 @@
+permit(
+  principal == G666E66::"&",
+  action in [Action::"action"],
+  resource in G666E66::""
+) when {
+  true
+};

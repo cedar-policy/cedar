@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_a15680bd683336a6602a2981a21b7d49bd4e9aae.json",
+  "policies": "./corpus_tests/policies_a15680bd683336a6602a2981a21b7d49bd4e9aae.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_a15680bd683336a6602a2981a21b7d49bd4e9aae.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "r33338330::\"....\"",
+      "action": "Action::\"action\"",
+      "resource": "Vh::\"\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": "r33338330::\"....\"",
+      "action": "Action::\"action\"",
+      "resource": "Vh::\"\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": "r33338330::\"....\"",
+      "action": "Action::\"action\"",
+      "resource": "Vh::\"\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": "r33338330::\"....\"",
+      "action": "Action::\"action\"",
+      "resource": "Vh::\"\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": "r33338330::\"....\"",
+      "action": "Action::\"action\"",
+      "resource": "Vh::\"\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": "r33338330::\"....\"",
+      "action": "Action::\"action\"",
+      "resource": "Vh::\"\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": "r33338330::\"....\"",
+      "action": "Action::\"action\"",
+      "resource": "Vh::\"\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": "r33338330::\"....\"",
+      "action": "Action::\"action\"",
+      "resource": "Vh::\"\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

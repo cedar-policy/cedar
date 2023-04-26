@@ -1,0 +1,34 @@
+{
+  "TYYY::Lxm::Kxxx0xn": {
+    "commonTypes": {},
+    "entityTypes": {
+      "EYml": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "attributes": {},
+        "appliesTo": {
+          "resourceTypes": [
+            "EYml"
+          ],
+          "principalTypes": [
+            "EYml"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

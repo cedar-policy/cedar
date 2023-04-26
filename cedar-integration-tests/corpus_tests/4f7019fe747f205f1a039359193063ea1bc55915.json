@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_4f7019fe747f205f1a039359193063ea1bc55915.json",
+  "policies": "./corpus_tests/policies_4f7019fe747f205f1a039359193063ea1bc55915.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_4f7019fe747f205f1a039359193063ea1bc55915.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "yalupalt36x77::a::\"\"",
+      "action": "yalupalt36x77::Action::\"action\"",
+      "resource": "yalupalt36x77::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": "yalupalt36x77::a::\"\"",
+      "action": "yalupalt36x77::Action::\"action\"",
+      "resource": "yalupalt36x77::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": "yalupalt36x77::a::\"\"",
+      "action": "yalupalt36x77::Action::\"action\"",
+      "resource": "yalupalt36x77::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": "yalupalt36x77::a::\"\"",
+      "action": "yalupalt36x77::Action::\"action\"",
+      "resource": "yalupalt36x77::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": "yalupalt36x77::a::\"\"",
+      "action": "yalupalt36x77::Action::\"action\"",
+      "resource": "yalupalt36x77::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": "yalupalt36x77::a::\"\"",
+      "action": "yalupalt36x77::Action::\"action\"",
+      "resource": "yalupalt36x77::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": "yalupalt36x77::a::\"\"",
+      "action": "yalupalt36x77::Action::\"action\"",
+      "resource": "yalupalt36x77::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": "yalupalt36x77::a::\"\"",
+      "action": "yalupalt36x77::Action::\"action\"",
+      "resource": "yalupalt36x77::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

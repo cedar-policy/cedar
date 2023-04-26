@@ -1,0 +1,36 @@
+{
+    "": {
+        "entityTypes": {
+            "User": {
+                "memberOfTypes": [
+                    "UserGroup"
+                ]
+            },
+            "UserGroup": {
+                "memberOfTypes": []
+            },
+            "Photo": {
+                "memberOfTypes": [
+                    "Album"
+                ]
+            },
+            "Album": {
+                "memberOfTypes": [
+                    "Album"
+                ]
+            }
+        },
+        "actions": {
+            "view": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "Photo"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            }
+        }
+    }
+}

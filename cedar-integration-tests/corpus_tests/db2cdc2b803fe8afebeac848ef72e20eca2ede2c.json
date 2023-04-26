@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_db2cdc2b803fe8afebeac848ef72e20eca2ede2c.json",
+  "policies": "./corpus_tests/policies_db2cdc2b803fe8afebeac848ef72e20eca2ede2c.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_db2cdc2b803fe8afebeac848ef72e20eca2ede2c.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "Gxt833777::a::\"\"",
+      "action": "Gxt833777::Action::\"action\"",
+      "resource": "Gxt833777::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": "Gxt833777::a::\"\"",
+      "action": "Gxt833777::Action::\"action\"",
+      "resource": "Gxt833777::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": "Gxt833777::a::\"\"",
+      "action": "Gxt833777::Action::\"action\"",
+      "resource": "Gxt833777::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": "Gxt833777::a::\"\"",
+      "action": "Gxt833777::Action::\"action\"",
+      "resource": "Gxt833777::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": "Gxt833777::a::\"\"",
+      "action": "Gxt833777::Action::\"action\"",
+      "resource": "Gxt833777::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": "Gxt833777::a::\"\"",
+      "action": "Gxt833777::Action::\"action\"",
+      "resource": "Gxt833777::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": "Gxt833777::a::\"\"",
+      "action": "Gxt833777::Action::\"action\"",
+      "resource": "Gxt833777::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": "Gxt833777::a::\"\"",
+      "action": "Gxt833777::Action::\"action\"",
+      "resource": "Gxt833777::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

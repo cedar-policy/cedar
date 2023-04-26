@@ -1,0 +1,10 @@
+[
+  {
+    "uid": {
+      "type": "Qmc::Qx0xxu_YYYY::qmlAURxxx",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  }
+]

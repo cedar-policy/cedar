@@ -1,0 +1,40 @@
+[
+  {
+    "uid": { "__entity": { "type": "User", "id": "alice"} },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": { "__entity": { "type": "User", "id": "jane"} },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": { "__entity": { "type": "User", "id": "bob"} },
+    "attrs": {
+      "department": "research"
+    },
+    "parents": []
+  },
+  {
+    "uid": { "__entity": { "type": "Album", "id": "jane"} },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": { "__entity": { "type": "Photo", "id": "VacationPhoto94.jpg"} },
+    "attrs": {},
+    "parents": [
+      { "__entity": { "type": "Album", "id": "jane"} }
+    ]
+  },
+  {
+    "uid": { "__entity": { "type": "Photo", "id": "Skyline.jpg"} },
+    "attrs": {
+      "public": true
+    },
+    "parents": [
+      { "__entity": { "type": "Album", "id": "jane"} }
+    ]
+  }
+]

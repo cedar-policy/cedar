@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_5f8c11c34b2bf708ee41de0b188ec771a8605a46.json",
+  "policies": "./corpus_tests/policies_5f8c11c34b2bf708ee41de0b188ec771a8605a46.txt",
+  "should_validate": false,
+  "entities": "./corpus_tests/entities_5f8c11c34b2bf708ee41de0b188ec771a8605a46.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "W::v::A::\"\"",
+      "action": "W::v::Action::\"action\"",
+      "resource": "W::v::A::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type W::v::A)"
+      ]
+    },
+    {
+      "desc": "Query 1",
+      "principal": "W::v::A::\"\"",
+      "action": "W::v::Action::\"action\"",
+      "resource": "W::v::A::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type W::v::A)"
+      ]
+    },
+    {
+      "desc": "Query 2",
+      "principal": "W::v::A::\"\"",
+      "action": "W::v::Action::\"action\"",
+      "resource": "W::v::A::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type W::v::A)"
+      ]
+    },
+    {
+      "desc": "Query 3",
+      "principal": "W::v::A::\"\"",
+      "action": "W::v::Action::\"action\"",
+      "resource": "W::v::A::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type W::v::A)"
+      ]
+    },
+    {
+      "desc": "Query 4",
+      "principal": "W::v::A::\"\"",
+      "action": "W::v::Action::\"action\"",
+      "resource": "W::v::A::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type W::v::A)"
+      ]
+    },
+    {
+      "desc": "Query 5",
+      "principal": "W::v::A::\"\"",
+      "action": "W::v::Action::\"action\"",
+      "resource": "W::v::A::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type W::v::A)"
+      ]
+    },
+    {
+      "desc": "Query 6",
+      "principal": "W::v::A::\"\"",
+      "action": "W::v::Action::\"action\"",
+      "resource": "W::v::A::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type W::v::A)"
+      ]
+    },
+    {
+      "desc": "Query 7",
+      "principal": "W::v::A::\"\"",
+      "action": "W::v::Action::\"action\"",
+      "resource": "W::v::A::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type W::v::A)"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "Fwowwwxm": {
+    "commonTypes": {},
+    "entityTypes": {
+      "Edml": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "':::": {
+        "attributes": {},
+        "appliesTo": {
+          "resourceTypes": [
+            "Edml"
+          ],
+          "principalTypes": [
+            "Edml"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

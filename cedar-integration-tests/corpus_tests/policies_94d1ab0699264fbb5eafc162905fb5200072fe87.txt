@@ -1,0 +1,7 @@
+permit(
+  principal == a::"z",
+  action in [Action::"action"],
+  resource == a::"z"
+) when {
+  (true && (!((Ahhmm::"".contains(a::"z")).contains(principal)))) && principal
+};

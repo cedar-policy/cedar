@@ -1,0 +1,7 @@
+permit(
+  principal == a::"R",
+  action == Action::"action",
+  resource
+) when {
+  true
+};

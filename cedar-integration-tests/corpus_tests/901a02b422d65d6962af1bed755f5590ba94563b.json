@@ -1,0 +1,100 @@
+{
+  "schema": "./corpus_tests/schema_901a02b422d65d6962af1bed755f5590ba94563b.json",
+  "policies": "./corpus_tests/policies_901a02b422d65d6962af1bed755f5590ba94563b.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_901a02b422d65d6962af1bed755f5590ba94563b.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "K::a::\"\\0j\\0\\u{8}\"",
+      "action": "K::Action::\"action\"",
+      "resource": "K::a::\"\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": "K::a::\"\\0\"",
+      "action": "K::Action::\"action\"",
+      "resource": "K::a::\"\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": "K::a::\"\\0j\\0\\u{8}\"",
+      "action": "K::Action::\"action\"",
+      "resource": "K::a::\"\\0j\\0\\u{8}\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": "K::a::\"\\0j\\0\\u{8}\"",
+      "action": "K::Action::\"action\"",
+      "resource": "K::a::\"\\0j\\0\\u{8}\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": "K::a::\"\\0j\\0\\u{8}\"",
+      "action": "K::Action::\"action\"",
+      "resource": "K::a::\"\\0j\\0\\u{8}\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": "K::a::\"\\0j\\0\\u{8}\"",
+      "action": "K::Action::\"action\"",
+      "resource": "K::a::\"\\0j\\0\\u{8}\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": "K::a::\"\\0j\\0\\u{8}\"",
+      "action": "K::Action::\"action\"",
+      "resource": "K::a::\"\\0j\\0\\u{8}\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": "K::a::\"\\0j\\0\\u{8}\"",
+      "action": "K::Action::\"action\"",
+      "resource": "K::a::\"\\0j\\0\\u{8}\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

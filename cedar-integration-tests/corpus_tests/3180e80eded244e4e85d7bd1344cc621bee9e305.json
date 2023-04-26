@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_3180e80eded244e4e85d7bd1344cc621bee9e305.json",
+  "policies": "./corpus_tests/policies_3180e80eded244e4e85d7bd1344cc621bee9e305.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_3180e80eded244e4e85d7bd1344cc621bee9e305.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "a::\"x\\n\\u{2}\\u{2}\\u{2}\\u{2}\\u{1}i\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"x\\n\\u{2}\\u{2}\\u{2}\\u{2}\\u{1}i\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": "a::\"x\\n\\u{2}\\u{2}\\u{2}\\u{2}\\u{1}i\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"x\\n\\u{2}\\u{2}\\u{2}\\u{2}\\u{1}i\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": "a::\"x\\n\\u{2}\\u{2}\\u{2}\\u{2}\\u{1}i\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"x\\n\\u{2}\\u{2}\\u{2}\\u{2}\\u{1}i\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": "a::\"x\\n\\u{2}\\u{2}\\u{2}\\u{2}\\u{1}i\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"x\\n\\u{2}\\u{2}\\u{2}\\u{2}\\u{1}i\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": "a::\"x\\n\\u{2}\\u{2}\\u{2}\\u{2}\\u{1}i\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"x\\n\\u{2}\\u{2}\\u{2}\\u{2}\\u{1}i\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": "a::\"x\\n\\u{2}\\u{2}\\u{2}\\u{2}\\u{1}i\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"x\\n\\u{2}\\u{2}\\u{2}\\u{2}\\u{1}i\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": "a::\"x\\n\\u{2}\\u{2}\\u{2}\\u{2}\\u{1}i\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"x\\n\\u{2}\\u{2}\\u{2}\\u{2}\\u{1}i\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": "a::\"x\\n\\u{2}\\u{2}\\u{2}\\u{2}\\u{1}i\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"x\\n\\u{2}\\u{2}\\u{2}\\u{2}\\u{1}i\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\\u{2}\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

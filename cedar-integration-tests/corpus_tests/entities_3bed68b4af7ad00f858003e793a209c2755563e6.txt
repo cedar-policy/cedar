@@ -1,0 +1,25 @@
+[
+  {
+    "uid": {
+      "type": "Kxx0xnx::LYY",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "Kxx0xnx::Qm0",
+      "id": ""
+    },
+    "attrs": {
+      "pdml": false
+    },
+    "parents": [
+      {
+        "type": "Kxx0xnx::LYY",
+        "id": ""
+      }
+    ]
+  }
+]

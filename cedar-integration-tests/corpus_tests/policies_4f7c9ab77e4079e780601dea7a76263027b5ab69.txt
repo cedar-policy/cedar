@@ -1,0 +1,7 @@
+permit(
+  principal in Kfhhhhhh::"",
+  action in [Action::"action"],
+  resource in Kfhhhhhh::""
+) when {
+  (true && (!principal)) && principal
+};

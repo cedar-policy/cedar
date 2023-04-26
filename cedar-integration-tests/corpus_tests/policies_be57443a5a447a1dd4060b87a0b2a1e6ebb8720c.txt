@@ -1,0 +1,12 @@
+@A("")
+@B00("\t")
+@Dj("/n_m")
+@X("")
+@r("")
+permit(
+  principal,
+  action,
+  resource
+) when {
+  true
+};

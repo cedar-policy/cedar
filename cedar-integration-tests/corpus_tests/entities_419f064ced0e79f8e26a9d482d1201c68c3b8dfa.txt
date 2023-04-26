@@ -1,0 +1,18 @@
+[
+  {
+    "uid": {
+      "type": "A0ww::a",
+      "id": ""
+    },
+    "attrs": {
+      "F": {
+        "__entity": {
+          "id": "",
+          "type": "A0ww::a"
+        }
+      },
+      "FwZwwwwammk": false
+    },
+    "parents": []
+  }
+]

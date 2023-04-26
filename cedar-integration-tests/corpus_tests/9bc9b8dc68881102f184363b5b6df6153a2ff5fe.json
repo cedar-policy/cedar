@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_9bc9b8dc68881102f184363b5b6df6153a2ff5fe.json",
+  "policies": "./corpus_tests/policies_9bc9b8dc68881102f184363b5b6df6153a2ff5fe.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_9bc9b8dc68881102f184363b5b6df6153a2ff5fe.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "m85www::a::\":cʌto\"",
+      "action": "m85www::Action::\"action\"",
+      "resource": "m85www::a::\":cʌto\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": "m85www::a::\":cʌto\"",
+      "action": "m85www::Action::\"action\"",
+      "resource": "m85www::a::\":cʌto\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": "m85www::a::\":cʌto\"",
+      "action": "m85www::Action::\"action\"",
+      "resource": "m85www::a::\":cʌto\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": "m85www::a::\":cʌto\"",
+      "action": "m85www::Action::\"action\"",
+      "resource": "m85www::a::\":cʌto\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": "m85www::a::\":cʌto\"",
+      "action": "m85www::Action::\"action\"",
+      "resource": "m85www::a::\":cʌto\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": "m85www::a::\":cʌto\"",
+      "action": "m85www::Action::\"action\"",
+      "resource": "m85www::a::\":cʌto\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": "m85www::a::\":cʌto\"",
+      "action": "m85www::Action::\"action\"",
+      "resource": "m85www::a::\":cʌto\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": "m85www::a::\":cʌto\"",
+      "action": "m85www::Action::\"action\"",
+      "resource": "m85www::a::\":cʌto\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

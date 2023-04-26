@@ -1,0 +1,7 @@
+permit(
+  principal in Q::A::w::V::a::"000000",
+  action == Q::A::w::V::Action::"action",
+  resource
+) when {
+  true
+};

@@ -1,0 +1,39 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "WN": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "": {
+        "attributes": {},
+        "appliesTo": null,
+        "memberOf": null
+      },
+      "....": {
+        "attributes": {},
+        "appliesTo": {
+          "resourceTypes": [
+            "WN"
+          ],
+          "principalTypes": [
+            "WN"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

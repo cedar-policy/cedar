@@ -1,0 +1,9 @@
+@b77kjlhYa000000("")
+@vdYqrcpv("m")
+permit(
+  principal,
+  action,
+  resource
+) when {
+  true
+};

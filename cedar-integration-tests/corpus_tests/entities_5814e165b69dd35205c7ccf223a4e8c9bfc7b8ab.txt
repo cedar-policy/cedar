@@ -1,0 +1,26 @@
+[
+  {
+    "uid": {
+      "type": "R7B",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "R7B",
+      "id": ".........sun/sec"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "R7B",
+      "id": "ri"
+    },
+    "attrs": {},
+    "parents": []
+  }
+]

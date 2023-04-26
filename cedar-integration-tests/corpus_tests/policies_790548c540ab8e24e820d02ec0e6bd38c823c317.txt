@@ -1,0 +1,7 @@
+permit(
+  principal == stYWLSk::a::"",
+  action,
+  resource
+) when {
+  true
+};

@@ -1,0 +1,7 @@
+forbid(
+  principal == a::"\u{2}>si0",
+  action in [Action::"",Action::"",Action::""],
+  resource in a::"\u{2}>si0"
+) when {
+  true
+};

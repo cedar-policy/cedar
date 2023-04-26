@@ -1,0 +1,7 @@
+forbid(
+  principal == A000::p::a::"",
+  action,
+  resource == A000::p::a::""
+) when {
+  true && (!(principal has ""))
+};

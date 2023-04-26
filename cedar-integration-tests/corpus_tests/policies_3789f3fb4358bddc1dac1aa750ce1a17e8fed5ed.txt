@@ -1,0 +1,7 @@
+permit(
+  principal in a::"ff\0",
+  action in [Action::"action",Action::"action"],
+  resource == a::"ff\0"
+) when {
+  (true && (((x000000000000000::"" has ":*") in principal) has "")) && principal
+};

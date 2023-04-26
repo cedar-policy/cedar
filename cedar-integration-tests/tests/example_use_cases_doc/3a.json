@@ -1,0 +1,64 @@
+{
+    "policies": "tests/example_use_cases_doc/policies_3a.txt",
+    "entities": "sample-data/sandbox_a/entities.json",
+    "schema": "sample-data/sandbox_a/schema.json",
+    "should_validate": true,
+    "queries": [
+        {
+            "desc": "alice should be able to view the photo",
+            "principal": "User::\"alice\"",
+            "action": "Action::\"view\"",
+            "resource": "Photo::\"VacationPhoto94.jpg\"",
+            "context": {
+                "source_ip": "123.123.123.123",
+                "confidence_score": "0.6",
+                "authenticated": true
+            },
+            "decision": "Allow",
+            "reasons": ["policy0"],
+            "errors": []
+        },
+        {
+            "desc": "bob should be able to view the photo",
+            "principal": "User::\"bob\"",
+            "action": "Action::\"view\"",
+            "resource": "Photo::\"VacationPhoto94.jpg\"",
+            "context": {
+                "source_ip": "123.123.123.123",
+                "confidence_score": "0.6",
+                "authenticated": true
+            },
+            "decision": "Allow",
+            "reasons": ["policy0"],
+            "errors": []
+        },
+        {
+            "desc": "ahmad should be able to view the photo",
+            "principal": "Administrator::\"ahmad\"",
+            "action": "Action::\"view\"",
+            "resource": "Photo::\"VacationPhoto94.jpg\"",
+            "context": {
+                "source_ip": "123.123.123.123",
+                "confidence_score": "0.6",
+                "authenticated": true
+            },
+            "decision": "Allow",
+            "reasons": ["policy0"],
+            "errors": []
+        },
+        {
+            "desc": "alice should not be allowed to view an unrelated photo",
+            "principal": "User::\"alice\"",
+            "action": "Action::\"view\"",
+            "resource": "Photo::\"passportscan.jpg\"",
+            "context": {
+                "source_ip": "123.123.123.123",
+                "confidence_score": "0.6",
+                "authenticated": true
+            },
+            "decision": "Deny",
+            "reasons": [],
+            "errors": []
+        }
+    ]
+}

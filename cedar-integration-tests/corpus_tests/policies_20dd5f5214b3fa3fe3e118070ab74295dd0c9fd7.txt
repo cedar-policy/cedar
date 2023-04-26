@@ -1,0 +1,7 @@
+permit(
+  principal in a::"\u{1a}0l0i",
+  action in [],
+  resource in a::"\u{1a}0l0i"
+) when {
+  true
+};

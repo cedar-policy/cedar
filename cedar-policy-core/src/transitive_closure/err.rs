@@ -1,0 +1,32 @@
+use std::fmt::Debug;
+use std::fmt::Display;
+use thiserror::Error;
+
+/// Error type for errors raised during transitive closure computation. This
+/// error type is parametrized by a type `K` which is the type of a unique
+/// identifier for graph nodes and the type returned by `get_key` on the
+/// `TCNode` trait.
+#[derive(Debug, Error)]
+pub enum Err<K: Debug + Display> {
+    /// Error raised when `TCComputation::EnforceAlreadyComputed` finds that the
+    /// TC was in fact not already computed
+    #[error("expected all transitive edges to exist, but they don't. {child} is a child of {parent} is a child of {grandparent}, but {grandparent} is not marked as an ancestor of {child}")]
+    TCEnforcementError {
+        /// Child entity at fault
+        child: K,
+        /// Parent entity at fault
+        parent: K,
+        /// Grandparent entity at fault. This is a parent of `parent` but not an
+        /// ancestor of `child`.
+        grandparent: K,
+    },
+    /// Error raised when enforce_dag finds that the graph is not a DAG
+    #[error("input graph has a cycle. Vertex {} has a loop.", .vertex_with_loop)]
+    HasCycle {
+        /// Because DAG enforcement can only be called after compute_tc/enforce_tc, a cycle will manifest as a vertex with a loop
+        vertex_with_loop: K,
+    },
+}
+
+/// Type alias for convenience
+pub type Result<T, K> = std::result::Result<T, Err<K>>;

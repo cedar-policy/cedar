@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_e724a7ae0f37a356481bfd94170d5e699c0c4315.json",
+  "policies": "./corpus_tests/policies_e724a7ae0f37a356481bfd94170d5e699c0c4315.txt",
+  "should_validate": false,
+  "entities": "./corpus_tests/entities_e724a7ae0f37a356481bfd94170d5e699c0c4315.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "A000::a::\"\"",
+      "action": "A000::Action::\"action\"",
+      "resource": "A000::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected ipaddr, got (entity of type A000::a)"
+      ]
+    },
+    {
+      "desc": "Query 1",
+      "principal": "A000::a::\"\"",
+      "action": "A000::Action::\"action\"",
+      "resource": "A000::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected ipaddr, got (entity of type A000::a)"
+      ]
+    },
+    {
+      "desc": "Query 2",
+      "principal": "A000::a::\"\"",
+      "action": "A000::Action::\"action\"",
+      "resource": "A000::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected ipaddr, got (entity of type A000::a)"
+      ]
+    },
+    {
+      "desc": "Query 3",
+      "principal": "A000::a::\"\"",
+      "action": "A000::Action::\"action\"",
+      "resource": "A000::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected ipaddr, got (entity of type A000::a)"
+      ]
+    },
+    {
+      "desc": "Query 4",
+      "principal": "A000::a::\"\"",
+      "action": "A000::Action::\"action\"",
+      "resource": "A000::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected ipaddr, got (entity of type A000::a)"
+      ]
+    },
+    {
+      "desc": "Query 5",
+      "principal": "A000::a::\"\"",
+      "action": "A000::Action::\"action\"",
+      "resource": "A000::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected ipaddr, got (entity of type A000::a)"
+      ]
+    },
+    {
+      "desc": "Query 6",
+      "principal": "A000::a::\"\"",
+      "action": "A000::Action::\"action\"",
+      "resource": "A000::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected ipaddr, got (entity of type A000::a)"
+      ]
+    },
+    {
+      "desc": "Query 7",
+      "principal": "A000::a::\"\"",
+      "action": "A000::Action::\"action\"",
+      "resource": "A000::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected ipaddr, got (entity of type A000::a)"
+      ]
+    }
+  ]
+}

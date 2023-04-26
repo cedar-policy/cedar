@@ -1,0 +1,7 @@
+forbid(
+  principal in a::"q",
+  action,
+  resource in a::""
+) when {
+  true && Action::"action"
+};

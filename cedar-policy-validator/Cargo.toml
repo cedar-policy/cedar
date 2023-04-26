@@ -1,0 +1,24 @@
+[package]
+name = "cedar-policy-validator"
+edition = "2021"
+
+version = "2.0.0"
+
+[dependencies]
+cedar-policy-core = { version = "2.0.0", path = "../cedar-policy-core" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_with = "2.0.1"
+arbitrary = { version = "1", features = ["derive"] }
+json = "0.12.4"
+thiserror = "1.0"
+itertools = "0.10"
+unicode-security = "0.1.0"
+smol_str = "0.1.23"
+
+[features]
+# by default, enable all Cedar extensions
+default = ["ipaddr", "decimal"]
+# when enabling a feature, make sure that the Core feature is also enabled
+ipaddr = ["cedar-policy-core/ipaddr"]
+decimal = ["cedar-policy-core/decimal"]

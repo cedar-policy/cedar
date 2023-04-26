@@ -1,0 +1,15 @@
+[workspace]
+members = [
+	"cedar-policy",
+	"cedar-policy-core",
+	"cedar-policy-validator",
+	"cedar-policy-formatter",
+	"cedar-policy-cli",
+]
+
+# Enable global integer overflow detection for the release profile
+[profile.release]
+overflow-checks = true
+
+	
+

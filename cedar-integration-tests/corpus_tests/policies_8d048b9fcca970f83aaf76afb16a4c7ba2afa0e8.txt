@@ -1,0 +1,7 @@
+forbid(
+  principal in nww_ww000001::a::"fff",
+  action,
+  resource
+) when {
+  true
+};

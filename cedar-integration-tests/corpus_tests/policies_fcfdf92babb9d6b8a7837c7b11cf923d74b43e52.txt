@@ -1,0 +1,7 @@
+permit(
+  principal in a::"",
+  action == Action::"action",
+  resource == a::""
+) when {
+  (true && (8827056895198657146 == ((122 == principal) == principal))) && principal
+};

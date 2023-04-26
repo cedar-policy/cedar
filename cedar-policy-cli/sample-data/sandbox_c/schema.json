@@ -1,0 +1,87 @@
+{
+    "": {
+        "entityTypes": {
+            "User": {
+                "memberOfTypes": [
+                    "UserGroup"
+                ]
+            },
+            "UserGroup": {
+                "memberOfTypes": []
+            },
+            "Administrator": {
+                "memberOfTypes": []
+            },
+            "Photo": {
+                "memberOfTypes": [
+                    "Account",
+                    "Album"
+                ]
+            },
+            "Album": {
+                "memberOfTypes": [
+                    "Account"
+                ]
+            },
+            "Video": {
+                "memberOfTypes": [
+                    "Account",
+                    "Album"
+                ]
+            },
+            "Account": {
+                "memberOfTypes": []
+            }
+        },
+        "actions": {
+            "view": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "Photo",
+                        "Video",
+                        "Album"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            },
+            "edit": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "Photo",
+                        "Video",
+                        "Album"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            },
+            "delete": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "Photo",
+                        "Video",
+                        "Album"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            },
+            "listPhotos": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "Album",
+                        "Photo",
+                        "Video"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,154 @@
+use crate::ast::PatternElem;
+use rustc_lexer::unescape::{unescape_str, EscapeError};
+use smol_str::SmolStr;
+use std::ops::Range;
+use thiserror::Error;
+
+pub(crate) fn to_unescaped_string(s: &str) -> Result<SmolStr, Vec<UnescapeError>> {
+    let mut unescaped_str = String::new();
+    let mut errs = Vec::new();
+    let mut callback = |range, r| match r {
+        Ok(c) => unescaped_str.push(c),
+        Err(err) => errs.push(UnescapeError {
+            err,
+            input: s.to_owned(),
+            range,
+        }),
+    };
+    unescape_str(s, &mut callback);
+    if errs.is_empty() {
+        Ok(unescaped_str.into())
+    } else {
+        Err(errs)
+    }
+}
+
+pub(crate) fn to_pattern(s: &str) -> Result<Vec<PatternElem>, Vec<UnescapeError>> {
+    let mut unescaped_str = Vec::new();
+    let mut errs = Vec::new();
+    let bytes = s.as_bytes(); // to inspect string element in O(1) time
+    let mut callback = |range: Range<usize>, r| match r {
+        Ok(c) => unescaped_str.push(if c == '*' { PatternElem::Wildcard }else { PatternElem::Char(c) }),
+        Err(EscapeError::InvalidEscape)
+        // note that the range argument refers to the *byte* offset into the string.
+        // so we can compare the byte slice against the bytes of the ``star'' escape sequence.
+        if &bytes[range.start..range.end] == r#"\*"#.as_bytes()
+            =>
+        {
+            unescaped_str.push(PatternElem::Char('*'))
+        }
+        Err(err) => errs.push(UnescapeError { err, input: s.to_owned(), range }),
+    };
+    unescape_str(s, &mut callback);
+    if errs.is_empty() {
+        Ok(unescaped_str)
+    } else {
+        Err(errs)
+    }
+}
+
+/// Errors generated when processing escapes
+#[derive(Debug, Error)]
+pub struct UnescapeError {
+    /// underlying EscapeError
+    err: EscapeError,
+    /// copy of the input string which had the error
+    input: String,
+    /// Range of the input string where the error occurred
+    range: Range<usize>,
+}
+
+impl std::fmt::Display for UnescapeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}: {}", self.err, &self.input[self.range.clone()])
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::to_unescaped_string;
+    use crate::ast;
+    use crate::parser::{err::ParseError, text_to_cst};
+
+    #[test]
+    fn test_string_escape() {
+        // refer to this doc for Rust string escapes: http://web.mit.edu/rust-lang_v1.25/arch/amd64_ubuntu1404/share/doc/rust/html/reference/tokens.html
+
+        // valid ASCII escapes
+        assert_eq!(
+            to_unescaped_string(r#"\t\r\n\\\0\x42"#).expect("valid string"),
+            "\t\r\n\\\0\x42"
+        );
+
+        // invalid ASCII escapes
+        let errs = to_unescaped_string(r#"abc\xFFdef"#).expect_err("should be an invalid escape");
+        assert_eq!(errs.len(), 1);
+
+        // valid unicode escapes
+        assert_eq!(
+            to_unescaped_string(r#"\u{0}\u{1}\u{1234}\u{12345}\u{054321}\u{123}\u{42}"#,)
+                .expect("valid string"),
+            "\u{000000}\u{001}\u{001234}\u{012345}\u{054321}\u{123}\u{00042}"
+        );
+
+        // invalid unicode escapes
+        let errs = to_unescaped_string(r#"abc\u{1111111}\u{222222222}FFdef"#)
+            .expect_err("should be invalid escapes");
+        assert_eq!(errs.len(), 2);
+
+        // invalid escapes
+        let errs = to_unescaped_string(r#"abc\*\bdef"#).expect_err("should be invalid escapes");
+        assert_eq!(errs.len(), 2);
+    }
+
+    #[test]
+    fn test_pattern_escape() {
+        // valid ASCII escapes
+        let mut errs = Vec::new();
+        assert!(
+            matches!(text_to_cst::parse_expr(r#""aa" like "\t\r\n\\\0\x42\*""#)
+            .expect("failed parsing")
+            .to_expr(&mut errs)
+            .expect("failed conversion").expr_kind(),
+            ast::ExprKind::Like {
+                expr: _,
+                pattern,
+            } if
+                pattern.to_string() ==
+                format!("{}{}", "\t\r\n\\\0\x42".escape_debug(), r#"\*"#)
+            )
+        );
+
+        // invalid ASCII escapes
+        let mut errs = Vec::new();
+        assert!(text_to_cst::parse_expr(r#""abc" like "abc\xFF\xFEdef""#)
+            .expect("failed parsing")
+            .to_expr(&mut errs)
+            .is_none());
+        assert!(matches!(
+            errs.as_slice(),
+            [ParseError::ToAST(_), ParseError::ToAST(_)]
+        ));
+
+        // valid `\*` surrounded by chars
+        let mut errs = Vec::new();
+        assert!(
+            matches!(text_to_cst::parse_expr(r#""aaa" like "👀👀\*🤞🤞\*🤝""#)
+            .expect("failed parsing")
+            .to_expr(&mut errs)
+            .expect("failed conversion").expr_kind(),
+            ast::ExprKind::Like { expr: _, pattern} if pattern.to_string() == *r#"👀👀\*🤞🤞\*🤝"#)
+        );
+
+        // invalid escapes
+        let mut errs = Vec::new();
+        assert!(text_to_cst::parse_expr(r#""aaa" like "abc\d\bdef""#)
+            .expect("failed parsing")
+            .to_expr(&mut errs)
+            .is_none());
+        assert!(matches!(
+            errs.as_slice(),
+            [ParseError::ToAST(_), ParseError::ToAST(_)]
+        ));
+    }
+}

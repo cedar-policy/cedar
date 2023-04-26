@@ -1,0 +1,7 @@
+permit(
+  principal,
+  action == q::Action::"action",
+  resource in q::a::""
+) when {
+  (true && (principal has "i")) && principal
+};

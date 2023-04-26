@@ -1,0 +1,61 @@
+[
+  {
+    "uid": {
+      "type": "cd::v::Qx",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "cd::v::QC",
+        "id": ""
+      },
+      {
+        "type": "cd::v::v",
+        "id": ""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "cd::v::K",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "cd::v::Qx",
+        "id": ""
+      },
+      {
+        "type": "cd::v::QC",
+        "id": ""
+      },
+      {
+        "type": "cd::v::v",
+        "id": ""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "cd::v::QC",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "cd::v::v",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "cd::v::QC",
+        "id": ""
+      }
+    ]
+  }
+]

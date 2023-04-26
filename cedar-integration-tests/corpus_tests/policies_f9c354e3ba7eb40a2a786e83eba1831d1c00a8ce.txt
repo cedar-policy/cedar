@@ -1,0 +1,7 @@
+permit(
+  principal in a::"6",
+  action == Action::"\u{2}6",
+  resource
+) when {
+  true && principal
+};
