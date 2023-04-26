@@ -10,3 +10,9 @@
 
 # Don't check IntelliJ module files
 *.iml
+
+# Don't check cargo build output
+target
+
+# Don't check Cargo.lock
+Cargo.lock

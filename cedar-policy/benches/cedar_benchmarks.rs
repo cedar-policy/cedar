@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use cedar::{
+use cedar_policy::{
     Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid, Policy, PolicySet, Request,
     RestrictedExpression,
 };

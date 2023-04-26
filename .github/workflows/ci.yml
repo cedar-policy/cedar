@@ -1,0 +1,32 @@
+name: Cargo Build & Test
+
+on:
+  push:
+  pull_request:
+
+env: 
+  CARGO_TERM_COLOR: always
+# AFAIK we have to run each `cargo rustc --package XYZ` individually.
+# We could use `cargo build --workspace` but then the `-D warnings -F unsafe-code` options aren't available
+jobs:
+  build_and_test:
+    name: Rust project - latest
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+    steps:
+      - uses: actions/checkout@v3
+      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - run: cargo fmt --all --check
+      - run: cargo --verbose rustc --package cedar-policy-core -- -D warnings -F unsafe-code
+      - run: cargo --verbose rustc --package cedar-policy-validator -- -D warnings -F unsafe-code
+      - run: cargo --verbose rustc --package cedar-policy -- -D warnings -F unsafe-code
+      - run: cargo --verbose rustc --package cedar-policy-cli -- -D warnings -F unsafe-code
+      - run: cargo --verbose rustc --package cedar-policy-formatter -- -D warnings -F unsafe-code
+      - run: cargo --verbose rustc --package cedar-integration-tests -- -D warnings -F unsafe-code
+      - run: cargo test --verbose
+      - run: cargo bench --no-run
+  
+
