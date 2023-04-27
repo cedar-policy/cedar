@@ -56,7 +56,10 @@ fn validate(call: &ValidateCall) -> Result<ValidateAnswer, String> {
     let validator = Validator::new(schema);
 
     let notes: Vec<ValidationNote> = validator
-        .validate(&policy_set, cedar_policy_validator::ValidationMode::default())
+        .validate(
+            &policy_set,
+            cedar_policy_validator::ValidationMode::default(),
+        )
         .validation_errors()
         .map(|error| ValidationNote {
             policy_id: error.location().policy_id().to_string(),

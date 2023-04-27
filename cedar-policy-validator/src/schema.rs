@@ -1200,16 +1200,18 @@ impl cedar_policy_core::entities::Schema for ValidatorSchema {
     ) -> Box<dyn Iterator<Item = SmolStr> + 's> {
         match entity_type {
             cedar_policy_core::ast::EntityType::Unspecified => Box::new(std::iter::empty()), // Unspecified entity does not have attributes
-            cedar_policy_core::ast::EntityType::Concrete(name) => match self.get_entity_type(name) {
-                None => Box::new(std::iter::empty()),
-                Some(entity_type) => Box::new(
-                    entity_type
-                        .attributes
-                        .iter()
-                        .filter(|(_, ty)| ty.is_required)
-                        .map(|(attr, _)| attr.clone()),
-                ),
-            },
+            cedar_policy_core::ast::EntityType::Concrete(name) => {
+                match self.get_entity_type(name) {
+                    None => Box::new(std::iter::empty()),
+                    Some(entity_type) => Box::new(
+                        entity_type
+                            .attributes
+                            .iter()
+                            .filter(|(_, ty)| ty.is_required)
+                            .map(|(attr, _)| attr.clone()),
+                    ),
+                }
+            }
         }
     }
 }

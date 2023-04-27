@@ -64,8 +64,10 @@ struct JsonRequest {
 fn resolve_integration_test_path(path: impl AsRef<Path>) -> PathBuf {
     if path.as_ref().is_relative() {
         let manifest_dir = env::var("CARGO_MANIFEST_DIR")
-                .expect("`CARGO_MANIFEST_DIR` should be set by Cargo at build-time");
-        let mut full_path : PathBuf = [&manifest_dir, "..", "cedar-integration-tests"].iter().collect();
+            .expect("`CARGO_MANIFEST_DIR` should be set by Cargo at build-time");
+        let mut full_path: PathBuf = [&manifest_dir, "..", "cedar-integration-tests"]
+            .iter()
+            .collect();
         full_path.push(path);
         full_path
     } else {

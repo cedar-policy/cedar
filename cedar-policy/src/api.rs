@@ -4,6 +4,8 @@
     clippy::missing_errors_doc,
     clippy::similar_names
 )]
+pub use ast::Effect;
+pub use authorizer::Decision;
 use cedar_policy_core::ast;
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities;
@@ -17,8 +19,6 @@ use cedar_policy_core::parser;
 pub use cedar_policy_core::parser::err::ParseErrors;
 use cedar_policy_core::parser::SourceInfo;
 pub use cedar_policy_validator::{TypeErrorKind, ValidationErrorKind, ValidationWarningKind};
-pub use ast::Effect;
-pub use authorizer::Decision;
 use itertools::Itertools;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};

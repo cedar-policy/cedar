@@ -872,7 +872,7 @@ impl TemplateBody {
     /// principal, resource, and action); the policy's "when" conditions; and
     /// the negation of each of the policy's "unless" conditions.
     pub fn condition(&self) -> Expr {
-        // TODO: use the many-argument Expr constructor once it exists 
+        // TODO: use the many-argument Expr constructor once it exists
         // TODO: ideally, this function wouldn't involve any clones. Currently the `_expr()` calls invoke clones,
         // and we clone the non_head_constraints.
         // returning a borrowed `Expr` would be fine

@@ -3,9 +3,9 @@
 // omitted.
 #![allow(clippy::needless_return)]
 
+use anyhow::{Context as _, Error, Result};
 use cedar_policy::*;
 use cedar_policy_formatter::{policies_str_to_pretty, Config};
-use anyhow::{Context as _, Error, Result};
 use clap::{AppSettings, Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::{
