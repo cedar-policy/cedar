@@ -23,7 +23,7 @@ jobs:
       - run: cargo --verbose rustc --package cedar-policy-core -- -D warnings -F unsafe-code
       - run: cargo --verbose rustc --package cedar-policy-validator -- -D warnings -F unsafe-code
       - run: cargo --verbose rustc --package cedar-policy -- -D warnings -F unsafe-code
-      - run: cargo --verbose rustc --package cedar-policy-cli -- -D warnings -F unsafe-code
+      - run: cargo --verbose rustc --package cedar-policy-cli --bin cedar -- -D warnings -F unsafe-code
       - run: cargo --verbose rustc --package cedar-policy-formatter -- -D warnings -F unsafe-code
       - run: cargo --verbose rustc --package cedar-integration-tests -- -D warnings -F unsafe-code
       - run: cargo test --verbose
