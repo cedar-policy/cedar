@@ -91,7 +91,7 @@ pub fn resolve_integration_test_path(path: impl AsRef<Path>) -> PathBuf {
         full_path.push(manifest_dir.clone());
         full_path.push("..");
         // We run `cargo test` for cedar-drt. In that case, CARGO_MANIFEST_DIR will be
-        // `cedar-spec/cedar-drt` and we want `../cedar/cedar-integration-tests` 
+        // `cedar-spec/cedar-drt` and we want `../cedar/cedar-integration-tests`
         if manifest_dir.ends_with("cedar-drt") {
             full_path.push("cedar");
         }
