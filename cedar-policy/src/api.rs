@@ -637,10 +637,10 @@ pub enum SchemaError {
     /// purposes in adding an explicit entry.
     #[error("Entity type `Action` declared in `entityTypes` list.")]
     ActionEntityTypeDeclared,
-    /// One or more action entities are declared with `memberOf` lists, but this
-    /// is only allowed on entity type declarations.
-    #[error("Actions declared with `memberOf`: [{}]", .0.iter().map(String::as_str).join(", "))]
-    ActionEntityMemberOf(Vec<String>),
+    /// One or more action entities are declared with `attributes` lists, but
+    /// action entities cannot have attributes.
+    #[error("Actions declared with `attributes`: [{}]", .0.iter().map(String::as_str).join(", "))]
+    ActionEntityAttributes(Vec<String>),
     /// An action context or entity type shape was declared to have a type other
     /// than `Record`.
     #[error("Action context or entity type shape is not a record")]
@@ -701,8 +701,8 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             cedar_policy_validator::SchemaError::ActionEntityTypeDeclared => {
                 Self::ActionEntityTypeDeclared
             }
-            cedar_policy_validator::SchemaError::ActionEntityMemberOf(e) => {
-                Self::ActionEntityMemberOf(e)
+            cedar_policy_validator::SchemaError::ActionEntityAttributes(e) => {
+                Self::ActionEntityAttributes(e)
             }
             cedar_policy_validator::SchemaError::ContextOrShapeNotRecord => {
                 Self::ContextOrShapeNotRecord

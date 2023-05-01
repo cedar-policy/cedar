@@ -417,7 +417,7 @@ mod test {
 
     use super::*;
     use crate::{
-        err::*, schema::NamespaceDefinitionWithActionGroups, schema_file_format::*, TypeErrorKind,
+        err::*, schema_file_format::NamespaceDefinition, schema_file_format::*, TypeErrorKind,
         UnrecognizedActionId, UnrecognizedEntityType, UnspecifiedEntity, ValidationError,
         ValidationMode, Validator,
     };
@@ -504,7 +504,7 @@ mod test {
                         context: AttributesOrContext::default(),
                     }),
                     member_of: None,
-                    attributes: HashMap::new(),
+                    attributes: None,
                 },
             )],
         );
@@ -669,7 +669,7 @@ mod test {
                 ActionType {
                     applies_to: None,
                     member_of: None,
-                    attributes: HashMap::new(),
+                    attributes: None,
                 },
             )],
         );
@@ -811,7 +811,7 @@ mod test {
                 ActionType {
                     applies_to: None,
                     member_of: None,
-                    attributes: HashMap::new(),
+                    attributes: None,
                 },
             )],
         );
@@ -1009,7 +1009,7 @@ mod test {
                 ActionType {
                     applies_to: None,
                     member_of: None,
-                    attributes: HashMap::new(),
+                    attributes: None,
                 },
             )],
         );
@@ -1046,7 +1046,7 @@ mod test {
                 ActionType {
                     applies_to: None,
                     member_of: None,
-                    attributes: HashMap::new(),
+                    attributes: None,
                 },
             )],
         );
@@ -1083,7 +1083,7 @@ mod test {
                 ActionType {
                     applies_to: None,
                     member_of: None,
-                    attributes: HashMap::new(),
+                    attributes: None,
                 },
             )],
         );
@@ -1147,7 +1147,7 @@ mod test {
         let resource_euid = EntityUID::with_eid_and_type(resource_type, "resource")
             .expect("should be a valid identifier");
 
-        let schema = NamespaceDefinitionWithActionGroups(NamespaceDefinition::new(
+        let schema = NamespaceDefinition::new(
             [
                 (
                     principal_type.into(),
@@ -1173,10 +1173,10 @@ mod test {
                         context: AttributesOrContext::default(),
                     }),
                     member_of: Some(vec![]),
-                    attributes: HashMap::new(),
+                    attributes: None,
                 },
             )],
-        ))
+        )
         .try_into()
         .expect("Expected valid schema file.");
         (principal_euid, action_euid, resource_euid, schema)
@@ -1355,7 +1355,7 @@ mod test {
             EntityUID::with_eid_and_type(resource_parent_type, "resource")
                 .expect("should be a valid identifier");
 
-        let schema_file = NamespaceDefinitionWithActionGroups(NamespaceDefinition::new(
+        let schema_file = NamespaceDefinition::new(
             [
                 (
                     principal_type.into(),
@@ -1399,7 +1399,7 @@ mod test {
                             ty: None,
                             id: action_parent_name.into(),
                         }]),
-                        attributes: HashMap::new(),
+                        attributes: None,
                     },
                 ),
                 (
@@ -1410,7 +1410,7 @@ mod test {
                             ty: None,
                             id: action_grandparent_name.into(),
                         }]),
-                        attributes: HashMap::new(),
+                        attributes: None,
                     },
                 ),
                 (
@@ -1418,11 +1418,11 @@ mod test {
                     ActionType {
                         applies_to: None,
                         member_of: Some(vec![]),
-                        attributes: HashMap::new(),
+                        attributes: None,
                     },
                 ),
             ],
-        ));
+        );
         let schema = schema_file.try_into().unwrap();
 
         let policy = Template::new(

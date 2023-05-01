@@ -137,7 +137,7 @@ mod test {
                         context: AttributesOrContext::default(),
                     }),
                     member_of: None,
-                    attributes: HashMap::new(),
+                    attributes: None,
                 },
             )],
         );
