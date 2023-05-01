@@ -3,4 +3,4 @@ permit (
   action == Action::"view",
   resource
 )
-when { [Action::"edit", Action::"view"].contains(action) };
+when { action == Action::"view" };

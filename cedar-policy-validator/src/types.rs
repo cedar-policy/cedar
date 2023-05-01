@@ -7,7 +7,6 @@ use smol_str::SmolStr;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::Display,
-    str::FromStr,
 };
 
 use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprShapeOnly, Name};
@@ -263,6 +262,31 @@ impl Type {
         }
     }
 
+    // Return `true` if the parameter types are definitely disjoint, i.e., there
+    // are no values which inhabit both types. It is tempting to say that types
+    // are disjoint if neither is a subtype of the other, but this would be
+    // incorrect for set types where the set can be empty.  set<int> and
+    // set<bool> would then be considered disjoint, but both are inhabited by
+    // the empty set. This function could safely decide that more types are
+    // disjoint than it currently does, e.g., it is correct to say `long` and
+    // `bool` are disjoint, but it is also safe to conservatively approximate
+    // this function by deciding that fewer types are disjoint than are in
+    // reality. Declaring types disjoint when they are not disjoint would, on
+    // the other hand, cause soundness errors in the typechecker.
+    pub(crate) fn are_types_disjoint(ty1: &Type, ty2: &Type) -> bool {
+        match (ty1, ty2) {
+            // Entity types least-upper-bounds that have no entity types in
+            // common.
+            (Type::EntityOrRecord(k1), Type::EntityOrRecord(k2)) => {
+                match (k1.as_entity_lub(), k2.as_entity_lub()) {
+                    (Some(lub1), Some(lub2)) => lub1.is_disjoint(&lub2),
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
+    }
+
     // The top element type (None), should never be used in a least upper bounds
     // computation. It could be meaningfully defined, but any occurrence is
     // definitely an error.
@@ -325,12 +349,28 @@ impl Type {
                         .map_or(false, |entity_type| entity_type.attr(attr).is_some())
                 })
             }
+            // UBs of ActionEntities are AnyEntity. So if we have an ActionEntity here its attrs are known
+            Type::EntityOrRecord(EntityRecordKind::ActionEntity { attrs, .. }) => {
+                attrs.iter().any(|(found_attr, _)| attr.eq(found_attr))
+            }
             // Other record or entity types always might have some attribute
             // since the type may be the result of a least upper bound which
             // could have dropped attributes from the type.
             Type::EntityOrRecord(_) => true,
             _ => false,
         }
+    }
+
+    /// Return true if we know that any value in this type must be a specified
+    /// entity. An unspecified entity has type `AnyEntity`, so `AnyEntity` might
+    /// not be specified. Other entity types must be specified.
+    pub(crate) fn must_be_specified_entity(ty: &Type) -> bool {
+        matches!(
+            ty,
+            Type::EntityOrRecord(
+                EntityRecordKind::Entity(_) | EntityRecordKind::ActionEntity { .. }
+            )
+        )
     }
 
     fn json_type(type_name: &str) -> json::object::Object {
@@ -827,6 +867,17 @@ pub enum EntityRecordKind {
 }
 
 impl EntityRecordKind {
+    pub(crate) fn as_entity_lub(&self) -> Option<EntityLUB> {
+        match self {
+            EntityRecordKind::Record { .. } => None,
+            EntityRecordKind::AnyEntity => None,
+            EntityRecordKind::Entity(lub) => Some(lub.clone()),
+            EntityRecordKind::ActionEntity { name, .. } => {
+                Some(EntityLUB::single_entity(name.clone()))
+            }
+        }
+    }
+
     pub(crate) fn get_attr(&self, schema: &ValidatorSchema, attr: &str) -> Option<AttributeType> {
         match self {
             EntityRecordKind::Record { attrs } => attrs.get_attr(attr).cloned(),
@@ -860,12 +911,8 @@ impl EntityRecordKind {
             (Record { attrs: attrs0 }, Record { attrs: attrs1 }) => Some(Record {
                 attrs: Attributes::least_upper_bound(schema, attrs0, attrs1),
             }),
-            (ActionEntity { attrs: attrs0, .. }, ActionEntity { attrs: attrs1, .. }) => {
-                Some(ActionEntity {
-                    name: Name::parse_unqualified_name("Action").unwrap(),
-                    attrs: Attributes::least_upper_bound(schema, attrs0, attrs1),
-                })
-            }
+            //We cannot take upper bounds of action entities because may_have_attr assumes the list of attrs it complete
+            (ActionEntity { .. }, ActionEntity { .. }) => Some(AnyEntity),
             (Entity(lub0), Entity(lub1)) => Some(Entity(lub0.least_upper_bound(lub1))),
 
             (AnyEntity, AnyEntity)
@@ -881,13 +928,8 @@ impl EntityRecordKind {
 
             //Likewise, we can't mix action entities and records
             (ActionEntity { .. }, Record { .. }) | (Record { .. }, ActionEntity { .. }) => None,
-            //Action entities can be mixed with Entities. In this case, the LUB is the LUB of the Entity
-            // and EntityType "Action" (optionally prefixed with a namespace), which should always have no attributes
-            (ActionEntity { name, .. }, Entity(lub)) | (Entity(lub), ActionEntity { name, .. }) => {
-                Some(Entity(
-                    lub.least_upper_bound(&EntityLUB::single_entity(name.clone())),
-                ))
-            }
+            //Action entities can be mixed with Entities. In this case, the LUB is AnyEntity
+            (ActionEntity { .. }, Entity(_)) | (Entity(_), ActionEntity { .. }) => Some(AnyEntity),
         }
     }
 
@@ -903,9 +945,7 @@ impl EntityRecordKind {
             (Record { attrs: attrs0 }, Record { attrs: attrs1 }) => {
                 attrs0.is_subtype(schema, attrs1)
             }
-            (ActionEntity { attrs: attrs0, .. }, ActionEntity { attrs: attrs1, .. }) => {
-                attrs0.is_subtype(schema, attrs1)
-            }
+            (ActionEntity { .. }, ActionEntity { .. }) => false,
             (Entity(lub0), Entity(lub1)) => lub0.is_subtype(lub1),
             (Entity(_) | ActionEntity { .. } | AnyEntity, AnyEntity) => true,
 
@@ -914,9 +954,7 @@ impl EntityRecordKind {
             (Entity(_) | AnyEntity | ActionEntity { .. }, Record { .. }) => false,
 
             (Record { .. }, Entity(_) | AnyEntity | ActionEntity { .. }) => false,
-            (ActionEntity { .. }, Entity(lub)) => {
-                EntityLUB::single_entity(Name::from_str("Action").unwrap()).is_subtype(lub)
-            }
+            (ActionEntity { .. }, Entity(_)) => false,
             (AnyEntity, Entity(_)) => false,
             (Entity(_) | AnyEntity, ActionEntity { .. }) => false,
         }
