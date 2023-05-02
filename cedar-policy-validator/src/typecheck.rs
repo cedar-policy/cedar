@@ -1757,30 +1757,17 @@ impl<'a> Typechecker<'a> {
         rhs_expr: &'b Expr,
         rhs_ty: Option<Type>,
     ) -> Type {
-        // If both types are entity reference types and the referenced entity
-        // types are disjoint, then we know that expressions of these types
-        // cannot be equal, so the type is false.  It is tempting to let the
-        // type be false when the type of the left and the right are disjoint
-        // even when they are not entity reference types, but this would be
-        // incorrect for set types where the set can be empty. set<int> and
-        // set<bool> do not share an upper bound, but both are inhabited by the
-        // empty set, so it is incorrect to say
-        // `((e0 : set<long>) == (e1 : set<bool>)) : false`
-        // This could be safely expanded to a broader range of types e.g., it is
-        // correct to say `((e0 : long) == (e1 : bool)) : false`.
-        // We don't see a significant benefit from supporting false equalities
-        // between other types, so we opt not to.
-        let disjoint_entity_types = match (lhs_ty, rhs_ty) {
-            (
-                Some(Type::EntityOrRecord(EntityRecordKind::Entity(lhs_lub))),
-                Some(Type::EntityOrRecord(EntityRecordKind::Entity(rhs_lub))),
-            ) => lhs_lub.is_disjoint(&rhs_lub),
+        // If we know the types are disjoint, then we can return give the
+        // expression type False. See `are_types_disjoint` definition for
+        // explanation of why fewer types are disjoint than may be expected.
+        let disjoint_types = match (&lhs_ty, &rhs_ty) {
+            (Some(lhs_ty), Some(rhs_ty)) => Type::are_types_disjoint(lhs_ty, rhs_ty),
             _ => false,
         };
-        if disjoint_entity_types {
+        if disjoint_types {
             Type::False
         } else {
-            // The types are not disjoint entity references. Look at the actual
+            // The types are not disjoint. Look at the actual
             // expressions to see if they are matching or disjoint entity
             // literals.  If both the lhs and rhs expression are literal euid or
             // the action variable (which is converted into a literal euid
@@ -1796,17 +1783,22 @@ impl<'a> Typechecker<'a> {
                     // If lhs and rhs euid are different, the type is `False`.
                     Type::singleton_boolean(false)
                 }
-            } else if Typechecker::is_unspecified_entity(request_env, lhs_expr)
-                || Typechecker::is_unspecified_entity(request_env, rhs_expr)
-            {
-                // Check if one side of the equality is an unspecified entity.
-                // These compare as `false` with any specified entity.
-                Type::singleton_boolean(false)
             } else {
-                // When the left and right expressions are not both literal
-                // euids, the validator does not attempt to give a more specific
-                // type than boolean.
-                Type::primitive_boolean()
+                let left_is_unspecified = Typechecker::is_unspecified_entity(request_env, lhs_expr);
+                let right_is_specified = rhs_ty
+                    .map(|ty| Type::must_be_specified_entity(&ty))
+                    .unwrap_or(false);
+
+                if left_is_unspecified && right_is_specified {
+                    // Check we are comparing an unspecified entity to a
+                    // specified entity. This is always false.
+                    Type::singleton_boolean(false)
+                } else {
+                    // When the left and right expressions are not both literal
+                    // euids, the validator does not attempt to give a more specific
+                    // type than boolean.
+                    Type::primitive_boolean()
+                }
             }
         }
     }
@@ -1845,6 +1837,14 @@ impl<'a> Typechecker<'a> {
             type_errors,
         );
 
+        let left_is_unspecified = Typechecker::is_unspecified_entity(request_env, lhs);
+        let right_is_specified = match ty_rhs.typed_expr().data() {
+            Some(Type::Set { element_type }) => element_type.as_ref().map(|t| t.as_ref()),
+            ty => ty.as_ref(),
+        }
+        .map(|ty| Type::must_be_specified_entity(&ty))
+        .unwrap_or(false);
+
         // If either failed to typecheck, then the whole expression fails to
         // typecheck.  Otherwise, proceed to special cases.
         if !ty_rhs.typechecked() || !ty_lhs.typechecked() {
@@ -1853,9 +1853,7 @@ impl<'a> Typechecker<'a> {
                     .with_same_source_info(in_expr)
                     .is_in(ty_rhs.into_typed_expr(), ty_lhs.into_typed_expr()),
             )
-        } else if Typechecker::is_unspecified_entity(request_env, lhs)
-            || Typechecker::is_unspecified_entity(request_env, rhs)
-        {
+        } else if left_is_unspecified && right_is_specified {
             TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(Type::singleton_boolean(false)))
                     .with_same_source_info(in_expr)
