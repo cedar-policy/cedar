@@ -1,12 +1,7 @@
-## My Project
+## Cedar
+Repo containing the crates for the Rust implementation of the [Cedar](https://www.cedarpolicy.com/) policy language.
 
-TODO: Fill this README out!
-
-Be sure to:
-
-* Change the title in this README
-* Edit your repository description on GitHub
-
+You can build by running `cargo build`
 ## Security
 
 See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
