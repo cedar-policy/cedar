@@ -1,12 +1,12 @@
 name: Request for Comments (RFC)
 description: Gather community feedback regarding a proposed change to the Cedar language
-labels: featurre-reqeust
+labels: feature-request
 
 body:
   - type: markdown
     attributes:
       value: |
-        This is a Request For Comments (RFC). It is intended to elicit community feedback regarding a proposed change to the language. Please feel free to post comments or questiosn here.
+        This is a Request For Comments (RFC). It is intended to elicit community feedback regarding a proposed change to the language. Please feel free to post comments or questions here.
 
   - type: textarea
     attributes:
@@ -18,7 +18,7 @@ body:
   - type: textarea
     attributes:
       label: Motivation
-      description: Why is this RFC neede? What will happen if accepted? What wil happen if it is not accepted?
+      description: Why is this RFC needed? What will happen if accepted? What wil happen if it is not accepted?
     validations:
       required: true
 

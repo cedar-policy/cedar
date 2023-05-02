@@ -32,7 +32,7 @@ body:
       options:
         - Cedar Parser
         - Policy Evaluation
-        - Schemas and Validatation 
+        - Schemas and Validation
         - Other
     validations:
       required: true
@@ -68,7 +68,7 @@ body:
     attributes:
       label: Code Snippet
       description: |
-        Please provide a code snippet or a link to sample code of the issue you are experiencing to help us reproduce the issue. Please also include relevent Cedar policies, Schemas, or Entity Data.
+        Please provide a code snippet or a link to sample code of the issue you are experiencing to help us reproduce the issue. Please also include relevant Cedar policies, Schemas, or Entity Data.
 
         **Be sure to remove any sensitive data.**
       value: |

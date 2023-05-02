@@ -20,7 +20,7 @@ body:
         - User level API changes
         - Other
     validations:
-      rquired: true
+      required: true
 
   - type: textarea
     attributes:
