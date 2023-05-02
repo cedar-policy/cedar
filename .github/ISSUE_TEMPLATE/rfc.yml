@@ -32,7 +32,7 @@ body:
   -type: textarea
   attributes:
     label: Formalism 
-    description: Provide details on how the our formalisms of the language will need to change. Formalisms include the formal grammar, the dafny spec of the interpreter, and the dafny spec of the type system. For more information see: [cedar-spec](https://github.com/cedar/cedar-spec)
+    description: Provide details on how the our formalisms of the language will need to change. Formalisms include the formal grammar, the dafny spec of the interpreter, and the dafny spec of the type system. For more information see our [spec](https://github.com/cedar/cedar-spec)
 
 
   -type: textarea
