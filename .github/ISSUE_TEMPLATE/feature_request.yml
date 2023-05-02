@@ -19,7 +19,7 @@ body:
         - Cedar grammar changes/additions
         - User level API changes
         - Other
-    validatiosn:
+    validations:
       rquired: true
 
   - type: textarea
