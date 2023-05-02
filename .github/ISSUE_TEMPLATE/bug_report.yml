@@ -83,15 +83,10 @@ body:
         For example, error messages, or stack traces.
         **Be sure to remove any sensitive data.**
       value: |
-        <details>
-
         ```
         // Put your output below this line
 
-
         ```
-
-        </details>
   - type: markdown
     attributes:
       value: |
