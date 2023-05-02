@@ -1,53 +1,76 @@
----
+name: Request for Comments (RFC)
+description: Gather community feedback regarding a proposed change to the Cedar language
+labels: featurre-reqeust
 
-name: Request For Comments (RFC)
-about: Gather community feedback regarding a proposed change to the Cedar language
-title: 'RFC: PROPOSAL HEADLINE'
-labels: feature-request
-assignees: ''
----_This issue is a Request For Comments (RFC). It is intended to elicit community feedback regarding a proposed change to the language. Please feel free to post comments or questions here._
+body:
+  -type: markdown
+  attributes:
+    value: |
+      This is a Request For Comments (RFC). It is intended to elicit community feedback regarding a proposed change to the language. Please feel free to post comments or questiosn here.
 
-## Summary
+  -type: textarea
+  attributes:
+    label: Summary
+    description: In one or two sentences, why should this change exist?
+  validations:
+    required: true
 
-In one or two sentences, why should this change exist?
+  -type: textarea
+  attributes:
+    label: Motivation
+    description: Why is this RFC neede? What will happen if accepted? What wil happen if it is not accepted?
+  validations:
+    required: true
 
-## Motivation
+  -type: textarea
+  attributes:
+    label: Basic Example
+    description: Please include an example of your new feature. 
+  validations:
+    required: true
 
-Why is this RFC needed? What will happen if accepted? And what would happen if it _isn't_ accepted?
+  -type: textarea
+  attributes:
+    label: Formalism 
+    description: Provide details on how the our formalisms of the language will need to change. Formalisms include the formal grammar, the dafny spec of the interpreter, and the dafny spec of the type system. For more information see: [cedar-spec](https://github.com/cedar/cedar-spec)
 
-## Basic Example
 
-If the RFC involves a new or changed API, include a basic code example. (Omit if not applicable)
+  -type: textarea
+  attributes:
+    label: Detailed Design
+    description: Provide enough detail on _how_ this should be implemented such that someone other than yourself could build it. 
+  validations:
+    required: true
 
-## Detailed Design
+  -type: textarea
+  attributes:
+    label: Correctness
+    description: Provide details on how we will test and verify correctness of the proposed change.
+  validations:
+    required: true
 
-Provide enough detail on _how_ this should be implemented such that someone other than yourself could build it.
-Include examples of how the implementation is used
+  -type: textarea
+  attributes:
+    label: Drawbacks
+    description: Is this a breaking change? Days/Weeks/Months to implement? Will it require extensive documentation & examples?
+  validations:
+    required: true
 
-## Drawbacks
+  -type: textarea
+  attributes:
+    label: Adoption Strategy
+    description: What supporting efforts will be needed (e.g. documentation, tests, tutorials, public outreach, etc.)?
+  validations:
+    required: true
 
-- Is this a breaking change? Days/Weeks/Months to implement? Will it require extensive documentation & examples?
+  -type: textarea
+  attributes:
+    label: Related Issues
+    description: Add Github issue numbers/URLs that informed or would be impacted by this proposal.
 
-## Adoption Strategy
+  -type: textarea
+  attributes:
+    label: References
+    description: List articles, resources, prior art, and inspiration for this proposal.
 
-- What supporting efforts will be needed (e.g. documentation, tests, tutorials, public outreach, etc.)?
-
-## Formalization and Correctness
-
-What aspects of our formalization will need to change to support this change? 
-How will this change be tested? Is DRT applicable? If so, will we need a new DRT target or will an existing target suffice?
-Please see our [formal spec](https://github.com/cedar/cedar-spec/)
-
-## Related Issues
-
-Add GitHub issue numbers/URLs that informed or would be impacted by this proposal.
-
-- #1234
-- https://github.com/cedar/cedar-policy/issues/1234
-
-## References
-
-List articles, resources, prior art, and inspiration for this proposal.
-
-- http://stackoverflow.com/
 
