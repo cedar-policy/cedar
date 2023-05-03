@@ -211,9 +211,6 @@ pub enum TypeErrorKind {
     #[error("Undefined extension function {}", .0.name)]
     UndefinedFunction(UndefinedFunction),
     /// Multiply defined extension function.
-    // TODO: This is the result of multiple loaded extensions providing the same
-    // function name. It should be caught when extensions are loaded instead of
-    // here.
     #[error("Undefined extension function {}", .0.name)]
     MultiplyDefinedFunction(MultiplyDefinedFunction),
     /// Incorrect number of arguments in an extension function application.

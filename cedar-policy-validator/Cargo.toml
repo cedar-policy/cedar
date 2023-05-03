@@ -15,6 +15,7 @@ thiserror = "1.0"
 itertools = "0.10"
 unicode-security = "0.1.0"
 smol_str = "0.1.23"
+stacker = "0.1.15"
 
 [features]
 # by default, enable all Cedar extensions

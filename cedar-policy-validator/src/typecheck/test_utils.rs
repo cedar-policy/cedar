@@ -178,6 +178,7 @@ pub(crate) fn assert_typechecks(
                             .join(",")
                     );
                 }
+                TypecheckAnswer::RecursionLimit => panic!("Should not have hit recursion limit"),
             },
         );
         assert!(
@@ -206,6 +207,7 @@ pub(crate) fn assert_typecheck_fails(
                 panic!("Expected that expression would not typecheck.")
             }
             TypecheckAnswer::TypecheckFail { expr_recovery_type } => expr_recovery_type,
+            TypecheckAnswer::RecursionLimit => panic!("Should not have hit recursion limit"),
         };
         match (expected_ty.as_ref(), actual_ty.data()) {
             (None, None) => (),
