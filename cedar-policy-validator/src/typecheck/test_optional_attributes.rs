@@ -675,7 +675,7 @@ fn action_attrs_passing() {
         "#,
     )
     .expect("Policy should parse.");
-    assert_policy_typechecks(schema.clone(), passing_policy);
+    assert_policy_typechecks(schema, passing_policy);
 }
 
 #[test]
@@ -781,5 +781,5 @@ fn action_attrs_failing() {
         "#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails(schema.clone(), failing_policy, vec![]); //fails because OtherNamespace::Action::"view" doesn't have defined attributes
+    assert_policy_typecheck_fails(schema, failing_policy, vec![]); //fails because OtherNamespace::Action::"view" doesn't have defined attributes
 }

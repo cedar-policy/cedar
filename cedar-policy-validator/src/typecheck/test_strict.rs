@@ -34,6 +34,9 @@ fn assert_typechecks_strict(
             crate::typecheck::TypecheckAnswer::TypecheckFail { .. } => {
                 panic!("Typechecking should have succeeded for expression {:?}", e)
             }
+            crate::typecheck::TypecheckAnswer::RecursionLimit => {
+                panic!("Should not have hit recursion liimt for: {:?}", e)
+            }
         }
     });
 }
@@ -61,6 +64,9 @@ fn assert_strict_type_error(
             }
             crate::typecheck::TypecheckAnswer::TypecheckSuccess { .. } => {
                 panic!("Typechecking should have failed for expression {:?}", e)
+            }
+            crate::typecheck::TypecheckAnswer::RecursionLimit => {
+                panic!("Should not have hit recursion limit for {:?}", e)
             }
         }
     });

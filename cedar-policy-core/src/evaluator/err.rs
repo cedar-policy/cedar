@@ -81,6 +81,10 @@ pub enum EvaluationError {
     /// Error raised if an expression did not reduce to a value when it was supposed to
     #[error("The expression evaluated to a residual: {0}")]
     NonValue(Expr),
+
+    /// Maximum recursion limit reached for expression evaluation
+    #[error("Recursion Limit Reached")]
+    RecursionLimit,
 }
 
 /// helper function for pretty-printing type errors

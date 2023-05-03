@@ -36,6 +36,8 @@ use cedar_policy_core::ast::{
     Var,
 };
 
+const REQUIRED_STACK_SPACE: usize = 1024;
+
 /// TypecheckAnswer holds the result of typechecking an expression.
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum TypecheckAnswer<'a> {
@@ -54,6 +56,9 @@ pub(crate) enum TypecheckAnswer<'a> {
     TypecheckFail {
         expr_recovery_type: Expr<Option<Type>>,
     },
+
+    /// RecursionLimit Reached
+    RecursionLimit,
 }
 
 impl<'a> TypecheckAnswer<'a> {
@@ -86,25 +91,27 @@ impl<'a> TypecheckAnswer<'a> {
     /// of the argument type at its root.
     pub fn contains_type(&self, ty: &Type) -> bool {
         match self {
-            TypecheckAnswer::TypecheckSuccess { expr_type, .. } => expr_type,
-            TypecheckAnswer::TypecheckFail { expr_recovery_type } => expr_recovery_type,
+            TypecheckAnswer::TypecheckSuccess { expr_type, .. } => Some(expr_type),
+            TypecheckAnswer::TypecheckFail { expr_recovery_type } => Some(expr_recovery_type),
+            TypecheckAnswer::RecursionLimit => None,
         }
-        .data()
-        .as_ref()
+        .and_then(|e| e.data().as_ref())
             == Some(ty)
     }
 
-    pub fn typed_expr(&self) -> &Expr<Option<Type>> {
+    pub fn typed_expr(&self) -> Option<&Expr<Option<Type>>> {
         match self {
-            TypecheckAnswer::TypecheckSuccess { expr_type, .. } => expr_type,
-            TypecheckAnswer::TypecheckFail { expr_recovery_type } => expr_recovery_type,
+            TypecheckAnswer::TypecheckSuccess { expr_type, .. } => Some(expr_type),
+            TypecheckAnswer::TypecheckFail { expr_recovery_type } => Some(expr_recovery_type),
+            TypecheckAnswer::RecursionLimit => None,
         }
     }
 
-    pub fn into_typed_expr(self) -> Expr<Option<Type>> {
+    pub fn into_typed_expr(self) -> Option<Expr<Option<Type>>> {
         match self {
-            TypecheckAnswer::TypecheckSuccess { expr_type, .. } => expr_type,
-            TypecheckAnswer::TypecheckFail { expr_recovery_type } => expr_recovery_type,
+            TypecheckAnswer::TypecheckSuccess { expr_type, .. } => Some(expr_type),
+            TypecheckAnswer::TypecheckFail { expr_recovery_type } => Some(expr_recovery_type),
+            TypecheckAnswer::RecursionLimit => None,
         }
     }
 
@@ -113,6 +120,7 @@ impl<'a> TypecheckAnswer<'a> {
         match self {
             TypecheckAnswer::TypecheckSuccess { .. } => true,
             TypecheckAnswer::TypecheckFail { .. } => false,
+            TypecheckAnswer::RecursionLimit => false,
         }
     }
 
@@ -131,6 +139,7 @@ impl<'a> TypecheckAnswer<'a> {
                 expr_effect: f(expr_effect),
             },
             TypecheckAnswer::TypecheckFail { .. } => self,
+            TypecheckAnswer::RecursionLimit => self,
         }
     }
 
@@ -142,6 +151,7 @@ impl<'a> TypecheckAnswer<'a> {
         match self {
             TypecheckAnswer::TypecheckSuccess { expr_type, .. } => TypecheckAnswer::fail(expr_type),
             TypecheckAnswer::TypecheckFail { .. } => self,
+            TypecheckAnswer::RecursionLimit => self,
         }
     }
 
@@ -160,6 +170,7 @@ impl<'a> TypecheckAnswer<'a> {
             TypecheckAnswer::TypecheckFail { expr_recovery_type } => {
                 f(expr_recovery_type, EffectSet::new()).into_fail()
             }
+            TypecheckAnswer::RecursionLimit => self,
         }
     }
 
@@ -176,6 +187,7 @@ impl<'a> TypecheckAnswer<'a> {
     {
         let mut unwrapped = Vec::new();
         let mut any_failed = false;
+        let mut recusion_limit_reached = false;
         for ans in answers {
             any_failed |= !ans.typechecked();
             unwrapped.push(match ans {
@@ -186,11 +198,17 @@ impl<'a> TypecheckAnswer<'a> {
                 TypecheckAnswer::TypecheckFail { expr_recovery_type } => {
                     (expr_recovery_type, EffectSet::new())
                 }
+                TypecheckAnswer::RecursionLimit => {
+                    recusion_limit_reached = true;
+                    break;
+                }
             });
         }
 
         let ans = f(unwrapped);
-        if any_failed {
+        if recusion_limit_reached {
+            TypecheckAnswer::RecursionLimit
+        } else if any_failed {
             ans.into_fail()
         } else {
             ans
@@ -289,10 +307,11 @@ impl<'a> Typechecker<'a> {
             );
 
             let is_false = ty.contains_type(&Type::singleton_boolean(false));
-            match (is_false, ty.typechecked()) {
-                (false, false) => PolicyCheck::Fail(type_errors),
-                (false, true) => PolicyCheck::Success(ty.into_typed_expr()),
-                (true, _) => PolicyCheck::Irrelevant(type_errors),
+            match (is_false, ty.typechecked(), ty.into_typed_expr()) {
+                (false, true, None) => PolicyCheck::Fail(type_errors),
+                (false, true, Some(e)) => PolicyCheck::Success(e),
+                (false, false, _) => PolicyCheck::Fail(type_errors),
+                (true, _, _) => PolicyCheck::Irrelevant(type_errors),
             }
         })
     }
@@ -310,11 +329,16 @@ impl<'a> Typechecker<'a> {
             // includes a rewriting from any boolean singleton type expression
             // to the corresponding boolean literal, so we instead look for the
             // literal `false`.
-            let is_false = ty.typed_expr().eq_shape(&Expr::val(false));
-            match (is_false, ty.typechecked()) {
-                (false, false) => PolicyCheck::Fail(type_errors),
-                (false, true) => PolicyCheck::Success(ty.into_typed_expr()),
-                (true, _) => PolicyCheck::Irrelevant(type_errors),
+            match ty.typed_expr() {
+                Some(typed_expr) => {
+                    let is_false = typed_expr.eq_shape(&Expr::val(false));
+                    match (is_false, ty.typechecked()) {
+                        (false, false) => PolicyCheck::Fail(type_errors),
+                        (false, true) => PolicyCheck::Success(typed_expr.clone()),
+                        (true, _) => PolicyCheck::Irrelevant(type_errors),
+                    }
+                }
+                None => PolicyCheck::Fail(type_errors),
             }
         })
     }
@@ -370,11 +394,18 @@ impl<'a> Typechecker<'a> {
 
                 // Again, look for the literal `false` instead of the type
                 // false.
-                let is_false = ty.typed_expr().eq_shape(&Expr::val(false));
-                match (is_false, ty.typechecked()) {
-                    (false, false) => policy_checks.push(PolicyCheck::Fail(type_errors)),
-                    (false, true) => policy_checks.push(PolicyCheck::Success(ty.into_typed_expr())),
-                    (true, _) => policy_checks.push(PolicyCheck::Irrelevant(type_errors)),
+                match ty.typed_expr() {
+                    Some(typed_expr) => {
+                        let is_false = typed_expr.eq_shape(&Expr::val(false));
+                        match (is_false, ty.typechecked()) {
+                            (false, false) => policy_checks.push(PolicyCheck::Fail(type_errors)),
+                            (false, true) => {
+                                policy_checks.push(PolicyCheck::Success(typed_expr.clone()));
+                            }
+                            (true, _) => policy_checks.push(PolicyCheck::Irrelevant(type_errors)),
+                        }
+                    }
+                    None => policy_checks.push(PolicyCheck::Fail(type_errors)),
                 }
             }
             env_checks.push((request, policy_checks));
@@ -456,6 +487,9 @@ impl<'a> Typechecker<'a> {
         e: &Expr<Option<Type>>,
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
+        if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
+            return TypecheckAnswer::RecursionLimit;
+        }
         match e.data() {
             // If the validator could conclude that an expression is always true
             // or always false (encoded as the singleton boolean types
@@ -902,6 +936,10 @@ impl<'a> Typechecker<'a> {
         e: &'b Expr,
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
+        if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
+            return TypecheckAnswer::RecursionLimit;
+        }
+
         match e.expr_kind() {
             // Principal, resource, and context have types defined by
             // the request type.
@@ -1837,212 +1875,227 @@ impl<'a> Typechecker<'a> {
             type_errors,
         );
 
-        let left_is_unspecified = Typechecker::is_unspecified_entity(request_env, lhs);
-        let right_is_specified = match ty_rhs.typed_expr().data() {
-            Some(Type::Set { element_type }) => element_type.as_ref().map(|t| t.as_ref()),
-            ty => ty.as_ref(),
-        }
-        .map(|ty| Type::must_be_specified_entity(&ty))
-        .unwrap_or(false);
+        let lhs_typechecked = ty_lhs.typechecked();
+        let rhs_typechecked = ty_rhs.typechecked();
 
-        // If either failed to typecheck, then the whole expression fails to
-        // typecheck.  Otherwise, proceed to special cases.
-        if !ty_rhs.typechecked() || !ty_lhs.typechecked() {
-            TypecheckAnswer::fail(
-                ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                    .with_same_source_info(in_expr)
-                    .is_in(ty_rhs.into_typed_expr(), ty_lhs.into_typed_expr()),
-            )
-        } else if left_is_unspecified && right_is_specified {
-            TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(Type::singleton_boolean(false)))
-                    .with_same_source_info(in_expr)
-                    .is_in(ty_lhs.into_typed_expr(), ty_rhs.into_typed_expr()),
-            )
-        } else {
-            match (
-                Typechecker::replace_action_var_with_euid(request_env, lhs)
-                    .as_ref()
-                    .expr_kind(),
-                Typechecker::replace_action_var_with_euid(request_env, rhs)
-                    .as_ref()
-                    .expr_kind(),
-            ) {
-                // var in EntityLiteral. Lookup the descendant types of the entity
-                // literals.  If the principal/resource type is not one of the
-                // descendants, than it can never `in` the literals (return false).
-                // Otherwise, it could be (return boolean).
-                (
-                    ExprKind::Var(var @ (Var::Principal | Var::Resource)),
-                    ExprKind::Lit(Literal::EntityUID(euid)),
-                ) => {
-                    let var_euid = if matches!(var, Var::Principal) {
-                        request_env.principal
-                    } else {
-                        request_env.resource
-                    };
-                    let descendants = self.schema.get_entities_in(
-                        PrincipalOrResourceHeadVar::PrincipalOrResource,
-                        (**euid).clone(),
-                    );
-                    match var_euid {
-                        EntityType::Concrete(var_name) => Typechecker::entity_in_descendants(
-                            var_name,
-                            descendants,
-                            in_expr,
-                            ty_lhs.into_typed_expr(),
-                            ty_rhs.into_typed_expr(),
-                        ),
-                        EntityType::Unspecified => TypecheckAnswer::fail(
-                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                .with_same_source_info(in_expr)
-                                .is_in(ty_lhs.into_typed_expr(), ty_rhs.into_typed_expr()),
-                        ),
-                    }
+        ty_lhs.then_typecheck(|lhs_expr, _lhs_effects| {
+            ty_rhs.then_typecheck(|rhs_expr, _rhs_effects| {
+                let left_is_unspecified = Typechecker::is_unspecified_entity(request_env, lhs);
+                let right_is_specified = match rhs_expr.data() {
+                    Some(Type::Set { element_type }) => element_type.as_ref().map(|t| t.as_ref()),
+                    ty => ty.as_ref(),
                 }
-
-                // var in [EntityLiteral, ...]. As above, but now the
-                // principal/resource just needs to be in the descendants sets for
-                // any member of the set.
-                (ExprKind::Var(var @ (Var::Principal | Var::Resource)), ExprKind::Set(elems)) => {
-                    if let Some(rhs) =
-                        Typechecker::euids_from_euid_literals_or_action(request_env, elems.as_ref())
-                    {
-                        let var_euid = if matches!(var, Var::Principal) {
-                            request_env.principal
-                        } else {
-                            request_env.resource
-                        };
-                        let descendants = self.schema.get_entities_in_set(
-                            PrincipalOrResourceHeadVar::PrincipalOrResource,
-                            rhs,
-                        );
-                        match var_euid {
-                            EntityType::Concrete(var_name) => Typechecker::entity_in_descendants(
-                                var_name,
-                                descendants,
-                                in_expr,
-                                ty_lhs.into_typed_expr(),
-                                ty_rhs.into_typed_expr(),
-                            ),
-                            EntityType::Unspecified => TypecheckAnswer::fail(
-                                ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                    .with_same_source_info(in_expr)
-                                    .is_in(ty_lhs.into_typed_expr(), ty_rhs.into_typed_expr()),
-                            ),
-                        }
-                    } else {
-                        TypecheckAnswer::success(
-                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                .with_same_source_info(in_expr)
-                                .is_in(ty_lhs.into_typed_expr(), ty_rhs.into_typed_expr()),
-                        )
-                    }
-                }
-
-                // EntityLiteral in EntityLiteral. Follows similar logic to the
-                // first case, but with the added complication that this case
-                // handles Action entities (including the action variable due to the
-                // action-var -> action-entity-literal substitution applied), whose
-                // hierarchy is based on EntityUids (type name + id) rather than
-                // entity type names.
-                (
-                    ExprKind::Lit(Literal::EntityUID(euid0)),
-                    ExprKind::Lit(Literal::EntityUID(euid1)),
-                ) => {
-                    let lhs = (**euid0).clone();
-                    let rhs = (**euid1).clone();
-                    // Unspecified entities are detected by a different part of the validator.
-                    // Still return `TypecheckFail` so that typechecking is not considered successful.
-                    match lhs.entity_type() {
-                        EntityType::Concrete(name) => {
-                            if is_action_entity_type(name) {
-                                // This case will apply when lhs has entity type
-                                // `Action` even when rhs does not. This is fine because
-                                // we compare the complete Euid, so an non-`Action`
-                                // entity will never be in the `member_of` set of an
-                                // `Action` entity, so this correctly returns `false`.
-                                self.type_of_euid_in_euid(
-                                    lhs,
-                                    rhs,
-                                    ActionHeadVar::Action,
-                                    in_expr,
-                                    ty_lhs.into_typed_expr(),
-                                    ty_rhs.into_typed_expr(),
-                                )
+                .map(Type::must_be_specified_entity)
+                .unwrap_or(false);
+                // If either failed to typecheck, then the whole expression fails to
+                // typecheck.  Otherwise, proceed to special cases.
+                if !lhs_typechecked || !rhs_typechecked {
+                    TypecheckAnswer::fail(
+                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                            .with_same_source_info(in_expr)
+                            .is_in(lhs_expr, rhs_expr),
+                    )
+                } else if left_is_unspecified && right_is_specified {
+                    TypecheckAnswer::success(
+                        ExprBuilder::with_data(Some(Type::singleton_boolean(false)))
+                            .with_same_source_info(in_expr)
+                            .is_in(lhs_expr, rhs_expr),
+                    )
+                } else {
+                    match (
+                        Typechecker::replace_action_var_with_euid(request_env, lhs)
+                            .as_ref()
+                            .expr_kind(),
+                        Typechecker::replace_action_var_with_euid(request_env, rhs)
+                            .as_ref()
+                            .expr_kind(),
+                    ) {
+                        // var in EntityLiteral. Lookup the descendant types of the entity
+                        // literals.  If the principal/resource type is not one of the
+                        // descendants, than it can never `in` the literals (return false).
+                        // Otherwise, it could be (return boolean).
+                        (
+                            ExprKind::Var(var @ (Var::Principal | Var::Resource)),
+                            ExprKind::Lit(Literal::EntityUID(euid)),
+                        ) => {
+                            let var_euid = if matches!(var, Var::Principal) {
+                                request_env.principal
                             } else {
-                                self.type_of_euid_in_euid(
-                                    lhs,
-                                    rhs,
-                                    PrincipalOrResourceHeadVar::PrincipalOrResource,
-                                    in_expr,
-                                    ty_lhs.into_typed_expr(),
-                                    ty_rhs.into_typed_expr(),
-                                )
-                            }
-                        }
-                        EntityType::Unspecified => TypecheckAnswer::fail(
-                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                .with_same_source_info(in_expr)
-                                .is_in(ty_lhs.into_typed_expr(), ty_rhs.into_typed_expr()),
-                        ),
-                    }
-                }
-
-                // As above, with the same complication, but applied to set of entities.
-                (ExprKind::Lit(Literal::EntityUID(euid)), ExprKind::Set(elems)) => {
-                    if let Some(rhs) =
-                        Typechecker::euids_from_euid_literals_or_action(request_env, elems.as_ref())
-                    {
-                        let lhs = (**euid).clone();
-                        // Unspecified entities are detected by a different part of the validator.
-                        // Still return `TypecheckFail` so that typechecking is not considered successful.
-                        match lhs.entity_type() {
-                            EntityType::Concrete(name) => {
-                                if is_action_entity_type(name) {
-                                    self.type_of_euid_in_euid_set(
-                                        lhs,
-                                        rhs,
-                                        ActionHeadVar::Action,
+                                request_env.resource
+                            };
+                            let descendants = self.schema.get_entities_in(
+                                PrincipalOrResourceHeadVar::PrincipalOrResource,
+                                (**euid).clone(),
+                            );
+                            match var_euid {
+                                EntityType::Concrete(var_name) => {
+                                    Typechecker::entity_in_descendants(
+                                        var_name,
+                                        descendants,
                                         in_expr,
-                                        ty_lhs.into_typed_expr(),
-                                        ty_rhs.into_typed_expr(),
-                                    )
-                                } else {
-                                    self.type_of_euid_in_euid_set(
-                                        lhs,
-                                        rhs,
-                                        PrincipalOrResourceHeadVar::PrincipalOrResource,
-                                        in_expr,
-                                        ty_lhs.into_typed_expr(),
-                                        ty_rhs.into_typed_expr(),
+                                        lhs_expr,
+                                        rhs_expr,
                                     )
                                 }
+                                EntityType::Unspecified => TypecheckAnswer::fail(
+                                    ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                        .with_same_source_info(in_expr)
+                                        .is_in(lhs_expr, rhs_expr),
+                                ),
                             }
-                            EntityType::Unspecified => TypecheckAnswer::fail(
-                                ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                    .with_same_source_info(in_expr)
-                                    .is_in(ty_lhs.into_typed_expr(), ty_rhs.into_typed_expr()),
-                            ),
                         }
-                    } else {
-                        TypecheckAnswer::success(
+
+                        // var in [EntityLiteral, ...]. As above, but now the
+                        // principal/resource just needs to be in the descendants sets for
+                        // any member of the set.
+                        (
+                            ExprKind::Var(var @ (Var::Principal | Var::Resource)),
+                            ExprKind::Set(elems),
+                        ) => {
+                            if let Some(rhs) = Typechecker::euids_from_euid_literals_or_action(
+                                request_env,
+                                elems.as_ref(),
+                            ) {
+                                let var_euid = if matches!(var, Var::Principal) {
+                                    request_env.principal
+                                } else {
+                                    request_env.resource
+                                };
+                                let descendants = self.schema.get_entities_in_set(
+                                    PrincipalOrResourceHeadVar::PrincipalOrResource,
+                                    rhs,
+                                );
+                                match var_euid {
+                                    EntityType::Concrete(var_name) => {
+                                        Typechecker::entity_in_descendants(
+                                            var_name,
+                                            descendants,
+                                            in_expr,
+                                            lhs_expr,
+                                            rhs_expr,
+                                        )
+                                    }
+                                    EntityType::Unspecified => TypecheckAnswer::fail(
+                                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                            .with_same_source_info(in_expr)
+                                            .is_in(lhs_expr, rhs_expr),
+                                    ),
+                                }
+                            } else {
+                                TypecheckAnswer::success(
+                                    ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                        .with_same_source_info(in_expr)
+                                        .is_in(lhs_expr, rhs_expr),
+                                )
+                            }
+                        }
+
+                        // EntityLiteral in EntityLiteral. Follows similar logic to the
+                        // first case, but with the added complication that this case
+                        // handles Action entities (including the action variable due to the
+                        // action-var -> action-entity-literal substitution applied), whose
+                        // hierarchy is based on EntityUids (type name + id) rather than
+                        // entity type names.
+                        (
+                            ExprKind::Lit(Literal::EntityUID(euid0)),
+                            ExprKind::Lit(Literal::EntityUID(euid1)),
+                        ) => {
+                            let lhs = (**euid0).clone();
+                            let rhs = (**euid1).clone();
+                            // Unspecified entities are detected by a different part of the validator.
+                            // Still return `TypecheckFail` so that typechecking is not considered successful.
+                            match lhs.entity_type() {
+                                EntityType::Concrete(name) => {
+                                    if is_action_entity_type(name) {
+                                        // This case will apply when lhs has entity type
+                                        // `Action` even when rhs does not. This is fine because
+                                        // we compare the complete Euid, so an non-`Action`
+                                        // entity will never be in the `member_of` set of an
+                                        // `Action` entity, so this correctly returns `false`.
+                                        self.type_of_euid_in_euid(
+                                            lhs,
+                                            rhs,
+                                            ActionHeadVar::Action,
+                                            in_expr,
+                                            lhs_expr,
+                                            rhs_expr,
+                                        )
+                                    } else {
+                                        self.type_of_euid_in_euid(
+                                            lhs,
+                                            rhs,
+                                            PrincipalOrResourceHeadVar::PrincipalOrResource,
+                                            in_expr,
+                                            lhs_expr,
+                                            rhs_expr,
+                                        )
+                                    }
+                                }
+                                EntityType::Unspecified => TypecheckAnswer::fail(
+                                    ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                        .with_same_source_info(in_expr)
+                                        .is_in(lhs_expr, rhs_expr),
+                                ),
+                            }
+                        }
+
+                        // As above, with the same complication, but applied to set of entities.
+                        (ExprKind::Lit(Literal::EntityUID(euid)), ExprKind::Set(elems)) => {
+                            if let Some(rhs) = Typechecker::euids_from_euid_literals_or_action(
+                                request_env,
+                                elems.as_ref(),
+                            ) {
+                                let lhs = (**euid).clone();
+                                // Unspecified entities are detected by a different part of the validator.
+                                // Still return `TypecheckFail` so that typechecking is not considered successful.
+                                match lhs.entity_type() {
+                                    EntityType::Concrete(name) => {
+                                        if is_action_entity_type(name) {
+                                            self.type_of_euid_in_euid_set(
+                                                lhs,
+                                                rhs,
+                                                ActionHeadVar::Action,
+                                                in_expr,
+                                                lhs_expr,
+                                                rhs_expr,
+                                            )
+                                        } else {
+                                            self.type_of_euid_in_euid_set(
+                                                lhs,
+                                                rhs,
+                                                PrincipalOrResourceHeadVar::PrincipalOrResource,
+                                                in_expr,
+                                                lhs_expr,
+                                                rhs_expr,
+                                            )
+                                        }
+                                    }
+                                    EntityType::Unspecified => TypecheckAnswer::fail(
+                                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                            .with_same_source_info(in_expr)
+                                            .is_in(lhs_expr, rhs_expr),
+                                    ),
+                                }
+                            } else {
+                                TypecheckAnswer::success(
+                                    ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                        .with_same_source_info(in_expr)
+                                        .is_in(lhs_expr, rhs_expr),
+                                )
+                            }
+                        }
+
+                        // If none of the cases apply, then all we know is that `in` has
+                        // type boolean.
+                        _ => TypecheckAnswer::success(
                             ExprBuilder::with_data(Some(Type::primitive_boolean()))
                                 .with_same_source_info(in_expr)
-                                .is_in(ty_lhs.into_typed_expr(), ty_rhs.into_typed_expr()),
-                        )
+                                .is_in(lhs_expr, rhs_expr),
+                        ),
                     }
                 }
-
-                // If none of the cases apply, then all we know is that `in` has
-                // type boolean.
-                _ => TypecheckAnswer::success(
-                    ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                        .with_same_source_info(in_expr)
-                        .is_in(ty_lhs.into_typed_expr(), ty_rhs.into_typed_expr()),
-                ),
-            }
-        }
+            })
+        })
     }
 
     // Given an expression, if that expression is a literal or the `action` head
@@ -2387,7 +2440,7 @@ impl<'a> Typechecker<'a> {
                     self.typecheck(request_env, prior_eff, arg, type_errors)
                         .into_typed_expr()
                 })
-                .collect::<Vec<_>>()
+                .collect::<Option<Vec<_>>>()
         };
 
         match self.lookup_extension_function(&op.function_name) {
@@ -2408,14 +2461,14 @@ impl<'a> Typechecker<'a> {
                     failed = true;
                 }
                 if failed {
-                    TypecheckAnswer::fail(
-                        ExprBuilder::with_data(Some(ret_ty.clone()))
-                            .with_same_source_info(ext_expr)
-                            .call_extension_fn(
-                                op.function_name.clone(),
-                                typed_arg_exprs(type_errors),
-                            ),
-                    )
+                    match typed_arg_exprs(type_errors) {
+                        Some(exprs) => TypecheckAnswer::fail(
+                            ExprBuilder::with_data(Some(ret_ty.clone()))
+                                .with_same_source_info(ext_expr)
+                                .call_extension_fn(op.function_name.clone(), exprs),
+                        ),
+                        None => TypecheckAnswer::RecursionLimit,
+                    }
                 } else {
                     let typechecked_args = zip(args.as_ref(), arg_tys).map(|(arg, ty)| {
                         self.expect_type(request_env, prior_eff, arg, ty.clone(), type_errors)
@@ -2436,11 +2489,14 @@ impl<'a> Typechecker<'a> {
             }
             Err(typ_err) => {
                 type_errors.push(typ_err(ext_expr.clone()));
-                TypecheckAnswer::fail(
-                    ExprBuilder::with_data(None)
-                        .with_same_source_info(ext_expr)
-                        .call_extension_fn(op.function_name.clone(), typed_arg_exprs(type_errors)),
-                )
+                match typed_arg_exprs(type_errors) {
+                    Some(typed_args) => TypecheckAnswer::fail(
+                        ExprBuilder::with_data(None)
+                            .with_same_source_info(ext_expr)
+                            .call_extension_fn(op.function_name.clone(), typed_args),
+                    ),
+                    None => TypecheckAnswer::RecursionLimit,
+                }
             }
         }
     }

@@ -18,6 +18,7 @@ fn assert_expr_has_annotated_ast(e: &Expr, annotated: &Expr<Option<Type>>) {
                 assert_eq!(&expr_type, annotated)
             }
             super::TypecheckAnswer::TypecheckFail { .. } => panic!("Typechecking should succeed."),
+            super::TypecheckAnswer::RecursionLimit => panic!("Should not have hit recursion limit"),
         }
     });
 }
@@ -135,6 +136,9 @@ fn expr_typechecks_with_correct_annotation() {
                 }
                 super::TypecheckAnswer::TypecheckFail { .. } => {
                     panic!("Typechecking should succeed.")
+                }
+                super::TypecheckAnswer::RecursionLimit => {
+                    panic!("Should not have hit recursion limit")
                 }
             }
         },

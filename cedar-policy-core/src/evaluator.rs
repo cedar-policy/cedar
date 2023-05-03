@@ -12,6 +12,8 @@ pub(crate) use err::*;
 use itertools::Either;
 use smol_str::SmolStr;
 
+const REQUIRED_STACK_SPACE: usize = 1024;
+
 /// Evaluator object.
 ///
 /// Conceptually keeps the evaluation environment as part of its internal state,
@@ -67,6 +69,10 @@ impl<'e> RestrictedEvaluator<'e> {
     ///
     /// May return an error, for instance if an extension function returns an error
     pub fn partial_interpret(&self, e: BorrowedRestrictedExpr<'_>) -> Result<PartialValue> {
+        if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
+            return Err(EvaluationError::RecursionLimit);
+        }
+
         match e.as_ref().expr_kind() {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
             ExprKind::Set(items) => {
@@ -259,6 +265,10 @@ impl<'q, 'e> Evaluator<'e> {
     /// May return an error, for instance if the `Expr` tries to access an
     /// attribute that doesn't exist.
     pub fn partial_interpret(&self, e: &Expr, slots: &SlotEnv) -> Result<PartialValue> {
+        if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
+            return Err(EvaluationError::RecursionLimit);
+        }
+
         match e.expr_kind() {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
             ExprKind::Slot(id) => slots
