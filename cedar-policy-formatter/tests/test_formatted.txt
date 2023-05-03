@@ -110,3 +110,10 @@ when // when
   // howdy 5
   2 // howdy 6
 }; // let's get over with it
+
+forbid (principal, action, resource)
+when
+{
+  principal == resource && // keeps comment
+  principal.x == resource.x // loses comment
+};

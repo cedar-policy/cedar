@@ -553,10 +553,10 @@ impl Doc for ASTNode<Option<MemAccess>> {
         match e {
             MemAccess::Field(f) => add_comment(
                 RcDoc::text("."),
-                get_comment_after_end(f.info.0.end, &mut context.tokens),
+                get_comment_at_start(self.info.0.start, &mut context.tokens),
                 RcDoc::nil(),
             )
-            .append(f.as_inner().unwrap().to_doc(context)),
+            .append(f.to_doc(context)),
             MemAccess::Call(args) => add_comment(
                 RcDoc::text("("),
                 get_comment_at_start(self.info.0.start, &mut context.tokens),
