@@ -15,12 +15,11 @@ use super::test_utils::{
     with_typechecker_from_schema,
 };
 use crate::{
-    schema::NamespaceDefinitionWithActionGroups, type_error::TypeError,
-    typecheck::test_utils::static_to_template, typecheck::PolicyCheck, types::Type,
-    NamespaceDefinition, ValidatorSchema,
+    type_error::TypeError, typecheck::test_utils::static_to_template, typecheck::PolicyCheck,
+    types::Type, NamespaceDefinition,
 };
 
-fn simple_schema_file() -> NamespaceDefinitionWithActionGroups {
+fn simple_schema_file() -> NamespaceDefinition {
     serde_json::from_value(serde_json::json!(
         {
             "entityTypes": {
@@ -524,80 +523,6 @@ fn optional_attr_fail() {
 }
 
 #[test]
-fn action_as_resource() {
-    let schema: NamespaceDefinitionWithActionGroups = serde_json::from_str(
-        r#"
-        {
-            "entityTypes": {
-                "Principal": { },
-                "Action": {
-                    "shape": {
-                        "type": "Record",
-                        "additionalAttributes": false,
-                        "attributes": {
-                            "attr": { "type": "Boolean" }
-                        }
-                    }
-                }
-            },
-            "actions": {
-                "act": {
-                    "memberOf": [],
-                    "appliesTo": {
-                        "principalTypes": ["Principal"],
-                        "resourceTypes": ["Action"]
-                    }
-                }
-            }
-        }"#,
-    )
-    .expect("Expected valid schema");
-    let policy = parse_policy(
-        Some("0".to_string()),
-        r#"permit(principal, action == Action::"act", resource) when { resource.attr };"#,
-    )
-    .expect("Policy should parse.");
-    assert_policy_typechecks(schema, policy);
-}
-
-#[test]
-fn action_as_principal() {
-    let schema: NamespaceDefinitionWithActionGroups = serde_json::from_str(
-        r#"
-        {
-            "entityTypes": {
-                "Resource": { },
-                "Action": {
-                    "shape": {
-                        "type": "Record",
-                        "additionalAttributes": false,
-                        "attributes": {
-                            "attr": { "type": "Boolean" }
-                        }
-                    }
-                }
-            },
-            "actions": {
-                "act": {
-                    "memberOf": [],
-                    "appliesTo": {
-                        "principalTypes": ["Action"],
-                        "resourceTypes": ["Resource"]
-                    }
-                }
-            }
-        }"#,
-    )
-    .expect("Expected valid schema");
-    let policy = parse_policy(
-        Some("0".to_string()),
-        r#"permit(principal, action == Action::"act", resource) when { principal.attr };"#,
-    )
-    .expect("Policy should parse.");
-    assert_policy_typechecks(schema, policy);
-}
-
-#[test]
 fn type_error_is_not_reported_for_every_cross_product_element() {
     let schema: NamespaceDefinition = serde_json::from_str(
         r#"
@@ -630,7 +555,7 @@ fn type_error_is_not_reported_for_every_cross_product_element() {
 
 #[test]
 fn action_groups() {
-    let schema: NamespaceDefinitionWithActionGroups = serde_json::from_str(
+    let schema: NamespaceDefinition = serde_json::from_str(
         r#"
         {
             "entityTypes": { "Entity": {} },
@@ -643,8 +568,6 @@ fn action_groups() {
         }"#,
     )
     .expect("Expected valid schema");
-    TryInto::<ValidatorSchema>::try_into(schema.0.clone())
-        .expect_err("Schema uses an action group, so it should be rejected if we prohibit groups.");
 
     // Two good cases for `action in`.
     assert_policy_typechecks(

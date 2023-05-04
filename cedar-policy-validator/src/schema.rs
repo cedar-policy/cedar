@@ -39,19 +39,15 @@ pub(crate) fn is_action_entity_type(ty: &Name) -> bool {
     ty.basename().as_ref() == ACTION_ENTITY_TYPE
 }
 
-/// The hosted service currently prohibits using actions in groups or giving
-/// action attributes. This enum is used to enable and disable this restriction.
+// We do not have a dafny model for action attributes, so we disable them by defualt.
 #[derive(Eq, PartialEq, Copy, Clone, Default)]
 pub enum ActionBehavior {
-    /// The behavior required by the hosted service. Action entities cannot be
-    /// in groups or have attributes. Attempting to declare groups or attributes
+    /// Action entities cannot have attributes. Attempting to declare attributes
     /// will result in a error when constructing the schema.
     #[default]
-    ProhibitGroupsAndAttributes,
-    /// More permissive behavior that can be used outside the hosted service. In
-    /// particular, this behavior is enabled by the fuzzer so that the parts of
-    /// the typechecking code handling action groups will still be reached.
-    PermitGroupsAndAttributes,
+    ProhibitAttributes,
+    /// Action entities may have attributes.
+    PermitAttributes,
 }
 
 /// A single namespace definition from the schema json processed into a form
@@ -450,7 +446,8 @@ impl ValidatorNamespaceDef {
                     schema_namespace.to_vec(),
                 )?;
 
-                let action_attributes = Self::convert_attr_jsonval_map_to_attributes(a.attributes);
+                let action_attributes =
+                    Self::convert_attr_jsonval_map_to_attributes(a.attributes.unwrap_or_default());
                 match action_attributes {
                     // We can't just use the last element of the vec without implementing `Clone` for `SchemaError`, which has some potentially very expensive variants
                     Ok(attrs) => Ok((action_euid, attrs)),
@@ -475,27 +472,25 @@ impl ValidatorNamespaceDef {
         schema_file: &NamespaceDefinition,
         action_behavior: ActionBehavior,
     ) -> Result<()> {
-        // Check for an entity type called `Action` if we prohibit action
-        // entity attributes.
-        if action_behavior == ActionBehavior::ProhibitGroupsAndAttributes {
-            if schema_file
-                .entity_types
-                .iter()
-                // The `name` in an entity type declaration cannot be qualified
-                // with a namespace (it always implicitly takes the schema
-                // namespace), so we do this comparison directly.
-                .any(|(name, _)| name == ACTION_ENTITY_TYPE)
-            {
-                return Err(SchemaError::ActionEntityTypeDeclared);
-            }
-            let mut actions_in_groups: Vec<String> = Vec::new();
+        if schema_file
+            .entity_types
+            .iter()
+            // The `name` in an entity type declaration cannot be qualified
+            // with a namespace (it always implicitly takes the schema
+            // namespace), so we do this comparison directly.
+            .any(|(name, _)| name == ACTION_ENTITY_TYPE)
+        {
+            return Err(SchemaError::ActionEntityTypeDeclared);
+        }
+        if action_behavior == ActionBehavior::ProhibitAttributes {
+            let mut actions_with_attributes: Vec<String> = Vec::new();
             for (name, a) in &schema_file.actions {
-                if a.member_of.is_some() {
-                    actions_in_groups.push(name.to_string());
+                if a.attributes.is_some() {
+                    actions_with_attributes.push(name.to_string());
                 }
             }
-            if !actions_in_groups.is_empty() {
-                return Err(SchemaError::ActionEntityMemberOf(actions_in_groups));
+            if !actions_with_attributes.is_empty() {
+                return Err(SchemaError::ActionEntityAttributes(actions_with_attributes));
             }
         }
 
@@ -1495,9 +1490,9 @@ impl HeadVar<EntityUID> for ActionHeadVar {
 /// groups.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(transparent)]
-pub(crate) struct NamespaceDefinitionWithActionGroups(pub(crate) NamespaceDefinition);
+pub(crate) struct NamespaceDefinitionWithActionAttributes(pub(crate) NamespaceDefinition);
 
-impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionGroups {
+impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes {
     type Error = SchemaError;
 
     fn try_into(self) -> Result<ValidatorSchema> {
@@ -1505,7 +1500,7 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionGroups {
             ValidatorNamespaceDef::from_namespace_definition(
                 None,
                 self.0,
-                crate::ActionBehavior::PermitGroupsAndAttributes,
+                crate::ActionBehavior::PermitAttributes,
             )?,
         ])])
     }
@@ -1740,8 +1735,7 @@ mod test {
                 }
             }
         });
-        let schema_file: NamespaceDefinitionWithActionGroups =
-            serde_json::from_value(src).expect("Parse Error");
+        let schema_file: NamespaceDefinition = serde_json::from_value(src).expect("Parse Error");
         let schema: Result<ValidatorSchema> = schema_file.try_into();
         match schema {
             Ok(_) => panic!("from_schema_file should have failed"),
@@ -1763,8 +1757,7 @@ mod test {
                 }
             }
         });
-        let schema_file: NamespaceDefinitionWithActionGroups =
-            serde_json::from_value(src).expect("Parse Error");
+        let schema_file: NamespaceDefinition = serde_json::from_value(src).expect("Parse Error");
         let schema: Result<ValidatorSchema> = schema_file.try_into();
         match schema {
             Ok(_) => panic!("from_schema_file should have failed"),
@@ -1795,8 +1788,7 @@ mod test {
                 }
             }
         });
-        let schema_file: NamespaceDefinitionWithActionGroups =
-            serde_json::from_value(src).expect("Parse Error");
+        let schema_file: NamespaceDefinition = serde_json::from_value(src).expect("Parse Error");
         let schema: Result<ValidatorSchema> = schema_file.try_into();
         match schema {
             Ok(x) => {
@@ -1992,30 +1984,33 @@ mod test {
 
     #[test]
     fn cannot_declare_action_in_group_when_prohibited() {
-        let schema_json: NamespaceDefinition = serde_json::from_str(
+        let schema_json: SchemaFragment = serde_json::from_str(
             r#"
-            {
+            {"": {
                 "entityTypes": {},
                 "actions": {
                     "universe": { },
                     "view_photo": {
-                        "memberOf": [ {"id": "universe"} ]
+                        "attributes": {"id": "universe"}
                     },
                     "edit_photo": {
-                        "memberOf": [ {"id": "universe"} ]
+                        "attributes": {"id": "universe"}
                     },
                     "delete_photo": {
-                        "memberOf": [ {"id": "universe"} ]
+                        "attributes": {"id": "universe"}
                     }
                 }
-              }
+              }}
             "#,
         )
         .expect("Expected valid schema");
 
-        let schema: Result<ValidatorSchema> = schema_json.try_into();
+        let schema = ValidatorSchemaFragment::from_schema_fragment(
+            schema_json,
+            ActionBehavior::ProhibitAttributes,
+        );
         match schema {
-            Err(SchemaError::ActionEntityMemberOf(actions)) => {
+            Err(SchemaError::ActionEntityAttributes(actions)) => {
                 assert_eq!(
                     actions.into_iter().collect::<HashSet<_>>(),
                     HashSet::from([

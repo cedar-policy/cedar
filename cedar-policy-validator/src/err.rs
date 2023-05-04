@@ -53,9 +53,9 @@ pub enum SchemaError {
     /// cannot currently have attributes or be in any groups, so there is no
     /// purposes in adding an explicit entry.
     ActionEntityTypeDeclared,
-    /// One or more action entities are declared with `memberOf` lists, but this
-    /// is only allowed on entity type declarations.
-    ActionEntityMemberOf(Vec<String>),
+    /// One or more action entities are declared with `attributes`, but this is
+    /// not currently supported.
+    ActionEntityAttributes(Vec<String>),
     ContextOrShapeNotRecord,
     /// An Action Entity (transitively) has an attribute that is an empty set
     ActionEntityAttributeEmptySet,
@@ -169,10 +169,10 @@ impl std::fmt::Display for SchemaError {
             SchemaError::ActionEntityTypeDeclared => {
                 write!(f, "Entity type `Action` declared in `entityTypes` list.")
             }
-            SchemaError::ActionEntityMemberOf(actions) => {
+            SchemaError::ActionEntityAttributes(actions) => {
                 write!(
                     f,
-                    "Actions declared with `memberOf`: [{}]",
+                    "Actions declared with `attributes`: [{}]",
                     actions.iter().join(", ")
                 )
             }

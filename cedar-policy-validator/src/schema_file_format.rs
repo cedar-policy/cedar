@@ -114,7 +114,7 @@ pub struct ActionType {
     /// `cedar_policy_core::entities::json::jsonvalue::JSONValue` which is the
     /// canonical representation of a cedar value as JSON.
     #[serde(default)]
-    pub attributes: HashMap<SmolStr, JSONValue>,
+    pub attributes: Option<HashMap<SmolStr, JSONValue>>,
     #[serde(default)]
     #[serde(rename = "appliesTo")]
     pub applies_to: Option<ApplySpec>,

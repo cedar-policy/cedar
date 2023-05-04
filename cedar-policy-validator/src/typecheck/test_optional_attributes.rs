@@ -8,7 +8,7 @@ use cedar_policy_core::{
     parser::parse_policy,
 };
 
-use crate::{type_error::TypeError, NamespaceDefinition};
+use crate::{type_error::TypeError, NamespaceDefinition, NamespaceDefinitionWithActionAttributes};
 
 use super::test_utils::{assert_policy_typecheck_fails, assert_policy_typechecks};
 
@@ -583,7 +583,7 @@ fn record_optional_attrs() {
 
 #[test]
 fn action_attrs_passing() {
-    let schema = serde_json::from_str::<NamespaceDefinition>(
+    let schema = serde_json::from_str::<NamespaceDefinitionWithActionAttributes>(
         r#"
         {
             "entityTypes": {
@@ -680,7 +680,7 @@ fn action_attrs_passing() {
 
 #[test]
 fn action_attrs_failing() {
-    let schema = serde_json::from_str::<NamespaceDefinition>(
+    let schema = serde_json::from_str::<NamespaceDefinitionWithActionAttributes>(
         r#"
         {
             "entityTypes": {
