@@ -13,7 +13,6 @@
     },
     "actions": {
       "Java_sun_misc": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -30,17 +29,14 @@
         "memberOf": null
       },
       "P": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "s": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "rf_reg": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       }

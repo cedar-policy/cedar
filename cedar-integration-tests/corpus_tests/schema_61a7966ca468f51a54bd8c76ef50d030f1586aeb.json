@@ -13,7 +13,6 @@
     },
     "actions": {
       "):": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "Fwww"
@@ -30,7 +29,6 @@
         "memberOf": null
       },
       "": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "Fwww"

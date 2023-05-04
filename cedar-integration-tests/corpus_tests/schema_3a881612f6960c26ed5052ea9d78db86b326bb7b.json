@@ -13,7 +13,6 @@
     },
     "actions": {
       "Js": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -30,7 +29,6 @@
         "memberOf": null
       },
       ",$": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

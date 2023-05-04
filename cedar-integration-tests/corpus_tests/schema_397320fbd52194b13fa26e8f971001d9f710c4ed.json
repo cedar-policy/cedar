@@ -13,12 +13,10 @@
     },
     "actions": {
       "RRRR": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

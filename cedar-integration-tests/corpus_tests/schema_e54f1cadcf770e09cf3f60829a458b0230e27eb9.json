@@ -19,12 +19,10 @@
     },
     "actions": {
       "_re": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "is": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "sWqs"
@@ -46,7 +44,6 @@
         "memberOf": null
       },
       "www": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       }

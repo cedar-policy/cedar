@@ -13,12 +13,10 @@
     },
     "actions": {
       "": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "rg/w3c": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

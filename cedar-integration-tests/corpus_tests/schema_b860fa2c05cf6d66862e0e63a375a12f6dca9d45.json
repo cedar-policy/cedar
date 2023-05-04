@@ -21,7 +21,6 @@
     },
     "actions": {
       "action": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "Bmii5h",

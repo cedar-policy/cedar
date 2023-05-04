@@ -13,12 +13,10 @@
     },
     "actions": {
       "\u000666": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

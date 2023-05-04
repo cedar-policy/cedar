@@ -13,12 +13,10 @@
     },
     "actions": {
       "": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "l/jackst": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "lyyUIKldYqrc"

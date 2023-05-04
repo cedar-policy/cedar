@@ -30,7 +30,6 @@
     },
     "actions": {
       "m/": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

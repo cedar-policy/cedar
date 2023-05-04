@@ -19,7 +19,6 @@
     },
     "actions": {
       "action": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "Rx"

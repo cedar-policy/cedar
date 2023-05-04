@@ -23,7 +23,6 @@
     },
     "actions": {
       "fffff": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "r"

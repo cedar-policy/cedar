@@ -13,7 +13,6 @@
     },
     "actions": {
       "action": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "m8888G000m0"

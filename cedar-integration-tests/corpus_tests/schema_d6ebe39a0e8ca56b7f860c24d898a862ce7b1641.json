@@ -13,17 +13,14 @@
     },
     "actions": {
       "is": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "rf_re": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "_P": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

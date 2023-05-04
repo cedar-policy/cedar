@@ -13,7 +13,6 @@
     },
     "actions": {
       "_q": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

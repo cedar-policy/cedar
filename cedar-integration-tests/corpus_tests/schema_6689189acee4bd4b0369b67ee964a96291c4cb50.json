@@ -13,7 +13,6 @@
     },
     "actions": {
       "dafny/Fun": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -28,7 +27,6 @@
         "memberOf": null
       },
       "": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

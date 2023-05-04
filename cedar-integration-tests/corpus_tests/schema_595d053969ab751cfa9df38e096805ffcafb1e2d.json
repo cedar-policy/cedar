@@ -13,7 +13,6 @@
     },
     "actions": {
       "\tzzz~z2zzz": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -30,7 +29,6 @@
         "memberOf": null
       },
       "\t\t\t\t\t\t\t\t\t\t": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       }

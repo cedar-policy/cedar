@@ -13,12 +13,10 @@
     },
     "actions": {
       "o:;::::ff": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "un/n": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

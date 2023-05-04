@@ -13,7 +13,6 @@
     },
     "actions": {
       "": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -28,7 +27,6 @@
         "memberOf": null
       },
       "rhhmmlq": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -45,7 +43,6 @@
         "memberOf": null
       },
       "l": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

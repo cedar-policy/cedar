@@ -13,7 +13,6 @@
     },
     "actions": {
       "action": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -34,7 +33,7 @@
                   "aff\u0006": {
                     "type": "Record",
                     "attributes": {
-                      "f\u0000\u0004/Fu": {
+                      "f\u007f\u0000\u0004/Fu": {
                         "type": "Record",
                         "attributes": {
                           "": {

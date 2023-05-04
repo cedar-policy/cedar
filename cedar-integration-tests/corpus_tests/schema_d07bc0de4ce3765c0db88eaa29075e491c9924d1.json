@@ -13,7 +13,6 @@
     },
     "actions": {
       "om/f": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -35,7 +34,6 @@
         "memberOf": null
       },
       "sterxm\u0002\u0002\u0002\u0002\u0002comu/": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       }

@@ -13,22 +13,18 @@
     },
     "actions": {
       "": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       ")": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "\u000e..": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       ".": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -45,12 +41,10 @@
         "memberOf": null
       },
       "J": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "*.": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

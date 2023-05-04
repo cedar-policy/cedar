@@ -23,12 +23,10 @@
     },
     "actions": {
       "": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "\u0001": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "B",

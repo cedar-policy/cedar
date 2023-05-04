@@ -13,7 +13,6 @@
     },
     "actions": {
       "::::::::::::::::::::::2:": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

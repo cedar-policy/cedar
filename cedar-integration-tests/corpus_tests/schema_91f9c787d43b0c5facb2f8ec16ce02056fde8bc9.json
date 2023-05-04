@@ -13,12 +13,10 @@
     },
     "actions": {
       "": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "zzzz": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

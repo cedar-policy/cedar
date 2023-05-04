@@ -13,7 +13,6 @@
     },
     "actions": {
       "F": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": null,
           "principalTypes": null,
@@ -26,7 +25,6 @@
         "memberOf": null
       },
       "FF": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -43,7 +41,6 @@
         "memberOf": null
       },
       "FFF": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

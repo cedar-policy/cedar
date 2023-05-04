@@ -13,7 +13,6 @@
     },
     "actions": {
       "action": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -43,7 +42,7 @@
                     "type": "String",
                     "required": false
                   },
-                  "z": {
+                  "z\u007f": {
                     "type": "String",
                     "required": false
                   }

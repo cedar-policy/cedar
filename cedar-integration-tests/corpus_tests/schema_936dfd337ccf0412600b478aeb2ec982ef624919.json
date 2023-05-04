@@ -13,7 +13,6 @@
     },
     "actions": {
       "jj": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

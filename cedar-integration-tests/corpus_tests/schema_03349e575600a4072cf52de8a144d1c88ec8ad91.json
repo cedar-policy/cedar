@@ -13,27 +13,22 @@
     },
     "actions": {
       "": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "\u0006F": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "R=": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "R=====": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "=F": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
