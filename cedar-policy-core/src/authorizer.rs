@@ -108,7 +108,7 @@ impl Authorizer {
                         errors,
                     ),
                     ErrorHandling::Skip => {
-                        // If there were applicable permits in the residual, then skipping errors means returning `Allow`
+                        // If there were satisfied permits in the residual, then skipping errors means returning `Allow`
                         // This is tricky logic, but it's correct as follows:
                         //  If any permit policy is in the diagnostics, it means it evaluated to a concrete `true` and was not overridden by a `forbid` policy
                         //  That means that all forbid policies evaluated to one of:
@@ -177,11 +177,11 @@ impl Authorizer {
         }
         // Semantics ask for the set C_I^+ of all satisfied Permit policies
         // which override all satisfied Forbid policies. We call this set
-        // `applicable_permits`.
+        // `satisfied_permits`.
         // Notice that this currently differs from the semantics stated in the Language Spec,
         // which no longer consider overrides. The implementation is however equivalent,
         // since forbids always trump permits.
-        let mut applicable_permits = results
+        let mut satisfied_permits = results
             .satisfied_permits
             .into_iter()
             .filter(|permit_p| {
@@ -193,26 +193,26 @@ impl Authorizer {
             .peekable();
 
         match (
-            applicable_permits.peek().is_some(),
+            satisfied_permits.peek().is_some(),
             !results.permit_residuals.is_empty(),
             !results.forbid_residuals.is_empty(),
         ) {
-            // If we have an applicable permit and _no_ residual forbids, we can return Allow (this is true regardless of residual permits)
+            // If we have a satisfied permit and _no_ residual forbids, we can return Allow (this is true regardless of residual permits)
             (true, false | true, false) => {
-                let idset = applicable_permits.map(|p| p.id().clone()).collect();
+                let idset = satisfied_permits.map(|p| p.id().clone()).collect();
                 AnswerKind::FullyEvaluated(Answer::new(
                     Decision::Allow,
                     idset,
                     results.all_warnings,
                 ))
             }
-            // If we have an applicable permit, and there are residual forbids, we must return a residual answer. (this is true regardless of residual permits)
+            // If we have a satisfied permit, and there are residual forbids, we must return a residual answer. (this is true regardless of residual permits)
             (true, false | true, true) => {
-                let idset = applicable_permits
+                let idset = satisfied_permits
                     .map(|p| p.id().clone())
                     .collect::<HashSet<_>>();
                 // The residual will consist of all of the residual forbids, and one trivially true `permit`
-                let id = idset.iter().next().unwrap().clone(); // This unwrap is safe as we know there are applicable permits
+                let id = idset.iter().next().unwrap().clone(); // This unwrap is safe as we know there are satisfied permits
                 let trivial_true = Policy::from_when_clause(Effect::Permit, Expr::val(true), id);
                 // This unwrap should be safe, all policy IDs should already be unique
                 AnswerKind::Partial(PartialAnswer::new(
@@ -227,7 +227,7 @@ impl Authorizer {
                     results.all_warnings,
                 ))
             }
-            // If there are no applicable permits, and no residual permits, then the request cannot succeed
+            // If there are no satisfied permits, and no residual permits, then the request cannot succeed
             (false, false, false | true) => {
                 let idset = results
                     .satisfied_forbids
@@ -236,7 +236,7 @@ impl Authorizer {
                     .collect();
                 AnswerKind::FullyEvaluated(Answer::new(Decision::Deny, idset, results.all_warnings))
             }
-            // If there are no applicable permits, but residual permits, then request may still succeed. Return residual
+            // If there are no satisfied permits, but residual permits, then request may still succeed. Return residual
             // Add in the forbid_residuals if any
             (false, true, false | true) => {
                 // The request will definitely fail if there are satisfied forbids, check those
@@ -561,7 +561,7 @@ mod test {
     }
 
     #[test]
-    fn applicable_permit_no_forbids() {
+    fn satisfied_permit_no_forbids() {
         let q = Request::new(
             EntityUID::with_eid("p"),
             EntityUID::with_eid("a"),
@@ -602,7 +602,7 @@ mod test {
     }
 
     #[test]
-    fn applicable_permit_residual_forbid() {
+    fn satisfied_permit_residual_forbid() {
         let q = Request::new(
             EntityUID::with_eid("p"),
             EntityUID::with_eid("a"),
