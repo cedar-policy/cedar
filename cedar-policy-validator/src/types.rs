@@ -1,11 +1,10 @@
 //! Defines the type structure for typechecking and various utilities for
 //! constructing and manipulating types.
 
-use json::JsonValue;
 use serde::Serialize;
 use smol_str::SmolStr;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     fmt::Display,
 };
 
@@ -373,13 +372,13 @@ impl Type {
         )
     }
 
-    fn json_type(type_name: &str) -> json::object::Object {
-        [("type", JsonValue::from(type_name))]
+    fn json_type(type_name: &str) -> serde_json::value::Map<String, serde_json::value::Value> {
+        [("type".to_string(), type_name.into())]
             .into_iter()
-            .collect::<json::object::Object>()
+            .collect()
     }
 
-    fn to_type_json(&self) -> json::object::Object {
+    fn to_type_json(&self) -> serde_json::value::Map<String, serde_json::value::Value> {
         match self {
             Type::Never => Type::json_type("Never"),
             Type::True => Type::json_type("True"),
@@ -396,10 +395,12 @@ impl Type {
             Type::Set { element_type } => {
                 let mut set_json = Type::json_type("Set");
                 match element_type {
-                    Some(e_ty) => set_json.insert("element", (*e_ty).to_type_json().into()),
+                    Some(e_ty) => {
+                        set_json.insert("element".to_string(), (*e_ty).to_type_json().into());
+                    }
                     None => (),
                 }
-                set_json
+                set_json.into()
             }
             Type::EntityOrRecord(rk) => {
                 let mut record_json = match rk {
@@ -413,28 +414,30 @@ impl Type {
                         let attr_json = attrs
                             .iter()
                             .map(|(attr, attr_ty)| {
-                                (attr.as_str(), {
+                                (attr.to_string(), {
                                     let mut attr_ty_json = attr_ty.attr_type.to_type_json();
-                                    attr_ty_json.insert("required", attr_ty.is_required.into());
                                     attr_ty_json
+                                        .insert("required".to_string(), attr_ty.is_required.into());
+                                    attr_ty_json.into()
                                 })
                             })
-                            .collect::<HashMap<_, _>>();
-                        record_json.insert("attributes", attr_json.into());
+                            .collect::<serde_json::value::Map<_, _>>();
+                        record_json.insert("attributes".to_string(), attr_json.into());
                     }
                     EntityRecordKind::ActionEntity { name, attrs } => {
                         let attr_json = attrs
                             .iter()
                             .map(|(attr, attr_ty)| {
-                                (attr.as_str(), {
+                                (attr.to_string(), {
                                     let mut attr_ty_json = attr_ty.attr_type.to_type_json();
-                                    attr_ty_json.insert("required", attr_ty.is_required.into());
                                     attr_ty_json
+                                        .insert("required".to_string(), attr_ty.is_required.into());
+                                    attr_ty_json.into()
                                 })
                             })
-                            .collect::<HashMap<_, _>>();
-                        record_json.insert("attributes", attr_json.into());
-                        record_json.insert("name", JsonValue::String(name.to_string()));
+                            .collect::<serde_json::value::Map<_, _>>();
+                        record_json.insert("attributes".to_string(), attr_json.into());
+                        record_json.insert("name".to_string(), name.to_string().into());
                     }
                     // In these case, we don't need to record attributes.
                     // `AnyEntity` does not have attributes while `Entity(_)`
@@ -446,7 +449,7 @@ impl Type {
             }
             Type::ExtensionType { name } => {
                 let mut ext_json = Type::json_type("Extension");
-                ext_json.insert("name", json::JsonValue::String(name.to_string()));
+                ext_json.insert("name".into(), name.to_string().into());
                 ext_json
             }
         }
@@ -561,7 +564,11 @@ impl Type {
 
 impl Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", json::stringify(self.to_type_json()))
+        write!(
+            f,
+            "{}",
+            serde_json::value::Value::Object(self.to_type_json()).to_string()
+        )
     }
 }
 
@@ -730,16 +737,18 @@ impl EntityLUB {
         self.lub_elements.iter()
     }
 
-    fn to_type_json(&self) -> json::object::Object {
+    fn to_type_json(&self) -> serde_json::value::Map<String, serde_json::value::Value> {
         let mut ordered_lub_elems = self.lub_elements.iter().collect::<Vec<_>>();
         // We want the display order of elements of the set to be consistent.
         ordered_lub_elems.sort();
 
         let mut lub_element_objs = ordered_lub_elems.iter().map(|name| {
-            let mut entity_obj = json::object::Object::new();
-            entity_obj.insert("type", "Entity".into());
-            entity_obj.insert("name", name.to_string().into());
-            entity_obj
+            [
+                ("type".to_string(), "Entity".into()),
+                ("name".to_string(), name.to_string().into()),
+            ]
+            .into_iter()
+            .collect()
         });
         if self.lub_elements.len() == 1 {
             lub_element_objs
@@ -747,7 +756,10 @@ impl EntityLUB {
                 .expect("Invariant violated: EntityLUB set must be non-empty.")
         } else {
             let mut entities_json = Type::json_type("Union");
-            entities_json.insert("elements", lub_element_objs.collect::<Vec<_>>().into());
+            entities_json.insert(
+                "elements".to_string(),
+                lub_element_objs.collect::<Vec<_>>().into(),
+            );
             entities_json
         }
     }
@@ -1050,6 +1062,8 @@ impl<'a> Effect<'a> {
 
 #[cfg(test)]
 mod test {
+    use std::collections::HashMap;
+
     use crate::{ActionBehavior, SchemaType, ValidatorNamespaceDef};
 
     use super::*;
@@ -1645,7 +1659,7 @@ mod test {
     }
 
     fn assert_json_parses_to_schema_type(ty: Type) {
-        let json_str = json::stringify(ty.to_type_json());
+        let json_str = serde_json::value::Value::Object(ty.to_type_json()).to_string();
         println!("{}", json_str);
         let parsed_schema_type: SchemaType = serde_json::from_str(&json_str)
             .expect("JSON representation should have parsed into a schema type");

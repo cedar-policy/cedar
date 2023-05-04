@@ -7,10 +7,9 @@ version = "2.0.0"
 [dependencies]
 cedar-policy-core = { version = "2.0.0", path = "../cedar-policy-core" }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_with = "2.0.1"
 arbitrary = { version = "1", features = ["derive"] }
-json = "0.12.4"
 thiserror = "1.0"
 itertools = "0.10"
 unicode-security = "0.1.0"
