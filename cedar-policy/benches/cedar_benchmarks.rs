@@ -32,7 +32,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             resource == Photo::"VacationPhoto94.jpg"
         );"#,
     )
-    .unwrap().new_id("single_policy".parse().unwrap());
+    .unwrap()
+    .new_id("single_policy".parse().unwrap());
 
     multiple_policies.add(single_policy).unwrap();
 
