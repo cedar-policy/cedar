@@ -36,7 +36,7 @@ use cedar_policy_core::ast::{
     Var,
 };
 
-const REQUIRED_STACK_SPACE: usize = 1024;
+const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 
 /// TypecheckAnswer holds the result of typechecking an expression.
 #[derive(Debug, Eq, PartialEq)]

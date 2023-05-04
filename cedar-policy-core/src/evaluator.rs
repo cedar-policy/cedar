@@ -12,7 +12,7 @@ pub(crate) use err::*;
 use itertools::Either;
 use smol_str::SmolStr;
 
-const REQUIRED_STACK_SPACE: usize = 1024;
+const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 
 /// Evaluator object.
 ///
