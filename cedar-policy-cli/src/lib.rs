@@ -6,7 +6,7 @@
 use anyhow::{Context as _, Error, Result};
 use cedar_policy::*;
 use cedar_policy_formatter::{policies_str_to_pretty, Config};
-use clap::{AppSettings, Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -19,15 +19,13 @@ use std::{
 
 /// Basic Cedar CLI for evaluating authorization queries
 #[derive(Parser)]
-#[clap(version, about, long_about = None)]
-#[clap(global_setting(AppSettings::DeriveDisplayOrder))]
-#[clap(propagate_version = true)]
+#[command(author, version, about, long_about = None)] // Pull from `Cargo.toml`
 pub struct Cli {
-    #[clap(subcommand)]
+    #[command(subcommand)]
     pub command: Commands,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum Commands {
     /// Evaluate an authorization request
     Authorize(AuthorizeArgs),
@@ -46,10 +44,10 @@ pub enum Commands {
 #[derive(Args, Debug)]
 pub struct ValidateArgs {
     /// File containing the schema
-    #[clap(short, long = "schema", value_name = "FILE")]
+    #[arg(short, long = "schema", value_name = "FILE")]
     pub schema_file: String,
     /// File containing the policy set
-    #[clap(short, long = "policies", value_name = "FILE")]
+    #[arg(short, long = "policies", value_name = "FILE")]
     pub policies_file: String,
 }
 
@@ -64,23 +62,23 @@ pub struct CheckParseArgs {
 #[derive(Args, Debug)]
 pub struct RequestArgs {
     /// Principal for the request, e.g., User::"alice"
-    #[clap(short, long)]
+    #[arg(short, long)]
     pub principal: Option<String>,
     /// Action for the request, e.g., Action::"view"
-    #[clap(short, long)]
+    #[arg(short, long)]
     pub action: Option<String>,
     /// Resource for the request, e.g., File::"myfile.txt"
-    #[clap(short, long)]
+    #[arg(short, long)]
     pub resource: Option<String>,
     /// File containing a JSON object representing the context for the request.
     /// Should be a (possibly empty) map from keys to values.
-    #[clap(short, long = "context", value_name = "FILE")]
+    #[arg(short, long = "context", value_name = "FILE")]
     pub context_json_file: Option<String>,
     /// File containing a JSON object representing the entire request. Must have
     /// fields "principal", "action", "resource", and "context", where "context"
     /// is a (possibly empty) map from keys to values. This option replaces
     /// --principal, --action, etc.
-    #[clap(long = "request-json", value_name = "FILE", conflicts_with_all = &["principal", "action", "resource", "context-json-file"])]
+    #[arg(long = "request-json", value_name = "FILE", conflicts_with_all = &["principal", "action", "resource", "context_json_file"])]
     pub request_json_file: Option<String>,
 }
 
@@ -168,55 +166,60 @@ impl RequestArgs {
 #[derive(Args, Debug)]
 pub struct AuthorizeArgs {
     /// Request args (incorporated by reference)
-    #[clap(flatten)]
+    #[command(flatten)]
     pub request: RequestArgs,
     /// File containing the static Cedar policies and templates to evaluate against
-    #[clap(long = "policies", value_name = "FILE")]
+    #[arg(long = "policies", value_name = "FILE")]
     pub policies_file: String,
     /// File containing template linked policies
-    #[clap(long = "template-linked", value_name = "FILE")]
+    #[arg(long = "template-linked", value_name = "FILE")]
     pub template_linked_file: Option<String>,
     /// File containing schema information
     // Used for schema-based parsing of entity hierarchy, if present
-    #[clap(long = "schema", value_name = "FILE")]
+    #[arg(long = "schema", value_name = "FILE")]
     pub schema_file: Option<String>,
     /// File containing JSON representation of the Cedar entity hierarchy
-    #[clap(long = "entities", value_name = "FILE")]
+    #[arg(long = "entities", value_name = "FILE")]
     pub entities_file: String,
     /// More verbose output. (For instance, indicate which policies applied to the request, if any.)
-    #[clap(short, long)]
+    #[arg(short, long)]
     pub verbose: bool,
     /// Time authorization and report timing information
-    #[clap(short, long)]
+    #[arg(short, long)]
     pub timing: bool,
 }
 
 #[derive(Args, Debug)]
 pub struct LinkArgs {
     /// File containing static policies and templates.
+    #[arg(short, long)]
     pub policies_file: String,
     /// File containing template-linked policies
+    #[arg(short, long)]
     pub template_linked_file: String,
     /// Id of the template to instantiate
+    #[arg(long)]
     pub template_id: String,
     /// Id for the new template linked policy
+    #[arg(short, long)]
     pub new_id: String,
     /// Arguments to fill slots
+    #[arg(short, long)]
     pub arguments: Arguments,
 }
 
 #[derive(Args, Debug)]
 pub struct FormatArgs {
     /// Optional policy file name. If none is provided, read input from stdin.
-    #[clap(value_name = "FILE")]
+    #[arg(value_name = "FILE")]
     pub file_name: Option<String>,
 
     /// Custom line width (default: 80).
-    #[clap(short, long, value_name = "UINT", default_value_t = 80)]
+    #[arg(short, long, value_name = "UINT", default_value_t = 80)]
     pub line_width: usize,
 
     /// Custom indentation width (default: 2).
-    #[clap(short, long, value_name = "INT", default_value_t = 2)]
+    #[arg(short, long, value_name = "INT", default_value_t = 2)]
     pub indent_width: isize,
 }
 
@@ -267,18 +270,18 @@ struct RequestJSON {
 #[derive(Args, Debug)]
 pub struct EvaluateArgs {
     /// Request args (incorporated by reference)
-    #[clap(flatten)]
+    #[command(flatten)]
     pub request: RequestArgs,
     /// File containing schema information
     // Used for schema-based parsing of entity hierarchy, if present
-    #[clap(long = "schema", value_name = "FILE")]
+    #[arg(long = "schema", value_name = "FILE")]
     pub schema_file: Option<String>,
     /// File containing JSON representation of the Cedar entity hierarchy.
     /// This is optional; if not present, we'll just use an empty hierarchy.
-    #[clap(long = "entities", value_name = "FILE")]
+    #[arg(long = "entities", value_name = "FILE")]
     pub entities_file: Option<String>,
     /// Expression to evaluate
-    #[clap(value_name = "EXPRESSION")]
+    #[arg(value_name = "EXPRESSION")]
     pub expression: String,
 }
 
@@ -458,7 +461,7 @@ fn link_inner(args: &LinkArgs) -> Result<()> {
     update_template_linked_file(&args.template_linked_file, linked)
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(try_from = "LiteralTemplateLinked")]
 #[serde(into = "LiteralTemplateLinked")]
 struct TemplateLinked {
@@ -518,11 +521,11 @@ impl From<TemplateLinked> for LiteralTemplateLinked {
 /// Iterate over links in the template-linked file and add them to the set
 fn add_template_links_to_set(path: impl AsRef<Path>, policy_set: &mut PolicySet) -> Result<()> {
     for template_linked in load_liked_file(path)? {
-        let slotenv = create_slot_env(&template_linked.args)?;
+        let slot_env = create_slot_env(&template_linked.args)?;
         policy_set.link(
             PolicyId::from_str(&template_linked.template_id)?,
             PolicyId::from_str(&template_linked.link_id)?,
-            slotenv,
+            slot_env,
         )?;
     }
     Ok(())
