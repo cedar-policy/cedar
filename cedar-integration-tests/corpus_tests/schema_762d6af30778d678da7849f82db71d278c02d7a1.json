@@ -21,7 +21,6 @@
     },
     "actions": {
       "egi": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "MYqs"

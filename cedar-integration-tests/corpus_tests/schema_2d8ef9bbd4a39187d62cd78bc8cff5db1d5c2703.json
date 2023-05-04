@@ -13,7 +13,6 @@
     },
     "actions": {
       "pFYrgt": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -28,7 +27,6 @@
         "memberOf": null
       },
       "/wegpr": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -45,7 +43,6 @@
         "memberOf": null
       },
       "": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

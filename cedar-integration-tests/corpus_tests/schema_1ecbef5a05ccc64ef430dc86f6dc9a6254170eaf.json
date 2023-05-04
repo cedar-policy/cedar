@@ -23,7 +23,6 @@
     },
     "actions": {
       "RRRRRRRVRR": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "A",

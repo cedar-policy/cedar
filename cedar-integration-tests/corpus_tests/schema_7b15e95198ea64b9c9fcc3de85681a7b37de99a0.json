@@ -13,7 +13,6 @@
     },
     "actions": {
       "ff&f": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -35,32 +34,26 @@
         "memberOf": null
       },
       "m.": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       ".": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       ")": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "=.": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "J": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       }

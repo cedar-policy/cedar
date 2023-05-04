@@ -13,17 +13,14 @@
     },
     "actions": {
       "F": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "FFF": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "FFDFFFFF&": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -38,7 +35,6 @@
         "memberOf": null
       },
       "ƹFFF": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

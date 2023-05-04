@@ -18,12 +18,10 @@
     },
     "actions": {
       "\u0002": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -45,7 +43,6 @@
         "memberOf": null
       },
       "c": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [],
           "principalTypes": [],

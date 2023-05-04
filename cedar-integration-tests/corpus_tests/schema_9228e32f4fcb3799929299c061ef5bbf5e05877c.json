@@ -13,7 +13,6 @@
     },
     "actions": {
       "om/s": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -30,7 +29,6 @@
         "memberOf": null
       },
       "n": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -47,7 +45,6 @@
         "memberOf": null
       },
       "F": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

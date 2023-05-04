@@ -28,7 +28,6 @@
     },
     "actions": {
       "O..D": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "u",
@@ -47,7 +46,6 @@
         "memberOf": null
       },
       "": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "u",

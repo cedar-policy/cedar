@@ -13,7 +13,6 @@
     },
     "actions": {
       "vaYlang/": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -28,12 +27,10 @@
         "memberOf": null
       },
       "": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "ke/::::": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

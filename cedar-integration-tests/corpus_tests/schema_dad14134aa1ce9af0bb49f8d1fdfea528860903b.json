@@ -13,7 +13,6 @@
     },
     "actions": {
       "FFF": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

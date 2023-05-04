@@ -13,7 +13,6 @@
     },
     "actions": {
       "": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -30,7 +29,6 @@
         "memberOf": null
       },
       "\u001f": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": null,
           "principalTypes": [

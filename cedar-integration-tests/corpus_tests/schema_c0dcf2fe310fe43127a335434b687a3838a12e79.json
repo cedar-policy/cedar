@@ -18,12 +18,10 @@
     },
     "actions": {
       "": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "Vnio::": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

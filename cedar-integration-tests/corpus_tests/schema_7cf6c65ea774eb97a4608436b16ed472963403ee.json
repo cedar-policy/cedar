@@ -13,7 +13,6 @@
     },
     "actions": {
       ":m_\u001aiŒu": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -39,7 +38,6 @@
         "memberOf": null
       },
       "": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       }

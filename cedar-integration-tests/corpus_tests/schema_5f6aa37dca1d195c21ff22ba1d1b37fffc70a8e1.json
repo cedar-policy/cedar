@@ -13,12 +13,10 @@
     },
     "actions": {
       "em": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       ":::cʌto": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -35,7 +33,6 @@
         "memberOf": null
       },
       "B:z:;:::::7::": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       }

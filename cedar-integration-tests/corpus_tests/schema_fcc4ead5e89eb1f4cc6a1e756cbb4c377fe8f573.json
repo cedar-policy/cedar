@@ -13,12 +13,10 @@
     },
     "actions": {
       "l/ja": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "ks": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "dyyUIKldYqrc"

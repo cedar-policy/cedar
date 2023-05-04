@@ -13,7 +13,6 @@
     },
     "actions": {
       "": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -28,7 +27,6 @@
         "memberOf": null
       },
       "va/lm888Azw": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": null,
           "principalTypes": [

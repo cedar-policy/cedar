@@ -13,17 +13,14 @@
     },
     "actions": {
       "sun_misc_P": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "va": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "rf_regi": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -40,7 +37,6 @@
         "memberOf": null
       },
       "te": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       }

@@ -18,7 +18,6 @@
     },
     "actions": {
       "zq": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

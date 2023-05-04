@@ -13,7 +13,6 @@
     },
     "actions": {
       "Perf_registerNarf_registerNatives": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

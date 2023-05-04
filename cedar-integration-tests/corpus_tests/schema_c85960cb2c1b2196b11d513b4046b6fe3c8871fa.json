@@ -13,12 +13,10 @@
     },
     "actions": {
       "kl": {
-        "attributes": {},
         "appliesTo": null,
         "memberOf": null
       },
       "kld:::::::::::2Fwww3wUwa": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"

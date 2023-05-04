@@ -13,7 +13,6 @@
     },
     "actions": {
       "БОwt": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -30,7 +29,6 @@
         "memberOf": null
       },
       "Js": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "a"
@@ -47,7 +45,6 @@
         "memberOf": null
       },
       "": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [],
           "principalTypes": [

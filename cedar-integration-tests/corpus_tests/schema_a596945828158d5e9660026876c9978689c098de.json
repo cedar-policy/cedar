@@ -23,7 +23,6 @@
     },
     "actions": {
       "zd": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": null,
           "principalTypes": [
@@ -38,7 +37,6 @@
         "memberOf": null
       },
       "": {
-        "attributes": {},
         "appliesTo": {
           "resourceTypes": [
             "vxCxz",
