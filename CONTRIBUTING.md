@@ -5,7 +5,7 @@ Cedar is a community project that is built and maintained by people just like **
 
 ## First Things First
 
-1. **When in doubt, open an issue** - For almost any type of contribution, the first step is opening an issue. Even if you think you already know what the solution is, writing down a description of the problem you're trying to solve will help everyone get context when they review your pull request. If it's truly a trivial change (e.g. spelling error), you can skip this step — but as the subject says, when in doubt, [open an issue](). DO NOT open an issue for security-related issues. See SECURITY.md.
+1. **When in doubt, open an issue** - For almost any type of contribution, the first step is opening an issue. Even if you think you already know what the solution is, writing down a description of the problem you're trying to solve will help everyone get context when they review your pull request. If it's truly a trivial change (e.g. spelling error), you can skip this step — but as the subject says, when in doubt, [open an issue](https://github.com/cedar-policy/cedar/issues). DO NOT open an issue for security-related issues. See SECURITY.md.
 2. **Only submit your own work**  (or work you have sufficient rights to submit) - Please make sure that any code or documentation you submit is your work or you have the rights to submit. We respect the intellectual property rights of others.
 
 ## Ways to Contribute
