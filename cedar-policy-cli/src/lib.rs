@@ -698,7 +698,7 @@ fn execute_request(
     entities_filename: impl AsRef<Path>,
     schema_filename: Option<impl AsRef<Path>>,
     compute_duration: bool,
-) -> Result<Answer, Vec<Error>> {
+) -> Result<Response, Vec<Error>> {
     let mut errs = vec![];
     let policies = match read_policy_and_links(policies_filename.as_ref(), links_filename) {
         Ok(pset) => pset,

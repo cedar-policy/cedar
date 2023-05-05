@@ -1369,7 +1369,7 @@ pub struct PolicyID(SmolStr);
 impl PolicyID {
     /// Create a PolicyID from a string or string-like
     pub fn from_string(id: impl AsRef<str>) -> Self {
-        Self(SmolStr::from(id))
+        Self(SmolStr::from(id.as_ref()))
     }
 
     /// Create a PolicyID from a `SmolStr`

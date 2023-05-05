@@ -93,7 +93,7 @@ impl From<EntityUID> for TypeAndId {
         let (entity_type, eid) = euid.components();
         TypeAndId {
             entity_type: entity_type.to_string().into(),
-            id: eid.into(),
+            id: AsRef::<str>::as_ref(&eid).into(),
         }
     }
 }
@@ -102,7 +102,7 @@ impl From<&EntityUID> for TypeAndId {
     fn from(euid: &EntityUID) -> TypeAndId {
         TypeAndId {
             entity_type: euid.entity_type().to_string().into(),
-            id: euid.eid().into(),
+            id: AsRef::<str>::as_ref(&euid.eid()).into(),
         }
     }
 }

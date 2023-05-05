@@ -1111,7 +1111,10 @@ mod test {
                     Attributes::with_attributes(
                         lub_attrs
                             .iter()
-                            .map(|(s, t)| (s.into(), AttributeType::required_attribute(t.clone())))
+                            .map(|(s, t)| (
+                                AsRef::<str>::as_ref(s).into(),
+                                AttributeType::required_attribute(t.clone())
+                            ))
                             .collect::<BTreeMap<_, _>>()
                     ),
                     entity_lub.get_attribute_types(&schema),
