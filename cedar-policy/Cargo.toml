@@ -45,7 +45,7 @@ crate_type = ["rlib"]
 # could replace this hack.
 cedar-policy = { path = ".", default-features = false, features = ["integration_testing"] }
 cool_asserts = "2.0"
-criterion = "0.3"
+criterion = "0.4"
 globset = "0.4"
 
 [[bench]]
