@@ -6,8 +6,8 @@ use crate::api::EntityId;
 use crate::api::EntityTypeName;
 use crate::PolicyId;
 use crate::{
-    Answer, Authorizer, Context, Decision, Entities, EntityUid, ParseErrors, Policy, PolicySet,
-    Request, Schema, SlotId, Template,
+    Authorizer, Context, Decision, Entities, EntityUid, ParseErrors, Policy, PolicySet, Request,
+    Response, Schema, SlotId, Template,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -19,7 +19,7 @@ thread_local!(
 );
 
 /// Construct and ask the authorizer the request.
-fn is_authorized(call: AuthorizationCall) -> Answer {
+fn is_authorized(call: AuthorizationCall) -> Response {
     match call.get_components() {
         Ok((request, policies, entities)) => {
             AUTHORIZER.with(|authorizer| authorizer.is_authorized(&request, &policies, &entities))
@@ -39,20 +39,20 @@ pub fn json_is_authorized(input: &str) -> InterfaceResult {
     )
 }
 
-/// Create an `Answer` with `Deny`, no reasons, and the
+/// Create a `Response` with `Deny`, no reasons, and the
 /// given error messages.
 ///
 /// This is returned due to marshalling/parsing errors.
-fn empty_failure<S: Into<String>>(msgs: impl IntoIterator<Item = S>) -> Answer {
-    Answer::new(
+fn empty_failure<S: Into<String>>(msgs: impl IntoIterator<Item = S>) -> Response {
+    Response::new(
         Decision::Deny,
         HashSet::new(),
         msgs.into_iter().map(Into::into).collect(),
     )
 }
 
-/// Convert an `Error` to an `Answer`, adding the given message
-fn error_to_answer(e: impl std::error::Error, msg: String) -> Answer {
+/// Convert an `Error` to a `Response`, adding the given message
+fn error_to_response(e: impl std::error::Error, msg: String) -> Response {
     empty_failure([msg, e.to_string()])
 }
 
@@ -72,7 +72,7 @@ struct AuthorizationCall {
 }
 
 impl AuthorizationCall {
-    fn get_components(self) -> Result<(Request, PolicySet, Entities), Answer> {
+    fn get_components(self) -> Result<(Request, PolicySet, Entities), Response> {
         let schema = self
             .schema
             .map(Schema::from_json_value)
@@ -81,16 +81,16 @@ impl AuthorizationCall {
         let principal = match self.principal {
             Some(p) => Some(
                 EntityUid::from_json(p)
-                    .map_err(|e| error_to_answer(e, "Failed to parse principal".into()))?,
+                    .map_err(|e| error_to_response(e, "Failed to parse principal".into()))?,
             ),
             None => None,
         };
         let action = EntityUid::from_json(self.action)
-            .map_err(|e| error_to_answer(e, "Failed to parse action".into()))?;
+            .map_err(|e| error_to_response(e, "Failed to parse action".into()))?;
         let resource = match self.resource {
             Some(r) => Some(
                 EntityUid::from_json(r)
-                    .map_err(|e| error_to_answer(e, "Failed to parse resource".into()))?,
+                    .map_err(|e| error_to_response(e, "Failed to parse resource".into()))?,
             ),
             None => None,
         };
@@ -150,7 +150,7 @@ struct RecvdSlice {
 
 impl RecvdSlice {
     #[allow(clippy::too_many_lines)]
-    fn try_into(self, schema: Option<&Schema>) -> Result<(PolicySet, Entities), Answer> {
+    fn try_into(self, schema: Option<&Schema>) -> Result<(PolicySet, Entities), Response> {
         fn parse_instantiation(v: &Link) -> Result<(SlotId, EntityUid), Vec<String>> {
             let slot = match v.slot.as_str() {
                 "?principal" => SlotId::principal(),
@@ -634,10 +634,10 @@ mod test {
     fn assert_is_authorized(result: InterfaceResult) {
         match result {
             InterfaceResult::Success { result } => {
-                let answer: Answer = serde_json::from_str(result.as_str()).unwrap();
-                println!("{answer:?}");
-                assert_eq!(answer.decision(), Decision::Allow);
-                assert_eq!(answer.diagnostics().errors().count(), 0);
+                let response: Response = serde_json::from_str(result.as_str()).unwrap();
+                println!("{response:?}");
+                assert_eq!(response.decision(), Decision::Allow);
+                assert_eq!(response.diagnostics().errors().count(), 0);
             }
             InterfaceResult::Failure { .. } => {
                 panic!("Expected a successful response, not {result:?}");
@@ -648,8 +648,8 @@ mod test {
     fn assert_is_not_authorized(result: InterfaceResult) {
         match result {
             InterfaceResult::Success { result } => {
-                let answer: Answer = serde_json::from_str(result.as_str()).unwrap();
-                assert_eq!(answer.decision(), Decision::Deny);
+                let response: Response = serde_json::from_str(result.as_str()).unwrap();
+                assert_eq!(response.decision(), Decision::Deny);
             }
             InterfaceResult::Failure { .. } => {
                 panic!("Expected a successful response, not {result:?}");

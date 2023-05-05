@@ -260,37 +260,37 @@ impl Authorizer {
         Self(authorizer::Authorizer::new())
     }
 
-    /// Returns an authorization answer for `r` with respect to the given
+    /// Returns an authorization response for `r` with respect to the given
     /// `PolicySet` and `Entities`.
     ///
     /// The language spec and Dafny model give a precise definition of how this
     /// is computed.
-    pub fn is_authorized(&self, r: &Request, p: &PolicySet, e: &Entities) -> Answer {
+    pub fn is_authorized(&self, r: &Request, p: &PolicySet, e: &Entities) -> Response {
         self.0.is_authorized(&r.0, &p.ast, &e.0).into()
     }
 
     /// A partially evaluated authorization request.
     /// The Authorizer will attempt to make as much progress as possible in the presence of unknowns.
-    /// If the Authorizer can reach an answer, it will return that answer.
+    /// If the Authorizer can reach a response, it will return that response.
     /// Otherwise, it will return a list of residual policies that still need to be evaluated.
     pub fn is_authorized_partial(
         &self,
         query: &Request,
         policy_set: &PolicySet,
         entities: &Entities,
-    ) -> PartialAnswer {
-        let answer = self
+    ) -> PartialResponse {
+        let response = self
             .0
             .is_authorized_core(&query.0, &policy_set.ast, &entities.0);
-        match answer {
-            authorizer::AnswerKind::FullyEvaluated(a) => PartialAnswer::Concrete(Answer {
+        match response {
+            authorizer::ResponseKind::FullyEvaluated(a) => PartialResponse::Concrete(Response {
                 decision: a.decision,
                 diagnostics: Diagnostics {
                     reason: a.diagnostics.reason.into_iter().map(PolicyId).collect(),
                     errors: a.diagnostics.errors.into_iter().collect(),
                 },
             }),
-            authorizer::AnswerKind::Partial(p) => PartialAnswer::Residual(ResidualAnswer {
+            authorizer::ResponseKind::Partial(p) => PartialResponse::Residual(ResidualResponse {
                 residuals: PolicySet::from_ast(p.residuals),
                 diagnostics: Diagnostics {
                     reason: p.diagnostics.reason.into_iter().map(PolicyId).collect(),
@@ -301,28 +301,28 @@ impl Authorizer {
     }
 }
 
-/// Authorization answer returned from the `Authorizer`
+/// Authorization response returned from the `Authorizer`
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-pub struct Answer {
+pub struct Response {
     /// Authorization decision
     decision: Decision,
     /// Diagnostics providing more information on how this decision was reached
     diagnostics: Diagnostics,
 }
 
-/// Authorization answer returned from `is_authorized_partial`
-/// It can either be a full concrete answer, or a residual answer.
+/// Authorization response returned from `is_authorized_partial`
+/// It can either be a full concrete response, or a residual response.
 #[derive(Debug, PartialEq, Clone)]
-pub enum PartialAnswer {
-    /// A full, concrete answer.
-    Concrete(Answer),
-    /// A residual answer. Determining the concrete answer requires further processing.
-    Residual(ResidualAnswer),
+pub enum PartialResponse {
+    /// A full, concrete response.
+    Concrete(Response),
+    /// A residual response. Determining the concrete response requires further processing.
+    Residual(ResidualResponse),
 }
 
-/// A residual answer obtained from `is_authorized_partial`.
+/// A residual response obtained from `is_authorized_partial`.
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct ResidualAnswer {
+pub struct ResidualResponse {
     /// Residual policies
     residuals: PolicySet,
     /// Diagnostics
@@ -354,8 +354,8 @@ impl Diagnostics {
     }
 }
 
-impl Answer {
-    /// Create a new `Answer`
+impl Response {
+    /// Create a new `Response`
     pub fn new(decision: Decision, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
         Self {
             decision,
@@ -374,8 +374,8 @@ impl Answer {
     }
 }
 
-impl From<authorizer::Answer> for Answer {
-    fn from(a: authorizer::Answer) -> Self {
+impl From<authorizer::Response> for Response {
+    fn from(a: authorizer::Response) -> Self {
         Self {
             decision: a.decision,
             diagnostics: Diagnostics {
@@ -386,8 +386,8 @@ impl From<authorizer::Answer> for Answer {
     }
 }
 
-impl ResidualAnswer {
-    /// Create a new `ResidualAnswer`
+impl ResidualResponse {
+    /// Create a new `ResidualResponse`
     pub fn new(residuals: PolicySet, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
         Self {
             residuals,
@@ -2150,14 +2150,14 @@ pub fn eval_expression(
 mod test {
     use std::collections::HashSet;
 
-    use crate::{PolicyId, PolicySet, ResidualAnswer};
+    use crate::{PolicyId, PolicySet, ResidualResponse};
 
     #[test]
-    fn test_pe_answer_constructor() {
+    fn test_pe_response_constructor() {
         let p: PolicySet = "permit(principal, action, resource);".parse().unwrap();
         let reason: HashSet<PolicyId> = std::iter::once("id1".parse().unwrap()).collect();
         let errors: HashSet<String> = std::iter::once("error".to_string()).collect();
-        let a = ResidualAnswer::new(p.clone(), reason.clone(), errors.clone());
+        let a = ResidualResponse::new(p.clone(), reason.clone(), errors.clone());
         assert_eq!(a.diagnostics().errors, errors);
         assert_eq!(a.diagnostics().reason, reason);
         assert_eq!(a.residuals(), &p);
