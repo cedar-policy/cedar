@@ -36,21 +36,21 @@ enum ErrorHandling {
     Skip,
 }
 
-/// A potentially partial answer from the authorizer
+/// A potentially partial response from the authorizer
 #[derive(Debug, Clone)]
-pub enum AnswerKind {
-    /// A fully evaluated answer
-    FullyEvaluated(Answer),
-    /// An answer that has some residuals
-    Partial(PartialAnswer),
+pub enum ResponseKind {
+    /// A fully evaluated response
+    FullyEvaluated(Response),
+    /// A response that has some residuals
+    Partial(PartialResponse),
 }
 
-impl AnswerKind {
+impl ResponseKind {
     /// The decision reached, if a decision could be reached
     pub fn decision(&self) -> Option<Decision> {
         match self {
-            AnswerKind::FullyEvaluated(a) => Some(a.decision),
-            AnswerKind::Partial(_) => None,
+            ResponseKind::FullyEvaluated(a) => Some(a.decision),
+            ResponseKind::Partial(_) => None,
         }
     }
 }
@@ -70,17 +70,17 @@ impl Authorizer {
         }
     }
 
-    /// Returns an authorization answer for `q` with respect to the given `Slice`.
+    /// Returns an authorization response for `q` with respect to the given `Slice`.
     ///
     /// The language spec and Dafny model give a precise definition of how this is
     /// computed.
-    pub fn is_authorized(&self, q: &Request, pset: &PolicySet, entities: &Entities) -> Answer {
+    pub fn is_authorized(&self, q: &Request, pset: &PolicySet, entities: &Entities) -> Response {
         match self.is_authorized_core(q, pset, entities) {
-            AnswerKind::FullyEvaluated(answer) => answer,
-            AnswerKind::Partial(partial) => {
+            ResponseKind::FullyEvaluated(response) => response,
+            ResponseKind::Partial(partial) => {
                 // If we get a residual, we have to treat every residual policy as an error, and obey the error semantics.
                 // This can result in an Accept in one case:
-                // `error_handling` is `SkipOnerror`, no forbids evaluated to a concrete answer, and some permits evaluated to `true`
+                // `error_handling` is `SkipOnerror`, no forbids evaluated to a concrete response, and some permits evaluated to `true`
                 let mut errors = partial.diagnostics.errors;
                 errors.extend(partial.residuals.policies().map(|p| {
                     format!(
@@ -93,14 +93,14 @@ impl Authorizer {
                 let idset = partial.residuals.policies().map(|p| p.id().clone());
 
                 match self.error_handling {
-                    ErrorHandling::Deny => Answer::new(
+                    ErrorHandling::Deny => Response::new(
                         Decision::Deny,
                         idset
                             .chain(partial.diagnostics.reason.into_iter())
                             .collect(),
                         errors,
                     ),
-                    ErrorHandling::Forbid => Answer::new(
+                    ErrorHandling::Forbid => Response::new(
                         Decision::Deny,
                         idset
                             .chain(partial.diagnostics.reason.into_iter())
@@ -125,9 +125,9 @@ impl Authorizer {
                             .iter()
                             .any(|pid| pset.get(pid).unwrap().effect() == Effect::Permit)
                         {
-                            Answer::new(Decision::Allow, partial.diagnostics.reason, errors)
+                            Response::new(Decision::Allow, partial.diagnostics.reason, errors)
                         } else {
-                            Answer::new(
+                            Response::new(
                                 Decision::Deny,
                                 idset
                                     .chain(partial.diagnostics.reason.into_iter())
@@ -141,7 +141,7 @@ impl Authorizer {
         }
     }
 
-    /// Returns an authorization answer for `q` with respect to the given `Slice`.
+    /// Returns an authorization response for `q` with respect to the given `Slice`.
     /// Partial Evaluation of is_authorized
     ///
     /// The language spec and Dafny model give a precise definition of how this is
@@ -151,14 +151,14 @@ impl Authorizer {
         q: &Request,
         pset: &PolicySet,
         entities: &Entities,
-    ) -> AnswerKind {
+    ) -> ResponseKind {
         let eval = match Evaluator::new(q, entities, &self.extensions) {
             Ok(eval) => eval,
             Err(e) => {
                 let msg = format!(
                     "while initializing the Evaluator, encountered the following error: {e}"
                 );
-                return AnswerKind::FullyEvaluated(Answer::new(
+                return ResponseKind::FullyEvaluated(Response::new(
                     Decision::Deny,
                     HashSet::new(),
                     vec![msg],
@@ -169,7 +169,7 @@ impl Authorizer {
         let results = self.evaluate_policies(pset, eval);
 
         if !results.global_deny_policies.is_empty() {
-            return AnswerKind::FullyEvaluated(Answer::new(
+            return ResponseKind::FullyEvaluated(Response::new(
                 Decision::Deny,
                 results.global_deny_policies,
                 results.all_warnings,
@@ -200,13 +200,13 @@ impl Authorizer {
             // If we have a satisfied permit and _no_ residual forbids, we can return Allow (this is true regardless of residual permits)
             (true, false | true, false) => {
                 let idset = satisfied_permits.map(|p| p.id().clone()).collect();
-                AnswerKind::FullyEvaluated(Answer::new(
+                ResponseKind::FullyEvaluated(Response::new(
                     Decision::Allow,
                     idset,
                     results.all_warnings,
                 ))
             }
-            // If we have a satisfied permit, and there are residual forbids, we must return a residual answer. (this is true regardless of residual permits)
+            // If we have a satisfied permit, and there are residual forbids, we must return a residual response. (this is true regardless of residual permits)
             (true, false | true, true) => {
                 let idset = satisfied_permits
                     .map(|p| p.id().clone())
@@ -215,7 +215,7 @@ impl Authorizer {
                 let id = idset.iter().next().unwrap().clone(); // This unwrap is safe as we know there are satisfied permits
                 let trivial_true = Policy::from_when_clause(Effect::Permit, Expr::val(true), id);
                 // This unwrap should be safe, all policy IDs should already be unique
-                AnswerKind::Partial(PartialAnswer::new(
+                ResponseKind::Partial(PartialResponse::new(
                     PolicySet::try_from_iter(
                         results
                             .forbid_residuals
@@ -234,7 +234,11 @@ impl Authorizer {
                     .into_iter()
                     .map(|p| p.id().clone())
                     .collect();
-                AnswerKind::FullyEvaluated(Answer::new(Decision::Deny, idset, results.all_warnings))
+                ResponseKind::FullyEvaluated(Response::new(
+                    Decision::Deny,
+                    idset,
+                    results.all_warnings,
+                ))
             }
             // If there are no satisfied permits, but residual permits, then request may still succeed. Return residual
             // Add in the forbid_residuals if any
@@ -246,7 +250,7 @@ impl Authorizer {
                         .into_iter()
                         .map(|p| p.id().clone())
                         .collect();
-                    AnswerKind::FullyEvaluated(Answer::new(
+                    ResponseKind::FullyEvaluated(Response::new(
                         Decision::Deny,
                         idset,
                         results.all_warnings,
@@ -258,7 +262,7 @@ impl Authorizer {
                         [results.forbid_residuals, results.permit_residuals].concat(),
                     )
                     .unwrap();
-                    AnswerKind::Partial(PartialAnswer::new(
+                    ResponseKind::Partial(PartialResponse::new(
                         all_residuals,
                         HashSet::new(),
                         results.all_warnings,
@@ -278,8 +282,8 @@ impl Authorizer {
 
         for p in pset.policies() {
             match eval.partial_evaluate(p) {
-                Ok(Either::Left(answer)) => {
-                    if answer {
+                Ok(Either::Left(response)) => {
+                    if response {
                         satisfied_policies.push(p)
                     }
                 }
@@ -628,8 +632,10 @@ mod test {
 
         let r = a.is_authorized_core(&q, &pset, &es);
         match r {
-            AnswerKind::FullyEvaluated(_) => panic!("Reached answer, should have gotten residual."),
-            AnswerKind::Partial(p) => {
+            ResponseKind::FullyEvaluated(_) => {
+                panic!("Reached response, should have gotten residual.")
+            }
+            ResponseKind::Partial(p) => {
                 let map = [("test".into(), Value::Lit(false.into()))]
                     .into_iter()
                     .collect();
@@ -738,8 +744,10 @@ mod test {
 
         let r = a.is_authorized_core(&q, &pset, &es);
         match r {
-            AnswerKind::FullyEvaluated(_) => panic!("Reached answer, should have gotten residual."),
-            AnswerKind::Partial(p) => {
+            ResponseKind::FullyEvaluated(_) => {
+                panic!("Reached response, should have gotten residual.")
+            }
+            ResponseKind::Partial(p) => {
                 let map = [("a".into(), Value::Lit(false.into()))]
                     .into_iter()
                     .collect();
@@ -782,28 +790,28 @@ mod test {
 // remaining lines of this file, until the next #[cfg(test)]
 // GRCOV_BEGIN_COVERAGE
 
-/// Authorization answer returned from the `Authorizer`
+/// Authorization response returned from the `Authorizer`
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct Answer {
+pub struct Response {
     /// Authorization decision
     pub decision: Decision,
     /// Diagnostics providing more information on how this decision was reached
     pub diagnostics: Diagnostics,
 }
 
-/// Answer that may contain a residual.
+/// Response that may contain a residual.
 #[derive(Debug, PartialEq, Clone)]
-pub struct PartialAnswer {
+pub struct PartialResponse {
     /// Residual policies
     pub residuals: PolicySet,
     /// Diagnostics providing info
     pub diagnostics: Diagnostics,
 }
 
-impl PartialAnswer {
-    /// Create a partial answer with a residual PolicySet
+impl PartialResponse {
+    /// Create a partial response with a residual PolicySet
     pub fn new(pset: PolicySet, reason: HashSet<PolicyID>, errors: Vec<String>) -> Self {
-        PartialAnswer {
+        PartialResponse {
             residuals: pset,
             diagnostics: Diagnostics { reason, errors },
         }
@@ -820,10 +828,10 @@ pub struct Diagnostics {
     pub errors: Vec<String>,
 }
 
-impl Answer {
-    /// Create a new `Answer`
+impl Response {
+    /// Create a new `Response`
     pub fn new(decision: Decision, reason: HashSet<PolicyID>, errors: Vec<String>) -> Self {
-        Answer {
+        Response {
             decision,
             diagnostics: Diagnostics { reason, errors },
         }

@@ -1125,7 +1125,7 @@ pub mod test {
             )),
             Ok(Value::Lit(Literal::Bool(false)))
         );
-        // has_attr where the answer is true
+        // has_attr where the response is true
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(
                 Expr::val(EntityUID::with_eid("entity_with_attrs")),
