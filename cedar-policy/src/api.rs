@@ -704,13 +704,9 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             cedar_policy_validator::SchemaError::ActionEntityAttributes(e) => {
                 Self::ActionEntityAttributes(e)
             }
-            cedar_policy_validator::SchemaError::ContextOrShapeNotRecord => {
-                Self::ContextOrShapeNotRecord
-            }
-            cedar_policy_validator::SchemaError::ActionEntityAttributeEmptySet => {
-                Self::ContextOrShapeNotRecord
-            }
-            cedar_policy_validator::SchemaError::ActionEntityAttributeUnsupportedType => {
+            cedar_policy_validator::SchemaError::ContextOrShapeNotRecord
+            | cedar_policy_validator::SchemaError::ActionEntityAttributeEmptySet
+            | cedar_policy_validator::SchemaError::ActionEntityAttributeUnsupportedType => {
                 Self::ContextOrShapeNotRecord
             }
         }
@@ -2359,7 +2355,7 @@ mod head_constraints_tests {
             PrincipalConstraint::In(euid.clone())
         );
         let map: HashMap<SlotId, EntityUid> =
-            [(SlotId::principal(), euid.clone())].into_iter().collect();
+            std::iter::once((SlotId::principal(), euid.clone())).collect();
         let p = link(
             "permit(principal in ?principal,action,resource);",
             map.clone(),
@@ -2414,7 +2410,7 @@ mod head_constraints_tests {
             ResourceConstraint::In(euid.clone())
         );
         let map: HashMap<SlotId, EntityUid> =
-            [(SlotId::resource(), euid.clone())].into_iter().collect();
+            std::iter::once((SlotId::resource(), euid.clone())).collect();
         let p = link(
             "permit(principal,action,resource in ?resource);",
             map.clone(),
@@ -2460,9 +2456,7 @@ mod policy_set_tests {
         pset.add_template(template).expect("Add failed");
 
         let env: HashMap<SlotId, EntityUid> =
-            [(SlotId::principal(), EntityUid::from_strs("Test", "test"))]
-                .into_iter()
-                .collect();
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
 
         let r = pset.link(
             PolicyId::from_str("t").unwrap(),
@@ -2492,9 +2486,7 @@ mod policy_set_tests {
         pset.add_template(template).expect("Failed to add");
 
         let env1: HashMap<SlotId, EntityUid> =
-            [(SlotId::principal(), EntityUid::from_strs("Test", "test1"))]
-                .into_iter()
-                .collect();
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test1"))).collect();
         pset.link(
             PolicyId::from_str("t").unwrap(),
             PolicyId::from_str("link").unwrap(),
@@ -2503,9 +2495,7 @@ mod policy_set_tests {
         .expect("Failed to link");
 
         let env2: HashMap<SlotId, EntityUid> =
-            [(SlotId::principal(), EntityUid::from_strs("Test", "test2"))]
-                .into_iter()
-                .collect();
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test2"))).collect();
 
         let err = pset
             .link(
@@ -2541,9 +2531,7 @@ mod policy_set_tests {
         pset.add_template(template2)
             .expect("Failed to add template");
         let env3: HashMap<SlotId, EntityUid> =
-            [(SlotId::resource(), EntityUid::from_strs("Test", "test3"))]
-                .into_iter()
-                .collect();
+            std::iter::once((SlotId::resource(), EntityUid::from_strs("Test", "test3"))).collect();
 
         pset.link(
             PolicyId::from_str("t").unwrap(),
@@ -2578,9 +2566,7 @@ mod policy_set_tests {
         pset.link(
             PolicyId::from_str("template").unwrap(),
             PolicyId::from_str("linked").unwrap(),
-            [(SlotId::principal(), EntityUid::from_strs("Test", "test"))]
-                .into_iter()
-                .collect(),
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
         )
         .expect("Link failure");
 
@@ -2732,12 +2718,12 @@ mod ancestors_tests {
         let b = Entity::new(
             b_euid.clone(),
             HashMap::new(),
-            [a_euid.clone()].into_iter().collect(),
+            std::iter::once(a_euid.clone()).collect(),
         );
         let c = Entity::new(
             c_euid.clone(),
             HashMap::new(),
-            [b_euid.clone()].into_iter().collect(),
+            std::iter::once(b_euid.clone()).collect(),
         );
         let es = Entities::from_entities([a, b, c]).unwrap();
         let ans = es.ancestors(&c_euid).unwrap().collect::<HashSet<_>>();
@@ -2759,6 +2745,8 @@ mod schema_based_parsing_tests {
 
     /// Simple test that exercises a variety of attribute types.
     #[test]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cognitive_complexity)]
     fn attr_types() {
         let schema = Schema::from_json_value(json!(
         {"": {

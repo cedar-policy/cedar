@@ -66,7 +66,9 @@ impl<'e, 's, S: ContextSchema> ContextJsonParser<'e, 's, S> {
         })?;
         match rexpr.expr_kind() {
             ExprKind::Record { .. } => Ok(Context::from_expr(rexpr)),
-            _ => Err(JsonDeserializationError::ExpectedContextToBeRecord { got: rexpr }),
+            _ => Err(JsonDeserializationError::ExpectedContextToBeRecord {
+                got: Box::new(rexpr),
+            }),
         }
     }
 

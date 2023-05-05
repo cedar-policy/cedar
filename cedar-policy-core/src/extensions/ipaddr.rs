@@ -372,54 +372,40 @@ mod tests {
     #[test]
     fn constructors() {
         let ext = extension();
-        assert_eq!(
-            ext.get_func(
-                &Name::parse_unqualified_name("ip").expect("should be a valid identifier")
-            )
+        assert!(ext
+            .get_func(&Name::parse_unqualified_name("ip").expect("should be a valid identifier"))
             .expect("function should exist")
-            .is_constructor(),
-            true
-        );
-        assert_eq!(
-            ext.get_func(
+            .is_constructor());
+        assert!(!ext
+            .get_func(
                 &Name::parse_unqualified_name("isIpv4").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor(),
-            false
-        );
-        assert_eq!(
-            ext.get_func(
+            .is_constructor());
+        assert!(!ext
+            .get_func(
                 &Name::parse_unqualified_name("isIpv6").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor(),
-            false
-        );
-        assert_eq!(
-            ext.get_func(
+            .is_constructor());
+        assert!(!ext
+            .get_func(
                 &Name::parse_unqualified_name("isLoopback").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor(),
-            false
-        );
-        assert_eq!(
-            ext.get_func(
+            .is_constructor());
+        assert!(!ext
+            .get_func(
                 &Name::parse_unqualified_name("isMulticast").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor(),
-            false
-        );
-        assert_eq!(
-            ext.get_func(
+            .is_constructor());
+        assert!(!ext
+            .get_func(
                 &Name::parse_unqualified_name("isInRange").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor(),
-            false
-        );
+            .is_constructor(),);
     }
 
     #[test]
@@ -1026,8 +1012,8 @@ mod tests {
 
     #[test]
     fn test_contains_at_least_two() {
-        assert_eq!(contains_at_least_two(":::", ':'), true);
-        assert_eq!(contains_at_least_two("::", ':'), true);
-        assert_eq!(contains_at_least_two(":", ':'), false);
+        assert!(contains_at_least_two(":::", ':'));
+        assert!(contains_at_least_two("::", ':'));
+        assert!(!contains_at_least_two(":", ':'));
     }
 }

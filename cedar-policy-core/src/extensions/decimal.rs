@@ -295,48 +295,38 @@ mod tests {
     #[test]
     fn constructors() {
         let ext = extension();
-        assert_eq!(
-            ext.get_func(
+        assert!(ext
+            .get_func(
                 &Name::parse_unqualified_name("decimal").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor(),
-            true
-        );
-        assert_eq!(
-            ext.get_func(
+            .is_constructor());
+        assert!(!ext
+            .get_func(
                 &Name::parse_unqualified_name("lessThan").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor(),
-            false
-        );
-        assert_eq!(
-            ext.get_func(
+            .is_constructor());
+        assert!(!ext
+            .get_func(
                 &Name::parse_unqualified_name("lessThanOrEqual")
                     .expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor(),
-            false
-        );
-        assert_eq!(
-            ext.get_func(
+            .is_constructor());
+        assert!(!ext
+            .get_func(
                 &Name::parse_unqualified_name("greaterThan").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor(),
-            false
-        );
-        assert_eq!(
-            ext.get_func(
+            .is_constructor());
+        assert!(!ext
+            .get_func(
                 &Name::parse_unqualified_name("greaterThanOrEqual")
                     .expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor(),
-            false
-        );
+            .is_constructor(),);
     }
 
     #[test]

@@ -34,7 +34,7 @@ pub enum JsonDeserializationError {
         /// Context of this error
         ctx: JsonDeserializationErrorContext,
         /// the expression we got instead
-        got: Expr,
+        got: Box<Expr>,
     },
     /// A field that needs to be an extension value, was some other JSON value
     #[error("{ctx}, expected an extension value, but got {got}")]
@@ -42,22 +42,22 @@ pub enum JsonDeserializationError {
         /// Context of this error
         ctx: JsonDeserializationErrorContext,
         /// the expression we got instead
-        got: Expr,
+        got: Box<Expr>,
     },
     /// Contexts need to be records, but we got some other JSON value
     #[error("Expected Context to be a record, but got {got}")]
     ExpectedContextToBeRecord {
         /// Expression we got instead
-        got: RestrictedExpr,
+        got: Box<RestrictedExpr>,
     },
     /// Schema-based parsing needed an implicit extension constructor, but no suitable
     /// constructor was found
     #[error("Extension constructor for {arg_type} -> {return_type} not found")]
     ImpliedConstructorNotFound {
         /// return type of the constructor we were looking for
-        return_type: SchemaType,
+        return_type: Box<SchemaType>,
         /// argument type of the constructor we were looking for
-        arg_type: SchemaType,
+        arg_type: Box<SchemaType>,
     },
     /// During schema-based parsing, encountered this attribute on this entity, but that
     /// attribute shouldn't exist on entities of this type
@@ -102,9 +102,9 @@ pub enum JsonDeserializationError {
         /// Context of this error
         ctx: JsonDeserializationErrorContext,
         /// Type which was expected
-        expected: SchemaType,
+        expected: Box<SchemaType>,
         /// Type which was encountered instead
-        actual: SchemaType,
+        actual: Box<SchemaType>,
     },
     /// During schema-based parsing, found a set whose elements don't all have the
     /// same type.  This doesn't match any possible schema.
@@ -113,9 +113,9 @@ pub enum JsonDeserializationError {
         /// Context of this error
         ctx: JsonDeserializationErrorContext,
         /// First element type which was found
-        ty1: SchemaType,
+        ty1: Box<SchemaType>,
         /// Second element type which was found
-        ty2: SchemaType,
+        ty2: Box<SchemaType>,
     },
 }
 

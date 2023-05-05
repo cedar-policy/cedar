@@ -206,8 +206,8 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                                 uid: uid.clone(),
                                 attr: k,
                             },
-                            expected: expected_ty,
-                            actual: actual_ty,
+                            expected: Box::new(expected_ty),
+                            actual: Box::new(actual_ty),
                         })
                     }
                 }
