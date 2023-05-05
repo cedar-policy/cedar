@@ -42,7 +42,7 @@ If you've thought of a way that Cedar could be better, we want to hear about it.
 
 ### Documentation Changes
 
-If you would like to contribute to the documentation, please do so in the [documentation](cedar-docs) repo. 
+If you would like to contribute to the documentation, please do so in the [documentation](https://github.com/cedar-policy/cedar-docs) repo. 
 
 
 ### Contributing Code
