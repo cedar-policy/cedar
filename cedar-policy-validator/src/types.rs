@@ -400,7 +400,7 @@ impl Type {
                     }
                     None => (),
                 }
-                set_json.into()
+                set_json
             }
             Type::EntityOrRecord(rk) => {
                 let mut record_json = match rk {
@@ -567,7 +567,7 @@ impl Display for Type {
         write!(
             f,
             "{}",
-            serde_json::value::Value::Object(self.to_type_json()).to_string()
+            serde_json::value::Value::Object(self.to_type_json())
         )
     }
 }

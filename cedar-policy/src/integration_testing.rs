@@ -152,12 +152,15 @@ pub trait CustomCedarImpl {
 /// Relative paths are assumed to be relative to the root of the
 /// `CedarIntegrationTests` repo.
 /// Absolute paths are handled without modification.
+/// # Panics
+/// When integration test data cannot be found
+#[allow(clippy::too_many_lines)]
 pub fn perform_integration_test_from_json_custom(
     jsonfile: impl AsRef<Path>,
     custom_impl_opt: Option<&dyn CustomCedarImpl>,
 ) {
     let jsonfile = resolve_integration_test_path(jsonfile);
-    eprintln!("File path: {:?}", jsonfile);
+    eprintln!("File path: {jsonfile:?}");
     let jsonstr = std::fs::read_to_string(jsonfile.as_path())
         .unwrap_or_else(|e| panic!("error reading from file {}: {e}", jsonfile.display()));
     let test: JsonTest = serde_json::from_str(&jsonstr)

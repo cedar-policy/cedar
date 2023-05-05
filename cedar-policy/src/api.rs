@@ -2718,12 +2718,12 @@ mod ancestors_tests {
         let b = Entity::new(
             b_euid.clone(),
             HashMap::new(),
-            [a_euid.clone()].into_iter().collect(),
+            std::iter::once(a_euid.clone()).collect(),
         );
         let c = Entity::new(
             c_euid.clone(),
             HashMap::new(),
-            [b_euid.clone()].into_iter().collect(),
+            std::iter::once(b_euid.clone()).collect(),
         );
         let es = Entities::from_entities([a, b, c]).unwrap();
         let ans = es.ancestors(&c_euid).unwrap().collect::<HashSet<_>>();
@@ -2745,6 +2745,8 @@ mod schema_based_parsing_tests {
 
     /// Simple test that exercises a variety of attribute types.
     #[test]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cognitive_complexity)]
     fn attr_types() {
         let schema = Schema::from_json_value(json!(
         {"": {

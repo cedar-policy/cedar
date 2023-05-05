@@ -337,27 +337,28 @@ mod test {
         };
         let (policies, entities) = rslice.try_into(None).expect("parse failed");
         assert!(policies.is_empty());
-        match entities.get(&EntityUid::from_type_name_and_id(
-            "user".parse().unwrap(),
-            "alice".parse().unwrap(),
-        )) {
-            Some(alice) => assert_eq!(
-                entities.is_ancestor_of(
-                    &EntityUid::from_type_name_and_id(
-                        "user".parse().unwrap(),
-                        "bob".parse().unwrap()
-                    ),
-                    &alice.uid()
-                ),
-                true
-            ),
-            None => panic!("Missing user::alice Entity"),
-        };
+        entities
+            .get(&EntityUid::from_type_name_and_id(
+                "user".parse().unwrap(),
+                "alice".parse().unwrap(),
+            ))
+            .map_or_else(
+                || panic!("Missing user::alice Entity"),
+                |alice| {
+                    assert!(entities.is_ancestor_of(
+                        &EntityUid::from_type_name_and_id(
+                            "user".parse().unwrap(),
+                            "bob".parse().unwrap()
+                        ),
+                        &alice.uid()
+                    ));
+                },
+            );
     }
 
     #[test]
     fn test_failure_on_invalid_syntax() {
-        assert_is_failure(json_is_authorized("iefjieoafiaeosij"));
+        assert_is_failure(&json_is_authorized("iefjieoafiaeosij"));
     }
 
     #[test]
@@ -657,7 +658,7 @@ mod test {
         }
     }
 
-    fn assert_is_failure(result: InterfaceResult) {
+    fn assert_is_failure(result: &InterfaceResult) {
         match result {
             InterfaceResult::Success { .. } => {
                 panic!("Expected a failing response, not {result:?}")
