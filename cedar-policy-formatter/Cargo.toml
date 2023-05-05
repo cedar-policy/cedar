@@ -12,7 +12,6 @@ repository = "https://github.com/cedar/cedar-policy"
 [dependencies]
 cedar-policy-core = { version = "2.0", path = "../cedar-policy-core" }
 pretty = "0.11"
-clap = { version = "3.2.16", features = ["derive"] }
 anyhow = "1.0"
 logos = "0.12.1"
 itertools = "0.10"
