@@ -99,7 +99,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
 
         if let Err(parse_errs) = policies_res {
             //we may see a failure to parse instead of the original error: (see comment at ast/exprs.rs:500)
-            //If an expected answer is for an error due to a non-existent function call or if e.g.,
+            //If an expected response is for an error due to a non-existent function call or if e.g.,
             // "isInRange" is used as a function instead of a method
             //(Maybe due to null principal?)
             assert_eq!(

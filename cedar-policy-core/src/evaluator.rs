@@ -199,7 +199,7 @@ impl<'q, 'e> Evaluator<'e> {
     }
 
     /// Evaluate the given `Policy`, returning either a bool or an error.
-    /// The bool indicates whether the policy applies, ie, "is in force" for the
+    /// The bool indicates whether the policy applies, ie, "is satisfied" for the
     /// current `request`.
     /// This is _different than_ "if the current `request` should be allowed" --
     /// it doesn't consider whether we're processing a `Permit` policy or a
@@ -212,7 +212,7 @@ impl<'q, 'e> Evaluator<'e> {
     /// 1) A boolean, if complete evaluation was possible
     /// 2) An error, if the policy is guaranteed to error
     /// 3) A residual, if complete evaluation was impossible
-    /// The bool indicates whether the policy applies, ie, "is in force" for the
+    /// The bool indicates whether the policy applies, ie, "is satisfied" for the
     /// current `request`.
     /// This is _different than_ "if the current `request` should be allowed" --
     /// it doesn't consider whether we're processing a `Permit` policy or a
@@ -1125,7 +1125,7 @@ pub mod test {
             )),
             Ok(Value::Lit(Literal::Bool(false)))
         );
-        // has_attr where the answer is true
+        // has_attr where the response is true
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(
                 Expr::val(EntityUID::with_eid("entity_with_attrs")),
