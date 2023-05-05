@@ -3,6 +3,12 @@ name = "cedar-policy-validator"
 edition = "2021"
 
 version = "2.0.0"
+license-file = "../LICENSE"
+categories = ["compilers", "config"]
+description = "Validator for the Cedar Policy language."
+keywords = ["cedar", "authorization", "policy", "security"]
+homepage = "https://cedarpolicy.com"
+repository = "https://github.com/cedar/cedar-policy"
 
 [dependencies]
 cedar-policy-core = { version = "2.0.0", path = "../cedar-policy-core" }
