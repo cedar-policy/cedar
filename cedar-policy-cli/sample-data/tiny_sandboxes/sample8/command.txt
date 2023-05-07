@@ -4,7 +4,7 @@
  Decision: Allow
 */
 
-./bin/cedar authorize \
+cargo run  authorize \
     --policies tiny_sandboxes/sample8/policy.txt \
     --entities tiny_sandboxes/sample8/entity.json \
     --request-json tiny_sandboxes/sample8/request.json
@@ -15,7 +15,7 @@ Validation:
 Is policy.txt valid based on the schema schema.json
 */
 
-./bin/cedar validate \
+cargo run  validate \
     --policies tiny_sandboxes/sample8/policy.txt \
     --schema tiny_sandboxes/sample8/schema.json
 
@@ -25,7 +25,7 @@ Evaluate:
 Evaluate a Cedar expression
 */
 
-./bin/cedar evaluate  \
+cargo run  evaluate  \
     --request-json tiny_sandboxes/sample8/request.json \
     --entities tiny_sandboxes/sample8/entity.json \
      "principal.score.lessThan(decimal(\"1.2345\"))"

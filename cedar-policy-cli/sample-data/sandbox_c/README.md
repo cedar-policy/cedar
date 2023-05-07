@@ -17,12 +17,12 @@ Our store has 3 `User`s:
 
 Let's see if `alice` can view `VacationPhoto94.jpg`:
 ```
-./build/bin/cedar authorize \
+cargo run authorize \
 	--principal 'User::"alice"' \
 	--action 'Action::"view"' \
 	--resource 'Photo::"VacationPhoto94.jpg"' \
-	--policies ./sample-data/sandbox_c/policies.txt \
-	--entities ./sample-data/sandbox_c/entities.json
+	--policies ./sandbox_c/policies.txt \
+	--entities ./sandbox_c/entities.json
 ```
 
 We should get `DENY`, as there is no policy that allows this.
@@ -30,7 +30,7 @@ We should get `DENY`, as there is no policy that allows this.
 ## Instantiating a template
 Our policy store contains a Policy Template that we can use to grant `alice` access:
 ```
-"AccessVacation"
+@id("AccessVacation")
 permit(
     principal in ?principal,
     action == Action::"view",
@@ -42,9 +42,9 @@ This looks like a regular policy, but it has `?principal` instead of a concrete 
 `?principal` is a *Slot*, which can be filled in later.
 Let's link this template to give `alice` access:
 ```
-./build/bin/cedar link \
-	./sample-data/sandbox_c/policies.txt \
-	./links \
+cargo run link \
+	./sandbox_c/policies.txt \
+	./linked \
 	"AccessVacation" \
 	"AliceAccess" \
 	'{ "?principal" : "User::\"alice\"" }'
@@ -55,12 +55,12 @@ This template-linked policiy will have the ID "AliceAccess".
 It will save this template-linked policy in the file `./linked`.
 We can re-run the request with our linked file:
 ```
-./build/bin/cedar authorize \
+cargo run authorize \
 	--principal 'User::"alice"' \
 	--action 'Action::"view"' \
 	--resource 'Photo::"VacationPhoto94.jpg"' \
-	--policies ./sample-data/sandbox_c/policies.txt \
-	--entities ./sample-data/sandbox_c/entities.json \
+	--policies ./sandbox_c/policies.txt \
+	--entities ./sandbox_c/entities.json \
 	--template-linked ./linked
 ```
 
@@ -68,8 +68,8 @@ And we should now get `ALLOW`.
 
 Let's also give `bob` access:
 ```
-./build/bin/cedar link \
-	./sample-data/sandbox_c/policies.txt \
+cargo run link \
+	./sandbox_c/policies.txt \
 	./linked \
 	"AccessVacation" \
 	"BobAccess" \
@@ -85,7 +85,7 @@ Templates can be updated, and past policies linked to that template will reflect
 Let's take our previous template, and update it to also have an ABAC rule.
 Edit the template to add a when clause so it looks like the following:
 ```
-"AccessVacation"
+@id("AccessVacation")
 permit(
 	principal in ?principal,
 	action == Action::"view",
@@ -99,23 +99,23 @@ Now we can re-run our requests:
 
 
 ```
-./build/bin/cedar authorize \
+cargo run authorize \
 	--principal 'User::"bob"' \
 	--action 'Action::"view"' \
 	--resource 'Photo::"VacationPhoto94.jpg"' \
-	--policies ./sample-data/sandbox_c/policies.txt \
-	--entities ./sample-data/sandbox_c/entities.json
-	--templated-linked./linked
+	--policies ./sandbox_c/policies.txt \
+	--entities ./sandbox_c/entities.json \
+	--template-linked ./linked
 ```
 Bob should still have access, as his entity has the attribute set.
 
 ```
-./build/bin/cedar authorize \
+cargo run authorize \
 	--principal 'User::"alice"' \
 	--action 'Action::"view"' \
 	--resource 'Photo::"VacationPhoto94.jpg"' \
-	--policies ./sample-data/sandbox_c/policies.txt \
-	--entities ./sample-data/sandbox_c/entities.json
+	--policies ./sandbox_c/policies.txt \
+	--entities ./sandbox_c/entities.json \
 	--template-linked ./linked
 ```
 But Alice should now be denied.

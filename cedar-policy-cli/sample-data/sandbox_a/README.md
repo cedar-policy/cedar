@@ -20,7 +20,7 @@ allows it.
 
 Try the following authorization request:
 ```
-./bin/cedar authorize \
+cargo run authorize \
     --principal 'User::"alice"' \
     --action 'Action::"view"' \
     --resource 'Photo::"VacationPhoto94.jpg"' \
@@ -42,7 +42,7 @@ actions on a resource or group of resources.
 
 Try the following authorization request:
 ```
-./bin/cedar authorize \
+cargo run authorize \
     --principal 'User::"alice"' \
     --action 'Action::"view"' \
     --resource 'Photo::"VacationPhoto94.jpg"' \
@@ -67,7 +67,7 @@ itself.
 Try this request, with any `--principal`, to see that `view` access is allowed to
 everyone:
 ```
-./bin/cedar authorize \
+cargo run authorize \
     --principal 'User::"alice"' \
     --action 'Action::"view"' \
     --resource 'Photo::"VacationPhoto94.jpg"' \
@@ -78,7 +78,7 @@ everyone:
 And, see that anyone is also allowed the `listPhotos` action on the album
 itself:
 ```
-./bin/cedar authorize \
+cargo run authorize \
     --principal 'User::"tim"' \
     --action 'Action::"listPhotos"' \
     --resource 'Album::"jane_vacation"' \
@@ -90,7 +90,7 @@ itself:
 
 You can validate if a policy conforms with the schema. Try the following:
 ```
-./bin/cedar validate \
+cargo run validate \
   --policies ./sandbox_a/policies_1.txt \
   --schema ./sandbox_a/schema.json
 ```
@@ -105,7 +105,7 @@ Now try validation on `policies_1_bad.txt`. You will see that validation fails, 
 You can evaluate a Cedar expression using the `evaluate` command. Try the
 following:
 ```
-./bin/cedar evaluate \
+cargo run evaluate \
     --principal 'User::"alice"' \
     --action 'Action::"listPhotos"' \
     --resource 'Album::"jane_vacation"' \

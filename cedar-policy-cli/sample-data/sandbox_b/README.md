@@ -11,7 +11,7 @@ with job level `>= 5` to view photos in the `device_prototypes` album.
 
 Try this authorization request:
 ```
-./bin/cedar authorize \
+cargo run authorize \
     --principal 'User::"alice"' \
     --action 'Action::"view"' \
     --resource 'Photo::"prototype_v0.jpg"' \
@@ -32,7 +32,7 @@ attribute set to `true` can only be viewed by their account's owner.
 That means this authorization request should be denied, because the
 photo's owner is not `User::"stacey"`:
 ```
-./bin/cedar authorize \
+cargo run authorize \
     --principal 'User::"stacey"' \
     --action 'Action::"view"' \
     --resource 'Photo::"alice_w2.jpg"' \
@@ -59,7 +59,7 @@ With the default `context.json`, you should be able to see that `alice` is
 allowed to view `vacation.jpg` (or any other resource transitively contained
 in `Account::"alice"`):
 ```
-./bin/cedar authorize \
+cargo run authorize \
     --principal 'User::"alice"' \
     --action 'Action::"view"' \
     --resource 'Photo::"vacation.jpg"' \
@@ -75,7 +75,7 @@ in the policy, the access will not be allowed.
 
 You can validate if a policy conforms with the schema. Try the following:
 ```
-./bin/cedar validate \
+cargo run validate \
   --policies ./sandbox_b/policies_5.txt \
   --schema ./sandbox_b/schema.json
 ```
