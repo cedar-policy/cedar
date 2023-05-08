@@ -17,19 +17,24 @@
 
 ## Repositories
 
-cedar (https://github.com/cedar-policy/cedar)
+* cedar (https://github.com/cedar-policy/cedar)
+
 The cedar repository houses the Cedar SDK including the authorization engine, validator, policy formatter, and CLI.
 
-cedar-docs (https://github.com/cedar-policy/cedar-docs)
+* cedar-docs (https://github.com/cedar-policy/cedar-docs)
+
 The cedar-docs repository houses documentation for all cedar projects.
 
-cedar-examples (https://github.com/cedar-policy/cedar-examples)
+* cedar-examples (https://github.com/cedar-policy/cedar-examples)
+
 The cedar-examples repository houses example applications using the Cedar language and SDK
 
-cedar-java (https://github.com/cedar-policy/cedar-java)
+* cedar-java (https://github.com/cedar-policy/cedar-java)
+
 The cedar-java repository houses the Java language bindings for Cedar.
 
-cedar-spec (https://github.com/cedar-policy/cedar-spec)
+* cedar-spec (https://github.com/cedar-policy/cedar-spec)
+
 The cedar-spec repository houses the formal Dafny specification for the Cedar language as well as the differential testing/property-based testing framework.
 
 ## Code of Conduct
