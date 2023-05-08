@@ -11,7 +11,7 @@ The easiest way to format your Cedar policies is via [Cedar CLI](../cedar-policy
 # Default indentation is two spaces.
 # Default line width is 80.
 cedar format my-policies.cedar
-# I wanna more indentation.
+# I want more indentation.
 cedar format -i 4 my-policies.cedar
 # I like shorter lines.
 cedar format -l 40 my-policies.cedar
