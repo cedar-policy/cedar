@@ -1,6 +1,13 @@
 # Contributing to Cedar
 
+
 Cedar is a community project that is built and maintained by people just like **you**. We're glad you're interested in helping out. There are several different ways you can do it, but before we talk about that, let's talk about how to get started.
+
+Thank you for your interest in contributing to our project. Whether it's a bug report, new feature, correction, or additional
+documentation, we greatly value feedback and contributions from our community.
+
+Please read through this document before submitting any issues or pull requests to ensure we have all the necessary
+information to effectively respond to your bug report or contribution.
 
 
 ## First Things First
@@ -18,13 +25,7 @@ A bug is when software behaves in a way that you didn't expect and the developer
 
 Once you've confirmed that the bug still exists in the latest version, you'll want to check to make sure it's not something we already know about on the [open issues GitHub page](https://github.com/cedar-policy/cedar/issues).
 
-If you've upgraded to the latest version and you can't find it in our open issues list, then you'll need to tell us how to reproduce it. To make the behavior as clear as possible, please provided your steps as `curl` commands which we can copy and paste into a terminal to run it locally, for example:
-
-
-```
-TO DO: add an example
-```
-
+If you've upgraded to the latest version and you can't find it in our open issues list, then you'll need to tell us how to reproduce it. To make the behavior as clear as possible, please provided your policies, entities, request, and CLI commands. 
 
 Provide as much information as you can. You may think that the problem lies with your query, when actually it depends on how your data is indexed. The easier it is for us to recreate your problem, the faster it is likely to be fixed. Please try to include as much information as you can. Details like these are incredibly useful:
 
@@ -32,8 +33,6 @@ Provide as much information as you can. You may think that the problem lies with
 * The version of our code being used
 * Any modifications you've made relevant to the bug
 * Anything unusual about your environment or deployment
-
-
 
 ### Feature Requests
 
