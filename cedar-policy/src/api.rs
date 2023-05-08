@@ -154,9 +154,8 @@ impl Entities {
         self.0.iter().map(Entity::ref_cast)
     }
 
-    // TODO: Write errors doc.
-    #[allow(clippy::missing_errors_doc)]
     /// Create an `Entities` object with the given entities
+    /// It will error if the entities cannot be read or if the entities hierarchy is cyclic
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
     ) -> Result<Self, entities::EntitiesError> {
@@ -1388,7 +1387,6 @@ impl Template {
     }
 
     /// Get the JSON representation of this `Template`.
-    /// TODO: point to docs on this JSON representation.
     #[allow(dead_code)] // planned to be a public method in the future
     fn to_json(&self) -> Result<serde_json::Value, impl std::error::Error> {
         serde_json::to_value(&self.est)
@@ -1665,7 +1663,6 @@ impl Policy {
     }
 
     /// Get the JSON representation of this `Policy`.
-    /// TODO: point to docs on this JSON representation.
     pub fn to_json(&self) -> Result<serde_json::Value, impl std::error::Error> {
         serde_json::to_value(&self.est)
     }
@@ -2124,9 +2121,9 @@ impl std::fmt::Display for EvalResult {
     }
 }
 
-// TODO: Write errors doc.
-#[allow(clippy::missing_errors_doc)]
 /// Evaluate
+/// If evaluation results in an error (e.g., attempting to access a non-existent Entity or Record,
+/// passing the wrong number of arguments to a function etc.), that error is returned as a String
 pub fn eval_expression(
     request: &Request,
     entities: &Entities,

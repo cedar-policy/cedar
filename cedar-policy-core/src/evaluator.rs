@@ -358,7 +358,7 @@ impl<'q, 'e> Evaluator<'e> {
                 PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::unary_app(*op, r))),
             },
             ExprKind::BinaryApp { op, arg1, arg2 } => {
-                // TODO: Likely more precise partial eval opportunities here, esp w/ typed unknowns
+                // NOTE: There are more precise partial eval opportunities here, esp w/ typed unknowns
                 // Current limitations:
                 //   Operators are not partially evaluated.
                 let (arg1, arg2) = match (

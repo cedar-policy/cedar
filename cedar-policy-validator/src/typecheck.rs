@@ -498,10 +498,6 @@ impl<'a> Typechecker<'a> {
             // `true` or `false` expression. The type of the constant expression
             // is `Boolean` in either case because strictly typed expressions
             // may not use the singleton boolean types.
-            // TODO: This function could use `cedar_analyzer::Type` to make
-            // returning type `True` or `False` impossible, but we'd need to
-            // reorganize code a bit and make `TypecheckAnswer` generic over the
-            // data stored on the expression.
             Some(Type::True) => TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(Type::primitive_boolean())).val(true),
             ),

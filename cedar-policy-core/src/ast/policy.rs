@@ -230,7 +230,6 @@ impl std::fmt::Display for Template {
 pub enum LinkingError {
     /// An error with the number of slot arguments provided
     /// INVARIANT: `unbound_values` and `extra_values` can't both be empty
-    /// TODO: can we use non-empty vec here?
     #[error("{}", describe_arity_error(.unbound_values, .extra_values))]
     ArityError {
         /// Error for when some Slots were not provided values
@@ -872,10 +871,6 @@ impl TemplateBody {
     /// principal, resource, and action); the policy's "when" conditions; and
     /// the negation of each of the policy's "unless" conditions.
     pub fn condition(&self) -> Expr {
-        // TODO: use the many-argument Expr constructor once it exists
-        // TODO: ideally, this function wouldn't involve any clones. Currently the `_expr()` calls invoke clones,
-        // and we clone the non_head_constraints.
-        // returning a borrowed `Expr` would be fine
         Expr::and(
             Expr::and(
                 Expr::and(
