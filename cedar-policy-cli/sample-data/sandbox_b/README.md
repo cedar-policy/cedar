@@ -15,8 +15,8 @@ cargo run authorize \
     --principal 'User::"alice"' \
     --action 'Action::"view"' \
     --resource 'Photo::"prototype_v0.jpg"' \
-    --policies ./sandbox_b/policies_4.txt \
-    --entities ./sandbox_b/entities.json
+    --policies policies_4.txt \
+    --entities entities.json
 ```
 This should be allowed, because `alice` meets the requirements.
 
@@ -36,8 +36,8 @@ cargo run authorize \
     --principal 'User::"stacey"' \
     --action 'Action::"view"' \
     --resource 'Photo::"alice_w2.jpg"' \
-    --policies ./sandbox_b/policies_5.txt \
-    --entities ./sandbox_b/entities.json
+    --policies policies_5.txt \
+    --entities entities.json
 ```
 
 But, `alice` should be allowed to view `alice_w2.jpg` (she's the owner), and
@@ -63,9 +63,9 @@ cargo run authorize \
     --principal 'User::"alice"' \
     --action 'Action::"view"' \
     --resource 'Photo::"vacation.jpg"' \
-    --context ./sandbox_b/context.json \
-    --policies ./sandbox_b/policies_6.txt \
-    --entities ./sandbox_b/entities.json
+    --context context.json \
+    --policies policies_6.txt \
+    --entities entities.json
 ```
 
 But, if you change the IP in `context.json` to one that is in the blocked range
@@ -76,8 +76,8 @@ in the policy, the access will not be allowed.
 You can validate if a policy conforms with the schema. Try the following:
 ```
 cargo run validate \
-  --policies ./sandbox_b/policies_5.txt \
-  --schema ./sandbox_b/schema.json
+  --policies policies_5.txt \
+  --schema schema.json
 ```
 You can see that validation passes. If you look at `schema.json` you can see that it is larger than the schema used for `sandbox_a`. The `entityTypes` section now contains information about some of the entity types' legal attributes. This information is in the `shapes` portion of the entity type description. Notice that some attributes are paired with a `required` field which indicates whether they are optional or not. The `actions` section also has an additional element for some of the actions, which describes the legal shape of the `context` that can be passed in on authorization requests for that action.
 

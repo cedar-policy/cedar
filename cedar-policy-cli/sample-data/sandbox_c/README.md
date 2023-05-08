@@ -21,8 +21,8 @@ cargo run authorize \
 	--principal 'User::"alice"' \
 	--action 'Action::"view"' \
 	--resource 'Photo::"VacationPhoto94.jpg"' \
-	--policies ./sandbox_c/policies.txt \
-	--entities ./sandbox_c/entities.json
+	--policies policies.txt \
+	--entities entities.json
 ```
 
 We should get `DENY`, as there is no policy that allows this.
@@ -43,7 +43,7 @@ This looks like a regular policy, but it has `?principal` instead of a concrete 
 Let's link this template to give `alice` access:
 ```
 cargo run link \
-	./sandbox_c/policies.txt \
+	policies.txt \
 	./linked \
 	"AccessVacation" \
 	"AliceAccess" \
@@ -59,8 +59,8 @@ cargo run authorize \
 	--principal 'User::"alice"' \
 	--action 'Action::"view"' \
 	--resource 'Photo::"VacationPhoto94.jpg"' \
-	--policies ./sandbox_c/policies.txt \
-	--entities ./sandbox_c/entities.json \
+	--policies policies.txt \
+	--entities entities.json \
 	--template-linked ./linked
 ```
 
@@ -69,7 +69,7 @@ And we should now get `ALLOW`.
 Let's also give `bob` access:
 ```
 cargo run link \
-	./sandbox_c/policies.txt \
+	policies.txt \
 	./linked \
 	"AccessVacation" \
 	"BobAccess" \
@@ -103,8 +103,8 @@ cargo run authorize \
 	--principal 'User::"bob"' \
 	--action 'Action::"view"' \
 	--resource 'Photo::"VacationPhoto94.jpg"' \
-	--policies ./sandbox_c/policies.txt \
-	--entities ./sandbox_c/entities.json \
+	--policies policies.txt \
+	--entities entities.json \
 	--template-linked ./linked
 ```
 Bob should still have access, as his entity has the attribute set.
@@ -114,8 +114,8 @@ cargo run authorize \
 	--principal 'User::"alice"' \
 	--action 'Action::"view"' \
 	--resource 'Photo::"VacationPhoto94.jpg"' \
-	--policies ./sandbox_c/policies.txt \
-	--entities ./sandbox_c/entities.json \
+	--policies policies.txt \
+	--entities entities.json \
 	--template-linked ./linked
 ```
 But Alice should now be denied.

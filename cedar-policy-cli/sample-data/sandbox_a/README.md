@@ -24,8 +24,8 @@ cargo run authorize \
     --principal 'User::"alice"' \
     --action 'Action::"view"' \
     --resource 'Photo::"VacationPhoto94.jpg"' \
-    --policies ./sandbox_a/policies_1.txt \
-    --entities ./sandbox_a/entities.json
+    --policies policies_1.txt \
+    --entities entities.json
 ```
 This should be allowed, because `alice` is in the group `jane_friends`.
 
@@ -46,8 +46,8 @@ cargo run authorize \
     --principal 'User::"alice"' \
     --action 'Action::"view"' \
     --resource 'Photo::"VacationPhoto94.jpg"' \
-    --policies ./sandbox_a/policies_2.txt \
-    --entities ./sandbox_a/entities.json
+    --policies policies_2.txt \
+    --entities entities.json
 ```
 By adjusting the `--action`, you should see that `alice` is allowed to `view`,
 `edit`, or `delete` the photo.  (Or, any other resources `in` the
@@ -71,8 +71,8 @@ cargo run authorize \
     --principal 'User::"alice"' \
     --action 'Action::"view"' \
     --resource 'Photo::"VacationPhoto94.jpg"' \
-    --policies ./sandbox_a/policies_3.txt \
-    --entities ./sandbox_a/entities.json
+    --policies policies_3.txt \
+    --entities entities.json
 ```
 
 And, see that anyone is also allowed the `listPhotos` action on the album
@@ -82,8 +82,8 @@ cargo run authorize \
     --principal 'User::"tim"' \
     --action 'Action::"listPhotos"' \
     --resource 'Album::"jane_vacation"' \
-    --policies ./sandbox_a/policies_3.txt \
-    --entities ./sandbox_a/entities.json
+    --policies policies_3.txt \
+    --entities entities.json
 ```
 
 ### Policy validation
@@ -91,8 +91,8 @@ cargo run authorize \
 You can validate if a policy conforms with the schema. Try the following:
 ```
 cargo run validate \
-  --policies ./sandbox_a/policies_1.txt \
-  --schema ./sandbox_a/schema.json
+  --policies policies_1.txt \
+  --schema schema.json
 ```
 Validation should pass. If you look at the `schema.json` file, you will see it has two sections: the `entityTypes` section, first, and the `actions` section. The first section describes the legal entity types, including member relationships. For example, we see that entities of type `Photo` can be members of entities of type `Album` or `Account` -- membership is tantamount to a parent-child relationship in the entity hierarchy.
 
@@ -109,7 +109,7 @@ cargo run evaluate \
     --principal 'User::"alice"' \
     --action 'Action::"listPhotos"' \
     --resource 'Album::"jane_vacation"' \
-    --entities ./sandbox_a/entities.json \
+    --entities entities.json \
    "resource in Account::\"jane\""
 ```
 Now, continue on to `sandbox_b`, where we'll consider ABAC policies, that

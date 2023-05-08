@@ -12,7 +12,7 @@ This usage is not standard and annotations have custom use depending on the app.
 
 ## Usage
 
-CLI is a command line tool. It supports the following subcommans:
+CLI is a command line tool. It supports the following subcommands:
  * authorize:      Evaluate an authorization request
  * evaluate:       Evaluate a Cedar expression
  * validate:       Validate a policy set against a schema
