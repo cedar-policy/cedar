@@ -1447,20 +1447,25 @@ impl<'a> Typechecker<'a> {
                                 // in the entity store, and `has` evaluates to
                                 // `false` when this is the case, we can't
                                 // conclude that `has` is true just because an
-                                // attribute is declared for an entity type.
+                                // attribute is required for an entity type.
                                 let exists_in_store = matches!(
                                     typ_actual,
                                     Type::EntityOrRecord(EntityRecordKind::Record { .. })
                                 );
-                                let type_of_has = if exists_in_store {
+                                // However, we can make an exception when the attribute
+                                // access of the expression is already in the prior effect,
+                                // which means the entity must exist.
+                                let in_prior_effs = prior_eff.contains(&Effect::new(expr, attr));
+                                let type_of_has = if exists_in_store || in_prior_effs {
                                     Type::singleton_boolean(true)
                                 } else {
                                     Type::primitive_boolean()
                                 };
-                                TypecheckAnswer::success(
+                                TypecheckAnswer::success_with_effect(
                                     ExprBuilder::with_data(Some(type_of_has))
                                         .with_same_source_info(e)
                                         .has_attr(typ_expr_actual, attr.clone()),
+                                    EffectSet::singleton(Effect::new(expr, attr)),
                                 )
                             }
                             // This is where effect information is generated. If
