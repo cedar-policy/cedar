@@ -60,7 +60,7 @@ impl<'a> Extensions<'a> {
     /// Returns an error if the function is not defined by any extension, or if
     /// it is defined multiple times.
     pub fn func(&self, name: &Name) -> Result<&ExtensionFunction> {
-        // TODO: in the future, we could build a single HashMap of function
+        // NOTE: in the future, we could build a single HashMap of function
         // name to ExtensionFunction, combining all extension functions
         // into one map, to make this lookup faster.
         let extension_funcs: Vec<&ExtensionFunction> = self
