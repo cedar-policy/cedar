@@ -76,16 +76,16 @@ permit(principal == User::"alice", action == Action::"view", resource == File::"
 }
 ```
 
-If you'd like to see more details on what can be expressed as Cedar policies, see [https://docs.cedarpolicy.com/what-is-cedar.html](the documentations).
+If you'd like to see more details on what can be expressed as Cedar policies, see the [documentation](https://docs.cedarpolicy.com/what-is-cedar.html).
 
-If you'd like to see more examples on using Cedar, please see our examples repo [https://github.com/cedar-policy/cedar-examples](cedar-examples).
+If you'd like to see more examples on using Cedar, please see our examples repo [cedar-examples](https://github.com/cedar-policy/cedar-examples).
 
 
-Specifically the [https://github.com/cedar-policy/cedar-examples/tree/main/tinytodo](Tiny Todo) example shows how to use Cedar policies in a simple HTTP API.
+Specifically the [Tiny Todo](https://github.com/cedar-policy/cedar-examples/tree/main/tinytodo) example shows how to use Cedar policies in a simple HTTP API.
 
 ## Documentation
 
-General documentation for Cedar is available at [https://docs.cedarpolicy.com](docs.cedarpolicy.com).
+General documentation for Cedar is available at [docs.cedarpolicy.com](https://docs.cedarpolicy.com).
 
 Generated documentation for the latest version can be accessed
 [on docs.rs](https://docs.rs/cedar-policy).
