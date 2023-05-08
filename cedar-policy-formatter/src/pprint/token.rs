@@ -4,7 +4,7 @@ use regex::Regex;
 use smol_str::SmolStr;
 use std::fmt::{self, Display};
 
-fn get_comment(text: &str) -> String {
+pub fn get_comment(text: &str) -> String {
     let mut comment = Regex::new(r"//[^\n\r]*")
         .unwrap()
         .find_iter(text)
