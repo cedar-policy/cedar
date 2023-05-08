@@ -14,7 +14,7 @@ cedar-policy = "2.0"
 ```
 
 
-## Examples
+## Quick Start
 
 Let's write a super simple Cedar policy and test it:
 ```
