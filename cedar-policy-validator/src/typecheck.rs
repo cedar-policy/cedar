@@ -487,6 +487,7 @@ impl<'a> Typechecker<'a> {
         e: &Expr<Option<Type>>,
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
+        #[cfg(not(target_arch = "wasm32"))]
         if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
             return TypecheckAnswer::RecursionLimit;
         }
@@ -936,6 +937,7 @@ impl<'a> Typechecker<'a> {
         e: &'b Expr,
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
+        #[cfg(not(target_arch = "wasm32"))]
         if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
             return TypecheckAnswer::RecursionLimit;
         }
