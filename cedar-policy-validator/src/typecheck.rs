@@ -552,7 +552,7 @@ impl<'a> Typechecker<'a> {
                                         // are no soundness issues.
                                         match (then_strict.data(), else_strict.data()) {
                                             (Some(ty_then), Some(ty_else))
-                                                if !self.unify_strict_types(ty_then, ty_else) =>
+                                                if !Self::unify_strict_types(ty_then, ty_else) =>
                                             {
                                                 // Only generate a new type error when the
                                                 // types have a LUB. If the don't have a
@@ -609,8 +609,24 @@ impl<'a> Typechecker<'a> {
 
                             let all_contained_types_are_compatable_actions =
                                 Self::check_all_types_compat_acts(&elems_types);
-                            let contains_one_type = elems_types.len() <= 1
-                                || all_contained_types_are_compatable_actions;
+
+                            // Check that the type of all elements of the set
+                            // can unify. This ensures that the all have the
+                            // same type up to the limited subtyping allowed
+                            // between True/False/Boolean.
+                            let mut elems_types_iter = elems_types.iter();
+                            let representative_type =
+                                elems_types_iter.next().and_then(|t| t.as_ref());
+                            let types_unify = representative_type
+                                .map(|representative_type| {
+                                    elems_types_iter
+                                        .filter_map(|ty| ty.as_ref())
+                                        .all(|ty| Self::unify_strict_types(representative_type, ty))
+                                })
+                                .unwrap_or(true);
+
+                            let contains_one_type =
+                                types_unify || all_contained_types_are_compatable_actions;
                             let is_non_empty = elems.len() != 0;
 
                             if !contains_one_type {
@@ -799,7 +815,7 @@ impl<'a> Typechecker<'a> {
                         let operand_types_match = match (op, arg1_strict.data(), arg2_strict.data())
                         {
                             (BinaryOp::Eq, Some(ty1), Some(ty2)) => {
-                                self.unify_strict_types(ty1, ty2)
+                                Self::unify_strict_types(ty1, ty2)
                             }
                             // Assume that LHS is a set. This is checked by the
                             // standard typechecker.
@@ -814,7 +830,7 @@ impl<'a> Typechecker<'a> {
                                     element_type: Some(elem_ty),
                                 }),
                                 Some(ty2),
-                            ) => self.unify_strict_types(elem_ty.as_ref(), ty2),
+                            ) => Self::unify_strict_types(elem_ty.as_ref(), ty2),
                             // Both args must be sets, but this is checked by
                             // the typechecker. Their elements must then be the
                             // same type, but, they're both sets, so we can just
@@ -823,7 +839,7 @@ impl<'a> Typechecker<'a> {
                                 BinaryOp::ContainsAll | BinaryOp::ContainsAny,
                                 Some(ty1),
                                 Some(ty2),
-                            ) => self.unify_strict_types(ty1, ty2),
+                            ) => Self::unify_strict_types(ty1, ty2),
                             (BinaryOp::In, Some(ty1), Some(ty2)) => {
                                 let ty2 = match ty2 {
                                     // If `element_type` is None then the second operand to `in` was an empty
@@ -926,7 +942,7 @@ impl<'a> Typechecker<'a> {
         })
     }
 
-    pub(crate) fn unify_strict_types(&self, actual: &Type, expected: &Type) -> bool {
+    pub(crate) fn unify_strict_types(actual: &Type, expected: &Type) -> bool {
         match (actual, expected) {
             (
                 Type::True
@@ -947,7 +963,7 @@ impl<'a> Typechecker<'a> {
                 Type::Set {
                     element_type: Some(ety2),
                 },
-            ) => self.unify_strict_types(ety1, ety2),
+            ) => Self::unify_strict_types(ety1, ety2),
             (
                 Type::EntityOrRecord(EntityRecordKind::Record { attrs: attrs1 }),
                 Type::EntityOrRecord(EntityRecordKind::Record { attrs: attrs2 }),
@@ -960,7 +976,7 @@ impl<'a> Typechecker<'a> {
                             .get_attr(k)
                             .expect("Guarded by `keys1` == `keys2`, and `k` is a key in `keys1`.");
                         attr2.is_required == attr1.is_required
-                            && self.unify_strict_types(&attr1.attr_type, &attr2.attr_type)
+                            && Self::unify_strict_types(&attr1.attr_type, &attr2.attr_type)
                     })
             }
             _ => actual == expected,

@@ -620,5 +620,23 @@ fn true_false_set() {
             parser::parse_expr(r#"[true, false]"#).unwrap(),
             Type::set(Type::primitive_boolean()),
         )
+    });
+    with_simple_schema_and_request(|s, q| {
+        assert_typechecks_strict(
+            s,
+            &q,
+            parser::parse_expr(r#"[[true], [false]]"#).unwrap(),
+            parser::parse_expr(r#"[[true], [false]]"#).unwrap(),
+            Type::set(Type::set(Type::primitive_boolean())),
+        )
+    });
+    with_simple_schema_and_request(|s, q| {
+        assert_typechecks_strict(
+            s,
+            &q,
+            parser::parse_expr(r#"[[[true, false], [true, true]], [[false, false]]]"#).unwrap(),
+            parser::parse_expr(r#"[[[true, false], [true, true]], [[false, false]]]"#).unwrap(),
+            Type::set(Type::set(Type::set(Type::primitive_boolean()))),
+        )
     })
 }
