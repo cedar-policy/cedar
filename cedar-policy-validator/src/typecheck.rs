@@ -25,7 +25,9 @@ use crate::{
     schema::{
         is_action_entity_type, ActionHeadVar, HeadVar, PrincipalOrResourceHeadVar, ValidatorSchema,
     },
-    types::{AttributeType, Attributes, Effect, EffectSet, EntityRecordKind, RequestEnv, Type},
+    types::{
+        AttributeType, Attributes, Effect, EffectSet, EntityRecordKind, Primitive, RequestEnv, Type,
+    },
     ValidationMode,
 };
 
@@ -550,7 +552,7 @@ impl<'a> Typechecker<'a> {
                                         // are no soundness issues.
                                         match (then_strict.data(), else_strict.data()) {
                                             (Some(ty_then), Some(ty_else))
-                                                if ty_then != ty_else =>
+                                                if !self.unify_strict_types(ty_then, ty_else) =>
                                             {
                                                 // Only generate a new type error when the
                                                 // types have a LUB. If the don't have a
@@ -796,7 +798,9 @@ impl<'a> Typechecker<'a> {
                     (Some(ty1), Some(ty2)) => {
                         let operand_types_match = match (op, arg1_strict.data(), arg2_strict.data())
                         {
-                            (BinaryOp::Eq, Some(ty1), Some(ty2)) => ty1 == ty2,
+                            (BinaryOp::Eq, Some(ty1), Some(ty2)) => {
+                                self.unify_strict_types(ty1, ty2)
+                            }
                             // Assume that LHS is a set. This is checked by the
                             // standard typechecker.
                             (
@@ -810,7 +814,7 @@ impl<'a> Typechecker<'a> {
                                     element_type: Some(elem_ty),
                                 }),
                                 Some(ty2),
-                            ) => elem_ty.as_ref() == ty2,
+                            ) => self.unify_strict_types(elem_ty.as_ref(), ty2),
                             // Both args must be sets, but this is checked by
                             // the typechecker. Their elements must then be the
                             // same type, but, they're both sets, so we can just
@@ -819,7 +823,7 @@ impl<'a> Typechecker<'a> {
                                 BinaryOp::ContainsAll | BinaryOp::ContainsAny,
                                 Some(ty1),
                                 Some(ty2),
-                            ) => ty1 == ty2,
+                            ) => self.unify_strict_types(ty1, ty2),
                             (BinaryOp::In, Some(ty1), Some(ty2)) => {
                                 let ty2 = match ty2 {
                                     // If `element_type` is None then the second operand to `in` was an empty
@@ -866,12 +870,15 @@ impl<'a> Typechecker<'a> {
                                     // is always `False` after standard typechecking, and we explicitly permit
                                     // slots below.
                                     (
-                                        Type::EntityOrRecord(EntityRecordKind::Entity(_)),
-                                        Some(Type::EntityOrRecord(EntityRecordKind::AnyEntity)),
-                                    )
-                                    | (
-                                        Type::EntityOrRecord(EntityRecordKind::AnyEntity),
-                                        Some(Type::EntityOrRecord(EntityRecordKind::Entity(_))),
+                                        Type::EntityOrRecord(
+                                            EntityRecordKind::AnyEntity
+                                            | EntityRecordKind::Entity(_),
+                                        ),
+                                        Some(Type::EntityOrRecord(
+                                            EntityRecordKind::AnyEntity
+                                            | EntityRecordKind::Entity(_)
+                                            | EntityRecordKind::ActionEntity { .. },
+                                        )),
                                     ) => false,
                                     // `in` is applied to a type that was either not an entity/set-of-entity or
                                     // was an empty set. The typechecker already raised an error for this, so
@@ -917,6 +924,47 @@ impl<'a> Typechecker<'a> {
                 }
             })
         })
+    }
+
+    pub(crate) fn unify_strict_types(&self, actual: &Type, expected: &Type) -> bool {
+        match (actual, expected) {
+            (
+                Type::True
+                | Type::False
+                | Type::Primitive {
+                    primitive_type: Primitive::Bool,
+                },
+                Type::True
+                | Type::False
+                | Type::Primitive {
+                    primitive_type: Primitive::Bool,
+                },
+            ) => true,
+            (
+                Type::Set {
+                    element_type: Some(ety1),
+                },
+                Type::Set {
+                    element_type: Some(ety2),
+                },
+            ) => self.unify_strict_types(ety1, ety2),
+            (
+                Type::EntityOrRecord(EntityRecordKind::Record { attrs: attrs1 }),
+                Type::EntityOrRecord(EntityRecordKind::Record { attrs: attrs2 }),
+            ) => {
+                let keys1 = attrs1.attrs.keys().collect::<HashSet<_>>();
+                let keys2 = attrs2.attrs.keys().collect::<HashSet<_>>();
+                keys1 == keys2
+                    && attrs1.iter().all(|(k, attr1)| {
+                        let attr2 = attrs2
+                            .get_attr(k)
+                            .expect("Guarded by `keys1` == `keys2`, and `k` is a key in `keys1`.");
+                        attr2.is_required == attr1.is_required
+                            && self.unify_strict_types(&attr1.attr_type, &attr2.attr_type)
+                    })
+            }
+            _ => actual == expected,
+        }
     }
 
     /// This method handles the majority of the work. Given an expression,
@@ -1098,27 +1146,70 @@ impl<'a> Typechecker<'a> {
                         // prior effect of the `if` and any new effect generated
                         // by `test`. This enables an attribute access
                         // `principal.foo` after a condition `principal has foo`.
-                        // The `else` branch is not typechecked, so it is not
-                        // included in the type annotated AST. This is a
-                        // transformation we wanted as part of strict checking,
-                        // but it's easier to apply it here.
-                        self.typecheck(
+                        let ans_then = self.typecheck(
                             request_env,
                             &prior_eff.union(&eff_test),
                             then_expr,
                             type_errors,
-                        )
-                        // The output effect of the whole `if` expression also
-                        // needs contain the effect of the condition.
-                        .map_effect(|ef| ef.union(&eff_test))
+                        );
+                        // We have to build a type annotated `else` branch for
+                        // strict typechecking, but we want to throw away the
+                        // errors. This could instead  ignore the `else` if we
+                        // update our Dafny formalism to verify that this is
+                        // correct.
+                        let mut errs_else = Vec::new();
+                        let ans_else =
+                            self.typecheck(request_env, prior_eff, else_expr, &mut errs_else);
+
+                        ans_then.then_typecheck(|typ_then, eff_then| {
+                            match ans_else.into_typed_expr() {
+                                Some(ety) => {
+                                    TypecheckAnswer::success_with_effect(
+                                        ExprBuilder::with_data(typ_then.data().clone())
+                                            .with_same_source_info(e)
+                                            .ite(typ_test, typ_then, ety),
+                                        // The output effect of the whole `if` expression also
+                                        // needs to contain the effect of the condition.
+                                        eff_then.union(&eff_test),
+                                    )
+                                }
+                                // We might have hit the recursion limit only on
+                                // the `else` branch. Unfortunate since that
+                                // shouldn't effect typechecking, but we still
+                                // need to exit to avoid a crash.
+                                None => TypecheckAnswer::RecursionLimit,
+                            }
+                        })
                     } else if typ_test.data() == &Some(Type::singleton_boolean(false)) {
                         // The `else` branch cannot use the `test` effect since
                         // we know in the `else` branch that the condition
                         // evaluated to `false`. It still can use the original
                         // prior effect.
-                        // The `then` branch is not typechecked, so it is not
-                        // included in the type annotated AST.
-                        self.typecheck(request_env, prior_eff, else_expr, type_errors)
+                        let ans_else =
+                            self.typecheck(request_env, prior_eff, else_expr, type_errors);
+
+                        // Annotating types but ignoring errors in the `then` branch.
+                        let mut errs_then = Vec::new();
+                        let ans_then = self.typecheck(
+                            request_env,
+                            &prior_eff.union(&eff_test),
+                            then_expr,
+                            &mut errs_then,
+                        );
+
+                        ans_else.then_typecheck(|typ_else, eff_else| {
+                            match ans_then.into_typed_expr() {
+                                Some(ety) => TypecheckAnswer::success_with_effect(
+                                    ExprBuilder::with_data(typ_else.data().clone())
+                                        .with_same_source_info(e)
+                                        .ite(typ_test, ety, typ_else),
+                                    eff_else,
+                                ),
+                                // We might have hit the recursion limit only on
+                                // the `then` branch.
+                                None => TypecheckAnswer::RecursionLimit,
+                            }
+                        })
                     } else {
                         // When we don't short circuit, the `then` and `else`
                         // branches are individually typechecked with the same

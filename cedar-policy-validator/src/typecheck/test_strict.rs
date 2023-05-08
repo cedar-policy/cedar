@@ -587,3 +587,38 @@ fn test_extension() {
         );
     })
 }
+
+#[test]
+fn true_false_equality() {
+    with_simple_schema_and_request(|s, q| {
+        assert_typechecks_strict(
+            s,
+            &q,
+            parser::parse_expr(r#"[false] == [true, true]"#).unwrap(),
+            parser::parse_expr(r#"[false] == [true, true]"#).unwrap(),
+            Type::primitive_boolean(),
+        )
+    });
+    with_simple_schema_and_request(|s, q| {
+        assert_typechecks_strict(
+            s,
+            &q,
+            parser::parse_expr(r#"[true].contains(false)"#).unwrap(),
+            parser::parse_expr(r#"[true].contains(false)"#).unwrap(),
+            Type::primitive_boolean(),
+        )
+    })
+}
+
+#[test]
+fn true_false_set() {
+    with_simple_schema_and_request(|s, q| {
+        assert_typechecks_strict(
+            s,
+            &q,
+            parser::parse_expr(r#"[true, false]"#).unwrap(),
+            parser::parse_expr(r#"[true, false]"#).unwrap(),
+            Type::set(Type::primitive_boolean()),
+        )
+    })
+}
