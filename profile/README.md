@@ -1,8 +1,6 @@
 # README.md
 
-
-
-[Image: cedar_1_green.png]
+![Cedar Green Logo](cedar_1_green.png "Cedar Logo")
 
 ## Welcome!
 
@@ -39,7 +37,7 @@ The cedar-spec repository houses the formal Dafny specification for the Cedar la
 
 ## Code of Conduct
 
-This project has adopted the [Amazon Open Source Code of Conduct](CODE_OF_CONDUCT.md). For more information see the [Code of Conduct FAQ](https://aws.github.io/code-of-conduct-faq), or contact [opensource-codeofconduct@amazon.com](mailto:opensource-codeofconduct@amazon.com) with any additional questions or comments.
+This project has adopted the [Amazon Open Source Code of Conduct](../CODE_OF_CONDUCT.md). For more information see the [Code of Conduct FAQ](https://aws.github.io/code-of-conduct-faq), or contact [opensource-codeofconduct@amazon.com](mailto:opensource-codeofconduct@amazon.com) with any additional questions or comments.
 
 
 ## Security
