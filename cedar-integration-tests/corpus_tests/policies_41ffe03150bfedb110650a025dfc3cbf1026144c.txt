@@ -1,0 +1,7 @@
+permit(
+  principal == a::"",
+  action == Action::"action",
+  resource in a::"j\u{1}\0\0\0r"
+) when {
+  true && (principal.lessThan(principal))
+};

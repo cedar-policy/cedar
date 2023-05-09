@@ -1,0 +1,21 @@
+[
+    {
+        "uid": {  "type":"User", "id":"bob" },
+        "attrs": {
+            "score": { "__extn": { "fn": "decimal", "arg": "0.899" }}
+        },
+        "parents": []
+    },
+    {
+        "uid":  { "type":"Action", "id":"view" },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid":  { "type":"Photo", "id":"VacationPhoto94.jpg" },
+        "attrs": {
+            "owner": { "__entity": { "type":"User", "id":"bob"} }
+        },
+        "parents": []
+    }
+]

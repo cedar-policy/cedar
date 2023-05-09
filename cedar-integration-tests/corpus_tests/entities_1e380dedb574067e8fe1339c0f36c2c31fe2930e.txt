@@ -1,0 +1,49 @@
+[
+  {
+    "uid": {
+      "type": "a",
+      "id": ""
+    },
+    "attrs": {
+      "A": [
+        {
+          "__entity": {
+            "id": "",
+            "type": "a"
+          }
+        },
+        {
+          "__entity": {
+            "id": "",
+            "type": "a"
+          }
+        },
+        {
+          "__entity": {
+            "id": "",
+            "type": "a"
+          }
+        },
+        {
+          "__entity": {
+            "id": "",
+            "type": "a"
+          }
+        },
+        {
+          "__entity": {
+            "id": "",
+            "type": "a"
+          }
+        },
+        {
+          "__entity": {
+            "id": "",
+            "type": "a"
+          }
+        }
+      ]
+    },
+    "parents": []
+  }
+]

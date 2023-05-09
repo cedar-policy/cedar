@@ -1,0 +1,7 @@
+permit(
+  principal in G::r::a::"",
+  action,
+  resource
+) when {
+  true
+};

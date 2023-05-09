@@ -1,0 +1,57 @@
+[
+  {
+    "uid": {
+      "type": "r::r::G",
+      "id": "::::"
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "r::r::r",
+        "id": ""
+      },
+      {
+        "type": "r::r::n",
+        "id": ""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "r::r::G",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "r::r::n",
+        "id": ""
+      },
+      {
+        "type": "r::r::r",
+        "id": ""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "r::r::n",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "r::r::r",
+        "id": ""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "r::r::r",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  }
+]

@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_a0151867c4cc2ac509c85a2bd56dbeed7cc3855f.json",
+  "policies": "./corpus_tests/policies_a0151867c4cc2ac509c85a2bd56dbeed7cc3855f.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_a0151867c4cc2ac509c85a2bd56dbeed7cc3855f.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "action": "LYY::Qml::Edxl::Kxx0xxx::Action::\"action\"",
+      "resource": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "action": "LYY::Qml::Edxl::Kxx0xxx::Action::\"action\"",
+      "resource": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "action": "LYY::Qml::Edxl::Kxx0xxx::Action::\"action\"",
+      "resource": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "action": "LYY::Qml::Edxl::Kxx0xxx::Action::\"action\"",
+      "resource": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "action": "LYY::Qml::Edxl::Kxx0xxx::Action::\"action\"",
+      "resource": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "action": "LYY::Qml::Edxl::Kxx0xxx::Action::\"action\"",
+      "resource": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "action": "LYY::Qml::Edxl::Kxx0xxx::Action::\"action\"",
+      "resource": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "action": "LYY::Qml::Edxl::Kxx0xxx::Action::\"action\"",
+      "resource": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

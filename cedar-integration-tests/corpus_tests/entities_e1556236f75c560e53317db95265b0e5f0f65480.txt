@@ -1,0 +1,26 @@
+[
+  {
+    "uid": {
+      "type": "KhdRhhh::a",
+      "id": "'."
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "KhdRhhh::a",
+      "id": ".*.."
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "KhdRhhh::a",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  }
+]

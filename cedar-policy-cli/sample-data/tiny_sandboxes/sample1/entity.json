@@ -1,0 +1,29 @@
+[
+    {
+        "uid": { "type": "User", "id": "alice"} ,
+        "attrs": {
+            "age": 18
+        },
+        "parents": [{"type": "UserGroup", "id": "jane_friends"}]
+    },
+    {
+        "uid": { "type": "UserGroup", "id": "jane_friends" },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": { "type": "Action", "id": "view"},
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": { "type": "Photo", "id": "VacationPhoto94.jpg"},
+        "attrs": {},
+        "parents": [{ "type": "Album", "id": "jane_vacation" }]
+    },
+    {
+        "uid": { "type": "Album", "id": "jane_vacation" },
+        "attrs": {},
+        "parents": []
+    }
+]

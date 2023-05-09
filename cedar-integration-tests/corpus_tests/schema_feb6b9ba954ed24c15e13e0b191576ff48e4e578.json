@@ -1,0 +1,50 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "a": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "A": {
+              "type": "Record",
+              "attributes": {
+                "::": {
+                  "type": "Boolean",
+                  "required": false
+                },
+                "unnio:": {
+                  "type": "Extension",
+                  "name": "ipaddr",
+                  "required": false
+                }
+              },
+              "additionalAttributes": false,
+              "required": false
+            }
+          },
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "a"
+          ],
+          "principalTypes": [
+            "a"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

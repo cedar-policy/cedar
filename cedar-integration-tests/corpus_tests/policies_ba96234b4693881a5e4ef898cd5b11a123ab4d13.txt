@@ -1,0 +1,7 @@
+permit(
+  principal == a::"ff",
+  action in [Action::"action"],
+  resource == a::"ff"
+) when {
+  ((true && 2526451350) && principal) && principal
+};

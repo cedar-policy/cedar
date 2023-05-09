@@ -1,0 +1,7 @@
+forbid(
+  principal == a::"11\06609-",
+  action in [Action::"action"],
+  resource == a::"11\06609-"
+) when {
+  true && ((principal has "") <= principal)
+};

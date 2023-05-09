@@ -1,0 +1,7 @@
+permit(
+  principal == W::v::a::"",
+  action in [W::v::Action::"kg",W::v::Action::"kg",W::v::Action::"kg"],
+  resource in W::v::a::""
+) when {
+  true
+};

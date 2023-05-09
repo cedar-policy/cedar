@@ -1,0 +1,8 @@
+@k("\0")
+permit(
+  principal,
+  action in [Action::"action"],
+  resource in a::""
+) when {
+  (true && ((!principal) == principal)) && principal
+};

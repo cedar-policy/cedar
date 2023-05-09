@@ -1,0 +1,39 @@
+{
+  "R77": {
+    "commonTypes": {},
+    "entityTypes": {
+      "Rx": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "a77": {
+              "type": "Entity",
+              "name": "R77::Rx",
+              "required": false
+            }
+          },
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Rx"
+          ],
+          "principalTypes": [
+            "Rx"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

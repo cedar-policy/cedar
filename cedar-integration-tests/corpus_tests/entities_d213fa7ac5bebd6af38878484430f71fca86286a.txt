@@ -1,0 +1,18 @@
+[
+  {
+    "uid": {
+      "type": "C22::a",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "C22::a",
+      "id": "a"
+    },
+    "attrs": {},
+    "parents": []
+  }
+]

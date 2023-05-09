@@ -1,0 +1,7 @@
+permit(
+  principal in AJHH::a::"",
+  action in [AJHH::Action::"action",AJHH::Action::"action"],
+  resource in AJHH::a::""
+) when {
+  false
+};

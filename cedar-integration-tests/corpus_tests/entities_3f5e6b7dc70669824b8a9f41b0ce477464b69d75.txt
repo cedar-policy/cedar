@@ -1,0 +1,34 @@
+[
+  {
+    "uid": {
+      "type": "l0www0ww::a",
+      "id": "::::"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "l0www0ww::a",
+      "id": "::\n:::"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "l0www0ww::a",
+      "id": ":"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "l0www0ww::a",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  }
+]

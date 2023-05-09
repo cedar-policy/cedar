@@ -1,0 +1,7 @@
+forbid(
+  principal == g::r::A::Q::a::"",
+  action in [g::r::A::Q::Action::"action"],
+  resource == g::r::A::Q::a::""
+) when {
+  (true && (if (principal.isLoopback()) then principal else principal)) && principal
+};

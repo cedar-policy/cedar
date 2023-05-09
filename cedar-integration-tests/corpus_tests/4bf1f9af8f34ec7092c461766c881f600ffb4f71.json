@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_4bf1f9af8f34ec7092c461766c881f600ffb4f71.json",
+  "policies": "./corpus_tests/policies_4bf1f9af8f34ec7092c461766c881f600ffb4f71.txt",
+  "should_validate": false,
+  "entities": "./corpus_tests/entities_4bf1f9af8f34ec7092c461766c881f600ffb4f71.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "sqp1R111o1::\"\"",
+      "action": "Action::\"action\"",
+      "resource": "sqp1R111o1::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type sqp1R111o1)"
+      ]
+    },
+    {
+      "desc": "Query 1",
+      "principal": "sqp1R111o1::\"\"",
+      "action": "Action::\"action\"",
+      "resource": "sqp1R111o1::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type sqp1R111o1)"
+      ]
+    },
+    {
+      "desc": "Query 2",
+      "principal": "sqp1R111o1::\"\"",
+      "action": "Action::\"action\"",
+      "resource": "sqp1R111o1::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type sqp1R111o1)"
+      ]
+    },
+    {
+      "desc": "Query 3",
+      "principal": "sqp1R111o1::\"\"",
+      "action": "Action::\"action\"",
+      "resource": "sqp1R111o1::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type sqp1R111o1)"
+      ]
+    },
+    {
+      "desc": "Query 4",
+      "principal": "sqp1R111o1::\"\"",
+      "action": "Action::\"action\"",
+      "resource": "sqp1R111o1::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type sqp1R111o1)"
+      ]
+    },
+    {
+      "desc": "Query 5",
+      "principal": "sqp1R111o1::\"\"",
+      "action": "Action::\"action\"",
+      "resource": "sqp1R111o1::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type sqp1R111o1)"
+      ]
+    },
+    {
+      "desc": "Query 6",
+      "principal": "sqp1R111o1::\"\"",
+      "action": "Action::\"action\"",
+      "resource": "sqp1R111o1::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type sqp1R111o1)"
+      ]
+    },
+    {
+      "desc": "Query 7",
+      "principal": "sqp1R111o1::\"\"",
+      "action": "Action::\"action\"",
+      "resource": "sqp1R111o1::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type sqp1R111o1)"
+      ]
+    }
+  ]
+}

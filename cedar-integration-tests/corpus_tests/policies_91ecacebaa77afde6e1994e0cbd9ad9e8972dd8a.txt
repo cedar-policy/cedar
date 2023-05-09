@@ -1,0 +1,7 @@
+permit(
+  principal,
+  action in [Action::"action",Action::"action",Action::"action"],
+  resource in a::"\u{6}\u{e}\0\u{6}:\u{6}\0"
+) when {
+  true && context
+};

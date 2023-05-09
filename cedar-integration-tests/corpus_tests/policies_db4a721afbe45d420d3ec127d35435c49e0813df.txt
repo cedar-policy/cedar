@@ -1,0 +1,7 @@
+forbid(
+  principal in a::"\u{1a}s",
+  action in [Action::"action",Action::"action"],
+  resource in a::"\u{1a}s"
+) when {
+  true
+};

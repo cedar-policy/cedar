@@ -1,0 +1,43 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "F3333": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "A": {
+              "type": "Boolean",
+              "required": false
+            }
+          },
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "F3333"
+          ],
+          "principalTypes": [
+            "F3333"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "Fowwwwww": {
+                "type": "Boolean",
+                "required": false
+              }
+            },
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

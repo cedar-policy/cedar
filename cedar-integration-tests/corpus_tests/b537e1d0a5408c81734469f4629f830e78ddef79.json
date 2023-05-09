@@ -1,0 +1,90 @@
+{
+  "schema": "./corpus_tests/schema_b537e1d0a5408c81734469f4629f830e78ddef79.json",
+  "policies": "./corpus_tests/policies_b537e1d0a5408c81734469f4629f830e78ddef79.txt",
+  "should_validate": false,
+  "entities": "./corpus_tests/entities_b537e1d0a5408c81734469f4629f830e78ddef79.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "a::\"\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"6\\u{3}\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got string"
+      ]
+    },
+    {
+      "desc": "Query 1",
+      "principal": "a::\"6\\u{3}\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"6\\u{3}\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": "a::\"6\\u{3}\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"6\\u{3}\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": "a::\"6\\u{3}\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"6\\u{3}\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": "a::\"6\\u{3}\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"6\\u{3}\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": "a::\"6\\u{3}\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"6\\u{3}\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": "a::\"6\\u{3}\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"6\\u{3}\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": "a::\"6\\u{3}\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"6\\u{3}\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    }
+  ]
+}

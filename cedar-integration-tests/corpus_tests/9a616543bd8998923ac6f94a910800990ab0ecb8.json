@@ -1,0 +1,120 @@
+{
+  "schema": "./corpus_tests/schema_9a616543bd8998923ac6f94a910800990ab0ecb8.json",
+  "policies": "./corpus_tests/policies_9a616543bd8998923ac6f94a910800990ab0ecb8.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_9a616543bd8998923ac6f94a910800990ab0ecb8.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "a::\"b600\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"b600\"",
+      "context": {
+        "A00": "0"
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": "a::\"b600\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"b600\"",
+      "context": {
+        "A00": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": "a::\"b600\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"b600\"",
+      "context": {
+        "A00": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": "a::\"b600\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"b600\"",
+      "context": {
+        "A00": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": "a::\"b600\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"b600\"",
+      "context": {
+        "A00": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": "a::\"b600\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"b600\"",
+      "context": {
+        "A00": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": "a::\"b600\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"b600\"",
+      "context": {
+        "A00": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": "a::\"b600\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"b600\"",
+      "context": {
+        "A00": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+@C("\u{2}")
+@uk2("\"\u{2}")
+permit(
+  principal,
+  action,
+  resource
+) when {
+  true
+};

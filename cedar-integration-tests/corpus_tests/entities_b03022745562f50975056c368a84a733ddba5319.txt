@@ -1,0 +1,32 @@
+[
+  {
+    "uid": {
+      "type": "w::A::a",
+      "id": "fFff"
+    },
+    "attrs": {
+      "xdddRRRSd": {
+        "__entity": {
+          "id": "fFff",
+          "type": "w::A::a"
+        }
+      }
+    },
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "w::A::a",
+      "id": ""
+    },
+    "attrs": {
+      "xdddRRRSd": {
+        "__entity": {
+          "id": "fFff",
+          "type": "w::A::a"
+        }
+      }
+    },
+    "parents": []
+  }
+]

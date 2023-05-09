@@ -1,0 +1,170 @@
+{
+    "": {
+        "entityTypes": {
+            "User": {
+                "shape": {
+                    "type": "Record",
+                    "attributes": {
+                        "department": {
+                            "type": "String"
+                        },
+                        "jobLevel": {
+                            "type": "Long"
+                        }
+                    }
+                },
+                "memberOfTypes": [
+                    "UserGroup"
+                ]
+            },
+            "UserGroup": {
+                "memberOfTypes": []
+            },
+            "AccountGroup": {
+                "memberOfTypes": []
+            },
+            "Administrator": {
+                "memberOfTypes": []
+            },
+            "Photo": {
+                "shape": {
+                    "type": "Record",
+                    "attributes": {
+                        "private": {
+                            "type": "Boolean"
+                        },
+                        "account": {
+                            "type": "Entity",
+                            "name": "Account"
+                        },
+                        "admins": {
+                            "type": "Set",
+                            "element": {
+                                "type": "Entity",
+                                "name": "User"
+                            }
+                        }
+                    }
+                },
+                "memberOfTypes": [
+                    "Account",
+                    "Album"
+                ]
+            },
+            "Album": {
+                "shape": {
+                    "type": "Record",
+                    "attributes": {
+                        "private": {
+                            "type": "Boolean"
+                        },
+                        "account": {
+                            "type": "Entity",
+                            "name": "Account"
+                        }
+                    }
+                },
+                "memberOfTypes": [
+                    "Account"
+                ]
+            },
+            "Account": {
+                "shape": {
+                    "type": "Record",
+                    "attributes": {
+                        "owner": {
+                            "type": "Entity",
+                            "name": "User",
+                            "required": false
+                        }
+                    }
+                },
+                "memberOfTypes": [
+                    "AccountGroup"
+                ]
+            }
+        },
+        "actions": {
+            "view": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "Photo",
+                        "Album"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "context": {
+                        "type": "Record",
+                        "attributes": {
+                            "source_ip": {
+                                "type": "Extension",
+                                "name": "ipaddr"
+                            }
+                        }
+                    }
+                }
+            },
+            "edit": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "Photo",
+                        "Album"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "context": {
+                        "type": "Record",
+                        "attributes": {
+                            "source_ip": {
+                                "type": "Extension",
+                                "name": "ipaddr"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "Photo",
+                        "Album"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "context": {
+                        "type": "Record",
+                        "attributes": {
+                            "source_ip": {
+                                "type": "Extension",
+                                "name": "ipaddr"
+                            }
+                        }
+                    }
+                }
+            },
+            "listPhotos": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "Album",
+                        "Photo"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "context": {
+                        "type": "Record",
+                        "attributes": {
+                            "source_ip": {
+                                "type": "Extension",
+                                "name": "ipaddr"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

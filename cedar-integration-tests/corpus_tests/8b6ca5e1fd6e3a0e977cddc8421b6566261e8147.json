@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_8b6ca5e1fd6e3a0e977cddc8421b6566261e8147.json",
+  "policies": "./corpus_tests/policies_8b6ca5e1fd6e3a0e977cddc8421b6566261e8147.txt",
+  "should_validate": false,
+  "entities": "./corpus_tests/entities_8b6ca5e1fd6e3a0e977cddc8421b6566261e8147.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "nww_ww00000::a::\"\"",
+      "action": "nww_ww00000::Action::\"action\"",
+      "resource": "nww_ww00000::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type nww_ww00000::a)"
+      ]
+    },
+    {
+      "desc": "Query 1",
+      "principal": "nww_ww00000::a::\"\"",
+      "action": "nww_ww00000::Action::\"action\"",
+      "resource": "nww_ww00000::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type nww_ww00000::a)"
+      ]
+    },
+    {
+      "desc": "Query 2",
+      "principal": "nww_ww00000::a::\"\"",
+      "action": "nww_ww00000::Action::\"action\"",
+      "resource": "nww_ww00000::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type nww_ww00000::a)"
+      ]
+    },
+    {
+      "desc": "Query 3",
+      "principal": "nww_ww00000::a::\"\"",
+      "action": "nww_ww00000::Action::\"action\"",
+      "resource": "nww_ww00000::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type nww_ww00000::a)"
+      ]
+    },
+    {
+      "desc": "Query 4",
+      "principal": "nww_ww00000::a::\"\"",
+      "action": "nww_ww00000::Action::\"action\"",
+      "resource": "nww_ww00000::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type nww_ww00000::a)"
+      ]
+    },
+    {
+      "desc": "Query 5",
+      "principal": "nww_ww00000::a::\"\"",
+      "action": "nww_ww00000::Action::\"action\"",
+      "resource": "nww_ww00000::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type nww_ww00000::a)"
+      ]
+    },
+    {
+      "desc": "Query 6",
+      "principal": "nww_ww00000::a::\"\"",
+      "action": "nww_ww00000::Action::\"action\"",
+      "resource": "nww_ww00000::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type nww_ww00000::a)"
+      ]
+    },
+    {
+      "desc": "Query 7",
+      "principal": "nww_ww00000::a::\"\"",
+      "action": "nww_ww00000::Action::\"action\"",
+      "resource": "nww_ww00000::a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type nww_ww00000::a)"
+      ]
+    }
+  ]
+}

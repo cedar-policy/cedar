@@ -1,0 +1,7 @@
+permit(
+  principal in vlgmuw9ud::xw0g05::a::"",
+  action in [vlgmuw9ud::xw0g05::Action::"action",vlgmuw9ud::xw0g05::Action::"action"],
+  resource in vlgmuw9ud::xw0g05::a::""
+) when {
+  true
+};

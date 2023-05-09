@@ -1,0 +1,18 @@
+# Don't check in the local metadata file.
+.DS_Store
+.idea
+
+# Don't check in the Emacs temp files
+*~
+
+# Don't check in test framework files
+.attach_pid*
+
+# Don't check IntelliJ module files
+*.iml
+
+# Don't check cargo build output
+target
+
+# Don't check Cargo.lock
+Cargo.lock

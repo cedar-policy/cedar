@@ -1,0 +1,8 @@
+@wIzz("")
+permit(
+  principal,
+  action,
+  resource
+) when {
+  true
+};

@@ -1,0 +1,21 @@
+[
+    {
+        "uid": {  "type":"User", "id":"bob" },
+        "attrs": {
+            "addr": { "__extn": { "fn": "ip", "arg": "127.0.0.1" }}
+        },
+        "parents": []
+    },
+    {
+        "uid": {  "type":"Action", "id":"view" },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": {  "type":"Photo", "id":"VacationPhoto94.jpg"},
+        "attrs": {
+            "owner": { "__entity": { "type":"User", "id":"bob"} }
+        },
+        "parents": []
+    }
+]

@@ -1,0 +1,27 @@
+[
+    {
+        "uid":  { "type":"PhotoFlash::Data::User", "id":"alice" },
+        "attrs": {},
+        "parents": [{  "type":"PhotoFlash::Data::UserGroup", "id":"jane_friends" }]
+    },
+    {
+        "uid":  { "type":"PhotoFlash::Data::UserGroup", "id":"jane_friends"},
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid":  { "type":"PhotoFlash::Data::Action", "id":"view" },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid":  { "type":"PhotoFlash::Data::Photo", "id":"VacationPhoto94.jpg" },
+        "attrs": {},
+        "parents": [{  "type":"PhotoFlash::Data::Album", "id":"jane_vacation"}]
+    },
+    {
+        "uid":  { "type":"PhotoFlash::Data::Album", "id":"jane_vacation" },
+        "attrs": {},
+        "parents": []
+    }
+]

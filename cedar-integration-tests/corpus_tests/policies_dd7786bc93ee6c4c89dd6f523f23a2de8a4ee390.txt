@@ -1,0 +1,8 @@
+@WLLSjjjjjXj0jj("\u{c}")
+permit(
+  principal,
+  action,
+  resource
+) when {
+  true
+};

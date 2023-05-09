@@ -1,0 +1,33 @@
+[package]
+name = "cedar-policy-cli"
+edition = "2021"
+
+version = "2.0.0"
+license-file = "../LICENSE"
+categories = ["compilers", "config"]
+description = "CLI interface for the Cedar Policy language."
+keywords = ["cedar", "authorization", "policy", "security"]
+homepage = "https://cedarpolicy.com"
+repository = "https://github.com/cedar/cedar-policy"
+
+[dependencies]
+cedar-policy = { version = "2.0.0", path = "../cedar-policy" }
+cedar-policy-formatter = { version = "2.0.0", path = "../cedar-policy-formatter" }
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+
+[features]
+default = []
+
+[dev-dependencies]
+assert_cmd = "2.0"
+tempfile = "3"
+glob = "0.3.1"
+
+# We override the name of the binary for src/main.rs, which otherwise would be
+# cedar-cli (matching the crate name).
+[[bin]]
+name = "cedar"
+path = "src/main.rs"

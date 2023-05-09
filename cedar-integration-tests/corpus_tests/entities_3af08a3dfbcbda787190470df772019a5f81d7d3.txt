@@ -1,0 +1,29 @@
+[
+  {
+    "uid": {
+      "type": "a",
+      "id": ""
+    },
+    "attrs": {
+      "r": {
+        "__entity": {
+          "id": "",
+          "type": "a"
+        }
+      },
+      "A0037wwwwwwpwoocs": {
+        "__entity": {
+          "id": "",
+          "type": "a"
+        }
+      },
+      "n": {
+        "__entity": {
+          "id": "",
+          "type": "a"
+        }
+      }
+    },
+    "parents": []
+  }
+]

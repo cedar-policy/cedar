@@ -1,0 +1,102 @@
+{
+  "schema": "./corpus_tests/schema_e0f6913f9fa8b06d1b2a1b8b6c02087585d7f986.json",
+  "policies": "./corpus_tests/policies_e0f6913f9fa8b06d1b2a1b8b6c02087585d7f986.txt",
+  "should_validate": false,
+  "entities": "./corpus_tests/entities_e0f6913f9fa8b06d1b2a1b8b6c02087585d7f986.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "a::\"00\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"1\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": "a::\"00\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"00\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected long, got (entity of type Action)"
+      ]
+    },
+    {
+      "desc": "Query 2",
+      "principal": "a::\"00\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"00\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected long, got (entity of type Action)"
+      ]
+    },
+    {
+      "desc": "Query 3",
+      "principal": "a::\"00\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"00\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected long, got (entity of type Action)"
+      ]
+    },
+    {
+      "desc": "Query 4",
+      "principal": "a::\"00\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"00\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected long, got (entity of type Action)"
+      ]
+    },
+    {
+      "desc": "Query 5",
+      "principal": "a::\"00\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"00\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected long, got (entity of type Action)"
+      ]
+    },
+    {
+      "desc": "Query 6",
+      "principal": "a::\"00\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"00\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected long, got (entity of type Action)"
+      ]
+    },
+    {
+      "desc": "Query 7",
+      "principal": "a::\"00\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"00\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected long, got (entity of type Action)"
+      ]
+    }
+  ]
+}

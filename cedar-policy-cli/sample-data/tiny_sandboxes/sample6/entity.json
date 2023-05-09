@@ -1,0 +1,31 @@
+[
+    {
+        "uid":  { "type":"User", "id":"alice"},
+        "attrs": {
+            "account": { "__entity": { "type":"Account", "id":"alice"} }
+        },
+        "parents": [{ "type":"UserGroup", "id":"guardians"}]
+    },
+    {
+        "uid":  { "type":"Account", "id":"alice" },
+        "attrs": {
+            "age": 17
+        },
+        "parents": []
+    },
+    {
+        "uid":  { "type":"UserGroup", "id":"guardians"},
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid":  { "type":"Action", "id":"view"},
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid":  { "type":"ScreenTime", "id":"activity" },
+        "attrs": {},
+        "parents": []
+    }
+]

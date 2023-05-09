@@ -1,0 +1,7 @@
+permit(
+  principal in A::":::8>",
+  action in [Action::"action"],
+  resource in A::":::8>"
+) when {
+  true
+};

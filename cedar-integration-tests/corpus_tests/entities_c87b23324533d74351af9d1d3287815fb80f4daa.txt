@@ -1,0 +1,74 @@
+[
+  {
+    "uid": {
+      "type": "Z4MM",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "dJ",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "Z4MM",
+        "id": ""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "g",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "dJ",
+        "id": ""
+      },
+      {
+        "type": "Z4MM",
+        "id": ""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "g",
+      "id": "RR"
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "Z4MM",
+        "id": ""
+      },
+      {
+        "type": "dJ",
+        "id": ""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "g",
+      "id": "\u0000R"
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "dJ",
+        "id": ""
+      },
+      {
+        "type": "Z4MM",
+        "id": ""
+      }
+    ]
+  }
+]

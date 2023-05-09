@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_bb3ef5fe04a8594071227b50ba4e4f1c67070ca3.json",
+  "policies": "./corpus_tests/policies_bb3ef5fe04a8594071227b50ba4e4f1c67070ca3.txt",
+  "should_validate": false,
+  "entities": "./corpus_tests/entities_bb3ef5fe04a8594071227b50ba4e4f1c67070ca3.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "a::\"11\\06609-\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"11\\06609-\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected long, got bool"
+      ]
+    },
+    {
+      "desc": "Query 1",
+      "principal": "a::\"11\\06609-\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"11\\06609-\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected long, got bool"
+      ]
+    },
+    {
+      "desc": "Query 2",
+      "principal": "a::\"11\\06609-\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"11\\06609-\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected long, got bool"
+      ]
+    },
+    {
+      "desc": "Query 3",
+      "principal": "a::\"11\\06609-\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"11\\06609-\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected long, got bool"
+      ]
+    },
+    {
+      "desc": "Query 4",
+      "principal": "a::\"11\\06609-\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"11\\06609-\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected long, got bool"
+      ]
+    },
+    {
+      "desc": "Query 5",
+      "principal": "a::\"11\\06609-\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"11\\06609-\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected long, got bool"
+      ]
+    },
+    {
+      "desc": "Query 6",
+      "principal": "a::\"11\\06609-\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"11\\06609-\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected long, got bool"
+      ]
+    },
+    {
+      "desc": "Query 7",
+      "principal": "a::\"11\\06609-\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"11\\06609-\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected long, got bool"
+      ]
+    }
+  ]
+}

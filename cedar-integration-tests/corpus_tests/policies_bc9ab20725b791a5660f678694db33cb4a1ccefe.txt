@@ -1,0 +1,7 @@
+permit(
+  principal,
+  action,
+  resource in a::""
+) when {
+  true && ((-(-(64021759393792))) in principal)
+};

@@ -1,0 +1,9 @@
+@v("")
+@x("")
+permit(
+  principal == x::a::"",
+  action in [x::Action::"action"],
+  resource
+) when {
+  true
+};

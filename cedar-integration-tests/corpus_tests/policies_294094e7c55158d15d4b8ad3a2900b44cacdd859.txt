@@ -1,0 +1,8 @@
+@B("609-")
+forbid(
+  principal == a::"",
+  action in [Action::"action"],
+  resource == a::""
+) when {
+  (true && (if ((21 == principal).containsAny(principal)) then principal else principal)) && principal
+};

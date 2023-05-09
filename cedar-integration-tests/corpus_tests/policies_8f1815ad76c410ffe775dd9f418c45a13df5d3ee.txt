@@ -1,0 +1,7 @@
+permit(
+  principal in r::F_w33w33::a::"",
+  action in [r::F_w33w33::Action::"action"],
+  resource in r::F_w33w33::a::""
+) when {
+  (false && principal) && principal
+};

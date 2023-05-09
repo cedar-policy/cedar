@@ -1,0 +1,120 @@
+{
+  "schema": "./corpus_tests/schema_44d2138de0cacab9b03c955cc57d50a516fbf855.json",
+  "policies": "./corpus_tests/policies_44d2138de0cacab9b03c955cc57d50a516fbf855.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_44d2138de0cacab9b03c955cc57d50a516fbf855.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "a::\"7\\u{1}\\0\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"7\\u{1}\\0\\0\"",
+      "context": {
+        "W": "neinfo/."
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": "a::\"7\\u{1}\\0\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"7\\u{1}\\0\\0\"",
+      "context": {
+        "W": "neinfo/."
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": "a::\"7\\u{1}\\0\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"7\\u{1}\\0\\0\"",
+      "context": {
+        "W": "neinfo/."
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": "a::\"7\\u{1}\\0\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"7\\u{1}\\0\\0\"",
+      "context": {
+        "W": "neinfo/."
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": "a::\"7\\u{1}\\0\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"7\\u{1}\\0\\0\"",
+      "context": {
+        "W": "neinfo/."
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": "a::\"7\\u{1}\\0\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"7\\u{1}\\0\\0\"",
+      "context": {
+        "W": "neinfo/."
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": "a::\"7\\u{1}\\0\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"7\\u{1}\\0\\0\"",
+      "context": {
+        "W": "neinfo/."
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": "a::\"7\\u{1}\\0\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"7\\u{1}\\0\\0\"",
+      "context": {
+        "W": "neinfo/."
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

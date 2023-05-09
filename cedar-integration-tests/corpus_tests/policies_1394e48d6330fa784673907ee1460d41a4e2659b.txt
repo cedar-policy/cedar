@@ -1,0 +1,7 @@
+permit(
+  principal,
+  action in [A97w::Action::"action"],
+  resource in A97w::a::"#:::"
+) when {
+  (true && (!(!principal))) && principal
+};

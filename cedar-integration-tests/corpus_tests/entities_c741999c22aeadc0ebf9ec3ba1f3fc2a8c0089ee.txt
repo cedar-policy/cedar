@@ -1,0 +1,62 @@
+[
+  {
+    "uid": {
+      "type": "vt::A::a",
+      "id": "fF"
+    },
+    "attrs": {
+      "xdddRRRSd": {
+        "__entity": {
+          "id": "fF",
+          "type": "vt::A::a"
+        }
+      }
+    },
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "vt::A::a",
+      "id": "ff\u0000"
+    },
+    "attrs": {
+      "xdddRRRSd": {
+        "__entity": {
+          "id": "fF",
+          "type": "vt::A::a"
+        }
+      }
+    },
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "vt::A::a",
+      "id": "f"
+    },
+    "attrs": {
+      "xdddRRRSd": {
+        "__entity": {
+          "id": "fF",
+          "type": "vt::A::a"
+        }
+      }
+    },
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "vt::A::a",
+      "id": ""
+    },
+    "attrs": {
+      "xdddRRRSd": {
+        "__entity": {
+          "id": "fF",
+          "type": "vt::A::a"
+        }
+      }
+    },
+    "parents": []
+  }
+]

@@ -1,0 +1,33 @@
+{
+  "G::R::W10k00k0JHHHQH::u0JH": {
+    "commonTypes": {},
+    "entityTypes": {
+      "Fj": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Fj"
+          ],
+          "principalTypes": [
+            "Fj"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

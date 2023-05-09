@@ -1,0 +1,7 @@
+forbid(
+  principal in a::"ff",
+  action in [Action::"action"],
+  resource == a::"ff"
+) when {
+  ((true && (!((a::"ff".isIpv6()) like ""))) && principal) && principal
+};
