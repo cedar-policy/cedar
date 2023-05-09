@@ -8,18 +8,19 @@ This document contains a list of maintainers in this repo. See [RESPONSIBILITIES
 
 |Maintainer	|GitHub ID	|Affiliation	|
 |---	|---	|---	|
-|Mark Stalzer	|	|Amazon	|
+|Neha Rungta	|neharungta	|Amazon	|
+|Mark Stalzer	|mstalzer	|Amazon	|
 |Sarah Cecchetti	|sarahcec	|Amazon	|
-|Darin	|	|	|
+|Darin	|	|Amazon	|
 |Emina Torlak	|emina	|Amazon	|
 |Mike Hicks	|	mwhicks1|Amazon	|
 |Anwar Mamat	|anwarmamat	|Amazon	|
 |Andrew Wells	|andrewmwells-amazon	|	Amazon|
 |Shaobo He	|shaobo-he-aws	|Amazon	|
 |Aaron Eline	|aaronjeline	|Amazon	|
-|Craig	|	|	|
+|Craig	|	|Amazon	|
 |John Kastner 	|john-h-kastner-aws	|Amazon	|
 |Kesha Hietala	|khieta	|Amazon	|
 |Matt McCutchen	|mattmccutchen-amazon	|Amazon	|
-|Neha Rungta	|	|Amazon	|
+
 |Dave Bishop	|bisdavid	|Amazon	|
