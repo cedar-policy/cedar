@@ -54,16 +54,16 @@ permit(principal == User::"alice", action == Action::"view", resource == File::"
 
 If you'd like to see more details on what can be expressed as Cedar policies, see the [documentation](https://docs.cedarpolicy.com/what-is-cedar.html).
 
-If you'd like to see more examples on using Cedar, please see our examples repo [cedar-examples](https://github.com/cedar-policy/cedar-examples).
+Examples of how to use Cedar in an application are contained in the repository [cedar-examples](https://github.com/cedar-policy/cedar-examples). The most full-featured of these is [TinyTodo](https://github
+.com/cedar-policy/cedar-examples/tree/main/tinytodo), which is a simple task list management service whose users' requests, sent as HTTP messages, are authorized by Cedar.
 
-
-Specifically the [Tiny Todo](https://github.com/cedar-policy/cedar-examples/tree/main/tinytodo) example shows how to use Cedar policies in a simple HTTP API.
 
 ## Documentation
 
-General documentation for Cedar is available at [docs.cedarpolicy.com](https://docs.cedarpolicy.com).
+General documentation for Cedar is available at [docs.cedarpolicy.com](https://docs.cedarpolicy.com), with docs source code in the [cedar-policy/cedar-docs](https://github.com/cedar-policy/cedar-docs/) rep
+ository.
 
-Generated documentation for the latest version can be accessed
+Generated documentation for the latest version of the Rust crates can be accesse
 [on docs.rs](https://docs.rs/cedar-policy).
 
 ## Building
@@ -72,7 +72,7 @@ To build, simply run `cargo build`.
 
 ## Security
 
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
+See [security](../security.md)
 
 ## Contributing
 

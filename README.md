@@ -86,7 +86,7 @@ To build, simply run `cargo build`.
 
 ## Security
 
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
+See [security](security.md) for more information.
 
 ## Contributing
 
