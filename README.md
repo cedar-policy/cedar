@@ -65,7 +65,7 @@ entity.json
 ```
  Now, let's test it with the CLI
 ```rust
- cargo run  authorize \             
+ cargo run  authorize \
     --policies policy.txt \
     --entities entity.json \
     --principal 'User::"alice"' \
