@@ -2,11 +2,9 @@
 
 ![Cedar Logo](./logo.svg)
 
+This repository contains source code of the Rust crates that implement the [Cedar](https://www.cedarpolicy.com/) policy language.
 
-Repo containing the crates for the Rust implementation of the [Cedar](https://www.cedarpolicy.com/) policy language.
-
-Cedar is a language for defining permissions as policies, which describe who should have access to what. It is also a specification for evaluating those policies. Use Cedar policies to control what each user of your application is permitted to do and what resources they may access.
-
+Cedar is a language for writing and enforcing authorization policies in your applications. Using Cedar, you can write policies that specify your applications' fine-grained permissions. Your applications then authorize access requests by calling Cedar's authorization engine. Because Cedar policies are separate from application code, they can be independently authored, updated, analyzed, and audited. You can use Cedar's validator to check that Cedar policies are consistent with a declared schema which defines your application's authorization model.
 
 Cedar is: 
 ### Expressive 
@@ -24,19 +22,14 @@ Just add `cedar-policy` as a dependency in your `Cargo.toml`:
 [dependencies]
 cedar-policy = "2.0"
 ```
-
 ## Crates in this workspace
 
-* [cedar-policy](./cedar-policy) : Main front-end crate for using Cedar in your applications
-* [cedar-policy-cli](./cedar-policy-cli) : Crate containing a simple CLI for interacting with Cedar
-* [cedar-policy-core](./cedar-policy-core) : Internal crate containing the parser and evaluator
+* [cedar-policy](./cedar-policy) : Main crate for using Cedar to authorize access requests in your applications, and validate Cedar policies against a schema
+* [cedar-policy-cli](./cedar-policy-cli) : Crate containing a simple command-line interface (CLI) for interacting with Cedar
+* [cedar-policy-core](./cedar-policy-core) : Internal crate containing the Cedar parser and evaluator
 * [cedar-policy-validator](./cedar-policy-validator) : Internal crate containing the Cedar validator 
 * [cedar-policy-formatter](./cedar-policy-formatter) : Internal crate containing an auto-formatter for Cedar policies
-* [cedar-integration-tests](./cedar-integration-tests) : Crate containing integrations tests
-
-
-
-
+* [cedar-integration-tests](./cedar-integration-tests) : Crate containing integration tests
 
 ## Quick Start
 
@@ -78,21 +71,18 @@ permit(principal == User::"alice", action == Action::"view", resource == File::"
 
 If you'd like to see more details on what can be expressed as Cedar policies, see the [documentation](https://docs.cedarpolicy.com/what-is-cedar.html).
 
-If you'd like to see more examples on using Cedar, please see our examples repo [cedar-examples](https://github.com/cedar-policy/cedar-examples).
-
-
-Specifically the [Tiny Todo](https://github.com/cedar-policy/cedar-examples/tree/main/tinytodo) example shows how to use Cedar policies in a simple HTTP API.
+Examples of how to use Cedar in an application are contained in the repository [cedar-examples](https://github.com/cedar-policy/cedar-examples). The most full-featured of these is [TinyTodo](https://github.com/cedar-policy/cedar-examples/tree/main/tinytodo), which is a simple task list management service whose users' requests, sent as HTTP messages, are authorized by Cedar.
 
 ## Documentation
 
-General documentation for Cedar is available at [docs.cedarpolicy.com](https://docs.cedarpolicy.com).
+General documentation for Cedar is available at [docs.cedarpolicy.com](https://docs.cedarpolicy.com), with docs source code in the [cedar-policy/cedar-docs](https://github.com/cedar-policy/cedar-docs/) repository.
 
-Generated documentation for the latest version can be accessed
+Generated documentation for the latest version of the Rust crates can be accessed
 [on docs.rs](https://docs.rs/cedar-policy).
 
 ## Building
-To build, simply run `cargo build`.
 
+To build, simply run `cargo build`.
 
 ## Security
 
