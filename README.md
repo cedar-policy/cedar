@@ -18,7 +18,7 @@ Cedar is designed for analysis using Automated Reasoning. This enables analyzer 
 Cedar can be used in your application by depending on the `cedar-policy` crate.
 
 ### Installing Rust
-Install the Rust language and build system via [rustup](https://rustup.rs).
+Install Rust and its build system via [rustup](https://rustup.rs).
 
 Just add `cedar-policy` as a dependency in your `Cargo.toml`:
 ```toml
