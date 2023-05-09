@@ -11,14 +11,14 @@ This document contains a list of maintainers in this repo. See [RESPONSIBILITIES
 |Neha Rungta	|neharungta	|Amazon	|
 |Mark Stalzer	|mstalzer	|Amazon	|
 |Sarah Cecchetti	|sarahcec	|Amazon	|
-|Darin	|D-McAdams	|Amazon	|
+|Darin	McAdams|D-McAdams	|Amazon	|
 |Emina Torlak	|emina	|Amazon	|
 |Mike Hicks	|	mwhicks1|Amazon	|
 |Anwar Mamat	|anwarmamat	|Amazon	|
 |Andrew Wells	|andrewmwells-amazon	|	Amazon|
 |Shaobo He	|shaobo-he-aws	|Amazon	|
 |Aaron Eline	|aaronjeline	|Amazon	|
-|Craig	|	|Amazon	|
+|Craig Disselkoen	|cdisselkoen	|Amazon	|
 |John Kastner 	|john-h-kastner-aws	|Amazon	|
 |Kesha Hietala	|khieta	|Amazon	|
 |Matt McCutchen	|mattmccutchen-amazon	|Amazon	|
