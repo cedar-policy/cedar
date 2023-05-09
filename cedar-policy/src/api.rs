@@ -154,9 +154,8 @@ impl Entities {
         self.0.iter().map(Entity::ref_cast)
     }
 
-    // TODO: Write errors doc.
-    #[allow(clippy::missing_errors_doc)]
     /// Create an `Entities` object with the given entities
+    /// It will error if the entities cannot be read or if the entities hierarchy is cyclic
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
     ) -> Result<Self, entities::EntitiesError> {
@@ -260,37 +259,37 @@ impl Authorizer {
         Self(authorizer::Authorizer::new())
     }
 
-    /// Returns an authorization answer for `r` with respect to the given
+    /// Returns an authorization response for `r` with respect to the given
     /// `PolicySet` and `Entities`.
     ///
     /// The language spec and Dafny model give a precise definition of how this
     /// is computed.
-    pub fn is_authorized(&self, r: &Request, p: &PolicySet, e: &Entities) -> Answer {
+    pub fn is_authorized(&self, r: &Request, p: &PolicySet, e: &Entities) -> Response {
         self.0.is_authorized(&r.0, &p.ast, &e.0).into()
     }
 
     /// A partially evaluated authorization request.
     /// The Authorizer will attempt to make as much progress as possible in the presence of unknowns.
-    /// If the Authorizer can reach an answer, it will return that answer.
+    /// If the Authorizer can reach a response, it will return that response.
     /// Otherwise, it will return a list of residual policies that still need to be evaluated.
     pub fn is_authorized_partial(
         &self,
         query: &Request,
         policy_set: &PolicySet,
         entities: &Entities,
-    ) -> PartialAnswer {
-        let answer = self
+    ) -> PartialResponse {
+        let response = self
             .0
             .is_authorized_core(&query.0, &policy_set.ast, &entities.0);
-        match answer {
-            authorizer::AnswerKind::FullyEvaluated(a) => PartialAnswer::Concrete(Answer {
+        match response {
+            authorizer::ResponseKind::FullyEvaluated(a) => PartialResponse::Concrete(Response {
                 decision: a.decision,
                 diagnostics: Diagnostics {
                     reason: a.diagnostics.reason.into_iter().map(PolicyId).collect(),
                     errors: a.diagnostics.errors.into_iter().collect(),
                 },
             }),
-            authorizer::AnswerKind::Partial(p) => PartialAnswer::Residual(ResidualAnswer {
+            authorizer::ResponseKind::Partial(p) => PartialResponse::Residual(ResidualResponse {
                 residuals: PolicySet::from_ast(p.residuals),
                 diagnostics: Diagnostics {
                     reason: p.diagnostics.reason.into_iter().map(PolicyId).collect(),
@@ -301,28 +300,28 @@ impl Authorizer {
     }
 }
 
-/// Authorization answer returned from the `Authorizer`
+/// Authorization response returned from the `Authorizer`
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-pub struct Answer {
+pub struct Response {
     /// Authorization decision
     decision: Decision,
     /// Diagnostics providing more information on how this decision was reached
     diagnostics: Diagnostics,
 }
 
-/// Authorization answer returned from `is_authorized_partial`
-/// It can either be a full concrete answer, or a residual answer.
+/// Authorization response returned from `is_authorized_partial`
+/// It can either be a full concrete response, or a residual response.
 #[derive(Debug, PartialEq, Clone)]
-pub enum PartialAnswer {
-    /// A full, concrete answer.
-    Concrete(Answer),
-    /// A residual answer. Determining the concrete answer requires further processing.
-    Residual(ResidualAnswer),
+pub enum PartialResponse {
+    /// A full, concrete response.
+    Concrete(Response),
+    /// A residual response. Determining the concrete response requires further processing.
+    Residual(ResidualResponse),
 }
 
-/// A residual answer obtained from `is_authorized_partial`.
+/// A residual response obtained from `is_authorized_partial`.
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct ResidualAnswer {
+pub struct ResidualResponse {
     /// Residual policies
     residuals: PolicySet,
     /// Diagnostics
@@ -354,8 +353,8 @@ impl Diagnostics {
     }
 }
 
-impl Answer {
-    /// Create a new `Answer`
+impl Response {
+    /// Create a new `Response`
     pub fn new(decision: Decision, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
         Self {
             decision,
@@ -374,8 +373,8 @@ impl Answer {
     }
 }
 
-impl From<authorizer::Answer> for Answer {
-    fn from(a: authorizer::Answer) -> Self {
+impl From<authorizer::Response> for Response {
+    fn from(a: authorizer::Response) -> Self {
         Self {
             decision: a.decision,
             diagnostics: Diagnostics {
@@ -386,8 +385,8 @@ impl From<authorizer::Answer> for Answer {
     }
 }
 
-impl ResidualAnswer {
-    /// Create a new `ResidualAnswer`
+impl ResidualResponse {
+    /// Create a new `ResidualResponse`
     pub fn new(residuals: PolicySet, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
         Self {
             residuals,
@@ -704,13 +703,9 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             cedar_policy_validator::SchemaError::ActionEntityAttributes(e) => {
                 Self::ActionEntityAttributes(e)
             }
-            cedar_policy_validator::SchemaError::ContextOrShapeNotRecord => {
-                Self::ContextOrShapeNotRecord
-            }
-            cedar_policy_validator::SchemaError::ActionEntityAttributeEmptySet => {
-                Self::ContextOrShapeNotRecord
-            }
-            cedar_policy_validator::SchemaError::ActionEntityAttributeUnsupportedType => {
+            cedar_policy_validator::SchemaError::ContextOrShapeNotRecord
+            | cedar_policy_validator::SchemaError::ActionEntityAttributeEmptySet
+            | cedar_policy_validator::SchemaError::ActionEntityAttributeUnsupportedType => {
                 Self::ContextOrShapeNotRecord
             }
         }
@@ -1392,7 +1387,6 @@ impl Template {
     }
 
     /// Get the JSON representation of this `Template`.
-    /// TODO: point to docs on this JSON representation.
     #[allow(dead_code)] // planned to be a public method in the future
     fn to_json(&self) -> Result<serde_json::Value, impl std::error::Error> {
         serde_json::to_value(&self.est)
@@ -1669,7 +1663,6 @@ impl Policy {
     }
 
     /// Get the JSON representation of this `Policy`.
-    /// TODO: point to docs on this JSON representation.
     pub fn to_json(&self) -> Result<serde_json::Value, impl std::error::Error> {
         serde_json::to_value(&self.est)
     }
@@ -2128,9 +2121,9 @@ impl std::fmt::Display for EvalResult {
     }
 }
 
-// TODO: Write errors doc.
-#[allow(clippy::missing_errors_doc)]
 /// Evaluate
+/// If evaluation results in an error (e.g., attempting to access a non-existent Entity or Record,
+/// passing the wrong number of arguments to a function etc.), that error is returned as a String
 pub fn eval_expression(
     request: &Request,
     entities: &Entities,
@@ -2150,14 +2143,14 @@ pub fn eval_expression(
 mod test {
     use std::collections::HashSet;
 
-    use crate::{PolicyId, PolicySet, ResidualAnswer};
+    use crate::{PolicyId, PolicySet, ResidualResponse};
 
     #[test]
-    fn test_pe_answer_constructor() {
+    fn test_pe_response_constructor() {
         let p: PolicySet = "permit(principal, action, resource);".parse().unwrap();
         let reason: HashSet<PolicyId> = std::iter::once("id1".parse().unwrap()).collect();
         let errors: HashSet<String> = std::iter::once("error".to_string()).collect();
-        let a = ResidualAnswer::new(p.clone(), reason.clone(), errors.clone());
+        let a = ResidualResponse::new(p.clone(), reason.clone(), errors.clone());
         assert_eq!(a.diagnostics().errors, errors);
         assert_eq!(a.diagnostics().reason, reason);
         assert_eq!(a.residuals(), &p);
@@ -2359,7 +2352,7 @@ mod head_constraints_tests {
             PrincipalConstraint::In(euid.clone())
         );
         let map: HashMap<SlotId, EntityUid> =
-            [(SlotId::principal(), euid.clone())].into_iter().collect();
+            std::iter::once((SlotId::principal(), euid.clone())).collect();
         let p = link(
             "permit(principal in ?principal,action,resource);",
             map.clone(),
@@ -2414,7 +2407,7 @@ mod head_constraints_tests {
             ResourceConstraint::In(euid.clone())
         );
         let map: HashMap<SlotId, EntityUid> =
-            [(SlotId::resource(), euid.clone())].into_iter().collect();
+            std::iter::once((SlotId::resource(), euid.clone())).collect();
         let p = link(
             "permit(principal,action,resource in ?resource);",
             map.clone(),
@@ -2460,9 +2453,7 @@ mod policy_set_tests {
         pset.add_template(template).expect("Add failed");
 
         let env: HashMap<SlotId, EntityUid> =
-            [(SlotId::principal(), EntityUid::from_strs("Test", "test"))]
-                .into_iter()
-                .collect();
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
 
         let r = pset.link(
             PolicyId::from_str("t").unwrap(),
@@ -2492,9 +2483,7 @@ mod policy_set_tests {
         pset.add_template(template).expect("Failed to add");
 
         let env1: HashMap<SlotId, EntityUid> =
-            [(SlotId::principal(), EntityUid::from_strs("Test", "test1"))]
-                .into_iter()
-                .collect();
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test1"))).collect();
         pset.link(
             PolicyId::from_str("t").unwrap(),
             PolicyId::from_str("link").unwrap(),
@@ -2503,9 +2492,7 @@ mod policy_set_tests {
         .expect("Failed to link");
 
         let env2: HashMap<SlotId, EntityUid> =
-            [(SlotId::principal(), EntityUid::from_strs("Test", "test2"))]
-                .into_iter()
-                .collect();
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test2"))).collect();
 
         let err = pset
             .link(
@@ -2541,9 +2528,7 @@ mod policy_set_tests {
         pset.add_template(template2)
             .expect("Failed to add template");
         let env3: HashMap<SlotId, EntityUid> =
-            [(SlotId::resource(), EntityUid::from_strs("Test", "test3"))]
-                .into_iter()
-                .collect();
+            std::iter::once((SlotId::resource(), EntityUid::from_strs("Test", "test3"))).collect();
 
         pset.link(
             PolicyId::from_str("t").unwrap(),
@@ -2578,9 +2563,7 @@ mod policy_set_tests {
         pset.link(
             PolicyId::from_str("template").unwrap(),
             PolicyId::from_str("linked").unwrap(),
-            [(SlotId::principal(), EntityUid::from_strs("Test", "test"))]
-                .into_iter()
-                .collect(),
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
         )
         .expect("Link failure");
 
@@ -2732,12 +2715,12 @@ mod ancestors_tests {
         let b = Entity::new(
             b_euid.clone(),
             HashMap::new(),
-            [a_euid.clone()].into_iter().collect(),
+            std::iter::once(a_euid.clone()).collect(),
         );
         let c = Entity::new(
             c_euid.clone(),
             HashMap::new(),
-            [b_euid.clone()].into_iter().collect(),
+            std::iter::once(b_euid.clone()).collect(),
         );
         let es = Entities::from_entities([a, b, c]).unwrap();
         let ans = es.ancestors(&c_euid).unwrap().collect::<HashSet<_>>();
@@ -2759,6 +2742,8 @@ mod schema_based_parsing_tests {
 
     /// Simple test that exercises a variety of attribute types.
     #[test]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cognitive_complexity)]
     fn attr_types() {
         let schema = Schema::from_json_value(json!(
         {"": {

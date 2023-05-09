@@ -26,18 +26,16 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     let single_policy = Policy::from_str(
         r#"
-        "added policy"
         permit(
             principal == User::"alice",
-            action == PhotoOp::"view",
+            action == Action::"view",
             resource == Photo::"VacationPhoto94.jpg"
         );"#,
     )
-    .unwrap();
+    .unwrap()
+    .new_id("single_policy".parse().unwrap());
 
-    if multiple_policies.add(single_policy).is_err() {
-        Err("Failed to add policy".to_string()).unwrap()
-    };
+    multiple_policies.add(single_policy).unwrap();
 
     let entity_json = r#"
     [
@@ -52,7 +50,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             "parents": []
         },
         {
-            "uid": { "__expr" : "PhotoOp::\"view\"" },
+            "uid": { "__expr" : "Action::\"view\"" },
             "attrs": {},
             "parents": []
         },
@@ -82,7 +80,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         EntityId::from_str("alice").unwrap(),
     );
     let action = EntityUid::from_type_name_and_id(
-        EntityTypeName::from_str("PhotoOp").unwrap(),
+        EntityTypeName::from_str("Action").unwrap(),
         EntityId::from_str("view").unwrap(),
     );
     let resource = EntityUid::from_type_name_and_id(

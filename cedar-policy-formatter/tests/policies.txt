@@ -80,3 +80,19 @@ permit(
   action,
   resource in Account::"jane"
 );
+
+permit (
+    principal,
+    action in
+        [Action::"UpdateList",
+         Action::"CreateTask",
+         Action::"UpdateTask",
+         Action::"DeleteTask"],
+    resource
+)
+when
+{
+    principal in resource.editors
+};
+
+// Policy 4: Admins can perform any action on any resource

@@ -402,7 +402,7 @@ mod test {
                         panic!("expected parse to succeed, but got {parsed_result:?}")
                     }
                     ValidateAnswer::Success { notes, .. } => {
-                        assert_eq!(notes.len(), 0, "Unexpected validation notes: {notes:?}")
+                        assert_eq!(notes.len(), 0, "Unexpected validation notes: {notes:?}");
                     }
                 }
             }
@@ -421,7 +421,7 @@ mod test {
                         panic!("expected parse to succeed, but got {parsed_result:?}")
                     }
                     ValidateAnswer::Success { notes, .. } => {
-                        assert_eq!(notes.len(), expected_num_notes)
+                        assert_eq!(notes.len(), expected_num_notes);
                     }
                 }
             }

@@ -449,7 +449,6 @@ impl Expr {
 impl TryFrom<Expr> for ast::Expr {
     type Error = EstToAstError;
     fn try_from(expr: Expr) -> Result<ast::Expr, EstToAstError> {
-        // todo: lots of `.clone()`s in this, should think about how to avoid them
         match expr {
             Expr::ExprNoExt(ExprNoExt::Value(jsonvalue)) => {
                 jsonvalue.into_expr().map(Into::into).map_err(Into::into)

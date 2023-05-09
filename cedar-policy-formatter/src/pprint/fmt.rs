@@ -3,6 +3,8 @@ use cedar_policy_core::ast::{PolicySet, Template};
 use cedar_policy_core::parser::parse_policyset;
 use cedar_policy_core::parser::{err::ParseErrors, text_to_cst::parse_policies};
 
+use crate::token::get_comment;
+
 use super::lexer::get_token_stream;
 use super::utils::remove_empty_lines;
 
@@ -64,8 +66,9 @@ pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
         .ok_or(ParseErrors(errs))
         .context("cannot parse input policies to ASTs")?;
     let tokens = get_token_stream(ps);
+    let end_comment_str = &ps[tokens.last().unwrap().span.end..];
     let mut context = config::Context { config, tokens };
-    let formatted_policies = cst
+    let mut formatted_policies = cst
         .as_inner()
         .unwrap()
         .0
@@ -73,6 +76,27 @@ pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
         .map(|p| remove_empty_lines(tree_to_pretty(p, &mut context).trim()))
         .collect::<Vec<String>>()
         .join("\n\n");
+    // handle comment at the end of a policyset
+    let (trailing_comment, end_comment) = match end_comment_str.split_once('\n') {
+        Some((f, r)) => (get_comment(f), get_comment(r)),
+        None => (get_comment(end_comment_str), String::new()),
+    };
+    match (trailing_comment.as_ref(), end_comment.as_ref()) {
+        ("", "") => {}
+        (_, "") => {
+            formatted_policies.push(' ');
+            formatted_policies.push_str(&trailing_comment);
+        }
+        ("", _) => {
+            formatted_policies.push('\n');
+            formatted_policies.push_str(&end_comment);
+        }
+        _ => {
+            formatted_policies.push(' ');
+            formatted_policies.push_str(&trailing_comment);
+            formatted_policies.push_str(&end_comment);
+        }
+    };
     // add soundness check to make sure formatting doesn't alter policy ASTs
     soundness_check(&formatted_policies, &ast)?;
     Ok(formatted_policies)
@@ -132,13 +156,14 @@ mod tests {
             ("policies.txt", "policies_formatted.txt"),
         ];
         for (pf, ef) in pairs {
+            // editors or cargo run try to append a newline at the end of files
+            // we should remove them for equality testing
             assert_eq!(
                 policies_str_to_pretty(&read_to_string(dir_path.join(pf)).unwrap(), &config)
-                    .unwrap(),
+                    .unwrap()
+                    .trim_end_matches('\n'),
                 read_to_string(dir_path.join(ef))
                     .unwrap()
-                    // editors or cargo run try to append a newline at the end of files
-                    // we should remove them for equality testing
                     .trim_end_matches('\n')
             );
         }

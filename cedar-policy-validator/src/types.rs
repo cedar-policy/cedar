@@ -400,7 +400,7 @@ impl Type {
                     }
                     None => (),
                 }
-                set_json.into()
+                set_json
             }
             Type::EntityOrRecord(rk) => {
                 let mut record_json = match rk {
@@ -567,7 +567,7 @@ impl Display for Type {
         write!(
             f,
             "{}",
-            serde_json::value::Value::Object(self.to_type_json()).to_string()
+            serde_json::value::Value::Object(self.to_type_json())
         )
     }
 }
@@ -1111,7 +1111,10 @@ mod test {
                     Attributes::with_attributes(
                         lub_attrs
                             .iter()
-                            .map(|(s, t)| (s.into(), AttributeType::required_attribute(t.clone())))
+                            .map(|(s, t)| (
+                                AsRef::<str>::as_ref(s).into(),
+                                AttributeType::required_attribute(t.clone())
+                            ))
                             .collect::<BTreeMap<_, _>>()
                     ),
                     entity_lub.get_attribute_types(&schema),

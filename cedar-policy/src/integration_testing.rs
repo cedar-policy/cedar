@@ -12,8 +12,8 @@
 // GRCOV_STOP_COVERAGE
 
 use crate::{
-    Answer, Authorizer, Context, Decision, Entities, EntityUid, EvaluationError, Policy, PolicyId,
-    PolicySet, Request, Schema, ValidationMode, Validator,
+    Authorizer, Context, Decision, Entities, EntityUid, EvaluationError, Policy, PolicyId,
+    PolicySet, Request, Response, Schema, ValidationMode, Validator,
 };
 use serde::Deserialize;
 use std::{
@@ -104,7 +104,7 @@ pub fn resolve_integration_test_path(path: impl AsRef<Path>) -> PathBuf {
 }
 
 /// Data structure for the validation result of an integration test. Unlike a
-/// definitional authorization answer, a definitional validation result isn't
+/// definitional authorization response, a definitional validation result isn't
 /// feasible to convert to its production analogue, so instead, we define a
 /// simple data structure to which both can be converted that is sufficient for
 /// the checks we want to perform.
@@ -127,7 +127,7 @@ pub trait CustomCedarImpl {
         q: &cedar_policy_core::ast::Request,
         p: &cedar_policy_core::ast::PolicySet,
         e: &cedar_policy_core::entities::Entities,
-    ) -> cedar_policy_core::authorizer::Answer;
+    ) -> cedar_policy_core::authorizer::Response;
 
     /// Custom validator entry point.
     ///
@@ -152,12 +152,15 @@ pub trait CustomCedarImpl {
 /// Relative paths are assumed to be relative to the root of the
 /// `CedarIntegrationTests` repo.
 /// Absolute paths are handled without modification.
+/// # Panics
+/// When integration test data cannot be found
+#[allow(clippy::too_many_lines)]
 pub fn perform_integration_test_from_json_custom(
     jsonfile: impl AsRef<Path>,
     custom_impl_opt: Option<&dyn CustomCedarImpl>,
 ) {
     let jsonfile = resolve_integration_test_path(jsonfile);
-    eprintln!("File path: {:?}", jsonfile);
+    eprintln!("File path: {jsonfile:?}");
     let jsonstr = std::fs::read_to_string(jsonfile.as_path())
         .unwrap_or_else(|e| panic!("error reading from file {}: {e}", jsonfile.display()));
     let test: JsonTest = serde_json::from_str(&jsonstr)
@@ -169,7 +172,7 @@ pub fn perform_integration_test_from_json_custom(
     let policies_res = PolicySet::from_str(&policies_text);
     if policies_res.is_err() {
         //we may see a failure to parse instead of the orginal error: (see comment at ast/exprs.rs:500)
-        //If an expected answer is for an error due to a non-existent function call or if e.g.,
+        //If an expected response is for an error due to a non-existent function call or if e.g.,
         // "isInRange" is used as a function instead of a method
         //(Maybe due to null principal?)
         for json_request in test.requests {
@@ -264,14 +267,14 @@ pub fn perform_integration_test_from_json_custom(
                 )
             });
         let request = Request::new(principal, action, resource, context);
-        let answer = if let Some(custom_impl) = custom_impl_opt {
+        let response = if let Some(custom_impl) = custom_impl_opt {
             custom_impl
                 .is_authorized(&request.0, &policies.ast, &entities.0)
                 .into()
         } else {
             Authorizer::new().is_authorized(&request, &policies, &entities)
         };
-        let expected_answer = Answer::new(
+        let expected_response = Response::new(
             json_request.decision,
             json_request
                 .reasons
@@ -281,10 +284,10 @@ pub fn perform_integration_test_from_json_custom(
             json_request.errors.into_iter().collect(),
         );
 
-        //If an expected answer is for an error due to a non-existent function call, we may
+        //If an expected response is for an error due to a non-existent function call, we may
         //see a failure to parse instead: (see comment at ast/exprs.rs:500)
         let mut parsing_fn_name: Option<String> = None;
-        for e in answer.diagnostics().errors() {
+        for e in response.diagnostics().errors() {
             let EvaluationError::StringMessage(msg) = e;
             if msg.contains("poorly formed: invalid syntax, expected function, found") {
                 parsing_fn_name = Some(msg.split_whitespace().last().unwrap().to_string());
@@ -294,15 +297,15 @@ pub fn perform_integration_test_from_json_custom(
         if parsing_fn_name.is_some() {
             //For these tests we must have the same decision and the undefined function when running the fuzzer should be the same when parsing
             assert_eq!(
-                answer.decision(),
-                expected_answer.decision(),
+                response.decision(),
+                expected_response.decision(),
                 "test {} failed for request \"{}\"",
                 jsonfile.display(),
                 &json_request.desc
             );
 
             let mut found_matching_non_existent_fn_fuzzing = false;
-            for e in expected_answer.diagnostics().errors() {
+            for e in expected_response.diagnostics().errors() {
                 let EvaluationError::StringMessage(msg) = e;
                 if msg.contains("while evaluating policy policy0, encountered the following error: function does not exist:") {
                     let fuzzing_fn_name = Some(msg.split_whitespace().last().unwrap().to_string());
@@ -321,8 +324,8 @@ pub fn perform_integration_test_from_json_custom(
             );
         } else {
             assert_eq!(
-                answer,
-                expected_answer,
+                response,
+                expected_response,
                 "test {} failed for request \"{}\"",
                 jsonfile.display(),
                 &json_request.desc

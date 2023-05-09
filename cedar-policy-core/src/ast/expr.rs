@@ -822,7 +822,7 @@ impl<T> ExprBuilder<T> {
 
     /// Utility used the validator to get an expression with the same source
     /// location as an existing expression. This is done when reconstructing the
-    /// `Expr` with type information. TODO: Consider better APIs for this.
+    /// `Expr` with type information.
     pub fn with_same_source_info<U>(self, expr: &Expr<U>) -> Self {
         self.with_maybe_source_info(expr.source_info.clone())
     }

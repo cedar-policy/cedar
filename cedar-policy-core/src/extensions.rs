@@ -60,7 +60,7 @@ impl<'a> Extensions<'a> {
     /// Returns an error if the function is not defined by any extension, or if
     /// it is defined multiple times.
     pub fn func(&self, name: &Name) -> Result<&ExtensionFunction> {
-        // TODO: in the future, we could build a single HashMap of function
+        // NOTE: in the future, we could build a single HashMap of function
         // name to ExtensionFunction, combining all extension functions
         // into one map, to make this lookup faster.
         let extension_funcs: Vec<&ExtensionFunction> = self
@@ -108,8 +108,8 @@ impl<'a> Extensions<'a> {
             0 => Ok(None),
             1 => Ok(Some(matches[0])),
             _ => Err(ExtensionsError::MultipleConstructorsSameSignature {
-                return_type: return_type.clone(),
-                arg_type: arg_type.clone(),
+                return_type: Box::new(return_type.clone()),
+                arg_type: Box::new(arg_type.clone()),
             }),
         }
     }
@@ -149,9 +149,9 @@ pub enum ExtensionsError {
     )]
     MultipleConstructorsSameSignature {
         /// return type of the shared constructor signature
-        return_type: SchemaType,
+        return_type: Box<SchemaType>,
         /// argument type of the shared constructor signature
-        arg_type: SchemaType,
+        arg_type: Box<SchemaType>,
     },
 }
 

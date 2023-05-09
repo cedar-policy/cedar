@@ -25,7 +25,9 @@ use crate::{
     schema::{
         is_action_entity_type, ActionHeadVar, HeadVar, PrincipalOrResourceHeadVar, ValidatorSchema,
     },
-    types::{AttributeType, Attributes, Effect, EffectSet, EntityRecordKind, RequestEnv, Type},
+    types::{
+        AttributeType, Attributes, Effect, EffectSet, EntityRecordKind, Primitive, RequestEnv, Type,
+    },
     ValidationMode,
 };
 
@@ -487,6 +489,7 @@ impl<'a> Typechecker<'a> {
         e: &Expr<Option<Type>>,
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
+        #[cfg(not(target_arch = "wasm32"))]
         if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
             return TypecheckAnswer::RecursionLimit;
         }
@@ -497,10 +500,6 @@ impl<'a> Typechecker<'a> {
             // `true` or `false` expression. The type of the constant expression
             // is `Boolean` in either case because strictly typed expressions
             // may not use the singleton boolean types.
-            // TODO: This function could use `cedar_analyzer::Type` to make
-            // returning type `True` or `False` impossible, but we'd need to
-            // reorganize code a bit and make `TypecheckAnswer` generic over the
-            // data stored on the expression.
             Some(Type::True) => TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(Type::primitive_boolean())).val(true),
             ),
@@ -553,7 +552,7 @@ impl<'a> Typechecker<'a> {
                                         // are no soundness issues.
                                         match (then_strict.data(), else_strict.data()) {
                                             (Some(ty_then), Some(ty_else))
-                                                if ty_then != ty_else =>
+                                                if !Self::unify_strict_types(ty_then, ty_else) =>
                                             {
                                                 // Only generate a new type error when the
                                                 // types have a LUB. If the don't have a
@@ -610,8 +609,24 @@ impl<'a> Typechecker<'a> {
 
                             let all_contained_types_are_compatable_actions =
                                 Self::check_all_types_compat_acts(&elems_types);
-                            let contains_one_type = elems_types.len() <= 1
-                                || all_contained_types_are_compatable_actions;
+
+                            // Check that the type of all elements of the set
+                            // can unify. This ensures that the all have the
+                            // same type up to the limited subtyping allowed
+                            // between True/False/Boolean.
+                            let mut elems_types_iter = elems_types.iter();
+                            let representative_type =
+                                elems_types_iter.next().and_then(|t| t.as_ref());
+                            let types_unify = representative_type
+                                .map(|representative_type| {
+                                    elems_types_iter
+                                        .filter_map(|ty| ty.as_ref())
+                                        .all(|ty| Self::unify_strict_types(representative_type, ty))
+                                })
+                                .unwrap_or(true);
+
+                            let contains_one_type =
+                                types_unify || all_contained_types_are_compatable_actions;
                             let is_non_empty = elems.len() != 0;
 
                             if !contains_one_type {
@@ -799,7 +814,9 @@ impl<'a> Typechecker<'a> {
                     (Some(ty1), Some(ty2)) => {
                         let operand_types_match = match (op, arg1_strict.data(), arg2_strict.data())
                         {
-                            (BinaryOp::Eq, Some(ty1), Some(ty2)) => ty1 == ty2,
+                            (BinaryOp::Eq, Some(ty1), Some(ty2)) => {
+                                Self::unify_strict_types(ty1, ty2)
+                            }
                             // Assume that LHS is a set. This is checked by the
                             // standard typechecker.
                             (
@@ -813,7 +830,7 @@ impl<'a> Typechecker<'a> {
                                     element_type: Some(elem_ty),
                                 }),
                                 Some(ty2),
-                            ) => elem_ty.as_ref() == ty2,
+                            ) => Self::unify_strict_types(elem_ty.as_ref(), ty2),
                             // Both args must be sets, but this is checked by
                             // the typechecker. Their elements must then be the
                             // same type, but, they're both sets, so we can just
@@ -822,7 +839,7 @@ impl<'a> Typechecker<'a> {
                                 BinaryOp::ContainsAll | BinaryOp::ContainsAny,
                                 Some(ty1),
                                 Some(ty2),
-                            ) => ty1 == ty2,
+                            ) => Self::unify_strict_types(ty1, ty2),
                             (BinaryOp::In, Some(ty1), Some(ty2)) => {
                                 let ty2 = match ty2 {
                                     // If `element_type` is None then the second operand to `in` was an empty
@@ -869,12 +886,15 @@ impl<'a> Typechecker<'a> {
                                     // is always `False` after standard typechecking, and we explicitly permit
                                     // slots below.
                                     (
-                                        Type::EntityOrRecord(EntityRecordKind::Entity(_)),
-                                        Some(Type::EntityOrRecord(EntityRecordKind::AnyEntity)),
-                                    )
-                                    | (
-                                        Type::EntityOrRecord(EntityRecordKind::AnyEntity),
-                                        Some(Type::EntityOrRecord(EntityRecordKind::Entity(_))),
+                                        Type::EntityOrRecord(
+                                            EntityRecordKind::AnyEntity
+                                            | EntityRecordKind::Entity(_),
+                                        ),
+                                        Some(Type::EntityOrRecord(
+                                            EntityRecordKind::AnyEntity
+                                            | EntityRecordKind::Entity(_)
+                                            | EntityRecordKind::ActionEntity { .. },
+                                        )),
                                     ) => false,
                                     // `in` is applied to a type that was either not an entity/set-of-entity or
                                     // was an empty set. The typechecker already raised an error for this, so
@@ -922,6 +942,47 @@ impl<'a> Typechecker<'a> {
         })
     }
 
+    pub(crate) fn unify_strict_types(actual: &Type, expected: &Type) -> bool {
+        match (actual, expected) {
+            (
+                Type::True
+                | Type::False
+                | Type::Primitive {
+                    primitive_type: Primitive::Bool,
+                },
+                Type::True
+                | Type::False
+                | Type::Primitive {
+                    primitive_type: Primitive::Bool,
+                },
+            ) => true,
+            (
+                Type::Set {
+                    element_type: Some(ety1),
+                },
+                Type::Set {
+                    element_type: Some(ety2),
+                },
+            ) => Self::unify_strict_types(ety1, ety2),
+            (
+                Type::EntityOrRecord(EntityRecordKind::Record { attrs: attrs1 }),
+                Type::EntityOrRecord(EntityRecordKind::Record { attrs: attrs2 }),
+            ) => {
+                let keys1 = attrs1.attrs.keys().collect::<HashSet<_>>();
+                let keys2 = attrs2.attrs.keys().collect::<HashSet<_>>();
+                keys1 == keys2
+                    && attrs1.iter().all(|(k, attr1)| {
+                        let attr2 = attrs2
+                            .get_attr(k)
+                            .expect("Guarded by `keys1` == `keys2`, and `k` is a key in `keys1`.");
+                        attr2.is_required == attr1.is_required
+                            && Self::unify_strict_types(&attr1.attr_type, &attr2.attr_type)
+                    })
+            }
+            _ => actual == expected,
+        }
+    }
+
     /// This method handles the majority of the work. Given an expression,
     /// the type for the request, and the a prior effect context for the
     /// expression, return the result of typechecking the expression, and add
@@ -936,6 +997,7 @@ impl<'a> Typechecker<'a> {
         e: &'b Expr,
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
+        #[cfg(not(target_arch = "wasm32"))]
         if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
             return TypecheckAnswer::RecursionLimit;
         }
@@ -1100,27 +1162,70 @@ impl<'a> Typechecker<'a> {
                         // prior effect of the `if` and any new effect generated
                         // by `test`. This enables an attribute access
                         // `principal.foo` after a condition `principal has foo`.
-                        // The `else` branch is not typechecked, so it is not
-                        // included in the type annotated AST. This is a
-                        // transformation we wanted as part of strict checking,
-                        // but it's easier to apply it here.
-                        self.typecheck(
+                        let ans_then = self.typecheck(
                             request_env,
                             &prior_eff.union(&eff_test),
                             then_expr,
                             type_errors,
-                        )
-                        // The output effect of the whole `if` expression also
-                        // needs contain the effect of the condition.
-                        .map_effect(|ef| ef.union(&eff_test))
+                        );
+                        // We have to build a type annotated `else` branch for
+                        // strict typechecking, but we want to throw away the
+                        // errors. This could instead  ignore the `else` if we
+                        // update our Dafny formalism to verify that this is
+                        // correct.
+                        let mut errs_else = Vec::new();
+                        let ans_else =
+                            self.typecheck(request_env, prior_eff, else_expr, &mut errs_else);
+
+                        ans_then.then_typecheck(|typ_then, eff_then| {
+                            match ans_else.into_typed_expr() {
+                                Some(ety) => {
+                                    TypecheckAnswer::success_with_effect(
+                                        ExprBuilder::with_data(typ_then.data().clone())
+                                            .with_same_source_info(e)
+                                            .ite(typ_test, typ_then, ety),
+                                        // The output effect of the whole `if` expression also
+                                        // needs to contain the effect of the condition.
+                                        eff_then.union(&eff_test),
+                                    )
+                                }
+                                // We might have hit the recursion limit only on
+                                // the `else` branch. Unfortunate since that
+                                // shouldn't effect typechecking, but we still
+                                // need to exit to avoid a crash.
+                                None => TypecheckAnswer::RecursionLimit,
+                            }
+                        })
                     } else if typ_test.data() == &Some(Type::singleton_boolean(false)) {
                         // The `else` branch cannot use the `test` effect since
                         // we know in the `else` branch that the condition
                         // evaluated to `false`. It still can use the original
                         // prior effect.
-                        // The `then` branch is not typechecked, so it is not
-                        // included in the type annotated AST.
-                        self.typecheck(request_env, prior_eff, else_expr, type_errors)
+                        let ans_else =
+                            self.typecheck(request_env, prior_eff, else_expr, type_errors);
+
+                        // Annotating types but ignoring errors in the `then` branch.
+                        let mut errs_then = Vec::new();
+                        let ans_then = self.typecheck(
+                            request_env,
+                            &prior_eff.union(&eff_test),
+                            then_expr,
+                            &mut errs_then,
+                        );
+
+                        ans_else.then_typecheck(|typ_else, eff_else| {
+                            match ans_then.into_typed_expr() {
+                                Some(ety) => TypecheckAnswer::success_with_effect(
+                                    ExprBuilder::with_data(typ_else.data().clone())
+                                        .with_same_source_info(e)
+                                        .ite(typ_test, ety, typ_else),
+                                    eff_else,
+                                ),
+                                // We might have hit the recursion limit only on
+                                // the `then` branch.
+                                None => TypecheckAnswer::RecursionLimit,
+                            }
+                        })
                     } else {
                         // When we don't short circuit, the `then` and `else`
                         // branches are individually typechecked with the same
@@ -1449,20 +1554,25 @@ impl<'a> Typechecker<'a> {
                                 // in the entity store, and `has` evaluates to
                                 // `false` when this is the case, we can't
                                 // conclude that `has` is true just because an
-                                // attribute is declared for an entity type.
+                                // attribute is required for an entity type.
                                 let exists_in_store = matches!(
                                     typ_actual,
                                     Type::EntityOrRecord(EntityRecordKind::Record { .. })
                                 );
-                                let type_of_has = if exists_in_store {
+                                // However, we can make an exception when the attribute
+                                // access of the expression is already in the prior effect,
+                                // which means the entity must exist.
+                                let in_prior_effs = prior_eff.contains(&Effect::new(expr, attr));
+                                let type_of_has = if exists_in_store || in_prior_effs {
                                     Type::singleton_boolean(true)
                                 } else {
                                     Type::primitive_boolean()
                                 };
-                                TypecheckAnswer::success(
+                                TypecheckAnswer::success_with_effect(
                                     ExprBuilder::with_data(Some(type_of_has))
                                         .with_same_source_info(e)
                                         .has_attr(typ_expr_actual, attr.clone()),
+                                    EffectSet::singleton(Effect::new(expr, attr)),
                                 )
                             }
                             // This is where effect information is generated. If

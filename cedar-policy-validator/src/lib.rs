@@ -13,6 +13,7 @@ mod extension_schema;
 mod extensions;
 mod fuzzy_match;
 mod validation_result;
+use serde::Serialize;
 pub use validation_result::*;
 mod rbac;
 mod schema;
@@ -29,7 +30,7 @@ pub use str_checks::{confusable_string_checks, ValidationWarning, ValidationWarn
 use self::typecheck::Typechecker;
 
 /// Used to select how a policy will be validated.
-#[derive(Default, Eq, PartialEq, Copy, Clone, Debug)]
+#[derive(Default, Eq, PartialEq, Copy, Clone, Debug, Serialize)]
 pub enum ValidationMode {
     #[default]
     Strict,

@@ -69,9 +69,7 @@ impl<'e> RestrictedEvaluator<'e> {
     ///
     /// May return an error, for instance if an extension function returns an error
     pub fn partial_interpret(&self, e: BorrowedRestrictedExpr<'_>) -> Result<PartialValue> {
-        if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
-            return Err(EvaluationError::RecursionLimit);
-        }
+        stack_size_check()?;
 
         match e.as_ref().expr_kind() {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
@@ -199,7 +197,7 @@ impl<'q, 'e> Evaluator<'e> {
     }
 
     /// Evaluate the given `Policy`, returning either a bool or an error.
-    /// The bool indicates whether the policy applies, ie, "is in force" for the
+    /// The bool indicates whether the policy applies, ie, "is satisfied" for the
     /// current `request`.
     /// This is _different than_ "if the current `request` should be allowed" --
     /// it doesn't consider whether we're processing a `Permit` policy or a
@@ -212,7 +210,7 @@ impl<'q, 'e> Evaluator<'e> {
     /// 1) A boolean, if complete evaluation was possible
     /// 2) An error, if the policy is guaranteed to error
     /// 3) A residual, if complete evaluation was impossible
-    /// The bool indicates whether the policy applies, ie, "is in force" for the
+    /// The bool indicates whether the policy applies, ie, "is satisfied" for the
     /// current `request`.
     /// This is _different than_ "if the current `request` should be allowed" --
     /// it doesn't consider whether we're processing a `Permit` policy or a
@@ -265,9 +263,7 @@ impl<'q, 'e> Evaluator<'e> {
     /// May return an error, for instance if the `Expr` tries to access an
     /// attribute that doesn't exist.
     pub fn partial_interpret(&self, e: &Expr, slots: &SlotEnv) -> Result<PartialValue> {
-        if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
-            return Err(EvaluationError::RecursionLimit);
-        }
+        stack_size_check()?;
 
         match e.expr_kind() {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
@@ -362,7 +358,7 @@ impl<'q, 'e> Evaluator<'e> {
                 PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::unary_app(*op, r))),
             },
             ExprKind::BinaryApp { op, arg1, arg2 } => {
-                // TODO: Likely more precise partial eval opportunities here, esp w/ typed unknowns
+                // NOTE: There are more precise partial eval opportunities here, esp w/ typed unknowns
                 // Current limitations:
                 //   Operators are not partially evaluated.
                 let (arg1, arg2) = match (
@@ -811,6 +807,17 @@ impl Value {
     }
 }
 
+#[inline(always)]
+fn stack_size_check() -> Result<()> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
+            return Err(EvaluationError::RecursionLimit);
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 pub mod test {
     use std::str::FromStr;
@@ -1125,7 +1132,7 @@ pub mod test {
             )),
             Ok(Value::Lit(Literal::Bool(false)))
         );
-        // has_attr where the answer is true
+        // has_attr where the response is true
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(
                 Expr::val(EntityUID::with_eid("entity_with_attrs")),

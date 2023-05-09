@@ -35,12 +35,6 @@ fn add_comments(token_stream: &mut [WrappedToken], input: &str) {
         }
         i += 1;
     }
-
-    let last_token = token_stream.last_mut().unwrap();
-    let last_range = &last_token.span;
-    if last_range.end < input.len() {
-        last_token.add_trailing_comment(&input[last_range.end..]);
-    }
 }
 
 pub fn get_token_stream(input: &str) -> Vec<WrappedToken> {
