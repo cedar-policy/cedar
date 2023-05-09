@@ -1,0 +1,45 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "w": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      },
+      "Ruwa1u": {
+        "memberOfTypes": [
+          "w"
+        ],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Ruwa1u",
+            "w"
+          ],
+          "principalTypes": [
+            "Ruwa1u",
+            "w"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+    "principal":"PhotoFlash::Data::User::\"alice\"",
+    "action":"PhotoFlash::Data::Action::\"view\"",
+    "resource":"PhotoFlash::Data::Photo::\"VacationPhoto94.jpg\"",
+    "context":{
+        "role": ["admin", "user"],
+        "person": { "name": "Alice", "age": 18 },
+        "addr": { "street": "main", "city": "DC"}
+    }
+}

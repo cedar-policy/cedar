@@ -1,0 +1,41 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "Ov": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "Om": {
+              "type": "Set",
+              "element": {
+                "type": "String"
+              },
+              "required": false
+            }
+          },
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Ov"
+          ],
+          "principalTypes": [
+            "Ov"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

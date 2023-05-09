@@ -1,0 +1,7 @@
+permit(
+  principal == a::"60",
+  action,
+  resource
+) when {
+  (true && a::"60") && context
+};

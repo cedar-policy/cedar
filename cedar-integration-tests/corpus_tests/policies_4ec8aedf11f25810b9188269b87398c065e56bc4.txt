@@ -1,0 +1,7 @@
+permit(
+  principal in a::"00",
+  action in [Action::"action"],
+  resource == a::"00"
+) when {
+  true && (-7957297591610245121)
+};

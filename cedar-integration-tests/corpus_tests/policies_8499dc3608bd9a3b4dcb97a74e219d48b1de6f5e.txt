@@ -1,0 +1,7 @@
+permit(
+  principal == a::"ff\0",
+  action == Action::"action",
+  resource
+) when {
+  (true && (((!a::"ff\0") like "ԙ*$*") == (!principal))) && principal
+};

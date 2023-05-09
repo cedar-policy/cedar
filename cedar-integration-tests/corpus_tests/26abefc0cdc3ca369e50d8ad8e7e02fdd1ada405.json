@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_26abefc0cdc3ca369e50d8ad8e7e02fdd1ada405.json",
+  "policies": "./corpus_tests/policies_26abefc0cdc3ca369e50d8ad8e7e02fdd1ada405.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_26abefc0cdc3ca369e50d8ad8e7e02fdd1ada405.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "Fwwww9::a::\"\\0:om/\"",
+      "action": "Fwwww9::Action::\"action\"",
+      "resource": "Fwwww9::a::\"\\0:om/\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": "Fwwww9::a::\"\\0:om/\"",
+      "action": "Fwwww9::Action::\"action\"",
+      "resource": "Fwwww9::a::\"\\0:om/\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": "Fwwww9::a::\"\\0:om/\"",
+      "action": "Fwwww9::Action::\"action\"",
+      "resource": "Fwwww9::a::\"\\0:om/\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": "Fwwww9::a::\"\\0:om/\"",
+      "action": "Fwwww9::Action::\"action\"",
+      "resource": "Fwwww9::a::\"\\0:om/\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": "Fwwww9::a::\"\\0:om/\"",
+      "action": "Fwwww9::Action::\"action\"",
+      "resource": "Fwwww9::a::\"\\0:om/\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": "Fwwww9::a::\"\\0:om/\"",
+      "action": "Fwwww9::Action::\"action\"",
+      "resource": "Fwwww9::a::\"\\0:om/\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": "Fwwww9::a::\"\\0:om/\"",
+      "action": "Fwwww9::Action::\"action\"",
+      "resource": "Fwwww9::a::\"\\0:om/\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": "Fwwww9::a::\"\\0:om/\"",
+      "action": "Fwwww9::Action::\"action\"",
+      "resource": "Fwwww9::a::\"\\0:om/\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

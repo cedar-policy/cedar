@@ -1,0 +1,42 @@
+{
+  "A::B33333332": {
+    "commonTypes": {},
+    "entityTypes": {
+      "a": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "": {
+        "appliesTo": {
+          "resourceTypes": [
+            "a"
+          ],
+          "principalTypes": [
+            "a"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "A": {
+                "type": "String",
+                "required": false
+              },
+              "WjxGj302x": {
+                "type": "String",
+                "required": false
+              }
+            },
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

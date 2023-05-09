@@ -1,0 +1,46 @@
+{
+  "v::Qx::OMRR": {
+    "commonTypes": {},
+    "entityTypes": {
+      "a": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "a"
+          ],
+          "principalTypes": [
+            "a"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "A": {
+                "type": "Boolean",
+                "required": false
+              },
+              "qw": {
+                "type": "String",
+                "required": false
+              },
+              "v": {
+                "type": "String",
+                "required": false
+              }
+            },
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

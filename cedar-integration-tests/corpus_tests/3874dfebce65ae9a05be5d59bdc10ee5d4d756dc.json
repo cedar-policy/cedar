@@ -1,0 +1,88 @@
+{
+  "schema": "./corpus_tests/schema_3874dfebce65ae9a05be5d59bdc10ee5d4d756dc.json",
+  "policies": "./corpus_tests/policies_3874dfebce65ae9a05be5d59bdc10ee5d4d756dc.txt",
+  "should_validate": false,
+  "entities": "./corpus_tests/entities_3874dfebce65ae9a05be5d59bdc10ee5d4d756dc.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "AJHH::a::\"\"",
+      "action": "AJHH::Action::\"action\"",
+      "resource": "AJHH::a::\"\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": "AJHH::a::\"\\0\"",
+      "action": "AJHH::Action::\"action\"",
+      "resource": "AJHH::a::\"\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": "AJHH::a::\"\\0\"",
+      "action": "AJHH::Action::\"action\"",
+      "resource": "AJHH::a::\"\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": "AJHH::a::\"\\0\"",
+      "action": "AJHH::Action::\"action\"",
+      "resource": "AJHH::a::\"\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": "AJHH::a::\"\\0\"",
+      "action": "AJHH::Action::\"action\"",
+      "resource": "AJHH::a::\"\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": "AJHH::a::\"\\0\"",
+      "action": "AJHH::Action::\"action\"",
+      "resource": "AJHH::a::\"\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": "AJHH::a::\"\\0\"",
+      "action": "AJHH::Action::\"action\"",
+      "resource": "AJHH::a::\"\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": "AJHH::a::\"\\0\"",
+      "action": "AJHH::Action::\"action\"",
+      "resource": "AJHH::a::\"\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    }
+  ]
+}

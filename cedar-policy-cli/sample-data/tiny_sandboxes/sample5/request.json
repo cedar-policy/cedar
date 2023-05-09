@@ -1,0 +1,6 @@
+{
+        "principal":"User::\"bob\"",
+        "action":"Action::\"view\"",
+        "resource":"Photo::\"VacationPhoto94.jpg\"",
+        "context":{ }
+}

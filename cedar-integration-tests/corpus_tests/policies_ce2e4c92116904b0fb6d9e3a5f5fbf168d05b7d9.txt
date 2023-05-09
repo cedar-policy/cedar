@@ -1,0 +1,7 @@
+permit(
+  principal == C2z::a::"",
+  action in [C2z::Action::"action"],
+  resource
+) when {
+  true
+};

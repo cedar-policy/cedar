@@ -1,0 +1,11 @@
+@C("")
+@C00("")
+@C22("\u{2}")
+@r("")
+permit(
+  principal,
+  action,
+  resource
+) when {
+  true
+};

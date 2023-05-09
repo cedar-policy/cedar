@@ -1,0 +1,7 @@
+permit(
+  principal in y::"0",
+  action in [Action::"action",Action::"action",Action::"action"],
+  resource == y::"0"
+) when {
+  true && (!(!(!y::"0")))
+};

@@ -1,0 +1,11 @@
+@C("c")
+@ga3("")
+@r("\u{2}\u{2}")
+@x1dl222000000000("")
+permit(
+  principal,
+  action,
+  resource
+) when {
+  true
+};

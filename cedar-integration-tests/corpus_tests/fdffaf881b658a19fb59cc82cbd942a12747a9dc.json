@@ -1,0 +1,88 @@
+{
+  "schema": "./corpus_tests/schema_fdffaf881b658a19fb59cc82cbd942a12747a9dc.json",
+  "policies": "./corpus_tests/policies_fdffaf881b658a19fb59cc82cbd942a12747a9dc.txt",
+  "should_validate": false,
+  "entities": "./corpus_tests/entities_fdffaf881b658a19fb59cc82cbd942a12747a9dc.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "a::\"FFFFFFFFFF&\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"FFFFFFFFFF&\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": "a::\"FFFFFFFFFF&\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"FFFFFFFFFF&\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": "a::\"FFFFFFFFFF&\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"FFFFFFFFFF&\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": "a::\"FFFFFFFFFF&\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"FFFFFFFFFF&\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": "a::\"FFFFFFFFFF&\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"FFFFFFFFFF&\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": "a::\"FFFFFFFFFF&\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"FFFFFFFFFF&\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": "a::\"FFFFFFFFFF&\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"FFFFFFFFFF&\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": "a::\"FFFFFFFFFF&\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"FFFFFFFFFF&\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    }
+  ]
+}

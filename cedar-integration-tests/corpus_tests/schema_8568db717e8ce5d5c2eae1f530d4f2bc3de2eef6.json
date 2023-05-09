@@ -1,0 +1,38 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "Gjxxxxjjj": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Gjxxxxjjj"
+          ],
+          "principalTypes": [
+            "Gjxxxxjjj"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "WjxiG777x7A33xx0": {
+                "type": "String",
+                "required": false
+              }
+            },
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

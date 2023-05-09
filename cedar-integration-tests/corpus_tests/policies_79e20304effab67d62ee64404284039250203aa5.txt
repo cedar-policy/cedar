@@ -1,0 +1,7 @@
+permit(
+  principal == m::r::a::"",
+  action,
+  resource in m::r::a::""
+) when {
+  ((true && (m::r::a::"" like "**")) && principal) && principal
+};

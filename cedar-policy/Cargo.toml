@@ -1,0 +1,59 @@
+[package]
+name = "cedar-policy"
+edition = "2021"
+
+version = "2.0.0"
+license-file = "../LICENSE"
+categories = ["compilers", "config"]
+description = "Cedar is a language for defining permissions as policies, which describe who should have access to what."
+keywords = ["cedar", "authorization", "policy", "security"]
+homepage = "https://cedarpolicy.com"
+repository = "https://github.com/cedar/cedar-policy"
+
+[dependencies]
+cedar-policy-core = { version = "2.0.0", path = "../cedar-policy-core" }
+cedar-policy-validator = { version = "2.0.0", path = "../cedar-policy-validator" }
+ref-cast = "1.0"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+lalrpop-util = { version = "0.19.12", features = ["lexer"] }
+itertools = "0.10"
+thiserror = "1.0"
+smol_str = { version = "0.2", features = ["serde"] }
+dhat = { version = "0.3.2", optional = true}
+
+
+[features]
+# by default, enable all Cedar extensions, but not other crate features
+default = ["ipaddr", "decimal"]
+
+# Cedar extensions
+ipaddr = ["cedar-policy-core/ipaddr", "cedar-policy-validator/ipaddr"]
+decimal = ["cedar-policy-core/decimal", "cedar-policy-validator/decimal"]
+
+# Features for memory or runtime profiling
+heap-profiling = ["dep:dhat"]
+corpus-timing = []
+
+integration_testing = []
+
+[lib]
+crate_type = ["rlib"]
+
+[dev-dependencies]
+# Hack to enable the `integration_testing` feature for the `Cedar` integration
+# tests without enabling it by default for ordinary consumers of `Cedar`. The
+# `default-features = false` stops this dependency from forcibly enabling the
+# default features of `Cedar`, leaving the default features to be controlled by
+# the ordinary `--no-default-features` flag of `cargo test`. See
+# https://github.com/rust-lang/cargo/issues/2911#issuecomment-1483256987 for
+# more information. That issue also tracks a real solution to the problem that
+# could replace this hack.
+cedar-policy = { path = ".", default-features = false, features = ["integration_testing"] }
+cool_asserts = "2.0"
+criterion = "0.4"
+globset = "0.4"
+
+[[bench]]
+name = "cedar_benchmarks"
+harness = false

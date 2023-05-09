@@ -1,0 +1,47 @@
+{
+  "R::AJHH": {
+    "commonTypes": {},
+    "entityTypes": {
+      "A": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      },
+      "Wj": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "": {
+        "appliesTo": {
+          "resourceTypes": [
+            "A",
+            "Wj"
+          ],
+          "principalTypes": [
+            "A"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "xmljjj000": {
+                "type": "String",
+                "required": false
+              }
+            },
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

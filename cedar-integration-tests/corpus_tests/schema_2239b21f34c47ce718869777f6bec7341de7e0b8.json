@@ -1,0 +1,49 @@
+{
+  "r::Fwww::r": {
+    "commonTypes": {},
+    "entityTypes": {
+      "A": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      },
+      "qiw8www1": {
+        "memberOfTypes": [
+          "A"
+        ],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "qiw8www1",
+            "A"
+          ],
+          "principalTypes": [
+            "A"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "E": {
+                "type": "String",
+                "required": false
+              }
+            },
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

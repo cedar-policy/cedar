@@ -1,0 +1,7 @@
+forbid(
+  principal,
+  action == Action::"action",
+  resource
+) when {
+  true && (((3941264106 * 0) * 0) * 0)
+};

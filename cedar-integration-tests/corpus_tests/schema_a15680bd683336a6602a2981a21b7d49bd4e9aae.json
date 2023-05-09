@@ -1,0 +1,44 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "Vh": {
+        "memberOfTypes": [
+          "r33338330"
+        ],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      },
+      "r33338330": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Vh",
+            "r33338330"
+          ],
+          "principalTypes": [
+            "r33338330"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

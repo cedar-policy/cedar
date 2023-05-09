@@ -1,0 +1,24 @@
+[
+    {
+        "uid": {  "type":"User", "id":"bob" },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": {  "type":"Action", "id":"view"},
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": {  "type":"Action", "id":"edit"},
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": {  "type":"Photo", "id":"VacationPhoto94.jpg" },
+        "attrs": {
+            "owner": {"__entity":{  "type":"User", "id":"bob"}}
+        },
+        "parents": []
+    }
+]

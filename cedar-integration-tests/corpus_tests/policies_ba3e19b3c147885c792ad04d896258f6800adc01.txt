@@ -1,0 +1,7 @@
+forbid(
+  principal in D655zz::"",
+  action,
+  resource
+) when {
+  true
+};

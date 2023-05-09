@@ -1,0 +1,7 @@
+permit(
+  principal in VhBhKfhmkkk::"",
+  action in [Action::"action"],
+  resource
+) when {
+  true
+};

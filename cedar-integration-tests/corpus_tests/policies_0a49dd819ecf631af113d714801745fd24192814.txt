@@ -1,0 +1,7 @@
+permit(
+  principal in qss::A000r::a::"6006+",
+  action in [qss::A000r::Action::"action"],
+  resource in qss::A000r::a::"6006+"
+) when {
+  true
+};

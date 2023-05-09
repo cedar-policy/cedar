@@ -1,0 +1,7 @@
+forbid(
+  principal in a::"ff",
+  action == Action::"action",
+  resource == a::"ff"
+) when {
+  true && (Action::"action".containsAll(true))
+};

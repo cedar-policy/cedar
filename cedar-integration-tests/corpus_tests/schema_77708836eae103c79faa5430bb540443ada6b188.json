@@ -1,0 +1,33 @@
+{
+  "l::Kdw6wyUy6y78": {
+    "commonTypes": {},
+    "entityTypes": {
+      "Fww6y788": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Fww6y788"
+          ],
+          "principalTypes": [
+            "Fww6y788"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

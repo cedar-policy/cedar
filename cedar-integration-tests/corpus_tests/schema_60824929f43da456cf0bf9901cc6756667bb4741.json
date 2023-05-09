@@ -1,0 +1,33 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "FwEwwwww": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "ű::::::::": {
+        "appliesTo": {
+          "resourceTypes": [
+            "FwEwwwww"
+          ],
+          "principalTypes": [
+            "FwEwwwww"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+permit(
+  principal == a::"\u{2}1",
+  action,
+  resource == a::"\u{2}1"
+) when {
+  ((true && (163895704086267462 == (if principal then principal else principal))) && principal) && principal
+};

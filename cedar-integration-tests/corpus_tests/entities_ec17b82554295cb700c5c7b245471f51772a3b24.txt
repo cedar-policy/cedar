@@ -1,0 +1,17 @@
+[
+  {
+    "uid": {
+      "type": "a",
+      "id": "fffffffgf`f\u0000ff~\u0000f'fr\u0000\u0000fT"
+    },
+    "attrs": {
+      "x": {
+        "__entity": {
+          "id": "fffffffgf`f\u0000ff~\u0000f'fr\u0000\u0000fT",
+          "type": "a"
+        }
+      }
+    },
+    "parents": []
+  }
+]

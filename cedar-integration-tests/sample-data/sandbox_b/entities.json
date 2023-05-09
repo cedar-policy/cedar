@@ -1,0 +1,219 @@
+[
+  {
+    "uid": {
+      "__expr": "User::\"alice\""
+    },
+    "attrs": {
+      "department": "HardwareEngineering",
+      "jobLevel": 5
+    },
+    "parents": [
+      {
+        "__expr": "UserGroup::\"alice_friends\""
+      },
+      {
+        "__expr": "UserGroup::\"AVTeam\""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "__expr": "User::\"ahmad\""
+    },
+    "attrs": {
+      "department": "HardwareEngineering",
+      "jobLevel": 4
+    },
+    "parents": []
+  },
+  {
+    "uid": {
+      "__expr": "User::\"stacey\""
+    },
+    "attrs": {
+      "department": "Sales",
+      "jobLevel": 6
+    },
+    "parents": [
+      {
+        "__expr": "UserGroup::\"alice_friends\""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "__expr": "User::\"giuseppe\""
+    },
+    "attrs": {
+      "department": "CustomerSupport",
+      "jobLevel": 7
+    },
+    "parents": [
+      {
+        "__expr": "UserGroup::\"AVTeam\""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "__expr": "UserGroup::\"alice_friends\""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "__expr": "Photo::\"prototype_v0.jpg\""
+    },
+    "attrs": {
+      "private": false,
+      "account": { "__expr" :  "Account::\"ahmad\"" },
+      "admins": []
+    },
+    "parents": [
+      {
+        "__expr": "Album::\"device_prototypes\""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "__expr": "Photo::\"vacation.jpg\""
+    },
+    "attrs": {
+      "private": false,
+      "account": { "__expr" :  "Account::\"alice\""},
+      "admins": []
+    },
+    "parents": [
+      {
+        "__expr": "Album::\"alice_vacation\""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "__expr": "Photo::\"alice_w2.jpg\""
+    },
+    "attrs": {
+      "private": true,
+      "account": { "__expr" :  "Account::\"alice\"" },
+      "admins": []
+    },
+    "parents": [
+      {
+        "__expr": "Account::\"alice\""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "__expr": "Photo::\"sales_projections.jpg\""
+    },
+    "attrs": {
+      "private": false,
+      "account": { "__expr" : "Account::\"stacey\""},
+      "admins": [ { "__expr" : "User::\"giuseppe\"" }]
+    },
+    "parents": [
+      {
+        "__expr": "Account::\"stacey\""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "__expr": "Album::\"device_prototypes\""
+    },
+    "attrs": {
+      "private": false,
+      "account": {
+        "__expr": "Account::\"alice\""
+      },
+      "admins": []
+    },
+    "parents": []
+  },
+  {
+    "uid": {
+      "__expr": "Album::\"alice_vacation\""
+    },
+    "attrs": {
+      "private": false,
+      "account": {
+        "__expr": "Account::\"alice\""
+      },
+      "admins": []
+    },
+    "parents": [
+      {
+        "__expr": "Account::\"alice\""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "__expr": "Account::\"alice\""
+    },
+    "attrs": {
+      "private": false,
+      "owner": {
+        "__expr": "User::\"alice\""
+      },
+      "admins": []
+    },
+    "parents": [
+      {
+        "__expr": "AccountGroup::\"GeronimoTeam\""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "__expr": "Account::\"ahmad\""
+    },
+    "attrs": {
+      "private": false,
+      "owner": {
+        "__expr": "User::\"ahmad\""
+      },
+      "admins": []
+    },
+    "parents": [
+      {
+        "__expr": "AccountGroup::\"GeronimoTeam\""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "__expr": "Account::\"stacey\""
+    },
+    "attrs": {
+      "private": false,
+      "owner": {
+        "__expr": "User::\"stacey\""
+      },
+      "admins": []
+    },
+    "parents": []
+  },
+  {
+    "uid": {
+      "__expr": "UserGroup::\"AVTeam\""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "__expr": "AccountGroup::\"GeronimoTeam\""
+    },
+    "attrs": {
+      "owner": {
+        "__expr": "User::\"alice\""
+      }
+    },
+    "parents": []
+  }
+]

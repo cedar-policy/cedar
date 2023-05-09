@@ -1,0 +1,7 @@
+forbid(
+  principal in mx7dx77::r::a::"",
+  action in [mx7dx77::r::Action::"action"],
+  resource in mx7dx77::r::a::""
+) when {
+  true
+};

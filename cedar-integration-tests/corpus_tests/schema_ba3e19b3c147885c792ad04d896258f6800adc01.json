@@ -1,0 +1,33 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "D655zz": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "D655zz"
+          ],
+          "principalTypes": [
+            "D655zz"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+permit(
+  principal == a::"*fsun/\0\0K",
+  action == Action::"action",
+  resource
+) when {
+  true
+};

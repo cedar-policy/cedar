@@ -1,0 +1,157 @@
+[
+    {
+        "uid": { "__entity": { "type": "User", "id": "alice"} },
+        "attrs": {
+            "department": "HardwareEngineering",
+            "jobLevel": 5
+        },
+        "parents": [{ "__entity": { "type": "UserGroup", "id": "alice_friends"} }, { "__entity": { "type": "UserGroup", "id": "AVTeam"} }]
+    },
+    {
+        "uid": { "__entity": { "type": "User", "id": "ahmad"} },
+        "attrs" : {
+            "department": "HardwareEngineering",
+            "jobLevel": 4
+        },
+        "parents": []
+    },
+    {
+        "uid": { "__entity": { "type": "User", "id": "stacey"} },
+        "attrs": {
+            "department": "Sales",
+            "jobLevel": 6
+        },
+        "parents": [{ "__entity": { "type": "UserGroup", "id": "alice_friends"} }]
+    },
+    {
+        "uid": { "__entity": { "type": "User", "id": "giuseppe"} },
+        "attrs": {
+            "department": "CustomerSupport",
+            "jobLevel": 7
+        },
+        "parents": [{ "__entity": { "type": "UserGroup", "id": "AVTeam"} }]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "alice_friends"} },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": { "__entity": { "type": "Action", "id": "view"} },
+        "attrs": {
+            "readOnly": true,
+            "appliesTo": "Photo"
+        },
+        "parents": []
+    },
+    {
+        "uid": { "__entity": { "type": "Action", "id": "edit"} },
+        "attrs": {
+            "readOnly": false,
+            "appliesTo": "Photo"
+        },
+        "parents": []
+    },
+    {
+        "uid": { "__entity": { "type": "Action", "id": "listPhotos"} },
+        "attrs": {
+            "readOnly": true,
+            "appliesTo": "Album"
+        },
+        "parents": []
+    },
+    {
+        "uid": { "__entity": { "type": "Action", "id": "addPhoto"} },
+        "attrs": {
+            "readOnly": false,
+            "appliesTo": "Album"
+        },
+        "parents": []
+    },
+    {
+        "uid": { "__entity": { "type": "Action", "id": "listAlbums"} },
+        "attrs": {
+            "readOnly": true,
+            "appliesTo": "Account"
+        },
+        "parents": []
+    },
+    {
+        "uid": { "__entity": { "type": "Photo", "id": "prototype_v0.jpg"} },
+        "attrs": {
+            "private": false,
+            "account": { "__entity": { "type": "Account", "id": "ahmad"} }
+        },
+        "parents": [{ "__entity": { "type": "Album", "id": "device_prototypes"} }]
+    },
+    {
+        "uid": { "__entity": { "type": "Photo", "id": "vacation.jpg"} },
+        "attrs": {
+            "private": false,
+            "account": { "__entity": { "type": "Account", "id": "alice"} }
+        },
+        "parents": [{ "__entity": { "type": "Album", "id": "alice_vacation"} }]
+    },
+    {
+        "uid": { "__entity": { "type": "Photo", "id": "alice_w2.jpg"} },
+        "attrs": {
+            "private": true,
+            "account": { "__entity": { "type": "Account", "id": "alice"} }
+        },
+        "parents": [{ "__entity": { "type": "Account", "id": "alice"} }]
+    },
+    {
+        "uid": { "__entity": { "type": "Photo", "id": "sales_projections.jpg"} },
+        "attrs": {
+            "private": false,
+            "account": { "__entity": { "type": "Account", "id": "stacey"} },
+            "admins": [{ "__entity": { "type": "User", "id": "giuseppe"} }]
+        },
+        "parents": [{ "__entity": { "type": "Account", "id": "stacey"} }]
+    },
+    {
+        "uid": { "__entity": { "type": "Album", "id": "device_prototypes"} },
+        "attrs": {
+            "owner": { "__entity": { "type": "AccountGroup", "id": "GeronimoTeam"} }
+        },
+        "parents": []
+    },
+    {
+        "uid": { "__entity": { "type": "Album", "id": "alice_vacation"} },
+        "attrs": {
+            "owner": { "__entity": { "type": "Account", "id": "alice"} }
+        },
+        "parents": [{ "__entity": { "type": "Account", "id": "alice"} }]
+    },
+    {
+        "uid": { "__entity": { "type": "Account", "id": "alice"} },
+        "attrs": {
+            "owner": { "__entity": { "type": "User", "id": "alice"} }
+        },
+        "parents": [{ "__entity": { "type": "AccountGroup", "id": "GeronimoTeam"} }]
+    },
+    {
+        "uid": { "__entity": { "type": "Account", "id": "ahmad"} },
+        "attrs": {
+            "owner": { "__entity": { "type": "User", "id": "ahmad"} }
+        },
+        "parents": [{ "__entity": { "type": "AccountGroup", "id": "GeronimoTeam"} }]
+    },
+    {
+        "uid": { "__entity": { "type": "Account", "id": "stacey"} },
+        "attrs": {
+            "owner": { "__entity": { "type": "User", "id": "stacey"} }
+        },
+        "parents": []
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "AVTeam"} },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": { "__entity": { "type": "AccountGroup", "id": "GeronimoTeam"} },
+        "attrs": {},
+        "parents": []
+    }
+]

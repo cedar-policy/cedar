@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_cefaca00ac959a2b9fc2f68db187e24290d6fa39.json",
+  "policies": "./corpus_tests/policies_cefaca00ac959a2b9fc2f68db187e24290d6fa39.txt",
+  "should_validate": false,
+  "entities": "./corpus_tests/entities_cefaca00ac959a2b9fc2f68db187e24290d6fa39.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "a::\"ffffffbff\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"ffffffbff\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected string, got (entity of type a)"
+      ]
+    },
+    {
+      "desc": "Query 1",
+      "principal": "a::\"ffffffbff\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"ffffffbff\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected string, got (entity of type a)"
+      ]
+    },
+    {
+      "desc": "Query 2",
+      "principal": "a::\"ffffffbff\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"ffffffbff\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected string, got (entity of type a)"
+      ]
+    },
+    {
+      "desc": "Query 3",
+      "principal": "a::\"ffffffbff\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"ffffffbff\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected string, got (entity of type a)"
+      ]
+    },
+    {
+      "desc": "Query 4",
+      "principal": "a::\"ffffffbff\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"ffffffbff\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected string, got (entity of type a)"
+      ]
+    },
+    {
+      "desc": "Query 5",
+      "principal": "a::\"ffffffbff\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"ffffffbff\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected string, got (entity of type a)"
+      ]
+    },
+    {
+      "desc": "Query 6",
+      "principal": "a::\"ffffffbff\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"ffffffbff\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected string, got (entity of type a)"
+      ]
+    },
+    {
+      "desc": "Query 7",
+      "principal": "a::\"ffffffbff\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"ffffffbff\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected string, got (entity of type a)"
+      ]
+    }
+  ]
+}

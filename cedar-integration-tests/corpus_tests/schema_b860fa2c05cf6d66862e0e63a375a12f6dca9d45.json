@@ -1,0 +1,43 @@
+{
+  "wttt": {
+    "commonTypes": {},
+    "entityTypes": {
+      "Bmii5h": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      },
+      "VLjj0": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Bmii5h",
+            "VLjj0"
+          ],
+          "principalTypes": [
+            "Bmii5h",
+            "VLjj0"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

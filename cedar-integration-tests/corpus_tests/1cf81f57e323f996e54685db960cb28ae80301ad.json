@@ -1,0 +1,88 @@
+{
+  "schema": "./corpus_tests/schema_1cf81f57e323f996e54685db960cb28ae80301ad.json",
+  "policies": "./corpus_tests/policies_1cf81f57e323f996e54685db960cb28ae80301ad.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_1cf81f57e323f996e54685db960cb28ae80301ad.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "a::\"+\"",
+      "action": "Action::\"\"",
+      "resource": "a::\"+\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": "a::\"\"",
+      "action": "Action::\"\"",
+      "resource": "a::\"\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": "a::\"+\"",
+      "action": "Action::\"\"",
+      "resource": "a::\"+\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": "a::\"+\"",
+      "action": "Action::\"\"",
+      "resource": "a::\"+\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": "a::\"+\"",
+      "action": "Action::\"\"",
+      "resource": "a::\"+\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": "a::\"+\"",
+      "action": "Action::\"\"",
+      "resource": "a::\"+\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": "a::\"+\"",
+      "action": "Action::\"\"",
+      "resource": "a::\"+\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": "a::\"+\"",
+      "action": "Action::\"\"",
+      "resource": "a::\"+\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    }
+  ]
+}

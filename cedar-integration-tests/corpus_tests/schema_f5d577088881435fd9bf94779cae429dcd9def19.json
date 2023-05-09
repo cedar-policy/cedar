@@ -1,0 +1,50 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "m000000": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "JaWM": {
+              "type": "Set",
+              "element": {
+                "type": "Long"
+              },
+              "required": false
+            }
+          },
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "is": {
+        "appliesTo": {
+          "resourceTypes": [
+            "m000000"
+          ],
+          "principalTypes": [
+            "m000000"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "A0000000000000000": {
+                "type": "String",
+                "required": false
+              }
+            },
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      },
+      "_re": {
+        "appliesTo": null,
+        "memberOf": null
+      }
+    }
+  }
+}

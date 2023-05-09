@@ -1,0 +1,12 @@
+[
+  {
+    "uid": {
+      "type": "F3333",
+      "id": ""
+    },
+    "attrs": {
+      "A": false
+    },
+    "parents": []
+  }
+]

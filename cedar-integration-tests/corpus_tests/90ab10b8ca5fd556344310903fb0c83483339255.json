@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_90ab10b8ca5fd556344310903fb0c83483339255.json",
+  "policies": "./corpus_tests/policies_90ab10b8ca5fd556344310903fb0c83483339255.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_90ab10b8ca5fd556344310903fb0c83483339255.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "F_wwwwww::\"ml\"",
+      "action": "Action::\"action\"",
+      "resource": "F_wwwwww::\"ml\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": "F_wwwwww::\"ml\"",
+      "action": "Action::\"action\"",
+      "resource": "F_wwwwww::\"ml\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": "F_wwwwww::\"ml\"",
+      "action": "Action::\"action\"",
+      "resource": "F_wwwwww::\"ml\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": "F_wwwwww::\"ml\"",
+      "action": "Action::\"action\"",
+      "resource": "F_wwwwww::\"ml\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": "F_wwwwww::\"ml\"",
+      "action": "Action::\"action\"",
+      "resource": "F_wwwwww::\"ml\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": "F_wwwwww::\"ml\"",
+      "action": "Action::\"action\"",
+      "resource": "F_wwwwww::\"ml\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": "F_wwwwww::\"ml\"",
+      "action": "Action::\"action\"",
+      "resource": "F_wwwwww::\"ml\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": "F_wwwwww::\"ml\"",
+      "action": "Action::\"action\"",
+      "resource": "F_wwwwww::\"ml\"",
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

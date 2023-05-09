@@ -1,0 +1,7 @@
+permit(
+  principal,
+  action,
+  resource == a::"V"
+) when {
+  true && (((true * 11945) * 0) * 0)
+};

@@ -1,0 +1,57 @@
+{
+  "cP::v": {
+    "commonTypes": {},
+    "entityTypes": {
+      "v": {
+        "memberOfTypes": [
+          "a"
+        ],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      },
+      "a": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      },
+      "Qx": {
+        "memberOfTypes": [
+          "v",
+          "a"
+        ],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "v",
+            "a"
+          ],
+          "principalTypes": [
+            "Qx",
+            "v",
+            "a"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

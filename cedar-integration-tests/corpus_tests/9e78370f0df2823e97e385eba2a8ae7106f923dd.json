@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_9e78370f0df2823e97e385eba2a8ae7106f923dd.json",
+  "policies": "./corpus_tests/policies_9e78370f0df2823e97e385eba2a8ae7106f923dd.txt",
+  "should_validate": false,
+  "entities": "./corpus_tests/entities_9e78370f0df2823e97e385eba2a8ae7106f923dd.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "a::\"\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got string"
+      ]
+    },
+    {
+      "desc": "Query 1",
+      "principal": "a::\"\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got string"
+      ]
+    },
+    {
+      "desc": "Query 2",
+      "principal": "a::\"\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got string"
+      ]
+    },
+    {
+      "desc": "Query 3",
+      "principal": "a::\"\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got string"
+      ]
+    },
+    {
+      "desc": "Query 4",
+      "principal": "a::\"\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got string"
+      ]
+    },
+    {
+      "desc": "Query 5",
+      "principal": "a::\"\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got string"
+      ]
+    },
+    {
+      "desc": "Query 6",
+      "principal": "a::\"\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got string"
+      ]
+    },
+    {
+      "desc": "Query 7",
+      "principal": "a::\"\\0\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"\\0\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got string"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "zppWEj::AZ330::Hqj": {
+    "commonTypes": {},
+    "entityTypes": {
+      "r": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "A": {
+              "type": "String",
+              "required": false
+            }
+          },
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "r"
+          ],
+          "principalTypes": [
+            "r"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "A": {
+                "type": "String",
+                "required": false
+              }
+            },
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

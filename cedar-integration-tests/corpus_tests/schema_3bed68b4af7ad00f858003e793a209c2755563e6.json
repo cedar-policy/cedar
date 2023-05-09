@@ -1,0 +1,50 @@
+{
+  "Kxx0xnx": {
+    "commonTypes": {},
+    "entityTypes": {
+      "LYY": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      },
+      "Qm0": {
+        "memberOfTypes": [
+          "LYY"
+        ],
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "pdml": {
+              "type": "Boolean",
+              "required": false
+            }
+          },
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Qm0",
+            "LYY"
+          ],
+          "principalTypes": [
+            "Qm0",
+            "LYY"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

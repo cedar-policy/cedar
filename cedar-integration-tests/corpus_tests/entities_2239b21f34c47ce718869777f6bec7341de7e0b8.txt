@@ -1,0 +1,23 @@
+[
+  {
+    "uid": {
+      "type": "r::Fwww::r::A",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "r::Fwww::r::qiw8www1",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "r::Fwww::r::A",
+        "id": ""
+      }
+    ]
+  }
+]

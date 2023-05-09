@@ -1,0 +1,38 @@
+[
+  {
+    "uid": {
+      "type": "a",
+      "id": "PTL::"
+    },
+    "attrs": {
+      "C": false,
+      "A": false,
+      "o": false
+    },
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "a",
+      "id": ""
+    },
+    "attrs": {
+      "C": false,
+      "A": false,
+      "o": false
+    },
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "a",
+      "id": "*"
+    },
+    "attrs": {
+      "C": false,
+      "o": false,
+      "A": false
+    },
+    "parents": []
+  }
+]

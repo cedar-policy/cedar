@@ -1,0 +1,156 @@
+[
+  {
+    "uid": {
+      "__expr": "User::\"alice\""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "__expr": "UserGroup::\"jane_friends\""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "__expr": "User::\"bob\""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "__expr": "User::\"tim\""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "__expr": "UserGroup::\"jane_friends\""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "__expr": "UserGroup::\"jane_friends\""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "__expr": "Administrator::\"ahmad\""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "__expr": "Action::\"view\""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "__expr": "Action::\"comment\""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "__expr": "Action::\"edit\""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "__expr": "Action::\"delete\""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "__expr": "Action::\"listAlbums\""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "__expr": "Action::\"listPhotos\""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "__expr": "Photo::\"VacationPhoto94.jpg\""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "__expr": "Album::\"jane_vacation\""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "__expr": "Photo::\"passportscan.jpg\""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "__expr": "Account::\"jane\""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "__expr": "Video::\"surf.mp4\""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "__expr": "Album::\"jane_vacation\""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "__expr": "Photo::\"selfie.jpg\""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "__expr": "Account::\"bob\""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "__expr": "Album::\"jane_vacation\""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "__expr": "Account::\"jane\""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "__expr": "Account::\"jane\""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "__expr": "Account::\"bob\""
+    },
+    "attrs": {},
+    "parents": []
+  }
+]

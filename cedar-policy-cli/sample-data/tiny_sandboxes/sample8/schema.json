@@ -1,0 +1,64 @@
+{
+    "": {
+        "entityTypes": {
+            "User": {
+                "shape": {
+                    "type": "Record",
+                    "attributes": {
+                        "score": {
+                            "type": "Extension",
+                            "name": "decimal"
+                        }
+                    }
+                },
+                "memberOfTypes": [
+                    "UserGroup"
+                ]
+            },
+            "UserGroup": {
+                "memberOfTypes": []
+            },
+            "Photo": {
+                "shape": {
+                    "type": "Record",
+                    "attributes": {
+                        "owner": {
+                            "type": "Entity",
+                            "name": "User"
+                        }
+                    }
+                },
+                "memberOfTypes": [
+                    "Album"
+                ]
+            },
+            "Album": {
+                "memberOfTypes": [
+                    "Album"
+                ]
+            }
+        },
+        "actions": {
+            "view": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "Photo"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            },
+            "edit": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "Photo"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            }
+        }
+    }
+}

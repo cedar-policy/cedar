@@ -1,0 +1,112 @@
+{
+    "PhotoFlash::Data": {
+        "entityTypes": {
+            "User": {
+                "shape": {
+                    "type": "Record",
+                    "attributes": {
+                        "account": {
+                            "type": "Entity",
+                            "name": "Account"
+                        }
+                    }
+                },
+                "memberOfTypes": [
+                    "UserGroup"
+                ]
+            },
+            "Account": {
+                "shape": {
+                    "type": "Record",
+                    "attributes": {
+                        "age": {
+                            "type": "Long"
+                        }
+                    }
+                },
+                "memberOfTypes": []
+            },
+            "ScreenTime": {
+                "memberOfTypes": []
+            },
+            "UserGroup": {
+                "memberOfTypes": []
+            },
+            "Photo": {
+                "shape": {
+                    "type": "Record",
+                    "attributes": {
+                        "owner": {
+                            "type": "Entity",
+                            "name": "User"
+                        }
+                    }
+                },
+                "memberOfTypes": [
+                    "Album"
+                ]
+            },
+            "Album": {
+                "memberOfTypes": [
+                    "Album"
+                ]
+            }
+        },
+        "actions": {
+            "view": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "Photo",
+                        "ScreenTime"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ],
+                    "context": {
+                        "type": "Record",
+                        "attributes": {
+                            "addr": {
+                                "type": "Record",
+                                "attributes": {
+                                    "street": {
+                                        "type": "String"
+                                    },
+                                    "city": {
+                                        "type": "String"
+                                    }
+                                }
+                            },
+                            "person": {
+                                "type": "Record",
+                                "attributes": {
+                                    "name": {
+                                        "type": "String"
+                                    },
+                                    "age": {
+                                        "type": "Long"
+                                    }
+                                }
+                            },
+                            "role": {
+                                "type": "Set",
+                                "element": {
+                                    "type": "String"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "edit": {
+                "appliesTo": {
+                    "resourceTypes": [
+                        "Photo"
+                    ],
+                    "principalTypes": [
+                        "User"
+                    ]
+                }
+            }
+        }
+    }
+}

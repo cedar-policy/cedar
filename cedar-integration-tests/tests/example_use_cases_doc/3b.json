@@ -1,0 +1,64 @@
+{
+    "policies": "tests/example_use_cases_doc/policies_3b.txt",
+    "entities": "sample-data/sandbox_a/entities.json",
+    "schema": "sample-data/sandbox_a/schema.json",
+    "should_validate": true,
+    "queries": [
+        {
+            "desc": "alice should be able to view a photo in jane's account",
+            "principal": "User::\"alice\"",
+            "action": "Action::\"view\"",
+            "resource": "Photo::\"VacationPhoto94.jpg\"",
+            "context": {
+                "source_ip": "123.123.123.123",
+                "confidence_score": "0.6",
+                "authenticated": true
+            },
+            "decision": "Allow",
+            "reasons": ["policy0"],
+            "errors": []
+        },
+        {
+            "desc": "alice should be able to list photos in an album in jane's account",
+            "principal": "User::\"alice\"",
+            "action": "Action::\"listPhotos\"",
+            "resource": "Album::\"jane_vacation\"",
+            "context": {
+                "source_ip": "123.123.123.123",
+                "confidence_score": "0.6",
+                "authenticated": true
+            },
+            "decision": "Allow",
+            "reasons": ["policy0"],
+            "errors": []
+        },
+        {
+            "desc": "alice should be able to list albums in jane's account",
+            "principal": "User::\"alice\"",
+            "action": "Action::\"listAlbums\"",
+            "resource": "Account::\"jane\"",
+            "context": {
+                "source_ip": "123.123.123.123",
+                "confidence_score": "0.6",
+                "authenticated": true
+            },
+            "decision": "Allow",
+            "reasons": ["policy0"],
+            "errors": []
+        },
+        {
+            "desc": "alice should not be able to view a photo in bob's account",
+            "principal": "User::\"alice\"",
+            "action": "Action::\"view\"",
+            "resource": "Photo::\"selfie.jpg\"",
+            "context": {
+                "source_ip": "123.123.123.123",
+                "confidence_score": "0.6",
+                "authenticated": true
+            },
+            "decision": "Deny",
+            "reasons": [],
+            "errors": []
+        }
+    ]
+}

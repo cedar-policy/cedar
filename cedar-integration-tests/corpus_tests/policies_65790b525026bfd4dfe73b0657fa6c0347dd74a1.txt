@@ -1,0 +1,10 @@
+@r("")
+@rY3ddddd00000000("")
+@x("fff")
+permit(
+  principal,
+  action,
+  resource
+) when {
+  true
+};

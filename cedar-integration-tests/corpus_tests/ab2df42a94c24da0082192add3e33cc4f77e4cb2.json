@@ -1,0 +1,104 @@
+{
+  "schema": "./corpus_tests/schema_ab2df42a94c24da0082192add3e33cc4f77e4cb2.json",
+  "policies": "./corpus_tests/policies_ab2df42a94c24da0082192add3e33cc4f77e4cb2.txt",
+  "should_validate": false,
+  "entities": "./corpus_tests/entities_ab2df42a94c24da0082192add3e33cc4f77e4cb2.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "a::\"zzzzzz\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"zzzzzz\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got set"
+      ]
+    },
+    {
+      "desc": "Query 1",
+      "principal": "a::\"zzzzzz\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"zzzzzz\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got set"
+      ]
+    },
+    {
+      "desc": "Query 2",
+      "principal": "a::\"zzzzzz\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"zzzzzz\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got set"
+      ]
+    },
+    {
+      "desc": "Query 3",
+      "principal": "a::\"zzzzzz\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"zzzzzz\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got set"
+      ]
+    },
+    {
+      "desc": "Query 4",
+      "principal": "a::\"zzzzzz\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"zzzzzz\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got set"
+      ]
+    },
+    {
+      "desc": "Query 5",
+      "principal": "a::\"zzzzzz\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"zzzzzz\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got set"
+      ]
+    },
+    {
+      "desc": "Query 6",
+      "principal": "a::\"zzzzzz\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"zzzzzz\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got set"
+      ]
+    },
+    {
+      "desc": "Query 7",
+      "principal": "a::\"zzzzzz\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"zzzzzz\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "while evaluating policy policy0, encountered the following error: type error: expected bool, got set"
+      ]
+    }
+  ]
+}

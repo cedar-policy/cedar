@@ -1,0 +1,54 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "a": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "a"
+          ],
+          "principalTypes": [
+            "a"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "wgldmlAlA": {
+                "type": "Record",
+                "attributes": {
+                  "": {
+                    "type": "String",
+                    "required": false
+                  },
+                  "/\n/\n\u0006": {
+                    "type": "Entity",
+                    "name": "a",
+                    "required": false
+                  },
+                  "inf": {
+                    "type": "String",
+                    "required": false
+                  }
+                },
+                "additionalAttributes": false,
+                "required": false
+              }
+            },
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

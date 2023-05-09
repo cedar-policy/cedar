@@ -1,0 +1,112 @@
+name: Bug report
+description: Create a report to help us improve Cedar
+labels: pending-triage
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! Try to include as much information as you can.
+
+  - type: checkboxes
+    attributes:
+      label: |
+        Before opening, please confirm:
+      options:
+        - label: I have [searched for duplicate or closed issues](https://github.com/cedar-policy/cedar/issues?q=is%3Aissue+) and [discussions](https://github.com/cedar-policy/cedar/discussions).
+          required: true
+        - label: I have read the guide for [submitting bug reports](https://github.com/cedar-policy/cedar/blob/main/CONTRIBUTING.md#bug-reports).
+          required: true
+        - label: I have done my best to include a minimal, self-contained set of instructions for consistently reproducing the issue.
+          required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ## Category
+  - type: dropdown
+    attributes:
+      label: Bug Category
+      description: What part of Cedar is this bug related to?
+      multiple: true
+      options:
+        - Cedar Parser
+        - Policy Evaluation
+        - Schemas and Validation
+        - Other
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        ## Details
+  - type: textarea
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Expected behavior
+      description: A clear and concise description of what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Reproduction steps
+      description: |
+        How do you trigger this bug? Please walk us through it step by step. Screenshots can be attached in textarea below.
+      placeholder: |
+        1. Install '...'
+        2. Configure '...'
+        3. Go to '...'
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Code Snippet
+      description: |
+        Please provide a code snippet or a link to sample code of the issue you are experiencing to help us reproduce the issue. Please also include relevant Cedar policies, Schemas, or Entity Data.
+
+        **Be sure to remove any sensitive data.**
+      value: |
+        ```rust
+        // Put your code below this line.
+
+        ```
+  - type: textarea
+    attributes:
+      label: Log output
+      description: |
+        For example, error messages, or stack traces.
+        **Be sure to remove any sensitive data.**
+      value: |
+        ```
+        // Put your output below this line
+
+        ```
+  - type: markdown
+    attributes:
+      value: |
+        ## Configuration
+  - type: textarea
+    attributes:
+      label: Additional configuration
+      description: |
+        If applicable, provide more configuration data.
+        **Be sure to remove any sensitive data**
+
+  - type: input
+    attributes:
+      label: Operating  System
+      description: e.g. Linux, MacOS
+  - type: textarea
+    attributes:
+      label: Additional information and screenshots
+      description: |
+        If you have any additional information, workarounds, etc. for us, use the field below.
+        Please note, you can attach screenshots or screen recordings here, by
+        dragging and dropping files in the field below.
+

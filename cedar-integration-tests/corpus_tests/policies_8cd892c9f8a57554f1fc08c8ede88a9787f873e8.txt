@@ -1,0 +1,8 @@
+@G6t7wr6("\u{6}\u{6}\u{6}")
+permit(
+  principal,
+  action in [Action::"action",Action::"action",Action::"action"],
+  resource in a::"\""
+) when {
+  true
+};

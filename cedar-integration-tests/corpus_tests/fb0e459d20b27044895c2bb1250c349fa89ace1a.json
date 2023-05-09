@@ -1,0 +1,88 @@
+{
+  "schema": "./corpus_tests/schema_fb0e459d20b27044895c2bb1250c349fa89ace1a.json",
+  "policies": "./corpus_tests/policies_fb0e459d20b27044895c2bb1250c349fa89ace1a.txt",
+  "should_validate": false,
+  "entities": "./corpus_tests/entities_fb0e459d20b27044895c2bb1250c349fa89ace1a.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": "a::\"zzz\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"zzz\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": "a::\"zzz\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"zzz\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": "a::\"zzz\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"zzz\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": "a::\"zzz\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"zzz\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": "a::\"zzz\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"zzz\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": "a::\"zzz\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"zzz\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": "a::\"zzz\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"zzz\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": "a::\"zzz\"",
+      "action": "Action::\"action\"",
+      "resource": "a::\"zzz\"",
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    }
+  ]
+}

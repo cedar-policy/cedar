@@ -1,0 +1,7 @@
+permit(
+  principal in a::"00",
+  action == Action::"action",
+  resource
+) when {
+  true && (!(principal == (if principal then principal else principal)))
+};

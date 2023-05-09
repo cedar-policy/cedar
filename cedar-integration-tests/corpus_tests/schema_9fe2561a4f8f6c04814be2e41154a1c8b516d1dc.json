@@ -1,0 +1,45 @@
+{
+  "Q0xx": {
+    "commonTypes": {},
+    "entityTypes": {
+      "Qxxx1fARxzI222III": {
+        "memberOfTypes": [
+          "c"
+        ],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      },
+      "c": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Qxxx1fARxzI222III",
+            "c"
+          ],
+          "principalTypes": [
+            "Qxxx1fARxzI222III",
+            "c"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}
