@@ -307,8 +307,6 @@ impl ExtensionFunction {
     ///
     /// Currently, the only impact of this is that non-constructors are not
     /// accessible in the JSON format (entities/json.rs).
-    /// <https://sim.amazon.com/issues/WF-6068> proposes an additional effect,
-    /// that non-constructors be disallowed from restricted expressions.
     pub fn is_constructor(&self) -> bool {
         // return type is an extension type
         matches!(self.return_type(), Some(SchemaType::Extension { .. }))
