@@ -33,45 +33,55 @@ cedar-policy = "2.0"
 
 ## Quick Start
 
-Let's write a super simple Cedar policy and test it:
-```
-permit(principal == User::"alice", action == Action::"view", resource == File::"93");
-```
-This policy permits _exactly_ one authorization request, `alice` is allowed to `view` file `93`. 
-Any other authorization request will be implicitly denied. Let's embed this policy in Rust and use the Cedar Authorizer:
+Let's put the policy in policy.cedar and the entities in entities.json:
 
+policy.cedar
+```
+permit (
+  principal == User::"alice",
+  action == Action::"view",
+  resource in Album::"jane_vacation"
+);
+```
+This policy specifies that `alice` is allowed to view the photos in the `"jane_vacation"` album.
+
+entities.json
+```json
+[
+    {
+        "uid": { "type": "User", "id": "alice"} ,
+        "attrs": {"age": 18},
+        "parents": []
+    },
+    {
+        "uid": { "type": "Photo", "id": "VacationPhoto94.jpg"},
+        "attrs": {},
+        "parents": [{ "type": "Album", "id": "jane_vacation" }]
+    }
+]
+
+```
+Cedar represents principals, resources, and actions as entities. An entity has a type (e.g., `User`) and an id (e.g., `alice`). They can also have attributes (e.g., `User::"alice"`'s `age` attribute is the integer `18`).
+
+Now, let's test our policy with the CLI
 ```rust
-    const POLICY_SRC: &str = r#"
-permit(principal == User::"alice", action == Action::"view", resource == File::"93");
-"#;
-    let policy: PolicySet = POLICY_SRC.parse().unwrap();
-    let alice = r#"User::"alice""#.parse().unwrap();
-    let action = r#"Action::"view""#.parse().unwrap();
-    let file = r#"File::"93""#.parse().unwrap();
-
-    let entities = Entities::empty();
-
-    let request = Request::new(Some(alice), Some(action), Some(file), Context::empty());
-
-    let authorizer = Authorizer::new();
-    let answer = authorizer.is_authorized(&request, &policy, &entities);
-
-    // Should give us ALLOW
-    println!("{:?}", answer.decision());
-
-    let bob: EntityUid = r#"User::"bob""#.parse().unwrap();
-    let action = r#"Action::"view""#.parse().unwrap();
-    let file = r#"File::"93""#.parse().unwrap();
-    let request = Request::new(Some(bob), Some(action), Some(file), Context::empty());
-    let answer = authorizer.is_authorized(&request, &policy, &entities);
-    // Should give us DENY
-    println!("{:?}", answer.decision());
-}
+ cargo run  authorize \
+    --policies policy.cedar \
+    --entities entities.json \
+    --principal 'User::"alice"' \
+    --action 'Action::"view"' \
+    --resource 'Photo::"VacationPhoto94.jpg"'
 ```
+
+CLI output:
+```
+ALLOW
+```
+It is allowed because `VacationPhoto94.jpg` belongs to `Album::"jane_vacation"`, and `alice` can view photos in `Album::"jane_vacation"`.
 
 If you'd like to see more details on what can be expressed as Cedar policies, see the [documentation](https://docs.cedarpolicy.com/what-is-cedar.html).
 
-Examples of how to use Cedar in an application are contained in the repository [cedar-examples](https://github.com/cedar-policy/cedar-examples). The most full-featured of these is [TinyTodo](https://github.com/cedar-policy/cedar-examples/tree/main/tinytodo), which is a simple task list management service whose users' requests, sent as HTTP messages, are authorized by Cedar.
+Examples of how to use Cedar in an application are contained in the repository [cedar-examples](https://github.com/cedar-policy/cedar-examples). [TinyTodo](https://github.com/cedar-policy/cedar-examples/tree/main/tinytodo) is a simple task list management app whose users' requests, sent as HTTP messages, are authorized by Cedar. It shows how you can integrate Cedar into your own Rust program.
 
 ## Documentation
 
