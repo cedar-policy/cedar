@@ -33,9 +33,9 @@ cedar-policy = "2.0"
 
 ## Quick Start
 
-Let's write a super simple Cedar policy and test it:
+Let's put the policy in policy.cedar and the entities in entities.json:
 
-policy.txt
+policy.cedar
 ```
 permit (
   principal == User::"alice",
@@ -43,11 +43,9 @@ permit (
   resource in Album::"jane_vacation"
 );
 ```
-With this policy, alice is allowed to view the photos in the `"jane_vacation"` album.
+This policy specifies that `alice` is allowed to view the photos in the `"jane_vacation"` album.
 
-The Cedar language is based on a data model that organizes entities into hierarchies. Entities serve as principals, resources, and actions in Cedar policies. Let's create an `entity.json` for the principal and resource
-
-entity.json
+entities.json
 ```json
 [
     {
@@ -63,11 +61,13 @@ entity.json
 ]
 
 ```
- Now, let's test it with the CLI
+Cedar represents principals, resources, and actions as entities. An entity has a type (e.g., `User`) and an id (e.g., `alice`). They can also have attributes (e.g., `User::"alice"`'s `age` attribute is the integer `18`).
+
+Now, let's test our policy with the CLI
 ```rust
  cargo run  authorize \
-    --policies policy.txt \
-    --entities entity.json \
+    --policies policy.cedar \
+    --entities entities.json \
     --principal 'User::"alice"' \
     --action 'Action::"view"' \
     --resource 'Photo::"VacationPhoto94.jpg"'
@@ -77,11 +77,11 @@ CLI output:
 ```
 ALLOW
 ```
-It is allowed because `VacationPhoto94.jpg` belongs `Album::"jane_vacation"`, and alice can view photos in `Album::"jane_vacation"`.
+It is allowed because `VacationPhoto94.jpg` belongs to `Album::"jane_vacation"`, and `alice` can view photos in `Album::"jane_vacation"`.
 
 If you'd like to see more details on what can be expressed as Cedar policies, see the [documentation](https://docs.cedarpolicy.com/what-is-cedar.html).
 
-Examples of how to use Cedar in an application are contained in the repository [cedar-examples](https://github.com/cedar-policy/cedar-examples). The most full-featured of these is [TinyTodo](https://github.com/cedar-policy/cedar-examples/tree/main/tinytodo), which is a simple task list management service whose users' requests, sent as HTTP messages, are authorized by Cedar.
+Examples of how to use Cedar in an application are contained in the repository [cedar-examples](https://github.com/cedar-policy/cedar-examples). [TinyTodo](https://github.com/cedar-policy/cedar-examples/tree/main/tinytodo) is a simple task list management app whose users' requests, sent as HTTP messages, are authorized by Cedar. It shows how you can integrate Cedar into your own Rust program.
 
 ## Documentation
 
