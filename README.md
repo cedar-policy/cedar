@@ -43,7 +43,7 @@ permit (
   resource in Album::"jane_vacation"
 );
 ```
-With this policy, alice is allowed to view the photos in the "jane_vacation" album.
+With this policy, alice is allowed to view the photos in the `"jane_vacation"` album.
 
 The Cedar language is based on a data model that organizes entities into hierarchies. Entities serve as principals, resources, and actions in Cedar policies. Let's create an `entity.json` for the principal and resource
 
