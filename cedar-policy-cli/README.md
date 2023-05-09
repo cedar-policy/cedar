@@ -23,6 +23,8 @@ CLI is a command line tool. It supports the following subcommands:
 
 ### Build
 
+You will need to install Rust, via (rustup)[https://rustup.rs]
+
 To build the CLI, run `cargo build` or `cargo build --release`
 
 ### Run
