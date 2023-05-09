@@ -22,5 +22,4 @@ This document contains a list of maintainers in this repo. See [RESPONSIBILITIES
 |John Kastner 	|john-h-kastner-aws	|Amazon	|
 |Kesha Hietala	|khieta	|Amazon	|
 |Matt McCutchen	|mattmccutchen-amazon	|Amazon	|
-
 |Dave Bishop	|bisdavid	|Amazon	|
