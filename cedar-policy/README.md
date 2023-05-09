@@ -17,39 +17,28 @@ cedar-policy = "2.0"
 ## Quick Start
 
 Let's write a super simple Cedar policy and test it:
+policy.txt
 ```
-permit(principal == User::"alice", action == Action::"view", resource == File::"93");
+permit (
+  principal == User::"alice",
+  action == Action::"view",
+  resource == Photo::"VacationPhoto94.jpg"
+);
 ```
-This policy permits _exactly_ one authorization request, `alice` is allowed to `view` file `93`. 
-Any other authorization request will be implicitly denied. Let's embed this policy in Rust and use the Cedar Authorizer:
+This policy permits _exactly_ one authorization request, `alice` is allowed to `view` the photo `Photo::"VacationPhoto94.jpg"`. 
+Any other authorization request will be implicitly denied. Let's test it with the CLI
 
 ```rust
-    const POLICY_SRC: &str = r#"
-permit(principal == User::"alice", action == Action::"view", resource == File::"93");
-"#;
-    let policy: PolicySet = POLICY_SRC.parse().unwrap();
-    let alice = r#"User::"alice""#.parse().unwrap();
-    let action = r#"Action::"view""#.parse().unwrap();
-    let file = r#"File::"93""#.parse().unwrap();
-
-    let entities = Entities::empty();
-
-    let request = Request::new(Some(alice), Some(action), Some(file), Context::empty());
-
-    let authorizer = Authorizer::new();
-    let answer = authorizer.is_authorized(&request, &policy, &entities);
-
-    // Should give us ALLOW
-    println!("{:?}", answer.decision());
-
-    let bob: EntityUid = r#"User::"bob""#.parse().unwrap();
-    let action = r#"Action::"view""#.parse().unwrap();
-    let file = r#"File::"93""#.parse().unwrap();
-    let request = Request::new(Some(bob), Some(action), Some(file), Context::empty());
-    let answer = authorizer.is_authorized(&request, &policy, &entities);
-    // Should give us DENY
-    println!("{:?}", answer.decision());
-}
+cargo run  authorize \             
+    --policies policy.txt \
+    --entities entity.json \
+    --principal 'User::"alice"' \
+    --action 'Action::"view"' \
+    --resource 'Photo::"VacationPhoto94.jpg"'
+```
+CLI output: 
+```
+ALLOW
 ```
 
 If you'd like to see more details on what can be expressed as Cedar policies, see the [documentation](https://docs.cedarpolicy.com/what-is-cedar.html).
