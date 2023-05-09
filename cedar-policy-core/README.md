@@ -1,4 +1,4 @@
-# cedar-policy-core
+# Cedar Policy Core
 
 This package contains the Cedar parser and evaluation engine.
 
@@ -17,7 +17,7 @@ Build and test this crate independently by running `cargo build` and `cargo test
 from this directory. Run these commands from the root directory of this
 repository to build and test this package and all other crates in this
 repository. This crate is consumed either directly or indirectly by all other
-crates crates in this repository, so a change here may precipitate test failures
+crates in this repository, so a change here may precipitate test failures
 elsewhere.
 
 ## Documentation
