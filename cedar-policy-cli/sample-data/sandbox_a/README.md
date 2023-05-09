@@ -20,12 +20,12 @@ allows it.
 
 Try the following authorization request:
 ```
-./bin/cedar authorize \
+cargo run authorize \
     --principal 'User::"alice"' \
     --action 'Action::"view"' \
     --resource 'Photo::"VacationPhoto94.jpg"' \
-    --policies ./sandbox_a/policies_1.txt \
-    --entities ./sandbox_a/entities.json
+    --policies policies_1.txt \
+    --entities entities.json
 ```
 This should be allowed, because `alice` is in the group `jane_friends`.
 
@@ -42,12 +42,12 @@ actions on a resource or group of resources.
 
 Try the following authorization request:
 ```
-./bin/cedar authorize \
+cargo run authorize \
     --principal 'User::"alice"' \
     --action 'Action::"view"' \
     --resource 'Photo::"VacationPhoto94.jpg"' \
-    --policies ./sandbox_a/policies_2.txt \
-    --entities ./sandbox_a/entities.json
+    --policies policies_2.txt \
+    --entities entities.json
 ```
 By adjusting the `--action`, you should see that `alice` is allowed to `view`,
 `edit`, or `delete` the photo.  (Or, any other resources `in` the
@@ -67,32 +67,32 @@ itself.
 Try this request, with any `--principal`, to see that `view` access is allowed to
 everyone:
 ```
-./bin/cedar authorize \
+cargo run authorize \
     --principal 'User::"alice"' \
     --action 'Action::"view"' \
     --resource 'Photo::"VacationPhoto94.jpg"' \
-    --policies ./sandbox_a/policies_3.txt \
-    --entities ./sandbox_a/entities.json
+    --policies policies_3.txt \
+    --entities entities.json
 ```
 
 And, see that anyone is also allowed the `listPhotos` action on the album
 itself:
 ```
-./bin/cedar authorize \
+cargo run authorize \
     --principal 'User::"tim"' \
     --action 'Action::"listPhotos"' \
     --resource 'Album::"jane_vacation"' \
-    --policies ./sandbox_a/policies_3.txt \
-    --entities ./sandbox_a/entities.json
+    --policies policies_3.txt \
+    --entities entities.json
 ```
 
 ### Policy validation
 
 You can validate if a policy conforms with the schema. Try the following:
 ```
-./bin/cedar validate \
-  --policies ./sandbox_a/policies_1.txt \
-  --schema ./sandbox_a/schema.json
+cargo run validate \
+  --policies policies_1.txt \
+  --schema schema.json
 ```
 Validation should pass. If you look at the `schema.json` file, you will see it has two sections: the `entityTypes` section, first, and the `actions` section. The first section describes the legal entity types, including member relationships. For example, we see that entities of type `Photo` can be members of entities of type `Album` or `Account` -- membership is tantamount to a parent-child relationship in the entity hierarchy.
 
@@ -105,11 +105,11 @@ Now try validation on `policies_1_bad.txt`. You will see that validation fails, 
 You can evaluate a Cedar expression using the `evaluate` command. Try the
 following:
 ```
-./bin/cedar evaluate \
+cargo run evaluate \
     --principal 'User::"alice"' \
     --action 'Action::"listPhotos"' \
     --resource 'Album::"jane_vacation"' \
-    --entities ./sandbox_a/entities.json \
+    --entities entities.json \
    "resource in Account::\"jane\""
 ```
 Now, continue on to `sandbox_b`, where we'll consider ABAC policies, that

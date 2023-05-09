@@ -1,14 +1,6 @@
 # Contributing to Cedar
 
-
 Cedar is a community project that is built and maintained by people just like **you**. We're glad you're interested in helping out. There are several different ways you can do it, but before we talk about that, let's talk about how to get started.
-
-Thank you for your interest in contributing to our project. Whether it's a bug report, new feature, correction, or additional
-documentation, we greatly value feedback and contributions from our community.
-
-Please read through this document before submitting any issues or pull requests to ensure we have all the necessary
-information to effectively respond to your bug report or contribution.
-
 
 ## First Things First
 
@@ -24,6 +16,7 @@ information to effectively respond to your bug report or contribution.
 A bug is when software behaves in a way that you didn't expect and the developer didn't intend. To help us understand what's going on, we first want to make sure you're working from the latest version. Please make sure you're testing against the latest version.
 
 Once you've confirmed that the bug still exists in the latest version, you'll want to check to make sure it's not something we already know about on the [open issues GitHub page](https://github.com/cedar-policy/cedar/issues).
+
 
 If you've upgraded to the latest version and you can't find it in our open issues list, then you'll need to tell us how to reproduce it. To make the behavior as clear as possible, please provided your policies, entities, request, and CLI commands. 
 
