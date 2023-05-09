@@ -9,8 +9,8 @@
 
 ## Project Resources
 
-* [Project Website](https://cedarpolicy.com/)
-* [Documentation](https://cedarpolicy.com/docs/)
+* [Project Website](https://www.cedarpolicy.com/)
+* [Documentation](https://docs.cedarpolicy.com/)
 * Need help? Try [Slack]([https://cedar-policy.slack.com](https://cedar-policy.slack.com/))
 
 ## Repositories
