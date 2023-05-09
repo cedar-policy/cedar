@@ -17,6 +17,7 @@ cedar-policy = "2.0"
 ## Quick Start
 
 Let's write a super simple Cedar policy and test it:
+
 policy.txt
 ```
 permit (
@@ -25,8 +26,17 @@ permit (
   resource == Photo::"VacationPhoto94.jpg"
 );
 ```
+
+
 This policy permits _exactly_ one authorization request, `alice` is allowed to `view` the photo `Photo::"VacationPhoto94.jpg"`. 
-Any other authorization request will be implicitly denied. Let's test it with the CLI
+Any other authorization request will be implicitly denied. 
+
+Let's create an empty `entity.json` and test it with the CLI
+
+entity.json
+```rust
+[]
+```
 
 ```rust
 cargo run  authorize \             
