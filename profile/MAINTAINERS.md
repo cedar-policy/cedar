@@ -11,7 +11,7 @@ This document contains a list of maintainers in this repo. See [RESPONSIBILITIES
 |Neha Rungta	|neharungta	|Amazon	|
 |Mark Stalzer	|mstalzer	|Amazon	|
 |Sarah Cecchetti	|sarahcec	|Amazon	|
-|Darin	|	|Amazon	|
+|Darin	|D-McAdams	|Amazon	|
 |Emina Torlak	|emina	|Amazon	|
 |Mike Hicks	|	mwhicks1|Amazon	|
 |Anwar Mamat	|anwarmamat	|Amazon	|
