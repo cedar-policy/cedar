@@ -11,7 +11,7 @@
 
 * [Project Website](https://www.cedarpolicy.com/)
 * [Documentation](https://docs.cedarpolicy.com/)
-* Need help? Try [Slack](https://cedar-policy.slack.com/)
+* Need help? Try [Slack](https://communityinviter.com/apps/cedar-policy/cedar-policy-language)
 
 ## Repositories
 
