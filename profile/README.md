@@ -1,6 +1,6 @@
 # README.md
 
-![Cedar Green Logo](cedar_1_green.png "Cedar Logo")
+![Cedar Green Logo](logo.svg "Cedar Logo")
 
 ## Welcome!
 
@@ -11,7 +11,7 @@
 
 * [Project Website](https://www.cedarpolicy.com/)
 * [Documentation](https://docs.cedarpolicy.com/)
-* Need help? Try [Slack]([https://cedar-policy.slack.com](https://cedar-policy.slack.com/))
+* Need help? Try [Slack](https://cedar-policy.slack.com/)
 
 ## Repositories
 
