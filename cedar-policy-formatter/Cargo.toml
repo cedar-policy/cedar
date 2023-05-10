@@ -1,13 +1,13 @@
 [package]
 name = "cedar-policy-formatter"
-version = "2.0.0"
+version = "2.0.1"
 edition = "2021"
 license-file = "../LICENSE"
 categories = ["compilers", "config"]
 description = "Policy formatter for the Cedar Policy Language."
 keywords = ["cedar", "authorization", "policy", "security"]
 homepage = "https://cedarpolicy.com"
-repository = "https://github.com/cedar/cedar-policy"
+repository = "https://github.com/cedar-policy/cedar"
 
 [dependencies]
 cedar-policy-core = { version = "2.0", path = "../cedar-policy-core" }
