@@ -2,7 +2,7 @@
 name = "cedar-policy-cli"
 edition = "2021"
 
-version = "2.0.0"
+version = "2.0.1"
 license-file = "../LICENSE"
 categories = ["compilers", "config"]
 description = "CLI interface for the Cedar Policy language."
@@ -11,7 +11,7 @@ homepage = "https://cedarpolicy.com"
 repository = "https://github.com/cedar/cedar-policy"
 
 [dependencies]
-cedar-policy = { version = "2.0.0", path = "../cedar-policy" }
+cedar-policy = { version = "2.0.1", path = "../cedar-policy" }
 cedar-policy-formatter = { version = "2.0.0", path = "../cedar-policy-formatter" }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }

@@ -1,6 +1,6 @@
 # Cedar-Policy
 
-![Cedar Logo](../logo.svg)
+![Cedar Logo](https://raw.githubusercontent.com/cedar-policy/cedar/c1267afab93ed03788d9702da0addbfb8761067f/logo.svg)
 
 Cedar is a language for defining permissions as policies, which describe who should have access to what. It is also a specification for evaluating those policies. Use Cedar policies to control what each user of your application is permitted to do and what resources they may access.
 
