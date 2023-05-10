@@ -65,7 +65,7 @@ Cedar represents principals, resources, and actions as entities. An entity has a
 
 Now, let's test our policy with the CLI
 ```rust
- cargo run  authorize \
+ cargo run cedar authorize \
     --policies policy.cedar \
     --entities entities.json \
     --principal 'User::"alice"' \
@@ -96,11 +96,11 @@ To build, simply run `cargo build`.
 
 ## Security
 
-See [security](security.md) for more information.
+See [SECURITY](SECURITY.md) for more information.
 
 ## Contributing
 
-We welcome contribututions from the community. Please either file an issue, or see [CONTRIBUTING](CONTRIBUTING.md)
+We welcome contributions from the community. Please either file an issue, or see [CONTRIBUTING](CONTRIBUTING.md)
 
 ## License
 

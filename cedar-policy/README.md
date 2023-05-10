@@ -54,16 +54,14 @@ permit(principal == User::"alice", action == Action::"view", resource == File::"
 
 If you'd like to see more details on what can be expressed as Cedar policies, see the [documentation](https://docs.cedarpolicy.com/what-is-cedar.html).
 
-Examples of how to use Cedar in an application are contained in the repository [cedar-examples](https://github.com/cedar-policy/cedar-examples). The most full-featured of these is [TinyTodo](https://github
-.com/cedar-policy/cedar-examples/tree/main/tinytodo), which is a simple task list management service whose users' requests, sent as HTTP messages, are authorized by Cedar.
+Examples of how to use Cedar in an application are contained in the repository [cedar-examples](https://github.com/cedar-policy/cedar-examples). The most full-featured of these is [TinyTodo](https://github.com/cedar-policy/cedar-examples/tree/main/tinytodo), which is a simple task list management service whose users' requests, sent as HTTP messages, are authorized by Cedar.
 
 
 ## Documentation
 
-General documentation for Cedar is available at [docs.cedarpolicy.com](https://docs.cedarpolicy.com), with docs source code in the [cedar-policy/cedar-docs](https://github.com/cedar-policy/cedar-docs/) rep
-ository.
+General documentation for Cedar is available at [docs.cedarpolicy.com](https://docs.cedarpolicy.com), with docs source code in the [cedar-policy/cedar-docs](https://github.com/cedar-policy/cedar-docs/) repository.
 
-Generated documentation for the latest version of the Rust crates can be accesse
+Generated documentation for the latest version of the Rust crates can be accessed
 [on docs.rs](https://docs.rs/cedar-policy).
 
 ## Building
@@ -72,11 +70,11 @@ To build, simply run `cargo build`.
 
 ## Security
 
-See [security](../security.md)
+See [SECURITY](../SECURITY.md)
 
 ## Contributing
 
-We welcome contribututions from the community. Please either file an issue, or see [CONTRIBUTING](CONTRIBUTING.md)
+We welcome contributions from the community. Please either file an issue, or see [CONTRIBUTING](../CONTRIBUTING.md)
 
 ## License
 
