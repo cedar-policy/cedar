@@ -18,7 +18,7 @@
 
 use crate::ast::*;
 use crate::transitive_closure::{compute_tc, enforce_tc_and_dag};
-use std::collections::HashMap;
+use std::collections::{hash_map, HashMap};
 
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -149,6 +149,16 @@ impl Entities {
             .map(EntityJSON::from_entity)
             .collect::<std::result::Result<_, JsonSerializationError>>()
             .map_err(Into::into)
+    }
+}
+
+impl IntoIterator for Entities {
+    type Item = Entity;
+
+    type IntoIter = hash_map::IntoValues<EntityUID, Entity>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.entities.into_values()
     }
 }
 
