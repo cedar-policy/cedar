@@ -1,0 +1,26 @@
+{
+  "": {
+    "entityTypes": {
+      "User": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "x8": {
+              "type": "Long",
+              "min": 1,
+              "max": 8
+            }
+          }
+        }
+      }
+    },
+    "actions": {
+      "view": {
+        "appliesTo": {
+          "principalTypes": ["User"],
+          "resourceTypes": ["User"]
+        }
+      }
+    }
+  }
+}

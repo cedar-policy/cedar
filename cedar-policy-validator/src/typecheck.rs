@@ -42,7 +42,8 @@ use crate::{
         is_action_entity_type, ActionHeadVar, HeadVar, PrincipalOrResourceHeadVar, ValidatorSchema,
     },
     types::{
-        AttributeType, Attributes, Effect, EffectSet, EntityRecordKind, Primitive, RequestEnv, Type,
+        AttributeType, Attributes, Effect, EffectSet, EntityRecordKind, LongBounds, LongBoundsInfo,
+        Primitive, RequestEnv, Type,
     },
     ValidationMode,
 };
@@ -1093,7 +1094,7 @@ impl<'a> Typechecker<'a> {
             ),
             // Other literal primitive values have the type of that primitive value.
             ExprKind::Lit(Literal::Long(val)) => TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(Type::primitive_long()))
+                ExprBuilder::with_data(Some(Type::long_bounded(val.clone(), val.clone())))
                     .with_same_source_info(e)
                     .val(*val),
             ),
@@ -1795,19 +1796,14 @@ impl<'a> Typechecker<'a> {
             }
 
             BinaryOp::Less | BinaryOp::LessEq => {
-                let ans_arg1 = self.expect_type(
-                    request_env,
-                    prior_eff,
-                    arg1,
-                    Type::primitive_long(),
-                    type_errors,
-                );
+                let ans_arg1 =
+                    self.expect_type(request_env, prior_eff, arg1, Type::long_top(), type_errors);
                 ans_arg1.then_typecheck(|expr_ty_arg1, _| {
                     let ans_arg2 = self.expect_type(
                         request_env,
                         prior_eff,
                         arg2,
-                        Type::primitive_long(),
+                        Type::long_top(),
                         type_errors,
                     );
                     ans_arg2.then_typecheck(|expr_ty_arg2, _| {
@@ -1821,27 +1817,57 @@ impl<'a> Typechecker<'a> {
             }
 
             BinaryOp::Add | BinaryOp::Sub => {
-                let ans_arg1 = self.expect_type(
-                    request_env,
-                    prior_eff,
-                    arg1,
-                    Type::primitive_long(),
-                    type_errors,
-                );
+                let ans_arg1 =
+                    self.expect_type(request_env, prior_eff, arg1, Type::long_top(), type_errors);
                 ans_arg1.then_typecheck(|expr_ty_arg1, _| {
                     let ans_arg2 = self.expect_type(
                         request_env,
                         prior_eff,
                         arg2,
-                        Type::primitive_long(),
+                        Type::long_top(),
                         type_errors,
                     );
                     ans_arg2.then_typecheck(|expr_ty_arg2, _| {
-                        TypecheckAnswer::success(
-                            ExprBuilder::with_data(Some(Type::primitive_long()))
-                                .with_same_source_info(bin_expr)
-                                .binary_app(*op, expr_ty_arg1, expr_ty_arg2),
-                        )
+                        // Perform a bounds check only if both operands are Long
+                        // (which might not be the case if there was a type
+                        // error) and both operands have bounds info. Otherwise,
+                        // the result is long_any.
+                        let (result_type, overflow_detected) =
+                            if let (Some((cba1, lb1)), Some((cba2, lb2))) = (
+                                Self::arith_overflow_check_prepare_arg(&expr_ty_arg1),
+                                Self::arith_overflow_check_prepare_arg(&expr_ty_arg2),
+                            ) {
+                                let (new_min_opt, new_max_opt) = match op {
+                                    BinaryOp::Add => (
+                                        i64::checked_add(lb1.min, lb2.min),
+                                        i64::checked_add(lb1.max, lb2.max),
+                                    ),
+                                    BinaryOp::Sub => (
+                                        i64::checked_sub(lb1.min, lb2.max),
+                                        i64::checked_sub(lb1.max, lb2.min),
+                                    ),
+                                    _ => unreachable!(
+                                    "Outer `match` statement checked that `op` is `Add` or `Sub`."
+                                ),
+                                };
+                                Self::arith_overflow_check_finish(
+                                    new_min_opt,
+                                    new_max_opt,
+                                    cba1 || cba2,
+                                    type_errors,
+                                    bin_expr,
+                                )
+                            } else {
+                                (Type::long_any(), false)
+                            };
+                        let result_expr_type = ExprBuilder::with_data(Some(result_type))
+                            .with_same_source_info(bin_expr)
+                            .binary_app(*op, expr_ty_arg1, expr_ty_arg2);
+                        if overflow_detected {
+                            TypecheckAnswer::fail(result_expr_type)
+                        } else {
+                            TypecheckAnswer::success(result_expr_type)
+                        }
                     })
                 })
             }
@@ -1900,16 +1926,88 @@ impl<'a> Typechecker<'a> {
             request_env,
             prior_eff,
             arg,
-            Type::primitive_long(),
+            Type::long_top(),
             type_errors,
         );
         ans_arg.then_typecheck(|arg_expr_ty, _| {
-            TypecheckAnswer::success({
-                ExprBuilder::with_data(Some(Type::primitive_long()))
-                    .with_same_source_info(mul_expr)
-                    .mul(arg_expr_ty, *constant)
-            })
+            let (result_type, overflow_detected) =
+                if let Some((cba1, lb1)) = Self::arith_overflow_check_prepare_arg(&arg_expr_ty) {
+                    let min_multiplied_opt = i64::checked_mul(*constant, lb1.min);
+                    let max_multiplied_opt = i64::checked_mul(*constant, lb1.max);
+                    let (new_min_opt, new_max_opt) = if *constant < 0 {
+                        (max_multiplied_opt, min_multiplied_opt)
+                    } else {
+                        (min_multiplied_opt, max_multiplied_opt)
+                    };
+                    Self::arith_overflow_check_finish(
+                        new_min_opt,
+                        new_max_opt,
+                        cba1,
+                        type_errors,
+                        mul_expr,
+                    )
+                } else {
+                    (Type::long_any(), false)
+                };
+            let result_expr_type = ExprBuilder::with_data(Some(result_type))
+                .with_same_source_info(mul_expr)
+                .mul(arg_expr_ty, *constant);
+            if overflow_detected {
+                TypecheckAnswer::fail(result_expr_type)
+            } else {
+                TypecheckAnswer::success(result_expr_type)
+            }
         })
+    }
+
+    fn arith_overflow_check_prepare_arg(expr_ty: &Expr<Option<Type>>) -> Option<(bool, &LongBounds)> {
+        if let Some(Type::Primitive {
+            primitive_type:
+                Primitive::Long(LongBoundsInfo {
+                    can_be_any: cba,
+                    bounds_opt: Some(lb),
+                }),
+        }) = expr_ty.data()
+        {
+            Some((*cba, lb))
+        } else {
+            None
+        }
+    }
+
+    // NOTE: This function currently has a rather ad-hoc subset of logic that
+    // was convenient to factor out of the overflow checks as they are currently
+    // structured. The code structure will probably have to change as we polish
+    // the overflow analysis.
+    fn arith_overflow_check_finish(
+        new_min_opt: Option<i64>,
+        new_max_opt: Option<i64>,
+        can_be_any_prev: bool,
+        type_errors: &mut Vec<TypeError>,
+        arith_expr: &Expr,
+    ) -> (Type, bool) {
+        let (new_bounds_opt, overflow_detected) = match (new_min_opt, new_max_opt) {
+            (Some(new_min), Some(new_max)) => (
+                Some(LongBounds {
+                    min: new_min,
+                    max: new_max,
+                }),
+                false,
+            ),
+            _ => {
+                type_errors.push(TypeError::arithmetic_overflow(arith_expr.clone()));
+                (None, true)
+            }
+        };
+        (
+            Type::Primitive {
+                primitive_type: Primitive::Long(LongBoundsInfo {
+                    can_be_any: can_be_any_prev || overflow_detected,
+                    bounds_opt: new_bounds_opt,
+                }),
+            },
+            overflow_detected,
+        )
     }
 
     /// Get the type for an `==` expression given the input types.
@@ -2403,15 +2501,32 @@ impl<'a> Typechecker<'a> {
                     request_env,
                     prior_eff,
                     arg,
-                    Type::primitive_long(),
+                    Type::long_top(),
                     type_errors,
                 );
                 ans_arg.then_typecheck(|typ_expr_arg, _| {
-                    TypecheckAnswer::success(
-                        ExprBuilder::with_data(Some(Type::primitive_long()))
-                            .with_same_source_info(unary_expr)
-                            .neg(typ_expr_arg),
-                    )
+                    let (result_type, overflow_detected) =
+                        if let Some((cba1, lb1)) = Self::arith_overflow_check_prepare_arg(&typ_expr_arg) {
+                            let new_min_opt = i64::checked_neg(lb1.max);
+                            let new_max_opt = i64::checked_neg(lb1.min);
+                            Self::arith_overflow_check_finish(
+                                new_min_opt,
+                                new_max_opt,
+                                cba1,
+                                type_errors,
+                                unary_expr,
+                            )
+                        } else {
+                            (Type::long_any(), false)
+                        };
+                    let result_expr_type = ExprBuilder::with_data(Some(result_type))
+                        .with_same_source_info(unary_expr)
+                        .neg(typ_expr_arg);
+                    if overflow_detected {
+                        TypecheckAnswer::fail(result_expr_type)
+                    } else {
+                        TypecheckAnswer::success(result_expr_type)
+                    }
                 })
             }
         }

@@ -214,7 +214,13 @@ impl From<SchemaTypeVariant> for SchemaType {
 #[serde(deny_unknown_fields)]
 pub enum SchemaTypeVariant {
     String,
-    Long,
+    Long {
+        // TODO: Did I successfully make these optional?
+        #[serde(rename = "min")]
+        min_opt: Option<i64>,
+        #[serde(rename = "max")]
+        max_opt: Option<i64>,
+    },
     Boolean,
     Set {
         element: Box<SchemaType>,
@@ -283,6 +289,7 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
 
         Ok(SchemaType::Type(match u.int_in_range::<u8>(1..=8)? {
             1 => SchemaTypeVariant::String,
+            // TODO: Update
             2 => SchemaTypeVariant::Long,
             3 => SchemaTypeVariant::Boolean,
             4 => SchemaTypeVariant::Set {

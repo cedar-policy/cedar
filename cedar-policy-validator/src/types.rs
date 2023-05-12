@@ -92,9 +92,38 @@ impl Type {
         }
     }
 
+    // Deprecated, for compatibility with existing callers so we don't have to
+    // migrate the whole codebase before we can build it. TODO: Migrate all
+    // callers to different APIs.
     pub(crate) fn primitive_long() -> Type {
+        Self::long_any()
+    }
+
+    pub(crate) fn long_any() -> Type {
         Type::Primitive {
-            primitive_type: Primitive::Long,
+            primitive_type: Primitive::Long(LongBoundsInfo {
+                can_be_any: true,
+                bounds_opt: None,
+            }),
+        }
+    }
+
+    pub(crate) fn long_bounded(min: i64, max: i64) -> Type {
+        Type::Primitive {
+            primitive_type: Primitive::Long(LongBoundsInfo {
+                can_be_any: false,
+                bounds_opt: Some(LongBounds { min, max }),
+            }),
+        }
+    }
+
+    // The type checker "expects" this when any Long is acceptable.
+    pub(crate) fn long_top() -> Type {
+        Type::Primitive {
+            primitive_type: Primitive::Long(LongBoundsInfo {
+                can_be_any: true,
+                bounds_opt: Some(LongBounds::top()),
+            }),
         }
     }
 
@@ -212,6 +241,22 @@ impl Type {
             (Type::True, Type::True) => true,
             (Type::False, Type::False) => true,
 
+            (
+                Type::Primitive {
+                    primitive_type: Primitive::Long(lbi1),
+                },
+                Type::Primitive {
+                    primitive_type: Primitive::Long(lbi2),
+                },
+            ) => {
+                (!lbi1.can_be_any || lbi2.can_be_any)
+                    && match (&lbi1.bounds_opt, &lbi2.bounds_opt) {
+                        (None, _) => true,
+                        (Some(_), None) => false,
+                        (Some(lb1), Some(lb2)) => LongBounds::includes(&lb2, &lb1),
+                    }
+            }
+
             // Subtypes between two primitives only occurs when the primitive
             // types are the same.
             (Type::Primitive { primitive_type: _ }, Type::Primitive { primitive_type: _ }) => {
@@ -258,6 +303,25 @@ impl Type {
             _ if Type::is_subtype(schema, ty1, ty0) => Some(ty0.clone()),
 
             (Type::True | Type::False, Type::True | Type::False) => Some(Type::primitive_boolean()),
+
+            (
+                Type::Primitive {
+                    primitive_type: Primitive::Long(lbi1),
+                },
+                Type::Primitive {
+                    primitive_type: Primitive::Long(lbi2),
+                },
+            ) => Some(Type::Primitive {
+                primitive_type: Primitive::Long(LongBoundsInfo {
+                    can_be_any: lbi1.can_be_any || lbi2.can_be_any,
+                    bounds_opt: match (&lbi1.bounds_opt, &lbi2.bounds_opt) {
+                        (None, None) => None,
+                        (Some(lb1), None) => Some(lb1.clone()),
+                        (None, Some(lb2)) => Some(lb2.clone()),
+                        (Some(lb1), Some(lb2)) => Some(LongBounds::union(&lb1, &lb2)),
+                    },
+                }),
+            }),
 
             // The least upper bound of two set types is a set with
             // an element type that is the element type least upper bound.
@@ -403,7 +467,8 @@ impl Type {
                 primitive_type: Primitive::Bool,
             } => Type::json_type("Boolean"),
             Type::Primitive {
-                primitive_type: Primitive::Long,
+                // FIXME: Preserve bounds? What uses this?
+                primitive_type: Primitive::Long(_),
             } => Type::json_type("Long"),
             Type::Primitive {
                 primitive_type: Primitive::String,
@@ -492,7 +557,7 @@ impl Type {
             CoreSchemaType::Long => matches!(
                 self,
                 Type::Primitive {
-                    primitive_type: Primitive::Long
+                    primitive_type: Primitive::Long(_)
                 }
             ),
             CoreSchemaType::String => matches!(
@@ -600,7 +665,7 @@ impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
                 primitive_type: Primitive::Bool,
             } => Ok(CoreSchemaType::Bool),
             Type::Primitive {
-                primitive_type: Primitive::Long,
+                primitive_type: Primitive::Long(_),
             } => Ok(CoreSchemaType::Long),
             Type::Primitive {
                 primitive_type: Primitive::String,
@@ -1019,13 +1084,48 @@ impl AttributeType {
     }
 }
 
+// REVIEW: Should `LongBoundsInfo` and its parts be `pub`?
+
+#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
+pub(crate) struct LongBounds {
+    pub(crate) min: i64,
+    pub(crate) max: i64,
+}
+
+impl LongBounds {
+    pub(crate) fn top() -> LongBounds {
+        LongBounds {
+            min: i64::MIN,
+            max: i64::MAX,
+        }
+    }
+    pub(crate) fn union(lb1: &LongBounds, lb2: &LongBounds) -> LongBounds {
+        LongBounds {
+            min: i64::min(lb1.min, lb2.min),
+            max: i64::max(lb1.max, lb2.max),
+        }
+    }
+    pub(crate) fn includes(outer: &LongBounds, inner: &LongBounds) -> bool {
+        outer.min <= inner.min && outer.max >= inner.max
+    }
+}
+
+#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
+pub struct LongBoundsInfo {
+    // Invariant: `can_be_any` is true or `bounds_opt` is Some or both.
+    pub(crate) can_be_any: bool,
+    pub(crate) bounds_opt: Option<LongBounds>,
+}
+
 /// Represent the possible primitive types.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
 pub enum Primitive {
     /// Primitive boolean type.
     Bool,
     /// Primitive long type.
-    Long,
+    // TODO: Now that `Long` has extra data, should we move it out of
+    // `Primitive`?
+    Long(LongBoundsInfo),
     /// Primitive string type.
     String,
 }

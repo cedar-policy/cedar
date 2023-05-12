@@ -668,6 +668,9 @@ pub enum SchemaError {
         "Action has an attribute of unsupported type (escaped expression, entity or extension)"
     )]
     ActionEntityAttributeUnsupportedType,
+    /// Malformed bounds information on a declaration of type `Long`.
+    #[error("Malformed bounds information on a declaration of type `Long`.")]
+    MalformedLongBounds,
 }
 
 #[doc(hidden)]
@@ -724,6 +727,7 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             | cedar_policy_validator::SchemaError::ActionEntityAttributeUnsupportedType => {
                 Self::ContextOrShapeNotRecord
             }
+            cedar_policy_validator::SchemaError::MalformedLongBounds => Self::MalformedLongBounds,
         }
     }
 }

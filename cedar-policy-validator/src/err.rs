@@ -77,6 +77,8 @@ pub enum SchemaError {
     ActionEntityAttributeEmptySet,
     /// An Action Entity (transitively) has an attribute of unsupported type (ExprEscape, EntityEscape or ExtnEscape)
     ActionEntityAttributeUnsupportedType,
+    /// Malformed bounds information on a declaration of type `Long`.
+    MalformedLongBounds,
 }
 
 impl std::error::Error for SchemaError {}
@@ -205,6 +207,12 @@ impl std::fmt::Display for SchemaError {
                 write!(
                     f,
                     "An action entity has attribute with unsupported type: (escaped expression, entity or extension)"
+                )
+            }
+            SchemaError::MalformedLongBounds => {
+                write!(
+                    f,
+                    "Malformed bounds information on a declaration of type `Long`."
                 )
             }
         }

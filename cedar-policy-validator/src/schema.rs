@@ -646,7 +646,13 @@ impl ValidatorNamespaceDef {
     ) -> Result<WithUnresolvedTypeDefs<Type>> {
         match schema_ty {
             SchemaType::Type(SchemaTypeVariant::String) => Ok(Type::primitive_string().into()),
-            SchemaType::Type(SchemaTypeVariant::Long) => Ok(Type::primitive_long().into()),
+            SchemaType::Type(SchemaTypeVariant::Long { min_opt, max_opt }) => {
+                match (min_opt, max_opt) {
+                    (None, None) => Ok(Type::long_any().into()),
+                    (Some(min), Some(max)) => Ok(Type::long_bounded(min, max).into()),
+                    _ => Err(SchemaError::MalformedLongBounds),
+                }
+            }
             SchemaType::Type(SchemaTypeVariant::Boolean) => Ok(Type::primitive_boolean().into()),
             SchemaType::Type(SchemaTypeVariant::Set { element }) => Ok(
                 Self::try_schema_type_into_validator_type(default_namespace, *element)?
