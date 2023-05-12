@@ -1218,7 +1218,7 @@ impl ValidatorSchema {
 
     pub fn action_entities(&self) -> cedar_policy_core::entities::Result<Entities> {
         // Invert the action hierarchy to get the ancestor relation expected for
-        // the `Entity` datatype instead of descendent as stored by the schema.
+        // the `Entity` datatype instead of descendant as stored by the schema.
         // We could store the un-inverted `memberOf` relation for each action,
         // but I judge that the current implementation is actually less error
         // prone, as it minimizes the threading of data structures through some
@@ -1226,9 +1226,9 @@ impl ValidatorSchema {
         // the TC twice.
         let mut action_ancestors: HashMap<&EntityUID, HashSet<EntityUID>> = HashMap::new();
         for (action_euid, action_def) in &self.action_ids {
-            for descendent in &action_def.descendants {
+            for descendant in &action_def.descendants {
                 action_ancestors
-                    .entry(descendent)
+                    .entry(descendant)
                     .or_default()
                     .insert(action_euid.clone());
             }

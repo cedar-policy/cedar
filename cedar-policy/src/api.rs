@@ -590,7 +590,7 @@ impl Schema {
         )?))
     }
 
-    /// Extract from the schema an `Entities` containing the aciton entities
+    /// Extract from the schema an `Entities` containing the action entities
     /// declared in the schema.
     pub fn action_entities(&self) -> Result<Entities, entities::EntitiesError> {
         Ok(Entities(self.0.action_entities()?))
