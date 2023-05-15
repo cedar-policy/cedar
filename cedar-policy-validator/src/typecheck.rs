@@ -1034,7 +1034,7 @@ impl<'a> Typechecker<'a> {
             // taken from the euid.
             ExprKind::Var(Var::Action) => {
                 let attrs = match self.schema.get_action_id(request_env.action) {
-                    Some(a) => a.attributes.clone(),
+                    Some(a) => a.attribute_types.clone(),
                     None => Attributes::with_required_attributes([]),
                 };
 
@@ -1120,7 +1120,7 @@ impl<'a> Typechecker<'a> {
                             Some(ety_name) => {
                                 if is_action_entity_type(ety_name) {
                                     let attrs = match self.schema.get_action_id(euid) {
-                                        Some(a) => a.attributes.clone(),
+                                        Some(a) => a.attribute_types.clone(),
                                         None => Attributes::with_required_attributes([]),
                                     };
 

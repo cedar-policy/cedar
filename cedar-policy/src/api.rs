@@ -589,6 +589,12 @@ impl Schema {
             file,
         )?))
     }
+
+    /// Extract from the schema an `Entities` containing the action entities
+    /// declared in the schema.
+    pub fn action_entities(&self) -> Result<Entities, entities::EntitiesError> {
+        Ok(Entities(self.0.action_entities()?))
+    }
 }
 
 /// Errors encountered during construction of a Validation Schema
@@ -2752,7 +2758,10 @@ mod ancestors_tests {
 /// (Core has similar tests, but using a stubbed implementation of Schema.)
 #[cfg(test)]
 mod schema_based_parsing_tests {
+    use std::assert_eq;
+
     use super::*;
+    use cedar_policy_core::ast::EntityUID;
     use cool_asserts::assert_matches;
     use serde_json::json;
 
@@ -3612,5 +3621,64 @@ mod schema_based_parsing_tests {
             .0
             .get_entity_type(&"Bar::Foo::Baz".parse().unwrap())
             .is_some());
+    }
+
+    #[test]
+    fn get_attributes_from_schema() {
+        let fragment: SchemaFragment = SchemaFragment::from_json_value(json!({
+        "": {
+            "entityTypes": {},
+            "actions": {
+                "A": {},
+                "B": {
+                    "memberOf": [{"id": "A"}]
+                },
+                "C": {
+                    "memberOf": [{"id": "A"}]
+                },
+                "D": {
+                    "memberOf": [{"id": "B"}, {"id": "C"}]
+                },
+                "E": {
+                    "memberOf": [{"id": "D"}]
+                }
+            }
+        }}))
+        .unwrap();
+        let schema = Schema::from_schema_fragments([fragment]).unwrap();
+        let action_entities = schema.action_entities().unwrap();
+
+        let a_euid = EntityUid::from_strs("Action", "A");
+        let b_euid = EntityUid::from_strs("Action", "B");
+        let c_euid = EntityUid::from_strs("Action", "C");
+        let d_euid = EntityUid::from_strs("Action", "D");
+        let e_euid = EntityUid::from_strs("Action", "E");
+        assert_eq!(
+            action_entities,
+            Entities::from_entities([
+                Entity::new(a_euid.clone(), HashMap::new(), HashSet::new()),
+                Entity::new(
+                    b_euid.clone(),
+                    HashMap::new(),
+                    HashSet::from([a_euid.clone()])
+                ),
+                Entity::new(
+                    c_euid.clone(),
+                    HashMap::new(),
+                    HashSet::from([a_euid.clone()])
+                ),
+                Entity::new(
+                    d_euid.clone(),
+                    HashMap::new(),
+                    HashSet::from([a_euid.clone(), b_euid.clone(), c_euid.clone()])
+                ),
+                Entity::new(
+                    e_euid.clone(),
+                    HashMap::new(),
+                    HashSet::from([a_euid, b_euid, c_euid, d_euid])
+                ),
+            ])
+            .unwrap()
+        )
     }
 }
