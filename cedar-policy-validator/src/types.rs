@@ -107,20 +107,17 @@ impl Type {
     /// Construct a type for a literal EUID. This type will be a named entity
     /// type for the type of the EntityUID.
     pub(crate) fn euid_literal(entity: EntityUID, schema: &ValidatorSchema) -> Option<Type> {
-        let (entity_type, action_id_name) = entity.components();
-        match entity_type {
+        match entity.entity_type() {
             EntityType::Unspecified => None,
             EntityType::Concrete(name) => {
                 if is_action_entity_type(&name) {
                     schema
-                        .get_action_id(&EntityUID::from_components(name, action_id_name))
-                        .and_then(|validator_action_id| {
-                            Type::entity_reference_from_action_id(validator_action_id)
-                        })
+                        .get_action_id(&entity)
+                        .and_then(Type::entity_reference_from_action_id)
                 } else {
-                    schema.get_entity_type(&name).map(|validator_entity_type| {
-                        Type::entity_reference_from_entity_type(validator_entity_type)
-                    })
+                    schema
+                        .get_entity_type(name)
+                        .map(Type::entity_reference_from_entity_type)
                 }
             }
         }
@@ -165,12 +162,13 @@ impl Type {
     pub(crate) fn entity_reference_from_action_id(
         validator_action_id: &ValidatorActionId,
     ) -> Option<Type> {
-        Type::require_specified_entity_reference(validator_action_id.name.entity_type().clone())
-    }
-
-    pub(crate) fn require_specified_entity_reference(ety: EntityType) -> Option<Type> {
-        match ety {
-            EntityType::Concrete(name) => Some(Type::named_entity_reference(name)),
+        match validator_action_id.name.entity_type() {
+            EntityType::Concrete(name) => {
+                Some(Type::EntityOrRecord(EntityRecordKind::ActionEntity {
+                    name: name.clone(),
+                    attrs: Attributes::with_attributes(validator_action_id.attribute_types.clone()),
+                }))
+            }
             EntityType::Unspecified => None,
         }
     }
