@@ -3,8 +3,9 @@ name = "cedar-policy-core"
 edition = "2021"
 build = "build.rs"
 
-version = "2.0.2"
+version = "2.0.3"
 license-file = "../LICENSE"
+license = "Apache-2.0"
 categories = ["compilers", "config"]
 description = "Core implemenation of the Cedar Policy language."
 keywords = ["cedar", "authorization", "policy", "security"]
