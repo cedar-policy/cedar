@@ -2,8 +2,9 @@
 name = "cedar-policy-validator"
 edition = "2021"
 
-version = "2.0.1"
+version = "2.0.2"
 license-file = "../LICENSE"
+license = "Apache-2.0"
 categories = ["compilers", "config"]
 description = "Validator for the Cedar Policy language."
 keywords = ["cedar", "authorization", "policy", "security"]

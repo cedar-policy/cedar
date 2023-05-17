@@ -2,8 +2,9 @@
 name = "cedar-policy-cli"
 edition = "2021"
 
-version = "2.0.2"
+version = "2.0.3"
 license-file = "../LICENSE"
+license = "Apache-2.0"
 categories = ["compilers", "config"]
 description = "CLI interface for the Cedar Policy language."
 keywords = ["cedar", "authorization", "policy", "security"]
