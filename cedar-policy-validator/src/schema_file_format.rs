@@ -215,7 +215,9 @@ impl From<SchemaTypeVariant> for SchemaType {
 pub enum SchemaTypeVariant {
     String,
     Long {
-        // TODO: Did I successfully make these optional?
+        // These individual optional attributes are a bit messy, but
+        // #[serde(flatten)] on an Option<LongBounds> wouldn't let us report an
+        // error if the user specified only one of the two bounds.
         #[serde(rename = "min")]
         min_opt: Option<i64>,
         #[serde(rename = "max")]

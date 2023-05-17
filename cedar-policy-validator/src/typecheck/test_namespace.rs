@@ -129,7 +129,7 @@ fn namespaced_entity_can_type_error() {
         Some(Type::primitive_boolean()),
         vec![TypeError::expected_type(
             parse_expr(r#"N::S::Foo::"alice""#).expect("Expr should parse."),
-            Type::primitive_long(),
+            Type::long_top(),
             Type::named_entity_reference_from_str("N::S::Foo"),
         )],
     );

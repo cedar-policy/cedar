@@ -43,28 +43,28 @@ fn assert_expr_has_annotated_ast(e: &Expr, annotated: &Expr<Option<Type>>) {
 fn expr_typechecks_with_correct_annotation() {
     assert_expr_has_annotated_ast(
         &Expr::val(1),
-        &ExprBuilder::with_data(Some(Type::primitive_long())).val(1),
+        &ExprBuilder::with_data(Some(Type::singleton_long(1))).val(1),
     );
     assert_expr_has_annotated_ast(
         &Expr::greater(Expr::val(1), Expr::val(0)),
         &ExprBuilder::with_data(Some(Type::primitive_boolean())).greater(
-            ExprBuilder::with_data(Some(Type::primitive_long())).val(1),
-            ExprBuilder::with_data(Some(Type::primitive_long())).val(0),
+            ExprBuilder::with_data(Some(Type::singleton_long(1))).val(1),
+            ExprBuilder::with_data(Some(Type::singleton_long(0))).val(0),
         ),
     );
     assert_expr_has_annotated_ast(
         &Expr::less(Expr::val(1), Expr::val(0)),
         &ExprBuilder::with_data(Some(Type::primitive_boolean())).less(
-            ExprBuilder::with_data(Some(Type::primitive_long())).val(1),
-            ExprBuilder::with_data(Some(Type::primitive_long())).val(0),
+            ExprBuilder::with_data(Some(Type::singleton_long(1))).val(1),
+            ExprBuilder::with_data(Some(Type::singleton_long(0))).val(0),
         ),
     );
     assert_expr_has_annotated_ast(
         &Expr::and(Expr::greater(Expr::val(1), Expr::val(1)), Expr::val(false)),
         &ExprBuilder::with_data(Some(Type::singleton_boolean(false))).and(
             ExprBuilder::with_data(Some(Type::primitive_boolean())).greater(
-                ExprBuilder::with_data(Some(Type::primitive_long())).val(1),
-                ExprBuilder::with_data(Some(Type::primitive_long())).val(1),
+                ExprBuilder::with_data(Some(Type::singleton_long(1))).val(1),
+                ExprBuilder::with_data(Some(Type::singleton_long(1))).val(1),
             ),
             ExprBuilder::with_data(Some(Type::singleton_boolean(false))).val(false),
         ),
@@ -73,8 +73,8 @@ fn expr_typechecks_with_correct_annotation() {
         &Expr::or(Expr::greater(Expr::val(1), Expr::val(1)), Expr::val(true)),
         &ExprBuilder::with_data(Some(Type::singleton_boolean(true))).or(
             ExprBuilder::with_data(Some(Type::primitive_boolean())).greater(
-                ExprBuilder::with_data(Some(Type::primitive_long())).val(1),
-                ExprBuilder::with_data(Some(Type::primitive_long())).val(1),
+                ExprBuilder::with_data(Some(Type::singleton_long(1))).val(1),
+                ExprBuilder::with_data(Some(Type::singleton_long(1))).val(1),
             ),
             ExprBuilder::with_data(Some(Type::singleton_boolean(true))).val(true),
         ),
@@ -87,8 +87,8 @@ fn expr_typechecks_with_correct_annotation() {
         ),
         &ExprBuilder::with_data(Some(Type::primitive_string())).ite(
             ExprBuilder::with_data(Some(Type::primitive_boolean())).less(
-                ExprBuilder::with_data(Some(Type::primitive_long())).val(1),
-                ExprBuilder::with_data(Some(Type::primitive_long())).val(0),
+                ExprBuilder::with_data(Some(Type::singleton_long(1))).val(1),
+                ExprBuilder::with_data(Some(Type::singleton_long(0))).val(0),
             ),
             ExprBuilder::with_data(Some(Type::primitive_string())).val("bar"),
             ExprBuilder::with_data(Some(Type::primitive_string())).val("foo"),
@@ -101,17 +101,17 @@ fn expr_typechecks_with_correct_annotation() {
     );
     assert_expr_has_annotated_ast(
         &Expr::mul(Expr::val(3), 4),
-        &ExprBuilder::with_data(Some(Type::primitive_long())).mul(
-            ExprBuilder::with_data(Some(Type::primitive_long())).val(3),
+        &ExprBuilder::with_data(Some(Type::singleton_long(12))).mul(
+            ExprBuilder::with_data(Some(Type::singleton_long(3))).val(3),
             4,
         ),
     );
     assert_expr_has_annotated_ast(
         &Expr::set([Expr::val(1), Expr::val(2), Expr::val(3)]),
-        &ExprBuilder::with_data(Some(Type::set(Type::primitive_long()))).set([
-            ExprBuilder::with_data(Some(Type::primitive_long())).val(1),
-            ExprBuilder::with_data(Some(Type::primitive_long())).val(2),
-            ExprBuilder::with_data(Some(Type::primitive_long())).val(3),
+        &ExprBuilder::with_data(Some(Type::set(Type::long_bounded(1, 3)))).set([
+            ExprBuilder::with_data(Some(Type::singleton_long(1))).val(1),
+            ExprBuilder::with_data(Some(Type::singleton_long(2))).val(2),
+            ExprBuilder::with_data(Some(Type::singleton_long(3))).val(3),
         ]),
     );
     assert_expr_has_annotated_ast(
@@ -120,13 +120,13 @@ fn expr_typechecks_with_correct_annotation() {
             ("bar".into(), Expr::val(false)),
         ]),
         &ExprBuilder::with_data(Some(Type::record_with_required_attributes([
-            ("foo".into(), Type::primitive_long()),
+            ("foo".into(), Type::singleton_long(1)),
             ("bar".into(), Type::singleton_boolean(false)),
         ])))
         .record([
             (
                 "foo".into(),
-                ExprBuilder::with_data(Some(Type::primitive_long())).val(1),
+                ExprBuilder::with_data(Some(Type::singleton_long(1))).val(1),
             ),
             (
                 "bar".into(),

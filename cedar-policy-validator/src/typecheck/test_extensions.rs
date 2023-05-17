@@ -51,7 +51,7 @@ fn ip_extension_typecheck_fails() {
         vec![TypeError::expected_type(
             Expr::val(3),
             Type::primitive_string(),
-            Type::primitive_long(),
+            Type::singleton_long(3),
         )],
     );
     let expr = parser::parse_expr("ip(\"foo\")").expect("parsing should succeed");
@@ -77,7 +77,7 @@ fn ip_extension_typecheck_fails() {
         vec![TypeError::expected_type(
             Expr::val(3),
             Type::extension(ipaddr_name),
-            Type::primitive_long(),
+            Type::singleton_long(3),
         )],
     );
 }
@@ -115,7 +115,7 @@ fn decimal_extension_typecheck_fails() {
         vec![TypeError::expected_type(
             Expr::val(3),
             Type::primitive_string(),
-            Type::primitive_long(),
+            Type::singleton_long(3),
         )],
     );
     let expr = parser::parse_expr("decimal(\"foo\")").expect("parsing should succeed");
@@ -141,7 +141,7 @@ fn decimal_extension_typecheck_fails() {
         vec![TypeError::expected_type(
             Expr::val(3),
             Type::extension(decimal_name),
-            Type::primitive_long(),
+            Type::singleton_long(3),
         )],
     );
 }

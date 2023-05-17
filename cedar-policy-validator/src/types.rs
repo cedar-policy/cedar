@@ -108,11 +108,26 @@ impl Type {
         }
     }
 
+    // Precondition: min <= max.
     pub(crate) fn long_bounded(min: i64, max: i64) -> Type {
         Type::Primitive {
             primitive_type: Primitive::Long(LongBoundsInfo {
                 can_be_any: false,
                 bounds_opt: Some(LongBounds { min, max }),
+            }),
+        }
+    }
+
+    pub(crate) fn singleton_long(val: i64) -> Type {
+        Self::long_bounded(val, val)
+    }
+
+    // Top type for the "static" (non-gradual) system.
+    pub(crate) fn long_static_top() -> Type {
+        Type::Primitive {
+            primitive_type: Primitive::Long(LongBoundsInfo {
+                can_be_any: false,
+                bounds_opt: Some(LongBounds::top()),
             }),
         }
     }
@@ -1088,6 +1103,8 @@ impl AttributeType {
 
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
 pub(crate) struct LongBounds {
+    // Invariant: min <= max.
+    // REVIEW: Should we assert this somewhere?
     pub(crate) min: i64,
     pub(crate) max: i64,
 }

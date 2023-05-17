@@ -563,7 +563,7 @@ fn type_error_is_not_reported_for_every_cross_product_element() {
         policy,
         vec![TypeError::expected_type(
             Expr::val(true),
-            Type::primitive_long(),
+            Type::long_top(),
             Type::True,
         )],
     );
