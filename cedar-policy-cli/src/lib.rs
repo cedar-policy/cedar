@@ -204,6 +204,8 @@ pub struct AuthorizeArgs {
     /// Time authorization and report timing information
     #[arg(short, long)]
     pub timing: bool,
+    #[arg(long)]
+    pub partial: bool
 }
 
 #[derive(Args, Debug)]
@@ -600,6 +602,7 @@ pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {
         &args.entities_file,
         args.schema_file.as_ref(),
         args.timing,
+        args.partial,
     );
     match ans {
         Ok(ans) => {
@@ -742,6 +745,7 @@ fn execute_request(
     entities_filename: impl AsRef<Path>,
     schema_filename: Option<impl AsRef<Path>>,
     compute_duration: bool,
+    partial_evaluation: bool
 ) -> Result<Response, Vec<Error>> {
     let mut errs = vec![];
     let policies = match read_policy_and_links(policies_filename.as_ref(), links_filename) {
@@ -780,11 +784,19 @@ fn execute_request(
             None
         }
     };
+    let final_entities: Entities =
+        if partial_evaluation {
+            entities.partial()
+         } 
+         else {
+            entities
+         };
+    
     if errs.is_empty() {
         let request = request.expect("if errs is empty, we should have a request");
         let authorizer = Authorizer::new();
         let auth_start = Instant::now();
-        let ans = authorizer.is_authorized(&request, &policies, &entities);
+        let ans = authorizer.is_authorized(&request, &policies, &final_entities);
         let auth_dur = auth_start.elapsed();
         if compute_duration {
             println!(
