@@ -1109,28 +1109,25 @@ impl<'a> Typechecker<'a> {
             // entity type), so the type of Action is only the entity type name
             // taken from the euid.
             ExprKind::Var(Var::Action) => {
-                let attrs = match self.schema.get_action_id(request_env.action) {
-                    Some(a) => a.attributes.clone(),
-                    None => Attributes::with_required_attributes([]),
+                let ty = if matches!(request_env.action.entity_type(), EntityType::Unspecified) {
+                    // The action entity may be unspecified. In this case it has
+                    // type AnyEntity
+                    Some(Type::any_entity_reference())
+                } else {
+                    // This returns `None` if the action entity is not defined
+                    // in the schema which will cause a typecheck fail in the
+                    // match below.
+                    Type::euid_literal(request_env.action.clone(), self.schema)
                 };
 
-                match request_env.action.entity_type() {
-                    EntityType::Concrete(n) => TypecheckAnswer::success(
-                        ExprBuilder::with_data(Some(Type::EntityOrRecord(
-                            EntityRecordKind::ActionEntity {
-                                name: n.clone(),
-                                attrs: Attributes::with_attributes(attrs),
-                            },
-                        )))
-                        .with_same_source_info(e)
-                        .var(Var::Action),
+                match ty {
+                    Some(ty) => TypecheckAnswer::success(
+                        ExprBuilder::with_data(Some(ty))
+                            .with_same_source_info(e)
+                            .var(Var::Action),
                     ),
-                    EntityType::Unspecified => TypecheckAnswer::success(
-                        ExprBuilder::with_data(Some(Type::possibly_unspecified_entity_reference(
-                            request_env.action.entity_type().clone(),
-                        )))
-                        .with_same_source_info(e)
-                        .var(Var::Action),
+                    None => TypecheckAnswer::fail(
+                        ExprBuilder::new().with_same_source_info(e).var(Var::Action),
                     ),
                 }
             }
@@ -1187,44 +1184,11 @@ impl<'a> Typechecker<'a> {
                 // not generated here. We still return `TypecheckFail` so that
                 // typechecking is not considered successful.
                 match Type::euid_literal((**euid).clone(), self.schema) {
-                    Some(ty) => {
-                        let ety_name = match euid.entity_type() {
-                            EntityType::Concrete(n) => Some(n),
-                            EntityType::Unspecified => None,
-                        };
-                        match ety_name {
-                            Some(ety_name) => {
-                                if is_action_entity_type(ety_name) {
-                                    let attrs = match self.schema.get_action_id(euid) {
-                                        Some(a) => a.attributes.clone(),
-                                        None => Attributes::with_required_attributes([]),
-                                    };
-
-                                    TypecheckAnswer::success(
-                                        ExprBuilder::with_data(Some(Type::EntityOrRecord(
-                                            EntityRecordKind::ActionEntity {
-                                                name: ety_name.clone(),
-                                                attrs: Attributes::with_attributes(attrs),
-                                            },
-                                        )))
-                                        .with_same_source_info(e)
-                                        .val(euid.clone()),
-                                    )
-                                } else {
-                                    TypecheckAnswer::success(
-                                        ExprBuilder::with_data(Some(ty))
-                                            .with_same_source_info(e)
-                                            .val(euid.clone()),
-                                    )
-                                }
-                            }
-                            None => TypecheckAnswer::success(
-                                ExprBuilder::with_data(Some(ty))
-                                    .with_same_source_info(e)
-                                    .val(euid.clone()),
-                            ),
-                        }
-                    }
+                    Some(ty) => TypecheckAnswer::success(
+                        ExprBuilder::with_data(Some(ty))
+                            .with_same_source_info(e)
+                            .val(euid.clone()),
+                    ),
                     None => TypecheckAnswer::fail(
                         ExprBuilder::new()
                             .with_same_source_info(e)

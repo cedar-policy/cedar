@@ -23,8 +23,8 @@
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use cedar_policy_core::{
-    ast::{Eid, EntityType, EntityUID, Id, Name},
-    entities::JSONValue,
+    ast::{Eid, Entity, EntityType, EntityUID, Id, Name, RestrictedExpr},
+    entities::{Entities, JSONValue, TCComputation},
     parser::{err::ParseError, parse_name, parse_namespace},
     transitive_closure::{compute_tc, TCNode},
 };
@@ -134,8 +134,10 @@ pub struct ActionsDef {
     /// they might not be declared in this fragment while the entries in the
     /// values hash set are taken directly from declared actions.
     children: HashMap<EntityUID, HashSet<EntityUID>>,
-    /// Action attributes
-    attributes: HashMap<EntityUID, Attributes>,
+    /// Action attribute types, used for typechecking.
+    attribute_types: HashMap<EntityUID, Attributes>,
+    /// Action attribute values.
+    attributes: HashMap<EntityUID, HashMap<SmolStr, RestrictedExpr>>,
 }
 
 type ResolveFunc<T> = dyn FnOnce(&HashMap<Name, Type>) -> Result<T>;
@@ -334,8 +336,11 @@ impl ValidatorNamespaceDef {
         })
     }
 
-    //Helper to get types from JSONValues
-    //Currently doesn't support all JSONValue types
+    // Helper to get types from JSONValues. Currently doesn't support all
+    // JSONValue types. Note: If this function is extended to cover move
+    // `JSONValue`s, we must update `convert_attr_jsonval_map_to_attributes` to
+    // handle errors that may occur when parsing these values. This will require
+    // a breaking change in the `SchemaError` type in the public API.
     fn jsonval_to_type_helper(v: &JSONValue) -> Result<Type> {
         match v {
             JSONValue::Bool(_) => Ok(Type::primitive_boolean()),
@@ -374,17 +379,32 @@ impl ValidatorNamespaceDef {
     //Convert jsonval map to attributes
     fn convert_attr_jsonval_map_to_attributes(
         m: HashMap<SmolStr, JSONValue>,
-    ) -> Result<Attributes> {
-        let mut required_attrs: HashMap<SmolStr, Type> = HashMap::new();
+    ) -> Result<(Attributes, HashMap<SmolStr, RestrictedExpr>)> {
+        let mut attr_types: HashMap<SmolStr, Type> = HashMap::new();
+        let mut attr_values: HashMap<SmolStr, RestrictedExpr> = HashMap::new();
 
         for (k, v) in m {
             let t = Self::jsonval_to_type_helper(&v);
             match t {
-                Ok(ty) => required_attrs.insert(k.clone(), ty),
+                Ok(ty) => attr_types.insert(k.clone(), ty),
                 Err(e) => return Err(e),
             };
+
+            // As an artifact of the limited `JSONValue` variants accepted by
+            // `Self::jsonval_to_type_helper`, we know that this function will
+            // never error. Also note that this is only ever executed when
+            // action attributes are enabled, but they cannot be enabled when
+            // using Cedar through the public API. This is fortunate because
+            // handling an error here would mean adding a new error variant to
+            // `SchemaError` in the public API, but we didn't make that enum
+            // `non_exhaustive`, so any new variants are a breaking change.
+            let e = v.into_expr().expect("`Self::jsonval_to_type_helper` will always return `Err` for a `JSONValue` that might make `into_expr` return `Err`");
+            attr_values.insert(k.clone(), e);
         }
-        Ok(Attributes::with_required_attributes(required_attrs))
+        Ok((
+            Attributes::with_required_attributes(attr_types),
+            attr_values,
+        ))
     }
 
     // Transform the schema data structures for actions into the structures used
@@ -454,28 +474,29 @@ impl ValidatorNamespaceDef {
             })
             .collect::<Result<HashMap<_, _>>>()?;
 
-        let attributes = schema_file_actions
-            .into_iter()
-            .map(|(name, a)| -> Result<_> {
-                let action_euid = Self::parse_action_id_with_namespace(
-                    &ActionEntityUID::default_type(name),
-                    schema_namespace.to_vec(),
-                )?;
+        let mut attributes = HashMap::new();
+        let mut attribute_types = HashMap::new();
+        for (name, a) in schema_file_actions {
+            let action_euid = Self::parse_action_id_with_namespace(
+                &ActionEntityUID::default_type(name),
+                schema_namespace.to_vec(),
+            )?;
 
-                let action_attributes =
-                    Self::convert_attr_jsonval_map_to_attributes(a.attributes.unwrap_or_default());
-                match action_attributes {
-                    // We can't just use the last element of the vec without implementing `Clone` for `SchemaError`, which has some potentially very expensive variants
-                    Ok(attrs) => Ok((action_euid, attrs)),
-                    Err(e) => Err(e),
+            match Self::convert_attr_jsonval_map_to_attributes(a.attributes.unwrap_or_default()) {
+                // We can't just use the last element of the vec without implementing `Clone` for `SchemaError`, which has some potentially very expensive variants
+                Ok((curr_attribute_types, curr_attributes)) => {
+                    attributes.insert(action_euid.clone(), curr_attributes);
+                    attribute_types.insert(action_euid, curr_attribute_types);
                 }
-            })
-            .collect::<Result<HashMap<_, _>>>()?;
+                Err(e) => return Err(e),
+            }
+        }
 
         Ok(ActionsDef {
             context_applies_to,
             children,
             attributes,
+            attribute_types,
         })
     }
 
@@ -836,6 +857,7 @@ impl ValidatorSchema {
         let mut entity_children = HashMap::new();
         let mut action_context_applies_to = HashMap::new();
         let mut action_children = HashMap::new();
+        let mut action_attribute_types = HashMap::new();
         let mut action_attributes = HashMap::new();
 
         for ns_def in fragments.into_iter().flat_map(|f| f.0.into_iter()) {
@@ -870,9 +892,17 @@ impl ValidatorSchema {
                     }
                 };
             }
-            for (id, attrs) in ns_def.actions.attributes {
-                match action_attributes.entry(id) {
+            for (id, attrs) in ns_def.actions.attribute_types {
+                match action_attribute_types.entry(id) {
                     Entry::Vacant(v) => v.insert(attrs),
+                    Entry::Occupied(o) => {
+                        return Err(SchemaError::DuplicateAction(o.key().to_string()))
+                    }
+                };
+            }
+            for (id, attr_vals) in ns_def.actions.attributes {
+                match action_attributes.entry(id) {
+                    Entry::Vacant(v) => v.insert(attr_vals),
                     Entry::Occupied(o) => {
                         return Err(SchemaError::DuplicateAction(o.key().to_string()))
                     }
@@ -928,10 +958,12 @@ impl ValidatorSchema {
             .map(|(name, (context, applies_to))| -> Result<_> {
                 let descendants = action_children.remove(&name).unwrap_or_default();
 
-                let attributes = match action_attributes.get(&name) {
-                    Some(t) => t.clone(),
+                let attribute_types = match action_attribute_types.remove(&name) {
+                    Some(t) => t,
                     None => Attributes::with_attributes([]),
                 };
+
+                let attributes = action_attributes.remove(&name).unwrap_or_default();
 
                 Ok((
                     name.clone(),
@@ -942,6 +974,7 @@ impl ValidatorSchema {
                         context: Self::record_attributes_or_error(
                             context.resolve_type_defs(&type_defs)?,
                         )?,
+                        attribute_types,
                         attributes,
                     },
                 ))
@@ -1194,6 +1227,36 @@ impl ValidatorSchema {
             )
         })
     }
+
+    pub fn action_entities(&self) -> cedar_policy_core::entities::Result<Entities> {
+        // Invert the action hierarchy to get the ancestor relation expected for
+        // the `Entity` datatype instead of descendant as stored by the schema.
+        // We could store the un-inverted `memberOf` relation for each action,
+        // but I judge that the current implementation is actually less error
+        // prone, as it minimizes the threading of data structures through some
+        // complicated bits of schema construction code, and avoids computing
+        // the TC twice.
+        let mut action_ancestors: HashMap<&EntityUID, HashSet<EntityUID>> = HashMap::new();
+        for (action_euid, action_def) in &self.action_ids {
+            for descendant in &action_def.descendants {
+                action_ancestors
+                    .entry(descendant)
+                    .or_default()
+                    .insert(action_euid.clone());
+            }
+        }
+
+        Entities::from_entities(
+            self.action_ids.iter().map(|(action_id, action)| {
+                Entity::new(
+                    action_id.clone(),
+                    action.attributes.clone(),
+                    action_ancestors.remove(action_id).unwrap_or_default(),
+                )
+            }),
+            TCComputation::AssumeAlreadyComputed,
+        )
+    }
 }
 
 impl cedar_policy_core::entities::Schema for ValidatorSchema {
@@ -1319,8 +1382,13 @@ pub struct ValidatorActionId {
     /// attribute identifiers while the values are the type of the attribute.
     pub(crate) context: Attributes,
 
-    /// The action attributes
-    pub(crate) attributes: Attributes,
+    /// The attribute types for this action, used for typechecking.
+    pub(crate) attribute_types: Attributes,
+
+    /// The actual attribute value for this action, used to construct an
+    /// `Entity` for this action. Could also be used for more precise
+    /// typechecking by partial evaluation.
+    pub(crate) attributes: HashMap<SmolStr, RestrictedExpr>,
 }
 
 impl ValidatorActionId {
@@ -2573,5 +2641,103 @@ mod test {
                 s
             ),
         }
+    }
+
+    #[test]
+    fn simple_action_entity() {
+        let src = json!(
+        {
+            "entityTypes": { },
+            "actions": {
+                "view_photo": { },
+            }
+        });
+
+        let schema_file: NamespaceDefinition = serde_json::from_value(src).expect("Parse Error");
+        let schema: ValidatorSchema = schema_file.try_into().expect("Schema Error");
+        let actions = schema.action_entities().expect("Entity Construct Error");
+
+        let action_uid = EntityUID::from_str("Action::\"view_photo\"").unwrap();
+        let view_photo = actions.entity(&action_uid);
+        assert_eq!(
+            view_photo.unwrap(),
+            &Entity::new(action_uid, HashMap::new(), HashSet::new())
+        );
+    }
+
+    #[test]
+    fn action_entity_hierarchy() {
+        let src = json!(
+        {
+            "entityTypes": { },
+            "actions": {
+                "read": {},
+                "view": {
+                    "memberOf": [{"id": "read"}]
+                },
+                "view_photo": {
+                    "memberOf": [{"id": "view"}]
+                },
+            }
+        });
+
+        let schema_file: NamespaceDefinition = serde_json::from_value(src).expect("Parse Error");
+        let schema: ValidatorSchema = schema_file.try_into().expect("Schema Error");
+        let actions = schema.action_entities().expect("Entity Construct Error");
+
+        let view_photo_uid = EntityUID::from_str("Action::\"view_photo\"").unwrap();
+        let view_uid = EntityUID::from_str("Action::\"view\"").unwrap();
+        let read_uid = EntityUID::from_str("Action::\"read\"").unwrap();
+
+        let view_photo_entity = actions.entity(&view_photo_uid);
+        assert_eq!(
+            view_photo_entity.unwrap(),
+            &Entity::new(
+                view_photo_uid,
+                HashMap::new(),
+                HashSet::from([view_uid.clone(), read_uid.clone()])
+            )
+        );
+
+        let view_entity = actions.entity(&view_uid);
+        assert_eq!(
+            view_entity.unwrap(),
+            &Entity::new(view_uid, HashMap::new(), HashSet::from([read_uid.clone()]))
+        );
+
+        let read_entity = actions.entity(&read_uid);
+        assert_eq!(
+            read_entity.unwrap(),
+            &Entity::new(read_uid, HashMap::new(), HashSet::new())
+        );
+    }
+
+    #[test]
+    fn action_entity_attribute() {
+        let src = json!(
+        {
+            "entityTypes": { },
+            "actions": {
+                "view_photo": {
+                    "attributes": { "attr": "foo" }
+                },
+            }
+        });
+
+        let schema_file: NamespaceDefinitionWithActionAttributes =
+            serde_json::from_value(src).expect("Parse Error");
+        let schema: ValidatorSchema = schema_file.try_into().expect("Schema Error");
+        let actions = schema.action_entities().expect("Entity Construct Error");
+
+        let action_uid = EntityUID::from_str("Action::\"view_photo\"").unwrap();
+        let view_photo = actions.entity(&action_uid);
+        assert_eq!(
+            view_photo.unwrap(),
+            &Entity::new(
+                action_uid,
+                HashMap::from([("attr".into(), RestrictedExpr::val("foo"))]),
+                HashSet::new()
+            )
+        );
     }
 }

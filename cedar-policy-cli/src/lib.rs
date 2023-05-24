@@ -191,7 +191,8 @@ pub struct AuthorizeArgs {
     #[arg(long = "template-linked", value_name = "FILE")]
     pub template_linked_file: Option<String>,
     /// File containing schema information
-    // Used for schema-based parsing of entity hierarchy, if present
+    /// Used to populate the store with action entities and for schema-based
+    /// parsing of entity hierarchy, if present
     #[arg(long = "schema", value_name = "FILE")]
     pub schema_file: Option<String>,
     /// File containing JSON representation of the Cedar entity hierarchy
@@ -289,7 +290,8 @@ pub struct EvaluateArgs {
     #[command(flatten)]
     pub request: RequestArgs,
     /// File containing schema information
-    // Used for schema-based parsing of entity hierarchy, if present
+    /// Used to populate the store with action entities and for schema-based
+    /// parsing of entity hierarchy, if present
     #[arg(long = "schema", value_name = "FILE")]
     pub schema_file: Option<String>,
     /// File containing JSON representation of the Cedar entity hierarchy.
@@ -401,6 +403,13 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
                 return (CedarExitCode::Failure, EvalResult::Bool(false));
             }
         },
+    };
+    let entities = match load_actions_from_schema(entities, &schema) {
+        Ok(entities) => entities,
+        Err(e) => {
+            println!("error: {:#}", e);
+            return (CedarExitCode::Failure, EvalResult::Bool(false));
+        }
     };
     match eval_expression(&request, &entities, &expr) {
         Err(e) => {
@@ -709,6 +718,22 @@ fn read_schema_file(filename: impl AsRef<Path>) -> Result<Schema> {
     ))
 }
 
+fn load_actions_from_schema(entities: Entities, schema: &Option<Schema>) -> Result<Entities> {
+    match schema {
+        Some(schema) => match schema.action_entities() {
+            Ok(action_entities) => Entities::from_entities(
+                entities
+                    .iter()
+                    .cloned()
+                    .chain(action_entities.iter().cloned()),
+            )
+            .context("failed to merge action entities with entity file"),
+            Err(e) => Err(e).context("failed to construct action entities"),
+        },
+        None => Ok(entities),
+    }
+}
+
 /// This uses the Cedar API to call the authorization engine.
 fn execute_request(
     request: &RequestArgs,
@@ -735,6 +760,13 @@ fn execute_request(
         }
     };
     let entities = match load_entities(entities_filename, schema.as_ref()) {
+        Ok(entities) => entities,
+        Err(e) => {
+            errs.push(e);
+            Entities::empty()
+        }
+    };
+    let entities = match load_actions_from_schema(entities, &schema) {
         Ok(entities) => entities,
         Err(e) => {
             errs.push(e);

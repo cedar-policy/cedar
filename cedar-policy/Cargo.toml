@@ -2,8 +2,8 @@
 name = "cedar-policy"
 edition = "2021"
 
-version = "2.0.2"
-license-file = "../LICENSE"
+version = "2.0.3"
+license = "Apache-2.0"
 categories = ["compilers", "config"]
 description = "Cedar is a language for defining permissions as policies, which describe who should have access to what."
 keywords = ["cedar", "authorization", "policy", "security"]
