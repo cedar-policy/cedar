@@ -158,9 +158,7 @@ impl ExtensionFunction {
                     func()
                 } else {
                     Err(evaluator::EvaluationError::WrongNumArguments {
-                        op: ExtensionFunctionOp {
-                            function_name: name.clone(),
-                        },
+                        function_name: name.clone(),
                         expected: 0,
                         actual: args.len(),
                     })
@@ -185,11 +183,8 @@ impl ExtensionFunction {
                 if args.len() == 1 {
                     func(args[0].clone())
                 } else {
-                    let op = ExtensionFunctionOp {
-                        function_name: name.clone(),
-                    };
                     Err(evaluator::EvaluationError::WrongNumArguments {
-                        op,
+                        function_name: name.clone(),
                         expected: 1,
                         actual: args.len(),
                     })
@@ -215,11 +210,8 @@ impl ExtensionFunction {
                 if args.len() == 1 {
                     func(args[0].clone())
                 } else {
-                    let op = ExtensionFunctionOp {
-                        function_name: name.clone(),
-                    };
                     Err(evaluator::EvaluationError::WrongNumArguments {
-                        op,
+                        function_name: name.clone(),
                         expected: 1,
                         actual: args.len(),
                     })
@@ -248,9 +240,7 @@ impl ExtensionFunction {
                     func(args[0].clone(), args[1].clone())
                 } else {
                     Err(evaluator::EvaluationError::WrongNumArguments {
-                        op: ExtensionFunctionOp {
-                            function_name: name.clone(),
-                        },
+                        function_name: name.clone(),
                         expected: 2,
                         actual: args.len(),
                     })
@@ -282,9 +272,7 @@ impl ExtensionFunction {
                     func(args[0].clone(), args[1].clone(), args[2].clone())
                 } else {
                     Err(evaluator::EvaluationError::WrongNumArguments {
-                        op: ExtensionFunctionOp {
-                            function_name: name.clone(),
-                        },
+                        function_name: name.clone(),
                         expected: 3,
                         actual: args.len(),
                     })
@@ -374,7 +362,7 @@ impl<V: ExtensionValue> StaticallyTyped for V {
 pub struct ExtensionValueWithArgs {
     value: Arc<dyn InternalExtensionValue>,
     args: Vec<Expr>,
-    constructor: ExtensionFunctionOp,
+    constructor: Name,
 }
 
 impl ExtensionValueWithArgs {
@@ -389,11 +377,7 @@ impl ExtensionValueWithArgs {
     }
 
     /// Constructor
-    pub fn new(
-        value: Arc<dyn InternalExtensionValue>,
-        args: Vec<Expr>,
-        constructor: ExtensionFunctionOp,
-    ) -> Self {
+    pub fn new(value: Arc<dyn InternalExtensionValue>, args: Vec<Expr>, constructor: Name) -> Self {
         Self {
             value,
             args,
@@ -404,7 +388,7 @@ impl ExtensionValueWithArgs {
 
 impl From<ExtensionValueWithArgs> for Expr {
     fn from(val: ExtensionValueWithArgs) -> Self {
-        ExprBuilder::new().call_extension_fn(val.constructor.function_name, val.args)
+        ExprBuilder::new().call_extension_fn(val.constructor, val.args)
     }
 }
 

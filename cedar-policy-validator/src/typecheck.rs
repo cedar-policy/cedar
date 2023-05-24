@@ -669,7 +669,10 @@ impl<'a> Typechecker<'a> {
                 // parsed.  The standard validator, however, allows calling
                 // these functions with non-literal expression that might not
                 // parse, so we have a
-                ExprKind::ExtensionFunctionApp { op, args } => {
+                ExprKind::ExtensionFunctionApp {
+                    function_name,
+                    args,
+                } => {
                     let args_strict_answers = args
                         .iter()
                         .map(|e| self.strict_transform(e, type_errors))
@@ -680,11 +683,11 @@ impl<'a> Typechecker<'a> {
                         |args_strict_unwrapped| {
                             let strict_expr = ExprBuilder::with_data(e.data().clone())
                                 .call_extension_fn(
-                                    op.function_name.clone(),
+                                    function_name.clone(),
                                     args_strict_unwrapped.into_iter().map(|a| a.0).collect(),
                                 );
                             let fn_has_arg_check =
-                                match self.lookup_extension_function(&op.function_name) {
+                                match self.lookup_extension_function(function_name) {
                                     Ok(f) => f.has_argument_check(),
                                     // The function is not defined or is defined
                                     // multiple times. An error was already raised by
@@ -2518,7 +2521,7 @@ impl<'a> Typechecker<'a> {
         ext_expr: &'b Expr,
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
-        let ExprKind::ExtensionFunctionApp { op, args } = ext_expr.expr_kind() else {
+        let ExprKind::ExtensionFunctionApp { function_name, args } = ext_expr.expr_kind() else {
             panic!("`typecheck_extension` called with an expression kind other than `ExtensionFunctionApp`");
         };
 
@@ -2531,7 +2534,7 @@ impl<'a> Typechecker<'a> {
                 .collect::<Option<Vec<_>>>()
         };
 
-        match self.lookup_extension_function(&op.function_name) {
+        match self.lookup_extension_function(function_name) {
             Ok(efunc) => {
                 let arg_tys = efunc.argument_types();
                 let ret_ty = efunc.return_type();
@@ -2553,7 +2556,7 @@ impl<'a> Typechecker<'a> {
                         Some(exprs) => TypecheckAnswer::fail(
                             ExprBuilder::with_data(Some(ret_ty.clone()))
                                 .with_same_source_info(ext_expr)
-                                .call_extension_fn(op.function_name.clone(), exprs),
+                                .call_extension_fn(function_name.clone(), exprs),
                         ),
                         None => TypecheckAnswer::RecursionLimit,
                     }
@@ -2569,7 +2572,7 @@ impl<'a> Typechecker<'a> {
                             TypecheckAnswer::success(
                                 ExprBuilder::with_data(Some(ret_ty.clone()))
                                     .with_same_source_info(ext_expr)
-                                    .call_extension_fn(op.function_name.clone(), typed_arg_exprs),
+                                    .call_extension_fn(function_name.clone(), typed_arg_exprs),
                             )
                         },
                     )
@@ -2581,7 +2584,7 @@ impl<'a> Typechecker<'a> {
                     Some(typed_args) => TypecheckAnswer::fail(
                         ExprBuilder::with_data(None)
                             .with_same_source_info(ext_expr)
-                            .call_extension_fn(op.function_name.clone(), typed_args),
+                            .call_extension_fn(function_name.clone(), typed_args),
                     ),
                     None => TypecheckAnswer::RecursionLimit,
                 }

@@ -59,7 +59,9 @@ pub(super) fn expr_text(e: &'_ Expr) -> impl Iterator<Item = TextKind<'_>> {
 fn text_in_expr(e: &'_ Expr) -> impl IntoIterator<Item = TextKind<'_>> {
     match e.expr_kind() {
         ExprKind::Lit(l) => text_in_lit(l).into_iter().collect(),
-        ExprKind::ExtensionFunctionApp { op, .. } => text_in_name(&op.function_name).collect(),
+        ExprKind::ExtensionFunctionApp { function_name, .. } => {
+            text_in_name(function_name).collect()
+        }
         ExprKind::GetAttr { attr, .. } => vec![TextKind::Identifier(attr)],
         ExprKind::HasAttr { attr, .. } => vec![TextKind::Identifier(attr)],
         ExprKind::Like { pattern, .. } => vec![TextKind::Pattern(pattern.get_elems())],

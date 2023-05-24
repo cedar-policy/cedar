@@ -115,7 +115,7 @@ pub enum ExprKind<T = ()> {
     /// Ideally, we find some way to make this non-representable.
     ExtensionFunctionApp {
         /// Extension function to apply
-        op: ExtensionFunctionOp,
+        function_name: Name,
         /// Args to apply the function to
         args: Arc<Vec<Expr<T>>>,
     },
@@ -530,13 +530,16 @@ impl Expr {
                 arg1.substitute(definitions)?,
                 arg2.substitute(definitions)?,
             )),
-            ExprKind::ExtensionFunctionApp { op, args } => {
+            ExprKind::ExtensionFunctionApp {
+                function_name,
+                args,
+            } => {
                 let args = args
                     .iter()
                     .map(|e| e.substitute(definitions))
                     .collect::<Result<Vec<Expr>, _>>()?;
 
-                Ok(Expr::call_extension_fn(op.function_name.clone(), args))
+                Ok(Expr::call_extension_fn(function_name.clone(), args))
             }
             ExprKind::GetAttr { expr, attr } => {
                 Ok(Expr::get_attr(expr.substitute(definitions)?, attr.clone()))
@@ -667,10 +670,13 @@ impl std::fmt::Display for Expr {
             ExprKind::MulByConst { arg, constant } => {
                 write!(f, "{} * {}", maybe_with_parens(arg), constant)
             }
-            ExprKind::ExtensionFunctionApp { op, args } => {
+            ExprKind::ExtensionFunctionApp {
+                function_name,
+                args,
+            } => {
                 // search for the name and callstyle
                 let style = Extensions::all_available().all_funcs().find_map(|f| {
-                    if f.name() == &op.function_name {
+                    if f.name() == function_name {
                         Some(f.style())
                     } else {
                         None
@@ -683,7 +689,7 @@ impl std::fmt::Display for Expr {
                         f,
                         "{}.{}({})",
                         maybe_with_parens(&args[0]),
-                        op.function_name,
+                        function_name,
                         args[1..].iter().join(", ")
                     )
                 } else {
@@ -693,7 +699,7 @@ impl std::fmt::Display for Expr {
                     // and even then, this form will be representable because the entire name and
                     // all the args can be displayed with proper syntax. However, it will not parse
                     // because the parser requires the extention name.
-                    write!(f, "{}({})", op.function_name, args.iter().join(", "))
+                    write!(f, "{}({})", function_name, args.iter().join(", "))
                 }
             }
             ExprKind::GetAttr { expr, attr } => write!(
@@ -1053,7 +1059,7 @@ impl<T> ExprBuilder<T> {
     /// `Name` on `args`
     pub fn call_extension_fn(self, function_name: Name, args: Vec<Expr<T>>) -> Expr<T> {
         self.with_expr_kind(ExprKind::ExtensionFunctionApp {
-            op: ExtensionFunctionOp { function_name },
+            function_name,
             args: Arc::new(args),
         })
     }
@@ -1241,12 +1247,18 @@ impl<T> Expr<T> {
                 },
             ) => constant == constant1 && arg.eq_shape(arg1),
             (
-                ExtensionFunctionApp { op, args },
                 ExtensionFunctionApp {
-                    op: op1,
+                    function_name,
+                    args,
+                },
+                ExtensionFunctionApp {
+                    function_name: function_name1,
                     args: args1,
                 },
-            ) => op == op1 && args.iter().zip(args1.iter()).all(|(a, a1)| a.eq_shape(a1)),
+            ) => {
+                function_name == function_name1
+                    && args.iter().zip(args1.iter()).all(|(a, a1)| a.eq_shape(a1))
+            }
             (
                 GetAttr { expr, attr },
                 GetAttr {
@@ -1329,8 +1341,11 @@ impl<T> Expr<T> {
                 arg.hash_shape(state);
                 constant.hash(state);
             }
-            ExprKind::ExtensionFunctionApp { op, args } => {
-                op.hash(state);
+            ExprKind::ExtensionFunctionApp {
+                function_name,
+                args,
+            } => {
+                function_name.hash(state);
                 state.write_usize(args.len());
                 args.iter().for_each(|a| {
                     a.hash_shape(state);

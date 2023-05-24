@@ -205,13 +205,16 @@ impl JSONValue {
     pub fn from_expr(expr: BorrowedRestrictedExpr<'_>) -> Result<Self, JsonSerializationError> {
         match expr.as_ref().expr_kind() {
             ExprKind::Lit(lit) => Ok(Self::from_lit(lit.clone())),
-            ExprKind::ExtensionFunctionApp { op, args } => match args.len() {
+            ExprKind::ExtensionFunctionApp {
+                function_name,
+                args,
+            } => match args.len() {
                 0 => Err(JsonSerializationError::ExtnCall0Arguments {
-                    func: op.function_name.clone(),
+                    func: function_name.clone(),
                 }),
                 1 => Ok(Self::ExtnEscape {
                     __extn: FnAndArg {
-                        ext_fn: op.function_name.to_string().into(),
+                        ext_fn: function_name.to_string().into(),
                         arg: Box::new(JSONValue::from_expr(
                             BorrowedRestrictedExpr::new_unchecked(
                                 // assuming the invariant holds for `expr`, it must also hold here
@@ -221,7 +224,7 @@ impl JSONValue {
                     },
                 }),
                 _ => Err(JsonSerializationError::ExtnCall2OrMoreArguments {
-                    func: op.function_name.clone(),
+                    func: function_name.clone(),
                 }),
             },
             ExprKind::Set(exprs) => Ok(Self::Set(
@@ -535,8 +538,8 @@ impl<'e> ValueParser<'e> {
                     }).collect::<Result<HashMap<_,_>, JsonDeserializationError>>()?
                 }})
             }
-            ExprKind::ExtensionFunctionApp { op, .. } => {
-                let efunc = self.extensions.func(&op.function_name)?;
+            ExprKind::ExtensionFunctionApp { function_name, .. } => {
+                let efunc = self.extensions.func(function_name)?;
                 Ok(efunc.return_type().cloned().ok_or_else(|| ExtensionsError::HasNoType {
                     name: efunc.name().clone()
                 })?)

@@ -665,7 +665,7 @@ impl From<ast::Expr> for Expr {
                 Expr::lit(JSONValue::Long(constant)),
             ),
             ast::ExprKind::ExtensionFunctionApp {
-                op: ast::ExtensionFunctionOp { function_name },
+                function_name,
                 args,
             } => {
                 let args = unwrap_or_clone(args).into_iter().map(Into::into).collect();
