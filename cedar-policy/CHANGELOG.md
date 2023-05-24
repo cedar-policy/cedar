@@ -1,0 +1,27 @@
+# Changelog
+
+## Unreleased
+
+## 2.1.0
+
+### Added
+- `Schema::action_entities` to provide access to action entities defined in a schema.
+
+### Changed
+- Update `cedar-policy-core` dependency.
+
+### Fixed
+- Resolve warning in `Cargo.toml` due to having both `license` and `license-file` metadata entries.
+
+## 2.0.3
+
+### Fixed
+- Update `Cargo.toml` metadata to correctly represent this crate as Apache-2.0 licensed.
+
+## 2.0.2
+
+## 2.0.1
+
+## 2.0.0
+
+Initial release of `cedar-policy`.
