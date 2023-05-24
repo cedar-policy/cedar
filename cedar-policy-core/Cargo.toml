@@ -3,7 +3,7 @@ name = "cedar-policy-core"
 edition = "2021"
 build = "build.rs"
 
-version = "2.0.3"
+version = "2.0.4"
 license-file = "../LICENSE"
 license = "Apache-2.0"
 categories = ["compilers", "config"]
