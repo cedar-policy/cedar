@@ -56,6 +56,9 @@ pub fn parse_policyset_to_ests_and_pset(
     let mut errs = Vec::new();
     let cst = text_to_cst::parse_policies(text).map_err(err::ParseErrors)?;
     let pset = cst.to_policyset(&mut errs);
+    if pset.is_none() {
+        return Err(err::ParseErrors(errs));
+    }
     let ests = cst
         .with_generated_policyids()
         .expect("shouldn't be None since parse_policies() didn't return Err")
