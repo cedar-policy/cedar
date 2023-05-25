@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 2.2.0
+
+### Changed
+- Update `cedar-policy-core` dependency.
+
 ## 2.1.0
 
 ### Changed
