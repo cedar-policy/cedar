@@ -256,6 +256,20 @@ impl Entities {
         }?;
         Some(entity.ancestors().map(EntityUid::ref_cast))
     }
+
+    /// Dump an `Entities` object into an entities JSON file.
+    ///
+    /// The resulting JSON will be suitable for parsing in via
+    /// `from_json_*`, and will be parse-able even with no `Schema`.
+    ///
+    /// To read an `Entities` object from an entities JSON file, use
+    /// `from_json_file`.
+    pub fn write_to_json(
+        &self,
+        f: impl std::io::Write,
+    ) -> std::result::Result<(), entities::EntitiesError> {
+        self.0.write_to_json(f)
+    }
 }
 
 /// Authorizer object, which provides responses to authorization queries
