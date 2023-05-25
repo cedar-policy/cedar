@@ -63,10 +63,10 @@ pub enum EvaluationError {
     },
 
     /// Wrong number of arguments to an extension function
-    #[error("wrong number of arguments to {op}: expected {expected}, got {actual}")]
+    #[error("wrong number of arguments to {function_name}: expected {expected}, got {actual}")]
     WrongNumArguments {
         /// arguments to this function
-        op: ExtensionFunctionOp,
+        function_name: Name,
         /// expected number of arguments
         expected: usize,
         /// actual number of arguments

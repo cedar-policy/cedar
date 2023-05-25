@@ -19,8 +19,8 @@
 use regex::Regex;
 
 use crate::ast::{
-    CallStyle, Extension, ExtensionFunction, ExtensionFunctionOp, ExtensionOutputValue,
-    ExtensionValue, ExtensionValueWithArgs, Name, StaticallyTyped, Type, Value,
+    CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue,
+    ExtensionValueWithArgs, Name, StaticallyTyped, Type, Value,
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
@@ -161,10 +161,8 @@ lazy_static::lazy_static! {
 fn decimal_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
     let decimal = Decimal::from_str(str.as_str()).map_err(|e| extension_err(e.to_string()))?;
-    let op = ExtensionFunctionOp {
-        function_name: DECIMAL_FROM_STR_NAME.clone(),
-    };
-    let e = ExtensionValueWithArgs::new(Arc::new(decimal), vec![arg.into()], op);
+    let function_name = DECIMAL_FROM_STR_NAME.clone();
+    let e = ExtensionValueWithArgs::new(Arc::new(decimal), vec![arg.into()], function_name);
     Ok(Value::ExtensionValue(Arc::new(e)).into())
 }
 
