@@ -115,7 +115,7 @@ pub enum ExprKind<T = ()> {
     /// Ideally, we find some way to make this non-representable.
     ExtensionFunctionApp {
         /// Extension function to apply
-        function_name: Name,
+        fn_name: Name,
         /// Args to apply the function to
         args: Arc<Vec<Expr<T>>>,
     },
@@ -423,8 +423,8 @@ impl Expr {
 
     /// Create an `Expr` which calls the extension function with the given
     /// `Name` on `args`
-    pub fn call_extension_fn(function_name: Name, args: Vec<Expr>) -> Self {
-        ExprBuilder::new().call_extension_fn(function_name, args)
+    pub fn call_extension_fn(fn_name: Name, args: Vec<Expr>) -> Self {
+        ExprBuilder::new().call_extension_fn(fn_name, args)
     }
 
     /// Create an application `Expr` which applies the given built-in unary
@@ -530,16 +530,13 @@ impl Expr {
                 arg1.substitute(definitions)?,
                 arg2.substitute(definitions)?,
             )),
-            ExprKind::ExtensionFunctionApp {
-                function_name,
-                args,
-            } => {
+            ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let args = args
                     .iter()
                     .map(|e| e.substitute(definitions))
                     .collect::<Result<Vec<Expr>, _>>()?;
 
-                Ok(Expr::call_extension_fn(function_name.clone(), args))
+                Ok(Expr::call_extension_fn(fn_name.clone(), args))
             }
             ExprKind::GetAttr { expr, attr } => {
                 Ok(Expr::get_attr(expr.substitute(definitions)?, attr.clone()))
@@ -670,13 +667,10 @@ impl std::fmt::Display for Expr {
             ExprKind::MulByConst { arg, constant } => {
                 write!(f, "{} * {}", maybe_with_parens(arg), constant)
             }
-            ExprKind::ExtensionFunctionApp {
-                function_name,
-                args,
-            } => {
+            ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 // search for the name and callstyle
                 let style = Extensions::all_available().all_funcs().find_map(|f| {
-                    if f.name() == function_name {
+                    if f.name() == fn_name {
                         Some(f.style())
                     } else {
                         None
@@ -689,7 +683,7 @@ impl std::fmt::Display for Expr {
                         f,
                         "{}.{}({})",
                         maybe_with_parens(&args[0]),
-                        function_name,
+                        fn_name,
                         args[1..].iter().join(", ")
                     )
                 } else {
@@ -699,7 +693,7 @@ impl std::fmt::Display for Expr {
                     // and even then, this form will be representable because the entire name and
                     // all the args can be displayed with proper syntax. However, it will not parse
                     // because the parser requires the extention name.
-                    write!(f, "{}({})", function_name, args.iter().join(", "))
+                    write!(f, "{}({})", fn_name, args.iter().join(", "))
                 }
             }
             ExprKind::GetAttr { expr, attr } => write!(
@@ -1057,9 +1051,9 @@ impl<T> ExprBuilder<T> {
 
     /// Create an `Expr` which calls the extension function with the given
     /// `Name` on `args`
-    pub fn call_extension_fn(self, function_name: Name, args: Vec<Expr<T>>) -> Expr<T> {
+    pub fn call_extension_fn(self, fn_name: Name, args: Vec<Expr<T>>) -> Expr<T> {
         self.with_expr_kind(ExprKind::ExtensionFunctionApp {
-            function_name,
+            fn_name,
             args: Arc::new(args),
         })
     }
@@ -1247,18 +1241,12 @@ impl<T> Expr<T> {
                 },
             ) => constant == constant1 && arg.eq_shape(arg1),
             (
+                ExtensionFunctionApp { fn_name, args },
                 ExtensionFunctionApp {
-                    function_name,
-                    args,
-                },
-                ExtensionFunctionApp {
-                    function_name: function_name1,
+                    fn_name: fn_name1,
                     args: args1,
                 },
-            ) => {
-                function_name == function_name1
-                    && args.iter().zip(args1.iter()).all(|(a, a1)| a.eq_shape(a1))
-            }
+            ) => fn_name == fn_name1 && args.iter().zip(args1.iter()).all(|(a, a1)| a.eq_shape(a1)),
             (
                 GetAttr { expr, attr },
                 GetAttr {
@@ -1341,11 +1329,8 @@ impl<T> Expr<T> {
                 arg.hash_shape(state);
                 constant.hash(state);
             }
-            ExprKind::ExtensionFunctionApp {
-                function_name,
-                args,
-            } => {
-                function_name.hash(state);
+            ExprKind::ExtensionFunctionApp { fn_name, args } => {
+                fn_name.hash(state);
                 state.write_usize(args.len());
                 args.iter().for_each(|a| {
                     a.hash_shape(state);
