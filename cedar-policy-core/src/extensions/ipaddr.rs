@@ -17,8 +17,8 @@
 //! This module contains the Cedar 'ipaddr' extension.
 
 use crate::ast::{
-    CallStyle, Extension, ExtensionFunction, ExtensionFunctionOp, ExtensionOutputValue,
-    ExtensionValue, ExtensionValueWithArgs, Name, StaticallyTyped, Type, Value,
+    CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue,
+    ExtensionValueWithArgs, Name, StaticallyTyped, Type, Value,
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
@@ -164,13 +164,11 @@ fn str_contains_colons_and_dots(s: &str) -> Result<(), String> {
 /// Cedar string
 fn ip_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
-    let op = ExtensionFunctionOp {
-        function_name: IP_FROM_STR_NAME.clone(),
-    };
+    let function_name = IP_FROM_STR_NAME.clone();
     let ipaddr = ExtensionValueWithArgs::new(
         Arc::new(IPAddr::from_str(str.as_str()).map_err(extension_err)?),
         vec![arg.into()],
-        op,
+        function_name,
     );
     Ok(Value::ExtensionValue(Arc::new(ipaddr)).into())
 }

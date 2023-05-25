@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::ast::{CallStyle, Name};
+use crate::ast::CallStyle;
 use serde::{Deserialize, Serialize};
 
 /// Built-in operators with exactly one argument
@@ -86,14 +86,6 @@ pub enum BinaryOp {
     ContainsAny,
 }
 
-/// Extension functions
-/// Clone is O(1).
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash)]
-pub struct ExtensionFunctionOp {
-    /// Name of the function being called
-    pub function_name: Name,
-}
-
 impl std::fmt::Display for UnaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -116,12 +108,6 @@ impl std::fmt::Display for BinaryOp {
             BinaryOp::ContainsAll => write!(f, "containsAll"),
             BinaryOp::ContainsAny => write!(f, "containsAny"),
         }
-    }
-}
-
-impl std::fmt::Display for ExtensionFunctionOp {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.function_name)
     }
 }
 

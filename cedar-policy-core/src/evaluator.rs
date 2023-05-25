@@ -111,7 +111,7 @@ impl<'e> RestrictedEvaluator<'e> {
                     Either::Right(residuals) => Ok(Expr::record(names.into_iter().zip(residuals)).into()),
                 }
             }
-            ExprKind::ExtensionFunctionApp { op, args } => {
+            ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let args = args
                     .iter()
                     .map(|arg| self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(arg))) // assuming the invariant holds for `e`, it will hold here
@@ -119,10 +119,10 @@ impl<'e> RestrictedEvaluator<'e> {
                 match split(args) {
                     Either::Left(values) => {
                         let values : Vec<_> = values.collect();
-                        let efunc = self.extensions.func(&op.function_name)?;
+                        let efunc = self.extensions.func(fn_name)?;
                         efunc.call(&values)
                     },
-                    Either::Right(residuals) => Ok(Expr::call_extension_fn(op.function_name.clone(), residuals.collect()).into()),
+                    Either::Right(residuals) => Ok(Expr::call_extension_fn(fn_name.clone(), residuals.collect()).into()),
                 }
             },
             expr => panic!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
@@ -511,7 +511,7 @@ impl<'q, 'e> Evaluator<'e> {
                 }
                 PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::mul(r, *constant))),
             },
-            ExprKind::ExtensionFunctionApp { op, args } => {
+            ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let args = args
                     .iter()
                     .map(|arg| self.partial_interpret(arg, slots))
@@ -519,11 +519,11 @@ impl<'q, 'e> Evaluator<'e> {
                 match split(args) {
                     Either::Left(vals) => {
                         let vals: Vec<_> = vals.collect();
-                        let efunc = self.extensions.func(&op.function_name)?;
+                        let efunc = self.extensions.func(fn_name)?;
                         efunc.call(&vals)
                     }
                     Either::Right(residuals) => Ok(PartialValue::Residual(
-                        Expr::call_extension_fn(op.function_name.clone(), residuals.collect()),
+                        Expr::call_extension_fn(fn_name.clone(), residuals.collect()),
                     )),
                 }
             }
