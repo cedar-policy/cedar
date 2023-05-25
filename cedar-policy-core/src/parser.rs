@@ -55,22 +55,20 @@ pub fn parse_policyset_to_ests_and_pset(
 ) -> Result<(HashMap<ast::PolicyID, est::Policy>, ast::PolicySet), err::ParseErrors> {
     let mut errs = Vec::new();
     let cst = text_to_cst::parse_policies(text).map_err(err::ParseErrors)?;
-    let pset = cst.to_policyset(&mut errs);
-    if let Some(pset) = pset {
-        let ests = cst
-            .with_generated_policyids()
-            .expect("shouldn't be None since parse_policies() didn't return Err")
-            .map(|(id, policy)| match &policy.node {
-                Some(p) => Ok(Some((id, p.clone().try_into()?))),
-                None => Ok(None),
-            })
-            .collect::<Result<Option<HashMap<ast::PolicyID, est::Policy>>, err::ParseErrors>>()?;
-        match (errs.is_empty(), ests) {
-            (true, Some(ests)) => Ok((ests, pset)),
-            (_, _) => Err(err::ParseErrors(errs)),
-        }
-    } else {
-        Err(err::ParseErrors(errs))
+    let pset = cst
+        .to_policyset(&mut errs)
+        .ok_or_else(|| err::ParseErrors(errs.clone()))?;
+    let ests = cst
+        .with_generated_policyids()
+        .expect("shouldn't be None since parse_policies() and to_policyset didn't return Err")
+        .map(|(id, policy)| match &policy.node {
+            Some(p) => Ok(Some((id, p.clone().try_into()?))),
+            None => Ok(None),
+        })
+        .collect::<Result<Option<HashMap<ast::PolicyID, est::Policy>>, err::ParseErrors>>()?;
+    match (errs.is_empty(), ests) {
+        (true, Some(ests)) => Ok((ests, pset)),
+        (_, _) => Err(err::ParseErrors(errs)),
     }
 }
 
