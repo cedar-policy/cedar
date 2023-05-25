@@ -687,6 +687,7 @@ fn read_policy_and_links(
     Ok(pset)
 }
 
+// Read from a file (when `filename` is a `Some`) or stdin (when `filename` is `None`)
 fn read_from_file_or_stdin(filename: Option<impl AsRef<Path>>, context: &str) -> Result<String> {
     let mut src_str = String::new();
     match filename.as_ref() {
@@ -705,6 +706,7 @@ fn read_from_file_or_stdin(filename: Option<impl AsRef<Path>>, context: &str) ->
     Ok(src_str)
 }
 
+// Convenient wrapper around `read_from_file_or_stdin` to just read from a file
 fn read_from_file(filename: impl AsRef<Path>, context: &str) -> Result<String> {
     read_from_file_or_stdin(Some(filename), context)
 }
