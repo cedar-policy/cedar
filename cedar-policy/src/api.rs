@@ -144,6 +144,8 @@ impl std::fmt::Display for Entity {
 #[derive(Debug, Clone, Default, PartialEq, Eq, RefCast)]
 pub struct Entities(pub(crate) entities::Entities);
 
+pub use entities::EntitiesError;
+
 impl Entities {
     /// Create a fresh `Entities` with no entities
     pub fn empty() -> Self {
