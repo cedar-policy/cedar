@@ -1184,7 +1184,9 @@ impl TryFrom<cst::Member> for Expr {
                             Either::Right(expr) => Either::Right(Expr::get_attr(expr, i)),
                         };
                     }
-                    Some(_i) => unimplemented!("other idents?"),
+                    Some(_i) => {
+                        return Err(ParseError::ToAST("Invalid Identifier".to_string()).into())
+                    }
                     None => {
                         return Err(ParseError::ToAST("node should not be empty".to_string()).into())
                     }
