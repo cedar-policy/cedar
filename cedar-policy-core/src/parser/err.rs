@@ -19,7 +19,7 @@ use std::fmt::Display;
 use thiserror::Error;
 
 /// For errors during parsing
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Clone)]
 pub enum ParseError {
     /// Error from the lalrpop parser, no additional information
     #[error("{0}")]
