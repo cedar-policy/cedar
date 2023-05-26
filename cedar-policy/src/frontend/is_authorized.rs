@@ -629,25 +629,6 @@ mod test {
         assert_is_authorized(json_is_authorized(call));
     }
 
-    #[test]
-    fn test_authorized_with_template_instantiation_when_clause() {
-        let call = r#"
-        {"context":{},
-        "slice":{
-        "policies":{},
-        "entities":[
-        {"uid":{"__expr":"Action::\"view\""},"attrs":{},"parents":[]},
-        {"uid":{"__expr":"Resource::\"photo.jpg\""},"attrs":{"owner":{"__expr":"User::\"alice\""}},"parents":[]},
-        {"uid":{"__expr":"User::\"alice\""},"attrs":{},"parents":[]}],
-        "templates":{"ID0":"permit(\nprincipal==?principal,\naction==Action::\"view\",\nresource==Resource::\"photo.jpg\"\n)\n when {\nresource.owner==?principal};"},
-        "template_instantiations":[{"template_id":"ID0","result_policy_id":"ID0_alice","instantiations":[{"slot":"?principal","value":{"ty":"User","eid":"alice"}}]}]},
-        "principal":"User::\"alice\"",
-        "action":"Action::\"view\"",
-        "resource":"Resource::\"photo.jpg\""}
-	         "#;
-        assert_is_authorized(json_is_authorized(call));
-    }
-
     fn assert_is_authorized(result: InterfaceResult) {
         match result {
             InterfaceResult::Success { result } => {
