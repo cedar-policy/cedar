@@ -106,11 +106,13 @@ pub fn parse_policy_template_to_est_and_ast(
         None => ast::PolicyID::from_string("policy0"),
     };
     let cst = text_to_cst::parse_policy(text).map_err(err::ParseErrors)?;
-    let ast = cst.to_policy_template(id, &mut errs);
+    let ast = cst
+        .to_policy_template(id, &mut errs)
+        .ok_or_else(|| err::ParseErrors(errs.clone()))?;
     let est = cst.node.map(TryInto::try_into).transpose()?;
-    match (errs.is_empty(), est, ast) {
-        (true, Some(est), Some(ast)) => Ok((est, ast)),
-        (_, _, _) => Err(err::ParseErrors(errs)),
+    match (errs.is_empty(), est) {
+        (true, Some(est)) => Ok((est, ast)),
+        (_, _) => Err(err::ParseErrors(errs)),
     }
 }
 
@@ -148,11 +150,14 @@ pub fn parse_policy_to_est_and_ast(
         None => ast::PolicyID::from_string("policy0"),
     };
     let cst = text_to_cst::parse_policy(text).map_err(err::ParseErrors)?;
-    let ast = cst.to_policy(id, &mut errs);
+    let ast = cst
+        .to_policy(id, &mut errs)
+        .ok_or_else(|| err::ParseErrors(errs.clone()))?;
+
     let est = cst.node.map(TryInto::try_into).transpose()?;
-    match (errs.is_empty(), est, ast) {
-        (true, Some(est), Some(ast)) => Ok((est, ast)),
-        (_, _, _) => Err(err::ParseErrors(errs)),
+    match (errs.is_empty(), est) {
+        (true, Some(est)) => Ok((est, ast)),
+        (_, _) => Err(err::ParseErrors(errs)),
     }
 }
 
