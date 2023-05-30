@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.2.0
+
 ### Added
 - `Entities::write_to_json` function to api.rs
 
