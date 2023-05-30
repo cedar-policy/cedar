@@ -579,4 +579,62 @@ mod parse_tests {
             "#;
         let _ = parse_policyset_to_ests_and_pset(src);
     }
+
+    #[test]
+    fn no_slots_in_condition() {
+        let srcs = [
+            r#"
+            permit(principal, action, resource) when {
+                resource == ?resource
+            };
+            "#,
+            r#"
+            permit(principal, action, resource) when {
+                resource == ?principal
+            };
+            "#,
+            r#"
+            permit(principal, action, resource) when {
+                resource == ?blah
+            };
+            "#,
+            r#"
+            permit(principal, action, resource) unless {
+                resource == ?resource
+            };
+            "#,
+            r#"
+            permit(principal, action, resource) unless {
+                resource == ?principal
+            };
+            "#,
+            r#"
+            permit(principal, action, resource) unless {
+                resource == ?blah
+            };
+            "#,
+            r#"
+            permit(principal, action, resource) unless {
+                resource == ?resource
+            } when {
+                resource == ?resource
+            }
+            "#,
+        ];
+
+        for src in srcs {
+            let p = parse_policy(None, src);
+            assert!(p.is_err());
+            let p = parse_policy_template(None, src);
+            assert!(p.is_err());
+            let p = parse_policy_to_est_and_ast(None, src);
+            assert!(p.is_err());
+            let p = parse_policy_template_to_est_and_ast(None, src);
+            assert!(p.is_err());
+            let p = parse_policyset(src);
+            assert!(p.is_err());
+            let p = parse_policyset_to_ests_and_pset(src);
+            assert!(p.is_err());
+        }
+    }
 }
