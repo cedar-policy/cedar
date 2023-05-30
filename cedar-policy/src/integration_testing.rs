@@ -355,7 +355,8 @@ pub fn perform_integration_test_from_json_custom(
         let ests = policies
             .policies()
             .map(|p| p.to_json().expect("should convert to JSON successfully"));
-        let _ = PolicySet::from_policies(ests.enumerate().map(|(i, est)| {
+
+        PolicySet::from_policies(ests.enumerate().map(|(i, est)| {
             let id = PolicyId::from_str(&format!("policy{i}")).expect("id should be valid");
             Policy::from_json(Some(id), est.clone()).unwrap_or_else(|e| {
                 panic!("in test {}, failed to build policy from JSON successfully: {e}\n\ntext policy was:\n{}\n\nJSON policy was: {}\n",

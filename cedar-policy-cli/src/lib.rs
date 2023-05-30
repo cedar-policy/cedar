@@ -719,7 +719,7 @@ fn read_policy_set(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Re
         context,
         filename.map_or_else(
             || "stdin".to_owned(),
-            |n| format!("file {}", n.as_ref().display().to_string())
+            |n| format!("file {}", n.as_ref().display())
         )
     ))?;
     Ok(rename_from_id_annotation(ps))

@@ -2637,7 +2637,7 @@ mod schema_tests {
     /// A minimal test that a valid Schema parses
     #[test]
     fn valid_schema() {
-        let _ = Schema::from_json_value(json!(
+        Schema::from_json_value(json!(
         { "": {
             "entityTypes": {
                 "Photo": {
@@ -2775,7 +2775,6 @@ mod schema_based_parsing_tests {
     use std::assert_eq;
 
     use super::*;
-    use cedar_policy_core::ast::EntityUID;
     use cool_asserts::assert_matches;
     use serde_json::json;
 
@@ -3211,7 +3210,8 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
-        let _ = Entities::from_json_value(entitiesjson, Some(&schema))
+
+        Entities::from_json_value(entitiesjson, Some(&schema))
             .expect("this version with explicit __entity and __extn escapes should also pass");
     }
 
@@ -3659,6 +3659,7 @@ mod schema_based_parsing_tests {
             }
         }}))
         .unwrap();
+
         let schema = Schema::from_schema_fragments([fragment]).unwrap();
         let action_entities = schema.action_entities().unwrap();
 
@@ -3667,6 +3668,7 @@ mod schema_based_parsing_tests {
         let c_euid = EntityUid::from_strs("Action", "C");
         let d_euid = EntityUid::from_strs("Action", "D");
         let e_euid = EntityUid::from_strs("Action", "E");
+
         assert_eq!(
             action_entities,
             Entities::from_entities([
@@ -3687,12 +3689,12 @@ mod schema_based_parsing_tests {
                     HashSet::from([a_euid.clone(), b_euid.clone(), c_euid.clone()])
                 ),
                 Entity::new(
-                    e_euid.clone(),
+                    e_euid,
                     HashMap::new(),
                     HashSet::from([a_euid, b_euid, c_euid, d_euid])
                 ),
             ])
             .unwrap()
-        )
+        );
     }
 }
