@@ -31,6 +31,8 @@ regex = { version = "1.8", features = ["unicode"] }
 
 # Fuzzer requires arbitrary
 arbitrary = { version = "1", features = ["derive"] }
+bolero = { version = "0.9", features = ["arbitrary"] }
+bolero-generator = "0.9"
 stacker = "0.1.15"
 
 [features]
