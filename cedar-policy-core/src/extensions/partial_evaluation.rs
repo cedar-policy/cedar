@@ -27,6 +27,8 @@ fn create_new_unknown(v: Value) -> evaluator::Result<ExtensionOutputValue> {
 
 fn throw_error(v: Value) -> evaluator::Result<ExtensionOutputValue> {
     let msg = v.get_as_string()?;
+    // PANIC SAFETY: This name is fully static, and is a valid extension name
+    #[allow(clippy::unwrap_used)]
     let err = EvaluationError::ExtensionError {
         extension_name: "partial_evaluation".parse().unwrap(),
         msg: msg.to_string(),
@@ -35,6 +37,8 @@ fn throw_error(v: Value) -> evaluator::Result<ExtensionOutputValue> {
 }
 
 /// Construct the extension
+// PANIC SAFETY: all uses of `unwrap` here on on parsing extension names are correct names
+#[allow(clippy::unwrap_used)]
 pub fn extension() -> Extension {
     Extension::new(
         "partial_evaluation".parse().unwrap(),

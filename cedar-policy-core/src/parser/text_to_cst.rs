@@ -19,6 +19,8 @@
 
 lalrpop_mod!(
     #[allow(warnings, unused)]
+    //PANIC SAFETY: lalrpop uses unwraps, and we are trusted lalrpop to generate correct code
+    #[allow(clippy::unwrap_used)]
     pub grammar,
     "/src/parser/grammar.rs"
 );

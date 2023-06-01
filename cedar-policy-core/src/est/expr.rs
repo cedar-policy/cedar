@@ -590,6 +590,8 @@ impl TryFrom<Expr> for ast::Expr {
                 match call.len() {
                     0 => Err(EstToAstError::MissingOperator),
                     1 => {
+                        // PANIC SAFETY checked that `call.len() == 1`
+                        #[allow(clippy::expect_used)]
                         let (fn_name, args) = call
                             .into_iter()
                             .next()
@@ -1299,14 +1301,12 @@ impl TryFrom<cst::Member> for Expr {
                         }
                     };
                 }
-                Some(cst::MemAccess::Index(ASTNode { node, .. })) if node.is_some() => {
-                    let s = Expr::try_from(node.unwrap())?
-                        .into_string_literal()
-                        .ok_or_else(|| {
-                            ParseError::ToAST(
-                                "attribute value must be a string literal".to_string(),
-                            )
-                        })?;
+                Some(cst::MemAccess::Index(ASTNode {
+                    node: Some(node), ..
+                })) => {
+                    let s = Expr::try_from(node)?.into_string_literal().ok_or_else(|| {
+                        ParseError::ToAST("attribute value must be a string literal".to_string())
+                    })?;
                     item = match item {
                         Either::Left(name) => {
                             return Err(ParseError::ToAST(format!(

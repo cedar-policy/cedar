@@ -134,7 +134,8 @@ impl Authorizer {
                         // Thus all residuals should be `skipped`
                         // However, if all of the policies are `forbid`, then we still have to return `Deny`, likewise if the set is empty.
 
-                        // This `unwrap` is safe as all policy ids in `diagnostics` are by definition in the policy set
+                        // PANIC SAFETY: every policy in the diagnostics had to come from the policy set
+                        #[allow(clippy::unwrap_used)]
                         if partial
                             .diagnostics
                             .reason
@@ -224,21 +225,28 @@ impl Authorizer {
             }
             // If we have a satisfied permit, and there are residual forbids, we must return a residual response. (this is true regardless of residual permits)
             (true, false | true, true) => {
+                // `idset` is non-empty as `satisified_permits.peek().is_some()` is `true`
                 let idset = satisfied_permits
                     .map(|p| p.id().clone())
                     .collect::<HashSet<_>>();
-                // The residual will consist of all of the residual forbids, and one trivially true `permit`
+                // The residual will consist of all of the residual forbids, and one trivially true `permit`.
+                // We will re-use one of the satisfied permits policy IDs to ensure uniqueness
+                // PANIC SAFETY This `unwrap` is safe as `idset` is non-empty
+                #[allow(clippy::unwrap_used)]
                 let id = idset.iter().next().unwrap().clone(); // This unwrap is safe as we know there are satisfied permits
                 let trivial_true = Policy::from_when_clause(Effect::Permit, Expr::val(true), id);
+                // PANIC SAFETY Since all of the ids in the original policy set were unique by construction, a subset will still be unique
+                #[allow(clippy::unwrap_used)]
+                let policy_set = PolicySet::try_from_iter(
+                    results
+                        .forbid_residuals
+                        .into_iter()
+                        .chain(once(trivial_true)),
+                )
+                .unwrap();
                 // This unwrap should be safe, all policy IDs should already be unique
                 ResponseKind::Partial(PartialResponse::new(
-                    PolicySet::try_from_iter(
-                        results
-                            .forbid_residuals
-                            .into_iter()
-                            .chain(once(trivial_true)),
-                    )
-                    .unwrap(),
+                    policy_set,
                     idset,
                     results.all_warnings,
                 ))
@@ -273,7 +281,8 @@ impl Authorizer {
                     ))
                 } else {
                     // No satisfied forbids
-                    // This unwrap should be safe, all policy IDs should already be unique
+                    // PANIC SAFETY all policy IDs in the original policy are unique by construction
+                    #[allow(clippy::unwrap_used)]
                     let all_residuals = PolicySet::try_from_iter(
                         [results.forbid_residuals, results.permit_residuals].concat(),
                     )

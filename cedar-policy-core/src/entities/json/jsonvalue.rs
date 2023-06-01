@@ -189,7 +189,7 @@ impl JSONValue {
                             parser::err::ParseError::WithContext {
                                 context: format!(
                                     "contents of __entity escape {} do not make a valid entity reference",
-                                    serde_json::to_string_pretty(&entity).unwrap()
+                                    serde_json::to_string_pretty(&entity).unwrap_or_else(|_| format!("{:?}", &entity))
                                 ),
                                 errs,
                             },
@@ -638,6 +638,8 @@ impl EntityUidJSON {
                         // We'll give them the `ExpectedLiteralEntityRef` error
                         // message instead of the `ExprParseError` error message,
                         // as it's likely to be more helpful in my opinion
+                        // PANIC SAFETY: Every `String` can be turned into a restricted expression
+                        #[allow(clippy::unwrap_used)]
                         JsonDeserializationError::ExpectedLiteralEntityRef {
                             ctx: ctx(),
                             got: Box::new(JSONValue::String(__expr).into_expr().unwrap().into()),

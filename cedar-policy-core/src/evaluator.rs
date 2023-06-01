@@ -250,11 +250,11 @@ impl<'q, 'e> Evaluator<'e> {
             Ok(e) => (e, None),
             Err(err) => {
                 let arg = Expr::val(format!("{err}"));
+                // PANIC SAFETY: Input to `parse` is fully static and a valid extension function name
+                #[allow(clippy::unwrap_used)]
+                let fn_name = "error".parse().unwrap();
                 (
-                    PartialValue::Residual(Expr::call_extension_fn(
-                        "error".parse().unwrap(),
-                        vec![arg],
-                    )),
+                    PartialValue::Residual(Expr::call_extension_fn(fn_name, vec![arg])),
                     Some(err),
                 )
             }
@@ -716,13 +716,17 @@ impl<'q, 'e> Evaluator<'e> {
                         .cloned(),
                 }
             }
-            PartialValue::Value(v) => Err(EvaluationError::TypeError {
-                expected: vec![
-                    Type::Record,
-                    Type::entity_type(Name::parse_unqualified_name("any_entity_type").unwrap()),
-                ],
-                actual: v.type_of(),
-            }),
+            PartialValue::Value(v) => {
+                // PANIC SAFETY Entity type name is fully static and a valid unqualified `Name`
+                #[allow(clippy::unwrap_used)]
+                Err(EvaluationError::TypeError {
+                    expected: vec![
+                        Type::Record,
+                        Type::entity_type(Name::parse_unqualified_name("any_entity_type").unwrap()),
+                    ],
+                    actual: v.type_of(),
+                })
+            }
         }
     }
 
