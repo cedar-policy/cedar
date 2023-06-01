@@ -83,6 +83,8 @@ use arbitrary::Arbitrary;
  // results.
 
  #[test]
+ #[cfg_attr(kani, kani::proof)]
+ #[cfg_attr(kani, kani::unwind(5))]
 pub fn check_rbac() {
     bolero::check!()
      .with_arbitrary::<AuthorizerInputAbstractEvaluator>()
@@ -126,7 +128,7 @@ pub fn check_rbac() {
         }
     
         // TODO: add code to run the definitional engine
-        
+
         //  // check agreement with definitional engine
         //  // for now, we expect never to receive errors from the definitional engine,
         //  // and we otherwise ignore errors in the comparison
