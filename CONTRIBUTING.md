@@ -39,7 +39,7 @@ If you would like to contribute to the documentation, please do so in the [docum
 
 ### Contributing Code
 
-As with other types of contributions, the first step is to [**open an issue on GitHub**](). Opening an issue before you make changes makes sure that someone else isn't already working on that particular problem. It also lets us all work together to find the right approach before you spend a bunch of time on a PR. So again, when in doubt, open an issue.
+As with other types of contributions, the first step is to [**open an issue on GitHub**](https://github.com/cedar-policy/cedar/issues). Opening an issue before you make changes makes sure that someone else isn't already working on that particular problem. It also lets us all work together to find the right approach before you spend a bunch of time on a PR. So again, when in doubt, open an issue.
 
 Additionally, here are a few guidelines to help you decide whether a particular feature should be included in Cedar.
 
@@ -127,7 +127,8 @@ GitHub provides additional document on [forking a repository](https://help.githu
 
 Looking at the existing issues is a great way to find something to contribute on. As our projects, by default, use the default GitHub issue labels (enhancement/bug/duplicate/help wanted/invalid/question/wontfix), looking at any 'help wanted' issues is a great place to start.
 
-Code of Conduct
+## Code of Conduct
+
 This project has adopted the [Amazon Open Source Code of Conduct](https://aws.github.io/code-of-conduct). For more information see the [Code of Conduct FAQ](https://aws.github.io/code-of-conduct-faq) or contact [opensource-codeofconduct@amazon.com](mailto:opensource-codeofconduct@amazon.com) with any additional questions or comments.
 
 ## Security issue notifications
@@ -136,4 +137,4 @@ If you discover a potential security issue in this project we ask that you notif
 
 ## Licensing
 
-See the [LICENSE](https://vscode-remote+ssh-002dremote-002bclouddesk.vscode-resource.vscode-cdn.net/home/anwmamat/git/cedar/cedar/LICENSE) file for our project's licensing. We will ask you to confirm the licensing of your contribution.
+See the [LICENSE](LICENSE) file for our project's licensing. We will ask you to confirm the licensing of your contribution.

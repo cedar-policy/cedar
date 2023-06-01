@@ -664,12 +664,9 @@ impl From<ast::Expr> for Expr {
                 unwrap_or_clone(arg).into(),
                 Expr::lit(JSONValue::Long(constant)),
             ),
-            ast::ExprKind::ExtensionFunctionApp {
-                op: ast::ExtensionFunctionOp { function_name },
-                args,
-            } => {
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let args = unwrap_or_clone(args).into_iter().map(Into::into).collect();
-                Expr::ext_call(function_name.to_string().into(), args)
+                Expr::ext_call(fn_name.to_string().into(), args)
             }
             ast::ExprKind::GetAttr { expr, attr } => {
                 Expr::get_attr(unwrap_or_clone(expr).into(), attr)
@@ -1184,7 +1181,9 @@ impl TryFrom<cst::Member> for Expr {
                             Either::Right(expr) => Either::Right(Expr::get_attr(expr, i)),
                         };
                     }
-                    Some(_i) => unimplemented!("other idents?"),
+                    Some(_i) => {
+                        return Err(ParseError::ToAST("Invalid Identifier".to_string()).into())
+                    }
                     None => {
                         return Err(ParseError::ToAST("node should not be empty".to_string()).into())
                     }

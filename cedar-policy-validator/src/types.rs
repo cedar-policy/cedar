@@ -154,7 +154,7 @@ impl Type {
         match entity.entity_type() {
             EntityType::Unspecified => None,
             EntityType::Concrete(name) => {
-                if is_action_entity_type(&name) {
+                if is_action_entity_type(name) {
                     schema
                         .get_action_id(&entity)
                         .and_then(Type::entity_reference_from_action_id)

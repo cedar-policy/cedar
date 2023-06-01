@@ -55,18 +55,20 @@ pub fn parse_policyset_to_ests_and_pset(
 ) -> Result<(HashMap<ast::PolicyID, est::Policy>, ast::PolicySet), err::ParseErrors> {
     let mut errs = Vec::new();
     let cst = text_to_cst::parse_policies(text).map_err(err::ParseErrors)?;
-    let pset = cst.to_policyset(&mut errs);
+    let pset = cst
+        .to_policyset(&mut errs)
+        .ok_or_else(|| err::ParseErrors(errs.clone()))?;
     let ests = cst
         .with_generated_policyids()
-        .expect("shouldn't be None since parse_policies() didn't return Err")
+        .expect("shouldn't be None since parse_policies() and to_policyset didn't return Err")
         .map(|(id, policy)| match &policy.node {
             Some(p) => Ok(Some((id, p.clone().try_into()?))),
             None => Ok(None),
         })
         .collect::<Result<Option<HashMap<ast::PolicyID, est::Policy>>, err::ParseErrors>>()?;
-    match (errs.is_empty(), ests, pset) {
-        (true, Some(ests), Some(pset)) => Ok((ests, pset)),
-        (_, _, _) => Err(err::ParseErrors(errs)),
+    match (errs.is_empty(), ests) {
+        (true, Some(ests)) => Ok((ests, pset)),
+        (_, _) => Err(err::ParseErrors(errs)),
     }
 }
 
@@ -103,11 +105,13 @@ pub fn parse_policy_template_to_est_and_ast(
         None => ast::PolicyID::from_string("policy0"),
     };
     let cst = text_to_cst::parse_policy(text).map_err(err::ParseErrors)?;
-    let ast = cst.to_policy_template(id, &mut errs);
+    let ast = cst
+        .to_policy_template(id, &mut errs)
+        .ok_or_else(|| err::ParseErrors(errs.clone()))?;
     let est = cst.node.map(TryInto::try_into).transpose()?;
-    match (errs.is_empty(), est, ast) {
-        (true, Some(est), Some(ast)) => Ok((est, ast)),
-        (_, _, _) => Err(err::ParseErrors(errs)),
+    match (errs.is_empty(), est) {
+        (true, Some(est)) => Ok((est, ast)),
+        (_, _) => Err(err::ParseErrors(errs)),
     }
 }
 
@@ -145,11 +149,14 @@ pub fn parse_policy_to_est_and_ast(
         None => ast::PolicyID::from_string("policy0"),
     };
     let cst = text_to_cst::parse_policy(text).map_err(err::ParseErrors)?;
-    let ast = cst.to_policy(id, &mut errs);
+    let ast = cst
+        .to_policy(id, &mut errs)
+        .ok_or_else(|| err::ParseErrors(errs.clone()))?;
+
     let est = cst.node.map(TryInto::try_into).transpose()?;
-    match (errs.is_empty(), est, ast) {
-        (true, Some(est), Some(ast)) => Ok((est, ast)),
-        (_, _, _) => Err(err::ParseErrors(errs)),
+    match (errs.is_empty(), est) {
+        (true, Some(est)) => Ok((est, ast)),
+        (_, _) => Err(err::ParseErrors(errs)),
     }
 }
 
@@ -563,5 +570,71 @@ mod parse_tests {
         parse_internal_string(r#"oh, no, a '! "#).expect("single quote should be fine");
         parse_internal_string(r#"oh, no, a "! "#).expect_err("double quote not allowed");
         parse_internal_string(r#"oh, no, a \"! and a \'! "#).expect("escaped quotes should parse");
+    }
+
+    #[test]
+    fn good_cst_bad_ast() {
+        let src = r#"
+            permit(principal, action, resource) when { principal.name.like == "3" };
+            "#;
+        let _ = parse_policyset_to_ests_and_pset(src);
+    }
+
+    #[test]
+    fn no_slots_in_condition() {
+        let srcs = [
+            r#"
+            permit(principal, action, resource) when {
+                resource == ?resource
+            };
+            "#,
+            r#"
+            permit(principal, action, resource) when {
+                resource == ?principal
+            };
+            "#,
+            r#"
+            permit(principal, action, resource) when {
+                resource == ?blah
+            };
+            "#,
+            r#"
+            permit(principal, action, resource) unless {
+                resource == ?resource
+            };
+            "#,
+            r#"
+            permit(principal, action, resource) unless {
+                resource == ?principal
+            };
+            "#,
+            r#"
+            permit(principal, action, resource) unless {
+                resource == ?blah
+            };
+            "#,
+            r#"
+            permit(principal, action, resource) unless {
+                resource == ?resource
+            } when {
+                resource == ?resource
+            }
+            "#,
+        ];
+
+        for src in srcs {
+            let p = parse_policy(None, src);
+            assert!(p.is_err());
+            let p = parse_policy_template(None, src);
+            assert!(p.is_err());
+            let p = parse_policy_to_est_and_ast(None, src);
+            assert!(p.is_err());
+            let p = parse_policy_template_to_est_and_ast(None, src);
+            assert!(p.is_err());
+            let p = parse_policyset(src);
+            assert!(p.is_err());
+            let p = parse_policyset_to_ests_and_pset(src);
+            assert!(p.is_err());
+        }
     }
 }

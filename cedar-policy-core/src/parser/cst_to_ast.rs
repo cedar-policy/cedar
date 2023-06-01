@@ -200,6 +200,13 @@ impl ASTNode<Option<cst::Policy>> {
             .iter()
             .filter_map(|c| c.to_expr(errs))
             .collect();
+
+        for e in conds.iter() {
+            for slot in e.slots() {
+                errs.push(ParseError::ToAST(format!("Template slots are currently unsupported in policy condition clauses, found slot {slot}")));
+            }
+        }
+
         if conds.len() != policy.conds.len() {
             failure = true
         }

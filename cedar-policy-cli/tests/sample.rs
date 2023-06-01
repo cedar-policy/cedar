@@ -26,7 +26,7 @@ use cedar_policy_cli::{
 
 fn run_check_parse_test(policies_file: impl Into<String>, expected_exit_code: CedarExitCode) {
     let cmd = CheckParseArgs {
-        policies_file: policies_file.into(),
+        policies_file: Some(policies_file.into()),
     };
     let output = check_parse(&cmd);
     assert_eq!(output, expected_exit_code, "{:#?}", cmd);
