@@ -284,6 +284,26 @@ impl SchemaType {
 }
 
 #[cfg(fuzzing)]
+pub fn arbitrary_schematypevariant_long<'a>(
+    allow_long_any: bool,
+    u: &mut arbitrary::Unstructured<'a>,
+) -> arbitrary::Result<SchemaTypeVariant> {
+    let (min_opt, max_opt) = if !allow_long_any || u.ratio(1, 2)? {
+        let bound1 = u.arbitrary()?;
+        let bound2 = u.arbitrary()?;
+        (
+            Some(i64::min(bound1, bound2)),
+            Some(i64::max(bound1, bound2)),
+        )
+    } else {
+        (None, None)
+    };
+    Ok(SchemaTypeVariant::Long { min_opt, max_opt })
+}
+
+// TODO: It looks like this is unused except by arbitrary_schematype_size_hint.
+// Do we really want to continue maintaining it?
+#[cfg(fuzzing)]
 impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<SchemaType> {
         use cedar_policy_core::ast::Name;
@@ -291,8 +311,7 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
 
         Ok(SchemaType::Type(match u.int_in_range::<u8>(1..=8)? {
             1 => SchemaTypeVariant::String,
-            // TODO: Update
-            2 => SchemaTypeVariant::Long,
+            2 => arbitrary_schematypevariant_long(true, u)?,
             3 => SchemaTypeVariant::Boolean,
             4 => SchemaTypeVariant::Set {
                 element: Box::new(u.arbitrary()?),
