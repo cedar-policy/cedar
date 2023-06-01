@@ -567,11 +567,17 @@ impl Type {
                         primitive_type: Primitive::Bool
                     }
             ),
-            CoreSchemaType::Long => matches!(
+            CoreSchemaType::Long {
+                min: cmin,
+                max: cmax,
+            } => matches!(
                 self,
                 Type::Primitive {
-                    primitive_type: Primitive::Long(_)
-                }
+                    primitive_type: Primitive::Long(LongBoundsInfo { can_be_any, bounds_opt })
+                } if (*can_be_any || match bounds_opt {
+                    Some(LongBounds { min: vmin, max: vmax }) => i64::max(*cmin, *vmin) <= i64::min(*cmax, *vmax),
+                    None => false
+                })
             ),
             CoreSchemaType::String => matches!(
                 self,
@@ -678,8 +684,23 @@ impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
                 primitive_type: Primitive::Bool,
             } => Ok(CoreSchemaType::Bool),
             Type::Primitive {
-                primitive_type: Primitive::Long(_),
-            } => Ok(CoreSchemaType::Long),
+                primitive_type:
+                    Primitive::Long(LongBoundsInfo {
+                        can_be_any,
+                        bounds_opt,
+                    }),
+            } => Ok(if can_be_any {
+                CoreSchemaType::Long {
+                    min: i64::MIN,
+                    max: i64::MAX,
+                }
+            } else if let Some(LongBounds { min, max }) = bounds_opt {
+                CoreSchemaType::Long { min, max }
+            } else {
+                unreachable!(
+                    "LongBoundsInfo should have at least one of can_be_any, bounds_opt set"
+                )
+            }),
             Type::Primitive {
                 primitive_type: Primitive::String,
             } => Ok(CoreSchemaType::String),

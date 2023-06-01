@@ -495,7 +495,7 @@ impl<'e> ValueParser<'e> {
     ) -> Result<SchemaType, JsonDeserializationError> {
         match rexpr.expr_kind() {
             ExprKind::Lit(Literal::Bool(_)) => Ok(SchemaType::Bool),
-            ExprKind::Lit(Literal::Long(_)) => Ok(SchemaType::Long),
+            ExprKind::Lit(Literal::Long(l)) => Ok(SchemaType::Long { min: *l, max: *l }),
             ExprKind::Lit(Literal::String(_)) => Ok(SchemaType::String),
             ExprKind::Lit(Literal::EntityUID(uid)) => Ok(SchemaType::Entity { ty: uid.entity_type().clone() }),
             ExprKind::Set(elements) => {

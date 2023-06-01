@@ -821,7 +821,10 @@ mod schema_based_parsing_tests {
                 match entity_type.to_string().as_str() {
                     "Employee" => match attr {
                         "isFullTime" => Some(SchemaType::Bool),
-                        "numDirectReports" => Some(SchemaType::Long),
+                        "numDirectReports" => Some(SchemaType::Long {
+                            min: i64::MIN,
+                            max: i64::MAX,
+                        }),
                         "department" => Some(SchemaType::String),
                         "manager" => Some(employee_ty()),
                         "hr_contacts" => Some(SchemaType::Set {

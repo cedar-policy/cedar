@@ -24,7 +24,16 @@ pub enum SchemaType {
     /// Boolean
     Bool,
     /// Signed integer
-    Long,
+    Long {
+        // Here, a Long with bounds checking disabled is no different from a
+        // Long with bounds [i64::MIN, i64::MAX], so we can avoid the need for
+        // an option type (for now; we may later discover sufficient motivation
+        // to use it).
+        /// Lower bound on the Long values to accept.
+        min: i64,
+        /// Upper bound on the Long values to accept.
+        max: i64,
+    },
     /// String
     String,
     /// Set, with homogeneous elements of the specified type
@@ -70,7 +79,7 @@ impl SchemaType {
     pub fn matches(&self, ty: &Type) -> bool {
         match (self, ty) {
             (SchemaType::Bool, Type::Bool) => true,
-            (SchemaType::Long, Type::Long) => true,
+            (SchemaType::Long { .. }, Type::Long) => true,
             (SchemaType::String, Type::String) => true,
             (SchemaType::Set { .. }, Type::Set) => true,
             (SchemaType::EmptySet, Type::Set) => true,
@@ -92,6 +101,16 @@ impl SchemaType {
         } else {
             use SchemaType::*;
             match (self, other) {
+                (
+                    Long {
+                        min: min1,
+                        max: max1,
+                    },
+                    Long {
+                        min: min2,
+                        max: max2,
+                    },
+                ) => i64::max(*min1, *min2) <= i64::min(*max1, *max2),
                 (Set { .. }, EmptySet) => true,
                 (EmptySet, Set { .. }) => true,
                 (Set { element_ty: elty1 }, Set { element_ty: elty2 }) => {
@@ -166,7 +185,18 @@ impl std::fmt::Display for SchemaType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Bool => write!(f, "bool"),
-            Self::Long => write!(f, "long"),
+            Self::Long { min, max } =>
+            // REVIEW: Wording can probably be improved, and we may want to hide
+            // the bounds when they are the entire range of Long.
+            //
+            // TODO: This leads to ugly and possibly confusing error messages,
+            // e.g., "attribute was expected to have type long between 1 and 8
+            // inclusive, but actually has type long between 9223372036854775799
+            // and 9223372036854775799 inclusive". What's the cleanest way to
+            // make a special case for a nicer error message?
+            {
+                write!(f, "long between {} and {} inclusive", min, max)
+            }
             Self::String => write!(f, "string"),
             Self::Set { element_ty } => write!(f, "(set of {})", &element_ty),
             Self::EmptySet => write!(f, "empty-set"),
