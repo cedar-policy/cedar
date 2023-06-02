@@ -150,10 +150,14 @@ impl PolicySet {
         if self.templates.contains_key(t.id()) || self.links.contains_key(p.id()) {
             Err(PolicySetError::Occupied)
         } else {
+            // PANIC SAFETY Checked that templates did not contain this key above
+            #[allow(clippy::unreachable)]
             if self.templates.insert(t.id().clone(), t).is_some() {
                 unreachable!("Template key was already present");
             }
 
+            // PANIC SAFETY Checked that links did not contain this key above
+            #[allow(clippy::unreachable)]
             if self.links.insert(p.id().clone(), p).is_some() {
                 unreachable!("Link key was already present");
             }
@@ -169,6 +173,8 @@ impl PolicySet {
         if self.templates.contains_key(t.id()) {
             Err(PolicySetError::Occupied)
         } else {
+            // PANIC SAFETY Checked templates did not contain this key above
+            #[allow(clippy::unreachable)]
             if self.templates.insert(t.id().clone(), Arc::new(t)).is_some() {
                 unreachable!("Template key was already present");
             }
@@ -193,6 +199,8 @@ impl PolicySet {
         if self.links.contains_key(&new_id) || self.templates.contains_key(&new_id) {
             Err(LinkingError::PolicyIdConflict)
         } else {
+            // PANIC SAFETY Checked links did not contain this key above
+            #[allow(clippy::unreachable)]
             if self.links.insert(new_id, r).is_some() {
                 unreachable!("Links already has `new_id` as a key!")
             }

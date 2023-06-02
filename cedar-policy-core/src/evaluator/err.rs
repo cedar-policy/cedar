@@ -54,6 +54,7 @@ pub enum EvaluationError {
     ExtensionsError(#[from] crate::extensions::ExtensionsError),
 
     /// Type error, showing the expected type and actual type
+    /// INVARIANT `expected` must be non-empty
     #[error("{}", pretty_type_error(expected, actual))]
     TypeError {
         /// Expected (one of) these types
@@ -104,9 +105,12 @@ pub enum EvaluationError {
 }
 
 /// helper function for pretty-printing type errors
+/// INVARIANT: `expected` must have at least one value
 fn pretty_type_error(expected: &[Type], actual: &Type) -> String {
     match expected.len() {
-        0 => panic!("should expect at least one type"),
+        // PANIC SAFETY, `expected` is non-empty by invariant
+        #[allow(clippy::unreachable)]
+        0 => unreachable!("should expect at least one type"),
         1 => format!("type error: expected {}, got {}", expected[0], actual),
         _ => {
             use itertools::Itertools;

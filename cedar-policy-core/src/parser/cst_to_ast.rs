@@ -1213,6 +1213,8 @@ impl ASTNode<Option<cst::Mult>> {
                 .into_iter()
                 .map(|e| match e.expr_kind() {
                     ast::ExprKind::Lit(ast::Literal::Long(i)) => *i,
+                    // PANIC SAFETY Checked the match above via the call to `partition`
+                    #[allow(clippy::unreachable)]
                     _ => unreachable!(
                         "checked it matched ast::ExprKind::Lit(ast::Literal::Long(_)) above"
                     ),

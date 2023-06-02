@@ -342,9 +342,8 @@ impl<'e> ValueParser<'e> {
             // for instance, the `__extn` escape can optionally be omitted. What
             // this means is that we parse the contents as `ExtnValueJSON`, and then
             // convert that into an extension-function-call `RestrictedExpr`
-            Some(expected_ty @ SchemaType::Extension { .. }) => {
+            Some(SchemaType::Extension { ref name, .. }) => {
                 let extjson: ExtnValueJSON = serde_json::from_value(val)?;
-                let SchemaType::Extension { ref name, .. } = &expected_ty else { panic!("already checked it was Type::Extension above")};
                 self.extn_value_json_into_rexpr(extjson, name.clone(), ctx)
             }
             // The expected type is a set type. No special parsing rules apply, but
@@ -541,7 +540,9 @@ impl<'e> ValueParser<'e> {
                     name: efunc.name().clone()
                 })?)
             }
-            expr => panic!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
+            // PANIC SAFETY. Unreachable by invariant on restricted expressions
+            #[allow(clippy::unreachable)]
+            expr => unreachable!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
         }
     }
 }

@@ -134,7 +134,9 @@ impl<'e> RestrictedEvaluator<'e> {
                     Either::Right(residuals) => Ok(Expr::call_extension_fn(fn_name.clone(), residuals.collect()).into()),
                 }
             },
-            expr => panic!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
+            // PANIC SAFETY Unreachable via invariant on restricted expressions 
+            #[allow(clippy::unreachable)]
+            expr =>unreachable!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
         }
     }
 }
@@ -430,7 +432,11 @@ impl<'q, 'e> Evaluator<'e> {
                                     },
                                 )),
                             },
-                            _ => panic!("Should have already checked that op was one of these"),
+                            // PANIC SAFETY `op` is checked to be one of the above
+                            #[allow(clippy::unreachable)]
+                            _ => {
+                                unreachable!("Should have already checked that op was one of these")
+                            }
                         }
                     }
                     // hierarchy membership operator; see note on `BinaryOp::In`
@@ -473,7 +479,9 @@ impl<'q, 'e> Evaluator<'e> {
                                     BinaryOp::ContainsAny => {
                                         Ok((!arg1_set.is_disjoint(arg2_set)).into())
                                     }
-                                    _ => panic!(
+                                    // PANIC SAFETY `op` is checked to be one of thse two above
+                                    #[allow(clippy::unreachable)]
+                                    _ => unreachable!(
                                         "Should have already checked that op was one of these"
                                     ),
                                 }
@@ -496,7 +504,9 @@ impl<'q, 'e> Evaluator<'e> {
                                             .any(|item| arg2_set.authoritative.contains(item));
                                         Ok(not_disjoint.into())
                                     }
-                                    _ => panic!(
+                                    // PANIC SAFETY `op` is checked to be one of thse two above
+                                    #[allow(clippy::unreachable)]
+                                    _ => unreachable!(
                                         "Should have already checked that op was one of these"
                                     ),
                                 }

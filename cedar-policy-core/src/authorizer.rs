@@ -360,19 +360,22 @@ impl Authorizer {
     /// Private helper function which determines if policy `p1` overrides policy
     /// `p2`.
     ///
+    /// INVARIANT: p1 and p2 must have differing effects.
     /// This only makes sense to call with one `Permit` and one `Forbid` policy.
     /// If you call this with two `Permit`s or two `Forbid`s, this will panic.
     fn overrides(p1: &Policy, p2: &Policy) -> bool {
         // For now, we only support the default:
         // all Forbid policies override all Permit policies.
+        // PANIC SAFETY p1 and p2s effect cannot be equal by invariant
+        #[allow(clippy::unreachable)]
         match (p1.effect(), p2.effect()) {
             (Effect::Forbid, Effect::Permit) => true,
             (Effect::Permit, Effect::Forbid) => false,
             (Effect::Permit, Effect::Permit) => {
-                panic!("Shouldn't call overrides() with two Permits")
+                unreachable!("Shouldn't call overrides() with two Permits")
             }
             (Effect::Forbid, Effect::Forbid) => {
-                panic!("Shouldn't call overrides() with two Forbids")
+                unreachable!("Shouldn't call overrides() with two Forbids")
             }
         }
     }

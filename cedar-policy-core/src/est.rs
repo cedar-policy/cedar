@@ -168,6 +168,8 @@ impl TryFrom<cst::Cond> for Clause {
 
         if let (Some(expr), true) = (expr, errs.is_empty()) {
             Ok(match is_when {
+                // PANIC SAFETY errs should be non empty if is_when is None
+                #[allow(clippy::unreachable)]
                 None => unreachable!("should have had an err in this case"),
                 Some(true) => Clause::When(expr),
                 Some(false) => Clause::Unless(expr),
