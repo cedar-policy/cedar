@@ -1406,6 +1406,8 @@ impl From<PrincipalOrResource> for Var {
     }
 }
 
+// PANIC SAFETY Tested by `test::all_vars_are_ids`. Never panics.
+#[allow(clippy::fallible_impl_from)]
 impl From<Var> for Id {
     fn from(var: Var) -> Self {
         // PANIC SAFETY: `Var` is a simple enum and all vars are formatted as valid `Id`. Tested by `test::all_vars_are_ids`

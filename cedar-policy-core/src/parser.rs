@@ -58,6 +58,8 @@ pub fn parse_policyset_to_ests_and_pset(
     let pset = cst
         .to_policyset(&mut errs)
         .ok_or_else(|| err::ParseErrors(errs.clone()))?;
+    // PANIC SAFETY Shouldn't be `none` since `parse_policies()` an d`to_policyset` didn't return `Err`
+    #[allow(clippy::expect_used)]
     let ests = cst
         .with_generated_policyids()
         .expect("shouldn't be None since parse_policies() and to_policyset didn't return Err")

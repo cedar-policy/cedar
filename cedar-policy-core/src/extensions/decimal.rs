@@ -38,6 +38,20 @@ struct Decimal {
     value: i64,
 }
 
+// PANIC SAFETY All `Name`s in here are valid `Name`s
+#[allow(clippy::expect_used)]
+mod names {
+    use super::{Name, EXTENSION_NAME};
+    // PANIC SAFETY all of the names here are valid names
+    lazy_static::lazy_static! {
+        pub static ref DECIMAL_FROM_STR_NAME : Name = Name::parse_unqualified_name(EXTENSION_NAME).expect("should be a valid identifier");
+        pub static ref LESS_THAN : Name = Name::parse_unqualified_name("lessThan").expect("should be a valid identifier");
+        pub static ref LESS_THAN_OR_EQUAL : Name = Name::parse_unqualified_name("lessThanOrEqual").expect("should be a valid identifier");
+        pub static ref GREATER_THAN : Name = Name::parse_unqualified_name("greaterThan").expect("should be a valid identifier");
+        pub static ref GREATER_THAN_OR_EQUAL : Name = Name::parse_unqualified_name("greaterThanOrEqual").expect("should be a valid identifier");
+    }
+}
+
 /// Potential errors when working with decimal values. Note that these are
 /// converted to evaluator::Err::ExtensionErr (which takes a string argument)
 /// before being reported to users.
@@ -69,7 +83,7 @@ fn checked_mul_pow(x: i64, y: u32) -> Result<i64, Error> {
 impl Decimal {
     /// The Cedar typename of decimal values
     fn typename() -> Name {
-        Name::parse_unqualified_name("decimal").expect("should be a valid identifier")
+        names::DECIMAL_FROM_STR_NAME.clone()
     }
 
     /// Convert a string into a `Decimal` value.
@@ -148,14 +162,9 @@ const EXTENSION_NAME: &str = "decimal";
 
 fn extension_err(msg: impl Into<String>) -> evaluator::EvaluationError {
     evaluator::EvaluationError::ExtensionError {
-        extension_name: Name::parse_unqualified_name(EXTENSION_NAME)
-            .expect("should be a valid identifier"),
+        extension_name: names::DECIMAL_FROM_STR_NAME.clone(),
         msg: msg.into(),
     }
-}
-
-lazy_static::lazy_static! {
-    static ref DECIMAL_FROM_STR_NAME : Name = Name::parse_unqualified_name("decimal").expect("should be a valid identifier");
 }
 
 /// Cedar function that constructs a `decimal` Cedar type from a
@@ -163,7 +172,7 @@ lazy_static::lazy_static! {
 fn decimal_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
     let decimal = Decimal::from_str(str.as_str()).map_err(|e| extension_err(e.to_string()))?;
-    let function_name = DECIMAL_FROM_STR_NAME.clone();
+    let function_name = names::DECIMAL_FROM_STR_NAME.clone();
     let e = ExtensionValueWithArgs::new(Arc::new(decimal), vec![arg.into()], function_name);
     Ok(Value::ExtensionValue(Arc::new(e)).into())
 }
@@ -172,6 +181,8 @@ fn decimal_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
 fn as_decimal(v: &Value) -> Result<&Decimal, evaluator::EvaluationError> {
     match v {
         Value::ExtensionValue(ev) if ev.typename() == Decimal::typename() => {
+            // PANIC SAFETY Conditional above performs a typecheck
+            #[allow(clippy::expect_used)]
             let d = ev
                 .value()
                 .as_any()
@@ -226,40 +237,38 @@ pub fn extension() -> Extension {
         name: Decimal::typename(),
     };
     Extension::new(
-        Name::parse_unqualified_name(EXTENSION_NAME).expect("should be a valid identifier"),
+        names::DECIMAL_FROM_STR_NAME.clone(),
         vec![
             ExtensionFunction::unary(
-                DECIMAL_FROM_STR_NAME.clone(),
+                names::DECIMAL_FROM_STR_NAME.clone(),
                 CallStyle::FunctionStyle,
                 Box::new(decimal_from_str),
                 decimal_type.clone(),
                 Some(SchemaType::String),
             ),
             ExtensionFunction::binary(
-                Name::parse_unqualified_name("lessThan").expect("should be a valid identifier"),
+                names::LESS_THAN.clone(),
                 CallStyle::MethodStyle,
                 Box::new(decimal_lt),
                 SchemaType::Bool,
                 (Some(decimal_type.clone()), Some(decimal_type.clone())),
             ),
             ExtensionFunction::binary(
-                Name::parse_unqualified_name("lessThanOrEqual")
-                    .expect("should be a valid identifier"),
+                names::LESS_THAN_OR_EQUAL.clone(),
                 CallStyle::MethodStyle,
                 Box::new(decimal_le),
                 SchemaType::Bool,
                 (Some(decimal_type.clone()), Some(decimal_type.clone())),
             ),
             ExtensionFunction::binary(
-                Name::parse_unqualified_name("greaterThan").expect("should be a valid identifier"),
+                names::GREATER_THAN.clone(),
                 CallStyle::MethodStyle,
                 Box::new(decimal_gt),
                 SchemaType::Bool,
                 (Some(decimal_type.clone()), Some(decimal_type.clone())),
             ),
             ExtensionFunction::binary(
-                Name::parse_unqualified_name("greaterThanOrEqual")
-                    .expect("should be a valid identifier"),
+                names::GREATER_THAN_OR_EQUAL.clone(),
                 CallStyle::MethodStyle,
                 Box::new(decimal_ge),
                 SchemaType::Bool,

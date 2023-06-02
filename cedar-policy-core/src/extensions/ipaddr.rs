@@ -25,6 +25,21 @@ use crate::evaluator;
 use std::str::FromStr;
 use std::sync::Arc;
 
+// PANIC SAFETY All the names are valid names
+#[allow(clippy::expect_used)]
+mod names {
+    use super::Name;
+    lazy_static::lazy_static! {
+        pub static ref EXTENSION_NAME : Name = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
+        pub static ref IP_FROM_STR_NAME : Name = Name::parse_unqualified_name("ip").expect("should be a valid identifier");
+        pub static ref IS_IPV4 : Name = Name::parse_unqualified_name("isIpv4").expect("should be a valid identifier");
+        pub static ref IS_IPV6 : Name = Name::parse_unqualified_name("isIpv6").expect("should be a valid identifier");
+        pub static ref IS_LOOPBACK : Name = Name::parse_unqualified_name("isLoopback").expect("should be a valid identifier");
+        pub static ref IS_MULTICAST : Name = Name::parse_unqualified_name("isMulticast").expect("should be a valid identifier");
+        pub static ref IS_IN_RANGE : Name = Name::parse_unqualified_name("isInRange").expect("should be a valid identifier");
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 struct IPAddr {
     /// the actual address, represented internally as an `IpNet`.
@@ -35,7 +50,7 @@ struct IPAddr {
 impl IPAddr {
     /// The Cedar typename of all ipaddr values
     fn typename() -> Name {
-        Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier")
+        names::EXTENSION_NAME.clone()
     }
 
     /// Convert an IP address or subnet, given as a string, into an `IPAddr`
@@ -108,12 +123,9 @@ impl ExtensionValue for IPAddr {
     }
 }
 
-const EXTENSION_NAME: &str = "ipaddr";
-
 fn extension_err(msg: impl Into<String>) -> evaluator::EvaluationError {
     evaluator::EvaluationError::ExtensionError {
-        extension_name: Name::parse_unqualified_name(EXTENSION_NAME)
-            .expect("should be a valid identifier"),
+        extension_name: names::EXTENSION_NAME.clone(),
         msg: msg.into(),
     }
 }
@@ -164,7 +176,7 @@ fn str_contains_colons_and_dots(s: &str) -> Result<(), String> {
 /// Cedar string
 fn ip_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
-    let function_name = IP_FROM_STR_NAME.clone();
+    let function_name = names::IP_FROM_STR_NAME.clone();
     let ipaddr = ExtensionValueWithArgs::new(
         Arc::new(IPAddr::from_str(str.as_str()).map_err(extension_err)?),
         vec![arg.into()],
@@ -187,6 +199,8 @@ fn is_ipv4(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
             })
         }
     };
+    // PANIC SAFETY Typechecking performed above
+    #[allow(clippy::expect_used)]
     let ipaddr = ipaddr_ev
         .value()
         .as_any()
@@ -209,6 +223,8 @@ fn is_ipv6(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
             })
         }
     };
+    // PANIC SAFETY Typechecking performed above
+    #[allow(clippy::expect_used)]
     let ipaddr = ipaddr_ev
         .value()
         .as_any()
@@ -231,6 +247,8 @@ fn is_loopback(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
             })
         }
     };
+    // PANIC SAFETY Typechecking performed above
+    #[allow(clippy::expect_used)]
     let ipaddr = ipaddr_ev
         .value()
         .as_any()
@@ -253,6 +271,8 @@ fn is_multicast(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
             })
         }
     };
+    // PANIC SAFETY Typechecking performed above
+    #[allow(clippy::expect_used)]
     let ipaddr = ipaddr_ev
         .value()
         .as_any()
@@ -287,11 +307,15 @@ fn is_in_range(child: Value, parent: Value) -> evaluator::Result<ExtensionOutput
             })
         }
     };
+    // PANIC SAFETY Typechecking performed above
+    #[allow(clippy::expect_used)]
     let child_ip = child_ev
         .value()
         .as_any()
         .downcast_ref::<IPAddr>()
         .expect("already typechecked above, so this downcast should succeed");
+    // PANIC SAFETY Typechecking performed above
+    #[allow(clippy::expect_used)]
     let parent_ip = parent_ev
         .value()
         .as_any()
@@ -300,55 +324,51 @@ fn is_in_range(child: Value, parent: Value) -> evaluator::Result<ExtensionOutput
     Ok(child_ip.is_in_range(parent_ip).into())
 }
 
-lazy_static::lazy_static! {
-    static ref IP_FROM_STR_NAME : Name = Name::parse_unqualified_name("ip").expect("should be a valid identifier");
-}
-
 /// Construct the extension
 pub fn extension() -> Extension {
     let ipaddr_type = SchemaType::Extension {
         name: IPAddr::typename(),
     };
     Extension::new(
-        Name::parse_unqualified_name(EXTENSION_NAME).expect("should be a valid identifier"),
+        names::EXTENSION_NAME.clone(),
         vec![
             ExtensionFunction::unary(
-                IP_FROM_STR_NAME.clone(),
+                names::IP_FROM_STR_NAME.clone(),
                 CallStyle::FunctionStyle,
                 Box::new(ip_from_str),
                 ipaddr_type.clone(),
                 Some(SchemaType::String),
             ),
             ExtensionFunction::unary(
-                Name::parse_unqualified_name("isIpv4").expect("should be a valid identifier"),
+                names::IS_IPV4.clone(),
                 CallStyle::MethodStyle,
                 Box::new(is_ipv4),
                 SchemaType::Bool,
                 Some(ipaddr_type.clone()),
             ),
             ExtensionFunction::unary(
-                Name::parse_unqualified_name("isIpv6").expect("should be a valid identifier"),
+                names::IS_IPV6.clone(),
                 CallStyle::MethodStyle,
                 Box::new(is_ipv6),
                 SchemaType::Bool,
                 Some(ipaddr_type.clone()),
             ),
             ExtensionFunction::unary(
-                Name::parse_unqualified_name("isLoopback").expect("should be a valid identifier"),
+                names::IS_LOOPBACK.clone(),
                 CallStyle::MethodStyle,
                 Box::new(is_loopback),
                 SchemaType::Bool,
                 Some(ipaddr_type.clone()),
             ),
             ExtensionFunction::unary(
-                Name::parse_unqualified_name("isMulticast").expect("should be a valid identifier"),
+                names::IS_MULTICAST.clone(),
                 CallStyle::MethodStyle,
                 Box::new(is_multicast),
                 SchemaType::Bool,
                 Some(ipaddr_type.clone()),
             ),
             ExtensionFunction::binary(
-                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                names::IS_IN_RANGE.clone(),
                 CallStyle::MethodStyle,
                 Box::new(is_in_range),
                 SchemaType::Bool,

@@ -19,7 +19,8 @@
 #![warn(missing_docs, missing_debug_implementations, rust_2018_idioms)]
 // Clippy configuration
 #![deny(clippy::unwrap_used)]
-//#![deny(clippy::expect_used)]
+#![deny(clippy::expect_used)]
+#![deny(clippy::fallible_impl_from)]
 
 #[macro_use]
 extern crate lalrpop_util;

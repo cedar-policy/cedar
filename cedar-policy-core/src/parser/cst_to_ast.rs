@@ -1231,6 +1231,8 @@ impl ASTNode<Option<cst::Mult>> {
                     src.clone(),
                 )))
             } else {
+                // PANIC SAFETY Checked above that `nonconstantints` has at leats one element
+                #[allow(clippy::expect_used)]
                 let nonconstantint: ast::Expr = nonconstantints
                     .into_iter()
                     .next()

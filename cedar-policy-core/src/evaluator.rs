@@ -30,6 +30,15 @@ use smol_str::SmolStr;
 
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 
+// PANIC SAFETY `Name`s in here are valid `Name`s
+#[allow(clippy::expect_used)]
+mod names {
+    use super::Name;
+    lazy_static::lazy_static! {
+        pub static ref ANY_ENTITY_TYPE : Name = Name::parse_unqualified_name("any_entity_type").expect("valid identifier");
+    }
+}
+
 /// Evaluator object.
 ///
 /// Conceptually keeps the evaluation environment as part of its internal state,
@@ -542,10 +551,7 @@ impl<'q, 'e> Evaluator<'e> {
                 PartialValue::Value(val) => Err(err::EvaluationError::TypeError {
                     expected: vec![
                         Type::Record,
-                        Type::entity_type(
-                            Name::parse_unqualified_name("any_entity_type")
-                                .expect("should be a valid identifier"),
-                        ),
+                        Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
                     ],
                     actual: val.type_of(),
                 }),
@@ -604,13 +610,7 @@ impl<'q, 'e> Evaluator<'e> {
                 .collect::<Result<Vec<EntityUID>>>()?,
             _ => {
                 return Err(EvaluationError::TypeError {
-                    expected: vec![
-                        Type::Set,
-                        Type::entity_type(
-                            Name::parse_unqualified_name("any_entity_type")
-                                .expect("should be a valid identifier"),
-                        ),
-                    ],
+                    expected: vec![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
                     actual: arg2.type_of(),
                 })
             }
@@ -818,9 +818,7 @@ impl Value {
         match self {
             Value::Lit(Literal::EntityUID(uid)) => Ok(uid.as_ref()),
             _ => Err(EvaluationError::TypeError {
-                expected: vec![Type::entity_type(
-                    Name::parse_unqualified_name("any_entity_type").expect("valid identifier"),
-                )],
+                expected: vec![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
                 actual: self.type_of(),
             }),
         }
