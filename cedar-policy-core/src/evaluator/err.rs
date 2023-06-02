@@ -111,6 +111,8 @@ fn pretty_type_error(expected: &[Type], actual: &Type) -> String {
         // PANIC SAFETY, `expected` is non-empty by invariant
         #[allow(clippy::unreachable)]
         0 => unreachable!("should expect at least one type"),
+        // PANIC SAFETY. `len` is 1 in this branch
+        #[allow(clippy::indexing_slicing)]
         1 => format!("type error: expected {}, got {}", expected[0], actual),
         _ => {
             use itertools::Itertools;

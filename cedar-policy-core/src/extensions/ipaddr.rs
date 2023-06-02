@@ -135,6 +135,8 @@ fn contains_at_least_two(s: &str, c: char) -> bool {
     let idx = s.find(c);
     match idx {
         Some(i) => {
+            // PANIC SAFETY `i` is guaranteed to be < `s.len()`, so this won't panic
+            #[allow(clippy::indexing_slicing)]
             let idx = s[i + 1..].find(c);
             idx.is_some()
         }

@@ -21,7 +21,7 @@ total_panics=0
 failed=0
 
 crates=("cedar-policy-core")
-panic_markers=("unwrap_used expect_used fallible_impl_from unreachable")
+panic_markers=("unwrap_used expect_used fallible_impl_from unreachable indexing_slicing")
 
 for crate in ${crates[@]}; do
     for panic_marker in ${panic_markers[@]}; do

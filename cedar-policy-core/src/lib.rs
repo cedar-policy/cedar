@@ -22,6 +22,7 @@
 #![deny(clippy::expect_used)]
 #![deny(clippy::fallible_impl_from)]
 #![deny(clippy::unreachable)]
+#![deny(clippy::indexing_slicing)]
 
 #[macro_use]
 extern crate lalrpop_util;

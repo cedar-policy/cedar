@@ -183,6 +183,8 @@ where
     Ok(())
 }
 
+// PANIC SAFETY test cases
+#[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
     use crate::ast::{Entity, EntityUID};

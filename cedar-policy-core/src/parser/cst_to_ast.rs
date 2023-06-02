@@ -1227,13 +1227,15 @@ impl ASTNode<Option<cst::Mult>> {
                 ));
                 None
             } else if nonconstantints.is_empty() {
+                // PANIC SAFETY If nonconstantints is empty then constantints must have at least one value
+                #[allow(clippy::indexing_slicing)]
                 Some(ExprOrSpecial::Expr(construct_expr_mul(
                     construct_expr_num(constantints[0], src.clone()),
                     constantints[1..].iter().copied(),
                     src.clone(),
                 )))
             } else {
-                // PANIC SAFETY Checked above that `nonconstantints` has at leats one element
+                // PANIC SAFETY Checked above that `nonconstantints` has at least one element
                 #[allow(clippy::expect_used)]
                 let nonconstantint: ast::Expr = nonconstantints
                     .into_iter()
