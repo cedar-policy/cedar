@@ -130,9 +130,7 @@ pub type Result<T> = std::result::Result<T, SchemaError>;
 
 impl SchemaError {
     fn format_parse_errs(errs: &[ParseError]) -> String {
-        errs.iter()
-            .map(|e| e.to_string())
-            .join(", ")
+        errs.iter().map(|e| e.to_string()).join(", ")
     }
 }
 
