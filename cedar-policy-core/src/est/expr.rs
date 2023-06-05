@@ -1277,7 +1277,10 @@ impl TryFrom<cst::Member> for Expr {
     }
 }
 
-fn extract_single_argument(es: Vec<Expr>, fn_name: &str) -> Result<Expr, ParseErrors> {
+fn extract_single_argument(
+    es: impl IntoIterator<Item = Expr>,
+    fn_name: &str,
+) -> Result<Expr, ParseErrors> {
     let mut iter = es.into_iter().fuse().peekable();
     let first = iter.next();
     let second = iter.next();

@@ -244,7 +244,6 @@ impl Authorizer {
                         .chain(once(trivial_true)),
                 )
                 .unwrap();
-                // This unwrap should be safe, all policy IDs should already be unique
                 ResponseKind::Partial(PartialResponse::new(
                     policy_set,
                     idset,

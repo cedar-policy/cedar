@@ -479,7 +479,7 @@ impl<'q, 'e> Evaluator<'e> {
                                     BinaryOp::ContainsAny => {
                                         Ok((!arg1_set.is_disjoint(arg2_set)).into())
                                     }
-                                    // PANIC SAFETY `op` is checked to be one of thse two above
+                                    // PANIC SAFETY `op` is checked to be one of these two above
                                     #[allow(clippy::unreachable)]
                                     _ => unreachable!(
                                         "Should have already checked that op was one of these"
@@ -504,7 +504,7 @@ impl<'q, 'e> Evaluator<'e> {
                                             .any(|item| arg2_set.authoritative.contains(item));
                                         Ok(not_disjoint.into())
                                     }
-                                    // PANIC SAFETY `op` is checked to be one of thse two above
+                                    // PANIC SAFETY `op` is checked to be one of these two above
                                     #[allow(clippy::unreachable)]
                                     _ => unreachable!(
                                         "Should have already checked that op was one of these"
