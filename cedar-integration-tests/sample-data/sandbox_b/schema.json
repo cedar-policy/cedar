@@ -113,7 +113,9 @@
             }
           }
         },
-        "memberOfTypes": []
+        "memberOfTypes": [
+          "AccountGroup"
+        ]
       },
       "AccountGroup": {
         "shape": {

@@ -15,7 +15,9 @@
  */
 
 use super::SchemaType;
-use crate::ast::{EntityUID, Expr, ExprKind, Name, RestrictedExpr, RestrictedExpressionError};
+use crate::ast::{
+    EntityType, EntityUID, Expr, ExprKind, Name, RestrictedExpr, RestrictedExpressionError,
+};
 use crate::extensions::ExtensionsError;
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -132,6 +134,19 @@ pub enum JsonDeserializationError {
         ty1: Box<SchemaType>,
         /// Second element type which was found
         ty2: Box<SchemaType>,
+    },
+    /// During schema-based parsing, found a parent of a type that's not allowed
+    /// for that entity
+    #[error(
+        "{ctx}, {uid} is not allowed to have a parent of type {parent_ty} according to the schema"
+    )]
+    InvalidParentType {
+        /// Context of this error
+        ctx: JsonDeserializationErrorContext,
+        /// Entity that has an invalid parent type
+        uid: EntityUID,
+        /// Parent type which was invalid
+        parent_ty: EntityType,
     },
 }
 
