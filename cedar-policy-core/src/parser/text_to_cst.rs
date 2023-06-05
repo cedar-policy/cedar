@@ -19,8 +19,12 @@
 
 lalrpop_mod!(
     #[allow(warnings, unused)]
-    //PANIC SAFETY: lalrpop uses unwraps, and we are trusted lalrpop to generate correct code
+    //PANIC SAFETY: lalrpop uses unwraps, and we are trusting lalrpop to generate correct code
     #[allow(clippy::unwrap_used)]
+    //PANIC SAFETY: lalrpop uses slicing, and we are trusting lalrpop to generate correct code
+    #[allow(clippy::indexing_slicing)]
+    //PANIC SAFETY: lalrpop uses unreachable, and we are trusting lalrpop to generate correct code
+    #[allow(clippy::unreachable)]
     pub grammar,
     "/src/parser/grammar.rs"
 );

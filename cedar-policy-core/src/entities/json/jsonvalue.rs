@@ -209,6 +209,8 @@ impl JSONValue {
                 0 => Err(JsonSerializationError::ExtnCall0Arguments {
                     func: fn_name.clone(),
                 }),
+                // PANIC SAFETY. We've checked that `args` is of length 1, fine to index at 0
+                #[allow(clippy::indexing_slicing)]
                 1 => Ok(Self::ExtnEscape {
                     __extn: FnAndArg {
                         ext_fn: fn_name.to_string().into(),

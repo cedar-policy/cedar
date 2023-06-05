@@ -37,7 +37,7 @@ fn throw_error(v: Value) -> evaluator::Result<ExtensionOutputValue> {
 }
 
 /// Construct the extension
-// PANIC SAFETY: all uses of `unwrap` here on on parsing extension names are correct names
+// PANIC SAFETY: all uses of `unwrap` here on parsing extension names are correct names
 #[allow(clippy::unwrap_used)]
 pub fn extension() -> Extension {
     Extension::new(

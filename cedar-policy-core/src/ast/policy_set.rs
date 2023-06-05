@@ -270,6 +270,8 @@ impl std::fmt::Display for PolicySet {
     }
 }
 
+// PANIC SAFETY tests
+#[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
     use std::collections::{BTreeMap, HashMap};

@@ -676,9 +676,9 @@ impl std::fmt::Display for Expr {
                         None
                     }
                 });
+                // PANIC SAFETY Args list must be non empty by INVARIANT (MethodStyleArgs)
+                #[allow(clippy::indexing_slicing)]
                 if matches!(style, Some(CallStyle::MethodStyle)) && !args.is_empty() {
-                    // This indexing operation is safe, as MethodStyle calls MUST have a non-empty args list.
-                    // See INVARIANT (MethodStyleArgs)
                     write!(
                         f,
                         "{}.{}({})",

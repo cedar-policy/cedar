@@ -179,16 +179,13 @@ impl ExtensionFunction {
         Self::new(
             name.clone(),
             style,
-            Box::new(move |args: &[Value]| {
-                if args.len() == 1 {
-                    func(args[0].clone())
-                } else {
-                    Err(evaluator::EvaluationError::WrongNumArguments {
-                        function_name: name.clone(),
-                        expected: 1,
-                        actual: args.len(),
-                    })
-                }
+            Box::new(move |args: &[Value]| match args.get(0) {
+                Some(arg) => func(arg.clone()),
+                None => Err(evaluator::EvaluationError::WrongNumArguments {
+                    function_name: name.clone(),
+                    expected: 1,
+                    actual: args.len(),
+                }),
             }),
             None,
             vec![arg_type],
@@ -206,16 +203,13 @@ impl ExtensionFunction {
         Self::new(
             name.clone(),
             style,
-            Box::new(move |args: &[Value]| {
-                if args.len() == 1 {
-                    func(args[0].clone())
-                } else {
-                    Err(evaluator::EvaluationError::WrongNumArguments {
-                        function_name: name.clone(),
-                        expected: 1,
-                        actual: args.len(),
-                    })
-                }
+            Box::new(move |args: &[Value]| match &args {
+                &[arg] => func(arg.clone()),
+                _ => Err(evaluator::EvaluationError::WrongNumArguments {
+                    function_name: name.clone(),
+                    expected: 1,
+                    actual: args.len(),
+                }),
             }),
             Some(return_type),
             vec![arg_type],
@@ -235,16 +229,13 @@ impl ExtensionFunction {
         Self::new(
             name.clone(),
             style,
-            Box::new(move |args: &[Value]| {
-                if args.len() == 2 {
-                    func(args[0].clone(), args[1].clone())
-                } else {
-                    Err(evaluator::EvaluationError::WrongNumArguments {
-                        function_name: name.clone(),
-                        expected: 2,
-                        actual: args.len(),
-                    })
-                }
+            Box::new(move |args: &[Value]| match &args {
+                &[first, second] => func(first.clone(), second.clone()),
+                _ => Err(evaluator::EvaluationError::WrongNumArguments {
+                    function_name: name.clone(),
+                    expected: 2,
+                    actual: args.len(),
+                }),
             }),
             Some(return_type),
             vec![arg_types.0, arg_types.1],
@@ -267,16 +258,13 @@ impl ExtensionFunction {
         Self::new(
             name.clone(),
             style,
-            Box::new(move |args: &[Value]| {
-                if args.len() == 3 {
-                    func(args[0].clone(), args[1].clone(), args[2].clone())
-                } else {
-                    Err(evaluator::EvaluationError::WrongNumArguments {
-                        function_name: name.clone(),
-                        expected: 3,
-                        actual: args.len(),
-                    })
-                }
+            Box::new(move |args: &[Value]| match &args {
+                &[first, second, third] => func(first.clone(), second.clone(), third.clone()),
+                _ => Err(evaluator::EvaluationError::WrongNumArguments {
+                    function_name: name.clone(),
+                    expected: 3,
+                    actual: args.len(),
+                }),
             }),
             Some(return_type),
             vec![arg_types.0, arg_types.1, arg_types.2],
