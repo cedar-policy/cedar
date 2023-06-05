@@ -190,7 +190,7 @@ impl JSONValue {
                             parser::err::ParseError::WithContext {
                                 context: format!(
                                     "contents of __entity escape {} do not make a valid entity reference",
-                                    serde_json::to_string_pretty(&entity).unwrap()
+                                    serde_json::to_string_pretty(&entity).unwrap_or_else(|_| format!("{:?}", &entity))
                                 ),
                                 errs,
                             },
@@ -210,6 +210,8 @@ impl JSONValue {
                 0 => Err(JsonSerializationError::ExtnCall0Arguments {
                     func: fn_name.clone(),
                 }),
+                // PANIC SAFETY. We've checked that `args` is of length 1, fine to index at 0
+                #[allow(clippy::indexing_slicing)]
                 1 => Ok(Self::ExtnEscape {
                     __extn: FnAndArg {
                         ext_fn: fn_name.to_string().into(),
@@ -343,9 +345,8 @@ impl<'e> ValueParser<'e> {
             // for instance, the `__extn` escape can optionally be omitted. What
             // this means is that we parse the contents as `ExtnValueJSON`, and then
             // convert that into an extension-function-call `RestrictedExpr`
-            Some(expected_ty @ SchemaType::Extension { .. }) => {
+            Some(SchemaType::Extension { ref name, .. }) => {
                 let extjson: ExtnValueJSON = serde_json::from_value(val)?;
-                let SchemaType::Extension { ref name, .. } = &expected_ty else { panic!("already checked it was Type::Extension above")};
                 self.extn_value_json_into_rexpr(extjson, name.clone(), ctx)
             }
             // The expected type is a set type. No special parsing rules apply, but
@@ -542,7 +543,9 @@ impl<'e> ValueParser<'e> {
                     name: efunc.name().clone()
                 })?)
             }
-            expr => panic!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
+            // PANIC SAFETY. Unreachable by invariant on restricted expressions
+            #[allow(clippy::unreachable)]
+            expr => unreachable!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
         }
     }
 }
@@ -639,6 +642,8 @@ impl EntityUidJSON {
                         // We'll give them the `ExpectedLiteralEntityRef` error
                         // message instead of the `ExprParseError` error message,
                         // as it's likely to be more helpful in my opinion
+                        // PANIC SAFETY: Every `String` can be turned into a restricted expression
+                        #[allow(clippy::unwrap_used)]
                         JsonDeserializationError::ExpectedLiteralEntityRef {
                             ctx: ctx(),
                             got: Box::new(JSONValue::String(__expr).into_expr().unwrap().into()),

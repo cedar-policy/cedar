@@ -109,11 +109,9 @@ impl TryFrom<cst::Policy> for Policy {
         let mut errs = vec![];
         let effect = policy.effect.to_effect(&mut errs);
         let (principal, action, resource) = policy.extract_head(&mut errs);
-        if errs.is_empty() {
-            let effect = effect.expect("should be Some if errs.is_empty()");
-            let principal = principal.expect("should be Some if errs.is_empty()");
-            let action = action.expect("should be Some if errs.is_empty()");
-            let resource = resource.expect("should be Some if errs.is_empty()");
+        if let (Some(effect), Some(principal), Some(action), Some(resource), true) =
+            (effect, principal, action, resource, errs.is_empty())
+        {
             let conditions = policy
                 .conds
                 .into_iter()
@@ -168,9 +166,10 @@ impl TryFrom<cst::Cond> for Clause {
 
         let is_when = cond.cond.to_cond_is_when(&mut errs);
 
-        if errs.is_empty() {
-            let expr = expr.expect("should be Some since errs.is_empty()");
+        if let (Some(expr), true) = (expr, errs.is_empty()) {
             Ok(match is_when {
+                // PANIC SAFETY errs should be non empty if is_when is None
+                #[allow(clippy::unreachable)]
                 None => unreachable!("should have had an err in this case"),
                 Some(true) => Clause::When(expr),
                 Some(false) => Clause::Unless(expr),
@@ -208,6 +207,8 @@ impl Policy {
             0 => ast::Expr::val(true),
             _ => {
                 let mut conditions = self.conditions.into_iter().map(ast::Expr::try_from);
+                // PANIC SAFETY checked above that `conditions` has at least 1 element
+                #[allow(clippy::expect_used)]
                 let first = conditions
                     .next()
                     .expect("already checked there is at least 1")?;

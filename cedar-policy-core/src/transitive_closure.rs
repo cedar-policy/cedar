@@ -82,6 +82,8 @@ where
         add_ancestors_to_set(node, nodes, this_node_ancestors)?;
     }
     for node in nodes.values_mut() {
+        // PANIC SAFETY All nodes in `ancestors` came from `nodes`
+        #[allow(clippy::expect_used)]
         for ancestor_uid in ancestors
             .get(&node.get_key())
             .expect("shouldn't have added any new values to the `nodes` map")
@@ -181,6 +183,8 @@ where
     Ok(())
 }
 
+// PANIC SAFETY test cases
+#[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
     use crate::ast::{Entity, EntityUID};

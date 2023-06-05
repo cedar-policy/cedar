@@ -84,12 +84,12 @@ impl<'a> Extensions<'a> {
             .iter()
             .filter_map(|ext| ext.get_func(name))
             .collect();
-        match extension_funcs.len() {
-            0 => Err(ExtensionsError::FuncDoesNotExist { name: name.clone() }),
-            1 => Ok(extension_funcs[0]),
-            num_defs => Err(ExtensionsError::FuncMultiplyDefined {
+        match extension_funcs.get(0) {
+            None => Err(ExtensionsError::FuncDoesNotExist { name: name.clone() }),
+            Some(first) if extension_funcs.len() == 1 => Ok(first),
+            _ => Err(ExtensionsError::FuncMultiplyDefined {
                 name: name.clone(),
-                num_defs,
+                num_defs: extension_funcs.len(),
             }),
         }
     }
@@ -116,13 +116,12 @@ impl<'a> Extensions<'a> {
             .filter(|f| {
                 f.is_constructor()
                     && f.return_type() == Some(return_type)
-                    && f.arg_types().len() == 1
-                    && f.arg_types()[0].as_ref() == Some(arg_type)
+                    && f.arg_types().get(0).map(Option::as_ref) == Some(Some(arg_type))
             })
             .collect::<Vec<_>>();
-        match matches.len() {
-            0 => Ok(None),
-            1 => Ok(Some(matches[0])),
+        match matches.get(0) {
+            None => Ok(None),
+            Some(first) if matches.len() == 1 => Ok(Some(first)),
             _ => Err(ExtensionsError::MultipleConstructorsSameSignature {
                 return_type: Box::new(return_type.clone()),
                 arg_type: Box::new(arg_type.clone()),
