@@ -30,6 +30,15 @@ use smol_str::SmolStr;
 
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 
+// PANIC SAFETY `Name`s in here are valid `Name`s
+#[allow(clippy::expect_used)]
+mod names {
+    use super::Name;
+    lazy_static::lazy_static! {
+        pub static ref ANY_ENTITY_TYPE : Name = Name::parse_unqualified_name("any_entity_type").expect("valid identifier");
+    }
+}
+
 /// Evaluator object.
 ///
 /// Conceptually keeps the evaluation environment as part of its internal state,
@@ -125,7 +134,9 @@ impl<'e> RestrictedEvaluator<'e> {
                     Either::Right(residuals) => Ok(Expr::call_extension_fn(fn_name.clone(), residuals.collect()).into()),
                 }
             },
-            expr => panic!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
+            // PANIC SAFETY Unreachable via invariant on restricted expressions 
+            #[allow(clippy::unreachable)]
+            expr =>unreachable!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
         }
     }
 }
@@ -250,11 +261,11 @@ impl<'q, 'e> Evaluator<'e> {
             Ok(e) => (e, None),
             Err(err) => {
                 let arg = Expr::val(format!("{err}"));
+                // PANIC SAFETY: Input to `parse` is fully static and a valid extension function name
+                #[allow(clippy::unwrap_used)]
+                let fn_name = "error".parse().unwrap();
                 (
-                    PartialValue::Residual(Expr::call_extension_fn(
-                        "error".parse().unwrap(),
-                        vec![arg],
-                    )),
+                    PartialValue::Residual(Expr::call_extension_fn(fn_name, vec![arg])),
                     Some(err),
                 )
             }
@@ -421,7 +432,11 @@ impl<'q, 'e> Evaluator<'e> {
                                     },
                                 )),
                             },
-                            _ => panic!("Should have already checked that op was one of these"),
+                            // PANIC SAFETY `op` is checked to be one of the above
+                            #[allow(clippy::unreachable)]
+                            _ => {
+                                unreachable!("Should have already checked that op was one of these")
+                            }
                         }
                     }
                     // hierarchy membership operator; see note on `BinaryOp::In`
@@ -464,7 +479,9 @@ impl<'q, 'e> Evaluator<'e> {
                                     BinaryOp::ContainsAny => {
                                         Ok((!arg1_set.is_disjoint(arg2_set)).into())
                                     }
-                                    _ => panic!(
+                                    // PANIC SAFETY `op` is checked to be one of these two above
+                                    #[allow(clippy::unreachable)]
+                                    _ => unreachable!(
                                         "Should have already checked that op was one of these"
                                     ),
                                 }
@@ -487,7 +504,9 @@ impl<'q, 'e> Evaluator<'e> {
                                             .any(|item| arg2_set.authoritative.contains(item));
                                         Ok(not_disjoint.into())
                                     }
-                                    _ => panic!(
+                                    // PANIC SAFETY `op` is checked to be one of these two above
+                                    #[allow(clippy::unreachable)]
+                                    _ => unreachable!(
                                         "Should have already checked that op was one of these"
                                     ),
                                 }
@@ -542,10 +561,7 @@ impl<'q, 'e> Evaluator<'e> {
                 PartialValue::Value(val) => Err(err::EvaluationError::TypeError {
                     expected: vec![
                         Type::Record,
-                        Type::entity_type(
-                            Name::parse_unqualified_name("any_entity_type")
-                                .expect("should be a valid identifier"),
-                        ),
+                        Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
                     ],
                     actual: val.type_of(),
                 }),
@@ -604,13 +620,7 @@ impl<'q, 'e> Evaluator<'e> {
                 .collect::<Result<Vec<EntityUID>>>()?,
             _ => {
                 return Err(EvaluationError::TypeError {
-                    expected: vec![
-                        Type::Set,
-                        Type::entity_type(
-                            Name::parse_unqualified_name("any_entity_type")
-                                .expect("should be a valid identifier"),
-                        ),
-                    ],
+                    expected: vec![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
                     actual: arg2.type_of(),
                 })
             }
@@ -716,13 +726,17 @@ impl<'q, 'e> Evaluator<'e> {
                         .cloned(),
                 }
             }
-            PartialValue::Value(v) => Err(EvaluationError::TypeError {
-                expected: vec![
-                    Type::Record,
-                    Type::entity_type(Name::parse_unqualified_name("any_entity_type").unwrap()),
-                ],
-                actual: v.type_of(),
-            }),
+            PartialValue::Value(v) => {
+                // PANIC SAFETY Entity type name is fully static and a valid unqualified `Name`
+                #[allow(clippy::unwrap_used)]
+                Err(EvaluationError::TypeError {
+                    expected: vec![
+                        Type::Record,
+                        Type::entity_type(Name::parse_unqualified_name("any_entity_type").unwrap()),
+                    ],
+                    actual: v.type_of(),
+                })
+            }
         }
     }
 
@@ -814,9 +828,7 @@ impl Value {
         match self {
             Value::Lit(Literal::EntityUID(uid)) => Ok(uid.as_ref()),
             _ => Err(EvaluationError::TypeError {
-                expected: vec![Type::entity_type(
-                    Name::parse_unqualified_name("any_entity_type").expect("valid identifier"),
-                )],
+                expected: vec![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
                 actual: self.type_of(),
             }),
         }
