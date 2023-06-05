@@ -133,22 +133,15 @@ impl fmt::Display for VariableDef {
 }
 impl fmt::Display for Cond {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.expr.is_none() {
-            write!(f, "{} {{ }}", View(&self.cond))
-        } else if f.alternate() {
-            write!(
-                f,
-                "{} {{\n  {:#}\n}}",
-                View(&self.cond),
-                View(self.expr.as_ref().unwrap())
-            )
-        } else {
-            write!(
-                f,
-                "{} {{{}}}",
-                View(&self.cond),
-                View(self.expr.as_ref().unwrap())
-            )
+        match self.expr.as_ref() {
+            Some(expr_ref) => {
+                if f.alternate() {
+                    write!(f, "{} {{\n  {:#}\n}}", View(&self.cond), View(expr_ref))
+                } else {
+                    write!(f, "{} {{{}}}", View(&self.cond), View(expr_ref))
+                }
+            }
+            None => write!(f, "{} {{ }}", View(&self.cond)),
         }
     }
 }

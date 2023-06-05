@@ -45,6 +45,8 @@ pub(crate) fn to_pattern(s: &str) -> Result<Vec<PatternElem>, Vec<UnescapeError>
     let bytes = s.as_bytes(); // to inspect string element in O(1) time
     let mut callback = |range: Range<usize>, r| match r {
         Ok(c) => unescaped_str.push(if c == '*' { PatternElem::Wildcard }else { PatternElem::Char(c) }),
+        // PANIC SAFETY By invariant, all passed in ranges must be in range
+        #[allow(clippy::indexing_slicing)]
         Err(EscapeError::InvalidEscape)
         // note that the range argument refers to the *byte* offset into the string.
         // so we can compare the byte slice against the bytes of the ``star'' escape sequence.
@@ -71,10 +73,13 @@ pub struct UnescapeError {
     /// copy of the input string which had the error
     input: String,
     /// Range of the input string where the error occurred
+    /// This range must be within the length of `input`
     range: Range<usize>,
 }
 
 impl std::fmt::Display for UnescapeError {
+    // PANIC SAFETY By invariant, the range will always be within the bounds of `input`
+    #[allow(clippy::indexing_slicing)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}: {}", self.err, &self.input[self.range.clone()])
     }

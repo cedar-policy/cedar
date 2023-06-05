@@ -217,7 +217,9 @@ impl FromIterator<Value> for Set {
                         .into_iter()
                         .map(|v| match v {
                             Value::Lit(l) => l,
-                            _ => unreachable!(), // SAFETY: This is unreachable as every item in `literals` matches Value::Lit
+                            // PANIC SAFETY: This is unreachable as every item in `literals` matches Value::Lit
+                            #[allow(clippy::unreachable)]
+                            _ => unreachable!(),
                         })
                         .collect(),
                 )),

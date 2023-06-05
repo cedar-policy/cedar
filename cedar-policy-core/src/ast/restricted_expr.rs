@@ -73,6 +73,8 @@ impl RestrictedExpr {
     pub fn new_unchecked(expr: Expr) -> Self {
         // in debug builds, this does the check anyway, panicking if it fails
         if cfg!(debug_assertions) {
+            // PANIC SAFETY: We're in debug mode and panicking intentionally
+            #[allow(clippy::unwrap_used)]
             Self::new(expr).unwrap()
         } else {
             Self(expr)
@@ -153,6 +155,8 @@ impl<'a> BorrowedRestrictedExpr<'a> {
     pub fn new_unchecked(expr: &'a Expr) -> Self {
         // in debug builds, this does the check anyway, panicking if it fails
         if cfg!(debug_assertions) {
+            // PANIC SAFETY: We're in debug mode and panicking intentionally
+            #[allow(clippy::unwrap_used)]
             Self::new(expr).unwrap()
         } else {
             Self(expr)

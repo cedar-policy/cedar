@@ -680,9 +680,9 @@ impl std::fmt::Display for Expr {
                         None
                     }
                 });
+                // PANIC SAFETY Args list must be non empty by INVARIANT (MethodStyleArgs)
+                #[allow(clippy::indexing_slicing)]
                 if matches!(style, Some(CallStyle::MethodStyle)) && !args.is_empty() {
-                    // This indexing operation is safe, as MethodStyle calls MUST have a non-empty args list.
-                    // See INVARIANT (MethodStyleArgs)
                     write!(
                         f,
                         "{}.{}({})",
@@ -1418,9 +1418,13 @@ impl From<PrincipalOrResource> for Var {
     }
 }
 
+// PANIC SAFETY Tested by `test::all_vars_are_ids`. Never panics.
+#[allow(clippy::fallible_impl_from)]
 impl From<Var> for Id {
     fn from(var: Var) -> Self {
-        format!("{var}").parse().expect("Invalid Identifier")
+        // PANIC SAFETY: `Var` is a simple enum and all vars are formatted as valid `Id`. Tested by `test::all_vars_are_ids`
+        #[allow(clippy::unwrap_used)]
+        format!("{var}").parse().unwrap()
     }
 }
 
