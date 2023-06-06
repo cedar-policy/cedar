@@ -23,7 +23,7 @@ use crate::entities::{Entities, EntitiesError, TCComputation};
 use crate::extensions::Extensions;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Serde JSON format for a single entity
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -51,9 +51,12 @@ pub trait Schema {
         &'s self,
         entity_type: &EntityType,
     ) -> Box<dyn Iterator<Item = SmolStr> + 's>;
+
+    /// Get the entity types which are allowed to be parents of the given entity type.
+    fn allowed_parent_types<'s>(&'s self, entity_type: &EntityType) -> HashSet<EntityType>;
 }
 
-/// Simple type that implements `Schema` by expecting no attributes to exist
+/// Simple type that implements `Schema` by expecting no attributes or parents to exist
 #[derive(Debug, Clone)]
 pub struct NullSchema;
 impl Schema for NullSchema {
@@ -62,6 +65,9 @@ impl Schema for NullSchema {
     }
     fn required_attrs(&self, _entity_type: &EntityType) -> Box<dyn Iterator<Item = SmolStr>> {
         Box::new(std::iter::empty())
+    }
+    fn allowed_parent_types(&self, _entity_type: &EntityType) -> HashSet<EntityType> {
+        HashSet::new()
     }
 }
 
@@ -229,12 +235,29 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 }
             })
             .collect::<Result<_, JsonDeserializationError>>()?;
+        // this `allowed_parent_types` is `None` iff `self.schema` is `None`.
+        // As a consequence, if this `allowed_parent_types` is `None`, then
+        // there are no restrictions (any parent type is allowed)
+        let allowed_parent_types = self
+            .schema
+            .map(|schema| schema.allowed_parent_types(uid.entity_type()));
         let parents = ejson
             .parents
             .into_iter()
             .map(|parent| {
                 parent.into_euid(|| JsonDeserializationErrorContext::EntityParents {
                     uid: uid.clone(),
+                })
+            })
+            .map(|res| {
+                res.and_then(|parent_euid| match &allowed_parent_types {
+                    Some(set) if set.contains(parent_euid.entity_type()) => Ok(parent_euid),
+                    None => Ok(parent_euid),
+                    _ => Err(JsonDeserializationError::InvalidParentType {
+                        ctx: JsonDeserializationErrorContext::EntityParents { uid: uid.clone() },
+                        uid: uid.clone(),
+                        parent_ty: parent_euid.entity_type().clone(),
+                    }),
                 })
             })
             .collect::<Result<_, JsonDeserializationError>>()?;

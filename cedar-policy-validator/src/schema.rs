@@ -1003,7 +1003,7 @@ impl ValidatorSchema {
             for p_entity in action.applies_to.applicable_principal_types() {
                 match p_entity {
                     EntityType::Concrete(p_entity) => {
-                        if !entity_types.contains_key(p_entity) {
+                        if !entity_types.contains_key(&p_entity) {
                             undeclared_e.insert(p_entity.to_string());
                         }
                     }
@@ -1014,7 +1014,7 @@ impl ValidatorSchema {
             for r_entity in action.applies_to.applicable_resource_types() {
                 match r_entity {
                     EntityType::Concrete(r_entity) => {
-                        if !entity_types.contains_key(r_entity) {
+                        if !entity_types.contains_key(&r_entity) {
                             undeclared_e.insert(r_entity.to_string());
                         }
                     }
@@ -1239,6 +1239,31 @@ impl cedar_policy_core::entities::Schema for ValidatorSchema {
                             .filter(|(_, ty)| ty.is_required)
                             .map(|(attr, _)| attr.clone()),
                     ),
+                }
+            }
+        }
+    }
+
+    fn allowed_parent_types<'s>(
+        &'s self,
+        entity_type: &cedar_policy_core::ast::EntityType,
+    ) -> HashSet<cedar_policy_core::ast::EntityType> {
+        match entity_type {
+            cedar_policy_core::ast::EntityType::Unspecified => HashSet::new(), // Unspecified entity cannot have any parents
+            cedar_policy_core::ast::EntityType::Concrete(child_type) => {
+                match self.get_entity_type(child_type) {
+                    None => HashSet::new(),
+                    Some(_) => {
+                        let mut set = HashSet::new();
+                        for (possible_parent_typename, possible_parent_et) in &self.entity_types {
+                            if possible_parent_et.descendants.contains(child_type) {
+                                set.insert(cedar_policy_core::ast::EntityType::Concrete(
+                                    possible_parent_typename.clone(),
+                                ));
+                            }
+                        }
+                        set
+                    }
                 }
             }
         }
