@@ -33,6 +33,17 @@
           "Album"
         ]
       },
+      "Video": {
+        "shape": {
+          "type": "Record",
+          "additionalAttributes": false,
+          "attributes": {}
+        },
+        "memberOfTypes": [
+          "Account",
+          "Album"
+        ]
+      },
       "Album": {
         "shape": {
           "type": "Record",
