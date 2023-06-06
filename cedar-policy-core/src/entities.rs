@@ -803,6 +803,7 @@ mod schema_based_parsing_tests {
     use crate::extensions::Extensions;
     use serde_json::json;
     use smol_str::SmolStr;
+    use std::collections::HashSet;
 
     /// Mock schema impl used for these tests
     struct MockSchema;
@@ -881,6 +882,10 @@ mod schema_based_parsing_tests {
                 .map(SmolStr::new)
                 .into_iter(),
             )
+        }
+
+        fn allowed_parent_types(&self, _entity_type: &EntityType) -> HashSet<EntityType> {
+            HashSet::new()
         }
     }
 
@@ -1560,6 +1565,55 @@ mod schema_based_parsing_tests {
         );
     }
 
+    /// Test that involves parents of wrong types
+    #[test]
+    fn parents_wrong_type() {
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {
+                        "isFullTime": true,
+                        "numDirectReports": 3,
+                        "department": "Sales",
+                        "manager": { "type": "Employee", "id": "34FB87" },
+                        "hr_contacts": [
+                            { "type": "HR", "id": "aaaaa" },
+                            { "type": "HR", "id": "bbbbb" }
+                        ],
+                        "json_blob": {
+                            "inner1": false,
+                            "inner2": "-*/",
+                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
+                        },
+                        "home_ip": "222.222.222.101",
+                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
+                        "trust_score": "5.7",
+                        "tricky": { "type": "Employee", "id": "34FB87" }
+                    },
+                    "parents": [
+                        { "type": "Employee", "id": "34FB87" }
+                    ]
+                }
+            ]
+        );
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
+        let err = eparser
+            .from_json_value(entitiesjson)
+            .expect_err("should fail due to incorrect parent type");
+        assert!(
+            err.to_string().contains(
+                r#"Employee::"12UA45" is not allowed to have a parent of type Employee according to the schema"#
+            ),
+            "actual error message was {}",
+            err
+        );
+    }
+
     /// Test that involves namespaced entity types
     #[test]
     fn namespaces() {
@@ -1588,6 +1642,10 @@ mod schema_based_parsing_tests {
                         .map(SmolStr::new)
                         .into_iter(),
                 )
+            }
+
+            fn allowed_parent_types(&self, _entity_type: &EntityType) -> HashSet<EntityType> {
+                HashSet::new()
             }
         }
 
