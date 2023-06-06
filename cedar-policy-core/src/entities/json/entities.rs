@@ -235,8 +235,9 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 }
             })
             .collect::<Result<_, JsonDeserializationError>>()?;
-        // if this `allowed_parent_types` is `None`, then there are no restrictions
-        // (any parent type is allowed)
+        // this `allowed_parent_types` is `None` iff `self.schema` is `None`.
+        // As a consequence, if this `allowed_parent_types` is `None`, then
+        // there are no restrictions (any parent type is allowed)
         let allowed_parent_types = self
             .schema
             .map(|schema| schema.allowed_parent_types(uid.entity_type()));
