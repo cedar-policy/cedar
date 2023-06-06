@@ -251,17 +251,22 @@ pub enum PolicyCheck {
 pub struct Typechecker<'a> {
     schema: &'a ValidatorSchema,
     extensions: HashMap<Name, ExtensionSchema>,
+    mode: ValidationMode,
 }
 
 impl<'a> Typechecker<'a> {
     /// Construct a new typechecker.
-    pub fn new(schema: &'a ValidatorSchema) -> Typechecker<'a> {
+    pub fn new(schema: &'a ValidatorSchema, mode: ValidationMode) -> Typechecker<'a> {
         // Set the extensions using `all_available_extension_schemas`.
         let extensions = all_available_extension_schemas()
             .into_iter()
             .map(|ext| (ext.name().clone(), ext))
             .collect();
-        Self { schema, extensions }
+        Self {
+            schema,
+            extensions,
+            mode,
+        }
     }
 
     /// The main entry point for typechecking policies. This method takes a
@@ -270,15 +275,11 @@ impl<'a> Typechecker<'a> {
     /// succeeds, then the method will return true, and no items will be
     /// added to the output list. Otherwise, the function returns false and the
     /// output list is populated with any errors encountered while typechecking.
-    pub fn typecheck_policy(
-        &self,
-        t: &Template,
-        mode: ValidationMode,
-        type_errors: &mut HashSet<TypeError>,
-    ) -> bool {
-        let typecheck_answers = match mode {
-            ValidationMode::Strict => self.typecheck_by_request_env_strict(t),
-            ValidationMode::Permissive => self.typecheck_by_request_env(t),
+    pub fn typecheck_policy(&self, t: &Template, type_errors: &mut HashSet<TypeError>) -> bool {
+        let typecheck_answers = if self.mode.is_strict() {
+            self.typecheck_by_request_env_strict(t)
+        } else {
+            self.typecheck_by_request_env(t)
         };
 
         // consolidate the results from each query environment
