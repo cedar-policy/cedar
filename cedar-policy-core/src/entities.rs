@@ -803,97 +803,98 @@ mod schema_based_parsing_tests {
     use crate::extensions::Extensions;
     use serde_json::json;
     use smol_str::SmolStr;
+    use std::collections::HashSet;
 
-    /// Simple test that exercises a variety of attribute types.
-    #[test]
-    fn attr_types() {
-        struct MockSchema;
-        impl Schema for MockSchema {
-            fn attr_type(&self, entity_type: &EntityType, attr: &str) -> Option<SchemaType> {
-                let employee_ty = || SchemaType::Entity {
-                    ty: EntityType::Concrete(
-                        Name::parse_unqualified_name("Employee").expect("valid"),
-                    ),
-                };
-                let hr_ty = || SchemaType::Entity {
-                    ty: EntityType::Concrete(Name::parse_unqualified_name("HR").expect("valid")),
-                };
-                match entity_type.to_string().as_str() {
-                    "Employee" => match attr {
-                        "isFullTime" => Some(SchemaType::Bool),
-                        "numDirectReports" => Some(SchemaType::Long {
+    /// Mock schema impl used for these tests
+    struct MockSchema;
+    impl Schema for MockSchema {
+        fn attr_type(&self, entity_type: &EntityType, attr: &str) -> Option<SchemaType> {
+            let employee_ty = || SchemaType::Entity {
+                ty: EntityType::Concrete(Name::parse_unqualified_name("Employee").expect("valid")),
+            };
+            let hr_ty = || SchemaType::Entity {
+                ty: EntityType::Concrete(Name::parse_unqualified_name("HR").expect("valid")),
+            };
+            match entity_type.to_string().as_str() {
+                "Employee" => match attr {
+                    "isFullTime" => Some(SchemaType::Bool),
+                    "numDirectReports" => Some(SchemaType::Long {
                             min: i64::MIN,
                             max: i64::MAX,
                         }),
-                        "department" => Some(SchemaType::String),
-                        "manager" => Some(employee_ty()),
-                        "hr_contacts" => Some(SchemaType::Set {
-                            element_ty: Box::new(hr_ty()),
-                        }),
-                        "json_blob" => Some(SchemaType::Record {
-                            attrs: [
-                                ("inner1".into(), AttributeType::required(SchemaType::Bool)),
-                                ("inner2".into(), AttributeType::required(SchemaType::String)),
-                                (
-                                    "inner3".into(),
-                                    AttributeType::required(SchemaType::Record {
-                                        attrs: [(
-                                            "innerinner".into(),
-                                            AttributeType::required(employee_ty()),
-                                        )]
-                                        .into_iter()
-                                        .collect(),
-                                    }),
-                                ),
-                            ]
-                            .into_iter()
-                            .collect(),
-                        }),
-                        "home_ip" => Some(SchemaType::Extension {
-                            name: Name::parse_unqualified_name("ipaddr").expect("valid"),
-                        }),
-                        "work_ip" => Some(SchemaType::Extension {
-                            name: Name::parse_unqualified_name("ipaddr").expect("valid"),
-                        }),
-                        "trust_score" => Some(SchemaType::Extension {
-                            name: Name::parse_unqualified_name("decimal").expect("valid"),
-                        }),
-                        "tricky" => Some(SchemaType::Record {
-                            attrs: [
-                                ("type".into(), AttributeType::required(SchemaType::String)),
-                                ("id".into(), AttributeType::required(SchemaType::String)),
-                            ]
-                            .into_iter()
-                            .collect(),
-                        }),
-                        _ => None,
-                    },
+                    "department" => Some(SchemaType::String),
+                    "manager" => Some(employee_ty()),
+                    "hr_contacts" => Some(SchemaType::Set {
+                        element_ty: Box::new(hr_ty()),
+                    }),
+                    "json_blob" => Some(SchemaType::Record {
+                        attrs: [
+                            ("inner1".into(), AttributeType::required(SchemaType::Bool)),
+                            ("inner2".into(), AttributeType::required(SchemaType::String)),
+                            (
+                                "inner3".into(),
+                                AttributeType::required(SchemaType::Record {
+                                    attrs: [(
+                                        "innerinner".into(),
+                                        AttributeType::required(employee_ty()),
+                                    )]
+                                    .into_iter()
+                                    .collect(),
+                                }),
+                            ),
+                        ]
+                        .into_iter()
+                        .collect(),
+                    }),
+                    "home_ip" => Some(SchemaType::Extension {
+                        name: Name::parse_unqualified_name("ipaddr").expect("valid"),
+                    }),
+                    "work_ip" => Some(SchemaType::Extension {
+                        name: Name::parse_unqualified_name("ipaddr").expect("valid"),
+                    }),
+                    "trust_score" => Some(SchemaType::Extension {
+                        name: Name::parse_unqualified_name("decimal").expect("valid"),
+                    }),
+                    "tricky" => Some(SchemaType::Record {
+                        attrs: [
+                            ("type".into(), AttributeType::required(SchemaType::String)),
+                            ("id".into(), AttributeType::required(SchemaType::String)),
+                        ]
+                        .into_iter()
+                        .collect(),
+                    }),
                     _ => None,
-                }
-            }
-
-            fn required_attrs(
-                &self,
-                _entity_type: &EntityType,
-            ) -> Box<dyn Iterator<Item = SmolStr>> {
-                Box::new(
-                    [
-                        "isFullTime",
-                        "numDirectReports",
-                        "department",
-                        "manager",
-                        "hr_contacts",
-                        "json_blob",
-                        "home_ip",
-                        "work_ip",
-                        "trust_score",
-                    ]
-                    .map(SmolStr::new)
-                    .into_iter(),
-                )
+                },
+                _ => None,
             }
         }
 
+        fn required_attrs(&self, _entity_type: &EntityType) -> Box<dyn Iterator<Item = SmolStr>> {
+            Box::new(
+                [
+                    "isFullTime",
+                    "numDirectReports",
+                    "department",
+                    "manager",
+                    "hr_contacts",
+                    "json_blob",
+                    "home_ip",
+                    "work_ip",
+                    "trust_score",
+                ]
+                .map(SmolStr::new)
+                .into_iter(),
+            )
+        }
+
+        fn allowed_parent_types(&self, _entity_type: &EntityType) -> HashSet<EntityType> {
+            HashSet::new()
+        }
+    }
+
+    /// JSON that should parse differently with and without the above schema
+    #[test]
+    fn with_and_without_schema() {
         let entitiesjson = json!(
             [
                 {
@@ -981,6 +982,7 @@ mod schema_based_parsing_tests {
             .find(|(k, _)| k == "innerinner")
             .expect("innerinner attr should exist");
         assert!(matches!(innerinner.expr_kind(), &ExprKind::Record { .. }));
+
         // but with schema-based parsing, we get these other types
         let eparser = EntityJsonParser::new(
             Some(&MockSchema),
@@ -1082,8 +1084,11 @@ mod schema_based_parsing_tests {
                 vec![RestrictedExpr::val("5.7")]
             )),
         );
+    }
 
-        // simple type mismatch with expected type
+    /// simple type mismatch with expected type
+    #[test]
+    fn type_mismatch_string_long() {
         let entitiesjson = json!(
             [
                 {
@@ -1111,6 +1116,11 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
         let err = eparser
             .from_json_value(entitiesjson)
             .expect_err("should fail due to type mismatch on numDirectReports");
@@ -1119,8 +1129,11 @@ mod schema_based_parsing_tests {
             "actual error message was {}",
             err
         );
+    }
 
-        // another simple type mismatch with expected type
+    /// another simple type mismatch with expected type
+    #[test]
+    fn type_mismatch_entity_record() {
         let entitiesjson = json!(
             [
                 {
@@ -1148,6 +1161,11 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
         let err = eparser
             .from_json_value(entitiesjson)
             .expect_err("should fail due to type mismatch on manager");
@@ -1157,8 +1175,11 @@ mod schema_based_parsing_tests {
             "actual error message was {}",
             err
         );
+    }
 
-        // type mismatch where we expect a set and get just a single element
+    /// type mismatch where we expect a set and get just a single element
+    #[test]
+    fn type_mismatch_set_element() {
         let entitiesjson = json!(
             [
                 {
@@ -1183,6 +1204,11 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
         let err = eparser
             .from_json_value(entitiesjson)
             .expect_err("should fail due to type mismatch on hr_contacts");
@@ -1191,8 +1217,11 @@ mod schema_based_parsing_tests {
             "actual error message was {}",
             err
         );
+    }
 
-        // type mismatch where we just get the wrong entity type
+    /// type mismatch where we just get the wrong entity type
+    #[test]
+    fn type_mismatch_entity_types() {
         let entitiesjson = json!(
             [
                 {
@@ -1220,6 +1249,11 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
         let err = eparser
             .from_json_value(entitiesjson)
             .expect_err("should fail due to type mismatch on manager");
@@ -1228,9 +1262,12 @@ mod schema_based_parsing_tests {
             "actual error message was {}",
             err
         );
+    }
 
-        // type mismatch where we're expecting an extension type and get a
-        // different extension type
+    /// type mismatch where we're expecting an extension type and get a
+    /// different extension type
+    #[test]
+    fn type_mismatch_extension_types() {
         let entitiesjson = json!(
             [
                 {
@@ -1258,6 +1295,11 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
         let err = eparser
             .from_json_value(entitiesjson)
             .expect_err("should fail due to type mismatch on home_ip");
@@ -1266,7 +1308,10 @@ mod schema_based_parsing_tests {
             "actual error message was {}",
             err
         );
+    }
 
+    #[test]
+    fn missing_record_attr() {
         // missing a record attribute entirely
         let entitiesjson = json!(
             [
@@ -1294,6 +1339,11 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
         let err = eparser
             .from_json_value(entitiesjson)
             .expect_err("should fail due to missing attribute \"inner2\"");
@@ -1302,8 +1352,11 @@ mod schema_based_parsing_tests {
             "actual error message was {}",
             err
         );
+    }
 
-        // record attribute has the wrong type
+    /// record attribute has the wrong type
+    #[test]
+    fn type_mismatch_in_record_attr() {
         let entitiesjson = json!(
             [
                 {
@@ -1330,6 +1383,11 @@ mod schema_based_parsing_tests {
                     "parents": []
                 }
             ]
+        );
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
         );
         let err = eparser
             .from_json_value(entitiesjson)
@@ -1370,8 +1428,11 @@ mod schema_based_parsing_tests {
         let _ = eparser
             .from_json_value(entitiesjson)
             .expect("this version with explicit __entity and __extn escapes should also pass");
+    }
 
-        // unexpected record attribute
+    /// unexpected record attribute
+    #[test]
+    fn unexpected_record_attr() {
         let entitiesjson = json!(
             [
                 {
@@ -1400,6 +1461,11 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
         let err = eparser
             .from_json_value(entitiesjson)
             .expect_err("should fail due to unexpected attribute \"inner4\"");
@@ -1408,8 +1474,11 @@ mod schema_based_parsing_tests {
             "actual error message was {}",
             err
         );
+    }
 
-        // entity is missing a required attribute
+    /// entity is missing a required attribute
+    #[test]
+    fn missing_required_attr() {
         let entitiesjson = json!(
             [
                 {
@@ -1436,6 +1505,11 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
         let err = eparser
             .from_json_value(entitiesjson)
             .expect_err("should fail due to missing attribute \"numDirectReports\"");
@@ -1444,8 +1518,11 @@ mod schema_based_parsing_tests {
             "actual error message was {}",
             err
         );
+    }
 
-        // unexpected entity attribute
+    /// unexpected entity attribute
+    #[test]
+    fn unexpected_entity_attr() {
         let entitiesjson = json!(
             [
                 {
@@ -1474,12 +1551,66 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
         let err = eparser
             .from_json_value(entitiesjson)
             .expect_err("should fail due to unexpected attribute \"wat\"");
         assert!(
             err.to_string().contains(
                 r#"Attribute "wat" on Employee::"12UA45" shouldn't exist according to the schema"#
+            ),
+            "actual error message was {}",
+            err
+        );
+    }
+
+    /// Test that involves parents of wrong types
+    #[test]
+    fn parents_wrong_type() {
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {
+                        "isFullTime": true,
+                        "numDirectReports": 3,
+                        "department": "Sales",
+                        "manager": { "type": "Employee", "id": "34FB87" },
+                        "hr_contacts": [
+                            { "type": "HR", "id": "aaaaa" },
+                            { "type": "HR", "id": "bbbbb" }
+                        ],
+                        "json_blob": {
+                            "inner1": false,
+                            "inner2": "-*/",
+                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
+                        },
+                        "home_ip": "222.222.222.101",
+                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
+                        "trust_score": "5.7",
+                        "tricky": { "type": "Employee", "id": "34FB87" }
+                    },
+                    "parents": [
+                        { "type": "Employee", "id": "34FB87" }
+                    ]
+                }
+            ]
+        );
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
+        let err = eparser
+            .from_json_value(entitiesjson)
+            .expect_err("should fail due to incorrect parent type");
+        assert!(
+            err.to_string().contains(
+                r#"Employee::"12UA45" is not allowed to have a parent of type Employee according to the schema"#
             ),
             "actual error message was {}",
             err
@@ -1514,6 +1645,10 @@ mod schema_based_parsing_tests {
                         .map(SmolStr::new)
                         .into_iter(),
                 )
+            }
+
+            fn allowed_parent_types(&self, _entity_type: &EntityType) -> HashSet<EntityType> {
+                HashSet::new()
             }
         }
 

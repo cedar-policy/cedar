@@ -97,47 +97,52 @@ pub struct TypeDefs {
 }
 
 /// Entity type declarations held in a `ValidatorNamespaceDef`. Entity type
-/// children and attributes may reference undeclared entity types.
+/// parents and attributes may reference undeclared entity types.
 #[derive(Debug)]
 pub struct EntityTypesDef {
-    /// Entity type attributes and children are tracked separately because a
-    /// child of an entity type may be declared in a fragment without also
-    /// declaring the entity type and its attributes. Attribute types are
-    /// wrapped in a `WithUnresolvedTypeDefs` because types may contain
-    /// typedefs which are not defined in this schema fragment. All
-    /// entity type `Name` keys in this map are declared in this schema fragment.
-    attributes: HashMap<Name, WithUnresolvedTypeDefs<Type>>,
-    /// `Name`s which are keys in this map appear inside `memberOf` lists, so
-    /// they might not declared in this fragment. We will check if they are
-    /// declared in any fragment when constructing a `ValidatorSchema`. The
-    /// children are taken from the entity type declaration where the `memberOf`
-    /// list appeared, so we know that they were declared in this fragment.
-    /// This map contains children rather than descendants because the
-    /// transitive closure has not yet been computed. We need all child edges
-    /// between entity types from all fragments before we can compute the
-    /// transitive closure.
-    children: HashMap<Name, HashSet<Name>>,
+    entity_types: HashMap<Name, EntityTypeFragment>,
+}
+
+/// Defines an EntityType where we have not resolved typedefs occurring in the
+/// attributes or verified that the parent entity types and entity types
+/// occurring in attributes are defined.
+#[derive(Debug)]
+pub struct EntityTypeFragment {
+    /// The attributes record type for this entity type.  The type is wrapped in
+    /// a `WithUnresolvedTypeDefs` because it may contain typedefs which are not
+    /// defined in this schema fragment. All entity type `Name` keys in this map
+    /// are declared in this schema fragment.
+    attributes: WithUnresolvedTypeDefs<Type>,
+    /// The direct parent entity types for this entity type come from the
+    /// `memberOfTypes` list. These types might be declared in a different
+    /// namespace, so we will check if they are declared in any fragment when
+    /// constructing a `ValidatorSchema`.
+    parents: HashSet<Name>,
 }
 
 /// Action declarations held in a `ValidatorNamespaceDef`. Entity types
 /// referenced here do not need to be declared in the schema.
 #[derive(Debug)]
 pub struct ActionsDef {
-    /// Action declaration components are tracked separately for the same reasons
-    /// as entity types. This map holds attributes and apply-specs because these
-    /// are always fully defined in the schema fragment containing the action
-    /// declarations. The attribute types are wrapped in a `WithUnresolvedTypeDefs` because they
-    /// may refer to common types which are not defined in this fragment. The `EntityUID` keys in
-    /// this map again were definitely declared in this fragment.
-    context_applies_to: HashMap<EntityUID, (WithUnresolvedTypeDefs<Type>, ValidatorApplySpec)>,
-    /// `EntityUID` keys in this map appear inside action `memberOf` lists, so
-    /// they might not be declared in this fragment while the entries in the
-    /// values hash set are taken directly from declared actions.
-    children: HashMap<EntityUID, HashSet<EntityUID>>,
-    /// Action attribute types, used for typechecking.
-    attribute_types: HashMap<EntityUID, Attributes>,
-    /// Action attribute values.
-    attributes: HashMap<EntityUID, HashMap<SmolStr, RestrictedExpr>>,
+    actions: HashMap<EntityUID, ActionFragment>,
+}
+
+#[derive(Debug)]
+pub struct ActionFragment {
+    /// The type of the context record for this actions. The types is wrapped in
+    /// a `WithUnresolvedTypeDefs` because it may refer to common types which
+    /// are not defined in this fragment.
+    context: WithUnresolvedTypeDefs<Type>,
+    /// The principals and resources that an action can be applied to.
+    applies_to: ValidatorApplySpec,
+    /// The direct parent action entities for this action.
+    parents: HashSet<EntityUID>,
+    /// The types for the attributes defined for this actions entity.
+    attribute_types: Attributes,
+    /// The values for the attributes defined for this actions entity, stored
+    /// separately so that we can later extract use these values to construct
+    /// the actual `Entity` objects defined by the schema.
+    attributes: HashMap<SmolStr, RestrictedExpr>,
 }
 
 type ResolveFunc<T> = dyn FnOnce(&HashMap<Name, Type>) -> Result<T>;
@@ -284,55 +289,47 @@ impl ValidatorNamespaceDef {
 
     // Transform the schema data structures for entity types into the structures
     // used internally by the validator. This is mostly accomplished by directly
-    // copying data between fields. For the `descendants` this field, we first
-    // reverse the direction of the `member_of` relation and then compute the
-    // transitive closure.
+    // copying data between fields.
     fn build_entity_types(
         schema_files_types: HashMap<SmolStr, schema_file_format::EntityType>,
         schema_namespace: &[Id],
     ) -> Result<EntityTypesDef> {
-        // Invert the `member_of` relationship, associating each entity type
-        // with its set of children instead of parents.
-        let mut children: HashMap<Name, HashSet<Name>> = HashMap::new();
-        for (name, e) in &schema_files_types {
-            for parent in &e.member_of_types {
-                let parent_type_name = Self::parse_possibly_qualified_name_with_default_namespace(
-                    parent,
-                    schema_namespace,
-                )
-                .map_err(SchemaError::EntityTypeParseError)?;
-                children
-                    .entry(parent_type_name)
-                    .or_insert_with(HashSet::new)
-                    .insert(
-                        Self::parse_unqualified_name_with_namespace(
-                            name,
-                            schema_namespace.to_vec(),
-                        )
-                        .map_err(SchemaError::EntityTypeParseError)?,
-                    );
-            }
-        }
-
-        let attributes = schema_files_types
-            .into_iter()
-            .map(|(name, e)| -> Result<_> {
-                let name: Name =
-                    Self::parse_unqualified_name_with_namespace(&name, schema_namespace.to_vec())
-                        .map_err(SchemaError::EntityTypeParseError)?;
-
-                let attributes = Self::try_schema_type_into_validator_type(
-                    schema_namespace,
-                    e.shape.into_inner(),
-                )?;
-
-                Ok((name, attributes))
-            })
-            .collect::<Result<HashMap<_, _>>>()?;
-
         Ok(EntityTypesDef {
-            attributes,
-            children,
+            entity_types: schema_files_types
+                .into_iter()
+                .map(|(name_str, entity_type)| -> Result<_> {
+                    let name = Self::parse_unqualified_name_with_namespace(
+                        &name_str,
+                        schema_namespace.to_vec(),
+                    )
+                    .map_err(SchemaError::EntityTypeParseError)?;
+
+                    let parents = entity_type
+                        .member_of_types
+                        .iter()
+                        .map(|parent| -> Result<_> {
+                            Self::parse_possibly_qualified_name_with_default_namespace(
+                                parent,
+                                schema_namespace,
+                            )
+                            .map_err(SchemaError::EntityTypeParseError)
+                        })
+                        .collect::<Result<HashSet<_>>>()?;
+
+                    let attributes = Self::try_schema_type_into_validator_type(
+                        schema_namespace,
+                        entity_type.shape.into_inner(),
+                    )?;
+
+                    Ok((
+                        name,
+                        EntityTypeFragment {
+                            attributes,
+                            parents,
+                        },
+                    ))
+                })
+                .collect::<Result<HashMap<_, _>>>()?,
         })
     }
 
@@ -409,94 +406,70 @@ impl ValidatorNamespaceDef {
 
     // Transform the schema data structures for actions into the structures used
     // internally by the validator. This is mostly accomplished by directly
-    // copying data between fields, except that for the `descendants` field we
-    // first reverse the direction of the `member_of` relation and then compute
-    // the transitive closure.
+    // copying data between fields.
     fn build_action_ids(
         schema_file_actions: HashMap<SmolStr, ActionType>,
         schema_namespace: &[Id],
     ) -> Result<ActionsDef> {
-        // Invert the `member_of` relationship, associating each entity and
-        // action with it's set of children instead of parents.
-        let mut children: HashMap<EntityUID, HashSet<EntityUID>> = HashMap::new();
-        for (name, a) in &schema_file_actions {
-            let parents = match &a.member_of {
-                Some(parents) => parents,
-                None => continue,
-            };
-            for parent in parents {
-                let parent_euid =
-                    Self::parse_action_id_with_namespace(parent, schema_namespace.to_vec())?;
-                children
-                    .entry(parent_euid)
-                    .or_insert_with(HashSet::new)
-                    .insert(Self::parse_action_id_with_namespace(
-                        &ActionEntityUID::default_type(name.clone()),
-                        schema_namespace.to_vec(),
-                    )?);
-            }
-        }
-
-        let context_applies_to = schema_file_actions
-            .clone()
-            .into_iter()
-            .map(|(name, a)| -> Result<_> {
-                let action_euid = Self::parse_action_id_with_namespace(
-                    &ActionEntityUID::default_type(name),
-                    schema_namespace.to_vec(),
-                )?;
-
-                let (principal_types, resource_types, context) = a
-                    .applies_to
-                    .map(|applies_to| {
-                        (
-                            applies_to.principal_types,
-                            applies_to.resource_types,
-                            applies_to.context,
-                        )
-                    })
-                    .unwrap_or_default();
-
-                // Convert the entries in the `appliesTo` lists into sets of
-                // `EntityTypes`. If one of the lists is `None` (absent from the
-                // schema), then the specification is undefined.
-                let action_applies_to = ValidatorApplySpec::new(
-                    Self::parse_apply_spec_type_list(principal_types, schema_namespace)?,
-                    Self::parse_apply_spec_type_list(resource_types, schema_namespace)?,
-                );
-
-                let action_context = Self::try_schema_type_into_validator_type(
-                    schema_namespace,
-                    context.into_inner(),
-                )?;
-
-                Ok((action_euid, (action_context, action_applies_to)))
-            })
-            .collect::<Result<HashMap<_, _>>>()?;
-
-        let mut attributes = HashMap::new();
-        let mut attribute_types = HashMap::new();
-        for (name, a) in schema_file_actions {
-            let action_euid = Self::parse_action_id_with_namespace(
-                &ActionEntityUID::default_type(name),
-                schema_namespace.to_vec(),
-            )?;
-
-            match Self::convert_attr_jsonval_map_to_attributes(a.attributes.unwrap_or_default()) {
-                // We can't just use the last element of the vec without implementing `Clone` for `SchemaError`, which has some potentially very expensive variants
-                Ok((curr_attribute_types, curr_attributes)) => {
-                    attributes.insert(action_euid.clone(), curr_attributes);
-                    attribute_types.insert(action_euid, curr_attribute_types);
-                }
-                Err(e) => return Err(e),
-            }
-        }
-
         Ok(ActionsDef {
-            context_applies_to,
-            children,
-            attributes,
-            attribute_types,
+            actions: schema_file_actions
+                .into_iter()
+                .map(|(action_id_str, action_type)| -> Result<_> {
+                    let action_id = Self::parse_action_id_with_namespace(
+                        &ActionEntityUID::default_type(action_id_str),
+                        schema_namespace.to_vec(),
+                    )?;
+
+                    let (principal_types, resource_types, context) = action_type
+                        .applies_to
+                        .map(|applies_to| {
+                            (
+                                applies_to.principal_types,
+                                applies_to.resource_types,
+                                applies_to.context,
+                            )
+                        })
+                        .unwrap_or_default();
+
+                    // Convert the entries in the `appliesTo` lists into sets of
+                    // `EntityTypes`. If one of the lists is `None` (absent from the
+                    // schema), then the specification is undefined.
+                    let applies_to = ValidatorApplySpec::new(
+                        Self::parse_apply_spec_type_list(principal_types, schema_namespace)?,
+                        Self::parse_apply_spec_type_list(resource_types, schema_namespace)?,
+                    );
+
+                    let context = Self::try_schema_type_into_validator_type(
+                        schema_namespace,
+                        context.into_inner(),
+                    )?;
+
+                    let parents = action_type
+                        .member_of
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|parent| -> Result<_> {
+                            Self::parse_action_id_with_namespace(parent, schema_namespace.to_vec())
+                        })
+                        .collect::<Result<HashSet<_>>>()?;
+
+                    let (attribute_types, attributes) =
+                        Self::convert_attr_jsonval_map_to_attributes(
+                            action_type.attributes.unwrap_or_default(),
+                        )?;
+
+                    Ok((
+                        action_id,
+                        ActionFragment {
+                            context,
+                            applies_to,
+                            parents,
+                            attribute_types,
+                            attributes,
+                        },
+                    ))
+                })
+                .collect::<Result<HashMap<_, _>>>()?,
         })
     }
 
@@ -852,14 +825,15 @@ impl ValidatorSchema {
         fragments: impl IntoIterator<Item = ValidatorSchemaFragment>,
     ) -> Result<ValidatorSchema> {
         let mut type_defs = HashMap::new();
-        let mut entity_attributes = HashMap::new();
-        let mut entity_children = HashMap::new();
-        let mut action_context_applies_to = HashMap::new();
-        let mut action_children = HashMap::new();
-        let mut action_attribute_types = HashMap::new();
-        let mut action_attributes = HashMap::new();
+        let mut entity_type_fragments = HashMap::new();
+        let mut action_fragments = HashMap::new();
 
         for ns_def in fragments.into_iter().flat_map(|f| f.0.into_iter()) {
+            // Build aggregate maps for the declared typedefs, entity types, and
+            // actions, checking that nothing is defined twice.  Namespaces were
+            // already added by the `ValidatorNamespaceDef`, so the same base
+            // type name may appear multiple times so long as the namespaces are
+            // different.
             for (name, ty) in ns_def.type_defs.type_defs {
                 match type_defs.entry(name) {
                     Entry::Vacant(v) => v.insert(ty),
@@ -869,66 +843,40 @@ impl ValidatorSchema {
                 };
             }
 
-            // Build aggregate maps for the declared entity/action attributes and
-            // action context/applies_to lists, checking that no action or
-            // entity type is declared more than once.  Namespaces were already
-            // added by the `ValidatorNamespaceDef`, so the same base type
-            // name may appear multiple times so long as the namespaces are
-            // different.
-            for (name, attrs) in ns_def.entity_types.attributes {
-                match entity_attributes.entry(name) {
-                    Entry::Vacant(v) => v.insert(attrs),
+            for (name, entity_type) in ns_def.entity_types.entity_types {
+                match entity_type_fragments.entry(name) {
+                    Entry::Vacant(v) => v.insert(entity_type),
                     Entry::Occupied(o) => {
                         return Err(SchemaError::DuplicateEntityType(o.key().to_string()))
                     }
                 };
             }
-            for (id, context_applies_to) in ns_def.actions.context_applies_to {
-                match action_context_applies_to.entry(id) {
-                    Entry::Vacant(v) => v.insert(context_applies_to),
-                    Entry::Occupied(o) => {
-                        return Err(SchemaError::DuplicateAction(o.key().to_string()))
-                    }
-                };
-            }
-            for (id, attrs) in ns_def.actions.attribute_types {
-                match action_attribute_types.entry(id) {
-                    Entry::Vacant(v) => v.insert(attrs),
-                    Entry::Occupied(o) => {
-                        return Err(SchemaError::DuplicateAction(o.key().to_string()))
-                    }
-                };
-            }
-            for (id, attr_vals) in ns_def.actions.attributes {
-                match action_attributes.entry(id) {
-                    Entry::Vacant(v) => v.insert(attr_vals),
-                    Entry::Occupied(o) => {
-                        return Err(SchemaError::DuplicateAction(o.key().to_string()))
-                    }
-                };
-            }
 
-            // Now build aggregate children maps. There may be keys duplicated
-            // between the fragments if an entity type has child entity type
-            // declared in multiple fragments.
-            for (name, children) in ns_def.entity_types.children {
-                let current_children: &mut HashSet<_> = entity_children.entry(name).or_default();
-                for child in children {
-                    current_children.insert(child);
-                }
-            }
-
-            for (id, children) in ns_def.actions.children {
-                let current_children: &mut HashSet<_> = action_children.entry(id).or_default();
-                for child in children {
-                    current_children.insert(child);
-                }
+            for (action_euid, action) in ns_def.actions.actions {
+                match action_fragments.entry(action_euid) {
+                    Entry::Vacant(v) => v.insert(action),
+                    Entry::Occupied(o) => {
+                        return Err(SchemaError::DuplicateAction(o.key().to_string()))
+                    }
+                };
             }
         }
 
-        let mut entity_types = entity_attributes
+        // Invert the `parents` relation defined by entities and action so far
+        // to get a `children` relation.
+        let mut entity_children = HashMap::new();
+        for (name, entity_type) in entity_type_fragments.iter() {
+            for parent in entity_type.parents.iter() {
+                entity_children
+                    .entry(parent.clone())
+                    .or_insert_with(HashSet::new)
+                    .insert(name.clone());
+            }
+        }
+
+        let mut entity_types = entity_type_fragments
             .into_iter()
-            .map(|(name, attributes)| -> Result<_> {
+            .map(|(name, entity_type)| -> Result<_> {
                 // Keys of the `entity_children` map were values of an
                 // `memberOfTypes` list, so they might not have been declared in
                 // their fragment.  By removing entries from `entity_children`
@@ -945,36 +893,38 @@ impl ValidatorSchema {
                         name,
                         descendants,
                         attributes: Self::record_attributes_or_error(
-                            attributes.resolve_type_defs(&type_defs)?,
+                            entity_type.attributes.resolve_type_defs(&type_defs)?,
                         )?,
                     },
                 ))
             })
             .collect::<Result<HashMap<_, _>>>()?;
 
-        let mut action_ids = action_context_applies_to
+        let mut action_children = HashMap::new();
+        for (euid, action) in action_fragments.iter() {
+            for parent in action.parents.iter() {
+                action_children
+                    .entry(parent.clone())
+                    .or_insert_with(HashSet::new)
+                    .insert(euid.clone());
+            }
+        }
+        let mut action_ids = action_fragments
             .into_iter()
-            .map(|(name, (context, applies_to))| -> Result<_> {
+            .map(|(name, action)| -> Result<_> {
                 let descendants = action_children.remove(&name).unwrap_or_default();
-
-                let attribute_types = match action_attribute_types.remove(&name) {
-                    Some(t) => t,
-                    None => Attributes::with_attributes([]),
-                };
-
-                let attributes = action_attributes.remove(&name).unwrap_or_default();
 
                 Ok((
                     name.clone(),
                     ValidatorActionId {
                         name,
-                        applies_to,
+                        applies_to: action.applies_to,
                         descendants,
                         context: Self::record_attributes_or_error(
-                            context.resolve_type_defs(&type_defs)?,
+                            action.context.resolve_type_defs(&type_defs)?,
                         )?,
-                        attribute_types,
-                        attributes,
+                        attribute_types: action.attribute_types,
+                        attributes: action.attributes,
                     },
                 ))
             })
@@ -1059,7 +1009,7 @@ impl ValidatorSchema {
             for p_entity in action.applies_to.applicable_principal_types() {
                 match p_entity {
                     EntityType::Concrete(p_entity) => {
-                        if !entity_types.contains_key(p_entity) {
+                        if !entity_types.contains_key(&p_entity) {
                             undeclared_e.insert(p_entity.to_string());
                         }
                     }
@@ -1070,7 +1020,7 @@ impl ValidatorSchema {
             for r_entity in action.applies_to.applicable_resource_types() {
                 match r_entity {
                     EntityType::Concrete(r_entity) => {
-                        if !entity_types.contains_key(r_entity) {
+                        if !entity_types.contains_key(&r_entity) {
                             undeclared_e.insert(r_entity.to_string());
                         }
                     }
@@ -1295,6 +1245,31 @@ impl cedar_policy_core::entities::Schema for ValidatorSchema {
                             .filter(|(_, ty)| ty.is_required)
                             .map(|(attr, _)| attr.clone()),
                     ),
+                }
+            }
+        }
+    }
+
+    fn allowed_parent_types<'s>(
+        &'s self,
+        entity_type: &cedar_policy_core::ast::EntityType,
+    ) -> HashSet<cedar_policy_core::ast::EntityType> {
+        match entity_type {
+            cedar_policy_core::ast::EntityType::Unspecified => HashSet::new(), // Unspecified entity cannot have any parents
+            cedar_policy_core::ast::EntityType::Concrete(child_type) => {
+                match self.get_entity_type(child_type) {
+                    None => HashSet::new(),
+                    Some(_) => {
+                        let mut set = HashSet::new();
+                        for (possible_parent_typename, possible_parent_et) in &self.entity_types {
+                            if possible_parent_et.descendants.contains(child_type) {
+                                set.insert(cedar_policy_core::ast::EntityType::Concrete(
+                                    possible_parent_typename.clone(),
+                                ));
+                            }
+                        }
+                        set
+                    }
                 }
             }
         }

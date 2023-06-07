@@ -147,18 +147,16 @@ impl PolicySet {
 
         // TODO: Use `try_insert` when stabilized.
         // https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert
-        if self.templates.contains_key(t.id()) || self.links.contains_key(p.id()) {
-            Err(PolicySetError::Occupied)
-        } else {
-            if self.templates.insert(t.id().clone(), t).is_some() {
-                unreachable!("Template key was already present");
+        match (
+            self.templates.entry(t.id().clone()),
+            self.links.entry(t.id().clone()),
+        ) {
+            (Entry::Vacant(templates_entry), Entry::Vacant(links_entry)) => {
+                templates_entry.insert(t);
+                links_entry.insert(p);
+                Ok(())
             }
-
-            if self.links.insert(p.id().clone(), p).is_some() {
-                unreachable!("Link key was already present");
-            }
-
-            Ok(())
+            _ => Err(PolicySetError::Occupied),
         }
     }
 
@@ -166,13 +164,12 @@ impl PolicySet {
     pub fn add_template(&mut self, t: Template) -> Result<(), PolicySetError> {
         // TODO: Use `try_insert` when stabilized.
         // https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert
-        if self.templates.contains_key(t.id()) {
-            Err(PolicySetError::Occupied)
-        } else {
-            if self.templates.insert(t.id().clone(), Arc::new(t)).is_some() {
-                unreachable!("Template key was already present");
+        match self.templates.entry(t.id().clone()) {
+            Entry::Occupied(_) => Err(PolicySetError::Occupied),
+            Entry::Vacant(entry) => {
+                entry.insert(Arc::new(t));
+                Ok(())
             }
-            Ok(())
         }
     }
 
@@ -184,19 +181,23 @@ impl PolicySet {
         &mut self,
         template_id: PolicyID,
         new_id: PolicyID,
-        vals: HashMap<SlotId, EntityUID>,
+        values: HashMap<SlotId, EntityUID>,
     ) -> Result<(), LinkingError> {
         let t = self
             .get_template(&template_id)
             .ok_or_else(|| LinkingError::NoSuchTemplate(template_id.clone()))?;
-        let r = Template::link(t, new_id.clone(), vals)?;
-        if self.links.contains_key(&new_id) || self.templates.contains_key(&new_id) {
-            Err(LinkingError::PolicyIdConflict)
-        } else {
-            if self.links.insert(new_id, r).is_some() {
-                unreachable!("Links already has `new_id` as a key!")
+        let r = Template::link(t, new_id.clone(), values)?;
+
+        // Both maps must not contain the `new_id`
+        match (
+            self.links.entry(new_id.clone()),
+            self.templates.entry(new_id),
+        ) {
+            (Entry::Vacant(links_entry), Entry::Vacant(_)) => {
+                links_entry.insert(r);
+                Ok(())
             }
-            Ok(())
+            _ => Err(LinkingError::PolicyIdConflict),
         }
     }
 
@@ -262,6 +263,8 @@ impl std::fmt::Display for PolicySet {
     }
 }
 
+// PANIC SAFETY tests
+#[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
     use std::collections::{BTreeMap, HashMap};

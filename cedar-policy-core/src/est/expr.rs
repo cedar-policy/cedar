@@ -590,6 +590,8 @@ impl TryFrom<Expr> for ast::Expr {
                 match call.len() {
                     0 => Err(EstToAstError::MissingOperator),
                     1 => {
+                        // PANIC SAFETY checked that `call.len() == 1`
+                        #[allow(clippy::expect_used)]
                         let (fn_name, args) = call
                             .into_iter()
                             .next()
@@ -1060,17 +1062,16 @@ fn interpret_primary(p: cst::Primary) -> Result<Either<ast::Name, Expr>, ParseEr
                 let maybe_name = path.to_name(&mut errs);
                 let maybe_eid = eid.as_valid_string(&mut errs);
 
-                if errs.is_empty() {
-                    let name = maybe_name.expect("should be Some since errs.is_empty()");
-                    let eid = maybe_eid.expect("should be Some since errs.is_empty()");
-                    Ok(Either::Right(Expr::lit(JSONValue::EntityEscape {
-                        __entity: TypeAndId::from(ast::EntityUID::from_components(
-                            name,
-                            ast::Eid::new(eid.clone()),
-                        )),
-                    })))
-                } else {
-                    Err(ParseErrors(errs))
+                match (maybe_name, maybe_eid) {
+                    (Some(name), Some(eid)) => {
+                        Ok(Either::Right(Expr::lit(JSONValue::EntityEscape {
+                            __entity: TypeAndId::from(ast::EntityUID::from_components(
+                                name,
+                                ast::Eid::new(eid.clone()),
+                            )),
+                        })))
+                    }
+                    _ => Err(ParseErrors(errs)),
                 }
             }
             Some(cst::Ref::Ref { .. }) => {
@@ -1221,69 +1222,18 @@ impl TryFrom<cst::Member> for Expr {
                                 })
                                 .collect::<Result<Vec<Expr>, ParseErrors>>()?;
                             match attr.as_str() {
-                                "contains" => match args.len() {
-                                    1 => {
-                                        let arg = args
-                                            .into_iter()
-                                            .next()
-                                            .expect("already checked there is 1 arg");
-                                        Either::Right(Expr::contains(left, arg))
-                                    }
-                                    0 => {
-                                        return Err(ParseError::ToAST(
-                                            "contains() must have an argument".to_string(),
-                                        )
-                                        .into())
-                                    }
-                                    _ => {
-                                        return Err(ParseError::ToAST(
-                                            "contains() must have only one argument".to_string(),
-                                        )
-                                        .into())
-                                    }
-                                },
-                                "containsAll" => match args.len() {
-                                    1 => {
-                                        let arg = args
-                                            .into_iter()
-                                            .next()
-                                            .expect("already checked there is 1 arg");
-                                        Either::Right(Expr::contains_all(left, arg))
-                                    }
-                                    0 => {
-                                        return Err(ParseError::ToAST(
-                                            "containsAll() must have an argument".to_string(),
-                                        )
-                                        .into())
-                                    }
-                                    _ => {
-                                        return Err(ParseError::ToAST(
-                                            "containsAll() must have only one argument".to_string(),
-                                        )
-                                        .into())
-                                    }
-                                },
-                                "containsAny" => match args.len() {
-                                    1 => {
-                                        let arg = args
-                                            .into_iter()
-                                            .next()
-                                            .expect("already checked there is 1 arg");
-                                        Either::Right(Expr::contains_any(left, arg))
-                                    }
-                                    0 => {
-                                        return Err(ParseError::ToAST(
-                                            "containsAny() must have an argument".to_string(),
-                                        )
-                                        .into())
-                                    }
-                                    _ => {
-                                        return Err(ParseError::ToAST(
-                                            "containsAny() must have only one argument".to_string(),
-                                        )
-                                        .into())
-                                    }
-                                },
+                                "contains" => Either::Right(Expr::contains(
+                                    left,
+                                    extract_single_argument(args, "contains()")?,
+                                )),
+                                "containsAll" => Either::Right(Expr::contains_all(
+                                    left,
+                                    extract_single_argument(args, "containsAll()")?,
+                                )),
+                                "containsAny" => Either::Right(Expr::contains_any(
+                                    left,
+                                    extract_single_argument(args, "containsAny()")?,
+                                )),
                                 _ => {
                                     // have to add the "receiver" argument as
                                     // first in the list for the method call
@@ -1299,14 +1249,12 @@ impl TryFrom<cst::Member> for Expr {
                         }
                     };
                 }
-                Some(cst::MemAccess::Index(ASTNode { node, .. })) if node.is_some() => {
-                    let s = Expr::try_from(node.unwrap())?
-                        .into_string_literal()
-                        .ok_or_else(|| {
-                            ParseError::ToAST(
-                                "attribute value must be a string literal".to_string(),
-                            )
-                        })?;
+                Some(cst::MemAccess::Index(ASTNode {
+                    node: Some(node), ..
+                })) => {
+                    let s = Expr::try_from(node)?.into_string_literal().ok_or_else(|| {
+                        ParseError::ToAST("attribute value must be a string literal".to_string())
+                    })?;
                     item = match item {
                         Either::Left(name) => {
                             return Err(ParseError::ToAST(format!(
@@ -1326,6 +1274,22 @@ impl TryFrom<cst::Member> for Expr {
             )))?,
             Either::Right(expr) => Ok(expr),
         }
+    }
+}
+
+fn extract_single_argument(
+    es: impl IntoIterator<Item = Expr>,
+    fn_name: &str,
+) -> Result<Expr, ParseErrors> {
+    let mut iter = es.into_iter().fuse().peekable();
+    let first = iter.next();
+    let second = iter.next();
+    match (first, second) {
+        (None, _) => Err(ParseError::ToAST(format!("{fn_name} must have an argument")).into()),
+        (Some(_), Some(_)) => {
+            Err(ParseError::ToAST(format!("{fn_name} must have only one argument")).into())
+        }
+        (Some(first), None) => Ok(first),
     }
 }
 
