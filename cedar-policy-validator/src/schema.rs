@@ -35,8 +35,8 @@ use smol_str::SmolStr;
 use crate::{
     schema_file_format,
     types::{AttributeType, Attributes, EntityRecordKind, Type},
-    ActionEntityUID, ActionType, SchemaFragment, SchemaType, SchemaTypeVariant, TypeOfAttribute,
-    SCHEMA_TYPE_VARIANT_TAGS,
+    ActionEntityUID, ActionType, SchemaFragment, SchemaLongBounds, SchemaLongDetails, SchemaType,
+    SchemaTypeVariant, TypeOfAttribute, SCHEMA_TYPE_VARIANT_TAGS,
 };
 
 use super::err::*;
@@ -667,17 +667,16 @@ impl ValidatorNamespaceDef {
     ) -> Result<WithUnresolvedTypeDefs<Type>> {
         match schema_ty {
             SchemaType::Type(SchemaTypeVariant::String) => Ok(Type::primitive_string().into()),
-            SchemaType::Type(SchemaTypeVariant::Long { min_opt, max_opt }) => {
-                match (min_opt, max_opt) {
-                    (None, None) => Ok(Type::long_any().into()),
-                    (Some(min), Some(max)) => {
+            SchemaType::Type(SchemaTypeVariant::Long(SchemaLongDetails { bounds_opt })) => {
+                match bounds_opt {
+                    None => Ok(Type::long_any().into()),
+                    Some(SchemaLongBounds { min, max }) => {
                         if min <= max {
                             Ok(Type::long_bounded(min, max).into())
                         } else {
                             Err(SchemaError::MalformedLongBounds)
                         }
                     }
-                    _ => Err(SchemaError::MalformedLongBounds),
                 }
             }
             SchemaType::Type(SchemaTypeVariant::Boolean) => Ok(Type::primitive_boolean().into()),
