@@ -16,14 +16,14 @@
 
 use super::{
     EntityUidJSON, JSONValue, JsonDeserializationError, JsonDeserializationErrorContext,
-    JsonSerializationError, SchemaType, TypeAndId, ValueParser,
+    JsonSerializationError, NullSchema, Schema, TypeAndId, ValueParser,
 };
-use crate::ast::{Entity, EntityType, RestrictedExpr};
+use crate::ast::{Entity, RestrictedExpr};
 use crate::entities::{Entities, EntitiesError, TCComputation};
 use crate::extensions::Extensions;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 /// Serde JSON format for a single entity
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -37,38 +37,6 @@ pub struct EntityJSON {
     attrs: HashMap<SmolStr, serde_json::Value>,
     /// Parents of the entity, specified in any form accepted by `EntityUidJSON`
     parents: Vec<EntityUidJSON>,
-}
-
-/// Trait for `Schema`s that can inform the parsing of Entity JSON data
-pub trait Schema {
-    /// Do entities of the given type have the given attribute, and if so, what type?
-    ///
-    /// Returning `None` indicates that attribute should not exist.
-    fn attr_type(&self, entity_type: &EntityType, attr: &str) -> Option<SchemaType>;
-
-    /// Get the names of all the required attributes for the given entity type.
-    fn required_attrs<'s>(
-        &'s self,
-        entity_type: &EntityType,
-    ) -> Box<dyn Iterator<Item = SmolStr> + 's>;
-
-    /// Get the entity types which are allowed to be parents of the given entity type.
-    fn allowed_parent_types<'s>(&'s self, entity_type: &EntityType) -> HashSet<EntityType>;
-}
-
-/// Simple type that implements `Schema` by expecting no attributes or parents to exist
-#[derive(Debug, Clone)]
-pub struct NullSchema;
-impl Schema for NullSchema {
-    fn attr_type(&self, _entity_type: &EntityType, _attr: &str) -> Option<SchemaType> {
-        None
-    }
-    fn required_attrs(&self, _entity_type: &EntityType) -> Box<dyn Iterator<Item = SmolStr>> {
-        Box::new(std::iter::empty())
-    }
-    fn allowed_parent_types(&self, _entity_type: &EntityType) -> HashSet<EntityType> {
-        HashSet::new()
-    }
 }
 
 /// Struct used to parse entities from JSON.
