@@ -15,15 +15,17 @@
  */
 
 use super::{
-    EntityUidJSON, JSONValue, JsonDeserializationError, JsonDeserializationErrorContext,
-    JsonSerializationError, NullSchema, Schema, TypeAndId, ValueParser,
+    EntityTypeDescription, EntityUidJSON, JSONValue, JsonDeserializationError,
+    JsonDeserializationErrorContext, JsonSerializationError, NoEntitiesSchema, Schema, TypeAndId,
+    ValueParser,
 };
-use crate::ast::{Entity, RestrictedExpr};
+use crate::ast::{Entity, EntityUID, RestrictedExpr};
 use crate::entities::{Entities, EntitiesError, TCComputation};
 use crate::extensions::Extensions;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Serde JSON format for a single entity
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -41,14 +43,14 @@ pub struct EntityJSON {
 
 /// Struct used to parse entities from JSON.
 #[derive(Debug, Clone)]
-pub struct EntityJsonParser<'e, 's, S: Schema = NullSchema> {
+pub struct EntityJsonParser<'e, S: Schema = NoEntitiesSchema> {
     /// If a `schema` is present, this will inform the parsing: for instance, it
     /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
     /// if attributes have the wrong types (e.g., string instead of integer).
     /// That does not mean it will fully enforce that the produced `Entities`
     /// conform to the `schema` -- for instance, as of this writing, it will not
     /// error for unexpected (additional) record attributes.
-    schema: Option<&'s S>,
+    schema: Option<S>,
 
     /// Extensions which are active for the JSON parsing.
     extensions: Extensions<'e>,
@@ -58,7 +60,19 @@ pub struct EntityJsonParser<'e, 's, S: Schema = NullSchema> {
     tc_computation: TCComputation,
 }
 
-impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
+/// Schema information about a single entity can take one of these forms:
+enum EntitySchemaInfo<E: EntityTypeDescription> {
+    /// There is no schema, i.e. we're not doing schema-based parsing
+    NoSchema,
+    /// The entity is an action, and here's the schema's copy of the
+    /// `Entity` object for it
+    Action(Arc<Entity>),
+    /// The entity is a non-action, and here's the schema's information
+    /// about its type
+    NonAction(E),
+}
+
+impl<'e, S: Schema> EntityJsonParser<'e, S> {
     /// Create a new `EntityJsonParser`.
     ///
     /// If a `schema` is provided, this will inform the parsing: for instance, it
@@ -71,7 +85,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
     /// If you pass `TCComputation::AssumeAlreadyComputed`, then the caller is
     /// responsible for ensuring that TC holds before calling this method.
     pub fn new(
-        schema: Option<&'s S>,
+        schema: Option<S>,
         extensions: Extensions<'e>,
         tc_computation: TCComputation,
     ) -> Self {
@@ -121,13 +135,40 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
             .uid
             .into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
         let etype = uid.entity_type();
-        // first, we ensure that all required attributes for `etype` are actually
-        // included in `ejson.attrs`. Later when consuming `ejson.attrs` to build
-        // `attrs`, we'll check for unexpected attributes.
-        match self.schema {
-            None => {}
-            Some(schema) => {
-                for required_attr in schema.required_attrs(etype) {
+        let entity_schema_info =
+            match &self.schema {
+                None => EntitySchemaInfo::NoSchema,
+                Some(schema) => {
+                    if etype.is_action() {
+                        EntitySchemaInfo::Action(schema.action(&uid).ok_or(
+                            JsonDeserializationError::UndeclaredAction { uid: uid.clone() },
+                        )?)
+                    } else {
+                        EntitySchemaInfo::NonAction(schema.entity_type(etype).ok_or(
+                            JsonDeserializationError::UnexpectedEntityType { uid: uid.clone() },
+                        )?)
+                    }
+                }
+            };
+        match &entity_schema_info {
+            EntitySchemaInfo::NoSchema => {} // no checks to do
+            EntitySchemaInfo::Action(action) => {
+                // here, we ensure that all the attributes on the schema's copy of the
+                // action do exist in `ejson.attrs`. Later when consuming `ejson.attrs`,
+                // we'll do the rest of the checks for attribute agreement.
+                for (schema_attr, _) in action.attrs() {
+                    if ejson.attrs.contains_key(schema_attr) {
+                        // all good
+                    } else {
+                        return Err(JsonDeserializationError::ActionDeclarationMismatch { uid });
+                    }
+                }
+            }
+            EntitySchemaInfo::NonAction(etype_desc) => {
+                // here, we ensure that all required attributes for `etype` are actually
+                // included in `ejson.attrs`. Later when consuming `ejson.attrs` to build
+                // `attrs`, we'll check for unexpected attributes.
+                for required_attr in etype_desc.required_attrs() {
                     if ejson.attrs.contains_key(&required_attr) {
                         // all good
                     } else {
@@ -143,8 +184,8 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
         let attrs: HashMap<SmolStr, RestrictedExpr> = ejson
             .attrs
             .into_iter()
-            .map(|(k, v)| match self.schema {
-                None => Ok((
+            .map(|(k, v)| match &entity_schema_info {
+                EntitySchemaInfo::NoSchema => Ok((
                     k.clone(),
                     vparser.val_into_rexpr(v, None, || {
                         JsonDeserializationErrorContext::EntityAttribute {
@@ -153,11 +194,10 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                         }
                     })?,
                 )),
-                Some(schema) => {
-                    // query the schema to get the expected type. Depending on
-                    // the expected type, we may parse the contents of the
-                    // attribute differently.
-                    let (rexpr, expected_ty) = match schema.attr_type(etype, &k) {
+                EntitySchemaInfo::NonAction(desc) => {
+                    // Depending on the expected type, we may parse the contents
+                    // of the attribute differently.
+                    let (rexpr, expected_ty) = match desc.attr_type(&k) {
                         // `None` indicates the attribute shouldn't exist -- see
                         // docs on the `attr_type()` trait method
                         None => {
@@ -201,14 +241,86 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                         })
                     }
                 }
+                EntitySchemaInfo::Action(action) => {
+                    // We'll do schema-based parsing assuming optimistically that
+                    // the type in the JSON is the same as the type in the schema.
+                    // (As of this writing, the schema doesn't actually tell us
+                    // what type each action attribute is supposed to be)
+                    let expected_rexpr = match action.get(&k) {
+                        // `None` indicates the attribute isn't in the schema's
+                        // copy of the action entity
+                        None => {
+                            return Err(JsonDeserializationError::ActionDeclarationMismatch {
+                                uid: uid.clone(),
+                            })
+                        }
+                        Some(rexpr) => rexpr,
+                    };
+                    let expected_ty =
+                        vparser.type_of_rexpr(expected_rexpr.as_borrowed(), || {
+                            JsonDeserializationErrorContext::EntityAttribute {
+                                uid: uid.clone(),
+                                attr: k.clone(),
+                            }
+                        })?;
+                    let actual_rexpr = vparser.val_into_rexpr(v, Some(&expected_ty), || {
+                        JsonDeserializationErrorContext::EntityAttribute {
+                            uid: uid.clone(),
+                            attr: k.clone(),
+                        }
+                    })?;
+                    if actual_rexpr == *expected_rexpr {
+                        Ok((k, actual_rexpr))
+                    } else {
+                        Err(JsonDeserializationError::ActionDeclarationMismatch {
+                            uid: uid.clone(),
+                        })
+                    }
+                }
             })
             .collect::<Result<_, JsonDeserializationError>>()?;
-        // this `allowed_parent_types` is `None` iff `self.schema` is `None`.
-        // As a consequence, if this `allowed_parent_types` is `None`, then
-        // there are no restrictions (any parent type is allowed)
-        let allowed_parent_types = self
-            .schema
-            .map(|schema| schema.allowed_parent_types(uid.entity_type()));
+        let is_parent_allowed = |parent_euid: &EntityUID| {
+            match &entity_schema_info {
+                EntitySchemaInfo::NoSchema => {
+                    if etype.is_action() {
+                        if parent_euid.is_action() {
+                            Ok(())
+                        } else {
+                            Err(JsonDeserializationError::ActionParentIsNotAnAction {
+                                uid: uid.clone(),
+                                parent: parent_euid.clone(),
+                            })
+                        }
+                    } else {
+                        Ok(()) // all parents are allowed
+                    }
+                }
+                EntitySchemaInfo::Action(action) => {
+                    // allowed iff the schema's copy also has this parent edge
+                    if action.is_descendant_of(parent_euid) {
+                        Ok(())
+                    } else {
+                        Err(JsonDeserializationError::ActionDeclarationMismatch {
+                            uid: uid.clone(),
+                        })
+                    }
+                }
+                EntitySchemaInfo::NonAction(desc) => {
+                    let parent_type = parent_euid.entity_type();
+                    if desc.allowed_parent_types().contains(parent_type) {
+                        Ok(())
+                    } else {
+                        Err(JsonDeserializationError::InvalidParentType {
+                            ctx: JsonDeserializationErrorContext::EntityParents {
+                                uid: uid.clone(),
+                            },
+                            uid: uid.clone(),
+                            parent_ty: parent_type.clone(),
+                        })
+                    }
+                }
+            }
+        };
         let parents = ejson
             .parents
             .into_iter()
@@ -218,17 +330,23 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 })
             })
             .map(|res| {
-                res.and_then(|parent_euid| match &allowed_parent_types {
-                    Some(set) if set.contains(parent_euid.entity_type()) => Ok(parent_euid),
-                    None => Ok(parent_euid),
-                    _ => Err(JsonDeserializationError::InvalidParentType {
-                        ctx: JsonDeserializationErrorContext::EntityParents { uid: uid.clone() },
-                        uid: uid.clone(),
-                        parent_ty: parent_euid.entity_type().clone(),
-                    }),
+                res.and_then(|parent_euid| {
+                    is_parent_allowed(&parent_euid)?;
+                    Ok(parent_euid)
                 })
             })
             .collect::<Result<_, JsonDeserializationError>>()?;
+        match &entity_schema_info {
+            EntitySchemaInfo::NoSchema => {}     // no checks to do
+            EntitySchemaInfo::NonAction(_) => {} // no checks to do
+            EntitySchemaInfo::Action(action) => {
+                // check that the json entity and the schema declaration
+                // fully agree on parents
+                if parents != *action.ancestors_set() {
+                    return Err(JsonDeserializationError::ActionDeclarationMismatch { uid });
+                }
+            }
+        }
         Ok(Entity::new(uid, attrs, parents))
     }
 }

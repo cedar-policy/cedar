@@ -285,7 +285,7 @@ mod json_parsing_tests {
             ]
         );
 
-        let eparser: EntityJsonParser<'_, '_> =
+        let eparser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let es = eparser
             .from_json_value(json)
@@ -328,7 +328,7 @@ mod json_parsing_tests {
             ]
         );
 
-        let eparser: EntityJsonParser<'_, '_> =
+        let eparser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let es = eparser.from_json_value(json).expect("JSON is correct");
 
@@ -381,7 +381,7 @@ mod json_parsing_tests {
             ]
         );
 
-        let eparser: EntityJsonParser<'_, '_> =
+        let eparser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let es = eparser.from_json_value(json).expect("JSON is correct");
 
@@ -460,7 +460,7 @@ mod json_parsing_tests {
             ]
         );
 
-        let eparser: EntityJsonParser<'_, '_> =
+        let eparser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let es = eparser.from_json_value(json).expect("JSON is correct");
 
@@ -486,7 +486,7 @@ mod json_parsing_tests {
     #[test]
     fn uid_failures() {
         // various JSON constructs that are invalid in `uid` and `parents` fields
-        let eparser: EntityJsonParser<'_, '_> =
+        let eparser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
 
         let json = serde_json::json!(
@@ -601,7 +601,7 @@ mod json_parsing_tests {
     fn roundtrip(entities: &Entities) -> Result<Entities> {
         let mut buf = Vec::new();
         entities.write_to_json(&mut buf)?;
-        let eparser: EntityJsonParser<'_, '_> =
+        let eparser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         eparser.from_json_str(&String::from_utf8(buf).expect("should be valid UTF-8"))
     }
@@ -723,6 +723,30 @@ mod json_parsing_tests {
             Err(EntitiesError::SerializationError(JsonSerializationError::ReservedKey { key })) if key.as_str() == "__entity"
         ));
     }
+
+    /// test that an Action having a non-Action parent is an error
+    #[test]
+    fn bad_action_parent() {
+        let json = serde_json::json!(
+            [
+                {
+                    "uid": { "type": "XYZ::Action", "id": "view" },
+                    "attrs": {},
+                    "parents": [
+                        { "type": "User", "id": "alice" }
+                    ]
+                }
+            ]
+        );
+        let eparser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let err = eparser.from_json_value(json).expect_err("should fail due to invalid action parent");
+        assert!(
+            err.to_string().contains(r#"XYZ::Action::"view" is an action, so it should not have a parent User::"alice", which is not an action"#),
+            "actual error message was {}",
+            err
+        );
+    }
 }
 
 #[cfg(test)]
@@ -804,69 +828,100 @@ mod schema_based_parsing_tests {
     use serde_json::json;
     use smol_str::SmolStr;
     use std::collections::HashSet;
+    use std::sync::Arc;
 
     /// Mock schema impl used for these tests
     struct MockSchema;
     impl Schema for MockSchema {
-        fn attr_type(&self, entity_type: &EntityType, attr: &str) -> Option<SchemaType> {
+        type EntityTypeDescription = MockEmployeeDescription;
+        fn entity_type(&self, entity_type: &EntityType) -> Option<MockEmployeeDescription> {
+            match entity_type.to_string().as_str() {
+                "Employee" => Some(MockEmployeeDescription),
+                _ => None,
+            }
+        }
+        fn action(&self, action: &EntityUID) -> Option<Arc<Entity>> {
+            match action.to_string().as_str() {
+                r#"Action::"view""# => Some(Arc::new(Entity::new(
+                    action.clone(),
+                    [(SmolStr::from("foo"), RestrictedExpr::val(34))]
+                        .into_iter()
+                        .collect(),
+                    [r#"Action::"readOnly""#.parse().expect("valid uid")]
+                        .into_iter()
+                        .collect(),
+                ))),
+                r#"Action::"readOnly""# => Some(Arc::new(Entity::with_uid(
+                    r#"Action::"readOnly""#.parse().expect("valid uid"),
+                ))),
+                _ => None,
+            }
+        }
+    }
+
+    /// Mock schema impl for the `Employee` type used in these tests
+    struct MockEmployeeDescription;
+    impl EntityTypeDescription for MockEmployeeDescription {
+        fn entity_type(&self) -> EntityType {
+            EntityType::Concrete(Name::parse_unqualified_name("Employee").expect("valid"))
+        }
+
+        fn attr_type(&self, attr: &str) -> Option<SchemaType> {
             let employee_ty = || SchemaType::Entity {
-                ty: EntityType::Concrete(Name::parse_unqualified_name("Employee").expect("valid")),
+                ty: self.entity_type(),
             };
             let hr_ty = || SchemaType::Entity {
                 ty: EntityType::Concrete(Name::parse_unqualified_name("HR").expect("valid")),
             };
-            match entity_type.to_string().as_str() {
-                "Employee" => match attr {
-                    "isFullTime" => Some(SchemaType::Bool),
-                    "numDirectReports" => Some(SchemaType::Long),
-                    "department" => Some(SchemaType::String),
-                    "manager" => Some(employee_ty()),
-                    "hr_contacts" => Some(SchemaType::Set {
-                        element_ty: Box::new(hr_ty()),
-                    }),
-                    "json_blob" => Some(SchemaType::Record {
-                        attrs: [
-                            ("inner1".into(), AttributeType::required(SchemaType::Bool)),
-                            ("inner2".into(), AttributeType::required(SchemaType::String)),
-                            (
-                                "inner3".into(),
-                                AttributeType::required(SchemaType::Record {
-                                    attrs: [(
-                                        "innerinner".into(),
-                                        AttributeType::required(employee_ty()),
-                                    )]
-                                    .into_iter()
-                                    .collect(),
-                                }),
-                            ),
-                        ]
-                        .into_iter()
-                        .collect(),
-                    }),
-                    "home_ip" => Some(SchemaType::Extension {
-                        name: Name::parse_unqualified_name("ipaddr").expect("valid"),
-                    }),
-                    "work_ip" => Some(SchemaType::Extension {
-                        name: Name::parse_unqualified_name("ipaddr").expect("valid"),
-                    }),
-                    "trust_score" => Some(SchemaType::Extension {
-                        name: Name::parse_unqualified_name("decimal").expect("valid"),
-                    }),
-                    "tricky" => Some(SchemaType::Record {
-                        attrs: [
-                            ("type".into(), AttributeType::required(SchemaType::String)),
-                            ("id".into(), AttributeType::required(SchemaType::String)),
-                        ]
-                        .into_iter()
-                        .collect(),
-                    }),
-                    _ => None,
-                },
+            match attr {
+                "isFullTime" => Some(SchemaType::Bool),
+                "numDirectReports" => Some(SchemaType::Long),
+                "department" => Some(SchemaType::String),
+                "manager" => Some(employee_ty()),
+                "hr_contacts" => Some(SchemaType::Set {
+                    element_ty: Box::new(hr_ty()),
+                }),
+                "json_blob" => Some(SchemaType::Record {
+                    attrs: [
+                        ("inner1".into(), AttributeType::required(SchemaType::Bool)),
+                        ("inner2".into(), AttributeType::required(SchemaType::String)),
+                        (
+                            "inner3".into(),
+                            AttributeType::required(SchemaType::Record {
+                                attrs: [(
+                                    "innerinner".into(),
+                                    AttributeType::required(employee_ty()),
+                                )]
+                                .into_iter()
+                                .collect(),
+                            }),
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                }),
+                "home_ip" => Some(SchemaType::Extension {
+                    name: Name::parse_unqualified_name("ipaddr").expect("valid"),
+                }),
+                "work_ip" => Some(SchemaType::Extension {
+                    name: Name::parse_unqualified_name("ipaddr").expect("valid"),
+                }),
+                "trust_score" => Some(SchemaType::Extension {
+                    name: Name::parse_unqualified_name("decimal").expect("valid"),
+                }),
+                "tricky" => Some(SchemaType::Record {
+                    attrs: [
+                        ("type".into(), AttributeType::required(SchemaType::String)),
+                        ("id".into(), AttributeType::required(SchemaType::String)),
+                    ]
+                    .into_iter()
+                    .collect(),
+                }),
                 _ => None,
             }
         }
 
-        fn required_attrs(&self, _entity_type: &EntityType) -> Box<dyn Iterator<Item = SmolStr>> {
+        fn required_attrs(&self) -> Box<dyn Iterator<Item = SmolStr>> {
             Box::new(
                 [
                     "isFullTime",
@@ -884,8 +939,8 @@ mod schema_based_parsing_tests {
             )
         }
 
-        fn allowed_parent_types(&self, _entity_type: &EntityType) -> HashSet<EntityType> {
-            HashSet::new()
+        fn allowed_parent_types(&self) -> Arc<HashSet<EntityType>> {
+            Arc::new(HashSet::new())
         }
     }
 
@@ -922,7 +977,7 @@ mod schema_based_parsing_tests {
         // without schema-based parsing, `home_ip` and `trust_score` are
         // strings, `manager` and `work_ip` are Records, `hr_contacts` contains
         // Records, and `json_blob.inner3.innerinner` is a Record
-        let eparser: EntityJsonParser<'_, '_> =
+        let eparser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let parsed = eparser
             .from_json_value(entitiesjson.clone())
@@ -982,7 +1037,7 @@ mod schema_based_parsing_tests {
 
         // but with schema-based parsing, we get these other types
         let eparser = EntityJsonParser::new(
-            Some(&MockSchema),
+            Some(MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -1114,7 +1169,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(&MockSchema),
+            Some(MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -1159,7 +1214,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(&MockSchema),
+            Some(MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -1202,7 +1257,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(&MockSchema),
+            Some(MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -1247,7 +1302,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(&MockSchema),
+            Some(MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -1293,7 +1348,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(&MockSchema),
+            Some(MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -1337,7 +1392,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(&MockSchema),
+            Some(MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -1382,7 +1437,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(&MockSchema),
+            Some(MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -1459,7 +1514,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(&MockSchema),
+            Some(MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -1503,7 +1558,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(&MockSchema),
+            Some(MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -1549,7 +1604,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(&MockSchema),
+            Some(MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -1598,7 +1653,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(&MockSchema),
+            Some(MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -1614,29 +1669,328 @@ mod schema_based_parsing_tests {
         );
     }
 
+    /// Test that involves an entity type not declared in the schema
+    #[test]
+    fn undeclared_entity_type() {
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "CEO", "id": "abcdef" },
+                    "attrs": {},
+                    "parents": []
+                }
+            ]
+        );
+        let eparser = EntityJsonParser::new(
+            Some(MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
+        let err = eparser
+            .from_json_value(entitiesjson)
+            .expect_err("should fail due to undeclared entity type");
+        assert!(
+            err.to_string()
+                .contains(r#"CEO::"abcdef" has type CEO which is not declared in the schema"#),
+            "actual error message was {}",
+            err
+        );
+    }
+
+    /// Test that involves an action not declared in the schema
+    #[test]
+    fn undeclared_action() {
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Action", "id": "update" },
+                    "attrs": {},
+                    "parents": []
+                }
+            ]
+        );
+        let eparser = EntityJsonParser::new(
+            Some(MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
+        let err = eparser
+            .from_json_value(entitiesjson)
+            .expect_err("should fail due to undeclared action");
+        assert!(
+            err.to_string().contains(
+                r#"Found entity data for Action::"update", but it was not declared as an action in the schema"#
+            ),
+            "actual error message was {}",
+            err
+        );
+    }
+
+    /// Test that involves an action also declared (identically) in the schema
+    #[test]
+    fn action_declared_both_places() {
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Action", "id": "view" },
+                    "attrs": {
+                        "foo": 34
+                    },
+                    "parents": [
+                        { "type": "Action", "id": "readOnly" }
+                    ]
+                }
+            ]
+        );
+        let eparser = EntityJsonParser::new(
+            Some(MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
+        let entities = eparser
+            .from_json_value(entitiesjson)
+            .expect("should parse sucessfully");
+        assert_eq!(entities.iter().count(), 1);
+        let expected_uid = r#"Action::"view""#.parse().expect("valid uid");
+        let parsed_entity = match entities.entity(&expected_uid) {
+            Dereference::Data(e) => e,
+            _ => panic!("expected entity to exist and be concrete"),
+        };
+        assert_eq!(parsed_entity.uid(), expected_uid);
+    }
+
+    /// Test that involves an action also declared in the schema, but an attribute has a different value (of the same type)
+    #[test]
+    fn action_attr_wrong_val() {
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Action", "id": "view" },
+                    "attrs": {
+                        "foo": 6789
+                    },
+                    "parents": [
+                        { "type": "Action", "id": "readOnly" }
+                    ]
+                }
+            ]
+        );
+        let eparser = EntityJsonParser::new(
+            Some(MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
+        let err = eparser.from_json_value(entitiesjson).expect_err(
+            "should fail due to action attribute having a different value in schema and json",
+        );
+        assert!(
+            err.to_string().contains(
+                r#"Definition of Action::"view" does not match the schema's declaration of that action"#
+            ),
+            "actual error message was {}",
+            err
+        );
+    }
+
+    /// Test that involves an action also declared in the schema, but an attribute has a different type
+    #[test]
+    fn action_attr_wrong_type() {
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Action", "id": "view" },
+                    "attrs": {
+                        "foo": "bar"
+                    },
+                    "parents": [
+                        { "type": "Action", "id": "readOnly" }
+                    ]
+                }
+            ]
+        );
+        let eparser = EntityJsonParser::new(
+            Some(MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
+        let err = eparser.from_json_value(entitiesjson).expect_err(
+            "should fail due to action attribute having a different type in schema and json",
+        );
+        assert!(
+            err.to_string().contains(
+                r#"Definition of Action::"view" does not match the schema's declaration of that action"#
+            ),
+            "actual error message was {}",
+            err
+        );
+    }
+
+    /// Test that involves an action also declared in the schema, but the schema has an attribute that the JSON does not
+    #[test]
+    fn action_attr_missing_in_json() {
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Action", "id": "view" },
+                    "attrs": {},
+                    "parents": [
+                        { "type": "Action", "id": "readOnly" }
+                    ]
+                }
+            ]
+        );
+        let eparser = EntityJsonParser::new(
+            Some(MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
+        let err = eparser
+            .from_json_value(entitiesjson)
+            .expect_err("should fail due to action attribute missing in json");
+        assert!(
+            err.to_string().contains(
+                r#"Definition of Action::"view" does not match the schema's declaration of that action"#
+            ),
+            "actual error message was {}",
+            err
+        );
+    }
+
+    /// Test that involves an action also declared in the schema, but the JSON has an attribute that the schema does not
+    #[test]
+    fn action_attr_missing_in_schema() {
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Action", "id": "view" },
+                    "attrs": {
+                        "foo": "bar",
+                        "wow": false
+                    },
+                    "parents": [
+                        { "type": "Action", "id": "readOnly" }
+                    ]
+                }
+            ]
+        );
+        let eparser = EntityJsonParser::new(
+            Some(MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
+        let err = eparser
+            .from_json_value(entitiesjson)
+            .expect_err("should fail due to action attribute missing in schema");
+        assert!(
+            err.to_string().contains(
+                r#"Definition of Action::"view" does not match the schema's declaration of that action"#
+            ),
+            "actual error message was {}",
+            err
+        );
+    }
+
+    /// Test that involves an action also declared in the schema, but the schema has a parent that the JSON does not
+    #[test]
+    fn action_parent_missing_in_json() {
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Action", "id": "view" },
+                    "attrs": {
+                        "foo": 34
+                    },
+                    "parents": []
+                }
+            ]
+        );
+        let eparser = EntityJsonParser::new(
+            Some(MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
+        let err = eparser
+            .from_json_value(entitiesjson)
+            .expect_err("should fail due to action parent missing in json");
+        assert!(
+            err.to_string().contains(
+                r#"Definition of Action::"view" does not match the schema's declaration of that action"#
+            ),
+            "actual error message was {}",
+            err
+        );
+    }
+
+    /// Test that involves an action also declared in the schema, but the JSON has a parent that the schema does not
+    #[test]
+    fn action_parent_missing_in_schema() {
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Action", "id": "view" },
+                    "attrs": {
+                        "foo": 34
+                    },
+                    "parents": [
+                        { "type": "Action", "id": "readOnly" },
+                        { "type": "Action", "id": "coolActions" }
+                    ]
+                }
+            ]
+        );
+        let eparser = EntityJsonParser::new(
+            Some(MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
+        let err = eparser
+            .from_json_value(entitiesjson)
+            .expect_err("should fail due to action parent missing in schema");
+        assert!(
+            err.to_string().contains(
+                r#"Definition of Action::"view" does not match the schema's declaration of that action"#
+            ),
+            "actual error message was {}",
+            err
+        );
+    }
+
     /// Test that involves namespaced entity types
     #[test]
     fn namespaces() {
         struct MockSchema;
         impl Schema for MockSchema {
-            fn attr_type(&self, entity_type: &EntityType, attr: &str) -> Option<SchemaType> {
-                match entity_type.to_string().as_str() {
-                    "XYZCorp::Employee" => match attr {
-                        "isFullTime" => Some(SchemaType::Bool),
-                        "department" => Some(SchemaType::String),
-                        "manager" => Some(SchemaType::Entity {
-                            ty: EntityType::Concrete("XYZCorp::Employee".parse().expect("valid")),
-                        }),
-                        _ => None,
-                    },
+            type EntityTypeDescription = MockEmployeeDescription;
+            fn entity_type(&self, entity_type: &EntityType) -> Option<MockEmployeeDescription> {
+                if &entity_type.to_string() == "XYZCorp::Employee" {
+                    Some(MockEmployeeDescription)
+                } else {
+                    None
+                }
+            }
+            fn action(&self, _action: &EntityUID) -> Option<Arc<Entity>> {
+                None
+            }
+        }
+
+        struct MockEmployeeDescription;
+        impl EntityTypeDescription for MockEmployeeDescription {
+            fn entity_type(&self) -> EntityType {
+                EntityType::Concrete("XYZCorp::Employee".parse().expect("valid"))
+            }
+
+            fn attr_type(&self, attr: &str) -> Option<SchemaType> {
+                match attr {
+                    "isFullTime" => Some(SchemaType::Bool),
+                    "department" => Some(SchemaType::String),
+                    "manager" => Some(SchemaType::Entity {
+                        ty: self.entity_type(),
+                    }),
                     _ => None,
                 }
             }
 
-            fn required_attrs(
-                &self,
-                _entity_type: &EntityType,
-            ) -> Box<dyn Iterator<Item = SmolStr>> {
+            fn required_attrs(&self) -> Box<dyn Iterator<Item = SmolStr>> {
                 Box::new(
                     ["isFullTime", "department", "manager"]
                         .map(SmolStr::new)
@@ -1644,8 +1998,8 @@ mod schema_based_parsing_tests {
                 )
             }
 
-            fn allowed_parent_types(&self, _entity_type: &EntityType) -> HashSet<EntityType> {
-                HashSet::new()
+            fn allowed_parent_types(&self) -> Arc<HashSet<EntityType>> {
+                Arc::new(HashSet::new())
             }
         }
 
@@ -1663,7 +2017,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(&MockSchema),
+            Some(MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );

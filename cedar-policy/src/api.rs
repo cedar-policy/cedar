@@ -194,7 +194,7 @@ impl Entities {
         schema: Option<&Schema>,
     ) -> Result<Self, entities::EntitiesError> {
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| &s.0),
+            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
@@ -212,7 +212,7 @@ impl Entities {
         schema: Option<&Schema>,
     ) -> Result<Self, entities::EntitiesError> {
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| &s.0),
+            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
@@ -230,7 +230,7 @@ impl Entities {
         schema: Option<&Schema>,
     ) -> Result<Self, entities::EntitiesError> {
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| &s.0),
+            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );

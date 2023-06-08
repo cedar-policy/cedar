@@ -34,6 +34,16 @@ pub enum EntityType {
     Unspecified,
 }
 
+impl EntityType {
+    /// Is this an Action entity type
+    pub fn is_action(&self) -> bool {
+        match self {
+            Self::Concrete(name) => name.basename() == &Id::new_unchecked("Action"),
+            Self::Unspecified => false,
+        }
+    }
+}
+
 // Note: the characters '<' and '>' are not allowed in `Name`s, so the display for
 // `Unspecified` never conflicts with `Concrete(name)`.
 impl std::fmt::Display for EntityType {
@@ -130,6 +140,11 @@ impl EntityUID {
     /// Get the Eid component.
     pub fn eid(&self) -> &Eid {
         &self.eid
+    }
+
+    /// Does this EntityUID refer to an action entity?
+    pub fn is_action(&self) -> bool {
+        self.entity_type().is_action()
     }
 }
 
@@ -249,6 +264,12 @@ impl Entity {
     /// This function is available only inside Core.
     pub(crate) fn attrs(&self) -> &HashMap<SmolStr, RestrictedExpr> {
         &self.attrs
+    }
+
+    /// Read-only access the internal `ancestors` hashset.
+    /// This function is available only inside Core.
+    pub(crate) fn ancestors_set(&self) -> &HashSet<EntityUID> {
+        &self.ancestors
     }
 
     /// Set the given attribute to the given value.

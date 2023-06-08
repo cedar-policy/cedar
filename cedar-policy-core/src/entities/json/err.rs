@@ -68,14 +68,45 @@ pub enum JsonDeserializationError {
         /// Expression we got instead
         got: Box<RestrictedExpr>,
     },
+    /// Parents of actions should be actions, but this action has a non-action parent
+    #[error("{uid} is an action, so it should not have a parent {parent}, which is not an action")]
+    ActionParentIsNotAnAction {
+        /// Action entity that had the invalid parent
+        uid: EntityUID,
+        /// Parent that is invalid
+        parent: EntityUID,
+    },
     /// Schema-based parsing needed an implicit extension constructor, but no suitable
     /// constructor was found
-    #[error("Extension constructor for {arg_type} -> {return_type} not found")]
+    #[error("{ctx}, extension constructor for {arg_type} -> {return_type} not found")]
     ImpliedConstructorNotFound {
+        /// Context of this error
+        ctx: JsonDeserializationErrorContext,
         /// return type of the constructor we were looking for
         return_type: Box<SchemaType>,
         /// argument type of the constructor we were looking for
         arg_type: Box<SchemaType>,
+    },
+    /// During schema-based parsing, encountered an entity of a type which is
+    /// not declared in the schema. (This error is only used for non-Action entity types.)
+    #[error("{uid} has type {} which is not declared in the schema", &.uid.entity_type())]
+    UnexpectedEntityType {
+        /// Entity that had the unexpected type
+        uid: EntityUID,
+    },
+    /// During schema-based parsing, encountered an action which was not
+    /// declared in the schema
+    #[error("Found entity data for {uid}, but it was not declared as an action in the schema")]
+    UndeclaredAction {
+        /// Action which was not declared in the schema
+        uid: EntityUID,
+    },
+    /// During schema-based parsing, encountered an action whose definition
+    /// doesn't precisely match the schema's declaration of that action
+    #[error("Definition of {uid} does not match the schema's declaration of that action")]
+    ActionDeclarationMismatch {
+        /// Action whose definition mismatched between entity data and schema
+        uid: EntityUID,
     },
     /// During schema-based parsing, encountered this attribute on this entity, but that
     /// attribute shouldn't exist on entities of this type
