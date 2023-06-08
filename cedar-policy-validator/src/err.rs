@@ -98,6 +98,9 @@ pub enum SchemaError {
     /// An Action Entity (transitively) has an attribute of unsupported type (ExprEscape, EntityEscape or ExtnEscape)
     #[error("An action entity has attribute with unsupported type: (escaped expression, entity or extension)")]
     ActionEntityAttributeUnsupportedType,
+    /// Malformed bounds information on a declaration of type `Long`.
+    #[error("Malformed bounds information on a declaration of type `Long`")]
+    MalformedLongBounds,
 }
 
 impl From<transitive_closure::Err<EntityUID>> for SchemaError {

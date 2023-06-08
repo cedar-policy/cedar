@@ -1,0 +1,34 @@
+// Note: 2^63 == 9223372036854775808; Long can be [-2^63, 2^63 - 1]
+// 1 <= principal.x8 <= 8
+
+// Add: OK
+permit(principal == User::"alice", action, resource)
+when { principal.x8 + 9223372036854775799 > 0 };
+
+// Add: overflow
+permit(principal == User::"alice", action, resource)
+when { principal.x8 + 9223372036854775800 > 0 };
+
+// Sub: OK
+permit(principal == User::"alice", action, resource)
+when { -9223372036854775800 - principal.x8 < 0 };
+
+// Sub: overflow
+permit(principal == User::"alice", action, resource)
+when { -9223372036854775801 - principal.x8 < 0 };
+
+// Mul: OK
+permit(principal == User::"alice", action, resource)
+when { 1152921504606846975 * principal.x8 > 0 };
+
+// Mul: overflow
+permit(principal == User::"alice", action, resource)
+when { 1152921504606846976 * principal.x8 > 0 };
+
+// Neg: OK
+permit(principal == User::"alice", action, resource)
+when { -(-9223372036854775799 - principal.x8) > 0 };
+
+// Neg: overflow
+permit(principal == User::"alice", action, resource)
+when { -(-9223372036854775800 - principal.x8) > 0 };

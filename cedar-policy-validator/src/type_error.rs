@@ -188,6 +188,14 @@ impl TypeError {
             kind: TypeErrorKind::NonLitExtConstructor,
         }
     }
+
+    pub(crate) fn arithmetic_overflow<T>(on_expr: Expr<T>) -> Self {
+        Self {
+            on_expr: None,
+            source_location: on_expr.into_source_info(),
+            kind: TypeErrorKind::ArithmeticOverflow,
+        }
+    }
 }
 
 impl Display for TypeError {
@@ -244,6 +252,8 @@ pub enum TypeErrorKind {
     EmptySetForbidden,
     #[error("extension constructors may not be called with non-literal expressions")]
     NonLitExtConstructor,
+    #[error("possible arithmetic overflow")]
+    ArithmeticOverflow,
 }
 
 /// Structure containing details about an unexpected type error.

@@ -20,7 +20,7 @@ use serde_with::serde_as;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap};
 
-use crate::Result;
+use crate::{Result, SchemaError};
 
 /// A SchemaFragment describe the types for a given instance of Cedar.
 /// SchemaFragments are composed of Entity Types and Action Types. The
@@ -214,7 +214,7 @@ impl From<SchemaTypeVariant> for SchemaType {
 #[serde(deny_unknown_fields)]
 pub enum SchemaTypeVariant {
     String,
-    Long,
+    Long(SchemaLongDetails),
     Boolean,
     Set {
         element: Box<SchemaType>,
@@ -275,6 +275,107 @@ impl SchemaType {
     }
 }
 
+impl SchemaTypeVariant {
+    pub fn long_static_top() -> SchemaTypeVariant {
+        SchemaTypeVariant::Long(SchemaLongDetails {
+            bounds_opt: Some(SchemaLongBounds {
+                min: i64::MIN,
+                max: i64::MAX,
+            }),
+        })
+    }
+}
+
+// In the schema file, we want the bounds of a Long attribute to be given as
+// "min" and "max" fields at the same level as `"type": "Long"` with both or
+// neither present (I think; this is subject to UX review). But for the Rust
+// code, it's more convenient to represent the bounds as an optional pair, and
+// for better or for worse, there's a bunch of code that manipulates
+// SchemaTypeVariants once we count the DRT code, so it's worth some amount of
+// trouble to perform the conversion. We do it via `#[serde({try_from,into})]`,
+// which are only supported on structs, so we have to introduce
+// `SchemaLongDetails` rather than putting `bounds_opt` directly in
+// `SchemaTypeVariant::Long`. `SchemaLongDetails` adds some boilerplate for
+// callers, but it's not as bad as having separate optional `min` and `max`
+// fields.
+//
+// We previously tried putting `#[serde(flatten)]` on `bounds_opt`, but if the
+// schema file specified `min` but not `max` or vice versa, that approach
+// silently set `bounds_opt` to `None` and didn't give us a way to detect the
+// error.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(try_from = "SchemaLongDetailsJson")]
+#[serde(into = "SchemaLongDetailsJson")]
+pub struct SchemaLongDetails {
+    pub bounds_opt: Option<SchemaLongBounds>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct SchemaLongBounds {
+    pub min: i64,
+    pub max: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+struct SchemaLongDetailsJson {
+    min: Option<i64>,
+    max: Option<i64>,
+}
+
+impl TryFrom<SchemaLongDetailsJson> for SchemaLongDetails {
+    type Error = SchemaError;
+    fn try_from(value: SchemaLongDetailsJson) -> Result<Self> {
+        match value {
+            SchemaLongDetailsJson {
+                min: None,
+                max: None,
+            } => Ok(SchemaLongDetails { bounds_opt: None }),
+            SchemaLongDetailsJson {
+                min: Some(min),
+                max: Some(max),
+            } => Ok(SchemaLongDetails {
+                bounds_opt: Some(SchemaLongBounds { min, max }),
+            }),
+            _ => Err(SchemaError::MalformedLongBounds),
+        }
+    }
+}
+
+impl From<SchemaLongDetails> for SchemaLongDetailsJson {
+    fn from(value: SchemaLongDetails) -> SchemaLongDetailsJson {
+        match value.bounds_opt {
+            None => SchemaLongDetailsJson {
+                min: None,
+                max: None,
+            },
+            Some(SchemaLongBounds { min, max }) => SchemaLongDetailsJson {
+                min: Some(min),
+                max: Some(max),
+            },
+        }
+    }
+}
+
+#[cfg(fuzzing)]
+pub fn arbitrary_schematypevariant_long<'a>(
+    allow_long_any: bool,
+    u: &mut arbitrary::Unstructured<'a>,
+) -> arbitrary::Result<SchemaTypeVariant> {
+    let bounds_opt = if !allow_long_any || u.ratio(1, 2)? {
+        let bound1 = u.arbitrary()?;
+        let bound2 = u.arbitrary()?;
+        Some(SchemaLongBounds {
+            min: i64::min(bound1, bound2),
+            max: i64::max(bound1, bound2),
+        })
+    } else {
+        None
+    };
+    Ok(SchemaTypeVariant::Long(SchemaLongDetails { bounds_opt }))
+}
+
+// TODO: It looks like this is unused except by arbitrary_schematype_size_hint.
+// Do we really want to continue maintaining it?
 #[cfg(fuzzing)]
 impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<SchemaType> {
@@ -283,7 +384,7 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
 
         Ok(SchemaType::Type(match u.int_in_range::<u8>(1..=8)? {
             1 => SchemaTypeVariant::String,
-            2 => SchemaTypeVariant::Long,
+            2 => arbitrary_schematypevariant_long(true, u)?,
             3 => SchemaTypeVariant::Boolean,
             4 => SchemaTypeVariant::Set {
                 element: Box::new(u.arbitrary()?),
