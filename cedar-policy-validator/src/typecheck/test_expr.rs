@@ -19,7 +19,10 @@
 #![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
-use cedar_policy_core::ast::{BinaryOp, EntityUID, Expr, PatternElem, SlotId, Var};
+use cedar_policy_core::{
+    ast::{BinaryOp, EntityUID, Expr, PatternElem, SlotId, Var},
+    parser::parse_expr,
+};
 use serde_json::json;
 use smol_str::SmolStr;
 
@@ -139,7 +142,7 @@ fn heterogeneous_set() {
 fn record_typechecks() {
     assert_typechecks_empty_schema(
         Expr::record([("foo".into(), Expr::val(1))]),
-        Type::record_with_required_attributes([("foo".into(), Type::primitive_long())]),
+        Type::closed_record_with_required_attributes([("foo".into(), Type::primitive_long())]),
     )
 }
 
@@ -499,6 +502,60 @@ fn entity_has_typechecks() {
 fn record_has_typechecks() {
     assert_typechecks_empty_schema(
         Expr::has_attr(Expr::var(Var::Context), "attr".into()),
+        Type::singleton_boolean(false),
+    );
+    assert_typechecks_empty_schema(
+        Expr::has_attr(Expr::record([]), "attr".into()),
+        Type::singleton_boolean(false),
+    );
+    assert_typechecks_empty_schema(
+        parse_expr("{a: 1} has a").unwrap(),
+        Type::singleton_boolean(true),
+    );
+}
+
+#[test]
+fn record_lub_has_typechecks() {
+    assert_typechecks_empty_schema(
+        parse_expr("(if 1 > 0 then {a: 1} else {a: 2}) has a").unwrap(),
+        Type::singleton_boolean(true),
+    );
+    assert_typechecks_empty_schema(
+        parse_expr("(if 1 > 0 then {a: 1} else {a: 2}) has b").unwrap(),
+        Type::singleton_boolean(false),
+    );
+    assert_typechecks_empty_schema(
+        parse_expr("(if 1 > 0 then {a: 1} else {a: 2, b: 3}) has a").unwrap(),
+        Type::singleton_boolean(true),
+    );
+    assert_typechecks_empty_schema(
+        parse_expr("(if 1 > 0 then {a: 1, b: 2} else {a: 1, c: 2}) has a").unwrap(),
+        Type::singleton_boolean(true),
+    );
+    assert_typechecks_empty_schema(
+        parse_expr("(if 1 > 0 then {a: 1} else {}) has a").unwrap(),
+        Type::primitive_boolean(),
+    );
+    assert_typechecks_empty_schema(
+        parse_expr("(if 1 > 0 then {a: 1, b: 2} else {a: 1, c: 2}) has b").unwrap(),
+        Type::primitive_boolean(),
+    );
+    assert_typechecks_empty_schema(
+        parse_expr("(if 1 > 0 then (if 1 > 0 then {a: 1} else {}) else {}) has a").unwrap(),
+        Type::primitive_boolean(),
+    );
+
+    // These cases are imprecise.
+    assert_typechecks_empty_schema(
+        parse_expr("(if 1 > 0 then {a: 1} else {}) has c").unwrap(),
+        Type::primitive_boolean(),
+    );
+    assert_typechecks_empty_schema(
+        parse_expr("(if 1 > 0 then {a: 1} else {b: 2}) has c").unwrap(),
+        Type::primitive_boolean(),
+    );
+    assert_typechecks_empty_schema(
+        parse_expr("(if 1 > 0 then {a: 1} else {a : false}) has a").unwrap(),
         Type::primitive_boolean(),
     );
 }
@@ -535,10 +592,11 @@ fn record_get_attr_incompatible() {
     );
     assert_typecheck_fails_empty_schema_without_type(
         Expr::get_attr(if_expr.clone(), attr.clone()),
-        vec![TypeError::missing_attribute(
+        vec![TypeError::unsafe_attribute_access(
             Expr::get_attr(if_expr, attr.clone()),
             attr.to_string(),
             None,
+            true,
         )],
     );
 }
@@ -568,7 +626,10 @@ fn record_get_attr_lub_typecheck_fails() {
         vec![TypeError::incompatible_types(
             if_expr,
             vec![
-                Type::record_with_required_attributes([(attr, Type::singleton_boolean(true))]),
+                Type::closed_record_with_required_attributes([(
+                    attr,
+                    Type::singleton_boolean(true),
+                )]),
                 Type::primitive_long(),
             ],
         )],
@@ -580,10 +641,11 @@ fn record_get_attr_does_not_exist() {
     let attr: SmolStr = "foo".into();
     assert_typecheck_fails_empty_schema_without_type(
         Expr::get_attr(Expr::record([]), attr.clone()),
-        vec![TypeError::missing_attribute(
+        vec![TypeError::unsafe_attribute_access(
             Expr::get_attr(Expr::record([]), attr.clone()),
             attr.to_string(),
             None,
+            false,
         )],
     );
 }
@@ -598,10 +660,11 @@ fn record_get_attr_lub_does_not_exist() {
     );
     assert_typecheck_fails_empty_schema_without_type(
         Expr::get_attr(if_expr.clone(), attr.clone()),
-        vec![TypeError::missing_attribute(
+        vec![TypeError::unsafe_attribute_access(
             Expr::get_attr(if_expr, attr.clone()),
             attr.to_string(),
             None,
+            false,
         )],
     );
 }
@@ -686,7 +749,7 @@ fn contains_typecheck_fails() {
         vec![TypeError::expected_type(
             Expr::record([("foo".into(), Expr::val(1))]),
             Type::any_set(),
-            Type::record_with_attributes([(
+            Type::closed_record_with_attributes([(
                 "foo".into(),
                 AttributeType::new(Type::primitive_long(), true),
             )]),

@@ -243,7 +243,7 @@ fn policy_invalid_attribute() {
                 r#"permit(principal, action in [Action::"delete_group", Action::"view_photo"], resource) when { resource.file_type == "jpg" };"#
             ).expect("Policy should parse."),
             vec![
-                TypeError::missing_attribute(Expr::get_attr(Expr::var(Var::Resource), "file_type".into()), "file_type".into(), Some("name".into()))
+                TypeError::unsafe_attribute_access(Expr::get_attr(Expr::var(Var::Resource), "file_type".into()), "file_type".into(), Some("name".into()), false)
             ],
         );
 }
@@ -256,7 +256,7 @@ fn policy_invalid_attribute_2() {
                 r#"permit(principal, action == Action::"view_photo", resource) when { principal.age > 21 };"#
             ).expect("Policy should parse."),
             vec![
-                TypeError::missing_attribute(Expr::get_attr(Expr::var(Var::Principal), "age".into()), "age".into(), Some("name".into()))
+                TypeError::unsafe_attribute_access(Expr::get_attr(Expr::var(Var::Principal), "age".into()), "age".into(), Some("name".into()), false)
             ]
         );
 }
@@ -419,11 +419,12 @@ fn entity_lub_cant_access_attribute_not_shared() {
     assert_policy_typecheck_fails_simple_schema(
         p,
         vec![
-            TypeError::missing_attribute(
+            TypeError::unsafe_attribute_access(
                 parse_expr(r#"(if 1 > 0 then User::"alice" else Photo::"vacation.jpg").name"#)
                     .unwrap(),
                 "name".into(),
                 None,
+                true,
             ),
             TypeError::types_must_match(
                 parse_expr(r#"if 1 > 0 then User::"alice" else Photo::"vacation.jpg""#).unwrap(),
@@ -442,10 +443,11 @@ fn entity_attribute_recommendation() {
         Some("0".to_string()),
         r#"permit(principal, action == Action::"view_photo", resource) when {resource.filetype like "*jpg" }; "#
     ).expect("Policy should parse");
-    let expected = TypeError::missing_attribute(
+    let expected = TypeError::unsafe_attribute_access(
         Expr::get_attr(Expr::var(Var::Resource), "filetype".into()),
         "filetype".into(),
         Some("file_type".into()),
+        false,
     );
     assert_policy_typecheck_fails_simple_schema(p, vec![expected]);
 }
@@ -481,7 +483,7 @@ fn entity_record_lub_is_none() {
             TypeError::incompatible_types(
                 parse_expr(r#"if 1 > 0 then User::"alice" else {name: "bob"}"#).unwrap(),
                 [
-                    Type::record_with_required_attributes([("name".into(), Type::primitive_string())]),
+                    Type::closed_record_with_required_attributes([("name".into(), Type::primitive_string())]),
                     Type::named_entity_reference_from_str("User"),
                 ]
             )
@@ -694,7 +696,7 @@ fn record_entity_lub_non_term() {
         vec![TypeError::incompatible_types(
             parse_expr(r#"if principal.bar then principal.foo else U::"b""#).unwrap(),
             [
-                Type::record_with_required_attributes([(
+                Type::closed_record_with_required_attributes([(
                     "foo".into(),
                     Type::named_entity_reference_from_str("U"),
                 )]),

@@ -370,8 +370,8 @@ fn ext_struct_non_lit() {
         assert_strict_type_error(
             s,
             &q,
-            parser::parse_expr(r#"ip(if context has foo then "a" else "b")"#).unwrap(),
-            parser::parse_expr(r#"ip(if context has foo then "a" else "b")"#).unwrap(),
+            parser::parse_expr(r#"ip(if 1 > 0 then "a" else "b")"#).unwrap(),
+            parser::parse_expr(r#"ip(if 1 > 0 then "a" else "b")"#).unwrap(),
             Type::extension("ipaddr".parse().unwrap()),
             TypeErrorKind::NonLitExtConstructor,
         )
@@ -381,8 +381,8 @@ fn ext_struct_non_lit() {
         assert_strict_type_error(
             s,
             &q,
-            parser::parse_expr(r#"decimal(if context has bar then "0.1" else "1.0")"#).unwrap(),
-            parser::parse_expr(r#"decimal(if context has bar then "0.1" else "1.0")"#).unwrap(),
+            parser::parse_expr(r#"decimal(if 1 > 0 then "0.1" else "1.0")"#).unwrap(),
+            parser::parse_expr(r#"decimal(if 1 > 0 then "0.1" else "1.0")"#).unwrap(),
             Type::extension("decimal".parse().unwrap()),
             TypeErrorKind::NonLitExtConstructor,
         )
@@ -568,16 +568,32 @@ fn test_has_attr() {
             s.clone(),
             &q,
             parser::parse_expr(r#"{name: "foo"} has bar"#).unwrap(),
-            parser::parse_expr(r#"{name: "foo"} has bar"#).unwrap(),
+            parser::parse_expr(r#"false"#).unwrap(),
+            Type::primitive_boolean(),
+        );
+        assert_typechecks_strict(
+            s.clone(),
+            &q,
+            parser::parse_expr(r#"{name: "foo"} has name"#).unwrap(),
+            parser::parse_expr(r#"true"#).unwrap(),
             Type::primitive_boolean(),
         );
         assert_types_must_match(
             s,
             &q,
-            parser::parse_expr(r#"{name: 1 == "foo"} has bar"#).unwrap(),
-            parser::parse_expr(r#"{name: 1 == "foo"} has bar"#).unwrap(),
+            parser::parse_expr(r#"(if 1 == 2 then {name: 1} else {bar: 2}) has bar"#).unwrap(),
+            parser::parse_expr(r#"(if 1 == 2 then {name: 1} else {bar: 2}) has bar"#).unwrap(),
             Type::primitive_boolean(),
-            [Type::primitive_long(), Type::primitive_string()],
+            [
+                Type::closed_record_with_required_attributes([(
+                    "name".into(),
+                    Type::primitive_long(),
+                )]),
+                Type::closed_record_with_required_attributes([(
+                    "bar".into(),
+                    Type::primitive_long(),
+                )]),
+            ],
         );
     })
 }

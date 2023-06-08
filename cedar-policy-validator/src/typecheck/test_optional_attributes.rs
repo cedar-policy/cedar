@@ -538,7 +538,8 @@ fn record_optional_attrs() {
                     "record": {
                         "type": "Record",
                         "attributes": {
-                            "name": { "type": "String", "required": false}
+                            "name": { "type": "String", "required": false},
+                            "other": { "type": "String", "required": true}
                         }
                     }
                 }
@@ -750,10 +751,11 @@ fn action_attrs_failing() {
     assert_policy_typecheck_fails(
         schema.clone(),
         failing_policy,
-        vec![TypeError::missing_attribute(
+        vec![TypeError::unsafe_attribute_access(
             Expr::get_attr(Expr::var(Var::Action), "canUndo".into()),
             "canUndo".to_string(),
             Some("isReadOnly".to_string()),
+            false,
         )],
     );
 
