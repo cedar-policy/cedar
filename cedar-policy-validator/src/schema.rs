@@ -21,6 +21,7 @@
 //! computed to obtain a `descendants` relation.
 
 use std::collections::{hash_map::Entry, HashMap, HashSet};
+use std::sync::Arc;
 
 use cedar_policy_core::{
     ast::{Eid, Entity, EntityType, EntityUID, Id, Name, RestrictedExpr},
@@ -1166,14 +1167,15 @@ impl ValidatorSchema {
         })
     }
 
-    pub fn action_entities(&self) -> cedar_policy_core::entities::Result<Entities> {
-        // Invert the action hierarchy to get the ancestor relation expected for
-        // the `Entity` datatype instead of descendant as stored by the schema.
+    /// Construct an `Entity` object for each action in the schema
+    fn action_entities_iter<'s>(
+        &'s self,
+    ) -> impl Iterator<Item = cedar_policy_core::ast::Entity> + 's {
         // We could store the un-inverted `memberOf` relation for each action,
-        // but I judge that the current implementation is actually less error
-        // prone, as it minimizes the threading of data structures through some
-        // complicated bits of schema construction code, and avoids computing
-        // the TC twice.
+        // but I [john-h-kastner-aws] judge that the current implementation is
+        // actually less error prone, as it minimizes the threading of data
+        // structures through some complicated bits of schema construction code,
+        // and avoids computing the TC twice.
         let mut action_ancestors: HashMap<&EntityUID, HashSet<EntityUID>> = HashMap::new();
         for (action_euid, action_def) in &self.action_ids {
             for descendant in &action_def.descendants {
@@ -1183,85 +1185,129 @@ impl ValidatorSchema {
                     .insert(action_euid.clone());
             }
         }
+        self.action_ids.iter().map(move |(action_id, action)| {
+            Entity::new(
+                action_id.clone(),
+                action.attributes.clone(),
+                action_ancestors.remove(action_id).unwrap_or_default(),
+            )
+        })
+    }
 
+    /// Invert the action hierarchy to get the ancestor relation expected for
+    /// the `Entity` datatype instead of descendant as stored by the schema.
+    pub fn action_entities(&self) -> cedar_policy_core::entities::Result<Entities> {
         Entities::from_entities(
-            self.action_ids.iter().map(|(action_id, action)| {
-                Entity::new(
-                    action_id.clone(),
-                    action.attributes.clone(),
-                    action_ancestors.remove(action_id).unwrap_or_default(),
-                )
-            }),
+            self.action_entities_iter(),
             TCComputation::AssumeAlreadyComputed,
         )
     }
 }
 
-impl cedar_policy_core::entities::Schema for ValidatorSchema {
-    fn attr_type(
+/// Struct which carries enough information that it can (efficiently) impl Core's `Schema`
+pub struct CoreSchema<'a> {
+    /// Contains all the information
+    schema: &'a ValidatorSchema,
+    /// For easy lookup, this is a map from action name to `Entity` object
+    /// for each action in the schema. This information is contained in the
+    /// `ValidatorSchema`, but not efficient to extract -- getting the `Entity`
+    /// from the `ValidatorSchema` is O(N) as of this writing, but with this
+    /// cache it's O(1).
+    actions: HashMap<EntityUID, Arc<Entity>>,
+}
+
+impl<'a> CoreSchema<'a> {
+    pub fn new(schema: &'a ValidatorSchema) -> Self {
+        Self {
+            actions: schema
+                .action_entities_iter()
+                .map(|e| (e.uid(), Arc::new(e)))
+                .collect(),
+            schema,
+        }
+    }
+}
+
+impl<'a> cedar_policy_core::entities::Schema for CoreSchema<'a> {
+    type EntityTypeDescription = EntityTypeDescription;
+
+    fn entity_type(
         &self,
         entity_type: &cedar_policy_core::ast::EntityType,
-        attr: &str,
-    ) -> Option<cedar_policy_core::entities::SchemaType> {
+    ) -> Option<EntityTypeDescription> {
         match entity_type {
-            cedar_policy_core::ast::EntityType::Unspecified => None, // Unspecified entity does not have attributes
+            cedar_policy_core::ast::EntityType::Unspecified => None, // Unspecified entities cannot be declared in the schema and should not appear in JSON data
             cedar_policy_core::ast::EntityType::Concrete(name) => {
-                let entity_type: &ValidatorEntityType = self.get_entity_type(name)?;
-                let validator_type: &crate::types::Type = &entity_type.attr(attr)?.attr_type;
-                let core_schema_type: cedar_policy_core::entities::SchemaType = validator_type
-                    .clone()
-                    .try_into()
-                    .expect("failed to convert validator type into Core SchemaType");
-                debug_assert!(validator_type.is_consistent_with(&core_schema_type));
-                Some(core_schema_type)
+                EntityTypeDescription::new(&self.schema, name)
             }
         }
     }
 
-    fn required_attrs<'s>(
-        &'s self,
-        entity_type: &cedar_policy_core::ast::EntityType,
-    ) -> Box<dyn Iterator<Item = SmolStr> + 's> {
-        match entity_type {
-            cedar_policy_core::ast::EntityType::Unspecified => Box::new(std::iter::empty()), // Unspecified entity does not have attributes
-            cedar_policy_core::ast::EntityType::Concrete(name) => {
-                match self.get_entity_type(name) {
-                    None => Box::new(std::iter::empty()),
-                    Some(entity_type) => Box::new(
-                        entity_type
-                            .attributes
-                            .iter()
-                            .filter(|(_, ty)| ty.is_required)
-                            .map(|(attr, _)| attr.clone()),
-                    ),
-                }
-            }
-        }
+    fn action(&self, action: &EntityUID) -> Option<Arc<cedar_policy_core::ast::Entity>> {
+        self.actions.get(action).map(Arc::clone)
     }
+}
 
-    fn allowed_parent_types<'s>(
-        &'s self,
-        entity_type: &cedar_policy_core::ast::EntityType,
-    ) -> HashSet<cedar_policy_core::ast::EntityType> {
-        match entity_type {
-            cedar_policy_core::ast::EntityType::Unspecified => HashSet::new(), // Unspecified entity cannot have any parents
-            cedar_policy_core::ast::EntityType::Concrete(child_type) => {
-                match self.get_entity_type(child_type) {
-                    None => HashSet::new(),
-                    Some(_) => {
-                        let mut set = HashSet::new();
-                        for (possible_parent_typename, possible_parent_et) in &self.entity_types {
-                            if possible_parent_et.descendants.contains(child_type) {
-                                set.insert(cedar_policy_core::ast::EntityType::Concrete(
-                                    possible_parent_typename.clone(),
-                                ));
-                            }
-                        }
-                        set
+/// Struct which carries enough information that it can impl Core's `EntityTypeDescription`
+pub struct EntityTypeDescription {
+    /// Core `EntityType` this is describing
+    core_type: cedar_policy_core::ast::EntityType,
+    /// Contains most of the schema information for this entity type
+    validator_type: ValidatorEntityType,
+    /// Allowed parent types for this entity type. (As of this writing, this
+    /// information is not contained in the `validator_type` by itself.)
+    allowed_parent_types: Arc<HashSet<cedar_policy_core::ast::EntityType>>,
+}
+
+impl EntityTypeDescription {
+    /// Create a description of the given type in the given schema.
+    /// Returns `None` if the given type is not in the given schema.
+    pub fn new(schema: &ValidatorSchema, type_name: &Name) -> Option<Self> {
+        Some(Self {
+            core_type: cedar_policy_core::ast::EntityType::Concrete(type_name.clone()),
+            validator_type: schema.get_entity_type(type_name).cloned()?,
+            allowed_parent_types: {
+                let mut set = HashSet::new();
+                for (possible_parent_typename, possible_parent_et) in &schema.entity_types {
+                    if possible_parent_et.descendants.contains(type_name) {
+                        set.insert(cedar_policy_core::ast::EntityType::Concrete(
+                            possible_parent_typename.clone(),
+                        ));
                     }
                 }
-            }
-        }
+                Arc::new(set)
+            },
+        })
+    }
+}
+
+impl cedar_policy_core::entities::EntityTypeDescription for EntityTypeDescription {
+    fn entity_type(&self) -> cedar_policy_core::ast::EntityType {
+        self.core_type.clone()
+    }
+
+    fn attr_type(&self, attr: &str) -> Option<cedar_policy_core::entities::SchemaType> {
+        let attr_type: &crate::types::Type = &self.validator_type.attr(attr)?.attr_type;
+        let core_schema_type: cedar_policy_core::entities::SchemaType = attr_type
+            .clone()
+            .try_into()
+            .expect("failed to convert validator type into Core SchemaType");
+        debug_assert!(attr_type.is_consistent_with(&core_schema_type));
+        Some(core_schema_type)
+    }
+
+    fn required_attrs<'s>(&'s self) -> Box<dyn Iterator<Item = SmolStr> + 's> {
+        Box::new(
+            self.validator_type
+                .attributes
+                .iter()
+                .filter(|(_, ty)| ty.is_required)
+                .map(|(attr, _)| attr.clone()),
+        )
+    }
+
+    fn allowed_parent_types(&self) -> Arc<HashSet<cedar_policy_core::ast::EntityType>> {
+        Arc::clone(&self.allowed_parent_types)
     }
 }
 

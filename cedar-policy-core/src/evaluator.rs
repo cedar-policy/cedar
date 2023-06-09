@@ -134,7 +134,7 @@ impl<'e> RestrictedEvaluator<'e> {
                     Either::Right(residuals) => Ok(Expr::call_extension_fn(fn_name.clone(), residuals.collect()).into()),
                 }
             },
-            // PANIC SAFETY Unreachable via invariant on restricted expressions 
+            // PANIC SAFETY Unreachable via invariant on restricted expressions
             #[allow(clippy::unreachable)]
             expr =>unreachable!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
         }
@@ -3611,7 +3611,7 @@ pub mod test {
     fn eval_and_or() -> Result<()> {
         use crate::parser;
         let request = basic_request();
-        let eparser: EntityJsonParser<'_, '_> =
+        let eparser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
         let exts = Extensions::none();
@@ -3724,7 +3724,7 @@ pub mod test {
     #[test]
     fn template_env_tests() {
         let request = basic_request();
-        let eparser: EntityJsonParser<'_, '_> =
+        let eparser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
         let exts = Extensions::none();
@@ -3779,7 +3779,7 @@ pub mod test {
             EntityUID::with_eid("r"),
             Context::empty(),
         );
-        let eparser: EntityJsonParser<'_, '_> =
+        let eparser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
         let exts = Extensions::none();
