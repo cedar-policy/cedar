@@ -462,7 +462,7 @@ impl<'e> ValueParser<'e> {
             }
             ExtnValueJSON::ImplicitConstructor(val) => {
                 let arg = val.into_expr()?;
-                let argty = self.type_of_rexpr(arg.as_borrowed(), ctx)?;
+                let argty = self.type_of_rexpr(arg.as_borrowed(), ctx.clone())?;
                 let func = self
                     .extensions
                     .lookup_single_arg_constructor(
@@ -472,6 +472,7 @@ impl<'e> ValueParser<'e> {
                         &argty,
                     )?
                     .ok_or_else(|| JsonDeserializationError::ImpliedConstructorNotFound {
+                        ctx: ctx(),
                         return_type: Box::new(SchemaType::Extension {
                             name: expected_typename,
                         }),
