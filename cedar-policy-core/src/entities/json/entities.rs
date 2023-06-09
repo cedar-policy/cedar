@@ -284,7 +284,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                         if parent_euid.is_action() {
                             Ok(())
                         } else {
-                            Err(JsonDeserializationError::ActionParentIsNotAnAction {
+                            Err(JsonDeserializationError::ActionParentIsNonAction {
                                 uid: uid.clone(),
                                 parent: parent_euid.clone(),
                             })
