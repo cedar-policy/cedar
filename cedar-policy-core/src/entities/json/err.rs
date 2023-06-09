@@ -70,7 +70,7 @@ pub enum JsonDeserializationError {
     },
     /// Parents of actions should be actions, but this action has a non-action parent
     #[error("{uid} is an action, so it should not have a parent {parent}, which is not an action")]
-    ActionParentIsNotAnAction {
+    ActionParentIsNonAction {
         /// Action entity that had the invalid parent
         uid: EntityUID,
         /// Parent that is invalid

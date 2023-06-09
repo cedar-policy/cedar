@@ -740,7 +740,9 @@ mod json_parsing_tests {
         );
         let eparser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        let err = eparser.from_json_value(json).expect_err("should fail due to invalid action parent");
+        let err = eparser
+            .from_json_value(json)
+            .expect_err("should fail due to invalid action parent");
         assert!(
             err.to_string().contains(r#"XYZ::Action::"view" is an action, so it should not have a parent User::"alice", which is not an action"#),
             "actual error message was {}",

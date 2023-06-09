@@ -1172,10 +1172,10 @@ impl ValidatorSchema {
         &'s self,
     ) -> impl Iterator<Item = cedar_policy_core::ast::Entity> + 's {
         // We could store the un-inverted `memberOf` relation for each action,
-        // but I [John] judge that the current implementation is actually less error
-        // prone, as it minimizes the threading of data structures through some
-        // complicated bits of schema construction code, and avoids computing
-        // the TC twice.
+        // but I [john-h-kastner-aws] judge that the current implementation is
+        // actually less error prone, as it minimizes the threading of data
+        // structures through some complicated bits of schema construction code,
+        // and avoids computing the TC twice.
         let mut action_ancestors: HashMap<&EntityUID, HashSet<EntityUID>> = HashMap::new();
         for (action_euid, action_def) in &self.action_ids {
             for descendant in &action_def.descendants {

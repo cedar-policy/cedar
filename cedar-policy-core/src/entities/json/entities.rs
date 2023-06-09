@@ -157,9 +157,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                 // action do exist in `ejson.attrs`. Later when consuming `ejson.attrs`,
                 // we'll do the rest of the checks for attribute agreement.
                 for (schema_attr, _) in action.attrs() {
-                    if ejson.attrs.contains_key(schema_attr) {
-                        // all good
-                    } else {
+                    if !ejson.attrs.contains_key(schema_attr) {
                         return Err(JsonDeserializationError::ActionDeclarationMismatch { uid });
                     }
                 }
