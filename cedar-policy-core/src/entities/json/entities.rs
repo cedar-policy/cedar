@@ -19,7 +19,7 @@ use super::{
     JsonDeserializationErrorContext, JsonSerializationError, NoEntitiesSchema, Schema, TypeAndId,
     ValueParser,
 };
-use crate::ast::{Entity, EntityUID, RestrictedExpr};
+use crate::ast::{Entity, EntityType, EntityUID, RestrictedExpr};
 use crate::entities::{Entities, EntitiesError, TCComputation};
 use crate::extensions::Extensions;
 use serde::{Deserialize, Serialize};
@@ -144,9 +144,21 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                             JsonDeserializationError::UndeclaredAction { uid: uid.clone() },
                         )?)
                     } else {
-                        EntitySchemaInfo::NonAction(schema.entity_type(etype).ok_or(
-                            JsonDeserializationError::UnexpectedEntityType { uid: uid.clone() },
-                        )?)
+                        EntitySchemaInfo::NonAction(schema.entity_type(etype).ok_or_else(|| {
+                            let basename = match etype {
+                                EntityType::Concrete(name) => name.basename(),
+                                // PANIC SAFETY: impossible to have the unspecified EntityType in JSON
+                                EntityType::Unspecified => {
+                                    unreachable!("unspecified EntityType in JSON")
+                                }
+                            };
+                            JsonDeserializationError::UnexpectedEntityType {
+                                uid: uid.clone(),
+                                suggested_types: schema
+                                    .entity_types_with_basename(basename)
+                                    .collect(),
+                            }
+                        })?)
                     }
                 }
             };

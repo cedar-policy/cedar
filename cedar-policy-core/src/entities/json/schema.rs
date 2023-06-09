@@ -1,5 +1,5 @@
 use super::SchemaType;
-use crate::ast::{Entity, EntityType, EntityUID};
+use crate::ast::{Entity, EntityType, EntityUID, Id, Name};
 use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -18,6 +18,13 @@ pub trait Schema {
     /// action is not declared in the schema (in which case this action should
     /// not appear in the JSON data).
     fn action(&self, action: &EntityUID) -> Option<Arc<Entity>>;
+
+    /// Get the names of all entity types declared in the schema that have the
+    /// given basename (in the sense of `Name::basename()`).
+    fn entity_types_with_basename<'a>(
+        &'a self,
+        basename: &'a Id,
+    ) -> Box<dyn Iterator<Item = EntityType> + 'a>;
 }
 
 /// Simple type that implements `Schema` by expecting no entities to exist at all
@@ -30,6 +37,12 @@ impl Schema for NoEntitiesSchema {
     }
     fn action(&self, _action: &EntityUID) -> Option<Arc<Entity>> {
         None
+    }
+    fn entity_types_with_basename<'a>(
+        &'a self,
+        _basename: &'a Id,
+    ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
+        Box::new(std::iter::empty())
     }
 }
 
@@ -50,6 +63,14 @@ impl Schema for AllEntitiesNoAttrsSchema {
             action.clone(),
             HashMap::new(),
             HashSet::new(),
+        )))
+    }
+    fn entity_types_with_basename<'a>(
+        &'a self,
+        basename: &'a Id,
+    ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
+        Box::new(std::iter::once(EntityType::Concrete(
+            Name::unqualified_name(basename.clone()),
         )))
     }
 }

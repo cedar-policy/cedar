@@ -1246,6 +1246,19 @@ impl<'a> cedar_policy_core::entities::Schema for CoreSchema<'a> {
     fn action(&self, action: &EntityUID) -> Option<Arc<cedar_policy_core::ast::Entity>> {
         self.actions.get(action).map(Arc::clone)
     }
+
+    fn entity_types_with_basename<'b>(
+        &'b self,
+        basename: &'b Id,
+    ) -> Box<dyn Iterator<Item = EntityType> + 'b> {
+        Box::new(self.schema.entity_types().filter_map(move |(name, _)| {
+            if name.basename() == basename {
+                Some(EntityType::Concrete(name.clone()))
+            } else {
+                None
+            }
+        }))
+    }
 }
 
 /// Struct which carries enough information that it can impl Core's `EntityTypeDescription`

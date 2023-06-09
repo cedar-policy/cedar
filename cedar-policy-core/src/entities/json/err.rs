@@ -89,10 +89,19 @@ pub enum JsonDeserializationError {
     },
     /// During schema-based parsing, encountered an entity of a type which is
     /// not declared in the schema. (This error is only used for non-Action entity types.)
-    #[error("{uid} has type {} which is not declared in the schema", &.uid.entity_type())]
+    #[error("{uid} has type {} which is not declared in the schema{}",
+        &.uid.entity_type(),
+        match .suggested_types.as_slice() {
+            [] => String::new(),
+            [ty] => format!("; did you mean {ty}?"),
+            tys => format!("; did you mean one of {:?}?", tys.iter().map(ToString::to_string).collect::<Vec<String>>())
+        }
+    )]
     UnexpectedEntityType {
         /// Entity that had the unexpected type
         uid: EntityUID,
+        /// Suggested similar entity types that actually are declared in the schema (if any)
+        suggested_types: Vec<EntityType>,
     },
     /// During schema-based parsing, encountered an action which was not
     /// declared in the schema

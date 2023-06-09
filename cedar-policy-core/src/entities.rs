@@ -859,6 +859,20 @@ mod schema_based_parsing_tests {
                 _ => None,
             }
         }
+        fn entity_types_with_basename<'a>(
+            &'a self,
+            basename: &'a Id,
+        ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
+            match basename.as_ref() {
+                "Employee" => Box::new(std::iter::once(EntityType::Concrete(
+                    Name::unqualified_name(basename.clone()),
+                ))),
+                "Action" => Box::new(std::iter::once(EntityType::Concrete(
+                    Name::unqualified_name(basename.clone()),
+                ))),
+                _ => Box::new(std::iter::empty()),
+            }
+        }
     }
 
     /// Mock schema impl for the `Employee` type used in these tests
@@ -1960,6 +1974,8 @@ mod schema_based_parsing_tests {
     /// Test that involves namespaced entity types
     #[test]
     fn namespaces() {
+        use std::str::FromStr;
+
         struct MockSchema;
         impl Schema for MockSchema {
             type EntityTypeDescription = MockEmployeeDescription;
@@ -1972,6 +1988,17 @@ mod schema_based_parsing_tests {
             }
             fn action(&self, _action: &EntityUID) -> Option<Arc<Entity>> {
                 None
+            }
+            fn entity_types_with_basename<'a>(
+                &'a self,
+                basename: &'a Id,
+            ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
+                match basename.as_ref() {
+                    "Employee" => Box::new(std::iter::once(EntityType::Concrete(
+                        Name::from_str("XYZCorp::Employee").expect("valid name"),
+                    ))),
+                    _ => Box::new(std::iter::empty()),
+                }
             }
         }
 
@@ -2076,6 +2103,29 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to manager being wrong entity type (missing namespace)");
         assert!(
             err.to_string().contains(r#"In attribute "manager" on XYZCorp::Employee::"12UA45", type mismatch: attribute was expected to have type (entity of type XYZCorp::Employee), but actually has type (entity of type Employee)"#),
+            "actual error message was {}",
+            err
+        );
+
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {
+                        "isFullTime": true,
+                        "department": "Sales",
+                        "manager": { "type": "XYZCorp::Employee", "id": "34FB87" }
+                    },
+                    "parents": []
+                }
+            ]
+        );
+
+        let err = eparser
+            .from_json_value(entitiesjson)
+            .expect_err("should fail due to employee being wrong entity type (missing namespace)");
+        assert!(
+            err.to_string().contains(r#"Employee::"12UA45" has type Employee which is not declared in the schema; did you mean XYZCorp::Employee?"#),
             "actual error message was {}",
             err
         );
