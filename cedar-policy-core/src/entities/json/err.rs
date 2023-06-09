@@ -50,7 +50,7 @@ pub enum JsonDeserializationError {
     #[error("{ctx}, expected a literal entity reference, but got {got}")]
     ExpectedLiteralEntityRef {
         /// Context of this error
-        ctx: JsonDeserializationErrorContext,
+        ctx: Box<JsonDeserializationErrorContext>,
         /// the expression we got instead
         got: Box<Expr>,
     },
@@ -58,7 +58,7 @@ pub enum JsonDeserializationError {
     #[error("{ctx}, expected an extension value, but got {got}")]
     ExpectedExtnValue {
         /// Context of this error
-        ctx: JsonDeserializationErrorContext,
+        ctx: Box<JsonDeserializationErrorContext>,
         /// the expression we got instead
         got: Box<Expr>,
     },
@@ -81,7 +81,7 @@ pub enum JsonDeserializationError {
     #[error("{ctx}, extension constructor for {arg_type} -> {return_type} not found")]
     ImpliedConstructorNotFound {
         /// Context of this error
-        ctx: JsonDeserializationErrorContext,
+        ctx: Box<JsonDeserializationErrorContext>,
         /// return type of the constructor we were looking for
         return_type: Box<SchemaType>,
         /// argument type of the constructor we were looking for
@@ -131,7 +131,7 @@ pub enum JsonDeserializationError {
     #[error("{ctx}, record attribute {record_attr:?} shouldn't exist according to the schema")]
     UnexpectedRecordAttr {
         /// Context of this error
-        ctx: JsonDeserializationErrorContext,
+        ctx: Box<JsonDeserializationErrorContext>,
         /// Name of the (Record) attribute which was unexpected
         record_attr: SmolStr,
     },
@@ -149,7 +149,7 @@ pub enum JsonDeserializationError {
     #[error("{ctx}, expected the record to have an attribute {record_attr:?}, but it didn't")]
     MissingRequiredRecordAttr {
         /// Context of this error
-        ctx: JsonDeserializationErrorContext,
+        ctx: Box<JsonDeserializationErrorContext>,
         /// Name of the (Record) attribute which was expected
         record_attr: SmolStr,
     },
@@ -158,7 +158,7 @@ pub enum JsonDeserializationError {
     #[error("{ctx}, type mismatch: attribute was expected to have type {expected}, but actually has type {actual}")]
     TypeMismatch {
         /// Context of this error
-        ctx: JsonDeserializationErrorContext,
+        ctx: Box<JsonDeserializationErrorContext>,
         /// Type which was expected
         expected: Box<SchemaType>,
         /// Type which was encountered instead
@@ -169,7 +169,7 @@ pub enum JsonDeserializationError {
     #[error("{ctx}, set elements have different types: {ty1} and {ty2}")]
     HeterogeneousSet {
         /// Context of this error
-        ctx: JsonDeserializationErrorContext,
+        ctx: Box<JsonDeserializationErrorContext>,
         /// First element type which was found
         ty1: Box<SchemaType>,
         /// Second element type which was found
@@ -182,11 +182,11 @@ pub enum JsonDeserializationError {
     )]
     InvalidParentType {
         /// Context of this error
-        ctx: JsonDeserializationErrorContext,
+        ctx: Box<JsonDeserializationErrorContext>,
         /// Entity that has an invalid parent type
         uid: EntityUID,
         /// Parent type which was invalid
-        parent_ty: EntityType,
+        parent_ty: Box<EntityType>, // boxed to avoid this variant being very large (and thus all JsonDeserializationErrors being large)
     },
 }
 
