@@ -23,6 +23,8 @@ use cedar_policy_core::{
     parser::SourceInfo,
 };
 
+use crate::typecheck::ArithmeticOpBoundsInfo;
+
 use super::types::Type;
 
 use itertools::Itertools;
@@ -189,11 +191,11 @@ impl TypeError {
         }
     }
 
-    pub(crate) fn arithmetic_overflow<T>(on_expr: Expr<T>) -> Self {
+    pub(crate) fn arithmetic_overflow<T>(on_expr: Expr<T>, info: ArithmeticOpBoundsInfo) -> Self {
         Self {
             on_expr: None,
             source_location: on_expr.into_source_info(),
-            kind: TypeErrorKind::ArithmeticOverflow,
+            kind: TypeErrorKind::ArithmeticOverflow(info),
         }
     }
 }
@@ -252,8 +254,8 @@ pub enum TypeErrorKind {
     EmptySetForbidden,
     #[error("extension constructors may not be called with non-literal expressions")]
     NonLitExtConstructor,
-    #[error("possible arithmetic overflow")]
-    ArithmeticOverflow,
+    #[error(transparent)]
+    ArithmeticOverflow(#[from] ArithmeticOpBoundsInfo),
 }
 
 /// Structure containing details about an unexpected type error.

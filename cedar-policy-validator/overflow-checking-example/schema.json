@@ -9,6 +9,13 @@
               "type": "Long",
               "min": 1,
               "max": 8
+            },
+            "flag": {
+              "type": "Boolean",
+              "required": true
+            },
+            "x_any": {
+              "type": "Long"
             }
           }
         }
