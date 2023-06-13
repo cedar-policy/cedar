@@ -999,7 +999,7 @@ impl ValidatorSchema {
             for p_entity in action.applies_to.applicable_principal_types() {
                 match p_entity {
                     EntityType::Concrete(p_entity) => {
-                        if !entity_types.contains_key(&p_entity) {
+                        if !entity_types.contains_key(p_entity) {
                             undeclared_e.insert(p_entity.to_string());
                         }
                     }
@@ -1010,7 +1010,7 @@ impl ValidatorSchema {
             for r_entity in action.applies_to.applicable_resource_types() {
                 match r_entity {
                     EntityType::Concrete(r_entity) => {
-                        if !entity_types.contains_key(&r_entity) {
+                        if !entity_types.contains_key(r_entity) {
                             undeclared_e.insert(r_entity.to_string());
                         }
                     }
@@ -1168,9 +1168,7 @@ impl ValidatorSchema {
     }
 
     /// Construct an `Entity` object for each action in the schema
-    fn action_entities_iter<'s>(
-        &'s self,
-    ) -> impl Iterator<Item = cedar_policy_core::ast::Entity> + 's {
+    fn action_entities_iter(&self) -> impl Iterator<Item = cedar_policy_core::ast::Entity> + '_ {
         // We could store the un-inverted `memberOf` relation for each action,
         // but I [john-h-kastner-aws] judge that the current implementation is
         // actually less error prone, as it minimizes the threading of data
@@ -1238,13 +1236,26 @@ impl<'a> cedar_policy_core::entities::Schema for CoreSchema<'a> {
         match entity_type {
             cedar_policy_core::ast::EntityType::Unspecified => None, // Unspecified entities cannot be declared in the schema and should not appear in JSON data
             cedar_policy_core::ast::EntityType::Concrete(name) => {
-                EntityTypeDescription::new(&self.schema, name)
+                EntityTypeDescription::new(self.schema, name)
             }
         }
     }
 
     fn action(&self, action: &EntityUID) -> Option<Arc<cedar_policy_core::ast::Entity>> {
         self.actions.get(action).map(Arc::clone)
+    }
+
+    fn entity_types_with_basename<'b>(
+        &'b self,
+        basename: &'b Id,
+    ) -> Box<dyn Iterator<Item = EntityType> + 'b> {
+        Box::new(self.schema.entity_types().filter_map(move |(name, _)| {
+            if name.basename() == basename {
+                Some(EntityType::Concrete(name.clone()))
+            } else {
+                None
+            }
+        }))
     }
 }
 
