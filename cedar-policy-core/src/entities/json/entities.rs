@@ -19,7 +19,7 @@ use super::{
     JsonDeserializationErrorContext, JsonSerializationError, NoEntitiesSchema, Schema, TypeAndId,
     ValueParser,
 };
-use crate::ast::{Entity, EntityUID, RestrictedExpr};
+use crate::ast::{Entity, EntityType, EntityUID, RestrictedExpr};
 use crate::entities::{Entities, EntitiesError, TCComputation};
 use crate::extensions::Extensions;
 use serde::{Deserialize, Serialize};
@@ -144,9 +144,22 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                             JsonDeserializationError::UndeclaredAction { uid: uid.clone() },
                         )?)
                     } else {
-                        EntitySchemaInfo::NonAction(schema.entity_type(etype).ok_or(
-                            JsonDeserializationError::UnexpectedEntityType { uid: uid.clone() },
-                        )?)
+                        EntitySchemaInfo::NonAction(schema.entity_type(etype).ok_or_else(|| {
+                            let basename = match etype {
+                                EntityType::Concrete(name) => name.basename(),
+                                // PANIC SAFETY: impossible to have the unspecified EntityType in JSON
+                                #[allow(clippy::unreachable)]
+                                EntityType::Unspecified => {
+                                    unreachable!("unspecified EntityType in JSON")
+                                }
+                            };
+                            JsonDeserializationError::UnexpectedEntityType {
+                                uid: uid.clone(),
+                                suggested_types: schema
+                                    .entity_types_with_basename(basename)
+                                    .collect(),
+                            }
+                        })?)
                     }
                 }
             };
@@ -156,7 +169,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                 // here, we ensure that all the attributes on the schema's copy of the
                 // action do exist in `ejson.attrs`. Later when consuming `ejson.attrs`,
                 // we'll do the rest of the checks for attribute agreement.
-                for (schema_attr, _) in action.attrs() {
+                for schema_attr in action.attrs().keys() {
                     if !ejson.attrs.contains_key(schema_attr) {
                         return Err(JsonDeserializationError::ActionDeclarationMismatch { uid });
                     }
@@ -230,10 +243,10 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                         Ok((k, rexpr))
                     } else {
                         Err(JsonDeserializationError::TypeMismatch {
-                            ctx: JsonDeserializationErrorContext::EntityAttribute {
+                            ctx: Box::new(JsonDeserializationErrorContext::EntityAttribute {
                                 uid: uid.clone(),
                                 attr: k,
-                            },
+                            }),
                             expected: Box::new(expected_ty),
                             actual: Box::new(actual_ty),
                         })
@@ -309,11 +322,11 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                         Ok(())
                     } else {
                         Err(JsonDeserializationError::InvalidParentType {
-                            ctx: JsonDeserializationErrorContext::EntityParents {
+                            ctx: Box::new(JsonDeserializationErrorContext::EntityParents {
                                 uid: uid.clone(),
-                            },
+                            }),
                             uid: uid.clone(),
-                            parent_ty: parent_type.clone(),
+                            parent_ty: Box::new(parent_type.clone()),
                         })
                     }
                 }
