@@ -359,7 +359,7 @@ impl<'e> ValueParser<'e> {
                         .collect::<Result<Vec<RestrictedExpr>, JsonDeserializationError>>()?,
                 )),
                 _ => Err(JsonDeserializationError::TypeMismatch {
-                    ctx: ctx(),
+                    ctx: Box::new(ctx()),
                     expected: Box::new(expected_ty.clone()),
                     actual: {
                         let jvalue: JSONValue = serde_json::from_value(val)?;
@@ -389,7 +389,7 @@ impl<'e> ValueParser<'e> {
                                     }
                                 }
                                 None if expected_attr_ty.is_required() => Some(Err(JsonDeserializationError::MissingRequiredRecordAttr {
-                                    ctx: ctx(),
+                                    ctx: Box::new(ctx()),
                                     record_attr: k.clone(),
                                 })),
                                 None => None,
@@ -400,14 +400,14 @@ impl<'e> ValueParser<'e> {
                     // we still need to verify that we didn't have any unexpected attrs.
                     if let Some((record_attr, _)) = actual_attrs.into_iter().next() {
                         return Err(JsonDeserializationError::UnexpectedRecordAttr {
-                            ctx: ctx2(),
+                            ctx: Box::new(ctx2()),
                             record_attr: record_attr.into(),
                         });
                     }
                     Ok(RestrictedExpr::record(rexpr_pairs))
                 }
                 _ => Err(JsonDeserializationError::TypeMismatch {
-                    ctx: ctx(),
+                    ctx: Box::new(ctx()),
                     expected: Box::new(expected_ty.clone()),
                     actual: {
                         let jvalue: JSONValue = serde_json::from_value(val)?;
@@ -442,7 +442,7 @@ impl<'e> ValueParser<'e> {
                 match expr.expr_kind() {
                     ExprKind::ExtensionFunctionApp { .. } => Ok(expr),
                     _ => Err(JsonDeserializationError::ExpectedExtnValue {
-                        ctx: ctx(),
+                        ctx: Box::new(ctx()),
                         got: Box::new(expr.clone().into()),
                     }),
                 }
@@ -455,7 +455,7 @@ impl<'e> ValueParser<'e> {
                 match expr.expr_kind() {
                     ExprKind::ExtensionFunctionApp { .. } => Ok(expr),
                     _ => Err(JsonDeserializationError::ExpectedExtnValue {
-                        ctx: ctx(),
+                        ctx: Box::new(ctx()),
                         got: Box::new(expr.clone().into()),
                     }),
                 }
@@ -472,7 +472,7 @@ impl<'e> ValueParser<'e> {
                         &argty,
                     )?
                     .ok_or_else(|| JsonDeserializationError::ImpliedConstructorNotFound {
-                        ctx: ctx(),
+                        ctx: Box::new(ctx()),
                         return_type: Box::new(SchemaType::Extension {
                             name: expected_typename,
                         }),
@@ -515,7 +515,7 @@ impl<'e> ValueParser<'e> {
                             None => Ok(SchemaType::Set { element_ty: Box::new(element_ty) }),
                             Some(Ok(conflicting_ty)) =>
                                 Err(JsonDeserializationError::HeterogeneousSet {
-                                    ctx: ctx(),
+                                    ctx: Box::new(ctx()),
                                     ty1: Box::new(element_ty),
                                     ty2: Box::new(conflicting_ty),
                                 }),
@@ -646,7 +646,7 @@ impl EntityUidJSON {
                         // PANIC SAFETY: Every `String` can be turned into a restricted expression
                         #[allow(clippy::unwrap_used)]
                         JsonDeserializationError::ExpectedLiteralEntityRef {
-                            ctx: ctx(),
+                            ctx: Box::new(ctx()),
                             got: Box::new(JSONValue::String(__expr).into_expr().unwrap().into()),
                         }
                     } else {
@@ -656,7 +656,7 @@ impl EntityUidJSON {
                 match expr.expr_kind() {
                     ExprKind::Lit(Literal::EntityUID(euid)) => Ok((**euid).clone()),
                     _ => Err(JsonDeserializationError::ExpectedLiteralEntityRef {
-                        ctx: ctx(),
+                        ctx: Box::new(ctx()),
                         got: Box::new(expr.clone().into()),
                     }),
                 }
@@ -668,7 +668,7 @@ impl EntityUidJSON {
                 match expr.expr_kind() {
                     ExprKind::Lit(Literal::EntityUID(euid)) => Ok((**euid).clone()),
                     _ => Err(JsonDeserializationError::ExpectedLiteralEntityRef {
-                        ctx: ctx(),
+                        ctx: Box::new(ctx()),
                         got: Box::new(expr.clone().into()),
                     }),
                 }
