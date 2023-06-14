@@ -1,6 +1,6 @@
 name: Bug report
 description: Create a report to help us improve Cedar
-labels: pending-triage
+labels: [pending-triage, bug]
 
 body:
   - type: markdown
@@ -13,7 +13,7 @@ body:
       label: |
         Before opening, please confirm:
       options:
-        - label: I have [searched for duplicate or closed issues](https://github.com/cedar-policy/cedar/issues?q=is%3Aissue+) and [discussions](https://github.com/cedar-policy/cedar/discussions).
+        - label: I have [searched for duplicate or closed issues](https://github.com/cedar-policy/cedar/issues?q=is%3Aissue+).
           required: true
         - label: I have read the guide for [submitting bug reports](https://github.com/cedar-policy/cedar/blob/main/CONTRIBUTING.md#bug-reports).
           required: true
@@ -107,6 +107,6 @@ body:
       label: Additional information and screenshots
       description: |
         If you have any additional information, workarounds, etc. for us, use the field below.
-        Please note, you can attach screenshots or screen recordings here, by
+        Please note, you can attach screenshots or screen recordings here by
         dragging and dropping files in the field below.
 
