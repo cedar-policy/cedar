@@ -391,7 +391,7 @@ struct EvaluationResults<'a> {
     satisfied_permits: Vec<&'a Policy>,
     satisfied_forbids: Vec<&'a Policy>,
     global_deny_policies: HashSet<PolicyID>,
-    all_warnings: Vec<String>,
+    all_warnings: Vec<EvaluationError>,
     permit_residuals: Vec<Policy>,
     forbid_residuals: Vec<Policy>,
 }
@@ -837,7 +837,7 @@ pub struct PartialResponse {
 
 impl PartialResponse {
     /// Create a partial response with a residual PolicySet
-    pub fn new(pset: PolicySet, reason: HashSet<PolicyID>, errors: Vec<String>) -> Self {
+    pub fn new(pset: PolicySet, reason: HashSet<PolicyID>, errors: Vec<EvaluationError>) -> Self {
         PartialResponse {
             residuals: pset,
             diagnostics: Diagnostics { reason, errors },
@@ -852,12 +852,12 @@ pub struct Diagnostics {
     /// policies applied to the request, this set will be empty.
     pub reason: HashSet<PolicyID>,
     /// list of error messages which occurred
-    pub errors: Vec<String>,
+    pub errors: Vec<EvaluationError>,
 }
 
 impl Response {
     /// Create a new `Response`
-    pub fn new(decision: Decision, reason: HashSet<PolicyID>, errors: Vec<String>) -> Self {
+    pub fn new(decision: Decision, reason: HashSet<PolicyID>, errors: Vec<EvaluationError>) -> Self {
         Response {
             decision,
             diagnostics: Diagnostics { reason, errors },
