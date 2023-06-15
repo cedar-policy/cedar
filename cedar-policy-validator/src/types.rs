@@ -134,12 +134,9 @@ impl Type {
     }
 
     pub(crate) fn any_record() -> Type {
-        Type::EntityOrRecord(EntityRecordKind::Record {
-            attrs: Attributes::with_required_attributes(None),
-            // (open_attributes = false) <: (open_attributes = true),
-            // so this makes `any_record` a super type of all records.
-            open_attributes: OpenTag::OpenAttributes,
-        })
+        // OpenAttributes <: ClosedAttributes, so this makes `any_record` a
+        // super type of all records.
+        Type::record_with_attributes(None, OpenTag::OpenAttributes)
     }
 
     pub(crate) fn record_with_required_attributes(
