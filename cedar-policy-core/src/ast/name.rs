@@ -34,7 +34,7 @@ pub fn unwrap_or_clone<T: Clone>(arc: Arc<T>) -> T {
 /// The name can include namespaces.
 /// Clone is O(1).
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
-#[cfg_attr(fuzzing, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Name {
     /// Basename
     pub(crate) id: Id,
@@ -260,7 +260,7 @@ impl FromNormalizedStr for Id {
     }
 }
 
-#[cfg(fuzzing)]
+#[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for Id {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         // identifier syntax:

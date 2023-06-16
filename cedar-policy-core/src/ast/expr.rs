@@ -1379,7 +1379,7 @@ impl<T> Expr<T> {
 
 /// AST variables
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
-#[cfg_attr(fuzzing, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Var {
     /// the Principal of the given request
     #[serde(rename = "principal")]

@@ -474,7 +474,7 @@ impl SchemaType {
     }
 }
 
-#[cfg(fuzzing)]
+#[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<SchemaType> {
         use cedar_policy_core::ast::Name;
@@ -535,7 +535,7 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
 /// unknown fields for TypeOfAttribute should be passed to SchemaType where
 /// they will be denied (`<https://github.com/serde-rs/serde/issues/1600>`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, PartialOrd, Ord)]
-#[cfg_attr(fuzzing, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TypeOfAttribute {
     #[serde(flatten)]
     pub ty: SchemaType,

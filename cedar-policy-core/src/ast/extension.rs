@@ -89,7 +89,7 @@ where
 
 /// Which "style" is a function call
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-#[cfg_attr(fuzzing, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum CallStyle {
     /// Function-style, eg foo(a, b)
     FunctionStyle,
