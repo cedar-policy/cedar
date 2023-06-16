@@ -27,7 +27,7 @@ use crate::parser::err::ParseError;
 /// The name can include namespaces.
 /// Clone is O(1).
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
-#[cfg_attr(fuzzing, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Name {
     /// Basename
     pub(crate) id: Id,
@@ -233,7 +233,7 @@ impl std::str::FromStr for Id {
     }
 }
 
-#[cfg(fuzzing)]
+#[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for Id {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         // identifier syntax:

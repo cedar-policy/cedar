@@ -1174,7 +1174,7 @@ impl EntityReference {
 
 /// Subset of AST variables that have the same constraint form
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
-#[cfg_attr(fuzzing, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum PrincipalOrResource {
     /// The principal of a request
     Principal,
@@ -1397,7 +1397,7 @@ impl std::fmt::Display for PolicyID {
     }
 }
 
-#[cfg(fuzzing)]
+#[cfg(feature = "arbitrary")]
 impl<'u> arbitrary::Arbitrary<'u> for PolicyID {
     fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<PolicyID> {
         let s: String = u.arbitrary()?;
@@ -1410,7 +1410,7 @@ impl<'u> arbitrary::Arbitrary<'u> for PolicyID {
 
 /// the Effect of a policy
 #[derive(Serialize, Deserialize, Hash, Debug, PartialEq, Eq, Clone, Copy)]
-#[cfg_attr(fuzzing, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Effect {
     /// this is a Permit policy
     #[serde(rename = "permit")]

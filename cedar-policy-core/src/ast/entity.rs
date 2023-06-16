@@ -26,7 +26,7 @@ use std::collections::{HashMap, HashSet};
 /// and the second is an unspecified type, which is used (internally) to represent cases
 /// where the input request does not provide a principal, action, and/or resource.
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
-#[cfg_attr(fuzzing, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum EntityType {
     /// Concrete nominal type
     Concrete(Name),
@@ -57,7 +57,7 @@ impl std::fmt::Display for EntityType {
 
 /// Unique ID for an entity. These represent entities in the AST.
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
-#[cfg_attr(fuzzing, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct EntityUID {
     /// Typename of the entity
     ty: EntityType,
@@ -186,7 +186,7 @@ impl AsRef<str> for Eid {
     }
 }
 
-#[cfg(fuzzing)]
+#[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for Eid {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         let x: String = u.arbitrary()?;
