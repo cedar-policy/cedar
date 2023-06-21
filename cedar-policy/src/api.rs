@@ -2230,6 +2230,37 @@ mod entity_uid_tests {
         let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
         assert_eq!(euid.id().as_ref(), "bobby");
         assert_eq!(euid.type_name().to_string(), "Chess::Master");
+        assert_eq!(euid.type_name().basename(), "Master");
+        assert_eq!(euid.type_name().namespace(), "Chess");
+        assert_eq!(euid.type_name().namespace_components().count(), 1);
+    }
+
+    /// building an `EntityUid` from components, with no namespace
+    #[test]
+    fn entity_uid_no_namespace() {
+        let entity_id = EntityId::from_str("bobby").expect("failed at constructing EntityId");
+        let entity_type_name = EntityTypeName::from_str("User")
+            .expect("failed at constructing EntityTypeName");
+        let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
+        assert_eq!(euid.id().as_ref(), "bobby");
+        assert_eq!(euid.type_name().to_string(), "User");
+        assert_eq!(euid.type_name().basename(), "User");
+        assert_eq!(euid.type_name().namespace(), String::new());
+        assert_eq!(euid.type_name().namespace_components().count(), 0);
+    }
+
+    /// building an `EntityUid` from components, with many nested namespaces
+    #[test]
+    fn entity_uid_nested_namespaces() {
+        let entity_id = EntityId::from_str("bobby").expect("failed at constructing EntityId");
+        let entity_type_name = EntityTypeName::from_str("A::B::C::D::Z")
+            .expect("failed at constructing EntityTypeName");
+        let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
+        assert_eq!(euid.id().as_ref(), "bobby");
+        assert_eq!(euid.type_name().to_string(), "A::B::C::D::Z");
+        assert_eq!(euid.type_name().basename(), "Z");
+        assert_eq!(euid.type_name().namespace(), "A::B::C::D");
+        assert_eq!(euid.type_name().namespace_components().count(), 4);
     }
 
     /// building an `EntityUid` from components, including escapes
@@ -2245,6 +2276,9 @@ mod entity_uid_tests {
         //   the EntityId has the literal backslash characters in it
         assert_eq!(euid.id().as_ref(), r#"bobby\'s sister:\nVeronica"#);
         assert_eq!(euid.type_name().to_string(), "Hockey::Master");
+        assert_eq!(euid.type_name().basename(), "Master");
+        assert_eq!(euid.type_name().namespace(), "Hockey");
+        assert_eq!(euid.type_name().namespace_components().count(), 1);
     }
 
     /// building an `EntityUid` from components, including backslashes
