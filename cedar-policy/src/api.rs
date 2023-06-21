@@ -2239,8 +2239,8 @@ mod entity_uid_tests {
     #[test]
     fn entity_uid_no_namespace() {
         let entity_id = EntityId::from_str("bobby").expect("failed at constructing EntityId");
-        let entity_type_name = EntityTypeName::from_str("User")
-            .expect("failed at constructing EntityTypeName");
+        let entity_type_name =
+            EntityTypeName::from_str("User").expect("failed at constructing EntityTypeName");
         let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
         assert_eq!(euid.id().as_ref(), "bobby");
         assert_eq!(euid.type_name().to_string(), "User");
