@@ -2325,11 +2325,23 @@ mod entity_uid_tests {
             EntityTypeName::from_str(" A :: B\n::C \n  ::D\n").unwrap(),
             EntityId::from_str(" hi there are \n spaces and \n newlines ").unwrap(),
         );
-        assert_eq!(euid_spaces_and_newlines.id().as_ref(), " hi there are \n spaces and \n newlines ");
-        assert_eq!(euid_spaces_and_newlines.type_name().to_string(), "A::B::C::D"); // expect to have been normalized
+        assert_eq!(
+            euid_spaces_and_newlines.id().as_ref(),
+            " hi there are \n spaces and \n newlines "
+        );
+        assert_eq!(
+            euid_spaces_and_newlines.type_name().to_string(),
+            "A::B::C::D"
+        ); // expect to have been normalized
         assert_eq!(euid_spaces_and_newlines.type_name().basename(), "D");
         assert_eq!(euid_spaces_and_newlines.type_name().namespace(), "A::B::C");
-        assert_eq!(euid_spaces_and_newlines.type_name().namespace_components().count(), 3);
+        assert_eq!(
+            euid_spaces_and_newlines
+                .type_name()
+                .namespace_components()
+                .count(),
+            3
+        );
     }
 
     #[test]
