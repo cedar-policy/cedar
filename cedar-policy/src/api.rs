@@ -937,6 +937,28 @@ impl std::fmt::Display for EntityId {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
 pub struct EntityTypeName(ast::Name);
 
+impl EntityTypeName {
+    /// Get the basename of the `EntityTypeName` (ie, with namespaces stripped).
+    pub fn basename(&self) -> &str {
+        self.0.basename().as_ref()
+    }
+
+    /// Get the namespace of the `EntityTypeName`, as components
+    pub fn namespace_components(&self) -> impl Iterator<Item = &str> {
+        self.0.namespace_components().map(AsRef::as_ref)
+    }
+
+    /// Get the full namespace of the `EntityTypeName`, as a single string.
+    ///
+    /// Examples:
+    /// - `foo::bar` --> the namespace is `"foo"`
+    /// - `bar` --> the namespace is `""`
+    /// - `foo::bar::baz` --> the namespace is `"foo::bar"`
+    pub fn namespace(&self) -> String {
+        self.0.namespace()
+    }
+}
+
 impl FromStr for EntityTypeName {
     type Err = ParseErrors;
 
