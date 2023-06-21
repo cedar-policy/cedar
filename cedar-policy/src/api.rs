@@ -951,6 +951,28 @@ impl std::fmt::Display for EntityId {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
 pub struct EntityTypeName(ast::Name);
 
+impl EntityTypeName {
+    /// Get the basename of the `EntityTypeName` (ie, with namespaces stripped).
+    pub fn basename(&self) -> &str {
+        self.0.basename().as_ref()
+    }
+
+    /// Get the namespace of the `EntityTypeName`, as components
+    pub fn namespace_components(&self) -> impl Iterator<Item = &str> {
+        self.0.namespace_components().map(AsRef::as_ref)
+    }
+
+    /// Get the full namespace of the `EntityTypeName`, as a single string.
+    ///
+    /// Examples:
+    /// - `foo::bar` --> the namespace is `"foo"`
+    /// - `bar` --> the namespace is `""`
+    /// - `foo::bar::baz` --> the namespace is `"foo::bar"`
+    pub fn namespace(&self) -> String {
+        self.0.namespace()
+    }
+}
+
 impl FromStr for EntityTypeName {
     type Err = ParseErrors;
 
@@ -2346,6 +2368,37 @@ mod entity_uid_tests {
         let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
         assert_eq!(euid.id().as_ref(), "bobby");
         assert_eq!(euid.type_name().to_string(), "Chess::Master");
+        assert_eq!(euid.type_name().basename(), "Master");
+        assert_eq!(euid.type_name().namespace(), "Chess");
+        assert_eq!(euid.type_name().namespace_components().count(), 1);
+    }
+
+    /// building an `EntityUid` from components, with no namespace
+    #[test]
+    fn entity_uid_no_namespace() {
+        let entity_id = EntityId::from_str("bobby").expect("failed at constructing EntityId");
+        let entity_type_name =
+            EntityTypeName::from_str("User").expect("failed at constructing EntityTypeName");
+        let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
+        assert_eq!(euid.id().as_ref(), "bobby");
+        assert_eq!(euid.type_name().to_string(), "User");
+        assert_eq!(euid.type_name().basename(), "User");
+        assert_eq!(euid.type_name().namespace(), String::new());
+        assert_eq!(euid.type_name().namespace_components().count(), 0);
+    }
+
+    /// building an `EntityUid` from components, with many nested namespaces
+    #[test]
+    fn entity_uid_nested_namespaces() {
+        let entity_id = EntityId::from_str("bobby").expect("failed at constructing EntityId");
+        let entity_type_name = EntityTypeName::from_str("A::B::C::D::Z")
+            .expect("failed at constructing EntityTypeName");
+        let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
+        assert_eq!(euid.id().as_ref(), "bobby");
+        assert_eq!(euid.type_name().to_string(), "A::B::C::D::Z");
+        assert_eq!(euid.type_name().basename(), "Z");
+        assert_eq!(euid.type_name().namespace(), "A::B::C::D");
+        assert_eq!(euid.type_name().namespace_components().count(), 4);
     }
 
     /// building an `EntityUid` from components, including escapes
@@ -2361,6 +2414,9 @@ mod entity_uid_tests {
         //   the EntityId has the literal backslash characters in it
         assert_eq!(euid.id().as_ref(), r#"bobby\'s sister:\nVeronica"#);
         assert_eq!(euid.type_name().to_string(), "Hockey::Master");
+        assert_eq!(euid.type_name().basename(), "Master");
+        assert_eq!(euid.type_name().namespace(), "Hockey");
+        assert_eq!(euid.type_name().namespace_components().count(), 1);
     }
 
     /// building an `EntityUid` from components, including backslashes
@@ -2407,6 +2463,9 @@ mod entity_uid_tests {
         };
         assert_eq!(euid.id().as_ref(), " hi there are spaces ");
         assert_eq!(euid.type_name().to_string(), "A::B::C"); // expect to have been normalized
+        assert_eq!(euid.type_name().basename(), "C");
+        assert_eq!(euid.type_name().namespace(), "A::B");
+        assert_eq!(euid.type_name().namespace_components().count(), 2);
 
         let policy = Policy::from_str(
             r#"
@@ -2427,6 +2486,9 @@ permit(principal ==  A :: B
             " hi there are\n    spaces and\n    newlines "
         );
         assert_eq!(euid.type_name().to_string(), "A::B::C::D"); // expect to have been normalized
+        assert_eq!(euid.type_name().basename(), "D");
+        assert_eq!(euid.type_name().namespace(), "A::B::C");
+        assert_eq!(euid.type_name().namespace_components().count(), 3);
     }
 
     #[test]
@@ -2490,6 +2552,9 @@ permit(principal ==  A :: B
         };
         assert_eq!(parsed_euid.id().as_ref(), "hi");
         assert_eq!(parsed_euid.type_name().to_string(), "A::B::C::D::E"); // expect to have been normalized
+        assert_eq!(parsed_euid.type_name().basename(), "E");
+        assert_eq!(parsed_euid.type_name().namespace(), "A::B::C::D");
+        assert_eq!(parsed_euid.type_name().namespace_components().count(), 4);
     }
 
     /// test that we can parse the `Display` output of `EntityUid`
