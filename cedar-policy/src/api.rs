@@ -2308,6 +2308,30 @@ mod entity_uid_tests {
         assert_eq!(euid.type_name().to_string(), r#"Test::User"#);
     }
 
+    /// building an `EntityUid` from components, including whitespace in various places
+    #[test]
+    fn entity_uid_with_whitespace() {
+        let euid_spaces = EntityUid::from_type_name_and_id(
+            EntityTypeName::from_str("A ::   B::C").unwrap(),
+            EntityId::from_str(" hi there are spaces ").unwrap(),
+        );
+        assert_eq!(euid_spaces.id().as_ref(), " hi there are spaces ");
+        assert_eq!(euid_spaces.type_name().to_string(), "A::B::C"); // expect to have been normalized
+        assert_eq!(euid_spaces.type_name().basename(), "C");
+        assert_eq!(euid_spaces.type_name().namespace(), "A::B");
+        assert_eq!(euid_spaces.type_name().namespace_components().count(), 2);
+
+        let euid_spaces_and_newlines = EntityUid::from_type_name_and_id(
+            EntityTypeName::from_str(" A :: B\n::C \n  ::D\n").unwrap(),
+            EntityId::from_str(" hi there are \n spaces and \n newlines ").unwrap(),
+        );
+        assert_eq!(euid_spaces_and_newlines.id().as_ref(), " hi there are \n spaces and \n newlines ");
+        assert_eq!(euid_spaces_and_newlines.type_name().to_string(), "A::B::C::D"); // expect to have been normalized
+        assert_eq!(euid_spaces_and_newlines.type_name().basename(), "D");
+        assert_eq!(euid_spaces_and_newlines.type_name().namespace(), "A::B::C");
+        assert_eq!(euid_spaces_and_newlines.type_name().namespace_components().count(), 3);
+    }
+
     #[test]
     fn malformed_entity_type_name_should_fail() {
         let result = EntityTypeName::from_str("I'm an invalid name");
@@ -2347,6 +2371,19 @@ mod entity_uid_tests {
         //   the EntityId has both single-quote characters (but no backslash characters)
         assert_eq!(parsed_eid.id().as_ref(), r#"b'obby's sister"#);
         assert_eq!(parsed_eid.type_name().to_string(), r#"Test::User"#);
+    }
+
+    /// parsing an `EntityUid` from string, including whitespace
+    #[test]
+    fn parse_euid_whitespace() {
+        let parsed_euid: EntityUid = " A ::B :: C:: D \n :: \n E\n :: \"hi\""
+            .parse()
+            .expect("Failed to parse");
+        assert_eq!(parsed_euid.id().as_ref(), "hi");
+        assert_eq!(parsed_euid.type_name().to_string(), "A::B::C::D::E"); // expect to have been normalized
+        assert_eq!(parsed_euid.type_name().basename(), "E");
+        assert_eq!(parsed_euid.type_name().namespace(), "A::B::C::D");
+        assert_eq!(parsed_euid.type_name().namespace_components().count(), 4);
     }
 
     /// test that we can parse the `Display` output of `EntityUid`
