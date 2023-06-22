@@ -108,7 +108,7 @@ impl TypeError {
 
     pub(crate) fn unsafe_attribute_access(
         on_expr: Expr,
-        missing: String,
+        attribute: String,
         suggestion: Option<String>,
         may_exist: bool,
     ) -> Self {
@@ -116,7 +116,7 @@ impl TypeError {
             on_expr: Some(on_expr),
             source_location: None,
             kind: TypeErrorKind::UnsafeAttributeAccess(UnsafeAttributeAccess {
-                missing,
+                attribute,
                 suggestion,
                 may_exist,
             }),
@@ -216,7 +216,7 @@ pub enum TypeErrorKind {
     /// that it could not statically guarantee would be present.
     #[error(
         "Attribute not found in record or entity: {}{}",
-        .0.missing,
+        .0.attribute,
         if .0.may_exist {
             ". There may be additional attributes that the validator is not able to reason about."
         } else {
@@ -278,8 +278,10 @@ pub struct TypesMustMatch {
 /// Structure containing details about a missing attribute error.
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct UnsafeAttributeAccess {
-    missing: String,
+    attribute: String,
     suggestion: Option<String>,
+    /// When this is true, the attribute might still exist, but the validator
+    /// cannot guarantee that it will.
     may_exist: bool,
 }
 

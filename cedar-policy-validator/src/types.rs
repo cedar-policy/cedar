@@ -988,7 +988,10 @@ impl EntityRecordKind {
             // super type of all other entity types which may have attributes,
             // so it clearly may have additional attributes.
             EntityRecordKind::AnyEntity => true,
-            // An entity LUB may not have additional attributes.
+            // An entity LUB may not have an open attributes record. The record
+            // type returned by `get_attributes_type` _may_ be open, but even in
+            // that case we can account for all attributes that might exist by
+            // examining the elements of the LUB.
             EntityRecordKind::Entity(_) => false,
         }
     }
@@ -1027,8 +1030,8 @@ impl EntityRecordKind {
                 attrs: Attributes::least_upper_bound(schema, attrs0, attrs1),
                 // If attrs0 <: attrs1 (or attrs1 <: attr0) without width
                 // subtyping, we could return the supertype for a LUB preserving
-                // `open_attributes: false`,  but this result is already
-                // achieved due to the subtype check done by
+                // `open_attributes: OpenTag::OpenAttributes`,  but this result
+                // is already achieved due to the subtype check done by
                 // `Type::least_upper_bound`.  This function will never be
                 // called when the records are in a subtype relation.
                 open_attributes: OpenTag::OpenAttributes,
