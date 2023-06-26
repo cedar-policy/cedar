@@ -57,6 +57,10 @@ pub fn parse_policyset_and_also_return_policy_text(
     let pset = cst
         .to_policyset(&mut errs)
         .ok_or_else(|| err::ParseErrors(errs.clone()))?;
+    // PANIC SAFETY Shouldn't be `none` since `parse_policies()` and `to_policyset()` didn't return `Err`
+    #[allow(clippy::expect_used)]
+    // PANIC SAFETY Indexing is safe because of how `SourceInfo` is constructed
+    #[allow(clippy::indexing_slicing)]
     let texts = cst
         .with_generated_policyids()
         .expect("shouldn't be None since parse_policies() and to_policyset() didn't return Err")
@@ -80,7 +84,7 @@ pub fn parse_policyset_to_ests_and_pset(
     let pset = cst
         .to_policyset(&mut errs)
         .ok_or_else(|| err::ParseErrors(errs.clone()))?;
-    // PANIC SAFETY Shouldn't be `none` since `parse_policies()` and `to_policyset` didn't return `Err`
+    // PANIC SAFETY Shouldn't be `none` since `parse_policies()` and `to_policyset()` didn't return `Err`
     #[allow(clippy::expect_used)]
     let ests = cst
         .with_generated_policyids()
