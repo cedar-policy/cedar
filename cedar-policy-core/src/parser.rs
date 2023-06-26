@@ -47,6 +47,28 @@ pub fn parse_policyset(text: &str) -> Result<ast::PolicySet, Vec<err::ParseError
         .ok_or(errs)
 }
 
+/// Like `parse_policyset()`, but also returns the (lossless) original text of
+/// each individual policy.
+pub fn parse_policyset_and_also_return_policy_text(
+    text: &str,
+) -> Result<(HashMap<ast::PolicyID, &str>, ast::PolicySet), err::ParseErrors> {
+    let mut errs = Vec::new();
+    let cst = text_to_cst::parse_policies(text).map_err(err::ParseErrors)?;
+    let pset = cst
+        .to_policyset(&mut errs)
+        .ok_or_else(|| err::ParseErrors(errs.clone()))?;
+    let texts = cst
+        .with_generated_policyids()
+        .expect("shouldn't be None since parse_policies() and to_policyset() didn't return Err")
+        .map(|(id, policy)| (id, &text[policy.info.0.clone()]))
+        .collect::<HashMap<ast::PolicyID, &str>>();
+    if errs.is_empty() {
+        Ok((texts, pset))
+    } else {
+        Err(err::ParseErrors(errs))
+    }
+}
+
 /// Like `parse_policyset()`, but also returns the (lossless) ESTs -- that is,
 /// the ESTs of the original policies without any of the lossy transforms
 /// involved in converting to AST.
@@ -62,7 +84,7 @@ pub fn parse_policyset_to_ests_and_pset(
     #[allow(clippy::expect_used)]
     let ests = cst
         .with_generated_policyids()
-        .expect("shouldn't be None since parse_policies() and to_policyset didn't return Err")
+        .expect("shouldn't be None since parse_policies() and to_policyset() didn't return Err")
         .map(|(id, policy)| match &policy.node {
             Some(p) => Ok(Some((id, p.clone().try_into()?))),
             None => Ok(None),
@@ -159,6 +181,16 @@ pub fn parse_policy_to_est_and_ast(
     match (errs.is_empty(), est) {
         (true, Some(est)) => Ok((est, ast)),
         (_, _) => Err(err::ParseErrors(errs)),
+    }
+}
+
+/// Parse a policy or template (either one works) to its EST representation
+pub fn parse_policy_or_template_to_est(text: &str) -> Result<est::Policy, err::ParseErrors> {
+    let cst = text_to_cst::parse_policy(text).map_err(err::ParseErrors)?;
+    let est = cst.node.map(TryInto::try_into).transpose()?;
+    match est {
+        Some(est) => Ok(est),
+        None => Err(err::ParseErrors(vec![])), // theoretically this shouldn't happen if the `?`s above didn't already fail us out
     }
 }
 
@@ -540,6 +572,40 @@ mod parse_tests {
         "#,
         );
         assert!(!result.expect("parse error").is_empty());
+    }
+
+    #[test]
+    fn test_parse_policyset() {
+        use crate::ast::PolicyID;
+        let multiple_policies = r#"
+            permit(principal, action, resource)
+            when { principal == resource.owner };
+
+            forbid(principal, action == Action::"modify", resource) // a comment
+            when { resource . highSecurity }; // intentionally not conforming to our formatter
+        "#;
+        let pset = parse_policyset(multiple_policies).expect("Should parse");
+        assert_eq!(pset.policies().count(), 2);
+        assert_eq!(pset.static_policies().count(), 2);
+        let (texts, pset) =
+            parse_policyset_and_also_return_policy_text(multiple_policies).expect("Should parse");
+        assert_eq!(pset.policies().count(), 2);
+        assert_eq!(pset.static_policies().count(), 2);
+        assert_eq!(texts.len(), 2);
+        assert_eq!(
+            texts.get(&PolicyID::from_string("policy0")),
+            Some(
+                &r#"permit(principal, action, resource)
+            when { principal == resource.owner };"#
+            )
+        );
+        assert_eq!(
+            texts.get(&PolicyID::from_string("policy1")),
+            Some(
+                &r#"forbid(principal, action == Action::"modify", resource) // a comment
+            when { resource . highSecurity };"#
+            )
+        );
     }
 
     #[test]
