@@ -15,7 +15,10 @@
  */
 
 use cedar_policy_core::entities::JSONValue;
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{MapAccess, Visitor},
+    Deserialize, Serialize,
+};
 use serde_with::serde_as;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap};
@@ -189,7 +192,7 @@ impl std::fmt::Display for ActionEntityUID {
 
 /// A restricted version of the `Type` enum containing only the types which are
 /// exposed to users.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 // This enum is `untagged` with these variants as a workaround to a serde
 // limitation. It is not possible to have the known variants on one enum, and
 // then, have catch-all variant for any unrecognized tag in the same enum that
@@ -203,15 +206,219 @@ pub enum SchemaType {
     },
 }
 
+impl<'de> Deserialize<'de> for SchemaType {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_any(SchemaTypeVisitor)
+    }
+}
+
+struct SchemaTypeVisitor;
+
+impl<'de> Visitor<'de> for SchemaTypeVisitor {
+    type Value = SchemaType;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("builtin type or reference to type defined in commonTypes")
+    }
+
+    fn visit_map<M>(self, mut map: M) -> std::result::Result<Self::Value, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "camelCase")]
+        enum Fields {
+            Type,
+            Element,
+            Attributes,
+            AdditionalAttributes,
+            Name,
+        }
+
+        let mut type_name: Option<SmolStr> = None;
+        let mut element: Option<SchemaType> = None;
+        let mut attributes: Option<BTreeMap<SmolStr, TypeOfAttribute>> = None;
+        let mut additional_attributes: Option<bool> = None;
+        let mut name: Option<SmolStr> = None;
+
+        while let Some(key) = map.next_key()? {
+            match key {
+                Fields::Type => {
+                    if type_name.is_some() {
+                        return Err(serde::de::Error::duplicate_field("type"));
+                    }
+                    type_name = Some(map.next_value()?)
+                }
+                Fields::Element => {
+                    if element.is_some() {
+                        return Err(serde::de::Error::duplicate_field("element"));
+                    }
+                    element = Some(map.next_value()?)
+                }
+                Fields::Attributes => {
+                    if attributes.is_some() {
+                        return Err(serde::de::Error::duplicate_field("attributes"));
+                    }
+                    attributes = Some(map.next_value()?)
+                }
+                Fields::AdditionalAttributes => {
+                    if additional_attributes.is_some() {
+                        return Err(serde::de::Error::duplicate_field("additionalAttributes"));
+                    }
+                    additional_attributes = Some(map.next_value()?)
+                }
+                Fields::Name => {
+                    if name.is_some() {
+                        return Err(serde::de::Error::duplicate_field("name"));
+                    }
+                    name = Some(map.next_value()?)
+                }
+            }
+        }
+
+        match type_name.as_ref().map(|s| s.as_str()) {
+            Some("String") => {
+                if element.is_some() {
+                    Err(serde::de::Error::unknown_field("element", &[]))
+                } else if attributes.is_some() {
+                    Err(serde::de::Error::unknown_field("attributes", &[]))
+                } else if additional_attributes.is_some() {
+                    Err(serde::de::Error::unknown_field("additionalAttributes", &[]))
+                } else if name.is_some() {
+                    Err(serde::de::Error::unknown_field("name", &[]))
+                } else {
+                    Ok(SchemaType::Type(SchemaTypeVariant::String))
+                }
+            }
+            Some("Long") => {
+                if element.is_some() {
+                    Err(serde::de::Error::unknown_field("element", &[]))
+                } else if attributes.is_some() {
+                    Err(serde::de::Error::unknown_field("attributes", &[]))
+                } else if additional_attributes.is_some() {
+                    Err(serde::de::Error::unknown_field("additionalAttributes", &[]))
+                } else if name.is_some() {
+                    Err(serde::de::Error::unknown_field("name", &[]))
+                } else {
+                    Ok(SchemaType::Type(SchemaTypeVariant::Long))
+                }
+            }
+            Some("Boolean") => {
+                if element.is_some() {
+                    Err(serde::de::Error::unknown_field("element", &[]))
+                } else if attributes.is_some() {
+                    Err(serde::de::Error::unknown_field("attributes", &[]))
+                } else if additional_attributes.is_some() {
+                    Err(serde::de::Error::unknown_field("additionalAttributes", &[]))
+                } else if name.is_some() {
+                    Err(serde::de::Error::unknown_field("name", &[]))
+                } else {
+                    Ok(SchemaType::Type(SchemaTypeVariant::Boolean))
+                }
+            }
+            Some("Set") => {
+                if attributes.is_some() {
+                    Err(serde::de::Error::unknown_field("attributes", &["element"]))
+                } else if additional_attributes.is_some() {
+                    Err(serde::de::Error::unknown_field(
+                        "additionalAttributes",
+                        &["element"],
+                    ))
+                } else if name.is_some() {
+                    Err(serde::de::Error::unknown_field("name", &["element"]))
+                } else if let Some(element) = element {
+                    Ok(SchemaType::Type(SchemaTypeVariant::Set {
+                        element: Box::new(element),
+                    }))
+                } else {
+                    Err(serde::de::Error::missing_field("element"))
+                }
+            }
+            Some("Record") => {
+                if element.is_some() {
+                    Err(serde::de::Error::unknown_field(
+                        "element",
+                        &["attributes", "additionalAttributes"],
+                    ))
+                } else if name.is_some() {
+                    Err(serde::de::Error::unknown_field(
+                        "name",
+                        &["attributes", "additionalAttributes"],
+                    ))
+                } else if let Some(attributes) = attributes {
+                    let additional_attributes =
+                        additional_attributes.unwrap_or(additional_attributes_default());
+                    Ok(SchemaType::Type(SchemaTypeVariant::Record {
+                        attributes,
+                        additional_attributes,
+                    }))
+                } else {
+                    Err(serde::de::Error::missing_field("attributes"))
+                }
+            }
+            Some("Entity") => {
+                if element.is_some() {
+                    Err(serde::de::Error::unknown_field("element", &["name"]))
+                } else if attributes.is_some() {
+                    Err(serde::de::Error::unknown_field("attributes", &["name"]))
+                } else if additional_attributes.is_some() {
+                    Err(serde::de::Error::unknown_field(
+                        "additionalAttributes",
+                        &["name"],
+                    ))
+                } else if let Some(name) = name {
+                    Ok(SchemaType::Type(SchemaTypeVariant::Entity { name }))
+                } else {
+                    Err(serde::de::Error::missing_field("name"))
+                }
+            }
+            Some("Extension") => {
+                if element.is_some() {
+                    Err(serde::de::Error::unknown_field("element", &["name"]))
+                } else if attributes.is_some() {
+                    Err(serde::de::Error::unknown_field("attributes", &["name"]))
+                } else if additional_attributes.is_some() {
+                    Err(serde::de::Error::unknown_field(
+                        "additionalAttributes",
+                        &["name"],
+                    ))
+                } else if let Some(name) = name {
+                    Ok(SchemaType::Type(SchemaTypeVariant::Extension { name }))
+                } else {
+                    Err(serde::de::Error::missing_field("name"))
+                }
+            }
+            Some(type_name) => {
+                if element.is_some() {
+                    Err(serde::de::Error::unknown_field("element", &[]))
+                } else if attributes.is_some() {
+                    Err(serde::de::Error::unknown_field("attributes", &[]))
+                } else if additional_attributes.is_some() {
+                    Err(serde::de::Error::unknown_field("additionalAttributes", &[]))
+                } else if name.is_some() {
+                    Err(serde::de::Error::unknown_field("name", &[]))
+                } else {
+                    Ok(SchemaType::TypeDef {
+                        type_name: type_name.into(),
+                    })
+                }
+            }
+            None => Err(serde::de::Error::missing_field("type")),
+        }
+    }
+}
+
 impl From<SchemaTypeVariant> for SchemaType {
     fn from(variant: SchemaTypeVariant) -> Self {
         Self::Type(variant)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(tag = "type")]
-#[serde(deny_unknown_fields)]
 pub enum SchemaTypeVariant {
     String,
     Long,
@@ -528,83 +735,140 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "unknown field `requiredddddd`")]
     fn test_schema_file_with_misspelled_required() {
-        let src = r#"
+        let src = serde_json::json!(
         {
             "entityTypes": {
                 "User": {
-                    "memberOf": [ "Group" ],
                     "shape": {
                         "type": "Record",
-                        "additionalAttributess": false,
                         "attributes": {
-                            "name": { "type": "String", "required": true},
-                            "age": { "type": "Long", "required": true},
-                            "favorite": { "type": "Entity", "name": "Photo", "requiredddddd": false}
-                        },
-                        "required": false
+                            "favorite": {
+                                "type": "Entity",
+                                "name": "Photo",
+                                "requiredddddd": false
+                            }
+                        }
                     }
                 }
             },
-            "actions": []
-        }
-        "#;
-        let schema: NamespaceDefinition = serde_json::from_str(src).expect("Expected valid schema");
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
         println!("{:#?}", schema);
     }
 
     #[test]
-    #[should_panic]
-    fn test_schema_file_with_misspelled_attribute() {
-        let src = r#"
+    #[should_panic(expected = "unknown field `nameeeeee`")]
+    fn test_schema_file_with_misspelled_field() {
+        let src = serde_json::json!(
         {
-            "entityTypes": [
+            "entityTypes": {
                 "User": {
-                    "memberOf": [ "Group" ],
                     "shape": {
                         "type": "Record",
-                        "additionalAttributess": false,
                         "attributes": {
-                            "name": { "type": "String", "required": true},
-                            "age": { "type": "Long", "required": true},
-                            "favorite": { "type": "Entity", "nameeeeee": "Photo", "required": false}
-                        },
-                        "required": false
+                            "favorite": {
+                                "type": "Entity",
+                                "nameeeeee": "Photo",
+                            }
+                        }
                     }
                 }
-            ],
-            "actions": []
-        }
-        "#;
-        let schema: NamespaceDefinition = serde_json::from_str(src).expect("Expected valid schema");
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
         println!("{:#?}", schema);
     }
 
     #[test]
-    #[should_panic]
-    fn test_schema_file_with_extra_attribute() {
-        let src = r#"
+    #[should_panic(expected = "unknown field `extra`")]
+    fn test_schema_file_with_extra_field() {
+        let src = serde_json::json!(
         {
-            "entityTypes": [
+            "entityTypes": {
                 "User": {
-                    "memberOf": [ "Group" ],
                     "shape": {
                         "type": "Record",
-                        "additionalAttributess": false,
                         "attributes": {
-                            "name": { "type": "String", "required": true},
-                            "age": { "type": "Long", "required": true},
-                            "favorite": { "type": "Entity", "name": "Photo", "required": false, "extra": "Should not exist"}
-                        },
-                        "required": false
+                            "favorite": {
+                                "type": "Entity",
+                                "name": "Photo",
+                                "extra": "Should not exist"
+                            }
+                        }
                     }
                 }
-            ],
-            "actions": []
-        }
-        "#;
-        let schema: NamespaceDefinition = serde_json::from_str(src).expect("Expected valid schema");
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
+        println!("{:#?}", schema);
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown field `memberOfTypes`")]
+    fn test_schema_file_with_misplaced_field() {
+        let src = serde_json::json!(
+        {
+            "entityTypes": {
+                "User": {
+                    "shape": {
+                        "memberOfTypes": [],
+                        "type": "Record",
+                        "attributes": {
+                            "favorite": {
+                                "type": "Entity",
+                                "name": "Photo",
+                            }
+                        }
+                    }
+                }
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
+        println!("{:#?}", schema);
+    }
+
+    #[test]
+    #[should_panic(expected = "missing field `name`")]
+    fn schema_file_with_missing_field() {
+        let src = serde_json::json!(
+        {
+            "entityTypes": {
+                "User": {
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "favorite": {
+                                "type": "Entity",
+                            }
+                        }
+                    }
+                }
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
+        println!("{:#?}", schema);
+    }
+
+    #[test]
+    #[should_panic(expected = "missing field `type`")]
+    fn schema_file_with_missing_type() {
+        let src = serde_json::json!(
+        {
+            "entityTypes": {
+                "User": {
+                    "shape": { }
+                }
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
         println!("{:#?}", schema);
     }
 }
