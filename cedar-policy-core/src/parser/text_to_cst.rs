@@ -29,92 +29,102 @@ lalrpop_mod!(
     "/src/parser/grammar.rs"
 );
 
+use lazy_static::lazy_static;
+
 use super::*;
 
-// "Global" data per-thread, initialized at first use
-thread_local!(static POLICIES_PARSER: grammar::PoliciesParser = grammar::PoliciesParser::new());
-thread_local!(static POLICY_PARSER: grammar::PolicyParser = grammar::PolicyParser::new());
-thread_local!(static EXPR_PARSER: grammar::ExprParser = grammar::ExprParser::new());
-thread_local!(static REF_PARSER: grammar::RefParser = grammar::RefParser::new());
-thread_local!(static PRIMARY_PARSER: grammar::PrimaryParser = grammar::PrimaryParser::new());
-thread_local!(static NAME_PARSER: grammar::NameParser = grammar::NameParser::new());
-thread_local!(static IDENT_PARSER: grammar::IdentParser = grammar::IdentParser::new());
+// This helper function calls a generated parser, collects errors that could be
+// generated multiple ways, and returns a single Result where the error type is
+// `err::ParseError`.
+fn parse_collect_errors<'a, P, T>(
+    parser: &P,
+    parse: impl FnOnce(
+        &P,
+        &mut Vec<err::RawErrorRecovery<'a>>,
+        &'a str,
+    ) -> Result<T, err::RawParseError<'a>>,
+    text: &'a str,
+) -> Result<T, Vec<err::ParseError>> {
+    // call generated parser
+    let mut errs = Vec::new();
+    let result = parse(parser, &mut errs, text);
 
-// This macro calls a generated parser (specified by the argument to the macro),
-// collects errors that could be generated multiple ways, and returns a single
-// Result where the error type is `err::ParseError`.
-macro_rules! parse_collect_errors {
-    ($parser:ident, $text:ident) => {
-        $parser.with(|parser| {
-            // call generated parser
-            let mut errs = Vec::new();
-            let result = parser.parse(&mut errs, $text);
+    // convert both parser error types to the local error type
+    let mut errors: Vec<err::ParseError> = errs
+        .into_iter()
+        .map(err::ParseError::from_recovery)
+        .collect();
+    let result = result.map_err(err::ParseError::from_raw);
 
-            // convert both parser error types to the local error type
-            let mut errors: Vec<err::ParseError> =
-                errs.into_iter().map(err::ParseError::from).collect();
-            let result = result.map_err(err::ParseError::from);
-
-            // decide to return errors or success
-            match result {
-                Ok(parsed) => {
-                    if !errors.is_empty() {
-                        // In this case, `parsed` contains internal errors but could
-                        // still be used. However, for now, we do not use `parsed` --
-                        // we just return the errors from this parsing phase and stop.
-                        Err(errors)
-                    } else {
-                        Ok(parsed)
-                    }
-                }
-                Err(e) => {
-                    errors.push(e);
-                    Err(errors)
-                }
+    // decide to return errors or success
+    match result {
+        Ok(parsed) => {
+            if !errors.is_empty() {
+                // In this case, `parsed` contains internal errors but could
+                // still be used. However, for now, we do not use `parsed` --
+                // we just return the errors from this parsing phase and stop.
+                Err(errors)
+            } else {
+                Ok(parsed)
             }
-        })
-    };
+        }
+        Err(e) => {
+            errors.push(e);
+            Err(errors)
+        }
+    }
+}
+
+// Thread-safe "global" parsers, initialized at first use
+lazy_static! {
+    static ref POLICIES_PARSER: grammar::PoliciesParser = grammar::PoliciesParser::new();
+    static ref POLICY_PARSER: grammar::PolicyParser = grammar::PolicyParser::new();
+    static ref EXPR_PARSER: grammar::ExprParser = grammar::ExprParser::new();
+    static ref REF_PARSER: grammar::RefParser = grammar::RefParser::new();
+    static ref PRIMARY_PARSER: grammar::PrimaryParser = grammar::PrimaryParser::new();
+    static ref NAME_PARSER: grammar::NameParser = grammar::NameParser::new();
+    static ref IDENT_PARSER: grammar::IdentParser = grammar::IdentParser::new();
 }
 
 /// Create CST for multiple policies from text
 pub fn parse_policies(
     text: &str,
 ) -> Result<node::ASTNode<Option<cst::Policies>>, Vec<err::ParseError>> {
-    parse_collect_errors!(POLICIES_PARSER, text)
+    parse_collect_errors(&*POLICIES_PARSER, grammar::PoliciesParser::parse, text)
 }
 
 /// Create CST for one policy statement from text
 pub fn parse_policy(
     text: &str,
 ) -> Result<node::ASTNode<Option<cst::Policy>>, Vec<err::ParseError>> {
-    parse_collect_errors!(POLICY_PARSER, text)
+    parse_collect_errors(&*POLICY_PARSER, grammar::PolicyParser::parse, text)
 }
 
 /// Create CST for one Expression from text
 pub fn parse_expr(text: &str) -> Result<node::ASTNode<Option<cst::Expr>>, Vec<err::ParseError>> {
-    parse_collect_errors!(EXPR_PARSER, text)
+    parse_collect_errors(&*EXPR_PARSER, grammar::ExprParser::parse, text)
 }
 
 /// Create CST for one Entity Ref (i.e., UID) from text
 pub fn parse_ref(text: &str) -> Result<node::ASTNode<Option<cst::Ref>>, Vec<err::ParseError>> {
-    parse_collect_errors!(REF_PARSER, text)
+    parse_collect_errors(&*REF_PARSER, grammar::RefParser::parse, text)
 }
 
 /// Create CST for one Primary value from text
 pub fn parse_primary(
     text: &str,
 ) -> Result<node::ASTNode<Option<cst::Primary>>, Vec<err::ParseError>> {
-    parse_collect_errors!(PRIMARY_PARSER, text)
+    parse_collect_errors(&*PRIMARY_PARSER, grammar::PrimaryParser::parse, text)
 }
 
 /// Parse text as a Name, or fail if it does not parse as a Name
 pub fn parse_name(text: &str) -> Result<node::ASTNode<Option<cst::Name>>, Vec<err::ParseError>> {
-    parse_collect_errors!(NAME_PARSER, text)
+    parse_collect_errors(&*NAME_PARSER, grammar::NameParser::parse, text)
 }
 
 /// Parse text as an identifier, or fail if it does not parse as an identifier
 pub fn parse_ident(text: &str) -> Result<node::ASTNode<Option<cst::Ident>>, Vec<err::ParseError>> {
-    parse_collect_errors!(IDENT_PARSER, text)
+    parse_collect_errors(&*IDENT_PARSER, grammar::IdentParser::parse, text)
 }
 
 #[cfg(test)]
@@ -668,7 +678,7 @@ mod tests {
         let policy_text = r#"
         //comment policy
         // comment policy 2
-        @anno("good annotation")  // comments after annotation 
+        @anno("good annotation")  // comments after annotation
         // comments after annotation 2
                 permit(principal //comment 1
                  ==
@@ -888,8 +898,8 @@ mod tests {
     #[test]
     fn policies6() {
         // test that an error doesn't stop the parser
-        let policies = POLICIES_PARSER.with(|p| {
-            p.parse(
+        let policies = POLICIES_PARSER
+            .parse(
                 &mut Vec::new(),
                 r#"
                 // use a number to error
@@ -900,8 +910,7 @@ mod tests {
             )
             .expect("parser error")
             .node
-            .expect("no data")
-        });
+            .expect("no data");
         let success = policies
             .0
             .into_iter()

@@ -15,8 +15,10 @@
  */
 
 use lalrpop_util as lalr;
-use std::fmt::Display;
 use thiserror::Error;
+
+pub(crate) type RawParseError<'a> = lalr::ParseError<usize, lalr::lexer::Token<'a>, String>;
+pub(crate) type RawErrorRecovery<'a> = lalr::ErrorRecovery<usize, lalr::lexer::Token<'a>, String>;
 
 /// For errors during parsing
 #[derive(Debug, Error, PartialEq, Clone)]
@@ -41,15 +43,13 @@ pub enum ParseError {
     RestrictedExpressionError(#[from] crate::ast::RestrictedExpressionError),
 }
 
-impl<L: Display, T: Display, E: Display> From<lalr::ParseError<L, T, E>> for ParseError {
-    fn from(e: lalr::ParseError<L, T, E>) -> Self {
+impl ParseError {
+    pub(crate) fn from_raw(e: RawParseError<'_>) -> Self {
         ParseError::ToCST(format!("{}", e))
     }
-}
 
-impl<L: Display, T: Display, E: Display> From<lalr::ErrorRecovery<L, T, E>> for ParseError {
-    fn from(e: lalr::ErrorRecovery<L, T, E>) -> Self {
-        e.error.into()
+    pub(crate) fn from_recovery(e: RawErrorRecovery<'_>) -> Self {
+        ParseError::from_raw(e.error)
     }
 }
 
