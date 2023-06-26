@@ -139,6 +139,18 @@ impl FromIterator<(SmolStr, CedarValueJson)> for JsonRecord {
     }
 }
 
+impl JsonRecord {
+    /// Iterate over the (k, v) pairs in the record
+    pub fn iter<'s>(&'s self) -> impl Iterator<Item = (&'s SmolStr, &'s CedarValueJson)> {
+        self.values.iter()
+    }
+
+    /// Get the number of attributes in the record
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+}
+
 /// Structure expected by the `__entity` escape
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TypeAndId {
@@ -184,9 +196,9 @@ impl TryFrom<TypeAndId> for EntityUID {
 pub struct FnAndArg {
     /// Extension constructor function
     #[serde(rename = "fn")]
-    ext_fn: SmolStr,
+    pub(crate) ext_fn: SmolStr,
     /// Argument to that constructor
-    arg: Box<CedarValueJson>,
+    pub(crate) arg: Box<CedarValueJson>,
 }
 
 impl CedarValueJson {

@@ -41,6 +41,7 @@ use cedar_policy_core::FromNormalizedStr;
 pub use cedar_policy_validator::{
     TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
 };
+use itertools::Itertools;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -1969,7 +1970,8 @@ impl PolicySet {
 
 impl std::fmt::Display for PolicySet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.ast)
+        // prefer to display the lossless format
+        write!(f, "{}", self.policies().map(|p| &p.lossless).join("\n"))
     }
 }
 
@@ -2524,7 +2526,8 @@ impl Policy {
 
 impl std::fmt::Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.ast.fmt(f)
+        // prefer to display the lossless format
+        self.lossless.fmt(f)
     }
 }
 
@@ -2602,6 +2605,29 @@ impl LosslessPolicy {
                 );
                 let slots = vals.into_iter().map(|(k, v)| (k, v.clone())).collect();
                 Ok(Self::Text { text, slots })
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for LosslessPolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Est(est) => write!(f, "{est}"),
+            Self::Text { text, slots } => {
+                if slots.is_empty() {
+                    write!(f, "{text}")
+                } else {
+                    // need to replace placeholders according to `slots`.
+                    // just find-and-replace wouldn't be safe/perfect, we
+                    // want to use the actual parser; right now we reuse
+                    // other implementation by just converting to EST and
+                    // printing that
+                    match self.est() {
+                        Ok(est) => write!(f, "{est}"),
+                        Err(e) => write!(f, "<invalid linked policy: {e}>"),
+                    }
+                }
             }
         }
     }

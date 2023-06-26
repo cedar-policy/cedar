@@ -16,10 +16,8 @@
 
 use crate::{
     ast::*,
-    extensions::Extensions,
     parser::{err::ParseErrors, SourceInfo},
 };
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::{
@@ -576,193 +574,10 @@ impl Expr {
 
 impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.expr_kind {
-            // Add parenthesis around negative numeric literals otherwise
-            // round-tripping fuzzer fails for expressions like `(-1)["a"]`.
-            ExprKind::Lit(Literal::Long(n)) if *n < 0 => write!(f, "({})", n),
-            ExprKind::Lit(l) => write!(f, "{}", l),
-            ExprKind::Var(v) => write!(f, "{}", v),
-            ExprKind::Unknown {
-                name,
-                type_annotation,
-            } => match type_annotation.as_ref() {
-                Some(type_annotation) => write!(f, "unknown({name:?}:{type_annotation})"),
-                None => write!(f, "unknown({name})"),
-            },
-            ExprKind::Slot(id) => write!(f, "{id}"),
-            ExprKind::If {
-                test_expr,
-                then_expr,
-                else_expr,
-            } => write!(
-                f,
-                "if {} then {} else {}",
-                maybe_with_parens(test_expr),
-                maybe_with_parens(then_expr),
-                maybe_with_parens(else_expr)
-            ),
-            ExprKind::And { left, right } => write!(
-                f,
-                "{} && {}",
-                maybe_with_parens(left),
-                maybe_with_parens(right)
-            ),
-            ExprKind::Or { left, right } => write!(
-                f,
-                "{} || {}",
-                maybe_with_parens(left),
-                maybe_with_parens(right)
-            ),
-            ExprKind::UnaryApp { op, arg } => match op {
-                UnaryOp::Not => write!(f, "!{}", maybe_with_parens(arg)),
-                // Always add parentheses instead of calling
-                // `maybe_with_parens`.
-                // This makes sure that we always get a negation operation back
-                // (as opposed to e.g., a negative number) when parsing the
-                // printed form, thus preserving the round-tripping property.
-                UnaryOp::Neg => write!(f, "-({})", arg),
-            },
-            ExprKind::BinaryApp { op, arg1, arg2 } => match op {
-                BinaryOp::Eq => write!(
-                    f,
-                    "{} == {}",
-                    maybe_with_parens(arg1),
-                    maybe_with_parens(arg2),
-                ),
-                BinaryOp::Less => write!(
-                    f,
-                    "{} < {}",
-                    maybe_with_parens(arg1),
-                    maybe_with_parens(arg2),
-                ),
-                BinaryOp::LessEq => write!(
-                    f,
-                    "{} <= {}",
-                    maybe_with_parens(arg1),
-                    maybe_with_parens(arg2),
-                ),
-                BinaryOp::Add => write!(
-                    f,
-                    "{} + {}",
-                    maybe_with_parens(arg1),
-                    maybe_with_parens(arg2),
-                ),
-                BinaryOp::Sub => write!(
-                    f,
-                    "{} - {}",
-                    maybe_with_parens(arg1),
-                    maybe_with_parens(arg2),
-                ),
-                BinaryOp::In => write!(
-                    f,
-                    "{} in {}",
-                    maybe_with_parens(arg1),
-                    maybe_with_parens(arg2),
-                ),
-                BinaryOp::Contains => {
-                    write!(f, "{}.contains({})", maybe_with_parens(arg1), &arg2)
-                }
-                BinaryOp::ContainsAll => {
-                    write!(f, "{}.containsAll({})", maybe_with_parens(arg1), &arg2)
-                }
-                BinaryOp::ContainsAny => {
-                    write!(f, "{}.containsAny({})", maybe_with_parens(arg1), &arg2)
-                }
-            },
-            ExprKind::MulByConst { arg, constant } => {
-                write!(f, "{} * {}", maybe_with_parens(arg), constant)
-            }
-            ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                // search for the name and callstyle
-                let style = Extensions::all_available().all_funcs().find_map(|f| {
-                    if f.name() == fn_name {
-                        Some(f.style())
-                    } else {
-                        None
-                    }
-                });
-                // PANIC SAFETY Args list must be non empty by INVARIANT (MethodStyleArgs)
-                #[allow(clippy::indexing_slicing)]
-                if matches!(style, Some(CallStyle::MethodStyle)) && !args.is_empty() {
-                    write!(
-                        f,
-                        "{}.{}({})",
-                        maybe_with_parens(&args[0]),
-                        fn_name,
-                        args[1..].iter().join(", ")
-                    )
-                } else {
-                    // This case can only be reached for a manually constructed AST.
-                    // In order to reach this case, either the function name `fn_name`
-                    // is not in the list of available extension functions, or this
-                    // is a method-style function call with zero arguments. Both of
-                    // these cases can be displayed, but neither will parse. The
-                    // resulting `ParseError` will be `NotAFunction`.
-                    write!(f, "{}({})", fn_name, args.iter().join(", "))
-                }
-            }
-            ExprKind::GetAttr { expr, attr } => write!(
-                f,
-                "{}[\"{}\"]",
-                maybe_with_parens(expr),
-                attr.escape_debug()
-            ),
-            ExprKind::HasAttr { expr, attr } => {
-                write!(
-                    f,
-                    "{} has \"{}\"",
-                    maybe_with_parens(expr),
-                    attr.escape_debug()
-                )
-            }
-            ExprKind::Like { expr, pattern } => {
-                // during parsing we convert \* in the pattern into \u{0000},
-                // so when printing we need to convert back
-                write!(f, "{} like \"{}\"", maybe_with_parens(expr), pattern,)
-            }
-            ExprKind::Set(v) => write!(f, "[{}]", v.iter().join(", ")),
-            ExprKind::Record(m) => write!(
-                f,
-                "{{{}}}",
-                m.iter()
-                    .map(|(k, v)| format!("\"{}\": {}", k.escape_debug(), v))
-                    .join(", ")
-            ),
-        }
-    }
-}
-
-/// returns the `Display` representation of the Expr, adding parens around the
-/// entire Expr if necessary.
-/// E.g., won't add parens for constants or `principal` etc, but will for things
-/// like `(2 < 5)`.
-/// When in doubt, add the parens.
-fn maybe_with_parens(expr: &Expr) -> String {
-    match expr.expr_kind {
-        ExprKind::Lit(_) => expr.to_string(),
-        ExprKind::Var(_) => expr.to_string(),
-        ExprKind::Unknown { .. } => expr.to_string(),
-        ExprKind::Slot(_) => expr.to_string(),
-        ExprKind::If { .. } => format!("({})", expr),
-        ExprKind::And { .. } => format!("({})", expr),
-        ExprKind::Or { .. } => format!("({})", expr),
-        ExprKind::UnaryApp {
-            op: UnaryOp::Not | UnaryOp::Neg,
-            ..
-        } => {
-            // we want parens here because things like parse((!x).y)
-            // would be printed into !x.y which has a different meaning,
-            // albeit being semantically incorrect.
-            format!("({})", expr)
-        }
-        ExprKind::BinaryApp { .. } => format!("({})", expr),
-        ExprKind::MulByConst { .. } => format!("({})", expr),
-        ExprKind::ExtensionFunctionApp { .. } => format!("({})", expr),
-        ExprKind::GetAttr { .. } => format!("({})", expr),
-        ExprKind::HasAttr { .. } => format!("({})", expr),
-        ExprKind::Like { .. } => format!("({})", expr),
-        ExprKind::Set { .. } => expr.to_string(),
-        ExprKind::Record { .. } => expr.to_string(),
+        // To avoid code duplication between pretty-printers for AST Expr and EST Expr,
+        // we just convert to EST and use the EST pretty-printer.
+        // Note that converting AST->EST is lossless and infallible.
+        write!(f, "{}", crate::est::Expr::from(self.clone()))
     }
 }
 
@@ -1479,6 +1294,7 @@ impl std::fmt::Display for Var {
 
 #[cfg(test)]
 mod test {
+    use itertools::Itertools;
     use std::{
         collections::{hash_map::DefaultHasher, HashSet},
         sync::Arc,
@@ -1594,6 +1410,16 @@ mod test {
             vec![PatternElem::Char('\\'), PatternElem::Char('*')],
         );
         assert_eq!(format!("{e}"), r#""a" like "\\\*""#);
+    }
+
+    #[test]
+    fn has_display() {
+        // `\0` escaped form is `\0`.
+        let e = Expr::has_attr(Expr::val("a"), "\0".into());
+        assert_eq!(format!("{e}"), r#""a" has "\0""#);
+        // `\`'s escaped form is `\\`
+        let e = Expr::has_attr(Expr::val("a"), r#"\"#.into());
+        assert_eq!(format!("{e}"), r#""a" has "\\""#);
     }
 
     #[test]
