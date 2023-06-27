@@ -21,7 +21,7 @@ use serde::{
 };
 use serde_with::serde_as;
 use smol_str::SmolStr;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::Result;
 
@@ -215,6 +215,50 @@ impl<'de> Deserialize<'de> for SchemaType {
     }
 }
 
+/// The fields for a `SchemaTypes`. Used for implementing deserialization.
+#[derive(Hash, Eq, PartialEq, Deserialize)]
+#[serde(field_identifier, rename_all = "camelCase")]
+enum TypeFields {
+    Type,
+    Element,
+    Attributes,
+    AdditionalAttributes,
+    Name,
+}
+
+// This macro is used to avoid duplicating the fields names when calling
+// `serde::de::Error::unknown_field`. It wants an `&'static [&'static str]`, and
+// AFAIK, the elements of the static slice must be literals.
+macro_rules! type_field_name {
+    (Type) => {
+        "type"
+    };
+    (Element) => {
+        "element"
+    };
+    (Attributes) => {
+        "attributes"
+    };
+    (AdditionalAttributes) => {
+        "additionalAttributes"
+    };
+    (Name) => {
+        "name"
+    };
+}
+
+impl TypeFields {
+    fn as_str(&self) -> &'static str {
+        match self {
+            TypeFields::Type => type_field_name!(Type),
+            TypeFields::Element => type_field_name!(Element),
+            TypeFields::Attributes => type_field_name!(Attributes),
+            TypeFields::AdditionalAttributes => type_field_name!(AdditionalAttributes),
+            TypeFields::Name => type_field_name!(Name),
+        }
+    }
+}
+
 struct SchemaTypeVisitor;
 
 impl<'de> Visitor<'de> for SchemaTypeVisitor {
@@ -228,185 +272,192 @@ impl<'de> Visitor<'de> for SchemaTypeVisitor {
     where
         M: MapAccess<'de>,
     {
-        #[derive(Deserialize)]
-        #[serde(field_identifier, rename_all = "camelCase")]
-        enum Fields {
-            Type,
-            Element,
-            Attributes,
-            AdditionalAttributes,
-            Name,
-        }
+        use TypeFields::*;
 
-        let mut type_name: Option<SmolStr> = None;
-        let mut element: Option<SchemaType> = None;
-        let mut attributes: Option<BTreeMap<SmolStr, TypeOfAttribute>> = None;
-        let mut additional_attributes: Option<bool> = None;
-        let mut name: Option<SmolStr> = None;
+        // We keep field values wrapped in a `Result` initially so that we do
+        // not report errors due the contents of a field when the field is not
+        // expected for a particular type variant. We instead report that the
+        // field so not exist at all, so that the schema author can delete the
+        // field without wasting time fixing errors in the value.
+        let mut type_name: Option<std::result::Result<SmolStr, M::Error>> = None;
+        let mut element: Option<std::result::Result<SchemaType, M::Error>> = None;
+        let mut attributes: Option<
+            std::result::Result<BTreeMap<SmolStr, TypeOfAttribute>, M::Error>,
+        > = None;
+        let mut additional_attributes: Option<std::result::Result<bool, M::Error>> = None;
+        let mut name: Option<std::result::Result<SmolStr, M::Error>> = None;
 
+        // Gather all the fields in the object. Any fields that are not one of
+        // the possible fields for some schema type will have been reported by
+        // serde already.
         while let Some(key) = map.next_key()? {
             match key {
-                Fields::Type => {
+                Type => {
                     if type_name.is_some() {
-                        return Err(serde::de::Error::duplicate_field("type"));
+                        return Err(serde::de::Error::duplicate_field(Type.as_str()));
                     }
-                    type_name = Some(map.next_value()?)
+                    type_name = Some(map.next_value());
                 }
-                Fields::Element => {
+                Element => {
                     if element.is_some() {
-                        return Err(serde::de::Error::duplicate_field("element"));
+                        return Err(serde::de::Error::duplicate_field(Element.as_str()));
                     }
-                    element = Some(map.next_value()?)
+                    element = Some(map.next_value());
                 }
-                Fields::Attributes => {
+                Attributes => {
                     if attributes.is_some() {
-                        return Err(serde::de::Error::duplicate_field("attributes"));
+                        return Err(serde::de::Error::duplicate_field(Attributes.as_str()));
                     }
-                    attributes = Some(map.next_value()?)
+                    attributes = Some(map.next_value());
                 }
-                Fields::AdditionalAttributes => {
+                AdditionalAttributes => {
                     if additional_attributes.is_some() {
-                        return Err(serde::de::Error::duplicate_field("additionalAttributes"));
+                        return Err(serde::de::Error::duplicate_field(
+                            AdditionalAttributes.as_str(),
+                        ));
                     }
-                    additional_attributes = Some(map.next_value()?)
+                    additional_attributes = Some(map.next_value());
                 }
-                Fields::Name => {
+                Name => {
                     if name.is_some() {
-                        return Err(serde::de::Error::duplicate_field("name"));
+                        return Err(serde::de::Error::duplicate_field(Name.as_str()));
                     }
-                    name = Some(map.next_value()?)
+                    name = Some(map.next_value());
                 }
             }
         }
 
-        match type_name.as_ref().map(|s| s.as_str()) {
-            Some("String") => {
-                if element.is_some() {
-                    Err(serde::de::Error::unknown_field("element", &[]))
-                } else if attributes.is_some() {
-                    Err(serde::de::Error::unknown_field("attributes", &[]))
-                } else if additional_attributes.is_some() {
-                    Err(serde::de::Error::unknown_field("additionalAttributes", &[]))
-                } else if name.is_some() {
-                    Err(serde::de::Error::unknown_field("name", &[]))
-                } else {
-                    Ok(SchemaType::Type(SchemaTypeVariant::String))
+        Self::build_schema_type::<M>(type_name, element, attributes, additional_attributes, name)
+    }
+}
+
+impl SchemaTypeVisitor {
+    /// Construct a schema type given the name of the type and its fields.
+    /// Fields which were not present are `None`. It is an error for a field
+    /// which is not used for a particular type to be `Some` when building that
+    /// type.
+    fn build_schema_type<'de, M>(
+        type_name: Option<std::result::Result<SmolStr, M::Error>>,
+        element: Option<std::result::Result<SchemaType, M::Error>>,
+        attributes: Option<std::result::Result<BTreeMap<SmolStr, TypeOfAttribute>, M::Error>>,
+        additional_attributes: Option<std::result::Result<bool, M::Error>>,
+        name: Option<std::result::Result<SmolStr, M::Error>>,
+    ) -> std::result::Result<SchemaType, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        use TypeFields::*;
+        let present_fields = [
+            (Type, type_name.is_some()),
+            (Element, element.is_some()),
+            (Attributes, attributes.is_some()),
+            (AdditionalAttributes, additional_attributes.is_some()),
+            (Name, name.is_some()),
+        ]
+        .into_iter()
+        .filter(|(_, present)| *present)
+        .map(|(field, _)| field)
+        .collect::<HashSet<_>>();
+        // Used to generate the appropriate serde error if a field is present
+        // when it is not expected.
+        let error_if_fields = |fs: &[TypeFields],
+                               expected: &'static [&'static str]|
+         -> std::result::Result<(), M::Error> {
+            for f in fs {
+                if present_fields.contains(&f) {
+                    return Err(serde::de::Error::unknown_field(f.as_str(), expected));
                 }
+            }
+            Ok(())
+        };
+        let error_if_any_fields = || -> std::result::Result<(), M::Error> {
+            error_if_fields(&[Element, Attributes, AdditionalAttributes, Name], &[])
+        };
+
+        match type_name.transpose()?.as_ref().map(|s| s.as_str()) {
+            Some("String") => {
+                error_if_any_fields()?;
+                Ok(SchemaType::Type(SchemaTypeVariant::String))
             }
             Some("Long") => {
-                if element.is_some() {
-                    Err(serde::de::Error::unknown_field("element", &[]))
-                } else if attributes.is_some() {
-                    Err(serde::de::Error::unknown_field("attributes", &[]))
-                } else if additional_attributes.is_some() {
-                    Err(serde::de::Error::unknown_field("additionalAttributes", &[]))
-                } else if name.is_some() {
-                    Err(serde::de::Error::unknown_field("name", &[]))
-                } else {
-                    Ok(SchemaType::Type(SchemaTypeVariant::Long))
-                }
+                error_if_any_fields()?;
+                Ok(SchemaType::Type(SchemaTypeVariant::Long))
             }
             Some("Boolean") => {
-                if element.is_some() {
-                    Err(serde::de::Error::unknown_field("element", &[]))
-                } else if attributes.is_some() {
-                    Err(serde::de::Error::unknown_field("attributes", &[]))
-                } else if additional_attributes.is_some() {
-                    Err(serde::de::Error::unknown_field("additionalAttributes", &[]))
-                } else if name.is_some() {
-                    Err(serde::de::Error::unknown_field("name", &[]))
-                } else {
-                    Ok(SchemaType::Type(SchemaTypeVariant::Boolean))
-                }
+                error_if_any_fields()?;
+                Ok(SchemaType::Type(SchemaTypeVariant::Boolean))
             }
             Some("Set") => {
-                if attributes.is_some() {
-                    Err(serde::de::Error::unknown_field("attributes", &["element"]))
-                } else if additional_attributes.is_some() {
-                    Err(serde::de::Error::unknown_field(
-                        "additionalAttributes",
-                        &["element"],
-                    ))
-                } else if name.is_some() {
-                    Err(serde::de::Error::unknown_field("name", &["element"]))
-                } else if let Some(element) = element {
+                error_if_fields(
+                    &[Attributes, AdditionalAttributes, Name],
+                    &[type_field_name!(Element)],
+                )?;
+
+                if let Some(element) = element {
                     Ok(SchemaType::Type(SchemaTypeVariant::Set {
-                        element: Box::new(element),
+                        element: Box::new(element?),
                     }))
                 } else {
-                    Err(serde::de::Error::missing_field("element"))
+                    Err(serde::de::Error::missing_field(Element.as_str()))
                 }
             }
             Some("Record") => {
-                if element.is_some() {
-                    Err(serde::de::Error::unknown_field(
-                        "element",
-                        &["attributes", "additionalAttributes"],
-                    ))
-                } else if name.is_some() {
-                    Err(serde::de::Error::unknown_field(
-                        "name",
-                        &["attributes", "additionalAttributes"],
-                    ))
-                } else if let Some(attributes) = attributes {
+                error_if_fields(
+                    &[Element, Name],
+                    &[
+                        type_field_name!(Attributes),
+                        type_field_name!(AdditionalAttributes),
+                    ],
+                )?;
+
+                if let Some(attributes) = attributes {
                     let additional_attributes =
-                        additional_attributes.unwrap_or(additional_attributes_default());
+                        additional_attributes.unwrap_or(Ok(additional_attributes_default()));
                     Ok(SchemaType::Type(SchemaTypeVariant::Record {
-                        attributes,
-                        additional_attributes,
+                        attributes: attributes?,
+                        additional_attributes: additional_attributes?,
                     }))
                 } else {
-                    Err(serde::de::Error::missing_field("attributes"))
+                    Err(serde::de::Error::missing_field(Attributes.as_str()))
                 }
             }
             Some("Entity") => {
-                if element.is_some() {
-                    Err(serde::de::Error::unknown_field("element", &["name"]))
-                } else if attributes.is_some() {
-                    Err(serde::de::Error::unknown_field("attributes", &["name"]))
-                } else if additional_attributes.is_some() {
-                    Err(serde::de::Error::unknown_field(
-                        "additionalAttributes",
-                        &["name"],
-                    ))
-                } else if let Some(name) = name {
-                    Ok(SchemaType::Type(SchemaTypeVariant::Entity { name }))
+                error_if_fields(
+                    &[Element, Attributes, AdditionalAttributes],
+                    &[type_field_name!(Name)],
+                )?;
+
+                if let Some(name) = name {
+                    Ok(SchemaType::Type(SchemaTypeVariant::Entity { name: name? }))
                 } else {
-                    Err(serde::de::Error::missing_field("name"))
+                    Err(serde::de::Error::missing_field(Name.as_str()))
                 }
             }
             Some("Extension") => {
-                if element.is_some() {
-                    Err(serde::de::Error::unknown_field("element", &["name"]))
-                } else if attributes.is_some() {
-                    Err(serde::de::Error::unknown_field("attributes", &["name"]))
-                } else if additional_attributes.is_some() {
-                    Err(serde::de::Error::unknown_field(
-                        "additionalAttributes",
-                        &["name"],
-                    ))
-                } else if let Some(name) = name {
-                    Ok(SchemaType::Type(SchemaTypeVariant::Extension { name }))
+                error_if_fields(
+                    &[
+                        TypeFields::Element,
+                        TypeFields::Attributes,
+                        TypeFields::AdditionalAttributes,
+                    ],
+                    &[type_field_name!(Name)],
+                )?;
+
+                if let Some(name) = name {
+                    Ok(SchemaType::Type(SchemaTypeVariant::Extension {
+                        name: name?,
+                    }))
                 } else {
-                    Err(serde::de::Error::missing_field("name"))
+                    Err(serde::de::Error::missing_field(TypeFields::Name.as_str()))
                 }
             }
             Some(type_name) => {
-                if element.is_some() {
-                    Err(serde::de::Error::unknown_field("element", &[]))
-                } else if attributes.is_some() {
-                    Err(serde::de::Error::unknown_field("attributes", &[]))
-                } else if additional_attributes.is_some() {
-                    Err(serde::de::Error::unknown_field("additionalAttributes", &[]))
-                } else if name.is_some() {
-                    Err(serde::de::Error::unknown_field("name", &[]))
-                } else {
-                    Ok(SchemaType::TypeDef {
-                        type_name: type_name.into(),
-                    })
-                }
+                error_if_any_fields()?;
+                Ok(SchemaType::TypeDef {
+                    type_name: type_name.into(),
+                })
             }
-            None => Err(serde::de::Error::missing_field("type")),
+            None => Err(serde::de::Error::missing_field(Type.as_str())),
         }
     }
 }
@@ -864,6 +915,32 @@ mod test {
             "entityTypes": {
                 "User": {
                     "shape": { }
+                }
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
+        println!("{:#?}", schema);
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown field `attributes`")]
+    fn schema_file_unexpected_malformed_attribute() {
+        let src = serde_json::json!(
+        {
+            "entityTypes": {
+                "User": {
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Long",
+                                "attributes": {
+                                    "b": {"foo": "bar"}
+                                }
+                            }
+                        }
+                    }
                 }
             },
             "actions": {}
