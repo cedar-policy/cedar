@@ -19,10 +19,8 @@
 // omitted.
 #![allow(clippy::needless_return)]
 
-use anyhow::{Context as _, Error, Result};
-use cedar_policy::*;
-use cedar_policy_formatter::{policies_str_to_pretty, Config};
 use clap::{Args, Parser, Subcommand};
+use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -32,6 +30,9 @@ use std::{
     str::FromStr,
     time::Instant,
 };
+
+use cedar_policy::*;
+use cedar_policy_formatter::{policies_str_to_pretty, Config};
 
 /// Basic Cedar CLI for evaluating authorization queries
 #[derive(Parser)]
@@ -104,8 +105,10 @@ impl RequestArgs {
         match &self.request_json_file {
             Some(jsonfile) => {
                 let jsonstring = std::fs::read_to_string(jsonfile)
-                    .context(format!("failed to open request-json file {jsonfile}"))?;
+                    .into_diagnostic()
+                    .wrap_err_with(|| format!("failed to open request-json file {jsonfile}"))?;
                 let qjson: RequestJSON = serde_json::from_str(&jsonstring)
+                    .into_diagnostic()
                     .context(format!("failed to parse request-json file {jsonfile}"))?;
                 let principal = qjson
                     .principal
@@ -134,7 +137,9 @@ impl RequestArgs {
                 let context = Context::from_json_value(
                     qjson.context,
                     schema.and_then(|s| Some((s, action.as_ref()?))),
-                )?;
+                )
+                .into_diagnostic()
+                .wrap_err_with(|| format!("failed to create a context from {jsonfile}"))?;
                 Ok(Request::new(principal, action, resource, context))
             }
             None => {
@@ -168,9 +173,12 @@ impl RequestArgs {
                         Ok(f) => Context::from_json_file(
                             f,
                             schema.and_then(|s| Some((s, action.as_ref()?))),
-                        )?,
-                        Err(e) => Err(Error::from(e)
-                            .context(format!("error while loading context from {jsonfile}")))?,
+                        )
+                        .into_diagnostic()
+                        .wrap_err_with(|| format!("failed to create a context from {jsonfile}"))?,
+                        Err(e) => Err(e).into_diagnostic().wrap_err_with(|| {
+                            format!("error while loading context from {jsonfile}")
+                        })?,
                     },
                 };
                 Ok(Request::new(principal, action, resource, context))
@@ -333,7 +341,7 @@ pub fn check_parse(args: &CheckParseArgs) -> CedarExitCode {
     match read_policy_set(args.policies_file.as_ref()) {
         Ok(_) => CedarExitCode::Success,
         Err(e) => {
-            println!("{:#}", e);
+            println!("{:?}", e);
             CedarExitCode::Failure
         }
     }
@@ -460,14 +468,16 @@ fn create_slot_env(data: &HashMap<SlotId, String>) -> Result<HashMap<SlotId, Ent
 fn link_inner(args: &LinkArgs) -> Result<()> {
     let mut policies = read_policy_set(Some(&args.policies_file))?;
     let slotenv = create_slot_env(&args.arguments.data)?;
-    policies.link(
-        PolicyId::from_str(&args.template_id)?,
-        PolicyId::from_str(&args.new_id)?,
-        slotenv,
-    )?;
+    policies
+        .link(
+            PolicyId::from_str(&args.template_id)?,
+            PolicyId::from_str(&args.new_id)?,
+            slotenv,
+        )
+        .into_diagnostic()?;
     let linked = policies
         .policy(&PolicyId::from_str(&args.new_id)?)
-        .context("Failed to add template-linked policy")?;
+        .ok_or_else(|| miette!("Failed to add template-linked policy"))?;
     println!("Template Linked Policy Added: {linked}");
     let linked = TemplateLinked {
         template_id: args.template_id.clone(),
@@ -539,11 +549,13 @@ impl From<TemplateLinked> for LiteralTemplateLinked {
 fn add_template_links_to_set(path: impl AsRef<Path>, policy_set: &mut PolicySet) -> Result<()> {
     for template_linked in load_liked_file(path)? {
         let slot_env = create_slot_env(&template_linked.args)?;
-        policy_set.link(
-            PolicyId::from_str(&template_linked.template_id)?,
-            PolicyId::from_str(&template_linked.link_id)?,
-            slot_env,
-        )?;
+        policy_set
+            .link(
+                PolicyId::from_str(&template_linked.template_id)?,
+                PolicyId::from_str(&template_linked.link_id)?,
+                slot_env,
+            )
+            .into_diagnostic()?;
     }
     Ok(())
 }
@@ -557,12 +569,19 @@ fn load_liked_file(path: impl AsRef<Path>) -> Result<Vec<TemplateLinked>> {
             return Ok(vec![]);
         }
     };
-    if f.metadata().context("Failed to read metadata")?.len() == 0 {
+    if f.metadata()
+        .into_diagnostic()
+        .wrap_err("Failed to read metadata")?
+        .len()
+        == 0
+    {
         // File is empty, return empty set
         Ok(vec![])
     } else {
         // File has contents, deserialize
-        serde_json::from_reader(f).context("Deserialization error")
+        serde_json::from_reader(f)
+            .into_diagnostic()
+            .wrap_err("Deserialization error")
     }
 }
 
@@ -579,8 +598,9 @@ fn write_template_linked_file(linked: &[TemplateLinked], path: impl AsRef<Path>)
         .write(true)
         .truncate(true)
         .create(true)
-        .open(path)?;
-    Ok(serde_json::to_writer(f, linked)?)
+        .open(path)
+        .into_diagnostic()?;
+    Ok(serde_json::to_writer(f, linked).into_diagnostic()?)
 }
 
 pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {
@@ -640,14 +660,20 @@ fn load_entities(entities_filename: impl AsRef<Path>, schema: Option<&Schema>) -
         .read(true)
         .open(entities_filename.as_ref())
     {
-        Ok(f) => Entities::from_json_file(f, schema).context(format!(
-            "failed to parse entities from file {}",
-            entities_filename.as_ref().display()
-        )),
-        Err(e) => Err(e).context(format!(
-            "failed to open entities file {}",
-            entities_filename.as_ref().display()
-        )),
+        Ok(f) => Entities::from_json_file(f, schema)
+            .into_diagnostic()
+            .wrap_err_with(|| {
+                format!(
+                    "failed to parse entities from file {}",
+                    entities_filename.as_ref().display()
+                )
+            }),
+        Err(e) => Err(e).into_diagnostic().wrap_err_with(|| {
+            format!(
+                "failed to open entities file {}",
+                entities_filename.as_ref().display()
+            )
+        }),
     }
 }
 
@@ -692,15 +718,20 @@ fn read_from_file_or_stdin(filename: Option<impl AsRef<Path>>, context: &str) ->
     let mut src_str = String::new();
     match filename.as_ref() {
         Some(path) => {
-            src_str = std::fs::read_to_string(path).context(format!(
-                "failed to open {} file {}",
-                context,
-                path.as_ref().display()
-            ))?;
+            src_str = std::fs::read_to_string(path)
+                .into_diagnostic()
+                .wrap_err_with(|| {
+                    format!(
+                        "failed to open {} file {}",
+                        context,
+                        path.as_ref().display()
+                    )
+                })?;
         }
         None => {
             std::io::Read::read_to_string(&mut std::io::stdin(), &mut src_str)
-                .context(format!("failed to read {} from stdin", context))?;
+                .into_diagnostic()
+                .wrap_err_with(|| format!("failed to read {} from stdin", context))?;
         }
     };
     Ok(src_str)
@@ -711,26 +742,33 @@ fn read_from_file(filename: impl AsRef<Path>, context: &str) -> Result<String> {
     read_from_file_or_stdin(Some(filename), context)
 }
 
-fn read_policy_set(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Result<PolicySet> {
+fn read_policy_set(
+    filename: Option<impl AsRef<Path> + std::marker::Copy>,
+) -> miette::Result<PolicySet> {
     let context = "policy set";
     let ps_str = read_from_file_or_stdin(filename, context)?;
-    let ps = PolicySet::from_str(&ps_str).context(format!(
-        "failed to parse {} from {}",
-        context,
-        filename.map_or_else(
-            || "stdin".to_owned(),
-            |n| format!("file {}", n.as_ref().display())
-        )
-    ))?;
+    let ps = PolicySet::from_str(&ps_str)
+        .map_err(|err| {
+            let name = filename.map_or_else(
+                || "<stdin>".to_owned(),
+                |n| n.as_ref().display().to_string(),
+            );
+            Report::from(err).with_source_code(NamedSource::new(name, ps_str))
+        })
+        .wrap_err_with(|| format!("failed to parse {context}"))?;
     Ok(rename_from_id_annotation(ps))
 }
 
 fn read_schema_file(filename: impl AsRef<Path> + std::marker::Copy) -> Result<Schema> {
     let schema_src = read_from_file(filename, "schema")?;
-    Schema::from_str(&schema_src).context(format!(
-        "failed to parse schema from file {}",
-        filename.as_ref().display()
-    ))
+    Schema::from_str(&schema_src)
+        .into_diagnostic()
+        .wrap_err_with(|| {
+            format!(
+                "failed to parse schema from file {}",
+                filename.as_ref().display()
+            )
+        })
 }
 
 fn load_actions_from_schema(entities: Entities, schema: &Option<Schema>) -> Result<Entities> {
@@ -742,8 +780,11 @@ fn load_actions_from_schema(entities: Entities, schema: &Option<Schema>) -> Resu
                     .cloned()
                     .chain(action_entities.iter().cloned()),
             )
-            .context("failed to merge action entities with entity file"),
-            Err(e) => Err(e).context("failed to construct action entities"),
+            .into_diagnostic()
+            .wrap_err("failed to merge action entities with entity file"),
+            Err(e) => Err(e)
+                .into_diagnostic()
+                .wrap_err("failed to construct action entities"),
         },
         None => Ok(entities),
     }
@@ -757,7 +798,7 @@ fn execute_request(
     entities_filename: impl AsRef<Path>,
     schema_filename: Option<impl AsRef<Path> + std::marker::Copy>,
     compute_duration: bool,
-) -> Result<Response, Vec<Error>> {
+) -> Result<Response, Vec<Report>> {
     let mut errs = vec![];
     let policies = match read_policy_and_links(policies_filename.as_ref(), links_filename) {
         Ok(pset) => pset,
