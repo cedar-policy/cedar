@@ -19,11 +19,12 @@
 // omitted.
 #![allow(clippy::needless_return)]
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
+    fmt::{self, Display},
     fs::OpenOptions,
     path::Path,
     process::{ExitCode, Termination},
@@ -40,6 +41,39 @@ use cedar_policy_formatter::{policies_str_to_pretty, Config};
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
+    /// The output format to use for error reporting.
+    #[arg(
+        global = true,
+        short = 'f',
+        long = "error-format",
+        env = "CEDAR_ERROR_FORMAT",
+        default_value_t,
+        value_enum
+    )]
+    pub err_fmt: ErrorFormat,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+pub enum ErrorFormat {
+    /// Human-readable error messages with terminal graphics and inline code
+    /// snippets.
+    #[default]
+    Human,
+    /// Machine-readable JSON output.
+    Json,
+}
+
+impl Display for ErrorFormat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                ErrorFormat::Human => "human",
+                ErrorFormat::Json => "json",
+            }
+        )
+    }
 }
 
 #[derive(Subcommand, Debug)]

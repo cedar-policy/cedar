@@ -17,13 +17,23 @@
 #![forbid(unsafe_code)]
 
 use cedar_policy_cli::{
-    authorize, check_parse, evaluate, format_policies, link, validate, CedarExitCode, Cli, Commands,
+    authorize, check_parse, evaluate, format_policies, link, validate, CedarExitCode, Cli,
+    Commands, ErrorFormat,
 };
 
 use clap::Parser;
 
 fn main() -> CedarExitCode {
-    match Cli::parse().command {
+    let cli = Cli::parse();
+    match cli.err_fmt {
+        ErrorFormat::Human => (), // This is the default.
+        ErrorFormat::Json => {
+            miette::set_hook(Box::new(|_| Box::new(miette::JSONReportHandler::new())))
+                .expect("failed to install JSON error-reporting hook");
+        }
+    }
+
+    match cli.command {
         Commands::Authorize(args) => authorize(&args),
         Commands::Evaluate(args) => evaluate(&args).0,
         Commands::CheckParse(args) => check_parse(&args),
