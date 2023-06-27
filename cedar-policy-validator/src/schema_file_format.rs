@@ -364,7 +364,7 @@ impl SchemaTypeVisitor {
                                expected: &'static [&'static str]|
          -> std::result::Result<(), M::Error> {
             for f in fs {
-                if present_fields.contains(&f) {
+                if present_fields.contains(f) {
                     return Err(serde::de::Error::unknown_field(f.as_str(), expected));
                 }
             }
@@ -435,11 +435,7 @@ impl SchemaTypeVisitor {
             }
             Some("Extension") => {
                 error_if_fields(
-                    &[
-                        TypeFields::Element,
-                        TypeFields::Attributes,
-                        TypeFields::AdditionalAttributes,
-                    ],
+                    &[Element, Attributes, AdditionalAttributes],
                     &[type_field_name!(Name)],
                 )?;
 
@@ -448,7 +444,7 @@ impl SchemaTypeVisitor {
                         name: name?,
                     }))
                 } else {
-                    Err(serde::de::Error::missing_field(TypeFields::Name.as_str()))
+                    Err(serde::de::Error::missing_field(Name.as_str()))
                 }
             }
             Some(type_name) => {

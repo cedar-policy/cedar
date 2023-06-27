@@ -707,9 +707,9 @@ pub enum ContextOrShape {
 impl std::fmt::Display for ContextOrShape {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ContextOrShape::ActionContext(action) => write!(f, "Context for action {}", action),
-            ContextOrShape::EntityTypeShape(entity_type) => {
-                write!(f, "Shape for entity type {}", entity_type)
+            Self::ActionContext(action) => write!(f, "Context for action {action}"),
+            Self::EntityTypeShape(entity_type) => {
+                write!(f, "Shape for entity type {entity_type}")
             }
         }
     }
