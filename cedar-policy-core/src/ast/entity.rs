@@ -110,6 +110,28 @@ impl EntityUID {
         })
     }
 
+    /// Create an `EntityUID` by parsing a string, which is required to be normalized.
+    /// That is, this constructor will not accept strings with spurious whitespace
+    /// (e.g. `A :: B :: C::"foo"`), Cedar comments (e.g. `A::B::"bar" // comment`), etc. See
+    /// [RFC 9](https://github.com/cedar-policy/rfcs/blob/main/text/0009-disallow-whitespace-in-entityuid.md)
+    /// for more details and justification.
+    ///
+    /// For the version that accepts whitespace, Cedar comments, and etc, use the
+    /// actual `FromStr` implementation for `EntityUID`.
+    pub fn parse_normalized_euid(s: &str) -> Result<Self, Vec<ParseError>> {
+        use std::str::FromStr;
+        let parsed = EntityUID::from_str(s)?;
+        let normalized = parsed.to_string();
+        if normalized == s {
+            // the normalized representation is indeed the one that was provided
+            Ok(parsed)
+        } else {
+            Err(vec![ParseError::ToAST(format!(
+                "Entity UID needs to be normalized (e.g., whitespace removed): {s} The normalized form is {normalized}"
+            ))])
+        }
+    }
+
     /// Split into the `EntityType` representing the entity type, and the `Eid`
     /// representing its name
     pub fn components(self) -> (EntityType, Eid) {

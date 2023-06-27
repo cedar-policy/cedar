@@ -23,6 +23,11 @@ use smol_str::SmolStr;
 use super::PrincipalOrResource;
 use crate::parser::err::ParseError;
 
+/// Arc::unwrap_or_clone() isn't stabilized as of this writing, but this is its implementation
+pub fn unwrap_or_clone<T: Clone>(arc: Arc<T>) -> T {
+    Arc::try_unwrap(arc).unwrap_or_else(|arc| (*arc).clone())
+}
+
 /// This is the `Name` type used to name types, functions, etc.
 /// The name can include namespaces.
 /// Clone is O(1).
@@ -37,9 +42,9 @@ pub struct Name {
 
 impl Name {
     /// A full constructor for `Name`
-    pub fn new(id: Id, path: impl IntoIterator<Item = Id>) -> Self {
+    pub fn new(basename: Id, path: impl IntoIterator<Item = Id>) -> Self {
         Self {
-            id,
+            id: basename,
             path: Arc::new(path.into_iter().collect()),
         }
     }
@@ -59,6 +64,36 @@ impl Name {
             id: s.parse()?,
             path: Arc::new(vec![]),
         })
+    }
+
+    /// Create a `Name` by parsing a string, which is required to be normalized.
+    /// That is, this constructor will not accept strings with spurious whitespace
+    /// (e.g. `A :: B :: C`), Cedar comments (e.g. `A :: B // comment`), etc. See
+    /// [RFC 9](https://github.com/cedar-policy/rfcs/blob/main/text/0009-disallow-whitespace-in-entityuid.md)
+    /// for more details and justification.
+    ///
+    /// For the version that accepts whitespace, Cedar comments, and etc, use the
+    /// actual `FromStr` implementation for `Name`.
+    pub fn parse_normalized_name(s: &str) -> Result<Self, Vec<ParseError>> {
+        use std::str::FromStr;
+        let parsed = Name::from_str(s)?;
+        let normalized = parsed.to_string();
+        if normalized == s {
+            // the normalized representation is indeed the one that was provided
+            Ok(parsed)
+        } else {
+            Err(vec![ParseError::ToAST(format!(
+                "Name needs to be normalized (e.g., whitespace removed): {s} The normalized form is {normalized}"
+            ))])
+        }
+    }
+
+    /// Given a type basename and a namespace (as a `Name` itself),
+    /// return a `Name` representing the type's fully qualified name
+    pub fn type_in_namespace(basename: Id, namespace: Name) -> Name {
+        let mut path = unwrap_or_clone(namespace.path);
+        path.push(namespace.id);
+        Name::new(basename, path)
     }
 
     /// Get the basename of the `Name` (ie, with namespaces stripped).

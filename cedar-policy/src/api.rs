@@ -32,7 +32,6 @@ use cedar_policy_core::evaluator::{Evaluator, RestrictedEvaluator};
 pub use cedar_policy_core::extensions;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
-use cedar_policy_core::parser::err::ParseError;
 pub use cedar_policy_core::parser::err::ParseErrors;
 use cedar_policy_core::parser::SourceInfo;
 pub use cedar_policy_validator::{TypeErrorKind, ValidationErrorKind, ValidationWarningKind};
@@ -966,13 +965,9 @@ impl FromStr for EntityTypeName {
     type Err = ParseErrors;
 
     fn from_str(namespace_type_str: &str) -> Result<Self, Self::Err> {
-        match ast::Name::from_str(namespace_type_str).map(EntityTypeName) {
-            Err(errs) => Err(ParseErrors(errs).into()),
-            Ok(name) if name.to_string() == namespace_type_str => Ok(name), // check that the normalized representation is indeed the one that was provided
-            Ok(name) => Err(ParseErrors(vec![ParseError::ToAST(format!(
-                "Entity typename needs to be normalized (e.g., whitespace removed): {namespace_type_str} The normalized form is {name}"
-            ))])),
-        }
+        ast::Name::parse_normalized_name(namespace_type_str)
+            .map(EntityTypeName)
+            .map_err(ParseErrors)
     }
 }
 
@@ -992,13 +987,9 @@ impl FromStr for EntityNamespace {
     type Err = ParseErrors;
 
     fn from_str(namespace_str: &str) -> Result<Self, Self::Err> {
-        match ast::Name::from_str(namespace_str).map(EntityNamespace) {
-            Err(errs) => Err(ParseErrors(errs).into()),
-            Ok(name) if name.to_string() == namespace_str => Ok(name), // check that the normalized representation is indeed the one that was provided
-            Ok(name) => Err(ParseErrors(vec![ParseError::ToAST(format!(
-                "Entity namespace needs to be normalized (e.g., whitespace removed): {namespace_str} The normalized form is {name}"
-            ))]))
-        }
+        ast::Name::parse_normalized_name(namespace_str)
+            .map(EntityNamespace)
+            .map_err(ParseErrors)
     }
 }
 
@@ -1067,13 +1058,9 @@ impl FromStr for EntityUid {
     // You can't actually `#[deprecated]` a trait implementation or trait
     // method.
     fn from_str(uid_str: &str) -> Result<Self, Self::Err> {
-        match parser::parse_euid(uid_str).map(EntityUid) {
-            Err(errs) => Err(ParseErrors(errs).into()),
-            Ok(euid) if euid.to_string() == uid_str => Ok(euid), // check that the normalized representation is indeed the one that was provided
-            Ok(euid) => Err(ParseErrors(vec![ParseError::ToAST(format!(
-                "EntityUid needs to be normalized (e.g., whitespace removed): {uid_str} The normalized form is {euid}"
-            ))])),
-        }
+        ast::EntityUID::parse_normalized_euid(uid_str)
+            .map(EntityUid)
+            .map_err(ParseErrors)
     }
 }
 
