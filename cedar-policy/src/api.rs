@@ -30,7 +30,7 @@ use cedar_policy_core::entities::{ContextSchema, Dereference, JsonDeserializatio
 use cedar_policy_core::est;
 use cedar_policy_core::evaluator::{Evaluator, RestrictedEvaluator};
 pub use cedar_policy_core::extensions;
-use cedar_policy_core::evaluator::err::EvaluationError;
+use cedar_policy_core::evaluator::err as core;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 pub use cedar_policy_core::parser::err::ParseErrors;
@@ -119,7 +119,7 @@ impl Entity {
     /// Get the value for the given attribute, or `None` if not present.
     ///
     /// This can also return Some(Err) if the attribute had an illegal value.
-    pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, ApiEvaluationError>> {
+    pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, EvaluationError>> {
         let expr = self.0.get(attr)?;
         let all_ext = Extensions::all_available();
         let evaluator = RestrictedEvaluator::new(&all_ext);
@@ -127,7 +127,7 @@ impl Entity {
             evaluator
                 .interpret(expr.as_borrowed())
                 .map(EvalResult::from)
-                .map_err(ApiEvaluationError::from),
+                .map_err(EvaluationError::from),
         )
     }
 }
@@ -378,11 +378,11 @@ impl Diagnostics {
     }
 
     /// Get the error messages
-    pub fn errors(&self) -> impl Iterator<Item = ApiEvaluationError> + '_ {
+    pub fn errors(&self) -> impl Iterator<Item = EvaluationError> + '_ {
         self.errors
             .iter()
             .cloned()
-            .map(ApiEvaluationError::from)
+            .map(EvaluationError::from)
     }
 }
 
@@ -441,12 +441,14 @@ impl ResidualResponse {
 /// Errors encountered while evaluating policies or expressions, or making
 /// authorization decisions.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum ApiEvaluationError {
-    /// Error message, as string.
-    /// TODO in the future this can/should be the actual Core `EvaluationError`
-    /// [+] Modifi
+pub enum EvaluationError {
+    /// Represents an evaluation error originating from the `cedar-policy-core` crate.
+    /// EvaluationError variant wraps the core::EvaluationError using the #[from] attribute.
     #[error("{0}")]
-    CoreError(#[from] EvaluationError),
+    EvaluationError(#[from] core::EvaluationError),
+
+    // Add your custom variants here, if needed.
+    // Custom variants can represent errors specific to the crate's functionality.
 }
 
 /// Used to select how a policy will be validated.
@@ -2168,14 +2170,14 @@ pub fn eval_expression(
     request: &Request,
     entities: &Entities,
     expr: &Expression,
-) -> Result<EvalResult, ApiEvaluationError> {
+) -> Result<EvalResult, EvaluationError> {
     let all_ext = Extensions::all_available();
     let eval = Evaluator::new(&request.0, &entities.0, &all_ext)
-        .map_err(ApiEvaluationError::from)?;
+        .map_err(EvaluationError::from)?;
     Ok(EvalResult::from(
         // Evaluate under the empty slot map, as an expression should not have slots
         eval.interpret(&expr.0, &ast::SlotEnv::new())
-            .map_err(ApiEvaluationError::from)?,
+            .map_err(EvaluationError::from)?,
     ))
 }
 
