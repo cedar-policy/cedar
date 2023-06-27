@@ -177,7 +177,7 @@ impl JSONValue {
                             "contents of __expr escape {} are not a valid Cedar expression",
                             expr
                         ),
-                        errs,
+                        errs: errs.into(),
                     })
                 })?;
                 Ok(RestrictedExpr::new(expr)?)
@@ -192,7 +192,7 @@ impl JSONValue {
                                     "contents of __entity escape {} do not make a valid entity reference",
                                     serde_json::to_string_pretty(&entity).unwrap_or_else(|_| format!("{:?}", &entity))
                                 ),
-                                errs,
+                                errs: errs.into(),
                             },
                         )
                     })?,
@@ -296,7 +296,7 @@ impl FnAndArg {
                         "in __extn escape, {:?} is not a valid function name",
                         &self.ext_fn,
                     ),
-                    errs,
+                    errs: parser::err::ParseErrors(errs),
                 })
             })?,
             vec![JSONValue::into_expr(*self.arg)?],

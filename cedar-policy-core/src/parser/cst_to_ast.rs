@@ -577,7 +577,7 @@ impl ASTNode<Option<cst::VariableDef>> {
 
 fn action_type_error_msg(euid: &EntityUID) -> ParseError {
     let msg = format!("Expected an EntityUID with the type `Action`. Got: {euid}");
-    ParseError::ToCST(msg)
+    ParseError::ToAST(msg)
 }
 
 /// Check that all of the EUIDs in an action constraint have the type `Action`, under an arbitrary namespace
@@ -2139,7 +2139,7 @@ mod tests {
     use super::*;
     use crate::{
         ast::Expr,
-        parser::{err::MultipleParseErrors, *},
+        parser::{err::ParseErrors, *},
     };
     use std::str::FromStr;
 
@@ -3593,7 +3593,7 @@ mod tests {
                 .expect("should construct a CST")
                 .to_expr(&mut errs);
             assert!(e.is_none());
-            assert!(MultipleParseErrors(&errs).to_string().contains(em));
+            assert!(ParseErrors(errs).to_string().contains(em));
         }
     }
 }

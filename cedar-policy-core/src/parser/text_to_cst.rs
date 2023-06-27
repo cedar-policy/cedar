@@ -52,9 +52,9 @@ fn parse_collect_errors<'a, P, T>(
     // convert both parser error types to the local error type
     let mut errors: Vec<err::ParseError> = errs
         .into_iter()
-        .map(err::ParseError::from_recovery)
+        .map(|recovery| err::ToCSTError::from_recovery(recovery).into())
         .collect();
-    let result = result.map_err(err::ParseError::from_raw);
+    let result = result.map_err(|err| err::ToCSTError::from_raw(err).into());
 
     // decide to return errors or success
     match result {

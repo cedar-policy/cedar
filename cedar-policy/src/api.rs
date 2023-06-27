@@ -2509,7 +2509,7 @@ permit(principal ==  A :: B
 
         assert!(matches!(result, Err(ParseErrors(_))));
         let error = result.err().unwrap();
-        assert!(error.to_string().contains("Unrecognized token `'`"));
+        assert!(error.to_string().contains("invalid token"));
     }
 
     /// parsing an `EntityUid` from string

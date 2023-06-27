@@ -9,6 +9,7 @@ extern {
     type Error = String;
 }
 
+// New tokens should be reflected in the `FRIENDLY_TOKEN_NAMES` map in err.rs.
 match {
     // Whitespace and comments
     r"\s*" => { }, // The default whitespace skipping is disabled an `ignore pattern` is specified
@@ -55,15 +56,6 @@ match {
     "||", "&&",
     "+", "-", "*", "/", "%",
     "!",
-
-
-} else {
-    // this will catch anything that is not above.
-    // This means that all tokens are allowed, so
-    // We never get the error of an unknown token.
-    // The other errors (i.e. UnrecognizedToken) are
-    // better.
-    r".",
 }
 
 Comma<E>: Vec<E> = {

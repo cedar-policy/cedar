@@ -599,7 +599,7 @@ impl TryFrom<Expr> for ast::Expr {
                         let fn_name = fn_name.parse().map_err(|errs|
                             JsonDeserializationError::ExtnParseError(ParseError::WithContext {
                                 context: format!("expected valid operator or extension function name; got {fn_name}"),
-                                errs,
+                                errs: ParseErrors(errs),
                             })
                         )?;
                         Ok(ast::Expr::call_extension_fn(

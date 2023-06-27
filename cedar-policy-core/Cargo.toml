@@ -30,6 +30,8 @@ ipnet = { version = "2.5.0", optional = true }
 
 # decimal extension requires regex
 regex = { version = "1.8", features = ["unicode"], optional = true }
+phf = { version = "0.11.2", features = ["macros"] }
+miette = "5.9.0"
 
 [features]
 # by default, enable all Cedar extensions
