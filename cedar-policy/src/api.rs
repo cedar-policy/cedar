@@ -2437,7 +2437,10 @@ mod entity_uid_tests {
         EntityTypeName::from_str(" A :: B\n::C \n  ::D\n").expect_err("should fail due to RFC 9");
 
         // but embedded whitespace should be OK when parsing an actual policy
-        let policy = Policy::from_str(r#"permit(principal == A ::   B::C :: " hi there are spaces ", action, resource);"#).expect("should succeed, see RFC 9");
+        let policy = Policy::from_str(
+            r#"permit(principal == A ::   B::C :: " hi there are spaces ", action, resource);"#,
+        )
+        .expect("should succeed, see RFC 9");
         let euid = match policy.principal_constraint() {
             PrincipalConstraint::Eq(euid) => euid,
             _ => panic!("expected Eq constraint"),
@@ -2448,13 +2451,16 @@ mod entity_uid_tests {
         assert_eq!(euid.type_name().namespace(), "A::B");
         assert_eq!(euid.type_name().namespace_components().count(), 2);
 
-        let policy = Policy::from_str(r#"
+        let policy = Policy::from_str(
+            r#"
 permit(principal ==  A :: B
     ::C
     :: D
     ::  " hi there are
     spaces and
-    newlines ", action, resource);"#).expect("should succeed, see RFC 9");
+    newlines ", action, resource);"#,
+        )
+        .expect("should succeed, see RFC 9");
         let euid = match policy.principal_constraint() {
             PrincipalConstraint::Eq(euid) => euid,
             _ => panic!("expected Eq constraint"),
@@ -2463,19 +2469,10 @@ permit(principal ==  A :: B
             euid.id().as_ref(),
             " hi there are\n    spaces and\n    newlines "
         );
-        assert_eq!(
-            euid.type_name().to_string(),
-            "A::B::C::D"
-        ); // expect to have been normalized
+        assert_eq!(euid.type_name().to_string(), "A::B::C::D"); // expect to have been normalized
         assert_eq!(euid.type_name().basename(), "D");
         assert_eq!(euid.type_name().namespace(), "A::B::C");
-        assert_eq!(
-            euid
-                .type_name()
-                .namespace_components()
-                .count(),
-            3
-        );
+        assert_eq!(euid.type_name().namespace_components().count(), 3);
     }
 
     #[test]
