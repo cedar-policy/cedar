@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed
+- Remove `ExtensionFunctionOp` and replace it with `Name`.
+
 ## 2.2.0
 
 ### Changed
