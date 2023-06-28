@@ -34,6 +34,7 @@ use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 pub use cedar_policy_core::parser::err::ParseErrors;
 use cedar_policy_core::parser::SourceInfo;
+use cedar_policy_core::FromNormalizedStr;
 pub use cedar_policy_validator::{TypeErrorKind, ValidationErrorKind, ValidationWarningKind};
 use itertools::Itertools;
 use ref_cast::RefCast;
@@ -965,7 +966,7 @@ impl FromStr for EntityTypeName {
     type Err = ParseErrors;
 
     fn from_str(namespace_type_str: &str) -> Result<Self, Self::Err> {
-        ast::Name::parse_normalized_name(namespace_type_str)
+        ast::Name::from_normalized_str(namespace_type_str)
             .map(EntityTypeName)
             .map_err(ParseErrors)
     }
@@ -987,7 +988,7 @@ impl FromStr for EntityNamespace {
     type Err = ParseErrors;
 
     fn from_str(namespace_str: &str) -> Result<Self, Self::Err> {
-        ast::Name::parse_normalized_name(namespace_str)
+        ast::Name::from_normalized_str(namespace_str)
             .map(EntityNamespace)
             .map_err(ParseErrors)
     }
@@ -1058,7 +1059,7 @@ impl FromStr for EntityUid {
     // You can't actually `#[deprecated]` a trait implementation or trait
     // method.
     fn from_str(uid_str: &str) -> Result<Self, Self::Err> {
-        ast::EntityUID::parse_normalized_euid(uid_str)
+        ast::EntityUID::from_normalized_str(uid_str)
             .map(EntityUid)
             .map_err(ParseErrors)
     }

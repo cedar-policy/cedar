@@ -28,6 +28,7 @@ use cedar_policy_core::{
     entities::{Entities, JSONValue, TCComputation},
     parser::err::ParseError,
     transitive_closure::{compute_tc, TCNode},
+    FromNormalizedStr,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -232,7 +233,7 @@ impl ValidatorNamespaceDef {
             None => None,
             Some("") => None, // we consider "" to be the same as the empty namespace for this purpose
             Some(ns) => {
-                Some(Name::parse_normalized_name(ns).map_err(SchemaError::NamespaceParseError)?)
+                Some(Name::from_normalized_str(ns).map_err(SchemaError::NamespaceParseError)?)
             }
         };
 
@@ -575,7 +576,7 @@ impl ValidatorNamespaceDef {
         name_str: &SmolStr,
         default_namespace: Option<&Name>,
     ) -> std::result::Result<Name, Vec<ParseError>> {
-        let name = Name::parse_normalized_name(name_str)?;
+        let name = Name::from_normalized_str(name_str)?;
 
         let qualified_name = if name.namespace_components().next().is_some() {
             // The name is already qualified. Don't touch it.
@@ -618,9 +619,9 @@ impl ValidatorNamespaceDef {
         namespace: Option<&Name>,
     ) -> Result<EntityUID> {
         let namespaced_action_type = if let Some(action_ty) = &action_id.ty {
-            Name::parse_normalized_name(action_ty).map_err(SchemaError::EntityTypeParseError)?
+            Name::from_normalized_str(action_ty).map_err(SchemaError::EntityTypeParseError)?
         } else {
-            let id = Id::parse_normalized_id(ACTION_ENTITY_TYPE).expect(
+            let id = Id::from_normalized_str(ACTION_ENTITY_TYPE).expect(
                 "Expected that the constant ACTION_ENTITY_TYPE would be a valid entity type.",
             );
             match namespace {
@@ -675,7 +676,7 @@ impl ValidatorNamespaceDef {
                 Ok(Type::named_entity_reference(entity_type_name).into())
             }
             SchemaType::Type(SchemaTypeVariant::Extension { name }) => {
-                let extension_type_name = Name::parse_normalized_name(&name)
+                let extension_type_name = Name::from_normalized_str(&name)
                     .map_err(SchemaError::ExtensionTypeParseError)?;
                 Ok(Type::extension(extension_type_name).into())
             }
