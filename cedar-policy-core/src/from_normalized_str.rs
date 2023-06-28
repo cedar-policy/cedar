@@ -16,7 +16,7 @@ pub trait FromNormalizedStr: FromStr<Err = Vec<ParseError>> + Display {
     /// [RFC 9](https://github.com/cedar-policy/rfcs/blob/main/text/0009-disallow-whitespace-in-entityuid.md)
     /// for more details and justification.
     ///
-    /// For the version that accepts whitespace, Cedar comments, and etc, use the
+    /// For the version that accepts whitespace and Cedar comments, use the
     /// actual `FromStr` implementations.
     fn from_normalized_str(s: &str) -> Result<Self, Vec<ParseError>> {
         let parsed = Self::from_str(s)?;

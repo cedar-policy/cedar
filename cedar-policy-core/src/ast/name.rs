@@ -24,6 +24,8 @@ use super::PrincipalOrResource;
 use crate::{parser::err::ParseError, FromNormalizedStr};
 
 /// Arc::unwrap_or_clone() isn't stabilized as of this writing, but this is its implementation
+//
+// TODO: use `Arc::unwrap_or_clone()` once stable
 pub fn unwrap_or_clone<T: Clone>(arc: Arc<T>) -> T {
     Arc::try_unwrap(arc).unwrap_or_else(|arc| (*arc).clone())
 }
