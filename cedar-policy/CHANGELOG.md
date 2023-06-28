@@ -1,6 +1,13 @@
 # Changelog
 
 ## Unreleased
+### Added
+
+- Export `entities::EntitiesError` error type.
+- New methods exported for `EntityTypeName`.
+  - `basename` to get the basename (without namespaces).
+  - `namespace_components` to get the namespace as an iterator over its components.
+  - `namespace` to get the namespace as a single string.
 
 ## 2.3.2
 
