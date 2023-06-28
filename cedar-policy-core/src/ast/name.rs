@@ -225,28 +225,6 @@ impl Id {
         Id(s.into())
     }
 
-    /// Create an `Id` by parsing a string, which is required to be normalized.
-    /// That is, this constructor will not accept strings with spurious whitespace
-    /// (e.g. ` ABC `), Cedar comments (e.g. `ABC// comment`), etc. See
-    /// [RFC 9](https://github.com/cedar-policy/rfcs/blob/main/text/0009-disallow-whitespace-in-entityuid.md)
-    /// for more details and justification.
-    ///
-    /// For the version that accepts whitespace, Cedar comments, and etc, use the
-    /// actual `FromStr` implementation for `Id`.
-    pub fn parse_normalized_id(s: &str) -> Result<Id, Vec<ParseError>> {
-        use std::str::FromStr;
-        let parsed = Id::from_str(s)?;
-        let normalized = parsed.to_string();
-        if normalized == s {
-            // the normalized representation is indeed the one that was provided
-            Ok(parsed)
-        } else {
-            Err(vec![ParseError::ToAST(format!(
-                "Id needs to be normalized (e.g., whitespace removed): {s} The normalized form is {normalized}"
-            ))])
-        }
-    }
-
     /// Get the underlying string
     pub fn to_smolstr(self) -> SmolStr {
         self.0
@@ -328,13 +306,13 @@ mod test {
 
     #[test]
     fn normalized_id() {
-        Id::parse_normalized_id("foo").expect("should be OK");
-        Id::parse_normalized_id("foo::bar").expect_err("shouldn't be OK");
-        Id::parse_normalized_id(r#"foo::"bar""#).expect_err("shouldn't be OK");
-        Id::parse_normalized_id(" foo").expect_err("shouldn't be OK");
-        Id::parse_normalized_id("foo ").expect_err("shouldn't be OK");
-        Id::parse_normalized_id("foo\n").expect_err("shouldn't be OK");
-        Id::parse_normalized_id("foo//comment").expect_err("shouldn't be OK");
+        Id::from_normalized_str("foo").expect("should be OK");
+        Id::from_normalized_str("foo::bar").expect_err("shouldn't be OK");
+        Id::from_normalized_str(r#"foo::"bar""#).expect_err("shouldn't be OK");
+        Id::from_normalized_str(" foo").expect_err("shouldn't be OK");
+        Id::from_normalized_str("foo ").expect_err("shouldn't be OK");
+        Id::from_normalized_str("foo\n").expect_err("shouldn't be OK");
+        Id::from_normalized_str("foo//comment").expect_err("shouldn't be OK");
     }
 
     #[test]

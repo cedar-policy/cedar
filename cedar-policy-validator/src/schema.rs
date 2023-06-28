@@ -602,7 +602,7 @@ impl ValidatorNamespaceDef {
         type_name: impl AsRef<str>,
         namespace: Option<Name>,
     ) -> std::result::Result<Name, Vec<ParseError>> {
-        let type_name = Id::parse_normalized_id(type_name.as_ref())?;
+        let type_name = Id::from_normalized_str(type_name.as_ref())?;
         match namespace {
             Some(namespace) => Ok(Name::type_in_namespace(type_name, namespace)),
             None => Ok(Name::unqualified_name(type_name)),
