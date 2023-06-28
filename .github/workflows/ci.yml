@@ -23,6 +23,7 @@ jobs:
       - run: cargo clippy
       - run: ./panic_safety.sh
       - run: cargo test --verbose -- --ignored
+      - run: cargo test --no-default-features --verbose
       - run: cargo bench --no-run
 
   cargo_audit:
