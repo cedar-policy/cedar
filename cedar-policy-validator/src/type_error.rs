@@ -207,10 +207,16 @@ impl std::error::Error for TypeError {}
 pub enum TypeErrorKind {
     /// The typechecker expected to see a subtype of one of the types in
     /// `expected`, but saw `actual`.
-    #[error("Unexpected type. Expected one of [{}] but saw {}", .0.expected.iter().join(","), .0.actual)]
+    #[error("Unexpected type. Expected {} but saw {}",
+        match .0.expected.iter().next() {
+            Some(single) if .0.expected.len() == 1 => format!("{}", single),
+            _ => .0.expected.iter().join(", or ")
+        },
+        .0.actual
+    )]
     UnexpectedType(UnexpectedType),
     /// The typechecker could not compute a least upper bound for `types`.
-    #[error("Unable to find upper bound for types [{}]", .0.types.iter().join(","))]
+    #[error("Unable to find upper bound for types: [{}]", .0.types.iter().join(","))]
     IncompatibleTypes(IncompatibleTypes),
     /// The typechecker detected an access to a record or entity attribute
     /// that it could not statically guarantee would be present.
@@ -226,7 +232,7 @@ pub enum TypeErrorKind {
     UnsafeAttributeAccess(UnsafeAttributeAccess),
     /// The typechecker could not conclude that an access to an optional
     /// attribute was safe.
-    #[error("Unable to guarantee safety of access to optional attribute {}", .0.optional)]
+    #[error("Unable to guarantee safety of access to optional attribute: {}", .0.optional)]
     UnsafeOptionalAttributeAccess(UnsafeOptionalAttributeAccess),
     /// The typechecker found that a policy condition will always evaluate to false.
     #[error(
@@ -234,10 +240,10 @@ pub enum TypeErrorKind {
     )]
     ImpossiblePolicy,
     /// Undefined extension function.
-    #[error("Undefined extension function {}", .0.name)]
+    #[error("Undefined extension function: {}", .0.name)]
     UndefinedFunction(UndefinedFunction),
     /// Multiply defined extension function.
-    #[error("Undefined extension function {}", .0.name)]
+    #[error("Extension function defined multiple times: {}", .0.name)]
     MultiplyDefinedFunction(MultiplyDefinedFunction),
     /// Incorrect number of arguments in an extension function application.
     #[error("Wrong number of arguments in extension function application. Expected {}, got {}", .0.expected, .0.actual)]

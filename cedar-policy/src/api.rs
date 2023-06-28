@@ -34,6 +34,7 @@ use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 pub use cedar_policy_core::parser::err::ParseErrors;
 use cedar_policy_core::parser::SourceInfo;
+use cedar_policy_core::FromNormalizedStr;
 pub use cedar_policy_validator::{TypeErrorKind, ValidationErrorKind, ValidationWarningKind};
 use itertools::Itertools;
 use ref_cast::RefCast;
@@ -959,14 +960,15 @@ impl EntityTypeName {
     }
 }
 
+// This FromStr implementation requires the _normalized_ representation of the
+// type name. See https://github.com/cedar-policy/rfcs/pull/9/.
 impl FromStr for EntityTypeName {
     type Err = ParseErrors;
 
     fn from_str(namespace_type_str: &str) -> Result<Self, Self::Err> {
-        match ast::Name::from_str(namespace_type_str) {
-            Ok(name) => Ok(Self(name)),
-            Err(errs) => Err(ParseErrors(errs)),
-        }
+        ast::Name::from_normalized_str(namespace_type_str)
+            .map(EntityTypeName)
+            .map_err(ParseErrors)
     }
 }
 
@@ -980,13 +982,15 @@ impl std::fmt::Display for EntityTypeName {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EntityNamespace(ast::Name);
 
+// This FromStr implementation requires the _normalized_ representation of the
+// namespace. See https://github.com/cedar-policy/rfcs/pull/9/.
 impl FromStr for EntityNamespace {
     type Err = ParseErrors;
 
     fn from_str(namespace_str: &str) -> Result<Self, Self::Err> {
-        Ok(Self(
-            ast::Name::from_str(namespace_str).map_err(ParseErrors)?,
-        ))
+        ast::Name::from_normalized_str(namespace_str)
+            .map(EntityNamespace)
+            .map_err(ParseErrors)
     }
 }
 
@@ -1043,6 +1047,8 @@ impl EntityUid {
     }
 }
 
+// This FromStr implementation requires the _normalized_ representation of the
+// UID. See https://github.com/cedar-policy/rfcs/pull/9/.
 impl FromStr for EntityUid {
     type Err = ParseErrors;
 
@@ -1052,8 +1058,10 @@ impl FromStr for EntityUid {
     //
     // You can't actually `#[deprecated]` a trait implementation or trait
     // method.
-    fn from_str(uid: &str) -> Result<Self, Self::Err> {
-        parser::parse_euid(uid).map(EntityUid).map_err(ParseErrors)
+    fn from_str(uid_str: &str) -> Result<Self, Self::Err> {
+        ast::EntityUID::from_normalized_str(uid_str)
+            .map(EntityUid)
+            .map_err(ParseErrors)
     }
 }
 
@@ -1122,17 +1130,17 @@ impl FromStr for PolicySet {
     ///
     /// See [`Policy`] for more.
     fn from_str(policies: &str) -> Result<Self, Self::Err> {
-        let (ests, pset) = parser::parse_policyset_to_ests_and_pset(policies)?;
+        let (texts, pset) = parser::parse_policyset_and_also_return_policy_text(policies)?;
         let policies = pset.policies().map(|p|
             (
                 PolicyId(p.id().clone()),
-                Policy { est: ests.get(p.id()).expect("internal invariant violation: policy id exists in asts but not ests").clone(), ast: p.clone() }
+                Policy { lossless: LosslessPolicy::policy_or_template_text(*texts.get(p.id()).expect("internal invariant violation: policy id exists in asts but not texts")), ast: p.clone() }
             )
         ).collect();
         let templates = pset.templates().map(|t|
             (
                 PolicyId(t.id().clone()),
-                Template { est: ests.get(t.id()).expect("internal invariant violation: template id exists in asts but not ests").clone(), ast: t.clone() }
+                Template { lossless: LosslessPolicy::policy_or_template_text(*texts.get(t.id()).expect("internal invariant violation: template id exists in asts but not ests")), ast: t.clone() }
             )
         ).collect();
         Ok(Self {
@@ -1188,7 +1196,7 @@ impl PolicySet {
 
     /// Iterate over all the `Policy`s in the `PolicySet`.
     ///
-    /// This will include policies that result from instantiating a template, and inline policies.
+    /// This will include both static and template-linked policies.
     pub fn policies(&self) -> impl Iterator<Item = &Policy> {
         self.policies.values()
     }
@@ -1237,7 +1245,7 @@ impl PolicySet {
     /// If link fails, the `PolicySet` is not modified.
     /// Failure can happen for two reasons
     ///   1) The map passed in `vals` may not match the slots in the template
-    ///   2) The `new_id` may conflict w/ an policy that already exists in the set
+    ///   2) The `new_id` may conflict w/ a policy that already exists in the set
     #[allow(clippy::needless_pass_by_value)]
     pub fn link(
         &mut self,
@@ -1245,33 +1253,34 @@ impl PolicySet {
         new_id: PolicyId,
         vals: HashMap<SlotId, EntityUid>,
     ) -> Result<(), PolicySetError> {
-        let unwrapped: HashMap<ast::SlotId, ast::EntityUID> = vals
+        let unwrapped_vals: HashMap<ast::SlotId, ast::EntityUID> = vals
             .into_iter()
             .map(|(key, value)| (key.into(), value.0))
             .collect();
-        let est_vals = unwrapped.iter().map(|(k, v)| (*k, v.into())).collect();
         self.ast
-            .link(template_id.0.clone(), new_id.0.clone(), unwrapped)
+            .link(
+                template_id.0.clone(),
+                new_id.0.clone(),
+                unwrapped_vals.clone(),
+            )
             .map_err(PolicySetError::LinkingError)?;
         let linked_ast = self
             .ast
             .get(&new_id.0)
-            .expect("instantiate() didn't fail above, so this shouldn't fail")
-            .clone();
-        //TODO Rename this
-        let lined_est = self
+            .expect("ast.link() didn't fail above, so this shouldn't fail");
+        let linked_lossless = self
             .templates
             .get(&template_id)
-            .expect("instantiate() didn't fail above, so this shouldn't fail")
+            .expect("ast.link() didn't fail above, so this shouldn't fail")
+            .lossless
             .clone()
-            .est
-            .link(&est_vals)
-            .expect("instantiate() didn't fail above, so this shouldn't fail");
+            .link(unwrapped_vals.iter().map(|(k, v)| (*k, v)))
+            .expect("ast.link() didn't fail above, so this shouldn't fail");
         self.policies.insert(
             new_id,
             Policy {
-                ast: linked_ast,
-                est: lined_est,
+                ast: linked_ast.clone(),
+                lossless: linked_lossless,
             },
         );
         Ok(())
@@ -1311,15 +1320,18 @@ pub struct Template {
     /// AST representation of the template, used for most operations.
     /// In particular, the `ast` contains the authoritative `PolicyId` for the template.
     ast: ast::Template,
-    /// EST representation of the template, used just for `to_json()`.
+
+    /// Some "lossless" representation of the template, whichever is most
+    /// convenient to provide (and can be provided with the least overhead).
+    /// This is used just for `to_json()`.
     /// We can't just derive this on-demand from `ast`, because the AST is lossy:
     /// we can't reconstruct an accurate CST/EST/policy-text from the AST, but
     /// we can from the EST (modulo whitespace and a few other things like the
     /// order of annotations).
     ///
-    /// This is an est::Policy because the EST doesn't distinguish between
-    /// inline policies and templates.
-    est: est::Policy,
+    /// This is a `LosslessPolicy` (rather than something like `LosslessTemplate`)
+    /// because the EST doesn't distinguish between static policies and templates.
+    lossless: LosslessPolicy,
 }
 
 impl PartialEq for Template {
@@ -1334,9 +1346,13 @@ impl Template {
     /// Attempt to parse a `Template` from source.
     /// If `id` is Some, then the resulting template will have that `id`.
     /// If the `id` is None, the parser will use the default "policy0".
+    /// The behavior around None may change in the future.
     pub fn parse(id: Option<String>, src: impl AsRef<str>) -> Result<Self, ParseErrors> {
-        let (est, ast) = parser::parse_policy_template_to_est_and_ast(id, src.as_ref())?;
-        Ok(Self { ast, est })
+        let ast = parser::parse_policy_template(id, src.as_ref()).map_err(ParseErrors)?;
+        Ok(Self {
+            ast,
+            lossless: LosslessPolicy::policy_or_template_text(src.as_ref()),
+        })
     }
 
     /// Get the `PolicyId` of this `Template`
@@ -1349,7 +1365,7 @@ impl Template {
     pub fn new_id(&self, id: PolicyId) -> Self {
         Self {
             ast: self.ast.new_id(id.0),
-            est: self.est.clone(),
+            lossless: self.lossless.clone(), // Lossless representation doesn't include the `PolicyId`
         }
     }
 
@@ -1442,14 +1458,16 @@ impl Template {
             serde_json::from_value(json).map_err(JsonDeserializationError::Serde)?;
         Ok(Self {
             ast: est.clone().try_into_ast_template(id.map(|id| id.0))?,
-            est,
+            lossless: LosslessPolicy::Est(est),
         })
     }
 
     /// Get the JSON representation of this `Template`.
     #[allow(dead_code)] // planned to be a public method in the future
     fn to_json(&self) -> Result<serde_json::Value, impl std::error::Error> {
-        serde_json::to_value(&self.est)
+        let est = self.lossless.est()?;
+        let json = serde_json::to_value(est)?;
+        Ok::<_, PolicyToJsonError>(json)
     }
 
     /// Create a `Template` from its AST representation only. The EST will
@@ -1458,8 +1476,11 @@ impl Template {
     /// to AST is lossy. ESTs generated by this method will reflect the AST and
     /// not the original policy syntax.
     fn from_ast(ast: ast::Template) -> Self {
-        let est = ast.clone().into();
-        Self { ast, est }
+        let text = ast.to_string(); // assume that pretty-printing is faster than `est::Policy::from(ast.clone())`; is that true?
+        Self {
+            ast,
+            lossless: LosslessPolicy::policy_or_template_text(text),
+        }
     }
 }
 
@@ -1576,12 +1597,14 @@ pub struct Policy {
     /// AST representation of the policy, used for most operations.
     /// In particular, the `ast` contains the authoritative `PolicyId` for the policy.
     ast: ast::Policy,
-    /// EST representation of the policy, used just for `to_json()`.
+    /// Some "lossless" representation of the policy, whichever is most
+    /// convenient to provide (and can be provided with the least overhead).
+    /// This is used just for `to_json()`.
     /// We can't just derive this on-demand from `ast`, because the AST is lossy:
     /// we can't reconstruct an accurate CST/EST/policy-text from the AST, but
     /// we can from the EST (modulo whitespace and a few other things like the
     /// order of annotations).
-    est: est::Policy,
+    lossless: LosslessPolicy,
 }
 
 impl PartialEq for Policy {
@@ -1593,8 +1616,8 @@ impl PartialEq for Policy {
 impl Eq for Policy {}
 
 impl Policy {
-    /// Get the `PolicyId` of the `Template` this is linked to of.
-    /// If this is an static policy, this will return `None`.
+    /// Get the `PolicyId` of the `Template` this is linked to.
+    /// If this is a static policy, this will return `None`.
     pub fn template_id(&self) -> Option<&PolicyId> {
         if self.is_static() {
             None
@@ -1632,7 +1655,7 @@ impl Policy {
     pub fn new_id(&self, id: PolicyId) -> Self {
         Self {
             ast: self.ast.new_id(id.0),
-            est: self.est.clone(),
+            lossless: self.lossless.clone(), // Lossless representation doesn't include the `PolicyId`
         }
     }
 
@@ -1701,9 +1724,12 @@ impl Policy {
     /// If `id` is None, then "policy0" will be used.
     /// The behavior around None may change in the future.
     pub fn parse(id: Option<String>, policy_src: impl AsRef<str>) -> Result<Self, ParseErrors> {
-        let (est, inline_ast) = parser::parse_policy_to_est_and_ast(id, policy_src.as_ref())?;
+        let inline_ast = parser::parse_policy(id, policy_src.as_ref()).map_err(ParseErrors)?;
         let (_, ast) = ast::Template::link_static_policy(inline_ast);
-        Ok(Self { ast, est })
+        Ok(Self {
+            ast,
+            lossless: LosslessPolicy::policy_or_template_text(policy_src.as_ref()),
+        })
     }
 
     /// Create a `Policy` from its JSON representation.
@@ -1718,23 +1744,28 @@ impl Policy {
             serde_json::from_value(json).map_err(JsonDeserializationError::Serde)?;
         Ok(Self {
             ast: est.clone().try_into_ast_policy(id.map(|id| id.0))?,
-            est,
+            lossless: LosslessPolicy::Est(est),
         })
     }
 
     /// Get the JSON representation of this `Policy`.
     pub fn to_json(&self) -> Result<serde_json::Value, impl std::error::Error> {
-        serde_json::to_value(&self.est)
+        let est = self.lossless.est()?;
+        let json = serde_json::to_value(est)?;
+        Ok::<_, PolicyToJsonError>(json)
     }
 
-    /// Create a `Policy` from its AST representation only. The EST will
-    /// reflect the AST structure. When possible, don't use this method and
-    /// create the EST from the policy text or CST instead, as the conversion
-    /// to AST is lossy. ESTs generated by this method will reflect the AST and
-    /// not the original policy syntax.
+    /// Create a `Policy` from its AST representation only. The `LosslessPolicy`
+    /// will reflect the AST structure. When possible, don't use this method and
+    /// create the `Policy` from the policy text, CST, or EST instead, as the
+    /// conversion to AST is lossy. ESTs for policies generated by this method
+    /// will reflect the AST and not the original policy syntax.
     fn from_ast(ast: ast::Policy) -> Self {
-        let est = ast.clone().into();
-        Self { ast, est }
+        let text = ast.to_string(); // assume that pretty-printing is faster than `est::Policy::from(ast.clone())`; is that true?
+        Self {
+            ast,
+            lossless: LosslessPolicy::policy_or_template_text(text),
+        }
     }
 }
 
@@ -1756,6 +1787,85 @@ impl FromStr for Policy {
     fn from_str(policy: &str) -> Result<Self, Self::Err> {
         Self::parse(None, policy)
     }
+}
+
+/// See comments on `Policy` and `Template`.
+///
+/// This structure can be used for static policies, linked policies, and templates.
+#[derive(Debug, Clone)]
+enum LosslessPolicy {
+    /// EST representation
+    Est(est::Policy),
+    /// Text representation
+    Text {
+        /// actual policy text, of the policy or template
+        text: String,
+        /// For linked policies, map of slot to UID. Only linked policies have
+        /// this; static policies and (unlinked) templates have an empty map
+        /// here
+        slots: HashMap<ast::SlotId, ast::EntityUID>,
+    },
+}
+
+impl LosslessPolicy {
+    /// Create a new `LosslessPolicy` from the text of a policy or template.
+    fn policy_or_template_text(text: impl Into<String>) -> Self {
+        Self::Text {
+            text: text.into(),
+            slots: HashMap::new(),
+        }
+    }
+
+    /// Get the EST representation of this static policy, linked policy, or template
+    fn est(&self) -> Result<est::Policy, PolicyToJsonError> {
+        match self {
+            Self::Est(est) => Ok(est.clone()),
+            Self::Text { text, slots } => {
+                let est = parser::parse_policy_or_template_to_est(text)?;
+                if slots.is_empty() {
+                    Ok(est)
+                } else {
+                    let unwrapped_vals = slots.iter().map(|(k, v)| (*k, v.into())).collect();
+                    Ok(est.link(&unwrapped_vals)?)
+                }
+            }
+        }
+    }
+
+    fn link<'a>(
+        self,
+        vals: impl IntoIterator<Item = (ast::SlotId, &'a ast::EntityUID)>,
+    ) -> Result<Self, est::InstantiationError> {
+        match self {
+            Self::Est(est) => {
+                let unwrapped_est_vals: HashMap<ast::SlotId, entities::EntityUidJSON> =
+                    vals.into_iter().map(|(k, v)| (k, v.into())).collect();
+                Ok(Self::Est(est.link(&unwrapped_est_vals)?))
+            }
+            Self::Text { text, slots } => {
+                debug_assert!(
+                    slots.is_empty(),
+                    "shouldn't call link() on an already-linked policy"
+                );
+                let slots = vals.into_iter().map(|(k, v)| (k, v.clone())).collect();
+                Ok(Self::Text { text, slots })
+            }
+        }
+    }
+}
+
+/// Errors that can happen when getting the JSON representation of a policy
+#[derive(Debug, Error)]
+pub enum PolicyToJsonError {
+    /// Parse error in the policy text
+    #[error(transparent)]
+    Parse(#[from] ParseErrors),
+    /// For linked policies, error linking the JSON representation
+    #[error(transparent)]
+    Link(#[from] est::InstantiationError),
+    /// Error in the JSON serialization
+    #[error(transparent)]
+    Serde(#[from] serde_json::Error),
 }
 
 /// Expressions to be evaluated
@@ -1797,7 +1907,7 @@ impl FromStr for Expression {
 
     /// create an Expression using Cedar syntax
     fn from_str(expression: &str) -> Result<Self, Self::Err> {
-        parser::parse_expr(expression)
+        ast::Expr::from_str(expression)
             .map_err(ParseErrors)
             .map(Expression)
     }
@@ -1856,7 +1966,7 @@ impl FromStr for RestrictedExpression {
 
     /// create a `RestrictedExpression` using Cedar syntax
     fn from_str(expression: &str) -> Result<Self, Self::Err> {
-        parser::parse_restrictedexpr(expression)
+        ast::RestrictedExpr::from_str(expression)
             .map_err(ParseErrors)
             .map(RestrictedExpression)
     }
@@ -2311,37 +2421,46 @@ mod entity_uid_tests {
     /// building an `EntityUid` from components, including whitespace in various places
     #[test]
     fn entity_uid_with_whitespace() {
-        let euid_spaces = EntityUid::from_type_name_and_id(
-            EntityTypeName::from_str("A ::   B::C").unwrap(),
-            EntityId::from_str(" hi there are spaces ").unwrap(),
-        );
-        assert_eq!(euid_spaces.id().as_ref(), " hi there are spaces ");
-        assert_eq!(euid_spaces.type_name().to_string(), "A::B::C"); // expect to have been normalized
-        assert_eq!(euid_spaces.type_name().basename(), "C");
-        assert_eq!(euid_spaces.type_name().namespace(), "A::B");
-        assert_eq!(euid_spaces.type_name().namespace_components().count(), 2);
+        EntityTypeName::from_str("A ::   B::C").expect_err("should fail due to RFC 9");
+        EntityTypeName::from_str(" A :: B\n::C \n  ::D\n").expect_err("should fail due to RFC 9");
 
-        let euid_spaces_and_newlines = EntityUid::from_type_name_and_id(
-            EntityTypeName::from_str(" A :: B\n::C \n  ::D\n").unwrap(),
-            EntityId::from_str(" hi there are \n spaces and \n newlines ").unwrap(),
-        );
+        // but embedded whitespace should be OK when parsing an actual policy
+        let policy = Policy::from_str(
+            r#"permit(principal == A ::   B::C :: " hi there are spaces ", action, resource);"#,
+        )
+        .expect("should succeed, see RFC 9");
+        let euid = match policy.principal_constraint() {
+            PrincipalConstraint::Eq(euid) => euid,
+            _ => panic!("expected Eq constraint"),
+        };
+        assert_eq!(euid.id().as_ref(), " hi there are spaces ");
+        assert_eq!(euid.type_name().to_string(), "A::B::C"); // expect to have been normalized
+        assert_eq!(euid.type_name().basename(), "C");
+        assert_eq!(euid.type_name().namespace(), "A::B");
+        assert_eq!(euid.type_name().namespace_components().count(), 2);
+
+        let policy = Policy::from_str(
+            r#"
+permit(principal ==  A :: B
+    ::C
+    :: D
+    ::  " hi there are
+    spaces and
+    newlines ", action, resource);"#,
+        )
+        .expect("should succeed, see RFC 9");
+        let euid = match policy.principal_constraint() {
+            PrincipalConstraint::Eq(euid) => euid,
+            _ => panic!("expected Eq constraint"),
+        };
         assert_eq!(
-            euid_spaces_and_newlines.id().as_ref(),
-            " hi there are \n spaces and \n newlines "
+            euid.id().as_ref(),
+            " hi there are\n    spaces and\n    newlines "
         );
-        assert_eq!(
-            euid_spaces_and_newlines.type_name().to_string(),
-            "A::B::C::D"
-        ); // expect to have been normalized
-        assert_eq!(euid_spaces_and_newlines.type_name().basename(), "D");
-        assert_eq!(euid_spaces_and_newlines.type_name().namespace(), "A::B::C");
-        assert_eq!(
-            euid_spaces_and_newlines
-                .type_name()
-                .namespace_components()
-                .count(),
-            3
-        );
+        assert_eq!(euid.type_name().to_string(), "A::B::C::D"); // expect to have been normalized
+        assert_eq!(euid.type_name().basename(), "D");
+        assert_eq!(euid.type_name().namespace(), "A::B::C");
+        assert_eq!(euid.type_name().namespace_components().count(), 3);
     }
 
     #[test]
@@ -2376,21 +2495,33 @@ mod entity_uid_tests {
     #[test]
     fn parse_euid_single_quotes() {
         // the EntityUid string has an unescaped and escaped single-quote
-        let parsed_eid: EntityUid = r#"Test::User::"b'obby\'s sister""#
-            .parse()
-            .expect("Failed to parse");
+        let euid_str = r#"Test::User::"b'obby\'s sister""#;
+        EntityUid::from_str(euid_str).expect_err("Should fail, not normalized -- see RFC 9");
+        // but this should be accepted in an actual policy
+        let policy_str = "permit(principal == ".to_string() + euid_str + ", action, resource);";
+        let policy = Policy::from_str(&policy_str).expect("Should parse; see RFC 9");
+        let parsed_euid = match policy.principal_constraint() {
+            PrincipalConstraint::Eq(euid) => euid,
+            _ => panic!("Expected an Eq constraint"),
+        };
         // the escape was interpreted:
         //   the EntityId has both single-quote characters (but no backslash characters)
-        assert_eq!(parsed_eid.id().as_ref(), r#"b'obby's sister"#);
-        assert_eq!(parsed_eid.type_name().to_string(), r#"Test::User"#);
+        assert_eq!(parsed_euid.id().as_ref(), r#"b'obby's sister"#);
+        assert_eq!(parsed_euid.type_name().to_string(), r#"Test::User"#);
     }
 
     /// parsing an `EntityUid` from string, including whitespace
     #[test]
     fn parse_euid_whitespace() {
-        let parsed_euid: EntityUid = " A ::B :: C:: D \n :: \n E\n :: \"hi\""
-            .parse()
-            .expect("Failed to parse");
+        let euid_str = " A ::B :: C:: D \n :: \n E\n :: \"hi\"";
+        EntityUid::from_str(euid_str).expect_err("Should fail, not normalized -- see RFC 9");
+        // but this should be accepted in an actual policy
+        let policy_str = "permit(principal == ".to_string() + euid_str + ", action, resource);";
+        let policy = Policy::from_str(&policy_str).expect("Should parse; see RFC 9");
+        let parsed_euid = match policy.principal_constraint() {
+            PrincipalConstraint::Eq(euid) => euid,
+            _ => panic!("Expected an Eq constraint"),
+        };
         assert_eq!(parsed_euid.id().as_ref(), "hi");
         assert_eq!(parsed_euid.type_name().to_string(), "A::B::C::D::E"); // expect to have been normalized
         assert_eq!(parsed_euid.type_name().basename(), "E");
@@ -2401,7 +2532,7 @@ mod entity_uid_tests {
     /// test that we can parse the `Display` output of `EntityUid`
     #[test]
     fn euid_roundtrip() {
-        let parsed_euid: EntityUid = r#"Test::User::"b'ob""#.parse().expect("Failed to parse");
+        let parsed_euid: EntityUid = r#"Test::User::"b\'ob""#.parse().expect("Failed to parse");
         assert_eq!(parsed_euid.id().as_ref(), r#"b'ob"#);
         let reparsed: EntityUid = format!("{parsed_euid}")
             .parse()

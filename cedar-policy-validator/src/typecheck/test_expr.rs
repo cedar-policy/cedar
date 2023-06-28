@@ -19,10 +19,9 @@
 #![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
-use cedar_policy_core::{
-    ast::{BinaryOp, EntityUID, Expr, PatternElem, SlotId, Var},
-    parser::parse_expr,
-};
+use std::str::FromStr;
+
+use cedar_policy_core::ast::{BinaryOp, EntityUID, Expr, PatternElem, SlotId, Var};
 use serde_json::json;
 use smol_str::SmolStr;
 
@@ -509,7 +508,7 @@ fn record_has_typechecks() {
         Type::singleton_boolean(false),
     );
     assert_typechecks_empty_schema(
-        parse_expr("{a: 1} has a").unwrap(),
+        Expr::from_str("{a: 1} has a").unwrap(),
         Type::singleton_boolean(true),
     );
 }
@@ -517,45 +516,45 @@ fn record_has_typechecks() {
 #[test]
 fn record_lub_has_typechecks() {
     assert_typechecks_empty_schema(
-        parse_expr("(if 1 > 0 then {a: 1} else {a: 2}) has a").unwrap(),
+        Expr::from_str("(if 1 > 0 then {a: 1} else {a: 2}) has a").unwrap(),
         Type::singleton_boolean(true),
     );
     assert_typechecks_empty_schema(
-        parse_expr("(if 1 > 0 then {a: 1} else {a: 2}) has b").unwrap(),
+        Expr::from_str("(if 1 > 0 then {a: 1} else {a: 2}) has b").unwrap(),
         Type::singleton_boolean(false),
     );
     assert_typechecks_empty_schema(
-        parse_expr("(if 1 > 0 then {a: 1} else {a: 2, b: 3}) has a").unwrap(),
+        Expr::from_str("(if 1 > 0 then {a: 1} else {a: 2, b: 3}) has a").unwrap(),
         Type::singleton_boolean(true),
     );
     assert_typechecks_empty_schema(
-        parse_expr("(if 1 > 0 then {a: 1, b: 2} else {a: 1, c: 2}) has a").unwrap(),
+        Expr::from_str("(if 1 > 0 then {a: 1, b: 2} else {a: 1, c: 2}) has a").unwrap(),
         Type::singleton_boolean(true),
     );
     assert_typechecks_empty_schema(
-        parse_expr("(if 1 > 0 then {a: 1} else {}) has a").unwrap(),
+        Expr::from_str("(if 1 > 0 then {a: 1} else {}) has a").unwrap(),
         Type::primitive_boolean(),
     );
     assert_typechecks_empty_schema(
-        parse_expr("(if 1 > 0 then {a: 1, b: 2} else {a: 1, c: 2}) has b").unwrap(),
+        Expr::from_str("(if 1 > 0 then {a: 1, b: 2} else {a: 1, c: 2}) has b").unwrap(),
         Type::primitive_boolean(),
     );
     assert_typechecks_empty_schema(
-        parse_expr("(if 1 > 0 then (if 1 > 0 then {a: 1} else {}) else {}) has a").unwrap(),
+        Expr::from_str("(if 1 > 0 then (if 1 > 0 then {a: 1} else {}) else {}) has a").unwrap(),
         Type::primitive_boolean(),
     );
 
     // These cases are imprecise.
     assert_typechecks_empty_schema(
-        parse_expr("(if 1 > 0 then {a: 1} else {}) has c").unwrap(),
+        Expr::from_str("(if 1 > 0 then {a: 1} else {}) has c").unwrap(),
         Type::primitive_boolean(),
     );
     assert_typechecks_empty_schema(
-        parse_expr("(if 1 > 0 then {a: 1} else {b: 2}) has c").unwrap(),
+        Expr::from_str("(if 1 > 0 then {a: 1} else {b: 2}) has c").unwrap(),
         Type::primitive_boolean(),
     );
     assert_typechecks_empty_schema(
-        parse_expr("(if 1 > 0 then {a: 1} else {a : false}) has a").unwrap(),
+        Expr::from_str("(if 1 > 0 then {a: 1} else {a : false}) has a").unwrap(),
         Type::primitive_boolean(),
     );
 }

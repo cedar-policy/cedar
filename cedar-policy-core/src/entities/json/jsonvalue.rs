@@ -22,6 +22,7 @@ use crate::ast::{
     BorrowedRestrictedExpr, Eid, EntityUID, Expr, ExprKind, Literal, Name, RestrictedExpr,
 };
 use crate::extensions::{Extensions, ExtensionsError};
+use crate::FromNormalizedStr;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
@@ -128,7 +129,7 @@ impl TryFrom<TypeAndId> for EntityUID {
 
     fn try_from(e: TypeAndId) -> Result<EntityUID, Self::Error> {
         Ok(EntityUID::from_components(
-            e.entity_type.parse()?,
+            Name::from_normalized_str(&e.entity_type)?,
             Eid::new(e.id),
         ))
     }
@@ -289,7 +290,7 @@ impl FnAndArg {
     pub fn into_expr(self) -> Result<RestrictedExpr, JsonDeserializationError> {
         use crate::parser;
         Ok(RestrictedExpr::call_extension_fn(
-            self.ext_fn.parse().map_err(|errs| {
+            Name::from_normalized_str(&self.ext_fn).map_err(|errs| {
                 JsonDeserializationError::ExtnParseError(parser::err::ParseError::WithContext {
                     context: format!(
                         "in __extn escape, {:?} is not a valid function name",

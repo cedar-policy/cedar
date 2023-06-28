@@ -19,11 +19,12 @@
 #![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
+use std::str::FromStr;
 use std::sync::Arc;
 
 use cedar_policy_core::{
     ast::{EntityUID, Expr, StaticPolicy, Template, Var},
-    parser::{parse_expr, parse_policy, parse_policy_template},
+    parser::{parse_policy, parse_policy_template},
 };
 
 use super::test_utils::{
@@ -420,14 +421,15 @@ fn entity_lub_cant_access_attribute_not_shared() {
         p,
         vec![
             TypeError::unsafe_attribute_access(
-                parse_expr(r#"(if 1 > 0 then User::"alice" else Photo::"vacation.jpg").name"#)
+                Expr::from_str(r#"(if 1 > 0 then User::"alice" else Photo::"vacation.jpg").name"#)
                     .unwrap(),
                 "name".into(),
                 None,
                 true,
             ),
             TypeError::types_must_match(
-                parse_expr(r#"if 1 > 0 then User::"alice" else Photo::"vacation.jpg""#).unwrap(),
+                Expr::from_str(r#"if 1 > 0 then User::"alice" else Photo::"vacation.jpg""#)
+                    .unwrap(),
                 [
                     Type::named_entity_reference_from_str("User"),
                     Type::named_entity_reference_from_str("Photo"),
@@ -481,7 +483,7 @@ fn entity_record_lub_is_none() {
         ).expect("Policy should parse."),
         vec![
             TypeError::incompatible_types(
-                parse_expr(r#"if 1 > 0 then User::"alice" else {name: "bob"}"#).unwrap(),
+                Expr::from_str(r#"if 1 > 0 then User::"alice" else {name: "bob"}"#).unwrap(),
                 [
                     Type::closed_record_with_required_attributes([("name".into(), Type::primitive_string())]),
                     Type::named_entity_reference_from_str("User"),
@@ -694,7 +696,7 @@ fn record_entity_lub_non_term() {
         schema,
         policy,
         vec![TypeError::incompatible_types(
-            parse_expr(r#"if principal.bar then principal.foo else U::"b""#).unwrap(),
+            Expr::from_str(r#"if principal.bar then principal.foo else U::"b""#).unwrap(),
             [
                 Type::closed_record_with_required_attributes([(
                     "foo".into(),
