@@ -23,6 +23,8 @@ extern crate lalrpop_util;
 
 pub mod ast;
 pub mod authorizer;
+mod from_normalized_str;
+pub use from_normalized_str::*;
 pub mod entities;
 pub mod est;
 pub mod evaluator;

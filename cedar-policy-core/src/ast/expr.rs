@@ -14,7 +14,11 @@
  * limitations under the License.
  */
 
-use crate::{ast::*, extensions::Extensions, parser::SourceInfo};
+use crate::{
+    ast::*,
+    extensions::Extensions,
+    parser::{err::ParseError, SourceInfo},
+};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -759,6 +763,14 @@ fn maybe_with_parens(expr: &Expr) -> String {
         ExprKind::Like { .. } => format!("({})", expr),
         ExprKind::Set { .. } => expr.to_string(),
         ExprKind::Record { .. } => expr.to_string(),
+    }
+}
+
+impl std::str::FromStr for Expr {
+    type Err = Vec<ParseError>;
+
+    fn from_str(s: &str) -> Result<Expr, Vec<ParseError>> {
+        crate::parser::parse_expr(s)
     }
 }
 

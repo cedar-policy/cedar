@@ -1681,7 +1681,7 @@ mod test {
         let parsed_schema_type: SchemaType = serde_json::from_str(&json_str)
             .expect("JSON representation should have parsed into a schema type");
         let type_from_schema_type =
-            ValidatorNamespaceDef::try_schema_type_into_validator_type(&[], parsed_schema_type)
+            ValidatorNamespaceDef::try_schema_type_into_validator_type(None, parsed_schema_type)
                 .expect("Schema type should have converted to type.")
                 .resolve_type_defs(&HashMap::new())
                 .unwrap();

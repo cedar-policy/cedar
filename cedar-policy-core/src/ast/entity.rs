@@ -17,6 +17,7 @@
 use crate::ast::*;
 use crate::parser::err::ParseError;
 use crate::transitive_closure::TCNode;
+use crate::FromNormalizedStr;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -145,6 +146,12 @@ impl std::str::FromStr for EntityUID {
 
     fn from_str(s: &str) -> Result<Self, Vec<ParseError>> {
         crate::parser::parse_euid(s)
+    }
+}
+
+impl FromNormalizedStr for EntityUID {
+    fn describe_self() -> &'static str {
+        "Entity UID"
     }
 }
 
