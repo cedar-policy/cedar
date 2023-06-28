@@ -52,7 +52,6 @@ pub struct ContextJsonParser<'e, 's, S: ContextSchema = NullContextSchema> {
 }
 
 impl<'e, 's, S: ContextSchema> ContextJsonParser<'e, 's, S> {
-
     /// Create a new `ContextJsonParser`.
     ///
     /// If a `schema` is present, this will inform the parsing: for instance, it
