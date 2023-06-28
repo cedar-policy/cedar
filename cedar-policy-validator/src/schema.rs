@@ -601,8 +601,7 @@ impl ValidatorNamespaceDef {
         type_name: impl AsRef<str>,
         namespace: Option<Name>,
     ) -> std::result::Result<Name, Vec<ParseError>> {
-        use std::str::FromStr;
-        let type_name = Id::from_str(type_name.as_ref())?;
+        let type_name = Id::parse_normalized_id(type_name.as_ref())?;
         match namespace {
             Some(namespace) => Ok(Name::type_in_namespace(type_name, namespace)),
             None => Ok(Name::unqualified_name(type_name)),
@@ -621,8 +620,7 @@ impl ValidatorNamespaceDef {
         let namespaced_action_type = if let Some(action_ty) = &action_id.ty {
             Name::parse_normalized_name(action_ty).map_err(SchemaError::EntityTypeParseError)?
         } else {
-            use std::str::FromStr;
-            let id = Id::from_str(ACTION_ENTITY_TYPE).expect(
+            let id = Id::parse_normalized_id(ACTION_ENTITY_TYPE).expect(
                 "Expected that the constant ACTION_ENTITY_TYPE would be a valid entity type.",
             );
             match namespace {
@@ -765,21 +763,21 @@ impl std::str::FromStr for ValidatorSchema {
     }
 }
 
-impl TryInto<ValidatorSchema> for NamespaceDefinition {
+impl TryFrom<NamespaceDefinition> for ValidatorSchema {
     type Error = SchemaError;
 
-    fn try_into(self) -> Result<ValidatorSchema> {
-        ValidatorSchema::from_schema_fragments([ValidatorSchemaFragment::from_namespaces([self
-            .try_into(
-        )?])])
+    fn try_from(nsd: NamespaceDefinition) -> Result<ValidatorSchema> {
+        ValidatorSchema::from_schema_fragments([ValidatorSchemaFragment::from_namespaces([
+            nsd.try_into()?
+        ])])
     }
 }
 
-impl TryInto<ValidatorSchema> for SchemaFragment {
+impl TryFrom<SchemaFragment> for ValidatorSchema {
     type Error = SchemaError;
 
-    fn try_into(self) -> Result<ValidatorSchema> {
-        ValidatorSchema::from_schema_fragments([self.try_into()?])
+    fn try_from(frag: SchemaFragment) -> Result<ValidatorSchema> {
+        ValidatorSchema::from_schema_fragments([frag.try_into()?])
     }
 }
 
@@ -2666,6 +2664,63 @@ mod test {
                 s
             ),
         }
+    }
+
+    /// This test checks for regressions on (adapted versions of) the examples
+    /// mentioned in the thread at
+    /// [cedar#134](https://github.com/cedar-policy/cedar/pull/134)
+    #[test]
+    fn counterexamples_from_cedar_134() {
+        // non-normalized entity type name
+        let bad1 = json!({
+            "": {
+                "entityTypes": {
+                    "User // comment": {
+                        "memberOfTypes": [
+                            "UserGroup"
+                        ]
+                    },
+                    "User": {
+                        "memberOfTypes": [
+                            "UserGroup"
+                        ]
+                    },
+                    "UserGroup": {}
+                },
+                "actions": {}
+            }
+        });
+        let fragment = serde_json::from_value::<SchemaFragment>(bad1)
+            .expect("constructing the fragment itself should succeed"); // should this fail in the future?
+        let err = ValidatorSchema::try_from(fragment)
+            .expect_err("should error due to invalid entity type name");
+        assert!(
+            err.to_string()
+                .contains("needs to be normalized (e.g., whitespace removed): User // comment"),
+            "actual error message was {err}"
+        );
+
+        // non-normalized schema namespace
+        let bad2 = json!({
+            "ABC     :: //comment \n XYZ  ": {
+                "entityTypes": {
+                    "User": {
+                        "memberOfTypes": []
+                    }
+                },
+                "actions": {}
+            }
+        });
+        let fragment = serde_json::from_value::<SchemaFragment>(bad2)
+            .expect("constructing the fragment itself should succeed"); // should this fail in the future?
+        let err = ValidatorSchema::try_from(fragment)
+            .expect_err("should error due to invalid schema namespace");
+        assert!(
+            err.to_string().contains(
+                "needs to be normalized (e.g., whitespace removed): ABC     :: //comment "
+            ),
+            "actual error message was {err}"
+        );
     }
 
     #[test]

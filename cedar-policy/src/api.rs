@@ -1906,7 +1906,7 @@ impl FromStr for Expression {
 
     /// create an Expression using Cedar syntax
     fn from_str(expression: &str) -> Result<Self, Self::Err> {
-        parser::parse_expr(expression)
+        ast::Expr::from_str(expression)
             .map_err(ParseErrors)
             .map(Expression)
     }
@@ -1965,7 +1965,7 @@ impl FromStr for RestrictedExpression {
 
     /// create a `RestrictedExpression` using Cedar syntax
     fn from_str(expression: &str) -> Result<Self, Self::Err> {
-        parser::parse_restrictedexpr(expression)
+        ast::RestrictedExpr::from_str(expression)
             .map_err(ParseErrors)
             .map(RestrictedExpression)
     }

@@ -199,7 +199,10 @@ pub fn parse_policy_or_template_to_est(text: &str) -> Result<est::Policy, err::P
 }
 
 /// parse an Expr
-pub fn parse_expr(ptext: &str) -> Result<ast::Expr, Vec<err::ParseError>> {
+///
+/// Private to this crate. Users outside Core should use `Expr`'s `FromStr` impl
+/// or its constructors
+pub(crate) fn parse_expr(ptext: &str) -> Result<ast::Expr, Vec<err::ParseError>> {
     let mut errs = Vec::new();
     text_to_cst::parse_expr(ptext)?
         .to_expr(&mut errs)
@@ -207,42 +210,41 @@ pub fn parse_expr(ptext: &str) -> Result<ast::Expr, Vec<err::ParseError>> {
 }
 
 /// parse a RestrictedExpr
-pub fn parse_restrictedexpr(ptext: &str) -> Result<ast::RestrictedExpr, Vec<err::ParseError>> {
+///
+/// Private to this crate. Users outside Core should use `RestrictedExpr`'s
+/// `FromStr` impl or its constructors
+pub(crate) fn parse_restrictedexpr(
+    ptext: &str,
+) -> Result<ast::RestrictedExpr, Vec<err::ParseError>> {
     parse_expr(ptext)
         .and_then(|expr| ast::RestrictedExpr::new(expr).map_err(|err| vec![err.into()]))
 }
 
 /// parse an EntityUID
-pub fn parse_euid(euid: &str) -> Result<ast::EntityUID, Vec<err::ParseError>> {
+///
+/// Private to this crate. Users outside Core should use `EntityUID`'s `FromStr`
+/// impl or its constructors
+pub(crate) fn parse_euid(euid: &str) -> Result<ast::EntityUID, Vec<err::ParseError>> {
     let mut errs = Vec::new();
     text_to_cst::parse_ref(euid)?.to_ref(&mut errs).ok_or(errs)
 }
 
 /// parse a Name
-pub fn parse_name(name: &str) -> Result<ast::Name, Vec<err::ParseError>> {
+///
+/// Private to this crate. Users outside Core should use `Name`'s `FromStr` impl
+/// or its constructors
+pub(crate) fn parse_name(name: &str) -> Result<ast::Name, Vec<err::ParseError>> {
     let mut errs = Vec::new();
     text_to_cst::parse_name(name)?
         .to_name(&mut errs)
         .ok_or(errs)
 }
 
-/// Parse a namespace
-pub fn parse_namespace(name: &str) -> Result<Vec<ast::Id>, Vec<err::ParseError>> {
-    // A namespace parses identically to a `Name`, except all of the parsed
-    // `Id`s are part of the namespace path. To parse a namespace, we parse it
-    // as a `Name`, before combining the `id` and `path` into the full namespace.
-    Ok(if name.is_empty() {
-        Vec::new()
-    } else {
-        let name = parse_name(name)?;
-        let once = std::iter::once(name.id);
-        let namespace_path = name.path.as_ref().iter().cloned();
-        namespace_path.chain(once).collect()
-    })
-}
-
 /// parse a string into an ast::Literal (does not support expressions)
-pub fn parse_literal(val: &str) -> Result<ast::Literal, Vec<err::ParseError>> {
+///
+/// Private to this crate. Users outside Core should use `Literal`'s `FromStr` impl
+/// or its constructors
+pub(crate) fn parse_literal(val: &str) -> Result<ast::Literal, Vec<err::ParseError>> {
     let mut errs = Vec::new();
     match text_to_cst::parse_primary(val)?
         .to_expr(&mut errs)
@@ -275,69 +277,22 @@ pub fn parse_internal_string(val: &str) -> Result<SmolStr, Vec<err::ParseError>>
 }
 
 /// parse an identifier
-pub fn parse_ident(id: &str) -> Result<ast::Id, Vec<err::ParseError>> {
+///
+/// Private to this crate. Users outside Core should use `Id`'s `FromStr` impl
+/// or its constructors
+pub(crate) fn parse_ident(id: &str) -> Result<ast::Id, Vec<err::ParseError>> {
     let mut errs = Vec::new();
     text_to_cst::parse_ident(id)?
         .to_valid_ident(&mut errs)
         .ok_or(errs)
 }
 
-/// parse into a `Request`
-pub fn parse_request(
-    principal: impl AsRef<str>,      // should be a "Type::EID" string
-    action: impl AsRef<str>,         // should be a "Type::EID" string
-    resource: impl AsRef<str>,       // should be a "Type::EID" string
-    context_json: serde_json::Value, // JSON object mapping Strings to ast::RestrictedExpr
-) -> Result<ast::Request, Vec<err::ParseError>> {
-    let mut errs = vec![];
-    // Parse principal, action, resource
-    let mut parse_par = |s, name| {
-        parse_euid(s)
-            .map_err(|e| {
-                errs.push(err::ParseError::WithContext {
-                    context: format!("trying to parse {}", name),
-                    errs: e,
-                })
-            })
-            .ok()
-    };
-
-    let (principal, action, resource) = (
-        parse_par(principal.as_ref(), "principal"),
-        parse_par(action.as_ref(), "action"),
-        parse_par(resource.as_ref(), "resource"),
-    );
-
-    let context = match ast::Context::from_json_value(context_json) {
-        Ok(ctx) => Some(ctx),
-        Err(e) => {
-            errs.push(err::ParseError::ToAST(format!(
-                "failed to parse context JSON: {}",
-                err::ParseErrors(vec![err::ParseError::ToAST(e.to_string())])
-            )));
-            None
-        }
-    };
-    match (principal, action, resource, errs.as_slice()) {
-        (Some(p), Some(a), Some(r), &[]) => Ok(ast::Request {
-            principal: ast::EntityUIDEntry::concrete(p),
-            action: ast::EntityUIDEntry::concrete(a),
-            resource: ast::EntityUIDEntry::concrete(r),
-            context,
-        }),
-        _ => Err(errs),
-    }
-}
-
 #[cfg(test)]
 mod test {
-    use std::collections::HashSet;
-
-    use itertools::Itertools;
-
-    use crate::ast::{test_generators::*, Template};
-
     use super::*;
+    use crate::ast::{test_generators::*, Template};
+    use itertools::Itertools;
+    use std::collections::HashSet;
 
     #[test]
     fn test_template_parsing() {
@@ -610,25 +565,6 @@ mod parse_tests {
             when { resource . highSecurity };"#
             )
         );
-    }
-
-    #[test]
-    fn test_parse_namespace() -> Result<(), Vec<err::ParseError>> {
-        assert_eq!(Vec::<ast::Id>::new(), parse_namespace("")?);
-        assert_eq!(vec!["Foo".parse::<ast::Id>()?], parse_namespace("Foo")?);
-        assert_eq!(
-            vec!["Foo".parse::<ast::Id>()?, "Bar".parse::<ast::Id>()?],
-            parse_namespace("Foo::Bar")?
-        );
-        assert_eq!(
-            vec![
-                "Foo".parse::<ast::Id>()?,
-                "Bar".parse::<ast::Id>()?,
-                "Baz".parse::<ast::Id>()?
-            ],
-            parse_namespace("Foo::Bar::Baz")?
-        );
-        Ok(())
     }
 
     #[test]
