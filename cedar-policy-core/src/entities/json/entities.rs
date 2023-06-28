@@ -45,11 +45,11 @@ pub struct EntityJSON {
 #[derive(Debug, Clone)]
 pub struct EntityJsonParser<'e, S: Schema = NoEntitiesSchema> {
     /// If a `schema` is present, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
-    /// That does not mean it will fully enforce that the produced `Entities`
-    /// conform to the `schema` -- for instance, as of this writing, it will not
-    /// error for unexpected (additional) record attributes.
+    /// will allow `__entity` and `__extn` escapes to be implicit.
+    /// It will also ensure that the produced `Entities` fully conforms to the
+    /// `schema` -- for instance, it will error if attributes have the wrong
+    /// types (e.g., string instead of integer), or if required attributes are
+    /// missing or superfluous attributes are provided.
     schema: Option<S>,
 
     /// Extensions which are active for the JSON parsing.
@@ -75,12 +75,12 @@ enum EntitySchemaInfo<E: EntityTypeDescription> {
 impl<'e, S: Schema> EntityJsonParser<'e, S> {
     /// Create a new `EntityJsonParser`.
     ///
-    /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
-    /// That does not mean it will fully enforce that the produced `Entities`
-    /// conform to the `schema` -- for instance, as of this writing, it will not
-    /// error for unexpected (additional) record attributes.
+    /// If a `schema` is present, this will inform the parsing: for instance, it
+    /// will allow `__entity` and `__extn` escapes to be implicit.
+    /// It will also ensure that the produced `Entities` fully conforms to the
+    /// `schema` -- for instance, it will error if attributes have the wrong
+    /// types (e.g., string instead of integer), or if required attributes are
+    /// missing or superfluous attributes are provided.
     ///
     /// If you pass `TCComputation::AssumeAlreadyComputed`, then the caller is
     /// responsible for ensuring that TC holds before calling this method.
