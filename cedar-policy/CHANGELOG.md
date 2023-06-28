@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Added
+
+- Export `entities::EntitiesError` error type.
+- New methods exported for `EntityTypeName`.
+  - `basename` to get the basename (without namespaces).
+  - `namespace_components` to get the namespace as an iterator over its components.
+  - `namespace` to get the namespace as a single string.
+
+### Changed
+
+- Improved error detection in schema based parsing (fix issues #73, #74).
+  - Detect entities with parents of an incorrect entity type.
+  - Detect entities with an undeclared entity type.
+- Slightly improved error text on some validation type errors
+- Disallow whitespace in entity type names when parsed by `EntityTypeName::from_str()`, `EntityNamespace::from_str()` and `EntityUid::from_str()` (implement rfc #9).
+
 ## 2.2.0
 
 ### Added

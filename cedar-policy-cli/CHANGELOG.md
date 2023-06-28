@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed
+- Input policies for `check-parse` command can be read from standard input.
+
 ## 2.2.0
 
 ### Changed
