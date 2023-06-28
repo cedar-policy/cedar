@@ -480,9 +480,18 @@ impl Type {
                 primitive_type: Primitive::Bool,
             } => Type::json_type("Boolean"),
             Type::Primitive {
-                // FIXME: Preserve bounds? What uses this?
-                primitive_type: Primitive::Long(_),
-            } => Type::json_type("Long"),
+                primitive_type: Primitive::Long(lbi),
+            } => {
+                let mut long_json = Type::json_type("Long");
+                if let Some(bounds) = &lbi.bounds_opt {
+                    long_json.insert("min".to_string(), bounds.min.into());
+                    long_json.insert("max".to_string(), bounds.max.into());
+                    if lbi.can_be_any {
+                        long_json.insert("can_be_any".to_string(), true.into());
+                    }
+                }
+                long_json
+            }
             Type::Primitive {
                 primitive_type: Primitive::String,
             } => Type::json_type("String"),

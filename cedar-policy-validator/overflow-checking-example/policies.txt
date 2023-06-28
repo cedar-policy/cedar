@@ -36,3 +36,7 @@ when { -(-9223372036854775800 - principal.x8) > 0 };
 // Add: overflow with "maybe exempt" (shows in error message)
 permit(principal == User::"alice", action, resource)
 when { (if principal.flag then principal.x8 else principal.x_any) + 9223372036854775800 > 0 };
+
+// Test of Display for Type
+permit(principal == User::"alice", action, resource)
+when { true > 1 };
