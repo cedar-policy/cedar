@@ -885,11 +885,14 @@ impl ValidatorSchema {
                 Ok((
                     name.clone(),
                     ValidatorEntityType {
-                        name,
+                        name: name.clone(),
                         descendants,
-                        attributes: Self::record_attributes_or_error(
+                        attributes: Self::record_attributes_or_none(
                             entity_type.attributes.resolve_type_defs(&type_defs)?,
-                        )?,
+                        )
+                        .ok_or(SchemaError::ContextOrShapeNotRecord(
+                            ContextOrShape::EntityTypeShape(name),
+                        ))?,
                     },
                 ))
             })
@@ -912,12 +915,15 @@ impl ValidatorSchema {
                 Ok((
                     name.clone(),
                     ValidatorActionId {
-                        name,
+                        name: name.clone(),
                         applies_to: action.applies_to,
                         descendants,
-                        context: Self::record_attributes_or_error(
+                        context: Self::record_attributes_or_none(
                             action.context.resolve_type_defs(&type_defs)?,
-                        )?,
+                        )
+                        .ok_or(SchemaError::ContextOrShapeNotRecord(
+                            ContextOrShape::ActionContext(name),
+                        ))?,
                         attribute_types: action.attribute_types,
                         attributes: action.attributes,
                     },
@@ -1033,10 +1039,10 @@ impl ValidatorSchema {
         Ok(())
     }
 
-    fn record_attributes_or_error(ty: Type) -> Result<Attributes> {
+    fn record_attributes_or_none(ty: Type) -> Option<Attributes> {
         match ty {
-            Type::EntityOrRecord(EntityRecordKind::Record { attrs }) => Ok(attrs),
-            _ => Err(SchemaError::ContextOrShapeNotRecord),
+            Type::EntityOrRecord(EntityRecordKind::Record { attrs }) => Some(attrs),
+            _ => None,
         }
     }
 
@@ -2659,7 +2665,7 @@ mod test {
         }))
         .unwrap();
         match TryInto::<ValidatorSchema>::try_into(fragment) {
-            Err(SchemaError::ContextOrShapeNotRecord) => (),
+            Err(SchemaError::ContextOrShapeNotRecord(_)) => (),
             s => panic!(
                 "Expected Err(SchemaError::ContextOrShapeNotRecord), got {:?}",
                 s
