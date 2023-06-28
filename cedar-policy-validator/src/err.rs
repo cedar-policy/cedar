@@ -90,8 +90,8 @@ pub enum SchemaError {
     /// not currently supported.
     #[error("Actions declared with `attributes`: [{}]", .0.iter().join(", "))]
     ActionEntityAttributes(Vec<String>),
-    #[error("An entity shape or action context is declared with a type other than `Record`")]
-    ContextOrShapeNotRecord,
+    #[error("{0} is declared with a type other than `Record`")]
+    ContextOrShapeNotRecord(ContextOrShape),
     /// An Action Entity (transitively) has an attribute that is an empty set
     #[error("An action entity has an attribute that is an empty set")]
     ActionEntityAttributeEmptySet,
@@ -131,6 +131,23 @@ pub type Result<T> = std::result::Result<T, SchemaError>;
 impl SchemaError {
     fn format_parse_errs(errs: &[ParseError]) -> String {
         errs.iter().map(|e| e.to_string()).join(", ")
+    }
+}
+
+#[derive(Debug)]
+pub enum ContextOrShape {
+    ActionContext(EntityUID),
+    EntityTypeShape(Name),
+}
+
+impl std::fmt::Display for ContextOrShape {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ContextOrShape::ActionContext(action) => write!(f, "Context for action {}", action),
+            ContextOrShape::EntityTypeShape(entity_type) => {
+                write!(f, "Shape for entity type {}", entity_type)
+            }
+        }
     }
 }
 
