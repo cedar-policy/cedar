@@ -588,7 +588,7 @@ impl ValidatorNamespaceDef {
                 Some(namespace) => {
                     Name::type_in_namespace(name.basename().clone(), namespace.clone())
                 }
-                None => Name::unqualified_name(name.basename().clone()),
+                None => name,
             }
         };
 
