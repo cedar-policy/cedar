@@ -106,17 +106,19 @@ impl TypeError {
         }
     }
 
-    pub(crate) fn missing_attribute(
+    pub(crate) fn unsafe_attribute_access(
         on_expr: Expr,
-        missing: String,
+        attribute: String,
         suggestion: Option<String>,
+        may_exist: bool,
     ) -> Self {
         Self {
             on_expr: Some(on_expr),
             source_location: None,
-            kind: TypeErrorKind::MissingAttribute(MissingAttribute {
-                missing,
+            kind: TypeErrorKind::UnsafeAttributeAccess(UnsafeAttributeAccess {
+                attribute,
                 suggestion,
+                may_exist,
             }),
         }
     }
@@ -218,8 +220,16 @@ pub enum TypeErrorKind {
     IncompatibleTypes(IncompatibleTypes),
     /// The typechecker detected an access to a record or entity attribute
     /// that it could not statically guarantee would be present.
-    #[error("Attribute not found in record or entity: {}", .0.missing)]
-    MissingAttribute(MissingAttribute),
+    #[error(
+        "Attribute not found in record or entity: {}{}",
+        .0.attribute,
+        if .0.may_exist {
+            ". There may be additional attributes that the validator is not able to reason about."
+        } else {
+            ""
+        }
+    )]
+    UnsafeAttributeAccess(UnsafeAttributeAccess),
     /// The typechecker could not conclude that an access to an optional
     /// attribute was safe.
     #[error("Unable to guarantee safety of access to optional attribute: {}", .0.optional)]
@@ -273,9 +283,12 @@ pub struct TypesMustMatch {
 
 /// Structure containing details about a missing attribute error.
 #[derive(Debug, Hash, Eq, PartialEq)]
-pub struct MissingAttribute {
-    missing: String,
+pub struct UnsafeAttributeAccess {
+    attribute: String,
     suggestion: Option<String>,
+    /// When this is true, the attribute might still exist, but the validator
+    /// cannot guarantee that it will.
+    may_exist: bool,
 }
 
 /// Structure containing details about an unsafe optional attribute error.
