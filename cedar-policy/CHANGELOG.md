@@ -25,8 +25,9 @@
 which disallows embedded whitespace, comments, and control characters in the
 inputs to several Rust API functions including `EntityTypeName::from_str()` and
 `EntityNamespace::from_str()`, as well as in some fields of the Cedar JSON
-schema format (e.g., namespace declarations, entity type names) and the Cedar
-JSON policy format used by `Policy::from_json()` (e.g., entity type names,
+schema format (e.g., namespace declarations, entity type names), Cedar JSON
+entities format (e.g., entity type names, extension function names) and the
+Cedar JSON policy format used by `Policy::from_json()` (e.g., entity type names,
 extension function names). The risk that this may be a breaking change for some
 Cedar users was accepted due to the potential security ramifications; see
 discussion in the RFC.
