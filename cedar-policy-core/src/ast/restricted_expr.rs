@@ -16,6 +16,7 @@
 
 use super::{Expr, ExprKind, Literal, Name};
 use crate::entities::JsonSerializationError;
+use crate::parser;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::hash::{Hash, Hasher};
@@ -111,6 +112,14 @@ impl RestrictedExpr {
             function_name,
             args.into_iter().map(Into::into).collect(),
         ))
+    }
+}
+
+impl std::str::FromStr for RestrictedExpr {
+    type Err = Vec<parser::err::ParseError>;
+
+    fn from_str(s: &str) -> Result<RestrictedExpr, Self::Err> {
+        parser::parse_restrictedexpr(s)
     }
 }
 

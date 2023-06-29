@@ -34,6 +34,7 @@ use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 pub use cedar_policy_core::parser::err::ParseErrors;
 use cedar_policy_core::parser::SourceInfo;
+use cedar_policy_core::FromNormalizedStr;
 pub use cedar_policy_validator::{TypeErrorKind, ValidationErrorKind, ValidationWarningKind};
 use itertools::Itertools;
 use ref_cast::RefCast;
@@ -939,10 +940,9 @@ impl FromStr for EntityTypeName {
     type Err = ParseErrors;
 
     fn from_str(namespace_type_str: &str) -> Result<Self, Self::Err> {
-        match ast::Name::from_str(namespace_type_str) {
-            Ok(name) => Ok(Self(name)),
-            Err(errs) => Err(ParseErrors(errs)),
-        }
+        ast::Name::from_normalized_str(namespace_type_str)
+            .map(EntityTypeName)
+            .map_err(ParseErrors)
     }
 }
 
@@ -956,13 +956,15 @@ impl std::fmt::Display for EntityTypeName {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EntityNamespace(ast::Name);
 
+// This FromStr implementation requires the _normalized_ representation of the
+// namespace. See https://github.com/cedar-policy/rfcs/pull/9/.
 impl FromStr for EntityNamespace {
     type Err = ParseErrors;
 
     fn from_str(namespace_str: &str) -> Result<Self, Self::Err> {
-        Ok(Self(
-            ast::Name::from_str(namespace_str).map_err(ParseErrors)?,
-        ))
+        ast::Name::from_normalized_str(namespace_str)
+            .map(EntityNamespace)
+            .map_err(ParseErrors)
     }
 }
 
@@ -1019,6 +1021,8 @@ impl EntityUid {
     }
 }
 
+// This FromStr implementation requires the _normalized_ representation of the
+// UID. See https://github.com/cedar-policy/rfcs/pull/9/.
 impl FromStr for EntityUid {
     type Err = ParseErrors;
 
@@ -1028,8 +1032,10 @@ impl FromStr for EntityUid {
     //
     // You can't actually `#[deprecated]` a trait implementation or trait
     // method.
-    fn from_str(uid: &str) -> Result<Self, Self::Err> {
-        parser::parse_euid(uid).map(EntityUid).map_err(ParseErrors)
+    fn from_str(uid_str: &str) -> Result<Self, Self::Err> {
+        ast::EntityUID::from_normalized_str(uid_str)
+            .map(EntityUid)
+            .map_err(ParseErrors)
     }
 }
 
@@ -1773,7 +1779,7 @@ impl FromStr for Expression {
 
     /// create an Expression using Cedar syntax
     fn from_str(expression: &str) -> Result<Self, Self::Err> {
-        parser::parse_expr(expression)
+        ast::Expr::from_str(expression)
             .map_err(ParseErrors)
             .map(Expression)
     }
@@ -1832,7 +1838,7 @@ impl FromStr for RestrictedExpression {
 
     /// create a `RestrictedExpression` using Cedar syntax
     fn from_str(expression: &str) -> Result<Self, Self::Err> {
-        parser::parse_restrictedexpr(expression)
+        ast::RestrictedExpr::from_str(expression)
             .map_err(ParseErrors)
             .map(RestrictedExpression)
     }
@@ -2250,6 +2256,45 @@ mod entity_uid_tests {
         assert_eq!(euid.type_name().to_string(), r#"Test::User"#);
     }
 
+    /// building an `EntityUid` from components, including whitespace in various places
+    #[test]
+    fn entity_uid_with_whitespace() {
+        EntityTypeName::from_str("A ::   B::C").expect_err("should fail due to RFC 9");
+        EntityTypeName::from_str(" A :: B\n::C \n  ::D\n").expect_err("should fail due to RFC 9");
+
+        // but embedded whitespace should be OK when parsing an actual policy
+        let policy = Policy::from_str(
+            r#"permit(principal == A ::   B::C :: " hi there are spaces ", action, resource);"#,
+        )
+        .expect("should succeed, see RFC 9");
+        let euid = match policy.principal_constraint() {
+            PrincipalConstraint::Eq(euid) => euid,
+            _ => panic!("expected Eq constraint"),
+        };
+        assert_eq!(euid.id().as_ref(), " hi there are spaces ");
+        assert_eq!(euid.type_name().to_string(), "A::B::C"); // expect to have been normalized
+
+        let policy = Policy::from_str(
+            r#"
+permit(principal ==  A :: B
+    ::C
+    :: D
+    ::  " hi there are
+    spaces and
+    newlines ", action, resource);"#,
+        )
+        .expect("should succeed, see RFC 9");
+        let euid = match policy.principal_constraint() {
+            PrincipalConstraint::Eq(euid) => euid,
+            _ => panic!("expected Eq constraint"),
+        };
+        assert_eq!(
+            euid.id().as_ref(),
+            " hi there are\n    spaces and\n    newlines "
+        );
+        assert_eq!(euid.type_name().to_string(), "A::B::C::D"); // expect to have been normalized
+    }
+
     #[test]
     fn malformed_entity_type_name_should_fail() {
         let result = EntityTypeName::from_str("I'm an invalid name");
@@ -2282,19 +2327,41 @@ mod entity_uid_tests {
     #[test]
     fn parse_euid_single_quotes() {
         // the EntityUid string has an unescaped and escaped single-quote
-        let parsed_eid: EntityUid = r#"Test::User::"b'obby\'s sister""#
-            .parse()
-            .expect("Failed to parse");
+        let euid_str = r#"Test::User::"b'obby\'s sister""#;
+        EntityUid::from_str(euid_str).expect_err("Should fail, not normalized -- see RFC 9");
+        // but this should be accepted in an actual policy
+        let policy_str = "permit(principal == ".to_string() + euid_str + ", action, resource);";
+        let policy = Policy::from_str(&policy_str).expect("Should parse; see RFC 9");
+        let parsed_euid = match policy.principal_constraint() {
+            PrincipalConstraint::Eq(euid) => euid,
+            _ => panic!("Expected an Eq constraint"),
+        };
         // the escape was interpreted:
         //   the EntityId has both single-quote characters (but no backslash characters)
-        assert_eq!(parsed_eid.id().as_ref(), r#"b'obby's sister"#);
-        assert_eq!(parsed_eid.type_name().to_string(), r#"Test::User"#);
+        assert_eq!(parsed_euid.id().as_ref(), r#"b'obby's sister"#);
+        assert_eq!(parsed_euid.type_name().to_string(), r#"Test::User"#);
+    }
+
+    /// parsing an `EntityUid` from string, including whitespace
+    #[test]
+    fn parse_euid_whitespace() {
+        let euid_str = " A ::B :: C:: D \n :: \n E\n :: \"hi\"";
+        EntityUid::from_str(euid_str).expect_err("Should fail, not normalized -- see RFC 9");
+        // but this should be accepted in an actual policy
+        let policy_str = "permit(principal == ".to_string() + euid_str + ", action, resource);";
+        let policy = Policy::from_str(&policy_str).expect("Should parse; see RFC 9");
+        let parsed_euid = match policy.principal_constraint() {
+            PrincipalConstraint::Eq(euid) => euid,
+            _ => panic!("Expected an Eq constraint"),
+        };
+        assert_eq!(parsed_euid.id().as_ref(), "hi");
+        assert_eq!(parsed_euid.type_name().to_string(), "A::B::C::D::E"); // expect to have been normalized
     }
 
     /// test that we can parse the `Display` output of `EntityUid`
     #[test]
     fn euid_roundtrip() {
-        let parsed_euid: EntityUid = r#"Test::User::"b'ob""#.parse().expect("Failed to parse");
+        let parsed_euid: EntityUid = r#"Test::User::"b\'ob""#.parse().expect("Failed to parse");
         assert_eq!(parsed_euid.id().as_ref(), r#"b'ob"#);
         let reparsed: EntityUid = format!("{parsed_euid}")
             .parse()
@@ -2775,7 +2842,6 @@ mod schema_based_parsing_tests {
     use std::assert_eq;
 
     use super::*;
-    use cedar_policy_core::ast::EntityUID;
     use cool_asserts::assert_matches;
     use serde_json::json;
 
