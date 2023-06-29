@@ -16,7 +16,20 @@
   - Detect entities with parents of an incorrect entity type.
   - Detect entities with an undeclared entity type.
 - Slightly improved error text on some validation type errors
-- Disallow whitespace in entity type names when parsed by `EntityTypeName::from_str()`, `EntityNamespace::from_str()` and `EntityUid::from_str()` (implement rfc #9).
+
+## 2.3.0
+
+### Changed
+- Implementation of
+[RFC 9](https://github.com/cedar-policy/rfcs/blob/main/text/0009-disallow-whitespace-in-entityuid.md)
+which disallows embedded whitespace, comments, and control characters in the
+inputs to several Rust API functions including `EntityTypeName::from_str()` and
+`EntityNamespace::from_str()`, as well as in some fields of the Cedar JSON
+schema format (e.g., namespace declarations, entity type names) and the Cedar
+JSON policy format used by `Policy::from_json()` (e.g., entity type names,
+extension function names). The risk that this may be a breaking change for some
+Cedar users was accepted due to the potential security ramifications; see
+discussion in the RFC.
 
 ## 2.2.0
 
