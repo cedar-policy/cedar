@@ -119,7 +119,7 @@ fn expr_typechecks_with_correct_annotation() {
             ("foo".into(), Expr::val(1)),
             ("bar".into(), Expr::val(false)),
         ]),
-        &ExprBuilder::with_data(Some(Type::record_with_required_attributes([
+        &ExprBuilder::with_data(Some(Type::closed_record_with_required_attributes([
             ("foo".into(), Type::primitive_long()),
             ("bar".into(), Type::singleton_boolean(false)),
         ])))

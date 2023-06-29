@@ -34,6 +34,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
 
+use crate::types::OpenTag;
 use crate::{
     schema_file_format,
     types::{AttributeType, Attributes, EntityRecordKind, Type},
@@ -351,9 +352,10 @@ impl ValidatorNamespaceDef {
                         Err(e) => return Err(e),
                     };
                 }
-                Ok(Type::EntityOrRecord(EntityRecordKind::Record {
-                    attrs: Attributes::with_required_attributes(required_attrs),
-                }))
+                Ok(Type::record_with_required_attributes(
+                    required_attrs,
+                    OpenTag::ClosedAttributes,
+                ))
             }
             JSONValue::Set(v) => match v.get(0) {
                 //sets with elements of different types will be rejected elsewhere
@@ -662,8 +664,9 @@ impl ValidatorNamespaceDef {
                     ))
                 } else {
                     Ok(
-                        Self::parse_record_attributes(default_namespace, attributes)?
-                            .map(Type::record_with_attributes),
+                        Self::parse_record_attributes(default_namespace, attributes)?.map(
+                            |attrs| Type::record_with_attributes(attrs, OpenTag::ClosedAttributes),
+                        ),
                     )
                 }
             }
@@ -1041,7 +1044,7 @@ impl ValidatorSchema {
 
     fn record_attributes_or_none(ty: Type) -> Option<Attributes> {
         match ty {
-            Type::EntityOrRecord(EntityRecordKind::Record { attrs }) => Some(attrs),
+            Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => Some(attrs),
             _ => None,
         }
     }
@@ -1063,7 +1066,7 @@ impl ValidatorSchema {
                 }
             }
 
-            Type::EntityOrRecord(EntityRecordKind::Record { attrs }) => {
+            Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
                 for (_, attr_ty) in attrs.iter() {
                     Self::check_undeclared_in_type(
                         &attr_ty.attr_type,
@@ -1174,6 +1177,7 @@ impl ValidatorSchema {
                     .context
                     .iter()
                     .map(|(k, v)| (k.clone(), v.clone())),
+                OpenTag::ClosedAttributes,
             )
         })
     }
@@ -2223,7 +2227,7 @@ mod test {
             .expect("Error converting schema type to type.")
             .resolve_type_defs(&HashMap::new())
             .unwrap();
-        assert_eq!(ty, Type::record_with_attributes(None));
+        assert_eq!(ty, Type::closed_record_with_attributes(None));
     }
 
     #[test]
