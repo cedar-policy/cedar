@@ -349,10 +349,11 @@ fn multiple_namespaces_attributes() {
         schema,
         Expr::from_str("B::Foo::\"foo\".x").unwrap(),
         None,
-        vec![TypeError::missing_attribute(
+        vec![TypeError::unsafe_attribute_access(
             Expr::from_str("B::Foo::\"foo\".x").unwrap(),
             "x".to_string(),
             None,
+            false,
         )],
     );
 }
