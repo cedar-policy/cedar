@@ -125,7 +125,7 @@ impl From<&EntityUID> for TypeAndId {
 }
 
 impl TryFrom<TypeAndId> for EntityUID {
-    type Error = Vec<crate::parser::err::ParseError>;
+    type Error = crate::parser::err::ParseErrors;
 
     fn try_from(e: TypeAndId) -> Result<EntityUID, Self::Error> {
         Ok(EntityUID::from_components(
@@ -296,7 +296,7 @@ impl FnAndArg {
                         "in __extn escape, {:?} is not a valid function name",
                         &self.ext_fn,
                     ),
-                    errs: parser::err::ParseErrors(errs),
+                    errs: errs.into(),
                 })
             })?,
             vec![JSONValue::into_expr(*self.arg)?],

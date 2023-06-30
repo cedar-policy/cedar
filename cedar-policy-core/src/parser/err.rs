@@ -14,13 +14,18 @@
  * limitations under the License.
  */
 
+#![allow(deprecated)] // for `MultipleParseErrors`
+
 use std::fmt::{self, Display, Write};
 use std::iter;
+use std::ops::{Deref, DerefMut};
 
 use lalrpop_util as lalr;
 use miette::{Diagnostic, LabeledSpan, Severity, SourceCode};
 use phf::phf_map;
 use thiserror::Error;
+
+use crate::ast::RestrictedExpressionError;
 
 use crate::parser::fmt::join_with_conjunction;
 use crate::parser::node::ASTNode;
@@ -58,14 +63,24 @@ pub enum ParseError {
     },
     /// Error concerning restricted expressions
     #[error(transparent)]
-    RestrictedExpressionError(#[from] crate::ast::RestrictedExpressionError),
+    RestrictedExpressionError(#[from] RestrictedExpressionError),
 }
 
 /// Multiple related parse errors.
-#[derive(Clone, Debug, Error, PartialEq)]
+#[derive(Clone, Debug, Default, Error, PartialEq)]
 pub struct ParseErrors(pub Vec<ParseError>);
 
 impl ParseErrors {
+    /// Constructs a new, empty `ParseErrors`.
+    pub fn new() -> Self {
+        ParseErrors(Vec::new())
+    }
+
+    /// Constructs a new, empty `ParseErrors` with the specified capacity.
+    pub fn with_capacity(capacity: usize) -> Self {
+        ParseErrors(Vec::with_capacity(capacity))
+    }
+
     // TODO(spinda): Can we get rid of this?
     /// returns a Vec with stringified versions of the ParserErrors
     pub fn errors_as_strings(&self) -> Vec<String> {
@@ -145,9 +160,59 @@ impl Diagnostic for ParseErrors {
     }
 }
 
+impl AsRef<Vec<ParseError>> for ParseErrors {
+    fn as_ref(&self) -> &Vec<ParseError> {
+        &self.0
+    }
+}
+
+impl AsMut<Vec<ParseError>> for ParseErrors {
+    fn as_mut(&mut self) -> &mut Vec<ParseError> {
+        &mut self.0
+    }
+}
+
+impl AsRef<[ParseError]> for ParseErrors {
+    fn as_ref(&self) -> &[ParseError] {
+        self.0.as_ref()
+    }
+}
+
+impl AsMut<[ParseError]> for ParseErrors {
+    fn as_mut(&mut self) -> &mut [ParseError] {
+        self.0.as_mut()
+    }
+}
+
+impl Deref for ParseErrors {
+    type Target = Vec<ParseError>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for ParseErrors {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 impl From<ParseError> for ParseErrors {
     fn from(err: ParseError) -> Self {
         vec![err].into()
+    }
+}
+
+impl From<ToCSTError> for ParseErrors {
+    fn from(err: ToCSTError) -> Self {
+        ParseError::from(err).into()
+    }
+}
+
+impl From<RestrictedExpressionError> for ParseErrors {
+    fn from(err: RestrictedExpressionError) -> Self {
+        ParseError::from(err).into()
     }
 }
 
@@ -160,6 +225,33 @@ impl From<Vec<ParseError>> for ParseErrors {
 impl FromIterator<ParseError> for ParseErrors {
     fn from_iter<T: IntoIterator<Item = ParseError>>(errs: T) -> Self {
         ParseErrors(errs.into_iter().collect())
+    }
+}
+
+impl IntoIterator for ParseErrors {
+    type Item = ParseError;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a ParseErrors {
+    type Item = &'a ParseError;
+    type IntoIter = std::slice::Iter<'a, ParseError>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        (&self.0).into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a mut ParseErrors {
+    type Item = &'a mut ParseError;
+    type IntoIter = std::slice::IterMut<'a, ParseError>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        (&mut self.0).into_iter()
     }
 }
 

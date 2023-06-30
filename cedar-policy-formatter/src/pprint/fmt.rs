@@ -37,9 +37,7 @@ fn tree_to_pretty<T: Doc>(t: &T, context: &mut config::Context<'_>) -> String {
 }
 
 fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
-    let formatted_ast = parse_policyset(ps)
-        .map_err(ParseErrors)
-        .wrap_err("formatter produces invalid policies")?;
+    let formatted_ast = parse_policyset(ps).wrap_err("formatter produces invalid policies")?;
     let (formatted_policies, policies) = (
         formatted_ast.templates().collect::<Vec<&Template>>(),
         ast.templates().collect::<Vec<&Template>>(),
@@ -74,13 +72,11 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
 }
 
 pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
-    let cst = parse_policies(ps)
-        .map_err(ParseErrors)
-        .wrap_err("cannot parse input policies to CSTs")?;
-    let mut errs = Vec::new();
+    let cst = parse_policies(ps).wrap_err("cannot parse input policies to CSTs")?;
+    let mut errs = ParseErrors::new();
     let ast = cst
         .to_policyset(&mut errs)
-        .ok_or(ParseErrors(errs))
+        .ok_or(errs)
         .wrap_err("cannot parse input policies to ASTs")?;
     let tokens = get_token_stream(ps);
     let end_comment_str = &ps[tokens.last().unwrap().span.end..];

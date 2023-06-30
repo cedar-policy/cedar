@@ -89,7 +89,10 @@ impl std::fmt::Display for UnescapeError {
 mod test {
     use super::to_unescaped_string;
     use crate::ast;
-    use crate::parser::{err::ParseError, text_to_cst};
+    use crate::parser::{
+        err::{ParseError, ParseErrors},
+        text_to_cst,
+    };
 
     #[test]
     fn test_string_escape() {
@@ -125,7 +128,7 @@ mod test {
     #[test]
     fn test_pattern_escape() {
         // valid ASCII escapes
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         assert!(
             matches!(text_to_cst::parse_expr(r#""aa" like "\t\r\n\\\0\x42\*""#)
             .expect("failed parsing")
@@ -141,7 +144,7 @@ mod test {
         );
 
         // invalid ASCII escapes
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         assert!(text_to_cst::parse_expr(r#""abc" like "abc\xFF\xFEdef""#)
             .expect("failed parsing")
             .to_expr(&mut errs)
@@ -152,7 +155,7 @@ mod test {
         ));
 
         // valid `\*` surrounded by chars
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         assert!(
             matches!(text_to_cst::parse_expr(r#""aaa" like "👀👀\*🤞🤞\*🤝""#)
             .expect("failed parsing")
@@ -162,7 +165,7 @@ mod test {
         );
 
         // invalid escapes
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         assert!(text_to_cst::parse_expr(r#""aaa" like "abc\d\bdef""#)
             .expect("failed parsing")
             .to_expr(&mut errs)

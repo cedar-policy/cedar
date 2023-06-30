@@ -44,34 +44,25 @@ fn parse_collect_errors<'a, P, T>(
         &'a str,
     ) -> Result<T, err::RawParseError<'a>>,
     text: &'a str,
-) -> Result<T, Vec<err::ParseError>> {
-    // call generated parser
+) -> Result<T, err::ParseErrors> {
     let mut errs = Vec::new();
     let result = parse(parser, &mut errs, text);
 
-    // convert both parser error types to the local error type
-    let mut errors: Vec<err::ParseError> = errs
+    let mut errors: err::ParseErrors = errs
         .into_iter()
         .map(|recovery| err::ToCSTError::from_raw_err_recovery(recovery).into())
         .collect();
-    let result = result.map_err(|err| err::ToCSTError::from_raw_parse_err(err).into());
-
-    // decide to return errors or success
-    match result {
-        Ok(parsed) => {
-            if !errors.is_empty() {
-                // In this case, `parsed` contains internal errors but could
-                // still be used. However, for now, we do not use `parsed` --
-                // we just return the errors from this parsing phase and stop.
-                Err(errors)
-            } else {
-                Ok(parsed)
-            }
-        }
+    let parsed = match result {
+        Ok(parsed) => parsed,
         Err(e) => {
-            errors.push(e);
-            Err(errors)
+            errors.push(err::ToCSTError::from_raw_parse_err(e).into());
+            return Err(errors);
         }
+    };
+    if errors.is_empty() {
+        Ok(parsed)
+    } else {
+        Err(errors)
     }
 }
 
@@ -89,41 +80,37 @@ lazy_static! {
 /// Create CST for multiple policies from text
 pub fn parse_policies(
     text: &str,
-) -> Result<node::ASTNode<Option<cst::Policies>>, Vec<err::ParseError>> {
+) -> Result<node::ASTNode<Option<cst::Policies>>, err::ParseErrors> {
     parse_collect_errors(&*POLICIES_PARSER, grammar::PoliciesParser::parse, text)
 }
 
 /// Create CST for one policy statement from text
-pub fn parse_policy(
-    text: &str,
-) -> Result<node::ASTNode<Option<cst::Policy>>, Vec<err::ParseError>> {
+pub fn parse_policy(text: &str) -> Result<node::ASTNode<Option<cst::Policy>>, err::ParseErrors> {
     parse_collect_errors(&*POLICY_PARSER, grammar::PolicyParser::parse, text)
 }
 
 /// Create CST for one Expression from text
-pub fn parse_expr(text: &str) -> Result<node::ASTNode<Option<cst::Expr>>, Vec<err::ParseError>> {
+pub fn parse_expr(text: &str) -> Result<node::ASTNode<Option<cst::Expr>>, err::ParseErrors> {
     parse_collect_errors(&*EXPR_PARSER, grammar::ExprParser::parse, text)
 }
 
 /// Create CST for one Entity Ref (i.e., UID) from text
-pub fn parse_ref(text: &str) -> Result<node::ASTNode<Option<cst::Ref>>, Vec<err::ParseError>> {
+pub fn parse_ref(text: &str) -> Result<node::ASTNode<Option<cst::Ref>>, err::ParseErrors> {
     parse_collect_errors(&*REF_PARSER, grammar::RefParser::parse, text)
 }
 
 /// Create CST for one Primary value from text
-pub fn parse_primary(
-    text: &str,
-) -> Result<node::ASTNode<Option<cst::Primary>>, Vec<err::ParseError>> {
+pub fn parse_primary(text: &str) -> Result<node::ASTNode<Option<cst::Primary>>, err::ParseErrors> {
     parse_collect_errors(&*PRIMARY_PARSER, grammar::PrimaryParser::parse, text)
 }
 
 /// Parse text as a Name, or fail if it does not parse as a Name
-pub fn parse_name(text: &str) -> Result<node::ASTNode<Option<cst::Name>>, Vec<err::ParseError>> {
+pub fn parse_name(text: &str) -> Result<node::ASTNode<Option<cst::Name>>, err::ParseErrors> {
     parse_collect_errors(&*NAME_PARSER, grammar::NameParser::parse, text)
 }
 
 /// Parse text as an identifier, or fail if it does not parse as an identifier
-pub fn parse_ident(text: &str) -> Result<node::ASTNode<Option<cst::Ident>>, Vec<err::ParseError>> {
+pub fn parse_ident(text: &str) -> Result<node::ASTNode<Option<cst::Ident>>, err::ParseErrors> {
     parse_collect_errors(&*IDENT_PARSER, grammar::IdentParser::parse, text)
 }
 

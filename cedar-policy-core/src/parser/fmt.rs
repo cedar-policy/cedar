@@ -428,7 +428,7 @@ impl std::fmt::Display for Slot {
     }
 }
 
-pub fn join_with_conjunction<T, W: Write>(
+pub(crate) fn join_with_conjunction<T, W: Write>(
     f: &mut W,
     conjunction: &str,
     items: impl IntoIterator<Item = T>,

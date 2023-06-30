@@ -761,16 +761,14 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
                 Self::CycleInActionHierarchy
             }
             cedar_policy_validator::SchemaError::EntityTypeParseError(e) => {
-                Self::EntityTypeParse(ParseErrors(e))
+                Self::EntityTypeParse(e)
             }
-            cedar_policy_validator::SchemaError::NamespaceParseError(e) => {
-                Self::NamespaceParse(ParseErrors(e))
-            }
+            cedar_policy_validator::SchemaError::NamespaceParseError(e) => Self::NamespaceParse(e),
             cedar_policy_validator::SchemaError::CommonTypeParseError(e) => {
-                Self::CommonTypeParseError(ParseErrors(e))
+                Self::CommonTypeParseError(e)
             }
             cedar_policy_validator::SchemaError::ExtensionTypeParseError(e) => {
-                Self::ExtensionTypeParse(ParseErrors(e))
+                Self::ExtensionTypeParse(e)
             }
             cedar_policy_validator::SchemaError::ActionEntityTypeDeclared => {
                 Self::ActionEntityTypeDeclared
@@ -1006,9 +1004,7 @@ impl FromStr for EntityTypeName {
     type Err = ParseErrors;
 
     fn from_str(namespace_type_str: &str) -> Result<Self, Self::Err> {
-        ast::Name::from_normalized_str(namespace_type_str)
-            .map(EntityTypeName)
-            .map_err(ParseErrors)
+        ast::Name::from_normalized_str(namespace_type_str).map(EntityTypeName)
     }
 }
 
@@ -1028,9 +1024,7 @@ impl FromStr for EntityNamespace {
     type Err = ParseErrors;
 
     fn from_str(namespace_str: &str) -> Result<Self, Self::Err> {
-        ast::Name::from_normalized_str(namespace_str)
-            .map(EntityNamespace)
-            .map_err(ParseErrors)
+        ast::Name::from_normalized_str(namespace_str).map(EntityNamespace)
     }
 }
 
@@ -1099,9 +1093,7 @@ impl FromStr for EntityUid {
     // You can't actually `#[deprecated]` a trait implementation or trait
     // method.
     fn from_str(uid_str: &str) -> Result<Self, Self::Err> {
-        ast::EntityUID::from_normalized_str(uid_str)
-            .map(EntityUid)
-            .map_err(ParseErrors)
+        ast::EntityUID::from_normalized_str(uid_str).map(EntityUid)
     }
 }
 
@@ -1388,7 +1380,7 @@ impl Template {
     /// If the `id` is None, the parser will use the default "policy0".
     /// The behavior around None may change in the future.
     pub fn parse(id: Option<String>, src: impl AsRef<str>) -> Result<Self, ParseErrors> {
-        let ast = parser::parse_policy_template(id, src.as_ref()).map_err(ParseErrors)?;
+        let ast = parser::parse_policy_template(id, src.as_ref())?;
         Ok(Self {
             ast,
             lossless: LosslessPolicy::policy_or_template_text(src.as_ref()),
@@ -1764,7 +1756,7 @@ impl Policy {
     /// If `id` is None, then "policy0" will be used.
     /// The behavior around None may change in the future.
     pub fn parse(id: Option<String>, policy_src: impl AsRef<str>) -> Result<Self, ParseErrors> {
-        let inline_ast = parser::parse_policy(id, policy_src.as_ref()).map_err(ParseErrors)?;
+        let inline_ast = parser::parse_policy(id, policy_src.as_ref())?;
         let (_, ast) = ast::Template::link_static_policy(inline_ast);
         Ok(Self {
             ast,
@@ -1947,9 +1939,7 @@ impl FromStr for Expression {
 
     /// create an Expression using Cedar syntax
     fn from_str(expression: &str) -> Result<Self, Self::Err> {
-        ast::Expr::from_str(expression)
-            .map_err(ParseErrors)
-            .map(Expression)
+        ast::Expr::from_str(expression).map(Expression)
     }
 }
 
@@ -2006,9 +1996,7 @@ impl FromStr for RestrictedExpression {
 
     /// create a `RestrictedExpression` using Cedar syntax
     fn from_str(expression: &str) -> Result<Self, Self::Err> {
-        ast::RestrictedExpr::from_str(expression)
-            .map_err(ParseErrors)
-            .map(RestrictedExpression)
+        ast::RestrictedExpr::from_str(expression).map(RestrictedExpression)
     }
 }
 
