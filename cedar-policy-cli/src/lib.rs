@@ -59,6 +59,9 @@ pub enum ErrorFormat {
     /// snippets.
     #[default]
     Human,
+    /// Plain-text error messages without fancy graphics or colors, suitable for
+    /// screen readers.
+    Plain,
     /// Machine-readable JSON output.
     Json,
 }
@@ -70,6 +73,7 @@ impl Display for ErrorFormat {
             "{}",
             match self {
                 ErrorFormat::Human => "human",
+                ErrorFormat::Plain => "plain",
                 ErrorFormat::Json => "json",
             }
         )
