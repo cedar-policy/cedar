@@ -1,12 +1,15 @@
 use std::str::FromStr;
-use crate::parser::*;
-use crate::parser::node::ASTNode as Node;
+
 use lalrpop_util::{ParseError, ErrorRecovery};
 
-grammar<'err>(errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, String>>);
+use crate::parser::*;
+use crate::parser::err::{RawErrorRecovery, RawUserError};
+use crate::parser::node::ASTNode as Node;
+
+grammar<'err>(errors: &'err mut Vec<RawErrorRecovery<'input>>);
 
 extern {
-    type Error = String;
+    type Error = RawUserError;
 }
 
 // New tokens should be reflected in the `FRIENDLY_TOKEN_NAMES` map in err.rs.
@@ -348,7 +351,7 @@ Literal: Node<Option<cst::Literal>> = {
     <l:@L> <n:NUMBER> <r:@R> =>? match u64::from_str(n) {
         Ok(n) => Ok(Node::new(Some(cst::Literal::Num(n)),l,r)),
         Err(e) => Err(ParseError::User {
-            error: format!("Integer parse fail: {e}"),
+            error: ASTNode::new(format!("integer parse error: {e}"),l,r),
         }),
     },
     <l:@L> <s:Str> <r:@R>

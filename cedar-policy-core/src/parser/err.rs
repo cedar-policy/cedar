@@ -23,13 +23,14 @@ use phf::phf_map;
 use thiserror::Error;
 
 use crate::parser::fmt::join_with_conjunction;
+use crate::parser::node::ASTNode;
 
 pub(crate) type RawLocation = usize;
 pub(crate) type RawToken<'a> = lalr::lexer::Token<'a>;
-pub(crate) type RawUserError = String;
+pub(crate) type RawUserError = ASTNode<String>;
 
 pub(crate) type RawParseError<'a> = lalr::ParseError<RawLocation, RawToken<'a>, RawUserError>;
-pub(crate) type RawErrorRecovery<'a> = lalr::ErrorRecovery<RawLocation, RawToken<'a>, String>;
+pub(crate) type RawErrorRecovery<'a> = lalr::ErrorRecovery<RawLocation, RawToken<'a>, RawUserError>;
 
 type OwnedRawParseError = lalr::ParseError<RawLocation, String, RawUserError>;
 
@@ -42,7 +43,7 @@ pub enum ParseError {
     ToCST(#[from] ToCSTError),
     /// Error in the CST -> AST transform, mostly well-formedness issues
     #[error("poorly formed: {0}")]
-    #[diagnostic(code(cedar_policy_core::parser::to_ast_error))]
+    #[diagnostic(code(cedar_policy_core::parser::to_ast_err))]
     ToAST(String),
     /// (Potentially) multiple errors. This variant includes a "context" for
     /// what we were trying to do when we encountered these errors
@@ -169,14 +170,14 @@ pub struct ToCSTError {
 }
 
 impl ToCSTError {
-    pub(crate) fn from_raw(err: RawParseError<'_>) -> Self {
-        ToCSTError {
+    pub(crate) fn from_raw_parse_err(err: RawParseError<'_>) -> Self {
+        Self {
             err: err.map_token(|token| token.to_string()),
         }
     }
 
-    pub(crate) fn from_recovery(recovery: RawErrorRecovery<'_>) -> Self {
-        ToCSTError::from_raw(recovery.error)
+    pub(crate) fn from_raw_err_recovery(recovery: RawErrorRecovery<'_>) -> Self {
+        Self::from_raw_parse_err(recovery.error)
     }
 }
 
@@ -218,8 +219,7 @@ impl Diagnostic for ToCSTError {
             OwnedRawParseError::ExtraToken {
                 token: (token_start, _, token_end),
             } => LabeledSpan::underline(*token_start..*token_end),
-            // TODO(spinda): Convert user-error type into something with location information.
-            OwnedRawParseError::User { .. } => return None,
+            OwnedRawParseError::User { error } => LabeledSpan::underline(error.info.0.clone()),
         };
         Some(Box::new(iter::once(labeled_span)))
     }
