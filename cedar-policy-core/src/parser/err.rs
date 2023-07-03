@@ -242,7 +242,7 @@ impl<'a> IntoIterator for &'a ParseErrors {
     type IntoIter = std::slice::Iter<'a, ParseError>;
 
     fn into_iter(self) -> Self::IntoIter {
-        (&self.0).into_iter()
+        self.0.iter()
     }
 }
 
@@ -251,7 +251,7 @@ impl<'a> IntoIterator for &'a mut ParseErrors {
     type IntoIter = std::slice::IterMut<'a, ParseError>;
 
     fn into_iter(self) -> Self::IntoIter {
-        (&mut self.0).into_iter()
+        self.0.iter_mut()
     }
 }
 
@@ -352,10 +352,12 @@ fn expected_to_string(expected: &[String]) -> Option<String> {
     }
 
     let mut expected_string = "expected ".to_owned();
+    // PANIC SAFETY Shouldn't be `Err` since we're writing strings to a string
+    #[allow(clippy::expect_used)]
     join_with_conjunction(&mut expected_string, "or", expected, |f, token| {
         match FRIENDLY_TOKEN_NAMES.get(token.as_str()) {
             Some(friendly_token_name) => write!(f, "{}", friendly_token_name),
-            None => write!(f, "{}", token.replace("\"", "`")),
+            None => write!(f, "{}", token.replace('"', "`")),
         }
     })
     .expect("failed to format expected tokens");

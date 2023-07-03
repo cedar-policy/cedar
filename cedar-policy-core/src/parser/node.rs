@@ -61,14 +61,14 @@ impl SourceInfo {
     }
 
     /// Tests whether this [`SourceInfo`] range is a zero-length offset.
-    pub const fn is_offset(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.len() == 0
     }
 }
 
 impl Display for SourceInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.is_offset() {
+        if self.is_empty() {
             write!(f, "{}", self.range_start())
         } else {
             write!(f, "[{}, {})", self.range_start(), self.range_end())

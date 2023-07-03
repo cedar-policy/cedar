@@ -638,7 +638,7 @@ fn write_template_linked_file(linked: &[TemplateLinked], path: impl AsRef<Path>)
         .create(true)
         .open(path)
         .into_diagnostic()?;
-    Ok(serde_json::to_writer(f, linked).into_diagnostic()?)
+    serde_json::to_writer(f, linked).into_diagnostic()
 }
 
 pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {

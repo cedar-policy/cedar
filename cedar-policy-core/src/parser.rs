@@ -187,6 +187,8 @@ pub fn parse_policy_to_est_and_ast(
 /// Parse a policy or template (either one works) to its EST representation
 pub fn parse_policy_or_template_to_est(text: &str) -> Result<est::Policy, err::ParseErrors> {
     let cst = text_to_cst::parse_policy(text)?;
+    // PANIC SAFETY Shouldn't be `none` since `parse_policy()` didn't return `Err`
+    #[allow(clippy::expect_used)]
     let cst_node = cst.node.expect("missing policy or template node");
     cst_node.try_into()
 }
@@ -314,7 +316,7 @@ pub fn parse_request(
             .map_err(|e| {
                 errs.push(err::ParseError::WithContext {
                     context: format!("trying to parse {}", name),
-                    errs: e.into(),
+                    errs: e,
                 })
             })
             .ok()
