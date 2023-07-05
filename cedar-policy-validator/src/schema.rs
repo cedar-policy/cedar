@@ -622,7 +622,7 @@ impl ValidatorNamespaceDef {
     ) -> Result<EntityUID> {
         let namespaced_action_type = if let Some(action_ty) = &action_id.ty {
             Self::parse_possibly_qualified_name_with_default_namespace(action_ty, namespace)
-                .map_err(SchemaError::NamespaceParseError)?
+                .map_err(SchemaError::EntityTypeParseError)?
         } else {
             let id = Id::from_normalized_str(ACTION_ENTITY_TYPE).expect(
                 "Expected that the constant ACTION_ENTITY_TYPE would be a valid entity type.",
