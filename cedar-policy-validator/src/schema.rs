@@ -621,7 +621,12 @@ impl ValidatorNamespaceDef {
         namespace: Option<&Name>,
     ) -> Result<EntityUID> {
         let namespaced_action_type = if let Some(action_ty) = &action_id.ty {
-            Name::from_normalized_str(action_ty).map_err(SchemaError::EntityTypeParseError)?
+            let name =
+                Name::from_normalized_str(action_ty).map_err(SchemaError::EntityTypeParseError)?;
+            match namespace {
+                Some(namespace) => namespace.clone().append(name),
+                None => name,
+            }
         } else {
             let id = Id::from_normalized_str(ACTION_ENTITY_TYPE).expect(
                 "Expected that the constant ACTION_ENTITY_TYPE would be a valid entity type.",
@@ -631,6 +636,7 @@ impl ValidatorNamespaceDef {
                 None => Name::unqualified_name(id),
             }
         };
+        dbg!(&namespaced_action_type);
         Ok(EntityUID::from_components(
             namespaced_action_type,
             Eid::new(action_id.id.clone()),
@@ -1013,7 +1019,7 @@ impl ValidatorSchema {
             for p_entity in action.applies_to.applicable_principal_types() {
                 match p_entity {
                     EntityType::Concrete(p_entity) => {
-                        if !entity_types.contains_key(p_entity) {
+                        if !entity_types.contains_key(&p_entity) {
                             undeclared_e.insert(p_entity.to_string());
                         }
                     }
@@ -1024,7 +1030,7 @@ impl ValidatorSchema {
             for r_entity in action.applies_to.applicable_resource_types() {
                 match r_entity {
                     EntityType::Concrete(r_entity) => {
-                        if !entity_types.contains_key(r_entity) {
+                        if !entity_types.contains_key(&r_entity) {
                             undeclared_e.insert(r_entity.to_string());
                         }
                     }

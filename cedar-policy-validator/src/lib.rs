@@ -319,4 +319,71 @@ mod test {
 
         Ok(())
     }
+
+    #[test]
+    fn test_action_namespace_inference_multi() {
+        let schema_fragment = serde_json::from_str::<SchemaFragment>(
+            r#"
+            {
+                "ExampleCo::Personnel": {
+                  "entityTypes": {
+                  },
+                  "actions": {
+                    "viewPhoto": {
+                        "memberOf": [ 
+                            {
+                                "id" : "read",
+                                "type" : "Foo::Action"
+                            }
+                        ]
+                    }
+                  }
+                },
+                "ExampleCo::Personnel::Foo" : { 
+                    "entityTypes" : {}, 
+                    "actions" : { 
+                        "read" : {}
+                    }
+                }
+              }
+        "#,
+        )
+        .expect("Schema parse error.");
+        let schema = schema_fragment.try_into().expect("Expected valid schema.");
+        let validator = Validator::new(schema);
+        let policies = PolicySet::new();
+        let r = validator.validate(&policies, ValidationMode::Strict);
+        assert!(r.validation_passed());
+    }
+
+    #[test]
+    fn test_action_namespace_inference() {
+        let schema_fragment = serde_json::from_str::<SchemaFragment>(
+            r#"
+            {
+                "ExampleCo::Personnel": {
+                  "entityTypes": {
+                  },
+                  "actions": {
+                    "read": {},
+                    "viewPhoto": {
+                        "memberOf": [ 
+                            {
+                                "id" : "read",
+                                "type" : "Action"
+                            }
+                        ]
+                    }
+                  }
+                }
+              }
+        "#,
+        )
+        .expect("Schema parse error.");
+        let schema = schema_fragment.try_into().expect("Expected valid schema.");
+        let validator = Validator::new(schema);
+        let policies = PolicySet::new();
+        let r = validator.validate(&policies, ValidationMode::Strict);
+        assert!(r.validation_passed());
+    }
 }
