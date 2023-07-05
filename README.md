@@ -4,6 +4,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/cedar-policy.svg)](https://crates.io/crates/cedar-policy)
 [![docs.rs](https://img.shields.io/docsrs/cedar-policy)](https://docs.rs/cedar-policy/latest/cedar_policy/)
+![nightly](https://github.com/cedar-policy/cedar/actions/workflows/nightly_build.yml/badge.svg)
 
 This repository contains source code of the Rust crates that implement the [Cedar](https://www.cedarpolicy.com/) policy language.
 
