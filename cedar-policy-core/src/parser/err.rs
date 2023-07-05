@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#![allow(deprecated)] // for `MultipleParseErrors`
-
+use std::error::Error;
 use std::fmt::{self, Display, Write};
 use std::iter;
 use std::ops::{Deref, DerefMut};
@@ -67,10 +66,12 @@ pub enum ParseError {
 }
 
 /// Multiple related parse errors.
-#[derive(Clone, Debug, Default, Error, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ParseErrors(pub Vec<ParseError>);
 
 impl ParseErrors {
+    const DESCRIPTION: &'static str = "multiple parse errors";
+
     /// Constructs a new, empty `ParseErrors`.
     pub fn new() -> Self {
         ParseErrors(Vec::new())
@@ -95,13 +96,39 @@ impl Display for ParseErrors {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.0[..] {
             [err] => Display::fmt(err, f),
-            _ => write!(f, "multiple parse errors"),
+            _ => write!(f, "{}", Self::DESCRIPTION),
         }
     }
 }
 
 // If `ParseErrors` contains only a single parse error, forward everything
 // through transparently.
+
+impl Error for ParseErrors {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match &self.0[..] {
+            [err] => err.source(),
+            _ => None,
+        }
+    }
+
+    #[allow(deprecated)]
+    fn description(&self) -> &str {
+        match &self.0[..] {
+            [err] => err.description(),
+            _ => Self::DESCRIPTION,
+        }
+    }
+
+    #[allow(deprecated)]
+    fn cause(&self) -> Option<&dyn Error> {
+        match &self.0[..] {
+            [err] => err.cause(),
+            _ => None,
+        }
+    }
+}
+
 impl Diagnostic for ParseErrors {
     fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
         match &self.0[..] {
