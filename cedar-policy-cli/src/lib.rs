@@ -380,7 +380,7 @@ pub fn check_parse(args: &CheckParseArgs) -> CedarExitCode {
     match read_policy_set(args.policies_file.as_ref()) {
         Ok(_) => CedarExitCode::Success,
         Err(e) => {
-            println!("{e:?}");
+            println!("Error: {e:?}");
             CedarExitCode::Failure
         }
     }
@@ -390,7 +390,7 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
     let pset = match read_policy_set(Some(&args.policies_file)) {
         Ok(pset) => pset,
         Err(e) => {
-            println!("{e:?}");
+            println!("Error: {e:?}");
             return CedarExitCode::Failure;
         }
     };
@@ -398,7 +398,7 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
     let schema = match read_schema_file(&args.schema_file) {
         Ok(schema) => schema,
         Err(e) => {
-            println!("{e:?}");
+            println!("Error: {e:?}");
             return CedarExitCode::Failure;
         }
     };
@@ -423,30 +423,31 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
         None => None,
         Some(Ok(schema)) => Some(schema),
         Some(Err(e)) => {
-            println!("{e:?}");
+            println!("Error: {e:?}");
             return (CedarExitCode::Failure, EvalResult::Bool(false));
         }
     };
     let request = match args.request.get_request(schema.as_ref()) {
         Ok(q) => q,
         Err(e) => {
-            println!("error: {e:?}");
+            println!("Error: {e:?}");
             return (CedarExitCode::Failure, EvalResult::Bool(false));
         }
     };
-    let expr = match Expression::from_str(&args.expression) {
-        Ok(expr) => expr,
-        Err(e) => {
-            println!("error while parsing the expression: {e:?}");
-            return (CedarExitCode::Failure, EvalResult::Bool(false));
-        }
-    };
+    let expr =
+        match Expression::from_str(&args.expression).wrap_err("failed to parse the expression") {
+            Ok(expr) => expr,
+            Err(e) => {
+                println!("Error: {e:?}");
+                return (CedarExitCode::Failure, EvalResult::Bool(false));
+            }
+        };
     let entities = match &args.entities_file {
         None => Entities::empty(),
         Some(file) => match load_entities(file, schema.as_ref()) {
             Ok(entities) => entities,
             Err(e) => {
-                println!("error: {e:?}");
+                println!("Error: {e:?}");
                 return (CedarExitCode::Failure, EvalResult::Bool(false));
             }
         },
@@ -454,13 +455,16 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
     let entities = match load_actions_from_schema(entities, &schema) {
         Ok(entities) => entities,
         Err(e) => {
-            println!("error: {e:?}");
+            println!("Error: {e:?}");
             return (CedarExitCode::Failure, EvalResult::Bool(false));
         }
     };
-    match eval_expression(&request, &entities, &expr).into_diagnostic() {
+    match eval_expression(&request, &entities, &expr)
+        .into_diagnostic()
+        .wrap_err("failed to evaluate the expression")
+    {
         Err(e) => {
-            println!("error while evaluating the expression: {:?}", e);
+            println!("Error: {e:?}");
             return (CedarExitCode::Failure, EvalResult::Bool(false));
         }
         Ok(result) => {
@@ -472,7 +476,7 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
 
 pub fn link(args: &LinkArgs) -> CedarExitCode {
     if let Err(err) = link_inner(args) {
-        eprintln!("{err:?}");
+        println!("Error: {err:?}");
         CedarExitCode::Failure
     } else {
         CedarExitCode::Success
@@ -491,7 +495,7 @@ fn format_policies_inner(args: &FormatArgs) -> Result<()> {
 
 pub fn format_policies(args: &FormatArgs) -> CedarExitCode {
     if let Err(err) = format_policies_inner(args) {
-        eprintln!("{err:?}");
+        println!("Error: {err:?}");
         CedarExitCode::Failure
     } else {
         CedarExitCode::Success
