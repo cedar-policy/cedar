@@ -147,29 +147,29 @@ impl RequestArgs {
                     .wrap_err_with(|| format!("failed to open request-json file {jsonfile}"))?;
                 let qjson: RequestJSON = serde_json::from_str(&jsonstring)
                     .into_diagnostic()
-                    .context(format!("failed to parse request-json file {jsonfile}"))?;
+                    .wrap_err_with(|| format!("failed to parse request-json file {jsonfile}"))?;
                 let principal = qjson
                     .principal
                     .map(|s| {
-                        s.parse().context(format!(
-                            "failed to parse principal in {jsonfile} as entity Uid"
-                        ))
+                        s.parse().wrap_err_with(|| {
+                            format!("failed to parse principal in {jsonfile} as entity Uid")
+                        })
                     })
                     .transpose()?;
                 let action = qjson
                     .action
                     .map(|s| {
-                        s.parse().context(format!(
-                            "failed to parse action in {jsonfile} as entity Uid"
-                        ))
+                        s.parse().wrap_err_with(|| {
+                            format!("failed to parse action in {jsonfile} as entity Uid")
+                        })
                     })
                     .transpose()?;
                 let resource = qjson
                     .resource
                     .map(|s| {
-                        s.parse().context(format!(
-                            "failed to parse resource in {jsonfile} as entity Uid"
-                        ))
+                        s.parse().wrap_err_with(|| {
+                            format!("failed to parse resource in {jsonfile} as entity Uid")
+                        })
                     })
                     .transpose()?;
                 let context = Context::from_json_value(
@@ -185,8 +185,9 @@ impl RequestArgs {
                     .principal
                     .as_ref()
                     .map(|s| {
-                        s.parse()
-                            .context(format!("failed to parse principal {s} as entity Uid"))
+                        s.parse().wrap_err_with(|| {
+                            format!("failed to parse principal {s} as entity Uid")
+                        })
                     })
                     .transpose()?;
                 let action = self
@@ -194,7 +195,7 @@ impl RequestArgs {
                     .as_ref()
                     .map(|s| {
                         s.parse()
-                            .context(format!("failed to parse action {s} as entity Uid"))
+                            .wrap_err_with(|| format!("failed to parse action {s} as entity Uid"))
                     })
                     .transpose()?;
                 let resource = self
@@ -202,7 +203,7 @@ impl RequestArgs {
                     .as_ref()
                     .map(|s| {
                         s.parse()
-                            .context(format!("failed to parse resource {s} as entity Uid"))
+                            .wrap_err_with(|| format!("failed to parse resource {s} as entity Uid"))
                     })
                     .transpose()?;
                 let context: Context = match &self.context_json_file {
@@ -870,7 +871,7 @@ fn execute_request(
     let request = match request.get_request(schema.as_ref()) {
         Ok(q) => Some(q),
         Err(e) => {
-            errs.push(e.context("failed to parse request"));
+            errs.push(e.wrap_err("failed to parse request"));
             None
         }
     };
