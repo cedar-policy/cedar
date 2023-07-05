@@ -70,7 +70,7 @@ pub enum ParseError {
 pub struct ParseErrors(pub Vec<ParseError>);
 
 impl ParseErrors {
-    const DESCRIPTION: &'static str = "multiple parse errors";
+    const DESCRIPTION_IF_EMPTY: &'static str = "unknown parse error";
 
     /// Constructs a new, empty `ParseErrors`.
     pub fn new() -> Self {
@@ -94,96 +94,67 @@ impl ParseErrors {
 
 impl Display for ParseErrors {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.0[..] {
-            [err] => Display::fmt(err, f),
-            _ => write!(f, "{}", Self::DESCRIPTION),
+        match self.first() {
+            Some(first_err) => Display::fmt(first_err, f),
+            None => write!(f, "{}", Self::DESCRIPTION_IF_EMPTY),
         }
     }
 }
 
-// If `ParseErrors` contains only a single parse error, forward everything
-// through transparently.
-
 impl Error for ParseErrors {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match &self.0[..] {
-            [err] => err.source(),
-            _ => None,
-        }
+        self.first().and_then(Error::source)
     }
 
     #[allow(deprecated)]
     fn description(&self) -> &str {
-        match &self.0[..] {
-            [err] => err.description(),
-            _ => Self::DESCRIPTION,
+        match self.first() {
+            Some(first_err) => first_err.description(),
+            None => Self::DESCRIPTION_IF_EMPTY,
         }
     }
 
     #[allow(deprecated)]
     fn cause(&self) -> Option<&dyn Error> {
-        match &self.0[..] {
-            [err] => err.cause(),
-            _ => None,
-        }
+        self.first().and_then(Error::cause)
     }
 }
 
 impl Diagnostic for ParseErrors {
     fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
-        match &self.0[..] {
-            [err] => err.related(),
-            _ => Some(Box::new(self.0.iter().map(|err| err as &dyn Diagnostic))),
-        }
+        let mut errs = self.iter().map(|err| err as &dyn Diagnostic);
+        errs.next().map(move |first_err| match first_err.related() {
+            Some(first_err_related) => Box::new(first_err_related.chain(errs)),
+            None => Box::new(errs) as Box<dyn Iterator<Item = _>>,
+        })
     }
 
     fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        match &self.0[..] {
-            [err] => err.code(),
-            _ => None,
-        }
+        self.first().and_then(Diagnostic::code)
     }
 
     fn severity(&self) -> Option<Severity> {
-        match &self.0[..] {
-            [err] => err.severity(),
-            _ => None,
-        }
+        self.first().and_then(Diagnostic::severity)
     }
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        match &self.0[..] {
-            [err] => err.help(),
-            _ => None,
-        }
+        self.first().and_then(Diagnostic::help)
     }
 
     fn url<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        match &self.0[..] {
-            [err] => err.url(),
-            _ => None,
-        }
+        self.first().and_then(Diagnostic::url)
     }
 
     fn source_code(&self) -> Option<&dyn SourceCode> {
-        match &self.0[..] {
-            [err] => err.source_code(),
-            _ => None,
-        }
+        self.first().and_then(Diagnostic::source_code)
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        match &self.0[..] {
-            [err] => err.labels(),
-            _ => None,
-        }
+        self.first().and_then(Diagnostic::labels)
     }
 
     fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
-        match &self.0[..] {
-            [err] => err.diagnostic_source(),
-            _ => None,
-        }
+        self.first().and_then(Diagnostic::diagnostic_source)
     }
 }
 
