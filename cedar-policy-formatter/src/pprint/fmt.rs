@@ -62,10 +62,11 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
                 .non_head_constraints()
                 .eq_shape(p.non_head_constraints()))
         {
-            return Err(miette!(format!(
+            return Err(miette!(
                 "policies differ:\nformatted: {}\ninput: {}",
-                f_p, p
-            )));
+                f_p,
+                p
+            ));
         }
     }
     Ok(())
