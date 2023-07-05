@@ -1016,5 +1016,6 @@ mod test_duplicates_error {
               "actions": { }
             }
         }"#;
+        serde_json::from_str::<SchemaFragment>(src).unwrap();
     }
 }
