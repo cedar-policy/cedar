@@ -621,12 +621,8 @@ impl ValidatorNamespaceDef {
         namespace: Option<&Name>,
     ) -> Result<EntityUID> {
         let namespaced_action_type = if let Some(action_ty) = &action_id.ty {
-            let name =
-                Name::from_normalized_str(action_ty).map_err(SchemaError::EntityTypeParseError)?;
-            match namespace {
-                Some(namespace) => namespace.clone().append(name),
-                None => name,
-            }
+            Self::parse_possibly_qualified_name_with_default_namespace(action_ty, namespace)
+                .map_err(SchemaError::NamespaceParseError)?
         } else {
             let id = Id::from_normalized_str(ACTION_ENTITY_TYPE).expect(
                 "Expected that the constant ACTION_ENTITY_TYPE would be a valid entity type.",
@@ -636,7 +632,6 @@ impl ValidatorNamespaceDef {
                 None => Name::unqualified_name(id),
             }
         };
-        dbg!(&namespaced_action_type);
         Ok(EntityUID::from_components(
             namespaced_action_type,
             Eid::new(action_id.id.clone()),
@@ -1019,7 +1014,7 @@ impl ValidatorSchema {
             for p_entity in action.applies_to.applicable_principal_types() {
                 match p_entity {
                     EntityType::Concrete(p_entity) => {
-                        if !entity_types.contains_key(&p_entity) {
+                        if !entity_types.contains_key(p_entity) {
                             undeclared_e.insert(p_entity.to_string());
                         }
                     }
@@ -1030,7 +1025,7 @@ impl ValidatorSchema {
             for r_entity in action.applies_to.applicable_resource_types() {
                 match r_entity {
                     EntityType::Concrete(r_entity) => {
-                        if !entity_types.contains_key(&r_entity) {
+                        if !entity_types.contains_key(r_entity) {
                             undeclared_e.insert(r_entity.to_string());
                         }
                     }
@@ -2835,6 +2830,105 @@ mod test {
                 HashMap::from([("attr".into(), RestrictedExpr::val("foo"))]),
                 HashSet::new()
             )
+        );
+    }
+
+    #[test]
+    fn test_action_namespace_inference_multi_success() {
+        let src = json!({
+            "Foo" : {
+                "entityTypes" : {},
+                "actions" : {
+                    "read" : {}
+                }
+            },
+            "ExampleCo::Personnel" : {
+                "entityTypes" : {},
+                "actions" : {
+                    "viewPhoto" : {
+                        "memberOf" : [
+                            {
+                                "id" : "read",
+                                "type" : "Foo::Action"
+                            }
+                        ]
+                    }
+                }
+            },
+        });
+        let schema_fragment =
+            serde_json::from_value::<SchemaFragment>(src).expect("Failed to parse schema");
+        let schema: ValidatorSchema = schema_fragment.try_into().expect("Schema should construct");
+        let view_photo = schema
+            .action_entities_iter()
+            .find(|e| e.uid() == r#"ExampleCo::Personnel::Action::"viewPhoto""#.parse().unwrap())
+            .unwrap();
+        let ancestors = view_photo.ancestors().collect::<Vec<_>>();
+        let read = ancestors[0];
+        assert_eq!(read.eid().to_string(), "read");
+        assert_eq!(read.entity_type().to_string(), "Foo::Action");
+    }
+
+    #[test]
+    fn test_action_namespace_inference_multi() {
+        let src = json!({
+            "ExampleCo::Personnel::Foo" : {
+                "entityTypes" : {},
+                "actions" : {
+                    "read" : {}
+                }
+            },
+            "ExampleCo::Personnel" : {
+                "entityTypes" : {},
+                "actions" : {
+                    "viewPhoto" : {
+                        "memberOf" : [
+                            {
+                                "id" : "read",
+                                "type" : "Foo::Action"
+                            }
+                        ]
+                    }
+                }
+            },
+        });
+        let schema_fragment =
+            serde_json::from_value::<SchemaFragment>(src).expect("Failed to parse schema");
+        let schema: std::result::Result<ValidatorSchema, _> = schema_fragment.try_into();
+        schema.expect_err("Schema should fail to construct as the normalization rules treat any qualification as starting from the root");
+    }
+
+    #[test]
+    fn test_action_namespace_inference() {
+        let src = json!({
+            "ExampleCo::Personnel" : {
+                "entityTypes" : { },
+                "actions" : {
+                    "read" : {},
+                    "viewPhoto" : {
+                        "memberOf" : [
+                            {
+                                "id" :  "read",
+                                "type" : "Action"
+                            }
+                        ]
+                    }
+                }
+            }
+        });
+        let schema_fragment =
+            serde_json::from_value::<SchemaFragment>(src).expect("Failed to parse schema");
+        let schema: ValidatorSchema = schema_fragment.try_into().unwrap();
+        let view_photo = schema
+            .action_entities_iter()
+            .find(|e| e.uid() == r#"ExampleCo::Personnel::Action::"viewPhoto""#.parse().unwrap())
+            .unwrap();
+        let ancestors = view_photo.ancestors().collect::<Vec<_>>();
+        let read = ancestors[0];
+        assert_eq!(read.eid().to_string(), "read");
+        assert_eq!(
+            read.entity_type().to_string(),
+            "ExampleCo::Personnel::Action"
         );
     }
 }

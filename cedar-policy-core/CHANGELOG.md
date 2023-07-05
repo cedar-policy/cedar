@@ -2,8 +2,6 @@
 
 ## Unreleased
  
-- Added private API to `Name` that allows for appending `Name`s together
-
 ## 2.2.0
 
 ### Changed

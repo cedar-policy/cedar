@@ -51,15 +51,6 @@ impl Name {
         }
     }
 
-    /// Append two names together
-    pub fn append(self, rhs: Name) -> Self {
-        let mut namespace = self.path.as_ref().clone();
-        namespace.push(self.id);
-        let mut rhs_namespace = rhs.path.as_ref().clone();
-        namespace.append(&mut rhs_namespace);
-        Self::new(rhs.id, namespace)
-    }
-
     /// Create a `Name` with no path (no namespaces).
     pub fn unqualified_name(id: Id) -> Self {
         Self {
@@ -337,48 +328,5 @@ mod test {
         Name::from_normalized_str("foo ").expect_err("shouldn't be OK");
         Name::from_normalized_str("foo\n").expect_err("shouldn't be OK");
         Name::from_normalized_str("foo//comment").expect_err("shouldn't be OK");
-    }
-
-    #[test]
-    fn appending_names1() {
-        let a = Name::from_normalized_str("foo::bar").unwrap();
-        let b = Name::from_normalized_str("baz").unwrap();
-        let c = a.append(b);
-        assert_eq!(c.basename(), &Id::from_str("baz").unwrap());
-        let namespace = c.namespace_components().collect::<Vec<_>>();
-        assert_eq!(
-            namespace,
-            vec![&Id::from_str("foo").unwrap(), &Id::from_str("bar").unwrap()]
-        );
-    }
-
-    #[test]
-    fn appending_names2() {
-        let a = Name::from_normalized_str("foo::bar").unwrap();
-        let b = Name::from_normalized_str("baz::fo").unwrap();
-        let c = a.append(b);
-        assert_eq!(c.basename(), &Id::from_str("fo").unwrap());
-        let namespace = c.namespace_components().collect::<Vec<_>>();
-        assert_eq!(
-            namespace,
-            vec![
-                &Id::from_str("foo").unwrap(),
-                &Id::from_str("bar").unwrap(),
-                &Id::from_str("baz").unwrap()
-            ]
-        );
-    }
-
-    #[test]
-    fn appending_names3() {
-        let a = Name::from_normalized_str("foo").unwrap();
-        let b = Name::from_normalized_str("baz::fo").unwrap();
-        let c = a.append(b);
-        assert_eq!(c.basename(), &Id::from_str("fo").unwrap());
-        let namespace = c.namespace_components().collect::<Vec<_>>();
-        assert_eq!(
-            namespace,
-            vec![&Id::from_str("foo").unwrap(), &Id::from_str("baz").unwrap()]
-        );
     }
 }
