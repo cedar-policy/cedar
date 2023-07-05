@@ -380,7 +380,7 @@ pub fn check_parse(args: &CheckParseArgs) -> CedarExitCode {
     match read_policy_set(args.policies_file.as_ref()) {
         Ok(_) => CedarExitCode::Success,
         Err(e) => {
-            println!("{:?}", e);
+            println!("{e:?}");
             CedarExitCode::Failure
         }
     }
@@ -390,7 +390,7 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
     let pset = match read_policy_set(Some(&args.policies_file)) {
         Ok(pset) => pset,
         Err(e) => {
-            println!("{:#}", e);
+            println!("{e:?}");
             return CedarExitCode::Failure;
         }
     };
@@ -398,7 +398,7 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
     let schema = match read_schema_file(&args.schema_file) {
         Ok(schema) => schema,
         Err(e) => {
-            println!("{:#}", e);
+            println!("{e:?}");
             return CedarExitCode::Failure;
         }
     };
@@ -423,21 +423,21 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
         None => None,
         Some(Ok(schema)) => Some(schema),
         Some(Err(e)) => {
-            println!("{:#}", e);
+            println!("{e:?}");
             return (CedarExitCode::Failure, EvalResult::Bool(false));
         }
     };
     let request = match args.request.get_request(schema.as_ref()) {
         Ok(q) => q,
         Err(e) => {
-            println!("error: {:#}", e);
+            println!("error: {e:?}");
             return (CedarExitCode::Failure, EvalResult::Bool(false));
         }
     };
     let expr = match Expression::from_str(&args.expression) {
         Ok(expr) => expr,
         Err(e) => {
-            println!("error while parsing the expression: {e}");
+            println!("error while parsing the expression: {e:?}");
             return (CedarExitCode::Failure, EvalResult::Bool(false));
         }
     };
@@ -446,7 +446,7 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
         Some(file) => match load_entities(file, schema.as_ref()) {
             Ok(entities) => entities,
             Err(e) => {
-                println!("error: {:#}", e);
+                println!("error: {e:?}");
                 return (CedarExitCode::Failure, EvalResult::Bool(false));
             }
         },
@@ -454,13 +454,13 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
     let entities = match load_actions_from_schema(entities, &schema) {
         Ok(entities) => entities,
         Err(e) => {
-            println!("error: {:#}", e);
+            println!("error: {e:?}");
             return (CedarExitCode::Failure, EvalResult::Bool(false));
         }
     };
-    match eval_expression(&request, &entities, &expr) {
+    match eval_expression(&request, &entities, &expr).into_diagnostic() {
         Err(e) => {
-            println!("error while evaluating the expression: {e}");
+            println!("error while evaluating the expression: {:?}", e);
             return (CedarExitCode::Failure, EvalResult::Bool(false));
         }
         Ok(result) => {
@@ -471,8 +471,8 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
 }
 
 pub fn link(args: &LinkArgs) -> CedarExitCode {
-    if let Err(msg) = link_inner(args) {
-        eprintln!("{:#}", msg);
+    if let Err(err) = link_inner(args) {
+        eprintln!("{err:?}");
         CedarExitCode::Failure
     } else {
         CedarExitCode::Success
@@ -490,8 +490,8 @@ fn format_policies_inner(args: &FormatArgs) -> Result<()> {
 }
 
 pub fn format_policies(args: &FormatArgs) -> CedarExitCode {
-    if let Err(msg) = format_policies_inner(args) {
-        eprintln!("{:#}", msg);
+    if let Err(err) = format_policies_inner(args) {
+        eprintln!("{err:?}");
         CedarExitCode::Failure
     } else {
         CedarExitCode::Success
@@ -667,7 +667,7 @@ pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {
             if ans.diagnostics().errors().peekable().peek().is_some() {
                 println!();
                 for err in ans.diagnostics().errors() {
-                    println!("{}", err);
+                    println!("{err}");
                 }
             }
             if args.verbose {
@@ -686,7 +686,7 @@ pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {
         }
         Err(errs) => {
             for err in errs {
-                println!("{:#}", err);
+                println!("{err:?}");
             }
             CedarExitCode::Failure
         }
@@ -792,7 +792,7 @@ fn read_policy_set(
                 || "<stdin>".to_owned(),
                 |n| n.as_ref().display().to_string(),
             );
-            Report::from(err).with_source_code(NamedSource::new(name, ps_str))
+            Report::new(err).with_source_code(NamedSource::new(name, ps_str))
         })
         .wrap_err_with(|| format!("failed to parse {context}"))?;
     Ok(rename_from_id_annotation(ps))
