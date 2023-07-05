@@ -290,7 +290,7 @@ pub fn parse_internal_string(val: &str) -> Result<SmolStr, err::ParseErrors> {
 /// parse an identifier
 ///
 /// Private to this crate. Users outside Core should use `Id`'s `FromStr` impl
-/// or its constructorsVec<err::Error>Vec<err::Error>Vec<err::Error>
+/// or its constructors
 pub(crate) fn parse_ident(id: &str) -> Result<ast::Id, err::ParseErrors> {
     let mut errs = err::ParseErrors::new();
     let cst = text_to_cst::parse_ident(id)?;
@@ -299,53 +299,6 @@ pub(crate) fn parse_ident(id: &str) -> Result<ast::Id, err::ParseErrors> {
         Ok(ast)
     } else {
         Err(errs)
-    }
-}
-
-/// parse into a `Request`
-pub fn parse_request(
-    principal: impl AsRef<str>,      // should be a "Type::EID" string
-    action: impl AsRef<str>,         // should be a "Type::EID" string
-    resource: impl AsRef<str>,       // should be a "Type::EID" string
-    context_json: serde_json::Value, // JSON object mapping Strings to ast::RestrictedExpr
-) -> Result<ast::Request, err::ParseErrors> {
-    let mut errs = err::ParseErrors::new();
-    // Parse principal, action, resource
-    let mut parse_par = |s, name| {
-        parse_euid(s)
-            .map_err(|e| {
-                errs.push(err::ParseError::WithContext {
-                    context: format!("trying to parse {}", name),
-                    errs: e,
-                })
-            })
-            .ok()
-    };
-
-    let (principal, action, resource) = (
-        parse_par(principal.as_ref(), "principal"),
-        parse_par(action.as_ref(), "action"),
-        parse_par(resource.as_ref(), "resource"),
-    );
-
-    let context = match ast::Context::from_json_value(context_json) {
-        Ok(ctx) => Some(ctx),
-        Err(e) => {
-            errs.push(err::ParseError::ToAST(format!(
-                "failed to parse context JSON: {}",
-                err::ParseErrors(vec![err::ParseError::ToAST(e.to_string())])
-            )));
-            None
-        }
-    };
-    match (principal, action, resource, errs.as_slice()) {
-        (Some(p), Some(a), Some(r), &[]) => Ok(ast::Request {
-            principal: ast::EntityUIDEntry::concrete(p),
-            action: ast::EntityUIDEntry::concrete(a),
-            resource: ast::EntityUIDEntry::concrete(r),
-            context,
-        }),
-        _ => Err(errs),
     }
 }
 

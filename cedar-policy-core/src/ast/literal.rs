@@ -71,7 +71,7 @@ impl std::fmt::Display for Literal {
 }
 
 impl std::str::FromStr for Literal {
-    type Err = crate::parser::err::ParseErrors;
+    type Err = parser::err::ParseErrors;
 
     fn from_str(s: &str) -> Result<Literal, Self::Err> {
         parser::parse_literal(s)

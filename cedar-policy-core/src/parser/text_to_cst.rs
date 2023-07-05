@@ -33,9 +33,9 @@ use lazy_static::lazy_static;
 
 use super::*;
 
-// This helper function calls a generated parser, collects errors that could be
-// generated multiple ways, and returns a single Result where the error type is
-// `err::ParseError`.
+/// This helper function calls a generated parser, collects errors that could be
+/// generated multiple ways, and returns a single Result where the error type is
+/// [`err::ParseErrors`].
 fn parse_collect_errors<'a, P, T>(
     parser: &P,
     parse: impl FnOnce(
