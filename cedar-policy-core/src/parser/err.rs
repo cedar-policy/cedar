@@ -14,14 +14,15 @@
  * limitations under the License.
  */
 
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{self, Display, Write};
 use std::iter;
 use std::ops::{Deref, DerefMut};
 
 use lalrpop_util as lalr;
+use lazy_static::lazy_static;
 use miette::{Diagnostic, LabeledSpan, Severity, SourceCode};
-use phf::phf_map;
 use thiserror::Error;
 
 use crate::ast::RestrictedExpressionError;
@@ -315,34 +316,33 @@ impl Diagnostic for ToCSTError {
     }
 }
 
-// Keys mirror the token names defined in the `match` block of grammar.lalrpop.
-static FRIENDLY_TOKEN_NAMES: phf::Map<&'static str, &'static str> = phf_map! {
-    "TRUE" => "`true`",
-    "FALSE" => "`false`",
-    "IF" => "`if`",
-
-    "PERMIT" => "`permit`",
-    "FORBID" => "`forbid`",
-    "WHEN" => "`when`",
-    "UNLESS" => "`unless`",
-    "IN" => "`in`",
-    "HAS" => "`has`",
-    "LIKE" => "`like`",
-    "THEN" => "`then`",
-    "ELSE" => "`else`",
-
-    "PRINCIPAL" => "`principal`",
-    "ACTION" => "`action`",
-    "RESOURCE" => "`resource`",
-    "CONTEXT" => "`context`",
-
-    "PRINCIPAL_SLOT" => "`?principal`",
-    "RESOURCE_SLOT" => "`?resource`",
-
-    "IDENTIFIER" => "identifier",
-    "NUMBER" => "number",
-    "STRINGLIT" => "string literal",
-};
+lazy_static! {
+    /// Keys mirror the token names defined in the `match` block of
+    /// `grammar.lalrpop`.
+    static ref FRIENDLY_TOKEN_NAMES: HashMap<&'static str, &'static str> = HashMap::from([
+        ("TRUE", "`true`"),
+        ("FALSE", "`false`"),
+        ("IF", "`if`"),
+        ("PERMIT", "`permit`"),
+        ("FORBID", "`forbid`"),
+        ("WHEN", "`when`"),
+        ("UNLESS", "`unless`"),
+        ("IN", "`in`"),
+        ("HAS", "`has`"),
+        ("LIKE", "`like`"),
+        ("THEN", "`then`"),
+        ("ELSE", "`else`"),
+        ("PRINCIPAL", "`principal`"),
+        ("ACTION", "`action`"),
+        ("RESOURCE", "`resource`"),
+        ("CONTEXT", "`context`"),
+        ("PRINCIPAL_SLOT", "`?principal`"),
+        ("RESOURCE_SLOT", "`?resource`"),
+        ("IDENTIFIER", "identifier"),
+        ("NUMBER", "number"),
+        ("STRINGLIT", "string literal"),
+    ]);
+}
 
 fn expected_to_string(expected: &[String]) -> Option<String> {
     if expected.is_empty() {
