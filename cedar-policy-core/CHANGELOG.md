@@ -1,7 +1,6 @@
 # Changelog
 
 ## Unreleased
-
 ## 2.2.0
 
 ### Changed
