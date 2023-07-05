@@ -9,6 +9,7 @@
   - `basename` to get the basename (without namespaces).
   - `namespace_components` to get the namespace as an iterator over its components.
   - `namespace` to get the namespace as a single string.
+- Fixed bug (#150) around implicit namespaces in action definitions.
 
 ### Changed
 
