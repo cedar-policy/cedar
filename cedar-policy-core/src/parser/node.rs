@@ -20,6 +20,7 @@ use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
 
+use miette::{Diagnostic, LabeledSpan, Severity, SourceCode};
 use serde::{Deserialize, Serialize};
 
 /// Describes where in policy source code a node in the CST or expression AST
@@ -202,6 +203,40 @@ impl<N: Error> Error for ASTNode<N> {
     fn cause(&self) -> Option<&dyn Error> {
         #[allow(deprecated)]
         self.node.cause()
+    }
+}
+
+impl<N: Diagnostic> Diagnostic for ASTNode<N> {
+    fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.node.code()
+    }
+
+    fn severity(&self) -> Option<Severity> {
+        self.node.severity()
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.node.help()
+    }
+
+    fn url<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.node.url()
+    }
+
+    fn source_code(&self) -> Option<&dyn SourceCode> {
+        self.node.source_code()
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        self.node.labels()
+    }
+
+    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
+        self.node.related()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.node.diagnostic_source()
     }
 }
 
