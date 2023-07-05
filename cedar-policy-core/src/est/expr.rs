@@ -19,7 +19,7 @@ use super::EstToAstError;
 use crate::ast;
 use crate::entities::{JSONValue, JsonDeserializationError, TypeAndId};
 use crate::parser::cst;
-use crate::parser::err::{ParseError, ParseErrors};
+use crate::parser::err::{ParseError, ParseErrors, WithContext};
 use crate::parser::unescape;
 use crate::parser::ASTNode;
 use either::Either;
@@ -597,10 +597,10 @@ impl TryFrom<Expr> for ast::Expr {
                             .next()
                             .expect("already checked that len was 1");
                         let fn_name = fn_name.parse().map_err(|errs|
-                            JsonDeserializationError::ExtnParseError(ParseError::WithContext {
+                            JsonDeserializationError::ExtnParseError(WithContext {
                                 context: format!("expected valid operator or extension function name; got {fn_name}"),
                                 errs,
-                            })
+                            }.into())
                         )?;
                         Ok(ast::Expr::call_extension_fn(
                             fn_name,

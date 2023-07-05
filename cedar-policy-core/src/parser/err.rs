@@ -42,28 +42,129 @@ type OwnedRawParseError = lalr::ParseError<RawLocation, String, RawUserError>;
 /// For errors during parsing
 #[derive(Clone, Debug, Diagnostic, Error, PartialEq)]
 pub enum ParseError {
-    /// Error from the CST parser
+    /// Error from the CST parser.
     #[error(transparent)]
     #[diagnostic(transparent)]
     ToCST(#[from] ToCSTError),
-    /// Error in the CST -> AST transform, mostly well-formedness issues
+    /// Error in the CST -> AST transform, mostly well-formedness issues.
     #[error("poorly formed: {0}")]
     #[diagnostic(code(cedar_policy_core::parser::to_ast_err))]
     ToAST(String),
-    /// (Potentially) multiple errors. This variant includes a "context" for
-    /// what we were trying to do when we encountered these errors
-    #[error("error while {context}")]
-    WithContext {
-        /// What we were trying to do
-        context: String,
-        /// Error(s) we encountered while doing it
-        #[source]
-        #[diagnostic_source]
-        errs: ParseErrors,
-    },
-    /// Error concerning restricted expressions
+    /// Error concerning restricted expressions.
     #[error(transparent)]
     RestrictedExpressionError(#[from] RestrictedExpressionError),
+    /// One or more parse errors occurred while performing a task.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    WithContext(#[from] WithContext),
+}
+
+/// Error from the CST parser.
+#[derive(Clone, Debug, Error, PartialEq)]
+pub struct ToCSTError {
+    err: OwnedRawParseError,
+}
+
+impl ToCSTError {
+    pub(crate) fn from_raw_parse_err(err: RawParseError<'_>) -> Self {
+        Self {
+            err: err.map_token(|token| token.to_string()),
+        }
+    }
+
+    pub(crate) fn from_raw_err_recovery(recovery: RawErrorRecovery<'_>) -> Self {
+        Self::from_raw_parse_err(recovery.error)
+    }
+}
+
+impl Display for ToCSTError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.err {
+            OwnedRawParseError::InvalidToken { .. } => write!(f, "invalid token"),
+            OwnedRawParseError::UnrecognizedEOF { .. } => write!(f, "unexpected end of input"),
+            OwnedRawParseError::UnrecognizedToken {
+                token: (_, token, _),
+                ..
+            } => write!(f, "unexpected token `{token}`"),
+            OwnedRawParseError::ExtraToken {
+                token: (_, token, _),
+                ..
+            } => write!(f, "extra token `{token}`"),
+            OwnedRawParseError::User { error } => write!(f, "{error}"),
+        }
+    }
+}
+
+impl Diagnostic for ToCSTError {
+    fn code(&self) -> Option<Box<dyn Display + '_>> {
+        Some(Box::new("cedar_policy_core::parser::to_cst_error"))
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        let labeled_span = match &self.err {
+            OwnedRawParseError::InvalidToken { location } => {
+                LabeledSpan::underline(*location..*location)
+            }
+            OwnedRawParseError::UnrecognizedEOF { location, expected } => {
+                LabeledSpan::new_with_span(expected_to_string(expected), *location..*location)
+            }
+            OwnedRawParseError::UnrecognizedToken {
+                token: (token_start, _, token_end),
+                expected,
+            } => LabeledSpan::new_with_span(expected_to_string(expected), *token_start..*token_end),
+            OwnedRawParseError::ExtraToken {
+                token: (token_start, _, token_end),
+            } => LabeledSpan::underline(*token_start..*token_end),
+            OwnedRawParseError::User { error } => LabeledSpan::underline(error.info.0.clone()),
+        };
+        Some(Box::new(iter::once(labeled_span)))
+    }
+}
+
+lazy_static! {
+    /// Keys mirror the token names defined in the `match` block of
+    /// `grammar.lalrpop`.
+    static ref FRIENDLY_TOKEN_NAMES: HashMap<&'static str, &'static str> = HashMap::from([
+        ("TRUE", "`true`"),
+        ("FALSE", "`false`"),
+        ("IF", "`if`"),
+        ("PERMIT", "`permit`"),
+        ("FORBID", "`forbid`"),
+        ("WHEN", "`when`"),
+        ("UNLESS", "`unless`"),
+        ("IN", "`in`"),
+        ("HAS", "`has`"),
+        ("LIKE", "`like`"),
+        ("THEN", "`then`"),
+        ("ELSE", "`else`"),
+        ("PRINCIPAL", "`principal`"),
+        ("ACTION", "`action`"),
+        ("RESOURCE", "`resource`"),
+        ("CONTEXT", "`context`"),
+        ("PRINCIPAL_SLOT", "`?principal`"),
+        ("RESOURCE_SLOT", "`?resource`"),
+        ("IDENTIFIER", "identifier"),
+        ("NUMBER", "number"),
+        ("STRINGLIT", "string literal"),
+    ]);
+}
+
+fn expected_to_string(expected: &[String]) -> Option<String> {
+    if expected.is_empty() {
+        return None;
+    }
+
+    let mut expected_string = "expected ".to_owned();
+    // PANIC SAFETY Shouldn't be `Err` since we're writing strings to a string
+    #[allow(clippy::expect_used)]
+    join_with_conjunction(&mut expected_string, "or", expected, |f, token| {
+        match FRIENDLY_TOKEN_NAMES.get(token.as_str()) {
+            Some(friendly_token_name) => write!(f, "{}", friendly_token_name),
+            None => write!(f, "{}", token.replace('"', "`")),
+        }
+    })
+    .expect("failed to format expected tokens");
+    Some(expected_string)
 }
 
 /// Multiple related parse errors.
@@ -254,110 +355,47 @@ impl<'a> IntoIterator for &'a mut ParseErrors {
     }
 }
 
-/// Error from the CST parser.
-#[derive(Clone, Debug, Error, PartialEq)]
-pub struct ToCSTError {
-    err: OwnedRawParseError,
+/// One or more parse errors occurred while performing a task.
+#[derive(Clone, Debug, Default, Error, PartialEq)]
+#[error("{context}")]
+pub struct WithContext {
+    /// What we were trying to do.
+    pub context: String,
+    /// Error(s) we encountered while doing it.
+    #[source]
+    pub errs: ParseErrors,
 }
 
-impl ToCSTError {
-    pub(crate) fn from_raw_parse_err(err: RawParseError<'_>) -> Self {
-        Self {
-            err: err.map_token(|token| token.to_string()),
-        }
+impl Diagnostic for WithContext {
+    fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.errs.code()
     }
 
-    pub(crate) fn from_raw_err_recovery(recovery: RawErrorRecovery<'_>) -> Self {
-        Self::from_raw_parse_err(recovery.error)
+    fn severity(&self) -> Option<Severity> {
+        self.errs.severity()
     }
-}
 
-impl Display for ToCSTError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.err {
-            OwnedRawParseError::InvalidToken { .. } => write!(f, "invalid token"),
-            OwnedRawParseError::UnrecognizedEOF { .. } => write!(f, "unexpected end of input"),
-            OwnedRawParseError::UnrecognizedToken {
-                token: (_, token, _),
-                ..
-            } => write!(f, "unexpected token `{token}`"),
-            OwnedRawParseError::ExtraToken {
-                token: (_, token, _),
-                ..
-            } => write!(f, "extra token `{token}`"),
-            OwnedRawParseError::User { error } => write!(f, "{error}"),
-        }
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.errs.help()
     }
-}
 
-impl Diagnostic for ToCSTError {
-    fn code(&self) -> Option<Box<dyn Display + '_>> {
-        Some(Box::new("cedar_policy_core::parser::to_cst_error"))
+    fn url<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.errs.url()
+    }
+
+    fn source_code(&self) -> Option<&dyn SourceCode> {
+        self.errs.source_code()
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        let labeled_span = match &self.err {
-            OwnedRawParseError::InvalidToken { location } => {
-                LabeledSpan::underline(*location..*location)
-            }
-            OwnedRawParseError::UnrecognizedEOF { location, expected } => {
-                LabeledSpan::new_with_span(expected_to_string(expected), *location..*location)
-            }
-            OwnedRawParseError::UnrecognizedToken {
-                token: (token_start, _, token_end),
-                expected,
-            } => LabeledSpan::new_with_span(expected_to_string(expected), *token_start..*token_end),
-            OwnedRawParseError::ExtraToken {
-                token: (token_start, _, token_end),
-            } => LabeledSpan::underline(*token_start..*token_end),
-            OwnedRawParseError::User { error } => LabeledSpan::underline(error.info.0.clone()),
-        };
-        Some(Box::new(iter::once(labeled_span)))
-    }
-}
-
-lazy_static! {
-    /// Keys mirror the token names defined in the `match` block of
-    /// `grammar.lalrpop`.
-    static ref FRIENDLY_TOKEN_NAMES: HashMap<&'static str, &'static str> = HashMap::from([
-        ("TRUE", "`true`"),
-        ("FALSE", "`false`"),
-        ("IF", "`if`"),
-        ("PERMIT", "`permit`"),
-        ("FORBID", "`forbid`"),
-        ("WHEN", "`when`"),
-        ("UNLESS", "`unless`"),
-        ("IN", "`in`"),
-        ("HAS", "`has`"),
-        ("LIKE", "`like`"),
-        ("THEN", "`then`"),
-        ("ELSE", "`else`"),
-        ("PRINCIPAL", "`principal`"),
-        ("ACTION", "`action`"),
-        ("RESOURCE", "`resource`"),
-        ("CONTEXT", "`context`"),
-        ("PRINCIPAL_SLOT", "`?principal`"),
-        ("RESOURCE_SLOT", "`?resource`"),
-        ("IDENTIFIER", "identifier"),
-        ("NUMBER", "number"),
-        ("STRINGLIT", "string literal"),
-    ]);
-}
-
-fn expected_to_string(expected: &[String]) -> Option<String> {
-    if expected.is_empty() {
-        return None;
+        self.errs.labels()
     }
 
-    let mut expected_string = "expected ".to_owned();
-    // PANIC SAFETY Shouldn't be `Err` since we're writing strings to a string
-    #[allow(clippy::expect_used)]
-    join_with_conjunction(&mut expected_string, "or", expected, |f, token| {
-        match FRIENDLY_TOKEN_NAMES.get(token.as_str()) {
-            Some(friendly_token_name) => write!(f, "{}", friendly_token_name),
-            None => write!(f, "{}", token.replace('"', "`")),
-        }
-    })
-    .expect("failed to format expected tokens");
-    Some(expected_string)
+    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
+        self.errs.related()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.errs.diagnostic_source()
+    }
 }
