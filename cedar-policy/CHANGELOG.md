@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+
 ### Added
 
 - Export `entities::EntitiesError` error type.
@@ -9,6 +10,16 @@
   - `namespace_components` to get the namespace as an iterator over its components.
   - `namespace` to get the namespace as a single string.
 - Fixed bug (#150) around implicit namespaces in action definitions.
+
+### Changed
+- When an entity type shape or action context is declared with type other
+  than `Record`, the error message will indicate the affected entity type or
+  action.
+- Update how record types are treated by the validator to support "open" and
+  "closed" record types.  Record types written in schema are now closed. In
+  particular, this applies to the action context, so `context has attr` can now
+  have type False where before it had type Boolean, creating some new
+  short-circuiting opportunities.  The same applies to record literals.
 
 ## 2.3.2
 
