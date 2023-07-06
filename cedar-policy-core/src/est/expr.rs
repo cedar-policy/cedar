@@ -1622,9 +1622,9 @@ impl std::fmt::Display for ExprNoExt {
 impl std::fmt::Display for ExtFuncCall {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // PANIC SAFETY: safe due to INVARIANT on `ExtFuncCall`
-        #[allow(clippy::panic_used)]
+        #[allow(clippy::unreachable)]
         let Some((fn_name, args)) = self.call.iter().next() else {
-            panic!("invariant violated: empty ExtFuncCall")
+            unreachable!("invariant violated: empty ExtFuncCall")
         };
         // search for the name and callstyle
         let style = Extensions::all_available().all_funcs().find_map(|ext_fn| {
