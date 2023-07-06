@@ -1424,7 +1424,7 @@ impl std::fmt::Display for ExprNoExt {
                 // This makes sure that we always get a negation operation back
                 // (as opposed to e.g., a negative number) when parsing the
                 // printed form, thus preserving the round-tripping property.
-                write!(f, "-({})", arg)
+                write!(f, "-({arg})")
             }
             ExprNoExt::Eq { left, right } => write!(
                 f,
@@ -1519,12 +1519,9 @@ impl std::fmt::Display for ExprNoExt {
                 maybe_with_parens(left),
                 attr.escape_debug()
             ),
-            ExprNoExt::Like { left, pattern } => write!(
-                f,
-                "{} like \"{}\"",
-                maybe_with_parens(left),
-                pattern, // intentionally not using .escape_debug() for pattern
-            ),
+            ExprNoExt::Like { left, pattern } => {
+                write!(f, "{} like \"{}\"", maybe_with_parens(left), pattern) // intentionally not using .escape_debug() for pattern
+            }
             ExprNoExt::If {
                 cond_expr,
                 then_expr,
