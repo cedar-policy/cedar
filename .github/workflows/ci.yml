@@ -3,7 +3,7 @@ name: Cargo Build & Test
 on:
   pull_request:
 
-env: 
+env:
   CARGO_TERM_COLOR: always
 jobs:
   build_and_test:
@@ -30,7 +30,7 @@ jobs:
       - run: cd cedar-policy-validator ; cargo test --no-default-features --verbose
   
   cargo_audit:
-    name: Rust project - latest
+    name: Cargo Audit
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -41,3 +41,26 @@ jobs:
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: cargo install cargo-audit
       - run: cargo audit --deny warnings
+
+  cargo_semver_checks:
+    name: Cargo SemVer Checks
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: head
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.base_ref }}
+          path: base
+      # `cargo semver-checks` doesn't understand `rlib` crates.
+      - run: sed -i 's/^crate_type = \["rlib"\]$/crate_type = ["lib"]/' {head,base}/cedar-policy/Cargo.toml
+      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - run: cargo install cargo-semver-checks
+      - run: cargo semver-checks check-release --baseline-root ../base --package cedar-policy
+        working-directory: head
