@@ -19,8 +19,10 @@
 // omitted.
 #![allow(clippy::needless_return)]
 
+mod err;
+
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
+use miette::{miette, NamedSource, Report, Result, WrapErr};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -34,6 +36,8 @@ use std::{
 
 use cedar_policy::*;
 use cedar_policy_formatter::{policies_str_to_pretty, Config};
+
+use crate::err::IntoDiagnostic;
 
 /// Basic Cedar CLI for evaluating authorization queries
 #[derive(Parser)]
