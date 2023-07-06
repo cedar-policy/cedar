@@ -1523,7 +1523,7 @@ impl std::fmt::Display for ExprNoExt {
                 f,
                 "{} like \"{}\"",
                 maybe_with_parens(left),
-                pattern.escape_debug()
+                pattern, // intentionally not using .escape_debug() for pattern
             ),
             ExprNoExt::If {
                 cond_expr,
