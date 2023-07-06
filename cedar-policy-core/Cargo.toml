@@ -3,7 +3,7 @@ name = "cedar-policy-core"
 edition = "2021"
 build = "build.rs"
 
-version = "2.2.1"
+version = "2.2.2"
 license = "Apache-2.0"
 categories = ["compilers", "config"]
 description = "Core implemenation of the Cedar Policy language."
