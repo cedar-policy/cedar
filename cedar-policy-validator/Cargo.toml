@@ -2,7 +2,7 @@
 name = "cedar-policy-validator"
 edition = "2021"
 
-version = "2.0.2"
+version = "2.0.5"
 license-file = "../LICENSE"
 license = "Apache-2.0"
 categories = ["compilers", "config"]
@@ -12,7 +12,7 @@ homepage = "https://cedarpolicy.com"
 repository = "https://github.com/cedar-policy/cedar"
 
 [dependencies]
-cedar-policy-core = { version = "2.0.4", path = "../cedar-policy-core" }
+cedar-policy-core = { version = "=2.0.5", path = "../cedar-policy-core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_with = "3.0"
