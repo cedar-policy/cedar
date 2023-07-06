@@ -428,6 +428,8 @@ impl std::fmt::Display for Slot {
     }
 }
 
+/// Format an iterator as a natural-language string, separating items with
+/// commas and a conjunction (e.g., "and", "or") between the last two items.
 pub(crate) fn join_with_conjunction<T, W: Write>(
     f: &mut W,
     conjunction: &str,
