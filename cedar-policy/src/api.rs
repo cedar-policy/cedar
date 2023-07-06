@@ -2146,6 +2146,13 @@ impl Template {
     }
 }
 
+impl std::fmt::Display for Template {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // prefer to display the lossless format
+        self.lossless.fmt(f)
+    }
+}
+
 impl FromStr for Template {
     type Err = ParseErrors;
 
