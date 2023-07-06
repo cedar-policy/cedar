@@ -1026,16 +1026,42 @@ impl EntityRecordKind {
     ) -> Option<EntityRecordKind> {
         use EntityRecordKind::*;
         match (rk0, rk1) {
-            (Record { attrs: attrs0, .. }, Record { attrs: attrs1, .. }) => Some(Record {
-                attrs: Attributes::least_upper_bound(schema, attrs0, attrs1),
-                // If attrs0 <: attrs1 (or attrs1 <: attr0) without width
-                // subtyping, we could return the supertype for a LUB preserving
-                // `open_attributes: OpenTag::OpenAttributes`,  but this result
-                // is already achieved due to the subtype check done by
-                // `Type::least_upper_bound`.  This function will never be
-                // called when the records are in a subtype relation.
-                open_attributes: OpenTag::OpenAttributes,
-            }),
+            (
+                Record {
+                    attrs: attrs0,
+                    open_attributes: open0,
+                },
+                Record {
+                    attrs: attrs1,
+                    open_attributes: open1,
+                },
+            ) => {
+                let attrs = Attributes::least_upper_bound(schema, attrs0, attrs1);
+
+                // Even though this function will never be called when the
+                // records are in a subtype relation, it is still possible that
+                // the LUB attribute set is the same the attribute key sets for
+                // `rk0` and `rk1`. This occurs when `rk0` and `rk1` have
+                // identical attribute keys sets with all corresponding
+                // attributes having a LUB while at least one pair of
+                // corresponding attributes is not in a subtype relation.
+                // E.g., Given `{a: true}` and `{a: false}`, the LUB is `{a: bool}`,
+                // and we know that `a` is the only attribute for this (closed)
+                // record even though neither is subtype of the other.
+                let open_attributes = if open0.is_open()
+                    || open1.is_open()
+                    || (attrs.keys().collect::<BTreeSet<_>>()
+                        != (attrs0.keys().chain(attrs1.keys()).collect::<BTreeSet<_>>()))
+                {
+                    OpenTag::OpenAttributes
+                } else {
+                    OpenTag::ClosedAttributes
+                };
+                Some(Record {
+                    attrs,
+                    open_attributes,
+                })
+            }
             //We cannot take upper bounds of action entities because may_have_attr assumes the list of attrs it complete
             (ActionEntity { .. }, ActionEntity { .. }) => Some(AnyEntity),
             (Entity(lub0), Entity(lub1)) => Some(Entity(lub0.least_upper_bound(lub1))),
@@ -1499,6 +1525,15 @@ mod test {
                 ("baz".into(), Type::primitive_long()),
             ]),
             Some(Type::open_record_with_required_attributes([(
+                "foo".into(),
+                Type::primitive_boolean(),
+            )])),
+        );
+
+        assert_least_upper_bound_empty_schema(
+            Type::closed_record_with_required_attributes([("foo".into(), Type::False)]),
+            Type::closed_record_with_required_attributes([("foo".into(), Type::True)]),
+            Some(Type::closed_record_with_required_attributes([(
                 "foo".into(),
                 Type::primitive_boolean(),
             )])),
