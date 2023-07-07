@@ -2628,7 +2628,7 @@ impl std::fmt::Display for LosslessPolicy {
                     // need to replace placeholders according to `slots`.
                     // just find-and-replace wouldn't be safe/perfect, we
                     // want to use the actual parser; right now we reuse
-                    // other implementation by just converting to EST and
+                    // another implementation by just converting to EST and
                     // printing that
                     match self.est() {
                         Ok(est) => write!(f, "{est}"),
