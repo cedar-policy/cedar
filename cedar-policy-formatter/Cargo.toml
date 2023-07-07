@@ -12,8 +12,8 @@ repository = "https://github.com/cedar-policy/cedar"
 [dependencies]
 cedar-policy-core = { version = "=2.3.0", path = "../cedar-policy-core" }
 pretty = "0.11"
-anyhow = "1.0"
 logos = "0.12.1"
 itertools = "0.10"
 smol_str = { version = "0.2", features = ["serde"] }
 regex = { version= "1.8", features = ["unicode"] }
+miette = { version = "5.9.0" }

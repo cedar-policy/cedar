@@ -16,14 +16,29 @@
 
 #![forbid(unsafe_code)]
 
+use clap::Parser;
+use miette::ErrorHook;
+
 use cedar_policy_cli::{
-    authorize, check_parse, evaluate, format_policies, link, validate, CedarExitCode, Cli, Commands,
+    authorize, check_parse, evaluate, format_policies, link, validate, CedarExitCode, Cli,
+    Commands, ErrorFormat,
 };
 
-use clap::Parser;
-
 fn main() -> CedarExitCode {
-    match Cli::parse().command {
+    let cli = Cli::parse();
+
+    let err_hook: Option<ErrorHook> = match cli.err_fmt {
+        ErrorFormat::Human => None, // This is the default.
+        ErrorFormat::Plain => Some(Box::new(|_| {
+            Box::new(miette::NarratableReportHandler::new())
+        })),
+        ErrorFormat::Json => Some(Box::new(|_| Box::new(miette::JSONReportHandler::new()))),
+    };
+    if let Some(err_hook) = err_hook {
+        miette::set_hook(err_hook).expect("failed to install error-reporting hook");
+    }
+
+    match cli.command {
         Commands::Authorize(args) => authorize(&args),
         Commands::Evaluate(args) => evaluate(&args).0,
         Commands::CheckParse(args) => check_parse(&args),

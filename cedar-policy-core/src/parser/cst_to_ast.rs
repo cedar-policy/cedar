@@ -35,7 +35,7 @@
 // cases where there is a secondary conversion. This prevents any further
 // cloning.
 
-use super::err::ParseError;
+use super::err::{ParseError, ParseErrors};
 use super::node::{ASTNode, SourceInfo};
 use super::unescape::{to_pattern, to_unescaped_string};
 use super::{cst, err};
@@ -49,9 +49,6 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
 use std::mem;
 use std::sync::Arc;
-
-// shortcut for error parameter
-type Errs<'a> = &'a mut Vec<err::ParseError>;
 
 // for storing extension function names per callstyle
 struct ExtStyles<'a> {
@@ -95,7 +92,7 @@ impl ASTNode<Option<cst::Policies>> {
     }
 
     /// convert `cst::Policies` to `ast::PolicySet`
-    pub fn to_policyset(&self, errs: Errs<'_>) -> Option<ast::PolicySet> {
+    pub fn to_policyset(&self, errs: &mut ParseErrors) -> Option<ast::PolicySet> {
         let mut pset = ast::PolicySet::new();
         let mut complete_set = true;
         for (policy_id, policy) in self.with_generated_policyids()? {
@@ -143,7 +140,7 @@ impl ASTNode<Option<cst::Policy>> {
     pub fn to_policy_or_template(
         &self,
         id: ast::PolicyID,
-        errs: Errs<'_>,
+        errs: &mut ParseErrors,
     ) -> Option<Either<ast::StaticPolicy, ast::Template>> {
         let t = self.to_policy_template(id, errs)?;
         if t.slots().count() == 0 {
@@ -155,7 +152,11 @@ impl ASTNode<Option<cst::Policy>> {
     }
 
     /// Convert `cst::Policy` to an AST `InlinePolicy`. (Will fail if the CST is for a template)
-    pub fn to_policy(&self, id: ast::PolicyID, errs: Errs<'_>) -> Option<ast::StaticPolicy> {
+    pub fn to_policy(
+        &self,
+        id: ast::PolicyID,
+        errs: &mut ParseErrors,
+    ) -> Option<ast::StaticPolicy> {
         let tp = self.to_policy_template(id, errs)?;
         match ast::StaticPolicy::try_from(tp) {
             Ok(p) => Some(p),
@@ -168,7 +169,11 @@ impl ASTNode<Option<cst::Policy>> {
 
     /// Convert `cst::Policy` to `ast::Template`. Works for inline policies as
     /// well, which will become templates with 0 slots
-    pub fn to_policy_template(&self, id: ast::PolicyID, errs: Errs<'_>) -> Option<ast::Template> {
+    pub fn to_policy_template(
+        &self,
+        id: ast::PolicyID,
+        errs: &mut ParseErrors,
+    ) -> Option<ast::Template> {
         let (src, maybe_policy) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let policy = maybe_policy?;
@@ -237,7 +242,7 @@ impl cst::Policy {
     /// get the head constraints from the `cst::Policy`
     pub fn extract_head(
         &self,
-        errs: Errs<'_>,
+        errs: &mut ParseErrors,
     ) -> (
         Option<PrincipalConstraint>,
         Option<ActionConstraint>,
@@ -280,7 +285,7 @@ impl cst::Policy {
 impl ASTNode<Option<cst::Annotation>> {
     /// Get the (k, v) pair for the annotation. Critically, this checks validity
     /// for the strings and does unescaping
-    pub fn to_kv_pair(&self, errs: Errs<'_>) -> Option<(ast::Id, SmolStr)> {
+    pub fn to_kv_pair(&self, errs: &mut ParseErrors) -> Option<(ast::Id, SmolStr)> {
         let maybe_anno = self.as_inner();
         // return right away if there's no data, parse provided error
         let anno = maybe_anno?;
@@ -308,7 +313,7 @@ impl ASTNode<Option<cst::Annotation>> {
 
 impl ASTNode<Option<cst::Ident>> {
     /// Convert `cst::Ident` to `ast::Id`. Fails for reserved or invalid identifiers
-    pub fn to_valid_ident(&self, errs: Errs<'_>) -> Option<ast::Id> {
+    pub fn to_valid_ident(&self, errs: &mut ParseErrors) -> Option<ast::Id> {
         let maybe_ident = self.as_inner();
         // return right away if there's no data, parse provided error
         let ident = maybe_ident?;
@@ -338,7 +343,7 @@ impl ASTNode<Option<cst::Ident>> {
     }
 
     /// effect
-    pub(crate) fn to_effect(&self, errs: Errs<'_>) -> Option<ast::Effect> {
+    pub(crate) fn to_effect(&self, errs: &mut ParseErrors) -> Option<ast::Effect> {
         let maybe_effect = self.as_inner();
         // return right away if there's no data, parse provided error
         let effect = maybe_effect?;
@@ -354,7 +359,7 @@ impl ASTNode<Option<cst::Ident>> {
             }
         }
     }
-    pub(crate) fn to_cond_is_when(&self, errs: Errs<'_>) -> Option<bool> {
+    pub(crate) fn to_cond_is_when(&self, errs: &mut ParseErrors) -> Option<bool> {
         let maybe_cond = self.as_inner();
         // return right away if there's no data, parse provided error
         let cond = maybe_cond?;
@@ -371,7 +376,7 @@ impl ASTNode<Option<cst::Ident>> {
         }
     }
 
-    fn to_var(&self, errs: Errs<'_>) -> Option<ast::Var> {
+    fn to_var(&self, errs: &mut ParseErrors) -> Option<ast::Var> {
         let maybe_ident = self.as_inner();
         match maybe_ident {
             Some(cst::Ident::Principal) => Some(ast::Var::Principal),
@@ -396,7 +401,7 @@ impl ast::Id {
         &self,
         e: ast::Expr,
         mut args: Vec<ast::Expr>,
-        errs: Errs<'_>,
+        errs: &mut ParseErrors,
         l: SourceInfo,
     ) -> Option<ast::Expr> {
         let mut adj_args = args.iter_mut().peekable();
@@ -439,7 +444,7 @@ enum PrincipalOrResource {
 }
 
 impl ASTNode<Option<cst::VariableDef>> {
-    fn to_principal_constraint(&self, errs: Errs<'_>) -> Option<PrincipalConstraint> {
+    fn to_principal_constraint(&self, errs: &mut ParseErrors) -> Option<PrincipalConstraint> {
         match self.to_principal_or_resource_constraint(errs)? {
             PrincipalOrResource::Principal(p) => Some(p),
             PrincipalOrResource::Resource(_) => {
@@ -451,7 +456,7 @@ impl ASTNode<Option<cst::VariableDef>> {
         }
     }
 
-    fn to_resource_constraint(&self, errs: Errs<'_>) -> Option<ResourceConstraint> {
+    fn to_resource_constraint(&self, errs: &mut ParseErrors) -> Option<ResourceConstraint> {
         match self.to_principal_or_resource_constraint(errs)? {
             PrincipalOrResource::Principal(_) => {
                 errs.push(err::ParseError::ToAST(
@@ -463,7 +468,10 @@ impl ASTNode<Option<cst::VariableDef>> {
         }
     }
 
-    fn to_principal_or_resource_constraint(&self, errs: Errs<'_>) -> Option<PrincipalOrResource> {
+    fn to_principal_or_resource_constraint(
+        &self,
+        errs: &mut ParseErrors,
+    ) -> Option<PrincipalOrResource> {
         let maybe_vardef = self.as_inner();
         // return right away if there's no data, parse provided error
         let vardef = maybe_vardef?;
@@ -516,7 +524,7 @@ impl ASTNode<Option<cst::VariableDef>> {
         }
     }
 
-    fn to_action_constraint(&self, errs: Errs<'_>) -> Option<ast::ActionConstraint> {
+    fn to_action_constraint(&self, errs: &mut ParseErrors) -> Option<ast::ActionConstraint> {
         let maybe_vardef = self.as_inner();
         let vardef = maybe_vardef?;
 
@@ -577,13 +585,13 @@ impl ASTNode<Option<cst::VariableDef>> {
 
 fn action_type_error_msg(euid: &EntityUID) -> ParseError {
     let msg = format!("Expected an EntityUID with the type `Action`. Got: {euid}");
-    ParseError::ToCST(msg)
+    ParseError::ToAST(msg)
 }
 
 /// Check that all of the EUIDs in an action constraint have the type `Action`, under an arbitrary namespace
 fn action_constraint_contains_only_action_types(
     a: ActionConstraint,
-) -> Result<ActionConstraint, Vec<ParseError>> {
+) -> Result<ActionConstraint, ParseErrors> {
     match a {
         ActionConstraint::Any => Ok(a),
         ActionConstraint::In(ref euids) => {
@@ -604,7 +612,7 @@ fn action_constraint_contains_only_action_types(
             if euid_has_action_type(euid) {
                 Ok(a)
             } else {
-                Err(vec![action_type_error_msg(euid)])
+                Err(action_type_error_msg(euid).into())
             }
         }
     }
@@ -621,7 +629,7 @@ fn euid_has_action_type(euid: &EntityUID) -> bool {
 
 impl ASTNode<Option<cst::Cond>> {
     /// to expr
-    fn to_expr(&self, errs: Errs<'_>) -> Option<ast::Expr> {
+    fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         let (src, maybe_cond) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let cond = maybe_cond?;
@@ -648,7 +656,7 @@ impl ASTNode<Option<cst::Cond>> {
 }
 
 impl ASTNode<Option<cst::Str>> {
-    pub(crate) fn as_valid_string(&self, errs: Errs<'_>) -> Option<&SmolStr> {
+    pub(crate) fn as_valid_string(&self, errs: &mut ParseErrors) -> Option<&SmolStr> {
         let id = self.as_inner();
         // return right away if there's no data, parse provided error
         let id = id?;
@@ -684,7 +692,7 @@ pub(crate) enum ExprOrSpecial<'a> {
 }
 
 impl ExprOrSpecial<'_> {
-    fn into_expr(self, errs: Errs<'_>) -> Option<ast::Expr> {
+    fn into_expr(self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         match self {
             Self::Expr(e) => Some(e),
             Self::Var(v, l) => Some(construct_expr_var(v, l)),
@@ -709,7 +717,7 @@ impl ExprOrSpecial<'_> {
     }
 
     /// Variables, names (with no prefixes), and string literals can all be used as record attributes
-    pub(crate) fn into_valid_attr(self, errs: Errs<'_>) -> Option<SmolStr> {
+    pub(crate) fn into_valid_attr(self, errs: &mut ParseErrors) -> Option<SmolStr> {
         match self {
             Self::Var(var, _) => Some(construct_string_from_var(var)),
             Self::Name(name) => name.into_valid_attr(errs),
@@ -731,7 +739,7 @@ impl ExprOrSpecial<'_> {
         }
     }
 
-    fn into_pattern(self, errs: Errs<'_>) -> Option<Vec<PatternElem>> {
+    fn into_pattern(self, errs: &mut ParseErrors) -> Option<Vec<PatternElem>> {
         match self {
             Self::StrLit(s, _) => match to_pattern(s) {
                 Ok(pat) => Some(pat),
@@ -763,7 +771,7 @@ impl ExprOrSpecial<'_> {
         }
     }
     /// to string literal
-    fn into_string_literal(self, errs: Errs<'_>) -> Option<SmolStr> {
+    fn into_string_literal(self, errs: &mut ParseErrors) -> Option<SmolStr> {
         match self {
             Self::StrLit(s, _) => match to_unescaped_string(s) {
                 Ok(s) => Some(s),
@@ -798,19 +806,19 @@ impl ExprOrSpecial<'_> {
 
 impl ASTNode<Option<cst::Expr>> {
     /// to ref
-    fn to_ref(&self, var: ast::Var, errs: Errs<'_>) -> Option<EntityUID> {
+    fn to_ref(&self, var: ast::Var, errs: &mut ParseErrors) -> Option<EntityUID> {
         self.to_ref_or_refs::<SingleEntity>(errs, var).map(|x| x.0)
     }
 
-    fn to_ref_or_slot(&self, errs: Errs<'_>, var: ast::Var) -> Option<EntityReference> {
+    fn to_ref_or_slot(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<EntityReference> {
         self.to_ref_or_refs::<EntityReference>(errs, var)
     }
 
-    fn to_refs(&self, errs: Errs<'_>, var: ast::Var) -> Option<OneOrMultipleRefs> {
+    fn to_refs(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<OneOrMultipleRefs> {
         self.to_ref_or_refs::<OneOrMultipleRefs>(errs, var)
     }
 
-    fn to_ref_or_refs<T: RefKind>(&self, errs: Errs<'_>, var: ast::Var) -> Option<T> {
+    fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
         let maybe_expr = self.as_inner();
         let expr = &*maybe_expr?.expr;
         match expr {
@@ -826,10 +834,10 @@ impl ASTNode<Option<cst::Expr>> {
     }
 
     /// convert `cst::Expr` to `ast::Expr`
-    pub fn to_expr(&self, errs: Errs<'_>) -> Option<ast::Expr> {
+    pub fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
-    pub(crate) fn to_expr_or_special(&self, errs: Errs<'_>) -> Option<ExprOrSpecial<'_>> {
+    pub(crate) fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (src, maybe_expr) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let expr = &*maybe_expr?.expr;
@@ -857,9 +865,9 @@ impl ASTNode<Option<cst::Expr>> {
 /// or runtime data.
 trait RefKind: Sized {
     fn err_string() -> &'static str;
-    fn create_single_ref(e: EntityUID, errs: Errs<'_>) -> Option<Self>;
-    fn create_multiple_refs(es: Vec<EntityUID>, errs: Errs<'_>) -> Option<Self>;
-    fn create_slot(errs: Errs<'_>) -> Option<Self>;
+    fn create_single_ref(e: EntityUID, errs: &mut ParseErrors) -> Option<Self>;
+    fn create_multiple_refs(es: Vec<EntityUID>, errs: &mut ParseErrors) -> Option<Self>;
+    fn create_slot(errs: &mut ParseErrors) -> Option<Self>;
 }
 
 struct SingleEntity(pub EntityUID);
@@ -869,18 +877,18 @@ impl RefKind for SingleEntity {
         "entity uid"
     }
 
-    fn create_single_ref(e: EntityUID, _errs: Errs<'_>) -> Option<Self> {
+    fn create_single_ref(e: EntityUID, _errs: &mut ParseErrors) -> Option<Self> {
         Some(SingleEntity(e))
     }
 
-    fn create_multiple_refs(_es: Vec<EntityUID>, errs: Errs<'_>) -> Option<Self> {
+    fn create_multiple_refs(_es: Vec<EntityUID>, errs: &mut ParseErrors) -> Option<Self> {
         errs.push(err::ParseError::ToAST(
             "expected single entity uid, got a set of entity uids".to_string(),
         ));
         None
     }
 
-    fn create_slot(errs: Errs<'_>) -> Option<Self> {
+    fn create_slot(errs: &mut ParseErrors) -> Option<Self> {
         errs.push(err::ParseError::ToAST(
             "expected a single entity uid, got a template slot".to_string(),
         ));
@@ -893,15 +901,15 @@ impl RefKind for EntityReference {
         "entity uid or template slot"
     }
 
-    fn create_slot(_: Errs<'_>) -> Option<Self> {
+    fn create_slot(_: &mut ParseErrors) -> Option<Self> {
         Some(EntityReference::Slot)
     }
 
-    fn create_single_ref(e: EntityUID, _errs: Errs<'_>) -> Option<Self> {
+    fn create_single_ref(e: EntityUID, _errs: &mut ParseErrors) -> Option<Self> {
         Some(EntityReference::euid(e))
     }
 
-    fn create_multiple_refs(_es: Vec<EntityUID>, errs: Errs<'_>) -> Option<Self> {
+    fn create_multiple_refs(_es: Vec<EntityUID>, errs: &mut ParseErrors) -> Option<Self> {
         errs.push(err::ParseError::ToAST(
             "expected single entity uid or template slot, got a set of entity uids".to_string(),
         ));
@@ -921,22 +929,22 @@ impl RefKind for OneOrMultipleRefs {
         "entity uid, set of entity uids, or template slot"
     }
 
-    fn create_slot(errs: Errs<'_>) -> Option<Self> {
+    fn create_slot(errs: &mut ParseErrors) -> Option<Self> {
         errs.push(err::ParseError::ToAST("Unexpected slot".to_string()));
         None
     }
 
-    fn create_single_ref(e: EntityUID, _errs: Errs<'_>) -> Option<Self> {
+    fn create_single_ref(e: EntityUID, _errs: &mut ParseErrors) -> Option<Self> {
         Some(OneOrMultipleRefs::Single(e))
     }
 
-    fn create_multiple_refs(es: Vec<EntityUID>, _errs: Errs<'_>) -> Option<Self> {
+    fn create_multiple_refs(es: Vec<EntityUID>, _errs: &mut ParseErrors) -> Option<Self> {
         Some(OneOrMultipleRefs::Multiple(es))
     }
 }
 
 impl ASTNode<Option<cst::Or>> {
-    fn to_expr_or_special(&self, errs: Errs<'_>) -> Option<ExprOrSpecial<'_>> {
+    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (src, maybe_or) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let or = maybe_or?;
@@ -957,7 +965,7 @@ impl ASTNode<Option<cst::Or>> {
         }
     }
 
-    fn to_ref_or_refs<T: RefKind>(&self, errs: Errs<'_>, var: ast::Var) -> Option<T> {
+    fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
         let maybe_or = self.as_inner();
         let or = maybe_or?;
         match or.extended.len() {
@@ -974,7 +982,7 @@ impl ASTNode<Option<cst::Or>> {
 }
 
 impl ASTNode<Option<cst::And>> {
-    fn to_ref_or_refs<T: RefKind>(&self, errs: Errs<'_>, var: ast::Var) -> Option<T> {
+    fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
         let maybe_and = self.as_inner();
         let and = maybe_and?;
         match and.extended.len() {
@@ -989,10 +997,10 @@ impl ASTNode<Option<cst::And>> {
         }
     }
 
-    fn to_expr(&self, errs: Errs<'_>) -> Option<ast::Expr> {
+    fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
-    fn to_expr_or_special(&self, errs: Errs<'_>) -> Option<ExprOrSpecial<'_>> {
+    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (src, maybe_and) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let and = maybe_and?;
@@ -1015,7 +1023,7 @@ impl ASTNode<Option<cst::And>> {
 }
 
 impl ASTNode<Option<cst::Relation>> {
-    fn to_ref_or_refs<T: RefKind>(&self, errs: Errs<'_>, var: ast::Var) -> Option<T> {
+    fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
         let maybe_rel = self.as_inner();
         match maybe_rel? {
             cst::Relation::Common { initial, extended } => match extended.len() {
@@ -1045,10 +1053,10 @@ impl ASTNode<Option<cst::Relation>> {
         }
     }
 
-    fn to_expr(&self, errs: Errs<'_>) -> Option<ast::Expr> {
+    fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
-    fn to_expr_or_special(&self, errs: Errs<'_>) -> Option<ExprOrSpecial<'_>> {
+    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (src, maybe_rel) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let rel = maybe_rel?;
@@ -1108,7 +1116,7 @@ impl ASTNode<Option<cst::Relation>> {
 }
 
 impl ASTNode<Option<cst::Add>> {
-    fn to_ref_or_refs<T: RefKind>(&self, errs: Errs<'_>, var: ast::Var) -> Option<T> {
+    fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
         let maybe_add = self.as_inner();
         let add = maybe_add?;
         match add.extended.len() {
@@ -1123,10 +1131,10 @@ impl ASTNode<Option<cst::Add>> {
         }
     }
 
-    fn to_expr(&self, errs: Errs<'_>) -> Option<ast::Expr> {
+    fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
-    fn to_expr_or_special(&self, errs: Errs<'_>) -> Option<ExprOrSpecial<'_>> {
+    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (src, maybe_add) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let add = maybe_add?;
@@ -1151,7 +1159,7 @@ impl ASTNode<Option<cst::Add>> {
 }
 
 impl ASTNode<Option<cst::Mult>> {
-    fn to_ref_or_refs<T: RefKind>(&self, errs: Errs<'_>, var: ast::Var) -> Option<T> {
+    fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
         let maybe_mult = self.as_inner();
         let mult = maybe_mult?;
         match mult.extended.len() {
@@ -1166,10 +1174,10 @@ impl ASTNode<Option<cst::Mult>> {
         }
     }
 
-    fn to_expr(&self, errs: Errs<'_>) -> Option<ast::Expr> {
+    fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
-    fn to_expr_or_special(&self, errs: Errs<'_>) -> Option<ExprOrSpecial<'_>> {
+    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (src, maybe_mult) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let mult = maybe_mult?;
@@ -1254,7 +1262,7 @@ impl ASTNode<Option<cst::Mult>> {
 }
 
 impl ASTNode<Option<cst::Unary>> {
-    fn to_ref_or_refs<T: RefKind>(&self, errs: Errs<'_>, var: ast::Var) -> Option<T> {
+    fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
         let maybe_unary = self.as_inner();
         let unary = maybe_unary?;
         match &unary.op {
@@ -1268,10 +1276,10 @@ impl ASTNode<Option<cst::Unary>> {
         }
     }
 
-    fn to_expr(&self, errs: Errs<'_>) -> Option<ast::Expr> {
+    fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
-    fn to_expr_or_special(&self, errs: Errs<'_>) -> Option<ExprOrSpecial<'_>> {
+    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (src, maybe_unary) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let unary = maybe_unary?;
@@ -1365,7 +1373,7 @@ impl ASTNode<Option<cst::Member>> {
         }
     }
 
-    fn to_ref_or_refs<T: RefKind>(&self, errs: Errs<'_>, var: ast::Var) -> Option<T> {
+    fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
         let maybe_mem = self.as_inner();
         let mem = maybe_mem?;
         match mem.access.len() {
@@ -1379,7 +1387,7 @@ impl ASTNode<Option<cst::Member>> {
         }
     }
 
-    fn to_expr_or_special(&self, errs: Errs<'_>) -> Option<ExprOrSpecial<'_>> {
+    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (src, maybe_mem) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let mem = maybe_mem?;
@@ -1593,7 +1601,7 @@ impl ASTNode<Option<cst::Member>> {
 }
 
 impl ASTNode<Option<cst::MemAccess>> {
-    fn to_access(&self, errs: Errs<'_>) -> Option<AstAccessor> {
+    fn to_access(&self, errs: &mut ParseErrors) -> Option<AstAccessor> {
         let maybe_acc = self.as_inner();
         // return right away if there's no data, parse provided error
         let acc = maybe_acc?;
@@ -1620,7 +1628,7 @@ impl ASTNode<Option<cst::MemAccess>> {
 }
 
 impl ASTNode<Option<cst::Primary>> {
-    fn to_ref_or_refs<T: RefKind>(&self, errs: Errs<'_>, var: ast::Var) -> Option<T> {
+    fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
         let maybe_prim = self.as_inner();
         let prim = maybe_prim?;
         let r: Result<Option<T>, String> = match prim {
@@ -1661,10 +1669,10 @@ impl ASTNode<Option<cst::Primary>> {
         }
     }
 
-    pub(crate) fn to_expr(&self, errs: Errs<'_>) -> Option<ast::Expr> {
+    pub(crate) fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
-    fn to_expr_or_special(&self, errs: Errs<'_>) -> Option<ExprOrSpecial<'_>> {
+    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (src, maybe_prim) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let prim = maybe_prim?;
@@ -1676,7 +1684,7 @@ impl ASTNode<Option<cst::Primary>> {
             #[allow(clippy::manual_map)]
             cst::Primary::Name(n) => {
                 // if `n` isn't a var we don't want errors, we'll get them later
-                if let Some(v) = n.to_var(&mut Vec::new()) {
+                if let Some(v) = n.to_var(&mut ParseErrors::new()) {
                     Some(ExprOrSpecial::Var(v, src.clone()))
                 } else if let Some(n) = n.to_name(errs) {
                     Some(ExprOrSpecial::Name(n))
@@ -1709,7 +1717,7 @@ impl ASTNode<Option<cst::Primary>> {
 
     /// convert `cst::Primary` representing a string literal to a `SmolStr`.
     /// Fails (and adds to `errs`) if the `Primary` wasn't a string literal.
-    pub fn to_string_literal(&self, errs: Errs<'_>) -> Option<SmolStr> {
+    pub fn to_string_literal(&self, errs: &mut ParseErrors) -> Option<SmolStr> {
         let maybe_prim = self.as_inner();
         // return right away if there's no data, parse provided error
         let prim = maybe_prim?;
@@ -1727,7 +1735,7 @@ impl ASTNode<Option<cst::Primary>> {
 }
 
 impl ASTNode<Option<cst::Slot>> {
-    fn to_expr(&self, _errs: Errs<'_>) -> Option<ast::Expr> {
+    fn to_expr(&self, _errs: &mut ParseErrors) -> Option<ast::Expr> {
         let (src, s) = self.as_inner_pair();
         s.map(|s| {
             ast::ExprBuilder::new()
@@ -1742,7 +1750,7 @@ impl ASTNode<Option<cst::Slot>> {
 
 impl ASTNode<Option<cst::Name>> {
     /// Build type constraints
-    fn to_type_constraint(&self, errs: Errs<'_>) -> Option<ast::Expr> {
+    fn to_type_constraint(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         let (src, maybe_name) = self.as_inner_pair();
         match maybe_name {
             Some(_) => {
@@ -1755,7 +1763,7 @@ impl ASTNode<Option<cst::Name>> {
         }
     }
 
-    pub(crate) fn to_name(&self, errs: Errs<'_>) -> Option<ast::Name> {
+    pub(crate) fn to_name(&self, errs: &mut ParseErrors) -> Option<ast::Name> {
         let maybe_name = self.as_inner();
         // return right away if there's no data, parse provided error
         let name = maybe_name?;
@@ -1773,7 +1781,7 @@ impl ASTNode<Option<cst::Name>> {
             _ => None,
         }
     }
-    fn to_ident(&self, errs: Errs<'_>) -> Option<&cst::Ident> {
+    fn to_ident(&self, errs: &mut ParseErrors) -> Option<&cst::Ident> {
         let maybe_name = self.as_inner();
         // return right away if there's no data, parse provided error
         let name = maybe_name?;
@@ -1792,7 +1800,7 @@ impl ASTNode<Option<cst::Name>> {
 
         name.name.as_inner()
     }
-    fn to_var(&self, errs: Errs<'_>) -> Option<ast::Var> {
+    fn to_var(&self, errs: &mut ParseErrors) -> Option<ast::Var> {
         let name = self.to_ident(errs)?;
 
         match name {
@@ -1813,7 +1821,7 @@ impl ASTNode<Option<cst::Name>> {
 
 impl ast::Name {
     /// Convert the `Name` into a `String` attribute, which fails if it had any namespaces
-    fn into_valid_attr(self, errs: Errs<'_>) -> Option<SmolStr> {
+    fn into_valid_attr(self, errs: &mut ParseErrors) -> Option<SmolStr> {
         if !self.path.is_empty() {
             errs.push(err::ParseError::ToAST(
                 "A name with a path is not a valid attribute".to_string(),
@@ -1824,7 +1832,12 @@ impl ast::Name {
         }
     }
 
-    fn into_func(self, args: Vec<ast::Expr>, errs: Errs<'_>, l: SourceInfo) -> Option<ast::Expr> {
+    fn into_func(
+        self,
+        args: Vec<ast::Expr>,
+        errs: &mut ParseErrors,
+        l: SourceInfo,
+    ) -> Option<ast::Expr> {
         // error on standard methods
         if self.path.is_empty() {
             let id = self.id.as_ref();
@@ -1853,7 +1866,7 @@ impl ast::Name {
 
 impl ASTNode<Option<cst::Ref>> {
     /// convert `cst::Ref` to `ast::EntityUID`
-    pub fn to_ref(&self, errs: Errs<'_>) -> Option<ast::EntityUID> {
+    pub fn to_ref(&self, errs: &mut ParseErrors) -> Option<ast::EntityUID> {
         let maybe_ref = self.as_inner();
         // return right away if there's no data, parse provided error
         let refr = maybe_ref?;
@@ -1890,14 +1903,14 @@ impl ASTNode<Option<cst::Ref>> {
             }
         }
     }
-    fn to_expr(&self, errs: Errs<'_>) -> Option<ast::Expr> {
+    fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         self.to_ref(errs)
             .map(|euid| construct_expr_ref(euid, self.info.clone()))
     }
 }
 
 impl ASTNode<Option<cst::Literal>> {
-    fn to_expr_or_special(&self, errs: Errs<'_>) -> Option<ExprOrSpecial<'_>> {
+    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (src, maybe_lit) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let lit = maybe_lit?;
@@ -1923,7 +1936,7 @@ impl ASTNode<Option<cst::Literal>> {
 }
 
 impl ASTNode<Option<cst::RecInit>> {
-    fn to_init(&self, errs: Errs<'_>) -> Option<(SmolStr, ast::Expr)> {
+    fn to_init(&self, errs: &mut ParseErrors) -> Option<(SmolStr, ast::Expr)> {
         let (_src, maybe_lit) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let lit = maybe_lit?;
@@ -2139,13 +2152,13 @@ mod tests {
     use super::*;
     use crate::{
         ast::Expr,
-        parser::{err::MultipleParseErrors, *},
+        parser::{err::ParseErrors, *},
     };
     use std::str::FromStr;
 
     #[test]
     fn show_expr1() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
             if 7 then 6 > 5 else !5 || "thursday" && ((8) >= "fish")
@@ -2161,7 +2174,7 @@ mod tests {
 
     #[test]
     fn show_expr2() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
             [2,3,4].foo["hello"]
@@ -2177,7 +2190,7 @@ mod tests {
     #[test]
     fn show_expr3() {
         // these exprs are ill-typed, but are allowed by the parser
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let expr = text_to_cst::parse_expr(
             r#"
             "first".some_ident
@@ -2226,7 +2239,7 @@ mod tests {
 
     #[test]
     fn show_expr4() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
             {"one":1,"two":2} has one
@@ -2246,7 +2259,7 @@ mod tests {
 
     #[test]
     fn show_expr5() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let expr = text_to_cst::parse_expr(
             r#"
             {"one":1,"two":2}.one
@@ -2281,7 +2294,7 @@ mod tests {
         }
 
         // accessing a record with a non-identifier attribute
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
             {"this is a valid map key+.-_%()":1,"two":2}["this is a valid map key+.-_%()"]
@@ -2301,7 +2314,7 @@ mod tests {
 
     #[test]
     fn show_expr6_idents() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let expr = text_to_cst::parse_expr(
             r#"
             {if true then a else b:"b"} ||
@@ -2352,7 +2365,7 @@ mod tests {
 
     #[test]
     fn reserved_idents1() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let parse = text_to_cst::parse_expr(
             r#"
             The::true::path::to::"enlightenment".false
@@ -2366,7 +2379,7 @@ mod tests {
         assert!(errs.len() == 2);
         assert!(convert.is_none());
 
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let parse = text_to_cst::parse_expr(
             r#"
             if {if: true}.if then {"if":false}["if"] else {when:true}.permit
@@ -2383,7 +2396,7 @@ mod tests {
 
     #[test]
     fn reserved_idents2() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let parse = text_to_cst::parse_expr(
             r#"
             if {where: true}.like || {has:false}.in then {"like":false}["in"] else {then:true}.else
@@ -2400,7 +2413,7 @@ mod tests {
 
     #[test]
     fn show_policy1() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let parse = text_to_cst::parse_policy(
             r#"
             permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
@@ -2419,7 +2432,7 @@ mod tests {
 
     #[test]
     fn show_policy2() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let parse = text_to_cst::parse_policy(
             r#"
             permit(principal,action,resource)when{true};
@@ -2436,7 +2449,7 @@ mod tests {
 
     #[test]
     fn show_policy3() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let parse = text_to_cst::parse_policy(
             r#"
             permit(principal in User::"jane",action,resource);
@@ -2455,7 +2468,7 @@ mod tests {
 
     #[test]
     fn show_policy4() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let parse = text_to_cst::parse_policy(
             r#"
             forbid(principal in User::"jane",action,resource)unless{
@@ -2475,7 +2488,7 @@ mod tests {
     #[test]
     fn policy_annotations() {
         // common use-case
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let policy = text_to_cst::parse_policy(
             r#"
             @anno("good annotation")permit(principal,action,resource);
@@ -2490,7 +2503,7 @@ mod tests {
         );
 
         // duplication is error
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let policy = text_to_cst::parse_policy(
             r#"
             @anno("good annotation")
@@ -2506,7 +2519,7 @@ mod tests {
         assert!(errs.len() == 1);
 
         // can have multiple annotations
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let policyset = text_to_cst::parse_policies(
             r#"
             @anno1("first")
@@ -2577,7 +2590,7 @@ mod tests {
 
     #[test]
     fn fail_head1() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let parse = text_to_cst::parse_policy(
             r#"
             permit(
@@ -2597,7 +2610,7 @@ mod tests {
 
     #[test]
     fn fail_head2() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let parse = text_to_cst::parse_policy(
             r#"
             permit(
@@ -2617,7 +2630,7 @@ mod tests {
 
     #[test]
     fn fail_head3() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let parse = text_to_cst::parse_policy(
             r#"
             permit(principal,action,resource,context);
@@ -2631,7 +2644,7 @@ mod tests {
 
     #[test]
     fn method_call2() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(
             r#"
                 principal.contains(resource)
@@ -2661,7 +2674,7 @@ mod tests {
 
     #[test]
     fn construct_record1() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(
             r#"
                 {one:"one"}
@@ -2750,7 +2763,7 @@ mod tests {
 
     #[test]
     fn construct_invalid_get() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(
             r#"
             {"one":1, "two":"two"}[0]
@@ -2799,7 +2812,7 @@ mod tests {
 
     #[test]
     fn construct_has() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
             {"one":1,"two":2} has "arbitrary+ _string"
@@ -2816,7 +2829,7 @@ mod tests {
             _ => panic!("should be a has expr"),
         }
 
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(
             r#"
             {"one":1,"two":2} has 1
@@ -2832,7 +2845,7 @@ mod tests {
 
     #[test]
     fn construct_like() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
             "354 hams" like "*5*"
@@ -2860,7 +2873,7 @@ mod tests {
         assert!(e.is_none());
         assert!(errs.len() == 1);
 
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
             "string\\with\\backslashes" like "string\\with\\backslashes"
@@ -2918,7 +2931,7 @@ mod tests {
             _ => panic!("should be a like expr"),
         }
 
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
             "string\\*with\\*backslashes\\*and\\*stars" like "string\\\*with\\\*backslashes\\\*and\\\*stars"
@@ -2987,7 +3000,7 @@ mod tests {
         // entities can be accessed using the same notation as records
 
         // ok
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
             User::"jane" has age
@@ -3004,7 +3017,7 @@ mod tests {
         }
 
         // ok
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
             User::"jane" has "arbitrary+ _string"
@@ -3021,7 +3034,7 @@ mod tests {
         }
 
         // not ok: 1 is not a valid attribute
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(
             r#"
             User::"jane" has 1
@@ -3033,7 +3046,7 @@ mod tests {
         assert!(errs.len() == 1);
 
         // ok
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
             User::"jane".age
@@ -3050,7 +3063,7 @@ mod tests {
         }
 
         // ok
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
             User::"jane"["arbitrary+ _string"]
@@ -3067,7 +3080,7 @@ mod tests {
         }
 
         // not ok: age is not a string literal
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(
             r#"
             User::"jane"[age]
@@ -3081,7 +3094,7 @@ mod tests {
 
     #[test]
     fn relational_ops1() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(
             r#"
                 3 >= 2 >= 1
@@ -3129,7 +3142,7 @@ mod tests {
 
     #[test]
     fn arithmetic() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(r#" 2 + 4 "#)
             // the cst should be acceptable
             .expect("parse error")
@@ -3242,7 +3255,7 @@ mod tests {
     #[test]
     fn template_tests() {
         for src in CORRECT_TEMPLATES {
-            let mut errs = Vec::new();
+            let mut errs = ParseErrors::new();
             let e = text_to_cst::parse_policy(src)
                 .expect("parse_error")
                 .to_policy_template(ast::PolicyID::from_string("i0"), &mut errs);
@@ -3274,7 +3287,7 @@ mod tests {
     #[test]
     fn test_wrong_template_var() {
         for src in WRONG_VAR_TEMPLATES {
-            let mut errs = vec![];
+            let mut errs = ParseErrors::new();
             let e = text_to_cst::parse_policy(src)
                 .expect("Parse Error")
                 .to_policy_template(ast::PolicyID::from_string("id0"), &mut errs);
@@ -3284,7 +3297,7 @@ mod tests {
 
     #[test]
     fn var_type() {
-        let mut errs = Vec::new();
+        let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_policy(
             r#"
                 permit(principal,action,resource);
@@ -3460,7 +3473,7 @@ mod tests {
                 Expr::mul(Expr::mul(Expr::var(ast::Var::Principal), 0), -1),
             ),
         ] {
-            let mut errs = Vec::new();
+            let mut errs = ParseErrors::new();
             let e = text_to_cst::parse_expr(es)
                 .expect("should construct a CST")
                 .to_expr(&mut errs)
@@ -3481,7 +3494,7 @@ mod tests {
             // considered as a constant.
             "principal * --1",
         ] {
-            let mut errs = Vec::new();
+            let mut errs = ParseErrors::new();
             let e = text_to_cst::parse_expr(es)
                 .expect("should construct a CST")
                 .to_expr(&mut errs);
@@ -3528,7 +3541,7 @@ mod tests {
                 ),
             ),
         ] {
-            let mut errs = Vec::new();
+            let mut errs = ParseErrors::new();
             let e = text_to_cst::parse_expr(es)
                 .expect("should construct a CST")
                 .to_expr(&mut errs)
@@ -3565,7 +3578,7 @@ mod tests {
                 Expr::neg(Expr::val(9223372036854775807)),
             ),
         ] {
-            let mut errs = Vec::new();
+            let mut errs = ParseErrors::new();
             let e = text_to_cst::parse_expr(es)
                 .expect("should construct a CST")
                 .to_expr(&mut errs)
@@ -3588,12 +3601,12 @@ mod tests {
                 "Literal 9223372036854775808 is too large",
             ),
         ] {
-            let mut errs = Vec::new();
+            let mut errs = ParseErrors::new();
             let e = text_to_cst::parse_expr(es)
                 .expect("should construct a CST")
                 .to_expr(&mut errs);
             assert!(e.is_none());
-            assert!(MultipleParseErrors(&errs).to_string().contains(em));
+            assert!(errs.to_string().contains(em));
         }
     }
 }
