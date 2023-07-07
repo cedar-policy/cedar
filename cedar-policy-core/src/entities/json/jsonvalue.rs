@@ -140,9 +140,9 @@ impl TryFrom<TypeAndId> for EntityUID {
 pub struct FnAndArg {
     /// Extension constructor function
     #[serde(rename = "fn")]
-    ext_fn: SmolStr,
+    pub(crate) ext_fn: SmolStr,
     /// Argument to that constructor
-    arg: Box<JSONValue>,
+    pub(crate) arg: Box<JSONValue>,
 }
 
 impl JSONValue {

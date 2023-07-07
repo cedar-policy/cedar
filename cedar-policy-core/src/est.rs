@@ -278,6 +278,32 @@ impl From<ast::Expr> for Clause {
     }
 }
 
+impl std::fmt::Display for Policy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (k, v) in self.annotations.iter() {
+            writeln!(f, "@{k}(\"{}\") ", v.escape_debug())?;
+        }
+        write!(
+            f,
+            "{}({}, {}, {})",
+            self.effect, self.principal, self.action, self.resource
+        )?;
+        for condition in &self.conditions {
+            write!(f, " {condition}")?;
+        }
+        write!(f, ";")
+    }
+}
+
+impl std::fmt::Display for Clause {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::When(expr) => write!(f, "when {{ {expr} }}"),
+            Self::Unless(expr) => write!(f, "unless {{ {expr} }}"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
