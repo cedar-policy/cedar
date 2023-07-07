@@ -302,7 +302,7 @@ impl std::fmt::Display for ActionInConstraint {
                     .into_euid(|| JsonDeserializationErrorContext::EntityUid)
                 {
                     Ok(euid) => write!(f, "in {euid}"),
-                    Err(e) => write!(f, "in (invalid entity uid: {e}"),
+                    Err(e) => write!(f, "in (invalid entity uid: {e})"),
                 }
             }
             Self::Set { entities } => {
