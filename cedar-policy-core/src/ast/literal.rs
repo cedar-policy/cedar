@@ -71,7 +71,7 @@ impl std::fmt::Display for Literal {
 }
 
 impl std::str::FromStr for Literal {
-    type Err = Vec<parser::err::ParseError>;
+    type Err = parser::err::ParseErrors;
 
     fn from_str(s: &str) -> Result<Literal, Self::Err> {
         parser::parse_literal(s)

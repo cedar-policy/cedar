@@ -40,11 +40,15 @@ use crate::est;
 
 /// simple main function for parsing policies
 /// generates numbered ids
-pub fn parse_policyset(text: &str) -> Result<ast::PolicySet, Vec<err::ParseError>> {
-    let mut errs = Vec::new();
-    text_to_cst::parse_policies(text)?
-        .to_policyset(&mut errs)
-        .ok_or(errs)
+pub fn parse_policyset(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
+    let mut errs = err::ParseErrors::new();
+    let cst = text_to_cst::parse_policies(text)?;
+    let Some(ast) = cst.to_policyset(&mut errs) else { return Err(errs); };
+    if errs.is_empty() {
+        Ok(ast)
+    } else {
+        Err(errs)
+    }
 }
 
 /// Like `parse_policyset()`, but also returns the (lossless) original text of
@@ -52,24 +56,22 @@ pub fn parse_policyset(text: &str) -> Result<ast::PolicySet, Vec<err::ParseError
 pub fn parse_policyset_and_also_return_policy_text(
     text: &str,
 ) -> Result<(HashMap<ast::PolicyID, &str>, ast::PolicySet), err::ParseErrors> {
-    let mut errs = Vec::new();
-    let cst = text_to_cst::parse_policies(text).map_err(err::ParseErrors)?;
-    let pset = cst
-        .to_policyset(&mut errs)
-        .ok_or_else(|| err::ParseErrors(errs.clone()))?;
-    // PANIC SAFETY Shouldn't be `none` since `parse_policies()` and `to_policyset()` didn't return `Err`
-    #[allow(clippy::expect_used)]
-    // PANIC SAFETY Indexing is safe because of how `SourceInfo` is constructed
-    #[allow(clippy::indexing_slicing)]
-    let texts = cst
-        .with_generated_policyids()
-        .expect("shouldn't be None since parse_policies() and to_policyset() didn't return Err")
-        .map(|(id, policy)| (id, &text[policy.info.0.clone()]))
-        .collect::<HashMap<ast::PolicyID, &str>>();
+    let mut errs = err::ParseErrors::new();
+    let cst = text_to_cst::parse_policies(text)?;
+    let Some(pset) = cst.to_policyset(&mut errs) else { return Err(errs); };
     if errs.is_empty() {
+        // PANIC SAFETY Shouldn't be `none` since `parse_policies()` and `to_policyset()` didn't return `Err`
+        #[allow(clippy::expect_used)]
+        // PANIC SAFETY Indexing is safe because of how `SourceInfo` is constructed
+        #[allow(clippy::indexing_slicing)]
+        let texts = cst
+            .with_generated_policyids()
+            .expect("shouldn't be None since parse_policies() and to_policyset() didn't return Err")
+            .map(|(id, policy)| (id, &text[policy.info.0.clone()]))
+            .collect::<HashMap<ast::PolicyID, &str>>();
         Ok((texts, pset))
     } else {
-        Err(err::ParseErrors(errs))
+        Err(errs)
     }
 }
 
@@ -79,24 +81,23 @@ pub fn parse_policyset_and_also_return_policy_text(
 pub fn parse_policyset_to_ests_and_pset(
     text: &str,
 ) -> Result<(HashMap<ast::PolicyID, est::Policy>, ast::PolicySet), err::ParseErrors> {
-    let mut errs = Vec::new();
-    let cst = text_to_cst::parse_policies(text).map_err(err::ParseErrors)?;
-    let pset = cst
-        .to_policyset(&mut errs)
-        .ok_or_else(|| err::ParseErrors(errs.clone()))?;
-    // PANIC SAFETY Shouldn't be `none` since `parse_policies()` and `to_policyset()` didn't return `Err`
-    #[allow(clippy::expect_used)]
-    let ests = cst
-        .with_generated_policyids()
-        .expect("shouldn't be None since parse_policies() and to_policyset() didn't return Err")
-        .map(|(id, policy)| match &policy.node {
-            Some(p) => Ok(Some((id, p.clone().try_into()?))),
-            None => Ok(None),
-        })
-        .collect::<Result<Option<HashMap<ast::PolicyID, est::Policy>>, err::ParseErrors>>()?;
-    match (errs.is_empty(), ests) {
-        (true, Some(ests)) => Ok((ests, pset)),
-        (_, _) => Err(err::ParseErrors(errs)),
+    let mut errs = err::ParseErrors::new();
+    let cst = text_to_cst::parse_policies(text)?;
+    let Some(pset) = cst.to_policyset(&mut errs) else { return Err(errs); };
+    if errs.is_empty() {
+        // PANIC SAFETY Shouldn't be `None` since `parse_policies()` and `to_policyset()` didn't return `Err`
+        #[allow(clippy::expect_used)]
+        let ests = cst
+            .with_generated_policyids()
+            .expect("missing policy set node")
+            .map(|(id, policy)| {
+                let p = policy.node.as_ref().expect("missing policy node").clone();
+                Ok((id, p.try_into()?))
+            })
+            .collect::<Result<HashMap<ast::PolicyID, est::Policy>, err::ParseErrors>>()?;
+        Ok((ests, pset))
+    } else {
+        Err(errs)
     }
 }
 
@@ -106,15 +107,16 @@ pub fn parse_policyset_to_ests_and_pset(
 pub fn parse_policy_template(
     id: Option<String>,
     text: &str,
-) -> Result<ast::Template, Vec<err::ParseError>> {
-    let mut errs = Vec::new();
+) -> Result<ast::Template, err::ParseErrors> {
+    let mut errs = err::ParseErrors::new();
     let id = match id {
         Some(id) => ast::PolicyID::from_string(id),
         None => ast::PolicyID::from_string("policy0"),
     };
-    let r = text_to_cst::parse_policy(text)?.to_policy_template(id, &mut errs);
+    let cst = text_to_cst::parse_policy(text)?;
+    let Some(ast) = cst.to_policy_template(id, &mut errs) else { return Err(errs); };
     if errs.is_empty() {
-        r.ok_or(errs).map(ast::Template::from)
+        Ok(ast)
     } else {
         Err(errs)
     }
@@ -127,38 +129,34 @@ pub fn parse_policy_template_to_est_and_ast(
     id: Option<String>,
     text: &str,
 ) -> Result<(est::Policy, ast::Template), err::ParseErrors> {
-    let mut errs = Vec::new();
+    let mut errs = err::ParseErrors::new();
     let id = match id {
         Some(id) => ast::PolicyID::from_string(id),
         None => ast::PolicyID::from_string("policy0"),
     };
-    let cst = text_to_cst::parse_policy(text).map_err(err::ParseErrors)?;
-    let ast = cst
-        .to_policy_template(id, &mut errs)
-        .ok_or_else(|| err::ParseErrors(errs.clone()))?;
-    let est = cst.node.map(TryInto::try_into).transpose()?;
-    match (errs.is_empty(), est) {
-        (true, Some(est)) => Ok((est, ast)),
-        (_, _) => Err(err::ParseErrors(errs)),
+    let cst = text_to_cst::parse_policy(text)?;
+    let (Some(ast), Some(cst_node)) = (cst.to_policy_template(id, &mut errs), cst.node) else { return Err(errs); };
+    if errs.is_empty() {
+        let est = cst_node.try_into()?;
+        Ok((est, ast))
+    } else {
+        Err(errs)
     }
 }
 
 /// simple main function for parsing a policy.
 /// If `id` is Some, then the resulting policy will have that `id`.
 /// If the `id` is None, the parser will use "policy0".
-pub fn parse_policy(
-    id: Option<String>,
-    text: &str,
-) -> Result<ast::StaticPolicy, Vec<err::ParseError>> {
-    let mut errs = Vec::new();
+pub fn parse_policy(id: Option<String>, text: &str) -> Result<ast::StaticPolicy, err::ParseErrors> {
+    let mut errs = err::ParseErrors::new();
     let id = match id {
         Some(id) => ast::PolicyID::from_string(id),
         None => ast::PolicyID::from_string("policy0"),
     };
-    let r = text_to_cst::parse_policy(text)?.to_policy(id, &mut errs);
-
+    let cst = text_to_cst::parse_policy(text)?;
+    let Some(ast) = cst.to_policy(id, &mut errs) else { return Err(errs); };
     if errs.is_empty() {
-        r.ok_or(errs)
+        Ok(ast)
     } else {
         Err(errs)
     }
@@ -171,90 +169,99 @@ pub fn parse_policy_to_est_and_ast(
     id: Option<String>,
     text: &str,
 ) -> Result<(est::Policy, ast::StaticPolicy), err::ParseErrors> {
-    let mut errs = Vec::new();
+    let mut errs = err::ParseErrors::new();
     let id = match id {
         Some(id) => ast::PolicyID::from_string(id),
         None => ast::PolicyID::from_string("policy0"),
     };
-    let cst = text_to_cst::parse_policy(text).map_err(err::ParseErrors)?;
-    let ast = cst
-        .to_policy(id, &mut errs)
-        .ok_or_else(|| err::ParseErrors(errs.clone()))?;
-
-    let est = cst.node.map(TryInto::try_into).transpose()?;
-    match (errs.is_empty(), est) {
-        (true, Some(est)) => Ok((est, ast)),
-        (_, _) => Err(err::ParseErrors(errs)),
+    let cst = text_to_cst::parse_policy(text)?;
+    let (Some(ast), Some(cst_node)) = (cst.to_policy(id, &mut errs), cst.node) else { return Err(errs); };
+    if errs.is_empty() {
+        let est = cst_node.try_into()?;
+        Ok((est, ast))
+    } else {
+        Err(errs)
     }
 }
 
 /// Parse a policy or template (either one works) to its EST representation
 pub fn parse_policy_or_template_to_est(text: &str) -> Result<est::Policy, err::ParseErrors> {
-    let cst = text_to_cst::parse_policy(text).map_err(err::ParseErrors)?;
-    let est = cst.node.map(TryInto::try_into).transpose()?;
-    match est {
-        Some(est) => Ok(est),
-        None => Err(err::ParseErrors(vec![])), // theoretically this shouldn't happen if the `?`s above didn't already fail us out
-    }
+    let cst = text_to_cst::parse_policy(text)?;
+    // PANIC SAFETY Shouldn't be `none` since `parse_policy()` didn't return `Err`
+    #[allow(clippy::expect_used)]
+    let cst_node = cst.node.expect("missing policy or template node");
+    cst_node.try_into()
 }
 
 /// parse an Expr
 ///
 /// Private to this crate. Users outside Core should use `Expr`'s `FromStr` impl
 /// or its constructors
-pub(crate) fn parse_expr(ptext: &str) -> Result<ast::Expr, Vec<err::ParseError>> {
-    let mut errs = Vec::new();
-    text_to_cst::parse_expr(ptext)?
-        .to_expr(&mut errs)
-        .ok_or(errs)
+pub(crate) fn parse_expr(ptext: &str) -> Result<ast::Expr, err::ParseErrors> {
+    let mut errs = err::ParseErrors::new();
+    let cst = text_to_cst::parse_expr(ptext)?;
+    let Some(ast) = cst.to_expr(&mut errs) else { return Err(errs); };
+    if errs.is_empty() {
+        Ok(ast)
+    } else {
+        Err(errs)
+    }
 }
 
 /// parse a RestrictedExpr
 ///
 /// Private to this crate. Users outside Core should use `RestrictedExpr`'s
 /// `FromStr` impl or its constructors
-pub(crate) fn parse_restrictedexpr(
-    ptext: &str,
-) -> Result<ast::RestrictedExpr, Vec<err::ParseError>> {
+pub(crate) fn parse_restrictedexpr(ptext: &str) -> Result<ast::RestrictedExpr, err::ParseErrors> {
     parse_expr(ptext)
-        .and_then(|expr| ast::RestrictedExpr::new(expr).map_err(|err| vec![err.into()]))
+        .and_then(|expr| ast::RestrictedExpr::new(expr).map_err(err::ParseErrors::from))
 }
 
 /// parse an EntityUID
 ///
 /// Private to this crate. Users outside Core should use `EntityUID`'s `FromStr`
 /// impl or its constructors
-pub(crate) fn parse_euid(euid: &str) -> Result<ast::EntityUID, Vec<err::ParseError>> {
-    let mut errs = Vec::new();
-    text_to_cst::parse_ref(euid)?.to_ref(&mut errs).ok_or(errs)
+pub(crate) fn parse_euid(euid: &str) -> Result<ast::EntityUID, err::ParseErrors> {
+    let mut errs = err::ParseErrors::new();
+    let cst = text_to_cst::parse_ref(euid)?;
+    let Some(ast) = cst.to_ref(&mut errs) else { return Err(errs); };
+    if errs.is_empty() {
+        Ok(ast)
+    } else {
+        Err(errs)
+    }
 }
 
 /// parse a Name
 ///
 /// Private to this crate. Users outside Core should use `Name`'s `FromStr` impl
 /// or its constructors
-pub(crate) fn parse_name(name: &str) -> Result<ast::Name, Vec<err::ParseError>> {
-    let mut errs = Vec::new();
-    text_to_cst::parse_name(name)?
-        .to_name(&mut errs)
-        .ok_or(errs)
+pub(crate) fn parse_name(name: &str) -> Result<ast::Name, err::ParseErrors> {
+    let mut errs = err::ParseErrors::new();
+    let cst = text_to_cst::parse_name(name)?;
+    let Some(ast) = cst.to_name(&mut errs) else { return Err(errs); };
+    if errs.is_empty() {
+        Ok(ast)
+    } else {
+        Err(errs)
+    }
 }
 
 /// parse a string into an ast::Literal (does not support expressions)
 ///
 /// Private to this crate. Users outside Core should use `Literal`'s `FromStr` impl
 /// or its constructors
-pub(crate) fn parse_literal(val: &str) -> Result<ast::Literal, Vec<err::ParseError>> {
-    let mut errs = Vec::new();
-    match text_to_cst::parse_primary(val)?
-        .to_expr(&mut errs)
-        .ok_or(errs)?
-        .into_expr_kind()
-    {
-        ast::ExprKind::Lit(v) => Ok(v),
-        _ => Err(vec![err::ParseError::ToAST(
-            "text is not a literal".to_string(),
-        )]),
+pub(crate) fn parse_literal(val: &str) -> Result<ast::Literal, err::ParseErrors> {
+    let mut errs = err::ParseErrors::new();
+    let cst = text_to_cst::parse_primary(val)?;
+    let Some(ast) = cst.to_expr(&mut errs) else { return Err(errs); };
+    if errs.is_empty() {
+        match ast.into_expr_kind() {
+            ast::ExprKind::Lit(v) => Ok(v),
+            _ => Err(err::ParseError::ToAST("text is not a literal".to_string()).into()),
+        }
+    } else {
+        Err(errs)
     }
 }
 
@@ -268,23 +275,31 @@ pub(crate) fn parse_literal(val: &str) -> Result<ast::Literal, Vec<err::ParseErr
 ///
 /// It does not return a string suitable for a pattern. Use the
 /// full expression parser for those.
-pub fn parse_internal_string(val: &str) -> Result<SmolStr, Vec<err::ParseError>> {
-    let mut errs = Vec::new();
+pub fn parse_internal_string(val: &str) -> Result<SmolStr, err::ParseErrors> {
+    let mut errs = err::ParseErrors::new();
     // we need to add quotes for this to be a valid string literal
-    text_to_cst::parse_primary(&format!(r#""{val}""#))?
-        .to_string_literal(&mut errs)
-        .ok_or(errs)
+    let cst = text_to_cst::parse_primary(&format!(r#""{val}""#))?;
+    let Some(ast) = cst.to_string_literal(&mut errs) else { return Err(errs); };
+    if errs.is_empty() {
+        Ok(ast)
+    } else {
+        Err(errs)
+    }
 }
 
 /// parse an identifier
 ///
 /// Private to this crate. Users outside Core should use `Id`'s `FromStr` impl
 /// or its constructors
-pub(crate) fn parse_ident(id: &str) -> Result<ast::Id, Vec<err::ParseError>> {
-    let mut errs = Vec::new();
-    text_to_cst::parse_ident(id)?
-        .to_valid_ident(&mut errs)
-        .ok_or(errs)
+pub(crate) fn parse_ident(id: &str) -> Result<ast::Id, err::ParseErrors> {
+    let mut errs = err::ParseErrors::new();
+    let cst = text_to_cst::parse_ident(id)?;
+    let Some(ast) = cst.to_valid_ident(&mut errs) else { return Err(errs); };
+    if errs.is_empty() {
+        Ok(ast)
+    } else {
+        Err(errs)
+    }
 }
 
 #[cfg(test)]
