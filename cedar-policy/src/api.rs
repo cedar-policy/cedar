@@ -30,6 +30,7 @@ use cedar_policy_core::entities::{ContextSchema, Dereference, JsonDeserializatio
 use cedar_policy_core::est;
 use cedar_policy_core::evaluator::{Evaluator, RestrictedEvaluator};
 pub use cedar_policy_core::extensions;
+use cedar_policy_core::evaluator::err as core;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 pub use cedar_policy_core::parser::err::ParseErrors;
@@ -127,7 +128,7 @@ impl Entity {
             evaluator
                 .interpret(expr.as_borrowed())
                 .map(EvalResult::from)
-                .map_err(|e| EvaluationError::StringMessage(e.to_string())),
+                .map_err(EvaluationError::from),
         )
     }
 }
@@ -382,7 +383,7 @@ impl Diagnostics {
         self.errors
             .iter()
             .cloned()
-            .map(EvaluationError::StringMessage)
+            .map(EvaluationError::from)
     }
 }
 
@@ -442,10 +443,13 @@ impl ResidualResponse {
 /// authorization decisions.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum EvaluationError {
-    /// Error message, as string.
-    /// TODO in the future this can/should be the actual Core `EvaluationError`
+    /// Represents an evaluation error originating from the `cedar-policy-core` crate.
+    /// EvaluationError variant wraps the core::EvaluationError using the #[from] attribute.
     #[error("{0}")]
-    StringMessage(String),
+    EvaluationError(#[from] core::EvaluationError),
+
+    // Add your custom variants here, if needed.
+    // Custom variants can represent errors specific to the crate's functionality.
 }
 
 /// Used to select how a policy will be validated.
@@ -2329,11 +2333,11 @@ pub fn eval_expression(
 ) -> Result<EvalResult, EvaluationError> {
     let all_ext = Extensions::all_available();
     let eval = Evaluator::new(&request.0, &entities.0, &all_ext)
-        .map_err(|e| EvaluationError::StringMessage(e.to_string()))?;
+        .map_err(EvaluationError::from)?;
     Ok(EvalResult::from(
         // Evaluate under the empty slot map, as an expression should not have slots
         eval.interpret(&expr.0, &ast::SlotEnv::new())
-            .map_err(|e| EvaluationError::StringMessage(e.to_string()))?,
+            .map_err(EvaluationError::from)?,
     ))
 }
 
