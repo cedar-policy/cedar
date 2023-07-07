@@ -118,7 +118,7 @@ impl RestrictedExpr {
 }
 
 impl std::str::FromStr for RestrictedExpr {
-    type Err = Vec<parser::err::ParseError>;
+    type Err = parser::err::ParseErrors;
 
     fn from_str(s: &str) -> Result<RestrictedExpr, Self::Err> {
         parser::parse_restrictedexpr(s)

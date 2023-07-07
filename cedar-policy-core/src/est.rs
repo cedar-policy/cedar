@@ -106,7 +106,7 @@ impl Clause {
 impl TryFrom<cst::Policy> for Policy {
     type Error = ParseErrors;
     fn try_from(policy: cst::Policy) -> Result<Policy, ParseErrors> {
-        let mut errs = vec![];
+        let mut errs = ParseErrors::new();
         let effect = policy.effect.to_effect(&mut errs);
         let (principal, action, resource) = policy.extract_head(&mut errs);
         if let (Some(effect), Some(principal), Some(action), Some(resource), true) =
@@ -123,11 +123,11 @@ impl TryFrom<cst::Policy> for Policy {
                 })
                 .collect::<Result<Vec<_>, ParseErrors>>()?;
             let annotations = policy.annotations.into_iter().map(|node| {
-                let mut errs = vec![];
+                let mut errs = ParseErrors::new();
                 let kv = node.to_kv_pair(&mut errs);
                 match (errs.is_empty(), kv) {
                     (true, Some((k, v))) => Ok((k, v)),
-                    (false, _) => Err(ParseErrors(errs)),
+                    (false, _) => Err(errs),
                     (true, None) => Err(ParseError::ToAST("internal invariant violation: expected there to be an error if data is None here".to_string()).into()),
                 }
             }).collect::<Result<_, ParseErrors>>()?;
@@ -140,7 +140,7 @@ impl TryFrom<cst::Policy> for Policy {
                 annotations,
             })
         } else {
-            Err(ParseErrors(errs))
+            Err(errs)
         }
     }
 }
@@ -148,7 +148,7 @@ impl TryFrom<cst::Policy> for Policy {
 impl TryFrom<cst::Cond> for Clause {
     type Error = ParseErrors;
     fn try_from(cond: cst::Cond) -> Result<Clause, ParseErrors> {
-        let mut errs = vec![];
+        let mut errs = ParseErrors::new();
         let expr: Result<Expr, ParseErrors> = match cond.expr {
             None => Err(ParseError::ToAST("clause should not be empty".to_string()).into()),
             Some(ASTNode { node, .. }) => match node {
@@ -175,7 +175,7 @@ impl TryFrom<cst::Cond> for Clause {
                 Some(false) => Clause::Unless(expr),
             })
         } else {
-            Err(ParseErrors(errs))
+            Err(errs)
         }
     }
 }

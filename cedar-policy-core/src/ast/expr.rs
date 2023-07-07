@@ -17,7 +17,7 @@
 use crate::{
     ast::*,
     extensions::Extensions,
-    parser::{err::ParseError, SourceInfo},
+    parser::{err::ParseErrors, SourceInfo},
 };
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -767,9 +767,9 @@ fn maybe_with_parens(expr: &Expr) -> String {
 }
 
 impl std::str::FromStr for Expr {
-    type Err = Vec<ParseError>;
+    type Err = ParseErrors;
 
-    fn from_str(s: &str) -> Result<Expr, Vec<ParseError>> {
+    fn from_str(s: &str) -> Result<Expr, Self::Err> {
         crate::parser::parse_expr(s)
     }
 }
