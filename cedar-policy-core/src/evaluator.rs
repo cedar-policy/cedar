@@ -66,7 +66,6 @@ pub struct Evaluator<'e, T: EntityDatabase> {
 /// This mutable cache avoids duplicating lookups/expression evaluation.
 struct EvaluatorCache {
     /// Cache of entities that have been looked up
-    /// TODO: use this to cache entities
     entity_cache: HashMap<EntityUID, Dereference<(Entity, HashMap<SmolStr, Result<PartialValue>>)>>
 }
 
@@ -78,6 +77,7 @@ impl EvaluatorCache {
         }
     }
 
+    /// Get the given entity and its attributes; add it to the cache if it was not already present
     fn get_entity_and_attrs<'e, T: EntityDatabase>(&'e mut self, entities: &T, uid: &EntityUID, extensions: &Extensions<'_>) -> Dereference<&'e (Entity, HashMap<SmolStr, Result<PartialValue>>)> {
         self.entity_cache.entry(uid.clone())
             .or_insert_with(|| {
@@ -100,6 +100,7 @@ impl EvaluatorCache {
             }).as_ref()
     }
 
+    /// Wrapper around `get_entity_and_attrs` which returns only the entity
     fn get_entity<'e, T: EntityDatabase>(&'e mut self, entities: &T, uid: &EntityUID, extensions: &Extensions<'_>) -> Dereference<&'e Entity> {
         match self.get_entity_and_attrs(entities, uid, extensions) {
             Dereference::NoSuchEntity => Dereference::NoSuchEntity,
@@ -108,7 +109,7 @@ impl EvaluatorCache {
         }
     }
 
-    /// Get the given entity's attributes and add it to the cache if it was not already present
+    /// Wrapper around `get_entity_and_attrs` which returns only the attributes
     fn get_attrs<'e, T: EntityDatabase>(&'e mut self, entities: &T, uid: &EntityUID, extensions: &Extensions<'_>) -> Dereference<&'e HashMap<SmolStr, Result<PartialValue>>> {
         match self.get_entity_and_attrs(entities, uid, extensions) {
             Dereference::NoSuchEntity => Dereference::NoSuchEntity,
