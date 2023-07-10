@@ -19,7 +19,7 @@ use super::EstToAstError;
 use crate::ast;
 use crate::entities::{JSONValue, JsonDeserializationError, TypeAndId};
 use crate::parser::cst;
-use crate::parser::err::{ParseError, ParseErrors};
+use crate::parser::err::{ParseError, ParseErrors, WithContext};
 use crate::parser::unescape;
 use crate::parser::ASTNode;
 use either::Either;
@@ -597,10 +597,10 @@ impl TryFrom<Expr> for ast::Expr {
                             .next()
                             .expect("already checked that len was 1");
                         let fn_name = fn_name.parse().map_err(|errs|
-                            JsonDeserializationError::ExtnParseError(ParseError::WithContext {
+                            JsonDeserializationError::ExtnParseError(WithContext {
                                 context: format!("expected valid operator or extension function name; got {fn_name}"),
                                 errs,
-                            })
+                            }.into())
                         )?;
                         Ok(ast::Expr::call_extension_fn(
                             fn_name,
@@ -1058,7 +1058,7 @@ fn interpret_primary(p: cst::Primary) -> Result<Either<ast::Name, Expr>, ParseEr
         },
         cst::Primary::Ref(ASTNode { node, .. }) => match node {
             Some(cst::Ref::Uid { path, eid }) => {
-                let mut errs = vec![];
+                let mut errs = ParseErrors::new();
                 let maybe_name = path.to_name(&mut errs);
                 let maybe_eid = eid.as_valid_string(&mut errs);
 
@@ -1071,7 +1071,7 @@ fn interpret_primary(p: cst::Primary) -> Result<Either<ast::Name, Expr>, ParseEr
                             )),
                         })))
                     }
-                    _ => Err(ParseErrors(errs)),
+                    _ => Err(errs),
                 }
             }
             Some(cst::Ref::Ref { .. }) => {
@@ -1090,7 +1090,7 @@ fn interpret_primary(p: cst::Primary) -> Result<Either<ast::Name, Expr>, ParseEr
                 }
                 (&[], Some(cst::Ident::Context)) => Ok(Either::Right(Expr::var(ast::Var::Context))),
                 (path, Some(cst::Ident::Ident(id))) => Ok(Either::Left(ast::Name::new(
-                    id.parse().map_err(ParseErrors)?,
+                    id.parse()?,
                     path.iter()
                         .map(|ASTNode { node, .. }| {
                             node.as_ref()
@@ -1099,7 +1099,7 @@ fn interpret_primary(p: cst::Primary) -> Result<Either<ast::Name, Expr>, ParseEr
                                         "node should not be empty".to_string(),
                                     )])
                                 })
-                                .and_then(|id| id.to_string().parse().map_err(ParseErrors))
+                                .and_then(|id| id.to_string().parse().map_err(Into::into))
                         })
                         .collect::<Result<Vec<ast::Id>, _>>()?,
                 ))),
@@ -1137,12 +1137,12 @@ fn interpret_primary(p: cst::Primary) -> Result<Either<ast::Name, Expr>, ParseEr
             .into_iter()
             .map(|node| match node.node {
                 Some(cst::RecInit(k, v)) => {
-                    let mut errs = vec![];
+                    let mut errs = ParseErrors::new();
                     let s = k
                         .to_expr_or_special(&mut errs)
                         .and_then(|es| es.into_valid_attr(&mut errs));
                     if !errs.is_empty() {
-                        Err(ParseErrors(errs))
+                        Err(errs)
                     } else {
                         match (s, v.node) {
                             (Some(s), Some(e)) => Ok((s, e.try_into()?)),

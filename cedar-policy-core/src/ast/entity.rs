@@ -15,7 +15,7 @@
  */
 
 use crate::ast::*;
-use crate::parser::err::ParseError;
+use crate::parser::err::ParseErrors;
 use crate::transitive_closure::TCNode;
 use crate::FromNormalizedStr;
 use itertools::Itertools;
@@ -104,7 +104,7 @@ impl EntityUID {
     // GRCOV_BEGIN_COVERAGE
 
     /// Create an `EntityUID` with the given (unqualified) typename, and the given string as its EID.
-    pub fn with_eid_and_type(typename: &str, eid: &str) -> Result<Self, Vec<ParseError>> {
+    pub fn with_eid_and_type(typename: &str, eid: &str) -> Result<Self, ParseErrors> {
         Ok(Self {
             ty: EntityType::Concrete(Name::parse_unqualified_name(typename)?),
             eid: Eid(eid.into()),
@@ -157,9 +157,9 @@ impl std::fmt::Display for EntityUID {
 
 // allow `.parse()` on a string to make an `EntityUID`
 impl std::str::FromStr for EntityUID {
-    type Err = Vec<ParseError>;
+    type Err = ParseErrors;
 
-    fn from_str(s: &str) -> Result<Self, Vec<ParseError>> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         crate::parser::parse_euid(s)
     }
 }
