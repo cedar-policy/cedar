@@ -221,6 +221,15 @@ where
             e => panic!("expect() called on {:?}, msg: {msg}", e),
         }
     }
+
+    /// Converts from `Dereference<T>` to `Dereference<&T>`.
+    pub fn as_ref(&self) -> Dereference<&T> {
+        match self {
+            Self::NoSuchEntity => Dereference::NoSuchEntity,
+            Self::Residual(e) => Dereference::Residual(e.clone()),
+            Self::Data(e) => Dereference::Data(e),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
