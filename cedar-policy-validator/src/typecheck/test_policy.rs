@@ -33,7 +33,7 @@ use super::test_utils::{
 };
 use crate::{
     type_error::TypeError, typecheck::test_utils::static_to_template, typecheck::PolicyCheck,
-    types::Type, NamespaceDefinition,
+    types::{Type, EntityLUB}, AttributeAccessKind, NamespaceDefinition,
 };
 
 fn simple_schema_file() -> NamespaceDefinition {
@@ -244,7 +244,9 @@ fn policy_invalid_attribute() {
                 r#"permit(principal, action in [Action::"delete_group", Action::"view_photo"], resource) when { resource.file_type == "jpg" };"#
             ).expect("Policy should parse."),
             vec![
-                TypeError::unsafe_attribute_access(Expr::get_attr(Expr::var(Var::Resource), "file_type".into()), "file_type".into(), Some("name".into()), false)
+                TypeError::unsafe_attribute_access(Expr::get_attr(Expr::var(Var::Resource), "file_type".into()), "file_type".into(), Some("name".into()), false, 
+            AttributeAccessKind::Unrepresented,
+            )
             ],
         );
 }
@@ -257,7 +259,9 @@ fn policy_invalid_attribute_2() {
                 r#"permit(principal, action == Action::"view_photo", resource) when { principal.age > 21 };"#
             ).expect("Policy should parse."),
             vec![
-                TypeError::unsafe_attribute_access(Expr::get_attr(Expr::var(Var::Principal), "age".into()), "age".into(), Some("name".into()), false)
+                TypeError::unsafe_attribute_access(Expr::get_attr(Expr::var(Var::Principal), "age".into()), "age".into(), Some("name".into()), false, 
+            AttributeAccessKind::Unrepresented,
+            )
             ]
         );
 }
@@ -426,6 +430,7 @@ fn entity_lub_cant_access_attribute_not_shared() {
                 "name".into(),
                 None,
                 true,
+                AttributeAccessKind::Unrepresented,
             ),
             TypeError::types_must_match(
                 Expr::from_str(r#"if 1 > 0 then User::"alice" else Photo::"vacation.jpg""#)
@@ -450,6 +455,7 @@ fn entity_attribute_recommendation() {
         "filetype".into(),
         Some("file_type".into()),
         false,
+        AttributeAccessKind::EntityLub(EntityLUB::single_entity("Photo".parse().unwrap()), Vec::from(["filetype".into()]) ),
     );
     assert_policy_typecheck_fails_simple_schema(p, vec![expected]);
 }

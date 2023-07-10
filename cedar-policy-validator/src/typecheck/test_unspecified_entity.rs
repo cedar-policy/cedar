@@ -22,7 +22,7 @@ use cedar_policy_core::{
     parser::parse_policy,
 };
 
-use crate::{type_error::TypeError, NamespaceDefinition};
+use crate::{type_error::TypeError, AttributeAccessKind, NamespaceDefinition};
 
 use super::test_utils;
 
@@ -92,6 +92,7 @@ fn spec_principal_unspec_resource() {
             "name".to_string(),
             None,
             true,
+            AttributeAccessKind::Unrepresented,
         )],
     );
 }
@@ -110,6 +111,7 @@ fn spec_resource_unspec_principal() {
             "name".to_string(),
             None,
             true,
+            AttributeAccessKind::Unrepresented,
         )],
     );
 
@@ -135,6 +137,7 @@ fn unspec_resource_unspec_principal() {
             "name".to_string(),
             None,
             true,
+            AttributeAccessKind::Unrepresented,
         )],
     );
 
@@ -150,6 +153,7 @@ fn unspec_resource_unspec_principal() {
             "name".to_string(),
             None,
             true,
+            AttributeAccessKind::Unrepresented,
         )],
     );
 }

@@ -19,13 +19,16 @@
 use std::{collections::BTreeSet, fmt::Display};
 
 use cedar_policy_core::{
-    ast::{CallStyle, Expr},
+    ast::{CallStyle, EntityUID, Expr, ExprKind, Var},
     parser::SourceInfo,
 };
+
+use crate::types::{EntityLUB, EntityRecordKind, RequestEnv};
 
 use super::types::Type;
 
 use itertools::Itertools;
+use smol_str::SmolStr;
 use thiserror::Error;
 
 /// The structure for type errors. A type errors knows the expression that
@@ -111,6 +114,7 @@ impl TypeError {
         attribute: String,
         suggestion: Option<String>,
         may_exist: bool,
+        access_kind: AttributeAccessKind,
     ) -> Self {
         Self {
             on_expr: Some(on_expr),
@@ -119,6 +123,7 @@ impl TypeError {
                 attribute,
                 suggestion,
                 may_exist,
+                access_kind,
             }),
         }
     }
@@ -221,13 +226,14 @@ pub enum TypeErrorKind {
     /// The typechecker detected an access to a record or entity attribute
     /// that it could not statically guarantee would be present.
     #[error(
-        "Attribute not found in record or entity: {}{}",
+        "Attribute not found in record or entity: {}{}{}",
         .0.attribute,
         if .0.may_exist {
-            ". There may be additional attributes that the validator is not able to reason about."
+            ". There may be additional attributes that the validator is not able to reason about"
         } else {
             ""
-        }
+        },
+        .0.access_kind,
     )]
     UnsafeAttributeAccess(UnsafeAttributeAccess),
     /// The typechecker could not conclude that an access to an optional
@@ -289,6 +295,7 @@ pub struct UnsafeAttributeAccess {
     /// When this is true, the attribute might still exist, but the validator
     /// cannot guarantee that it will.
     may_exist: bool,
+    access_kind: AttributeAccessKind,
 }
 
 /// Structure containing details about an unsafe optional attribute error.
@@ -327,4 +334,71 @@ pub struct WrongCallStyle {
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct FunctionArgumentValidationError {
     msg: String,
+}
+
+/// Contains more detailed information about an attribute access when it occurs
+/// on an `Entity` or on the `context` variable.
+#[derive(Debug, Hash, Eq, PartialEq)]
+pub(crate) enum AttributeAccessKind {
+    /// The attribute access is some sequence of attributes accesses eventually
+    /// targeting an EntityLUB.
+    EntityLub(EntityLUB, Vec<SmolStr>),
+    /// The attribute access is some sequence of attributes accesses eventually
+    /// targeting the context variable.
+    ActionContext(EntityUID, Vec<SmolStr>),
+    /// Other cases where we do not attempt to give more information about the
+    /// access. This includes any access on the `AnyEntity` type and on record
+    /// types other than the `context` variable.
+    Unrepresented,
+}
+
+impl AttributeAccessKind {
+    pub(crate) fn from_expr(
+        req_env: &RequestEnv,
+        mut expr: &Expr<Option<Type>>,
+    ) -> AttributeAccessKind {
+        let mut attrs: Vec<SmolStr> = Vec::new();
+        loop {
+            if let Some(Type::EntityOrRecord(EntityRecordKind::Entity(lub))) = expr.data() {
+                return AttributeAccessKind::EntityLub(lub.clone(), attrs);
+            } else if let ExprKind::Var(Var::Context) = expr.expr_kind() {
+                return AttributeAccessKind::ActionContext(req_env.action.clone(), attrs);
+            } else if let ExprKind::GetAttr {
+                expr: sub_expr,
+                attr,
+            } = expr.expr_kind()
+            {
+                expr = sub_expr;
+                attrs.push(attr.clone());
+            } else {
+                return AttributeAccessKind::Unrepresented;
+            }
+        }
+    }
+}
+
+impl Display for AttributeAccessKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AttributeAccessKind::EntityLub(lub, attrs) => write!(
+                f,
+                ". An attribute {} must be declared for {}",
+                attrs.iter().rev().join("."),
+                match lub.get_single_entity() {
+                    Some(single) if lub.len() == 1 => format!("entity type {}", single),
+                    _ => format!(
+                        "all of the following entity types: {}",
+                        lub.iter().join(", ")
+                    ),
+                },
+            ),
+            AttributeAccessKind::ActionContext(action, attrs) => write!(
+                f,
+                ". An attribute {} must be declared in the context for {}",
+                attrs.iter().rev().join("."),
+                action
+            ),
+            AttributeAccessKind::Unrepresented => Ok(()),
+        }
+    }
 }

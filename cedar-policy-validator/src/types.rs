@@ -691,7 +691,7 @@ pub struct EntityLUB {
 impl EntityLUB {
     /// Create a least upper bound of a single entity type. This is the same as
     /// just that entity type.
-    fn single_entity(entity_type_name: Name) -> Self {
+    pub(crate) fn single_entity(entity_type_name: Name) -> Self {
         Self {
             lub_elements: [entity_type_name].into_iter().collect(),
         }
@@ -776,6 +776,11 @@ impl EntityLUB {
     /// comprising this LUB.
     pub(crate) fn iter(&self) -> impl Iterator<Item = &Name> {
         self.lub_elements.iter()
+    }
+
+    // Get the number of entity types in this set.
+    pub(crate) fn len(&self) -> usize {
+        self.lub_elements.len()
     }
 
     fn to_type_json(&self) -> serde_json::value::Map<String, serde_json::value::Value> {

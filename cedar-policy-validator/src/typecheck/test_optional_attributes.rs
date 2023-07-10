@@ -24,7 +24,10 @@ use cedar_policy_core::{
     parser::parse_policy,
 };
 
-use crate::{type_error::TypeError, NamespaceDefinition, NamespaceDefinitionWithActionAttributes};
+use crate::{
+    type_error::TypeError, AttributeAccessKind, NamespaceDefinition,
+    NamespaceDefinitionWithActionAttributes,
+};
 
 use super::test_utils::{assert_policy_typecheck_fails, assert_policy_typechecks};
 
@@ -756,6 +759,7 @@ fn action_attrs_failing() {
             "canUndo".to_string(),
             Some("isReadOnly".to_string()),
             false,
+            AttributeAccessKind::Unrepresented,
         )],
     );
 

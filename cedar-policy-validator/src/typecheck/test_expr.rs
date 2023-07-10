@@ -26,7 +26,8 @@ use serde_json::json;
 use smol_str::SmolStr;
 
 use crate::{
-    type_error::TypeError, types::Type, AttributesOrContext, EntityType, NamespaceDefinition,
+    type_error::TypeError, types::Type, AttributeAccessKind, AttributesOrContext, EntityType,
+    NamespaceDefinition,
 };
 
 use super::test_utils::{
@@ -604,6 +605,7 @@ fn record_get_attr_incompatible() {
             attr.to_string(),
             None,
             true,
+            AttributeAccessKind::Unrepresented,
         )],
     );
 }
@@ -653,6 +655,7 @@ fn record_get_attr_does_not_exist() {
             attr.to_string(),
             None,
             false,
+            AttributeAccessKind::Unrepresented,
         )],
     );
 }
@@ -672,6 +675,7 @@ fn record_get_attr_lub_does_not_exist() {
             attr.to_string(),
             None,
             false,
+            AttributeAccessKind::Unrepresented,
         )],
     );
 }

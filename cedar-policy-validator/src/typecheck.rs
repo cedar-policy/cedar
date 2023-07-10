@@ -44,7 +44,7 @@ use crate::{
     types::{
         AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, Primitive, RequestEnv, Type,
     },
-    ValidationMode,
+    AttributeAccessKind, ValidationMode,
 };
 
 use super::type_error::TypeError;
@@ -1509,6 +1509,7 @@ impl<'a> Typechecker<'a> {
                                     attr.to_string(),
                                     suggestion,
                                     Type::may_have_attr(self.schema, typ_actual, attr),
+                                    AttributeAccessKind::from_expr(request_env, &annot_expr),
                                 ));
                                 TypecheckAnswer::fail(annot_expr)
                             }

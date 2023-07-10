@@ -32,7 +32,9 @@ use super::test_utils::{
     assert_policy_typecheck_fails, assert_policy_typechecks, assert_typecheck_fails,
     assert_typechecks,
 };
-use crate::{type_error::TypeError, types::Type, SchemaFragment, ValidatorSchema};
+use crate::{
+    type_error::TypeError, types::Type, AttributeAccessKind, SchemaFragment, ValidatorSchema,
+};
 
 fn namespaced_entity_type_schema() -> SchemaFragment {
     serde_json::from_str(
@@ -354,6 +356,7 @@ fn multiple_namespaces_attributes() {
             "x".to_string(),
             None,
             false,
+            AttributeAccessKind::Unrepresented,
         )],
     );
 }

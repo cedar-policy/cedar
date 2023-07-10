@@ -22,6 +22,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprShapeOnly, StaticPolicy, Template};
+use itertools::Itertools;
 
 use crate::{
     schema::ACTION_ENTITY_TYPE,
@@ -120,17 +121,17 @@ pub(crate) fn assert_expected_type_errors(expected: &Vec<TypeError>, actual: &Ha
                 actual.iter().any(|actual| {
                      expected.kind == actual.kind && expected.on_expr.as_ref().map(ExprShapeOnly::new) == actual.on_expr.as_ref().map(ExprShapeOnly::new)
                 }),
-                "Expected generated type errors to contain {:#?}, but error was not found. The following errors were generated: {:#?}",
+                "Expected generated type errors to contain:\n  {}\nbut error was not found. The following errors were generated:\n  {}\n",
                 expected,
-                actual
+                actual.iter().map(|e| e.to_string()).join("\n  "),
             );
         });
     assert_eq!(
         expected.len(),
         actual.len(),
-        "Unexpected type errors generated. Expected {:#?}, saw {:#?}.",
-        expected,
-        actual,
+        "Unexpected type errors generated. Expected:\n  {}\nSaw:\n  {}\n",
+        expected.iter().map(|e| e.to_string()).join("\n  "),
+        actual.iter().map(|e| e.to_string()).join("\n  "),
     );
 }
 
