@@ -682,8 +682,8 @@ impl From<ast::Expr> for Expr {
             ast::ExprKind::Set(set) => {
                 Expr::set(unwrap_or_clone(set).into_iter().map(Into::into).collect())
             }
-            ast::ExprKind::Record { pairs } => Expr::record(
-                unwrap_or_clone(pairs)
+            ast::ExprKind::Record(map) => Expr::record(
+                unwrap_or_clone(map)
                     .into_iter()
                     .map(|(k, v)| (k, v.into()))
                     .collect(),

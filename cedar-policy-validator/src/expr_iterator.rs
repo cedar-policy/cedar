@@ -63,10 +63,7 @@ fn text_in_expr(e: &'_ Expr) -> impl IntoIterator<Item = TextKind<'_>> {
         ExprKind::GetAttr { attr, .. } => vec![TextKind::Identifier(attr)],
         ExprKind::HasAttr { attr, .. } => vec![TextKind::Identifier(attr)],
         ExprKind::Like { pattern, .. } => vec![TextKind::Pattern(pattern.get_elems())],
-        ExprKind::Record { pairs } => pairs
-            .iter()
-            .map(|(attr, _)| TextKind::Identifier(attr))
-            .collect(),
+        ExprKind::Record(map) => map.keys().map(|attr| TextKind::Identifier(attr)).collect(),
         _ => vec![],
     }
 }

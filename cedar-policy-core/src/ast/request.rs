@@ -208,7 +208,7 @@ impl Context {
     /// Iterate over the (key, value) pairs in the `Context`
     pub fn iter(&self) -> impl Iterator<Item = (&str, BorrowedRestrictedExpr<'_>)> {
         match self.context.as_ref().expr_kind() {
-            ExprKind::Record { pairs } => pairs
+            ExprKind::Record(map) => map
                 .iter()
                 .map(|(k, v)| (k.as_str(), BorrowedRestrictedExpr::new_unchecked(v))), // given that the invariant holds for `self.context`, it will hold here
             e => panic!("internal invariant violation: expected Expr::Record, got {e:?}"),

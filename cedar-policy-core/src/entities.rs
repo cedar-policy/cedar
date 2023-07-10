@@ -1030,24 +1030,24 @@ mod schema_based_parsing_tests {
         let json_blob = parsed
             .get("json_blob")
             .expect("json_blob attr should exist");
-        let ExprKind::Record { pairs } = json_blob.expr_kind() else { panic!("expected json_blob to be a Record") };
-        let (_, inner1) = pairs
+        let ExprKind::Record(map) = json_blob.expr_kind() else { panic!("expected json_blob to be a Record") };
+        let (_, inner1) = map
             .iter()
-            .find(|(k, _)| k == "inner1")
+            .find(|(k, _)| *k == "inner1")
             .expect("inner1 attr should exist");
         assert!(matches!(
             inner1.expr_kind(),
             &ExprKind::Lit(Literal::Bool(_))
         ));
-        let (_, inner3) = pairs
+        let (_, inner3) = map
             .iter()
-            .find(|(k, _)| k == "inner3")
+            .find(|(k, _)| *k == "inner3")
             .expect("inner3 attr should exist");
         assert!(matches!(inner3.expr_kind(), &ExprKind::Record { .. }));
-        let ExprKind::Record { pairs: innerpairs } = inner3.expr_kind() else { panic!("already checked it was Record") };
-        let (_, innerinner) = innerpairs
+        let ExprKind::Record(innermap) = inner3.expr_kind() else { panic!("already checked it was Record") };
+        let (_, innerinner) = innermap
             .iter()
-            .find(|(k, _)| k == "innerinner")
+            .find(|(k, _)| *k == "innerinner")
             .expect("innerinner attr should exist");
         assert!(matches!(innerinner.expr_kind(), &ExprKind::Record { .. }));
 
@@ -1108,24 +1108,24 @@ mod schema_based_parsing_tests {
         let json_blob = parsed
             .get("json_blob")
             .expect("json_blob attr should exist");
-        let ExprKind::Record { pairs } = json_blob.expr_kind() else { panic!("expected json_blob to be a Record") };
-        let (_, inner1) = pairs
+        let ExprKind::Record(map) = json_blob.expr_kind() else { panic!("expected json_blob to be a Record") };
+        let (_, inner1) = map
             .iter()
-            .find(|(k, _)| k == "inner1")
+            .find(|(k, _)| *k == "inner1")
             .expect("inner1 attr should exist");
         assert!(matches!(
             inner1.expr_kind(),
             &ExprKind::Lit(Literal::Bool(_))
         ));
-        let (_, inner3) = pairs
+        let (_, inner3) = map
             .iter()
-            .find(|(k, _)| k == "inner3")
+            .find(|(k, _)| *k == "inner3")
             .expect("inner3 attr should exist");
         assert!(matches!(inner3.expr_kind(), &ExprKind::Record { .. }));
-        let ExprKind::Record { pairs: innerpairs } = inner3.expr_kind() else { panic!("already checked it was Record") };
-        let (_, innerinner) = innerpairs
+        let ExprKind::Record(innermap) = inner3.expr_kind() else { panic!("already checked it was Record") };
+        let (_, innerinner) = innermap
             .iter()
-            .find(|(k, _)| k == "innerinner")
+            .find(|(k, _)| *k == "innerinner")
             .expect("innerinner attr should exist");
         assert!(matches!(
             innerinner.expr_kind(),
