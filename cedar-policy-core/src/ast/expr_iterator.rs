@@ -89,14 +89,10 @@ impl<'a, T> Iterator for ExprIterator<'a, T> {
                 self.expression_stack.push(expr);
             }
             ExprKind::Set(elems) => {
-                for expr in elems.as_ref() {
-                    self.expression_stack.push(expr);
-                }
+                self.expression_stack.extend(elems.as_ref());
             }
-            ExprKind::Record { pairs } => {
-                for (_, val_expr) in pairs.as_ref() {
-                    self.expression_stack.push(val_expr);
-                }
+            ExprKind::Record(map) => {
+                self.expression_stack.extend(map.values());
             }
         }
         Some(next_expr)

@@ -226,7 +226,7 @@ impl Context {
         // PANIC SAFETY invariant on `self.context` ensures that it is a Record
         #[allow(clippy::panic)]
         match self.context.as_ref().expr_kind() {
-            ExprKind::Record { pairs } => pairs
+            ExprKind::Record(map) => map
                 .iter()
                 .map(|(k, v)| (k.as_str(), BorrowedRestrictedExpr::new_unchecked(v))), // given that the invariant holds for `self.context`, it will hold here
             e => panic!("internal invariant violation: expected Expr::Record, got {e:?}"),

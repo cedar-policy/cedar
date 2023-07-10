@@ -110,8 +110,8 @@ impl<'e> RestrictedEvaluator<'e> {
                 }
             }
             ExprKind::Unknown{name, type_annotation} => Ok(PartialValue::Residual(Expr::unknown_with_type(name.clone(), type_annotation.clone()))),
-            ExprKind::Record { pairs } => {
-                let map = pairs
+            ExprKind::Record(map) => {
+                let map = map
                     .iter()
                     .map(|(k, v)| Ok((k.clone(), self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(v))?))) // assuming the invariant holds for `e`, it will hold here
                     .collect::<Result<Vec<_>>>()?;
@@ -549,8 +549,8 @@ impl<'q, 'e> Evaluator<'e> {
                     Either::Right(r) => Ok(Expr::set(r).into()),
                 }
             }
-            ExprKind::Record { pairs } => {
-                let map = pairs
+            ExprKind::Record(map) => {
+                let map = map
                     .iter()
                     .map(|(k, v)| Ok((k.clone(), self.partial_interpret(v, slots)?)))
                     .collect::<Result<Vec<_>>>()?;
@@ -636,33 +636,32 @@ impl<'q, 'e> Evaluator<'e> {
             // PE Cases
             PartialValue::Residual(e) => {
                 match e.expr_kind() {
-                    ExprKind::Record { pairs } => {
+                    ExprKind::Record(map) => {
                         // If we have a residual record, we evaluate as follows:
                         // 1) If it's safe to project, we can project. We can evaluate to see if this attribute can become a value
                         // 2) If it's not safe to project, we can check to see if the requested key exists in the record
-                        //    if it doens't, we can fail early
+                        //    if it doesn't, we can fail early
                         if e.is_projectable() {
-                            pairs
-                                .as_ref()
+                            map.as_ref()
                                 .iter()
                                 .filter_map(|(k, v)| if k == attr { Some(v) } else { None })
                                 .next()
                                 .ok_or_else(|| {
                                     EvaluationError::record_attr_does_not_exist(
                                         attr.clone(),
-                                        pairs.iter().map(|(f, _)| f.clone()).collect(),
+                                        map.keys().cloned().collect(),
                                     )
                                 })
                                 .and_then(|e| self.partial_interpret(e, slots))
-                        } else if pairs.iter().any(|(k, _v)| k == attr) {
+                        } else if map.keys().any(|k| k == attr) {
                             Ok(PartialValue::Residual(Expr::get_attr(
-                                Expr::record(pairs.as_ref().clone()), // We should try to avoid this copy
+                                Expr::record_arc(Arc::clone(map)),
                                 attr.clone(),
                             )))
                         } else {
                             Err(EvaluationError::record_attr_does_not_exist(
                                 attr.clone(),
-                                pairs.iter().map(|(f, _)| f.clone()).collect(),
+                                map.keys().cloned().collect(),
                             ))
                         }
                     }
@@ -4894,20 +4893,18 @@ pub mod test {
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(
             r,
-            PartialValue::Residual(Expr::record([
-                ("a".into(), Expr::val(1)),
-                ("a".into(), Expr::unknown("a"))
-            ]))
+            // last value wins for the same key
+            PartialValue::Residual(Expr::record([("a".into(), Expr::unknown("a"))]))
         );
 
         let e = Expr::record([("a".into(), Expr::unknown("a")), ("a".into(), Expr::val(1))]);
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(
             r,
-            PartialValue::Residual(Expr::record([
-                ("a".into(), Expr::unknown("a")),
-                ("a".into(), Expr::val(1))
-            ]))
+            // last value wins for the same key
+            PartialValue::Value(Value::Record(Arc::new(
+                [("a".into(), Value::from(1))].into_iter().collect()
+            )))
         );
 
         let e = Expr::record([

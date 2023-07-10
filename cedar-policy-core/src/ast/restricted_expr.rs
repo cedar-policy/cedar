@@ -227,7 +227,7 @@ fn is_restricted(expr: &Expr) -> Result<(), RestrictedExprError> {
         }),
         ExprKind::ExtensionFunctionApp { args, .. } => args.iter().try_for_each(is_restricted),
         ExprKind::Set(exprs) => exprs.iter().try_for_each(is_restricted),
-        ExprKind::Record { pairs } => pairs.iter().map(|(_, v)| v).try_for_each(is_restricted),
+        ExprKind::Record(map) => map.values().try_for_each(is_restricted),
     }
 }
 

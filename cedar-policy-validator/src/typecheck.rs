@@ -1154,11 +1154,11 @@ impl<'a> Typechecker<'a> {
 
             // For records, each (attribute, value) pair in the initializer need
             // to be individually accounted for in the record type.
-            ExprKind::Record { pairs } => {
+            ExprKind::Record(map) => {
                 // Typecheck each attribute initializer expression individually.
-                let record_attr_tys = pairs
-                    .iter()
-                    .map(|(_, value)| self.typecheck(request_env, prior_eff, value, type_errors));
+                let record_attr_tys = map
+                    .values()
+                    .map(|value| self.typecheck(request_env, prior_eff, value, type_errors));
                 // This will cause the return value to be `TypecheckFail` if any
                 // of the attributes did not typecheck.
                 TypecheckAnswer::sequence_all_then_typecheck(
@@ -1174,16 +1174,13 @@ impl<'a> Typechecker<'a> {
                             .iter()
                             .map(|e| e.data().clone())
                             .collect::<Option<Vec<_>>>();
-                        let t = pairs
-                            .iter()
-                            .map(|(attr, _)| attr.clone())
-                            .zip(record_attr_expr_tys);
+                        let t = map.keys().cloned().zip(record_attr_expr_tys);
                         match record_attr_tys {
                             Some(record_attr_tys) => {
                                 // Given the attribute types which we know know
                                 // exist, we pair them with the corresponding
                                 // attribute names to get a record type.
-                                let record_attrs = pairs.iter().map(|(id, _)| id.clone());
+                                let record_attrs = map.keys().cloned();
                                 let record_type_entries =
                                     std::iter::zip(record_attrs, record_attr_tys);
                                 TypecheckAnswer::success(

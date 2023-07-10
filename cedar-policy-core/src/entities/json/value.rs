@@ -227,8 +227,8 @@ impl CedarValueJson {
                     .map(CedarValueJson::from_expr)
                     .collect::<Result<_, JsonSerializationError>>()?,
             )),
-            ExprKind::Record { pairs } => {
-                // if `pairs` contains a key which collides with one of our JSON
+            ExprKind::Record(map) => {
+                // if `map` contains a key which collides with one of our JSON
                 // escapes, then we have a problem because it would be interpreted
                 // as an escape when being read back in.
                 // We could be a little more permissive here, but to be
@@ -237,18 +237,15 @@ impl CedarValueJson {
                 // with the reserved names.
                 let reserved_keys: HashSet<&str> =
                     HashSet::from_iter(["__entity", "__extn", "__expr"]);
-                let collision = pairs
-                    .iter()
-                    .find(|(k, _)| reserved_keys.contains(k.as_str()));
+                let collision = map.keys().find(|k| reserved_keys.contains(k.as_str()));
                 if let Some(collision) = collision {
                     Err(JsonSerializationError::ReservedKey {
-                        key: collision.0.clone(),
+                        key: collision.clone(),
                     })
                 } else {
                     // the common case: the record doesn't use any reserved keys
                     Ok(Self::Record(
-                        pairs
-                            .iter()
+                        map.iter()
                             .map(|(k, v)| {
                                 Ok((
                                     k.clone(),
@@ -517,9 +514,9 @@ impl<'e> ValueParser<'e> {
                     }
                 }
             }
-            ExprKind::Record { pairs } => {
+            ExprKind::Record(map) => {
                 Ok(SchemaType::Record { attrs: {
-                    pairs.iter().map(|(k, v)| {
+                    map.iter().map(|(k, v)| {
                         let attr_type = self.type_of_rexpr(
                             BorrowedRestrictedExpr::new_unchecked(v), // assuming the invariant holds for the record as a whole, it will also hold for each attribute value
                             ctx.clone(),
