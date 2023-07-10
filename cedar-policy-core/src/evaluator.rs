@@ -195,8 +195,8 @@ impl<'q, 'e, T: EntityDatabase> Evaluator<'e, T> {
     /// (An `Entities` is the entity-hierarchy portion of a `Slice`, without the
     /// policies.)
     ///
-    /// Can throw an error, eg if evaluating attributes in the `context` throws
-    /// an error.
+    /// TODO: change return type to `Self` because this no longer errors (it does not
+    /// evaluate the attributes immediately)
     pub fn new(
         q: &'q Request,
         entities: &'e T,
@@ -439,12 +439,12 @@ impl<'q, 'e, T: EntityDatabase> Evaluator<'e, T> {
                     // hierarchy membership operator; see note on `BinaryOp::In`
                     BinaryOp::In => {
                         let uid1 = arg1.get_as_entity()?;
-                        let entity = self.entities.get_entity_or_unknown(uid1);
-                        match entity {
-                            Either::Left(r) => self.eval_in(uid1, Some(&r), arg2),
-                            Either::Right(r) => Ok(PartialValue::Residual(
+                        match self.entities.entity(uid1) {
+                            Dereference::Residual(r) => Ok(PartialValue::Residual(
                                 Expr::binary_app(BinaryOp::In, r, arg2.into()),
-                            ))
+                            )),
+                            Dereference::NoSuchEntity => self.eval_in(uid1, None, arg2),
+                            Dereference::Data(e) => self.eval_in(uid1, Some(&e), arg2),
                         }
                         // match self.entities.entity(uid1) {
                         //     Dereference::Residual(r) => Ok(PartialValue::Residual(
@@ -554,12 +554,12 @@ impl<'q, 'e, T: EntityDatabase> Evaluator<'e, T> {
             ExprKind::HasAttr { expr, attr } => match self.partial_interpret_using_cache(expr, slots, cache)? {
                 PartialValue::Value(Value::Record(record)) => Ok(record.get(attr).is_some().into()),
                 PartialValue::Value(Value::Lit(Literal::EntityUID(uid))) => {
-                    let entity = self.entities.get_entity_or_unknown(&uid);
-                    match entity {
-                        Either::Left(r) => Ok(r.get(attr).is_some().into()),
-                        Either::Right(r) => Ok(PartialValue::Residual(
-                            Expr::has_attr(r, attr.clone()),
-                        ))
+                    match self.entities.entity(&uid) {
+                        Dereference::NoSuchEntity => Ok(false.into()),
+                        Dereference::Residual(r) => {
+                            Ok(PartialValue::Residual(Expr::has_attr(r, attr.clone())))
+                        }
+                        Dereference::Data(e) => Ok(e.get(attr).is_some().into()),
                     }
                 }
                 PartialValue::Value(val) => Err(err::EvaluationError::TypeError {
@@ -683,15 +683,14 @@ impl<'q, 'e, T: EntityDatabase> Evaluator<'e, T> {
         }
     }
 
-    fn get_entity_attr_using_cache<'a>(&self, uid: &EntityUID, cache: &'e mut EvaluatorCache<'a>) -> Dereference<'e, HashMap<SmolStr, PartialValue>> {
-        // let entity = self.entities.get_entity_of_uid(uid).unwrap();
-        match self.entities.get_entity_of_uid(uid) {
-            Some(entity) => {
+    fn get_entity_attr_using_cache<'a>(&self, uid: &EntityUID, cache: &'e mut EvaluatorCache<'a>) -> Result<Dereference<&'e HashMap<SmolStr, PartialValue>>> {
+        match self.entities.entity(uid) {
+            Dereference::NoSuchEntity => Ok(Dereference::NoSuchEntity),
+            Dereference::Residual(e) => Ok(Dereference::Residual(e)),
+            Dereference::Data(entity) => {
                 let result = cache.get_attrs(entity, self.extensions).unwrap(); // TODO: handle restricted expr evaluation error
-                Dereference::Data(result)
-                // Dereference::Data(&result.unwrap())
-            }
-            None => Dereference::NoSuchEntity,
+                Ok(Dereference::Data(result))
+            },
         }
     }
 
@@ -734,7 +733,7 @@ impl<'q, 'e, T: EntityDatabase> Evaluator<'e, T> {
                 .ok_or_else(|| EvaluationError::RecordAttrDoesNotExist(attr.clone()))
                 .map(|v| PartialValue::Value(v.clone())),
             PartialValue::Value(Value::Lit(Literal::EntityUID(uid))) => {
-                match self.get_entity_attr_using_cache(uid.as_ref(), cache) {
+                match self.get_entity_attr_using_cache(uid.as_ref(), cache)? {
                     Dereference::NoSuchEntity => Err(match *uid.entity_type() {
                         EntityType::Unspecified => {
                             EvaluationError::UnspecifiedEntityAccess(attr.clone())
@@ -916,6 +915,23 @@ pub mod test {
             TCComputation::ComputeNow,
         )
         .expect("failed to create basic entities")
+    }
+
+    pub fn basic_entities_as_function() -> impl EntityDatabase {
+        struct AnonDatabase;
+        impl EntityDatabase for AnonDatabase {
+            fn get_entity_of_uid(&self, uid: &EntityUID) -> Option<Entity> {
+                match uid.eid().as_ref() {
+                    "foo" | "test_principal" | "test_action" | "test_resource" => Some(Entity::with_uid(uid.clone())),
+                    _ => None,
+                }
+            }
+
+            fn is_partial(&self) -> bool {
+                true
+            }
+        }
+        AnonDatabase
     }
 
     // This `Entities` has richer Entities
@@ -5080,4 +5096,37 @@ pub mod test {
         );
         assert!(eval.partial_eval_expr(&e).is_err());
     }
+
+    #[test]
+    fn interpret_entities_functional_database() {
+        let request = basic_request();
+        let entities = basic_entities_as_function();
+        let exts = Extensions::none();
+        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::val(EntityUID::with_eid("foo"))),
+            Ok(Value::Lit(Literal::EntityUID(Arc::new(
+                EntityUID::with_eid("foo")
+            ))))
+        );
+        // should be no error here even for entities that do not exist.
+        // (for instance, A == B is allowed even when A and/or B do not exist.)
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::val(EntityUID::with_eid("doesnotexist"))),
+            Ok(Value::Lit(Literal::EntityUID(Arc::new(
+                EntityUID::with_eid("doesnotexist")
+            ))))
+        );
+        // unspecified entities should not result in an error.
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::val(EntityUID::unspecified_from_eid(Eid::new(
+                "foo"
+            )))),
+            Ok(Value::Lit(Literal::EntityUID(Arc::new(
+                EntityUID::unspecified_from_eid(Eid::new("foo"))
+            ))))
+        );
+    }
+
+
 }
