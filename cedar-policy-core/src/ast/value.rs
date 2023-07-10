@@ -72,7 +72,7 @@ impl TryFrom<Expr> for Value {
                 .map(|e| e.clone().try_into())
                 .collect::<Result<Set, _>>()
                 .map(Value::Set),
-            ExprKind::Record { pairs } => pairs
+            ExprKind::Record(map) => map
                 .iter()
                 .map(|(k, v)| v.clone().try_into().map(|v: Value| (k.clone(), v)))
                 .collect::<Result<BTreeMap<SmolStr, Value>, _>>()

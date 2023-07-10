@@ -23,8 +23,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::{
-    collections::HashMap,
-    collections::HashSet,
+    collections::{BTreeMap, HashMap},
     hash::{Hash, Hasher},
     mem,
     sync::Arc,
@@ -155,11 +154,7 @@ pub enum ExprKind<T = ()> {
     // evaluated into `Value`s
     Set(Arc<Vec<Expr<T>>>),
     /// Anonymous record (whose elements may be arbitrary expressions)
-    /// This is a `Vec` for the same reason as above.
-    Record {
-        /// key/value pairs
-        pairs: Arc<Vec<(SmolStr, Expr<T>)>>,
-    },
+    Record(Arc<BTreeMap<SmolStr, Expr<T>>>),
 }
 
 impl From<Value> for Expr {
@@ -276,15 +271,7 @@ impl<T> Expr<T> {
             ExprKind::Unknown { .. } => true,
             ExprKind::Set(_) => true,
             ExprKind::Var(_) => true,
-            ExprKind::Record { pairs } => {
-                // We need to ensure there are no duplicate keys in the expression
-                let uniq_keys = pairs
-                    .as_ref()
-                    .iter()
-                    .map(|(key, _)| key)
-                    .collect::<HashSet<_>>();
-                pairs.len() == uniq_keys.len()
-            }
+            ExprKind::Record(_) => true,
             _ => false,
         })
     }
@@ -425,6 +412,11 @@ impl Expr {
         ExprBuilder::new().record(pairs)
     }
 
+    /// Create an `Expr` which evaluates to a Record with the given key-value mapping.
+    pub fn record_arc(map: Arc<BTreeMap<SmolStr, Expr>>) -> Self {
+        ExprBuilder::new().record_arc(map)
+    }
+
     /// Create an `Expr` which calls the extension function with the given
     /// `Name` on `args`
     pub fn call_extension_fn(fn_name: Name, args: Vec<Expr>) -> Self {
@@ -559,12 +551,12 @@ impl Expr {
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(Expr::set(members))
             }
-            ExprKind::Record { pairs } => {
-                let pairs = pairs
+            ExprKind::Record(map) => {
+                let map = map
                     .iter()
                     .map(|(name, e)| Ok((name.clone(), e.substitute(definitions)?)))
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(Expr::record(pairs))
+                    .collect::<Result<BTreeMap<_, _>, _>>()?;
+                Ok(Expr::record(map))
             }
             ExprKind::MulByConst { arg, constant } => {
                 Ok(Expr::mul(arg.substitute(definitions)?, *constant))
@@ -720,11 +712,10 @@ impl std::fmt::Display for Expr {
                 write!(f, "{} like \"{}\"", maybe_with_parens(expr), pattern,)
             }
             ExprKind::Set(v) => write!(f, "[{}]", v.iter().join(", ")),
-            ExprKind::Record { pairs } => write!(
+            ExprKind::Record(m) => write!(
                 f,
                 "{{{}}}",
-                pairs
-                    .iter()
+                m.iter()
                     .map(|(k, v)| format!("\"{}\": {}", k.escape_debug(), v))
                     .join(", ")
             ),
@@ -1056,9 +1047,12 @@ impl<T> ExprBuilder<T> {
 
     /// Create an `Expr` which evaluates to a Record with the given (key, value) pairs.
     pub fn record(self, pairs: impl IntoIterator<Item = (SmolStr, Expr<T>)>) -> Expr<T> {
-        self.with_expr_kind(ExprKind::Record {
-            pairs: Arc::new(pairs.into_iter().collect()),
-        })
+        self.with_expr_kind(ExprKind::Record(Arc::new(pairs.into_iter().collect())))
+    }
+
+    /// Create an `Expr` which evalutes to a Record with the given key-value mapping.
+    pub fn record_arc(self, map: Arc<BTreeMap<SmolStr, Expr<T>>>) -> Expr<T> {
+        self.with_expr_kind(ExprKind::Record(map))
     }
 
     /// Create an `Expr` which calls the extension function with the given
@@ -1284,10 +1278,13 @@ impl<T> Expr<T> {
                 .iter()
                 .zip(elems1.iter())
                 .all(|(e, e1)| e.eq_shape(e1)),
-            (Record { pairs }, Record { pairs: pairs1 }) => pairs
-                .iter()
-                .zip(pairs1.iter())
-                .all(|((a, e), (a1, e1))| a == a1 && e.eq_shape(e1)),
+            (Record(map), Record(map1)) => {
+                map.len() == map1.len()
+                    && map
+                        .iter()
+                        .zip(map1.iter()) // relying on BTreeMap producing an iterator sorted by key
+                        .all(|((a, e), (a1, e1))| a == a1 && e.eq_shape(e1))
+            }
             _ => false,
         }
     }
@@ -1366,9 +1363,9 @@ impl<T> Expr<T> {
                     e.hash_shape(state);
                 })
             }
-            ExprKind::Record { pairs } => {
-                state.write_usize(pairs.len());
-                pairs.iter().for_each(|(s, a)| {
+            ExprKind::Record(map) => {
+                state.write_usize(map.len());
+                map.iter().for_each(|(s, a)| {
                     s.hash(state);
                     a.hash_shape(state);
                 });
