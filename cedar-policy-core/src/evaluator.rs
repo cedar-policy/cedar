@@ -66,7 +66,7 @@ pub struct Evaluator<'e, T: EntityDatabase> {
 /// This mutable cache avoids duplicating lookups/expression evaluation.
 struct EvaluatorCache<'a> {
     /// Cache of entity attribute values
-    /// Invariant: the uids present in `attrs` are the same as those in `entity_cache` 
+    /// Invariant: the uids present in `attrs` are the same as those in `entity_cache`
     attrs: HashMap<EntityUID, HashMap<SmolStr, PartialValue>>,
 
     /// Cache of entities that have been looked up
@@ -150,7 +150,7 @@ impl<'e> RestrictedEvaluator<'e> {
 
 
 impl<'a> EvaluatorCache<'a> {
-    /// Create a new, empty cache 
+    /// Create a new, empty cache
     fn new() -> Self {
         Self {
             attrs: HashMap::new(),

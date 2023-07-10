@@ -260,7 +260,7 @@ pub trait EntityDatabase {
     /// Given a list of uids, get the corresponding entities; returns none if the corresponding
     /// entity doesn't exist
     /// TODO: accept a list of uids instead of a single one so that the
-    /// implementation can theoretically (in the future) take advantage of parallelism 
+    /// implementation can theoretically (in the future) take advantage of parallelism
     fn get_entity_of_uid(&self, uid: &EntityUID) -> Option<Entity>;
 
     /// Given a uid, get the corresponding entity or a residual expression
