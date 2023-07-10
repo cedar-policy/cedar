@@ -254,7 +254,6 @@ pub enum TCComputation {
 }
 
 /// An entity database is something that can retrieve entities based on their id
-/// and can decide if one entity is an ancestor from another
 pub trait EntityDatabase {
     /// Given a list of uids, get the corresponding entities; returns none if the corresponding
     /// entity doesn't exist
@@ -267,6 +266,11 @@ pub trait EntityDatabase {
 
     /// Get an entity given its uid,
     /// or a residual expression if the entity doesn't exist and we are in partial mode
+    /// TODO: This could return a reference Dereference<&Entity>
+    /// This doesn't matter for the traditional "database" case, because if we read from disk,
+    /// then we have to deserialize the entity anyway, so we might as well return the entity.
+    /// OTOH, if we have the database in memory, then we might want to return a reference to avoid the copy
+    /// but then we have to deal with issues relating to the lifetime of the reference.
     fn entity(&self, uid: &EntityUID) -> Dereference<Entity> {
         match self.get_entity_of_uid(uid) {
             Some(e) => Dereference::Data(e),
@@ -276,24 +280,6 @@ pub trait EntityDatabase {
             },
         }
     }
-
-    // fn entity_of_mode(&self, uid: &EntityUID, mode: &Mode) -> Dereference<'_, Entity> {
-    //     match self.get_entity_of_uid(uid) {
-    //         Some(e) => Dereference::Data(e),
-    //         None => match mode {
-    //             Mode::Concrete => Dereference::NoSuchEntity,
-    //             Mode::Partial => Dereference::Residual(Expr::unknown(format!("{uid}"))),
-    //         }
-    //     }
-    // }
-
-    // Get entity from uid, returning a dereference
-    // fn entity(&self, uid: &EntityUID) -> Dereference<'_, Entity> {
-    //     match self.get_entity_of_uid(uid) {
-    //         Some(e) => Dereference::Data(&e),
-    //         None => Dereference::NoSuchEntity,  // TODO: add back residual entities
-    //     }
-    // }
 }
 
 impl<'e> EntityDatabase for Entities {

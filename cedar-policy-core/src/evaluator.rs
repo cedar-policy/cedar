@@ -66,7 +66,8 @@ pub struct Evaluator<'e, T: EntityDatabase> {
 /// This mutable cache avoids duplicating lookups/expression evaluation.
 struct EvaluatorCache<'a> {
     /// Cache of entity attribute values
-    /// Invariant: the uids present in `attrs` are the same as those in `entity_cache`
+    /// Should hold: each uid in this map corresponds to an entity, and the corresponding attribute map
+    /// is the correctly parsed attribute map for that entity
     attrs: HashMap<EntityUID, HashMap<SmolStr, PartialValue>>,
 
     /// Cache of entities that have been looked up
@@ -159,6 +160,7 @@ impl<'a> EvaluatorCache<'a> {
     }
 
     /// Add the given attributes for the given entity to the cache.
+    /// If an error occurs evaluating some expression, then nothing is added to the map
     fn add_entity_attrs<'e>(&'e mut self, entity: &Entity, extensions: &Extensions<'_>) -> Result<()> {
         let restricted_eval = RestrictedEvaluator::new(extensions);
         let attrs = entity
@@ -612,6 +614,8 @@ impl<'q, 'e, T: EntityDatabase> Evaluator<'e, T> {
     /// May return an error, for instance if the `Expr` tries to access an
     /// attribute that doesn't exist.
     pub fn partial_interpret(&self, e: &Expr, slots: &SlotEnv) -> Result<PartialValue> {
+        // TODO: instead of creating a cache here, we should accept this as a parameter
+        // That way we can reuse the cache across multiple policies
         let mut cache = EvaluatorCache::new();
         self.partial_interpret_using_cache(e, slots, &mut cache)
     }
