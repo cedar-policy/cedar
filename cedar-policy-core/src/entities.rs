@@ -20,6 +20,7 @@ use crate::ast::*;
 use crate::transitive_closure::{compute_tc, enforce_tc_and_dag};
 use std::collections::{hash_map, HashMap};
 
+use either::Either;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -252,6 +253,49 @@ pub enum TCComputation {
     /// contain just parent edges and not transitive ancestor edges. Also checks for cycles and returns an error if found.
     ComputeNow,
 }
+
+/// An entity database is something that can retrieve entities based on their id
+/// and can decide if one entity is an ancestor from another
+pub trait EntityDatabase {
+    /// Given a list of uids, get the corresponding entities; returns none if the corresponding
+    /// entity doesn't exist
+    /// TODO: accept a list of uids instead of a single one so that the
+    /// implementation can theoretically (in the future) take advantage of parallelism 
+    fn get_entity_of_uid(&self, uid: &EntityUID) -> Option<Entity>;
+
+    /// Given a uid, get the corresponding entity or a residual expression
+    fn get_entity_or_unknown(&self, uid: &EntityUID) -> Either<Entity, Expr> {
+        match self.get_entity_of_uid(uid) {
+            Some(e) => Either::Left(e),
+            None => Either::Right(Expr::unknown(format!("{uid}"))),
+        }
+    }
+
+    // fn entity_of_mode(&self, uid: &EntityUID, mode: &Mode) -> Dereference<'_, Entity> {
+    //     match self.get_entity_of_uid(uid) {
+    //         Some(e) => Dereference::Data(e),
+    //         None => match mode {
+    //             Mode::Concrete => Dereference::NoSuchEntity,
+    //             Mode::Partial => Dereference::Residual(Expr::unknown(format!("{uid}"))),
+    //         }
+    //     }
+    // }
+
+    // Get entity from uid, returning a dereference
+    // fn entity(&self, uid: &EntityUID) -> Dereference<'_, Entity> {
+    //     match self.get_entity_of_uid(uid) {
+    //         Some(e) => Dereference::Data(&e),
+    //         None => Dereference::NoSuchEntity,  // TODO: add back residual entities
+    //     }
+    // }
+}
+
+impl<'e> EntityDatabase for Entities {
+    fn get_entity_of_uid(&self, uid: &EntityUID) -> Option<Entity> {
+        self.entities.get(uid).cloned()
+    }
+}
+
 
 #[cfg(test)]
 mod json_parsing_tests {

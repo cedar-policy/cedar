@@ -17,7 +17,7 @@
 //! This module contains the Cedar evaluator.
 
 use crate::ast::*;
-use crate::entities::{Dereference, Entities};
+use crate::entities::{Dereference, EntityDatabase};
 use crate::extensions::Extensions;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -44,7 +44,7 @@ mod names {
 /// Conceptually keeps the evaluation environment as part of its internal state,
 /// because we will be repeatedly invoking the evaluator on every policy in a
 /// Slice.
-pub struct Evaluator<'e> {
+pub struct Evaluator<'e, T: EntityDatabase> {
     /// `Principal` for the current request
     principal: EntityUIDEntry,
     /// `Action` for the current request
@@ -58,13 +58,20 @@ pub struct Evaluator<'e> {
     /// This is a reference, because the `Evaluator` doesn't need ownership of
     /// (or need to modify) the `Entities`. One advantage of this is that you
     /// could create multiple `Evaluator`s without copying the `Entities`.
-    entities: &'e Entities,
+    entities: &'e T,
     /// Extensions which are active for this evaluation
-    extensions: &'e Extensions<'e>,
-    /// Entity attribute value cache
-    ///
-    /// We evaluate entity attribute expressions upon the creation of an evaluator.
-    entity_attr_values: EntityAttrValues<'e>,
+    extensions: &'e Extensions<'e>
+}
+
+/// This mutable cache avoids duplicating lookups/expression evaluation.
+struct EvaluatorCache<'a> {
+    /// Cache of entity attribute values
+    /// Invariant: the uids present in `attrs` are the same as those in `entity_cache` 
+    attrs: HashMap<EntityUID, HashMap<SmolStr, PartialValue>>,
+
+    /// Cache of entities that have been looked up
+    /// TODO: use this to cache entities
+    entity_cache: HashMap<EntityUID, &'a Entity>
 }
 
 /// Evaluator for "restricted" expressions. See notes on `RestrictedExpr`.
@@ -141,50 +148,46 @@ impl<'e> RestrictedEvaluator<'e> {
     }
 }
 
-struct EntityAttrValues<'a> {
-    attrs: HashMap<EntityUID, HashMap<SmolStr, PartialValue>>,
-    entities: &'a Entities,
-}
 
-impl<'a> EntityAttrValues<'a> {
-    pub fn new<'e>(entities: &'a Entities, extensions: &'e Extensions<'e>) -> Result<Self> {
-        let restricted_eval = RestrictedEvaluator::new(extensions);
-        // Eagerly evaluate each attribute expression in the entities.
-        let attrs = entities
-            .iter()
-            .map(|entity| {
-                Ok((
-                    entity.uid(),
-                    entity
-                        .attrs()
-                        .iter()
-                        .map(|(attr, v)| {
-                            Ok((
-                                attr.to_owned(),
-                                restricted_eval.partial_interpret(v.as_borrowed())?,
-                            ))
-                        })
-                        .collect::<Result<HashMap<SmolStr, PartialValue>>>()?,
-                ))
-            })
-            .collect::<Result<HashMap<EntityUID, HashMap<SmolStr, PartialValue>>>>()?;
-        Ok(Self { attrs, entities })
-    }
-
-    pub fn get(&self, uid: &EntityUID) -> Dereference<'_, HashMap<SmolStr, PartialValue>> {
-        match self.entities.entity(uid) {
-            Dereference::NoSuchEntity => Dereference::NoSuchEntity,
-            Dereference::Residual(r) => Dereference::Residual(r),
-            Dereference::Data(_) => self
-                .attrs
-                .get(uid)
-                .map(Dereference::Data)
-                .unwrap_or_else(|| Dereference::NoSuchEntity),
+impl<'a> EvaluatorCache<'a> {
+    /// Create a new, empty cache 
+    fn new() -> Self {
+        Self {
+            attrs: HashMap::new(),
+            entity_cache: HashMap::new(),
         }
     }
+
+    /// Add the given attributes for the given entity to the cache.
+    fn add_entity_attrs<'e>(&'e mut self, entity: &Entity, extensions: &Extensions<'_>) -> Result<()> {
+        let restricted_eval = RestrictedEvaluator::new(extensions);
+        let attrs = entity
+            .attrs()
+            .iter()
+            .map(|(attr, v)| {
+                Ok((
+                    attr.to_owned(),
+                    restricted_eval.partial_interpret(v.as_borrowed())?,
+                ))
+            })
+            .collect::<Result<HashMap<SmolStr, PartialValue>>>()?;
+        self.attrs.insert(entity.uid(), attrs);
+        Ok(())
+    }
+
+    /// Get the given entity's attributes and add it to the cache if it was not already present
+    fn get_attrs<'e>(&'e mut self, entity: Entity, extensions: &Extensions<'_>) -> Result<&'e HashMap<SmolStr, PartialValue>> {
+        let euid = entity.uid();
+        // Ensures that self.attrs.get(&euid) is populated
+        if !self.attrs.contains_key(&euid) {
+            self.add_entity_attrs(&entity, extensions)?;
+        }
+        Ok(self.attrs.get(&euid).unwrap())
+    }
+
 }
 
-impl<'q, 'e> Evaluator<'e> {
+impl<'q, 'e, T: EntityDatabase> Evaluator<'e, T> {
     /// Create a fresh `Evaluator` for the given `request`, which uses the given
     /// `Entities` to resolve entity references. Use the given `Extension`s when
     /// evaluating the request.
@@ -196,11 +199,9 @@ impl<'q, 'e> Evaluator<'e> {
     /// an error.
     pub fn new(
         q: &'q Request,
-        entities: &'e Entities,
+        entities: &'e T,
         extensions: &'e Extensions<'e>,
     ) -> Result<Self> {
-        // Eagerly evaluate each attribute expression in the entities.
-        let entity_attr_values = EntityAttrValues::new(entities, extensions)?;
         Ok(Self {
             principal: q.principal().clone(),
             action: q.action().clone(),
@@ -218,8 +219,7 @@ impl<'q, 'e> Evaluator<'e> {
                 }
             },
             entities,
-            extensions,
-            entity_attr_values,
+            extensions
         })
     }
 
@@ -284,12 +284,9 @@ impl<'q, 'e> Evaluator<'e> {
         }
     }
 
-    /// Interpret an `Expr` into a `Value` in this evaluation environment.
-    ///
-    /// May return a residual expression, if the input expression is symbolic.
-    /// May return an error, for instance if the `Expr` tries to access an
-    /// attribute that doesn't exist.
-    pub fn partial_interpret(&self, e: &Expr, slots: &SlotEnv) -> Result<PartialValue> {
+    /// Same as `partial_interpret` but use the given cache
+    /// This should return the same value regardless of what `cache` is
+    fn partial_interpret_using_cache(&self, e: &Expr, slots: &SlotEnv, cache: &mut EvaluatorCache<'_>) -> Result<PartialValue> {
         stack_size_check()?;
 
         match e.expr_kind() {
@@ -309,9 +306,9 @@ impl<'q, 'e> Evaluator<'e> {
                 test_expr,
                 then_expr,
                 else_expr,
-            } => self.eval_if(test_expr, then_expr, else_expr, slots),
+            } => self.eval_if(test_expr, then_expr, else_expr, slots, cache),
             ExprKind::And { left, right } => {
-                match self.partial_interpret(left, slots)? {
+                match self.partial_interpret_using_cache(left, slots, cache)? {
                     // PE Case
                     PartialValue::Residual(e) => Ok(PartialValue::Residual(Expr::and(
                         e,
@@ -320,7 +317,7 @@ impl<'q, 'e> Evaluator<'e> {
                     // Full eval case
                     PartialValue::Value(v) => {
                         if v.get_as_bool()? {
-                            match self.partial_interpret(right, slots)? {
+                            match self.partial_interpret_using_cache(right, slots, cache)? {
                                 // you might think that `true && <residual>` can be optimized to `<residual>`, but this isn't true because
                                 // <residual> must be boolean, or else it needs to type error. So return `true && <residual>` to ensure
                                 // type check happens
@@ -338,7 +335,7 @@ impl<'q, 'e> Evaluator<'e> {
                 }
             }
             ExprKind::Or { left, right } => {
-                match self.partial_interpret(left, slots)? {
+                match self.partial_interpret_using_cache(left, slots, cache)? {
                     // PE cases
                     PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::or(
                         r,
@@ -350,7 +347,7 @@ impl<'q, 'e> Evaluator<'e> {
                             // We can short circuit here
                             Ok(true.into())
                         } else {
-                            match self.partial_interpret(right, slots)? {
+                            match self.partial_interpret_using_cache(right, slots, cache)? {
                                 PartialValue::Residual(rhs) =>
                                 // you might think that `false || <residual>` can be optimized to `<residual>`, but this isn't true because
                                 // <residual> must be boolean, or else it needs to type error. So return `false || <residual>` to ensure
@@ -364,7 +361,7 @@ impl<'q, 'e> Evaluator<'e> {
                     }
                 }
             }
-            ExprKind::UnaryApp { op, arg } => match self.partial_interpret(arg, slots)? {
+            ExprKind::UnaryApp { op, arg } => match self.partial_interpret_using_cache(arg, slots, cache)? {
                 PartialValue::Value(arg) => match op {
                     UnaryOp::Not => match arg.get_as_bool()? {
                         true => Ok(false.into()),
@@ -389,8 +386,8 @@ impl<'q, 'e> Evaluator<'e> {
                 // Current limitations:
                 //   Operators are not partially evaluated.
                 let (arg1, arg2) = match (
-                    self.partial_interpret(arg1, slots)?,
-                    self.partial_interpret(arg2, slots)?,
+                    self.partial_interpret_using_cache(arg1, slots, cache)?,
+                    self.partial_interpret_using_cache(arg2, slots, cache)?,
                 ) {
                     (PartialValue::Value(v1), PartialValue::Value(v2)) => (v1, v2),
                     (PartialValue::Value(v1), PartialValue::Residual(e2)) => {
@@ -442,13 +439,20 @@ impl<'q, 'e> Evaluator<'e> {
                     // hierarchy membership operator; see note on `BinaryOp::In`
                     BinaryOp::In => {
                         let uid1 = arg1.get_as_entity()?;
-                        match self.entities.entity(uid1) {
-                            Dereference::Residual(r) => Ok(PartialValue::Residual(
+                        let entity = self.entities.get_entity_or_unknown(uid1);
+                        match entity {
+                            Either::Left(r) => self.eval_in(uid1, Some(&r), arg2),
+                            Either::Right(r) => Ok(PartialValue::Residual(
                                 Expr::binary_app(BinaryOp::In, r, arg2.into()),
-                            )),
-                            Dereference::NoSuchEntity => self.eval_in(uid1, None, arg2),
-                            Dereference::Data(e) => self.eval_in(uid1, Some(e), arg2),
+                            ))
                         }
+                        // match self.entities.entity(uid1) {
+                        //     Dereference::Residual(r) => Ok(PartialValue::Residual(
+                        //         Expr::binary_app(BinaryOp::In, r, arg2.into()),
+                        //     )),
+                        //     Dereference::NoSuchEntity => self.eval_in(uid1, None, arg2),
+                        //     Dereference::Data(e) => self.eval_in(uid1, Some(e), arg2),
+                        // }
                     }
                     // contains, which works on Sets
                     BinaryOp::Contains => match arg1 {
@@ -515,7 +519,7 @@ impl<'q, 'e> Evaluator<'e> {
                     }
                 }
             }
-            ExprKind::MulByConst { arg, constant } => match self.partial_interpret(arg, slots)? {
+            ExprKind::MulByConst { arg, constant } => match self.partial_interpret_using_cache(arg, slots, cache)? {
                 PartialValue::Value(arg) => {
                     let i1 = arg.get_as_long()?;
                     match i1.checked_mul(*constant) {
@@ -533,7 +537,7 @@ impl<'q, 'e> Evaluator<'e> {
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let args = args
                     .iter()
-                    .map(|arg| self.partial_interpret(arg, slots))
+                    .map(|arg| self.partial_interpret_using_cache(arg, slots, cache))
                     .collect::<Result<Vec<_>>>()?;
                 match split(args) {
                     Either::Left(vals) => {
@@ -546,16 +550,16 @@ impl<'q, 'e> Evaluator<'e> {
                     )),
                 }
             }
-            ExprKind::GetAttr { expr, attr } => self.get_attr(expr.as_ref(), attr, slots),
-            ExprKind::HasAttr { expr, attr } => match self.partial_interpret(expr, slots)? {
+            ExprKind::GetAttr { expr, attr } => self.get_attr(expr.as_ref(), attr, slots, cache),
+            ExprKind::HasAttr { expr, attr } => match self.partial_interpret_using_cache(expr, slots, cache)? {
                 PartialValue::Value(Value::Record(record)) => Ok(record.get(attr).is_some().into()),
                 PartialValue::Value(Value::Lit(Literal::EntityUID(uid))) => {
-                    match self.entities.entity(&uid) {
-                        Dereference::NoSuchEntity => Ok(false.into()),
-                        Dereference::Residual(r) => {
-                            Ok(PartialValue::Residual(Expr::has_attr(r, attr.clone())))
-                        }
-                        Dereference::Data(e) => Ok(e.get(attr).is_some().into()),
+                    let entity = self.entities.get_entity_or_unknown(&uid);
+                    match entity {
+                        Either::Left(r) => Ok(r.get(attr).is_some().into()),
+                        Either::Right(r) => Ok(PartialValue::Residual(
+                            Expr::has_attr(r, attr.clone()),
+                        ))
                     }
                 }
                 PartialValue::Value(val) => Err(err::EvaluationError::TypeError {
@@ -568,7 +572,7 @@ impl<'q, 'e> Evaluator<'e> {
                 PartialValue::Residual(r) => Ok(Expr::has_attr(r, attr.clone()).into()),
             },
             ExprKind::Like { expr, pattern } => {
-                let v = self.partial_interpret(expr, slots)?;
+                let v = self.partial_interpret_using_cache(expr, slots, cache)?;
                 match v {
                     PartialValue::Value(v) => {
                         Ok((pattern.wildcard_match(v.get_as_string()?)).into())
@@ -579,7 +583,7 @@ impl<'q, 'e> Evaluator<'e> {
             ExprKind::Set(items) => {
                 let vals = items
                     .iter()
-                    .map(|item| self.partial_interpret(item, slots))
+                    .map(|item| self.partial_interpret_using_cache(item, slots, cache))
                     .collect::<Result<Vec<_>>>()?;
                 match split(vals) {
                     Either::Left(vals) => Ok(Value::set(vals).into()),
@@ -589,7 +593,7 @@ impl<'q, 'e> Evaluator<'e> {
             ExprKind::Record { pairs } => {
                 let map = pairs
                     .iter()
-                    .map(|(k, v)| Ok((k.clone(), self.partial_interpret(v, slots)?)))
+                    .map(|(k, v)| Ok((k.clone(), self.partial_interpret_using_cache(v, slots, cache)?)))
                     .collect::<Result<Vec<_>>>()?;
                 let (names, evalled): (Vec<SmolStr>, Vec<PartialValue>) = map.into_iter().unzip();
                 match split(evalled) {
@@ -600,6 +604,16 @@ impl<'q, 'e> Evaluator<'e> {
                 }
             }
         }
+    }
+
+    /// Interpret an `Expr` into a `Value` in this evaluation environment.
+    ///
+    /// May return a residual expression, if the input expression is symbolic.
+    /// May return an error, for instance if the `Expr` tries to access an
+    /// attribute that doesn't exist.
+    pub fn partial_interpret(&self, e: &Expr, slots: &SlotEnv) -> Result<PartialValue> {
+        let mut cache = EvaluatorCache::new();
+        self.partial_interpret_using_cache(e, slots, &mut cache)
     }
 
     fn eval_in(
@@ -647,13 +661,14 @@ impl<'q, 'e> Evaluator<'e> {
         consequent: &Expr,
         alternative: &Expr,
         slots: &SlotEnv,
+        cache: &mut EvaluatorCache<'_>,
     ) -> Result<PartialValue> {
-        match self.partial_interpret(guard, slots)? {
+        match self.partial_interpret_using_cache(guard, slots, cache)? {
             PartialValue::Value(v) => {
                 if v.get_as_bool()? {
-                    self.partial_interpret(consequent, slots)
+                    self.partial_interpret_using_cache(consequent, slots, cache)
                 } else {
-                    self.partial_interpret(alternative, slots)
+                    self.partial_interpret_using_cache(alternative, slots, cache)
                 }
             }
             PartialValue::Residual(_) => {
@@ -668,8 +683,20 @@ impl<'q, 'e> Evaluator<'e> {
         }
     }
 
-    fn get_attr(&self, expr: &Expr, attr: &SmolStr, slots: &SlotEnv) -> Result<PartialValue> {
-        match self.partial_interpret(expr, slots)? {
+    fn get_entity_attr_using_cache<'a>(&self, uid: &EntityUID, cache: &'e mut EvaluatorCache<'a>) -> Dereference<'e, HashMap<SmolStr, PartialValue>> {
+        // let entity = self.entities.get_entity_of_uid(uid).unwrap();
+        match self.entities.get_entity_of_uid(uid) {
+            Some(entity) => {
+                let result = cache.get_attrs(entity, self.extensions).unwrap(); // TODO: handle restricted expr evaluation error
+                Dereference::Data(result)
+                // Dereference::Data(&result.unwrap())
+            }
+            None => Dereference::NoSuchEntity,
+        }
+    }
+
+    fn get_attr(&self, expr: &Expr, attr: &SmolStr, slots: &SlotEnv, cache: &mut EvaluatorCache<'_>) -> Result<PartialValue> {
+        match self.partial_interpret_using_cache(expr, slots, cache)? {
             // PE Cases
             PartialValue::Residual(e) => {
                 match e.expr_kind() {
@@ -687,7 +714,7 @@ impl<'q, 'e> Evaluator<'e> {
                                 .ok_or_else(|| {
                                     EvaluationError::RecordAttrDoesNotExist(attr.clone())
                                 })
-                                .and_then(|e| self.partial_interpret(e, slots))
+                                .and_then(|e| self.partial_interpret_using_cache(e, slots, cache))
                         } else if pairs.iter().any(|(k, _v)| k == attr) {
                             Ok(PartialValue::Residual(Expr::get_attr(
                                 Expr::record(pairs.as_ref().clone()), // We should try to avoid this copy
@@ -707,7 +734,7 @@ impl<'q, 'e> Evaluator<'e> {
                 .ok_or_else(|| EvaluationError::RecordAttrDoesNotExist(attr.clone()))
                 .map(|v| PartialValue::Value(v.clone())),
             PartialValue::Value(Value::Lit(Literal::EntityUID(uid))) => {
-                match self.entity_attr_values.get(uid.as_ref()) {
+                match self.get_entity_attr_using_cache(uid.as_ref(), cache) {
                     Dereference::NoSuchEntity => Err(match *uid.entity_type() {
                         EntityType::Unspecified => {
                             EvaluationError::UnspecifiedEntityAccess(attr.clone())
@@ -764,7 +791,7 @@ impl<'q, 'e> Evaluator<'e> {
     // GRCOV_BEGIN_COVERAGE
 }
 
-impl<'e> std::fmt::Debug for Evaluator<'e> {
+impl<'e, T: EntityDatabase> std::fmt::Debug for Evaluator<'e, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -853,7 +880,7 @@ pub mod test {
     use super::*;
 
     use crate::{
-        entities::{EntityJsonParser, TCComputation},
+        entities::{EntityJsonParser, TCComputation, Entities},
         parser::{self, parse_policyset},
         parser::{parse_expr, parse_policy_template},
     };

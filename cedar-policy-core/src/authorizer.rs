@@ -21,7 +21,7 @@
 //! the "authorization engine".
 
 use crate::ast::*;
-use crate::entities::Entities;
+use crate::entities::{Entities, EntityDatabase};
 use crate::evaluator::{EvaluationError, Evaluator};
 use crate::extensions::Extensions;
 use itertools::Either;
@@ -296,10 +296,10 @@ impl Authorizer {
         }
     }
 
-    fn evaluate_policies<'a>(
+    fn evaluate_policies<'a, T: EntityDatabase>(
         &'a self,
         pset: &'a PolicySet,
-        eval: Evaluator<'_>,
+        eval: Evaluator<'a, T>,
     ) -> EvaluationResults<'a> {
         let mut results = EvaluationResults::default();
         let mut satisfied_policies = vec![];
