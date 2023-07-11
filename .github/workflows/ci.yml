@@ -38,22 +38,70 @@ jobs:
   cargo_semver_checks:
     name: Cargo SemVer Checks
     runs-on: ubuntu-latest
-    continue-on-error: true
+    # Make this check mandatory for release branches.
+    continue-on-error: ${{ !startsWith(github.base_ref, 'release/') }}
     strategy:
       matrix:
         toolchain:
           - stable
     steps:
-      - uses: actions/checkout@v3
+      - name: Check out head (${{ github.head_ref }})
+        uses: actions/checkout@v3
         with:
           path: head
-      - uses: actions/checkout@v3
+      # Pull requests to non-release branches are checked for SemVer breakage
+      # relative to their target branch.
+      - if: ${{ !startsWith(github.base_ref, 'release/') }}
+        name: Check out base (${{ github.base_ref }})
+        uses: actions/checkout@v3
         with:
           ref: ${{ github.base_ref }}
           path: base
+      # If this is a release PR, check SemVer relative to the highest version
+      # published to crates.io <= the version from head.
+      - if: ${{ startsWith(github.base_ref, 'release/') }}
+        name: Check out base (from crates.io)
+        shell: bash
+        run: |-
+          cedar_policy_version="$(
+            cd head &&
+            cargo metadata --format-version 1 |
+              jq --raw-output '.packages[] | select(.name == "cedar-policy") | .version'
+          )"
+          echo "HEAD has cedar-policy at ${cedar_policy_version}"
+
+          tmp_dir="$(mktemp -d)"
+          function cleanup {
+            rm -rf "${tmp_dir}"
+          }
+          trap cleanup EXIT
+
+          (
+            cd "${tmp_dir}"
+
+            echo "[package]
+            name = \"cedar-semver-checks\"
+            version = \"0.0.0\"
+            edition = \"2021\"
+            publish = false
+
+            [dependencies]
+            cedar-policy = \"<=${cedar_policy_version}\"" > Cargo.toml
+
+            mkdir src
+            touch src/lib.rs
+
+            cargo vendor
+          )
+
+          mkdir base
+          mv "${tmp_dir}/vendor/cedar-policy" base/
+          echo '[workspace]
+          members = ["cedar-policy"]' > base/Cargo.toml
       # `cargo semver-checks` doesn't understand `rlib` crates.
-      - run: sed -i 's/^crate_type = \["rlib"\]$/crate_type = ["lib"]/' {head,base}/cedar-policy/Cargo.toml
+      - run: >-
+          sed -i 's/^crate_type = \["rlib"\]$/crate_type = ["lib"]/' {head,base}/cedar-policy/Cargo.toml
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: cargo install cargo-semver-checks
-      - run: cargo semver-checks check-release --baseline-root ../base --package cedar-policy
+      - run: cargo semver-checks check-release --package cedar-policy --baseline-root ../base
         working-directory: head
