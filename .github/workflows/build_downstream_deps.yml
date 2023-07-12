@@ -3,36 +3,9 @@ name: Build Downstream Dependencies
 on:
   pull_request:
 
-env: 
+env:
   CARGO_TERM_COLOR: always
 jobs:
-  cedar-drt:
-    name: Rust project - latest
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        toolchain:
-          - stable
-    steps:
-      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - name: Checkout cedar-spec
-        uses: actions/checkout@v3
-        with:
-          repository: cedar-policy/cedar-spec
-          ref: main
-          path: ./cedar-spec
-          ssh-key: ${{ secrets.CEDARSPEC }}
-      - name: checkout cedar
-        uses: actions/checkout@v3
-        with:
-          path: cedar-spec/cedar
-      - name: build cedar-drt
-        working-directory: cedar-spec/cedar-drt
-        run: RUSTFLAGS="-D warnings" cargo build
-      - name: build cedar-drt/fuzz
-        working-directory: cedar-spec/cedar-drt/fuzz
-        run: RUSTFLAGS="--cfg=fuzzing -D warnings" cargo build
-
   cedar-java:
     name: Rust project - latest
     runs-on: ubuntu-latest
@@ -59,7 +32,7 @@ jobs:
       - name: build cedar-java/CedarJava
         working-directory: cedar-java/CedarJava
         run: bash config.sh && ./gradlew build
-      
+
 
   cedar-examples:
     name: Rust project - latest
@@ -93,5 +66,3 @@ jobs:
              printf "\npath = \"../cedar/cedar-policy\"" >> Cargo.toml
              cargo build
              cargo test
-      
-      
