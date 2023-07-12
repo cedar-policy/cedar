@@ -94,7 +94,7 @@ pub(crate) fn with_typechecker_from_schema<F>(
     F: FnOnce(Typechecker<'_>),
 {
     let schema = schema.try_into().expect("Failed to construct schema.");
-    let typechecker = Typechecker::new(&schema);
+    let typechecker = Typechecker::new(&schema, ValidationMode::default());
     fun(typechecker);
 }
 
@@ -140,11 +140,7 @@ pub(crate) fn assert_policy_typechecks(
 ) {
     with_typechecker_from_schema(schema, |typechecker| {
         let mut type_errors: HashSet<TypeError> = HashSet::new();
-        let typechecked = typechecker.typecheck_policy(
-            &policy.into(),
-            ValidationMode::default(),
-            &mut type_errors,
-        );
+        let typechecked = typechecker.typecheck_policy(&policy.into(), &mut type_errors);
         assert_eq!(type_errors, HashSet::new(), "Did not expect any errors.");
         assert!(typechecked, "Expected that policy would typecheck.");
     });
@@ -157,11 +153,8 @@ pub(crate) fn assert_policy_typecheck_fails(
 ) {
     with_typechecker_from_schema(schema, |typechecker| {
         let mut type_errors: HashSet<TypeError> = HashSet::new();
-        let typechecked = typechecker.typecheck_policy(
-            &static_to_template(policy.clone()),
-            ValidationMode::default(),
-            &mut type_errors,
-        );
+        let typechecked =
+            typechecker.typecheck_policy(&static_to_template(policy.clone()), &mut type_errors);
         assert_expected_type_errors(&expected_type_errors, &type_errors);
         assert!(!typechecked, "Expected that policy would not typecheck.");
     });
