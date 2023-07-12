@@ -53,6 +53,16 @@ pub enum ValidationMode {
     Permissive,
 }
 
+impl ValidationMode {
+    /// Does this mode apply strict validation rules.
+    fn is_strict(self) -> bool {
+        match self {
+            ValidationMode::Strict => true,
+            ValidationMode::Permissive => false,
+        }
+    }
+}
+
 /// Structure containing the context needed for policy validation. This is
 /// currently only the `EntityType`s and `ActionType`s from a single schema.
 #[derive(Debug)]
@@ -105,9 +115,9 @@ impl Validator {
         t: &'a Template,
         mode: ValidationMode,
     ) -> impl Iterator<Item = ValidationError> + 'a {
-        let typecheck = Typechecker::new(&self.schema);
+        let typecheck = Typechecker::new(&self.schema, mode);
         let mut type_errors = HashSet::new();
-        typecheck.typecheck_policy(t, mode, &mut type_errors);
+        typecheck.typecheck_policy(t, &mut type_errors);
         type_errors.into_iter().map(|type_error| {
             let (kind, location) = type_error.kind_and_location();
             ValidationError::with_policy_id(t.id(), location, ValidationErrorKind::type_error(kind))
