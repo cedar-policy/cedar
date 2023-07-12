@@ -105,10 +105,10 @@ pub(crate) fn with_typechecker_from_schema<F>(
 /// improvement to the typechecker to return more specific types.
 pub(crate) fn assert_types_eq(schema: &ValidatorSchema, expected: &Type, actual: &Type) {
     assert!(
-            Type::is_subtype(schema, expected, actual),
+            Type::is_subtype(schema, expected, actual, ValidationMode::Permissive),
             "Type equality assertion failed: the expected type is not a subtype of the actual type.\nexpected: {:#?}\nactual: {:#?}", expected, actual);
     assert!(
-            Type::is_subtype(schema, actual, expected),
+            Type::is_subtype(schema, actual, expected, ValidationMode::Permissive),
              "Type equality assertion failed: the actual type is not a subtype of the expected type.\nexpected: {:#?}\nactual: {:#?}", expected, actual);
 }
 
@@ -140,7 +140,16 @@ pub(crate) fn assert_policy_typechecks(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
     policy: impl Into<Arc<Template>>,
 ) {
-    with_typechecker_from_schema(schema, |typechecker| {
+    assert_policy_typechecks_for_mode(schema, policy, ValidationMode::Strict)
+}
+
+pub(crate) fn assert_policy_typechecks_for_mode(
+    schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
+    policy: impl Into<Arc<Template>>,
+    mode: ValidationMode,
+) {
+    with_typechecker_from_schema(schema, |mut typechecker| {
+        typechecker.mode = mode;
         let mut type_errors: HashSet<TypeError> = HashSet::new();
         let typechecked = typechecker.typecheck_policy(&policy.into(), &mut type_errors);
         assert_eq!(type_errors, HashSet::new(), "Did not expect any errors.");
@@ -153,7 +162,22 @@ pub(crate) fn assert_policy_typecheck_fails(
     policy: impl Into<Arc<Template>>,
     expected_type_errors: Vec<TypeError>,
 ) {
-    with_typechecker_from_schema(schema, |typechecker| {
+    assert_policy_typecheck_fails_for_mode(
+        schema,
+        policy,
+        expected_type_errors,
+        ValidationMode::Strict,
+    )
+}
+
+pub(crate) fn assert_policy_typecheck_fails_for_mode(
+    schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
+    policy: impl Into<Arc<Template>>,
+    expected_type_errors: Vec<TypeError>,
+    mode: ValidationMode,
+) {
+    with_typechecker_from_schema(schema, |mut typechecker| {
+        typechecker.mode = mode;
         let mut type_errors: HashSet<TypeError> = HashSet::new();
         let typechecked = typechecker.typecheck_policy(&policy.into(), &mut type_errors);
         assert_expected_type_errors(&expected_type_errors, &type_errors);
@@ -168,7 +192,17 @@ pub(crate) fn assert_typechecks(
     expr: Expr,
     expected: Type,
 ) {
-    with_typechecker_from_schema(schema, |typechecker| {
+    assert_typechecks_for_mode(schema, expr, expected, ValidationMode::Strict);
+}
+
+pub(crate) fn assert_typechecks_for_mode(
+    schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
+    expr: Expr,
+    expected: Type,
+    mode: ValidationMode,
+) {
+    with_typechecker_from_schema(schema, |mut typechecker| {
+        typechecker.mode = mode;
         let mut type_errors = HashSet::new();
         let actual = typechecker.typecheck_expr(&expr, &mut type_errors);
         assert_types_eq(
@@ -209,7 +243,24 @@ pub(crate) fn assert_typecheck_fails(
     expected_ty: Option<Type>,
     expected_type_errors: Vec<TypeError>,
 ) {
-    with_typechecker_from_schema(schema, |typechecker| {
+    assert_typecheck_fails_for_mode(
+        schema,
+        expr,
+        expected_ty,
+        expected_type_errors,
+        ValidationMode::Strict,
+    )
+}
+
+pub(crate) fn assert_typecheck_fails_for_mode(
+    schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
+    expr: Expr,
+    expected_ty: Option<Type>,
+    expected_type_errors: Vec<TypeError>,
+    mode: ValidationMode,
+) {
+    with_typechecker_from_schema(schema, |mut typechecker| {
+        typechecker.mode = mode;
         let mut type_errors = HashSet::new();
         let actual = typechecker.typecheck_expr(&expr, &mut type_errors);
         let actual_ty = match actual {
@@ -241,6 +292,15 @@ pub(crate) fn empty_schema_file() -> NamespaceDefinition {
 
 pub(crate) fn assert_typechecks_empty_schema(expr: Expr, expected: Type) {
     assert_typechecks(empty_schema_file(), expr, expected)
+}
+
+pub(crate) fn assert_typechecks_empty_schema_permissive(expr: Expr, expected: Type) {
+    assert_typechecks_for_mode(
+        empty_schema_file(),
+        expr,
+        expected,
+        ValidationMode::Permissive,
+    )
 }
 
 pub(crate) fn assert_typecheck_fails_empty_schema(

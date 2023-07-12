@@ -28,12 +28,13 @@ use cedar_policy_core::{
 };
 
 use super::test_utils::{
-    assert_policy_typecheck_fails, assert_policy_typechecks, assert_typechecks,
+    assert_policy_typecheck_fails, assert_policy_typecheck_fails_for_mode,
+    assert_policy_typechecks, assert_policy_typechecks_for_mode, assert_typechecks,
     with_typechecker_from_schema,
 };
 use crate::{
     type_error::TypeError, typecheck::test_utils::static_to_template, typecheck::PolicyCheck,
-    types::Type, NamespaceDefinition,
+    types::Type, NamespaceDefinition, ValidationMode,
 };
 
 fn simple_schema_file() -> NamespaceDefinition {
@@ -111,11 +112,27 @@ fn assert_policy_typechecks_simple_schema(p: impl Into<Arc<Template>>) {
     assert_policy_typechecks(simple_schema_file(), p)
 }
 
+fn assert_policy_typechecks_permissive_simple_schema(p: impl Into<Arc<Template>>) {
+    assert_policy_typechecks_for_mode(simple_schema_file(), p, ValidationMode::Permissive)
+}
+
 fn assert_policy_typecheck_fails_simple_schema(
     p: impl Into<Arc<Template>>,
     expected_type_errors: Vec<TypeError>,
 ) {
     assert_policy_typecheck_fails(simple_schema_file(), p, expected_type_errors)
+}
+
+fn assert_policy_typecheck_permissive_fails_simple_schema(
+    p: impl Into<Arc<Template>>,
+    expected_type_errors: Vec<TypeError>,
+) {
+    assert_policy_typecheck_fails_for_mode(
+        simple_schema_file(),
+        p,
+        expected_type_errors,
+        ValidationMode::Permissive,
+    )
 }
 
 #[test]
@@ -296,7 +313,7 @@ fn policy_entity_type_action_in_set() {
 
 #[test]
 fn policy_entity_type_principal_in_set() {
-    assert_policy_typechecks_simple_schema(parse_policy(
+    assert_policy_typechecks_permissive_simple_schema(parse_policy(
             Some("0".to_string()),
             r#"permit(principal, action, resource) when { principal in [User::"admin", Group::"admin"] || true};"#
         ).expect("Policy should parse."));
@@ -388,7 +405,7 @@ fn policy_entity_has_then_get() {
 
 #[test]
 fn policy_entity_top_has() {
-    assert_policy_typechecks_simple_schema(parse_policy(
+    assert_policy_typechecks_permissive_simple_schema(parse_policy(
             Some("0".to_string()),
             r#"permit(principal, action, resource) when { (if principal.name == "foo" then principal else resource) has name || true };"#,
         ).expect("Policy should parse."));
@@ -396,17 +413,17 @@ fn policy_entity_top_has() {
 
 #[test]
 fn entity_lub_access_attribute() {
-    assert_policy_typechecks_simple_schema(parse_policy(
+    assert_policy_typechecks_permissive_simple_schema(parse_policy(
             Some("0".to_string()),
-            r#"permit(principal, action, resource) when { (if 1 > 0 then User::"alice" else Group::"alice_friends").name like "foo" || true };"#
+            r#"permit(principal, action, resource) when { (if 1 > 0 then User::"alice" else Group::"alice_friends").name like "foo"};"#
         ).expect("Policy should parse."));
 }
 
 #[test]
 fn entity_lub_no_common_attributes_is_entity() {
-    assert_policy_typechecks_simple_schema(parse_policy(
+    assert_policy_typechecks_permissive_simple_schema(parse_policy(
             Some("0".to_string()),
-            r#"permit(principal, action, resource) when { principal in (if 1 > 0 then User::"alice" else Photo::"vacation.jpg") || true };"#
+            r#"permit(principal, action, resource) when { principal in (if 1 > 0 then User::"alice" else Photo::"vacation.jpg")};"#
         ).expect("Policy should parse."));
 }
 
@@ -417,25 +434,15 @@ fn entity_lub_cant_access_attribute_not_shared() {
         r#"permit(principal, action, resource == Group::"foo") when { (if 1 > 0 then User::"alice" else Photo::"vacation.jpg").name == "bob"};"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails_simple_schema(
+    assert_policy_typecheck_permissive_fails_simple_schema(
         p,
-        vec![
-            TypeError::unsafe_attribute_access(
-                Expr::from_str(r#"(if 1 > 0 then User::"alice" else Photo::"vacation.jpg").name"#)
-                    .unwrap(),
-                "name".into(),
-                None,
-                true,
-            ),
-            TypeError::types_must_match(
-                Expr::from_str(r#"if 1 > 0 then User::"alice" else Photo::"vacation.jpg""#)
-                    .unwrap(),
-                [
-                    Type::named_entity_reference_from_str("User"),
-                    Type::named_entity_reference_from_str("Photo"),
-                ],
-            ),
-        ],
+        vec![TypeError::unsafe_attribute_access(
+            Expr::from_str(r#"(if 1 > 0 then User::"alice" else Photo::"vacation.jpg").name"#)
+                .unwrap(),
+            "name".into(),
+            None,
+            true,
+        )],
     );
 }
 
@@ -456,7 +463,7 @@ fn entity_attribute_recommendation() {
 
 #[test]
 fn entity_lub_no_common_attributes_might_have_declared_attribute() {
-    assert_policy_typechecks_simple_schema(parse_policy(
+    assert_policy_typechecks_permissive_simple_schema(parse_policy(
             Some("0".to_string()),
             r#"permit(principal, action, resource) when { (if 1 > 0 then User::"alice" else Photo::"vacation.jpg") has age || true };"#
         ).expect("Policy should parse."));
@@ -469,7 +476,7 @@ fn entity_lub_cant_have_undeclared_attribute() {
         r#"permit(principal, action, resource) when { (if 1 > 0 then User::"alice" else Photo::"vacation.jpg") has foo};"#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails_simple_schema(
+    assert_policy_typecheck_permissive_fails_simple_schema(
         p.clone(),
         vec![TypeError::impossible_policy(p.condition())],
     );

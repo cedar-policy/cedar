@@ -24,8 +24,8 @@ use std::str::FromStr;
 use cedar_policy_core::ast::{EntityType, EntityUID, Expr};
 
 use crate::{
-    types::{Attributes, RequestEnv, Type},
-    SchemaFragment, TypeErrorKind, TypesMustMatch,
+    types::{Attributes, EffectSet, RequestEnv, Type},
+    IncompatibleTypes, SchemaFragment, TypeErrorKind, ValidationMode,
 };
 
 use super::test_utils::with_typechecker_from_schema;
@@ -37,9 +37,11 @@ fn assert_typechecks_strict(
     e_strict: Expr,
     expected_type: Type,
 ) {
-    with_typechecker_from_schema(schema, |typechecker| {
+    with_typechecker_from_schema(schema, |mut typechecker| {
+        typechecker.mode = ValidationMode::Strict;
         let mut errs = Vec::new();
-        let answer = typechecker.typecheck_strict(env, &e, expected_type, &mut errs);
+        let answer = typechecker.expect_type(env, &EffectSet::new(), &e, expected_type, &mut errs);
+
         assert_eq!(errs, vec![], "Expression should not contain any errors.");
         match answer {
             crate::typecheck::TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
@@ -63,9 +65,10 @@ fn assert_strict_type_error(
     expected_type: Type,
     expected_error: TypeErrorKind,
 ) {
-    with_typechecker_from_schema(schema, |typechecker| {
+    with_typechecker_from_schema(schema, |mut typechecker| {
+        typechecker.mode = ValidationMode::Strict;
         let mut errs = Vec::new();
-        let answer = typechecker.typecheck_strict(env, &e, expected_type, &mut errs);
+        let answer = typechecker.expect_type(env, &EffectSet::new(), &e, expected_type, &mut errs);
 
         assert_eq!(
             errs.into_iter().map(|e| e.kind).collect::<Vec<_>>(),
@@ -100,7 +103,7 @@ fn assert_types_must_match(
         e,
         e_strict,
         expected_type,
-        TypeErrorKind::TypesMustMatch(TypesMustMatch {
+        TypeErrorKind::IncompatibleTypes(IncompatibleTypes {
             types: unequal_types.into_iter().collect(),
         }),
     )
@@ -152,10 +155,12 @@ where
 #[test]
 fn strict_typecheck_catches_regular_type_error() {
     with_simple_schema_and_request(|s, q| {
-        with_typechecker_from_schema(s, |typechecker| {
+        with_typechecker_from_schema(s, |mut typechecker| {
             let mut errs = Vec::new();
-            typechecker.typecheck_strict(
+            typechecker.mode = ValidationMode::Strict;
+            typechecker.expect_type(
                 &q,
+                &EffectSet::new(),
                 &Expr::from_str("1 + false").unwrap(),
                 Type::primitive_long(),
                 &mut errs,
@@ -232,7 +237,7 @@ fn contains_strict_types_mismatch() {
             Expr::from_str(r#"[1].contains("test")"#).unwrap(),
             Expr::from_str(r#"[1].contains("test")"#).unwrap(),
             Type::primitive_boolean(),
-            [Type::set(Type::primitive_long()), Type::primitive_string()],
+            [Type::primitive_long(), Type::primitive_string()],
         )
     })
 }
@@ -516,7 +521,7 @@ fn test_mul() {
             Expr::from_str(r#"2*(if 1 == false then 3 else 4)"#).unwrap(),
             Expr::from_str(r#"2*(if 1 == false then 3 else 4)"#).unwrap(),
             Type::primitive_long(),
-            [Type::primitive_long(), Type::primitive_boolean()],
+            [Type::primitive_long(), Type::singleton_boolean(false)],
         );
     })
 }
@@ -537,7 +542,7 @@ fn test_like() {
             Expr::from_str(r#"(if 1 == false then "foo" else "bar") like "bar""#).unwrap(),
             Expr::from_str(r#"(if 1 == false then "foo" else "bar") like "bar""#).unwrap(),
             Type::primitive_boolean(),
-            [Type::primitive_long(), Type::primitive_boolean()],
+            [Type::primitive_long(), Type::singleton_boolean(false)],
         );
     })
 }
@@ -570,14 +575,14 @@ fn test_has_attr() {
             s.clone(),
             &q,
             Expr::from_str(r#"{name: "foo"} has bar"#).unwrap(),
-            Expr::from_str(r#"false"#).unwrap(),
+            Expr::from_str(r#"{name: "foo"} has bar"#).unwrap(),
             Type::primitive_boolean(),
         );
         assert_typechecks_strict(
             s.clone(),
             &q,
             Expr::from_str(r#"{name: "foo"} has name"#).unwrap(),
-            Expr::from_str(r#"true"#).unwrap(),
+            Expr::from_str(r#"{name: "foo"} has name"#).unwrap(),
             Type::primitive_boolean(),
         );
         assert_types_must_match(
@@ -617,7 +622,7 @@ fn test_extension() {
             Expr::from_str(r#"ip("192.168.1.0/8").isInRange(if 1 == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
             Expr::from_str(r#"ip("192.168.1.0/8").isInRange(if 1 == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
             Type::primitive_boolean(),
-            [Type::primitive_long(), Type::primitive_boolean()]
+            [Type::primitive_long(), Type::singleton_boolean(false)]
         );
     })
 }
