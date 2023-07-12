@@ -55,6 +55,7 @@ fn slot_typechecks() {
 fn slot_in_typechecks() {
     let etype = EntityType {
         member_of_types: vec![],
+        member_of_types_incomplete: false,
         shape: AttributesOrContext::default(),
     };
     let schema = NamespaceDefinition::new([("typename".into(), etype)], []);
@@ -82,6 +83,7 @@ fn slot_in_typechecks() {
 fn slot_equals_typechecks() {
     let etype = EntityType {
         member_of_types: vec![],
+        member_of_types_incomplete: false,
         shape: AttributesOrContext::default(),
     };
     let schema = NamespaceDefinition::new([("typename".into(), etype)], []);
@@ -493,7 +495,7 @@ fn eq_typecheck_entity_literals_false() {
 fn entity_has_typechecks() {
     assert_typechecks_empty_schema(
         Expr::has_attr(Expr::var(Var::Principal), "attr".into()),
-        Type::singleton_boolean(false),
+        Type::primitive_boolean(),
     );
 }
 

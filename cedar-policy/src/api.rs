@@ -458,6 +458,9 @@ pub enum ValidationMode {
     Strict,
     /// Validate that policies do not contain any type errors.
     Permissive,
+    /// Validate using a partial schema. Policies may contain type errors.
+    #[cfg(feature = "partial_schema")]
+    Partial,
 }
 
 impl From<ValidationMode> for cedar_policy_validator::ValidationMode {
@@ -465,6 +468,8 @@ impl From<ValidationMode> for cedar_policy_validator::ValidationMode {
         match mode {
             ValidationMode::Strict => Self::Strict,
             ValidationMode::Permissive => Self::Permissive,
+            #[cfg(feature = "partial_schema")]
+            ValidationMode::Partial => Self::Partial,
         }
     }
 }

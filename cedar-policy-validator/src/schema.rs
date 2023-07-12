@@ -121,6 +121,8 @@ pub struct EntityTypeFragment {
     /// namespace, so we will check if they are declared in any fragment when
     /// constructing a `ValidatorSchema`.
     parents: HashSet<Name>,
+    /// Could there be other types of groups an entity type could be include in.
+    open_parents: bool,
 }
 
 /// Action declarations held in a `ValidatorNamespaceDef`. Entity types
@@ -140,6 +142,8 @@ pub struct ActionFragment {
     applies_to: ValidatorApplySpec,
     /// The direct parent action entities for this action.
     parents: HashSet<EntityUID>,
+    /// Might there be other action groups this action is a member of.
+    open_parents: bool,
     /// The types for the attributes defined for this actions entity.
     attribute_types: Attributes,
     /// The values for the attributes defined for this actions entity, stored
@@ -321,11 +325,20 @@ impl ValidatorNamespaceDef {
                         entity_type.shape.into_inner(),
                     )?;
 
+                    if cfg!(not(feature = "partial_schema"))
+                        && entity_type.member_of_types_incomplete
+                    {
+                        return Err(SchemaError::UnsupportedSchemaFeature(
+                            UnsupportedFeature::OpenRecordsAndEntities,
+                        ));
+                    }
+
                     Ok((
                         name,
                         EntityTypeFragment {
                             attributes,
                             parents,
+                            open_parents: entity_type.member_of_types_incomplete,
                         },
                     ))
                 })
@@ -459,12 +472,19 @@ impl ValidatorNamespaceDef {
                             action_type.attributes.unwrap_or_default(),
                         )?;
 
+                    if cfg!(not(feature = "partial_schema")) && action_type.member_of_incomplete {
+                        return Err(SchemaError::UnsupportedSchemaFeature(
+                            UnsupportedFeature::OpenRecordsAndEntities,
+                        ));
+                    }
+
                     Ok((
                         action_id,
                         ActionFragment {
                             context,
                             applies_to,
                             parents,
+                            open_parents: action_type.member_of_incomplete,
                             attribute_types,
                             attributes,
                         },
@@ -659,14 +679,23 @@ impl ValidatorNamespaceDef {
                 attributes,
                 additional_attributes,
             }) => {
-                if additional_attributes {
+                if cfg!(not(feature = "partial_schema")) && additional_attributes {
                     Err(SchemaError::UnsupportedSchemaFeature(
                         UnsupportedFeature::OpenRecordsAndEntities,
                     ))
                 } else {
                     Ok(
                         Self::parse_record_attributes(default_namespace, attributes)?.map(
-                            |attrs| Type::record_with_attributes(attrs, OpenTag::ClosedAttributes),
+                            move |attrs| {
+                                Type::record_with_attributes(
+                                    attrs,
+                                    if additional_attributes {
+                                        OpenTag::OpenAttributes
+                                    } else {
+                                        OpenTag::ClosedAttributes
+                                    },
+                                )
+                            },
                         ),
                     )
                 }
@@ -886,17 +915,20 @@ impl ValidatorSchema {
                 // error for any other undeclared entity types by
                 // `check_for_undeclared`.
                 let descendants = entity_children.remove(&name).unwrap_or_default();
+                let (attributes, open_attributes) = Self::record_attributes_or_none(
+                    entity_type.attributes.resolve_type_defs(&type_defs)?,
+                )
+                .ok_or(SchemaError::ContextOrShapeNotRecord(
+                    ContextOrShape::EntityTypeShape(name.clone()),
+                ))?;
                 Ok((
                     name.clone(),
                     ValidatorEntityType {
-                        name: name.clone(),
+                        name,
                         descendants,
-                        attributes: Self::record_attributes_or_none(
-                            entity_type.attributes.resolve_type_defs(&type_defs)?,
-                        )
-                        .ok_or(SchemaError::ContextOrShapeNotRecord(
-                            ContextOrShape::EntityTypeShape(name),
-                        ))?,
+                        open_ancestor_set: entity_type.open_parents,
+                        attributes,
+                        open_attributes,
                     },
                 ))
             })
@@ -915,19 +947,20 @@ impl ValidatorSchema {
             .into_iter()
             .map(|(name, action)| -> Result<_> {
                 let descendants = action_children.remove(&name).unwrap_or_default();
-
+                let (context, open_context_attributes) =
+                    Self::record_attributes_or_none(action.context.resolve_type_defs(&type_defs)?)
+                        .ok_or(SchemaError::ContextOrShapeNotRecord(
+                            ContextOrShape::ActionContext(name.clone()),
+                        ))?;
                 Ok((
                     name.clone(),
                     ValidatorActionId {
-                        name: name.clone(),
+                        name,
                         applies_to: action.applies_to,
                         descendants,
-                        context: Self::record_attributes_or_none(
-                            action.context.resolve_type_defs(&type_defs)?,
-                        )
-                        .ok_or(SchemaError::ContextOrShapeNotRecord(
-                            ContextOrShape::ActionContext(name),
-                        ))?,
+                        open_ancestor_set: action.open_parents,
+                        context,
+                        open_context_attributes,
                         attribute_types: action.attribute_types,
                         attributes: action.attributes,
                     },
@@ -938,9 +971,34 @@ impl ValidatorSchema {
         // We constructed entity types and actions with child maps, but we need
         // transitively closed descendants.
         compute_tc(&mut entity_types, false)?;
+        // Any entity type which is a descendant of an entity type with an open
+        // ancestor set must also have an open ancestor set. These entity types
+        // are first collected into a set to avoid taking a mutable and
+        // immutable borrow of `entity_types` at the same time.
+        let entities_types_open_ancestors = entity_types
+            .values()
+            .filter(|e| e.open_ancestor_set)
+            .flat_map(|e| e.descendants.iter().cloned())
+            .collect::<HashSet<_>>();
+        entities_types_open_ancestors.iter().for_each(|name| {
+            if let Some(descendant) = entity_types.get_mut(name) {
+                descendant.open_ancestor_set = true;
+            }
+        });
+
         // Pass `true` here so that we also check that the action hierarchy does
         // not contain cycles.
         compute_tc(&mut action_ids, true)?;
+        let action_open_ancestors = action_ids
+            .values()
+            .filter(|e| e.open_ancestor_set)
+            .flat_map(|e| e.descendants.iter().cloned())
+            .collect::<HashSet<_>>();
+        action_open_ancestors.iter().for_each(|name| {
+            if let Some(descendant) = action_ids.get_mut(name) {
+                descendant.open_ancestor_set = true;
+            }
+        });
 
         // Return with an error if there is an undeclared entity or action
         // referenced in any fragment. `{entity,action}_children` are provided
@@ -1043,9 +1101,12 @@ impl ValidatorSchema {
         Ok(())
     }
 
-    fn record_attributes_or_none(ty: Type) -> Option<Attributes> {
+    fn record_attributes_or_none(ty: Type) -> Option<(Attributes, OpenTag)> {
         match ty {
-            Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => Some(attrs),
+            Type::EntityOrRecord(EntityRecordKind::Record {
+                attrs,
+                open_attributes,
+            }) => Some((attrs, open_attributes)),
             _ => None,
         }
     }
@@ -1132,20 +1193,18 @@ impl ValidatorSchema {
 
     /// Get the validator entities that are in the descendants of an EUID using
     /// the component for a head var kind.
-    pub(crate) fn get_entities_in<'a, H, K>(
-        &'a self,
-        var: H,
-        euid: EntityUID,
-    ) -> impl Iterator<Item = K> + 'a
+    pub(crate) fn get_entities_in<'a, H, K>(&'a self, var: H, euid: EntityUID) -> Option<Vec<K>>
     where
         H: 'a + HeadVar<K>,
         K: 'a + Clone,
     {
         var.get_descendants_if_present(self, euid.clone())
-            .into_iter()
-            .flatten()
-            .map(Clone::clone)
-            .chain(var.get_euid_component_if_present(self, euid).into_iter())
+            .map(|descendants| {
+                descendants
+                    .cloned()
+                    .chain(var.get_euid_component_if_present(self, euid))
+                    .collect::<Vec<_>>()
+            })
     }
 
     /// Get the validator entities that are in the descendants of any of the
@@ -1154,14 +1213,16 @@ impl ValidatorSchema {
         &'a self,
         var: H,
         euids: impl IntoIterator<Item = EntityUID> + 'a,
-    ) -> impl Iterator<Item = K> + 'a
+    ) -> Option<Vec<K>>
     where
         H: 'a + HeadVar<K>,
         K: 'a + Clone,
     {
         euids
             .into_iter()
-            .flat_map(move |e| self.get_entities_in(var, e))
+            .map(move |e| self.get_entities_in(var, e))
+            .collect::<Option<Vec<_>>>()
+            .map(|v| v.into_iter().flatten().collect::<Vec<_>>())
     }
 
     /// Since different Actions have different schemas for `Context`, you must
@@ -1361,9 +1422,23 @@ pub struct ValidatorEntityType {
     /// descendants before it is used in any validation.
     pub descendants: HashSet<Name>,
 
+    /// Indicate that the `member_of_types` set for this entity type was flagged
+    /// as incomplete, or the `member_of_types` for any of this types ancestor
+    /// types is incomplete. This entity type may ultimately be a member of any
+    /// other entity type, so an `in` expression where the left operand is an
+    /// entity with this type can only have type `Boolean` and not `False`.
+    pub(crate) open_ancestor_set: bool,
+
     /// The attributes associated with this entity. Keys are the attribute
     /// identifiers while the values are the type of the attribute.
     pub(crate) attributes: Attributes,
+
+    /// Indicates that this entity type may have additional attributes
+    /// other than the declared attributes that may be accessed under partial
+    /// schema validation. We do not know if they are present, and do not know
+    /// their type when they are present. Attempting to access an undeclared
+    /// attribute under standard validation is an error regardless of this flag.
+    pub(crate) open_attributes: OpenTag,
 }
 
 impl ValidatorEntityType {
@@ -1414,9 +1489,22 @@ pub struct ValidatorActionId {
     /// descendants before it is used in any validation.
     pub(crate) descendants: HashSet<EntityUID>,
 
+    /// Indicate that the `member_of` set for this action entity was flagged
+    /// as incomplete, or the `member_of` for any ancestor action entity is
+    /// incomplete. This action may ultimately be a member of any other action,
+    /// so an `in` expression where the left operand is this action, and the
+    /// right operand is any other action, can have type `Boolean` but not
+    /// `False`.
+    pub(crate) open_ancestor_set: bool,
+
     /// The context attributes associated with this action. Keys are the context
     /// attribute identifiers while the values are the type of the attribute.
     pub(crate) context: Attributes,
+
+    /// Indicates that the context for this may have additional attributes other
+    /// than the declared attributes that may be accessed under partial schema
+    /// validation.
+    pub(crate) open_context_attributes: OpenTag,
 
     /// The attribute types for this action, used for typechecking.
     pub(crate) attribute_types: Attributes,

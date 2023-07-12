@@ -51,14 +51,28 @@ pub enum ValidationMode {
     #[default]
     Strict,
     Permissive,
+    #[cfg(feature = "partial_schema")]
+    Partial,
 }
 
 impl ValidationMode {
+    /// Does this mode use partial validation. We could conceivably have a
+    /// strict/partial validation mode.
+    fn is_partial(self) -> bool {
+        match self {
+            ValidationMode::Strict | ValidationMode::Permissive => false,
+            #[cfg(feature = "partial_schema")]
+            ValidationMode::Partial => true,
+        }
+    }
+
     /// Does this mode apply strict validation rules.
     fn is_strict(self) -> bool {
         match self {
             ValidationMode::Strict => true,
             ValidationMode::Permissive => false,
+            #[cfg(feature = "partial_schema")]
+            ValidationMode::Partial => false,
         }
     }
 }
@@ -100,11 +114,27 @@ impl Validator {
         p: &'a Template,
         mode: ValidationMode,
     ) -> impl Iterator<Item = ValidationError> + 'a {
-        self.validate_entity_types(p)
-            .chain(self.validate_action_ids(p))
-            .chain(self.validate_action_application(p))
-            .map(move |note| ValidationError::with_policy_id(p.id(), None, note))
-            .chain(self.typecheck_policy(p, mode))
+        if mode.is_partial() {
+            // We skip `validate_entity_types`, `validate_action_ids`, and
+            // `validate_action_application` passes for partial schema
+            // validation because there may be arbitrary extra entity types and
+            // actions, so we can never claim that one doesn't exist.
+            None
+        } else {
+            Some(
+                self.validate_entity_types(p)
+                    .chain(self.validate_action_ids(p))
+                    // We could usefully update this pass to apply to partial
+                    // schema if it only failed when there is a known action
+                    // applied to known principal/resource entity types that are
+                    // not in its `appliesTo`.
+                    .chain(self.validate_action_application(p))
+                    .map(move |note| ValidationError::with_policy_id(p.id(), None, note)),
+            )
+        }
+        .into_iter()
+        .flatten()
+        .chain(self.typecheck_policy(p, mode))
     }
 
     /// Construct a Typechecker instance and use it to detect any type errors in
@@ -144,6 +174,7 @@ mod test {
                     foo_type.into(),
                     EntityType {
                         member_of_types: vec![],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -151,6 +182,7 @@ mod test {
                     bar_type.into(),
                     EntityType {
                         member_of_types: vec![],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -164,6 +196,7 @@ mod test {
                         context: AttributesOrContext::default(),
                     }),
                     member_of: None,
+                    member_of_incomplete: false,
                     attributes: None,
                 },
             )],

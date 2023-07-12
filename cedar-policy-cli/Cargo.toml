@@ -19,6 +19,10 @@ serde_json = "1.0"
 miette = { version = "5.9.0", features = ["fancy"] }
 thiserror = "1.0"
 
+[features]
+default = []
+partial_schema = ["cedar-policy/partial_schema"]
+
 [dev-dependencies]
 assert_cmd = "2.0"
 tempfile = "3"

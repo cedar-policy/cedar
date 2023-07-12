@@ -31,3 +31,5 @@ decimal = ["cedar-policy-core/decimal"]
 
 # Enables `Arbitrary` implementations for several types in this crate
 arbitrary = ["dep:arbitrary"]
+
+partial_schema = []

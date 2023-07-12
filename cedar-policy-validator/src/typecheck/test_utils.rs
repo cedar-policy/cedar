@@ -61,7 +61,7 @@ impl Typechecker<'_> {
     ) -> TypecheckAnswer<'a> {
         // Using bogus entity type names here for testing. They'll be treated as
         // having empty attribute records, so tests will behave as expected.
-        let request_env = RequestEnv {
+        let request_env = RequestEnv::Known {
             principal: &EntityType::Concrete(
                 "Principal"
                     .parse()
@@ -138,11 +138,27 @@ pub(crate) fn assert_policy_typechecks(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
     policy: impl Into<Arc<Template>>,
 ) {
-    with_typechecker_from_schema(schema, |typechecker| {
+    with_typechecker_from_schema(schema, |mut typechecker| {
+        let policy: Arc<Template> = policy.into();
         let mut type_errors: HashSet<TypeError> = HashSet::new();
-        let typechecked = typechecker.typecheck_policy(&policy.into(), &mut type_errors);
+        let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors);
         assert_eq!(type_errors, HashSet::new(), "Did not expect any errors.");
         assert!(typechecked, "Expected that policy would typecheck.");
+
+        // Ensure that partial schema validation doesn't cause any policy that
+        // should validate with a complete schema to no longer validate with the
+        // same complete schema.
+        typechecker.mode = ValidationMode::Permissive;
+        let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors);
+        assert_eq!(
+            type_errors,
+            HashSet::new(),
+            "Did not expect any errors under partial schema validation."
+        );
+        assert!(
+            typechecked,
+            "Expected that policy would typecheck under partial schema validation."
+        );
     });
 }
 

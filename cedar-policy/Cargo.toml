@@ -31,6 +31,8 @@ default = ["ipaddr", "decimal"]
 ipaddr = ["cedar-policy-core/ipaddr", "cedar-policy-validator/ipaddr"]
 decimal = ["cedar-policy-core/decimal", "cedar-policy-validator/decimal"]
 
+partial_schema = ["cedar-policy-validator/partial_schema"]
+
 # Features for memory or runtime profiling
 heap-profiling = ["dep:dhat"]
 corpus-timing = []

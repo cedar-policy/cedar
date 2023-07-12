@@ -379,6 +379,19 @@ fn policy_in_action_impossible() {
 }
 
 #[test]
+fn policy_action_in_impossible() {
+    let p = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action, resource) when { action in [User::"alice"] };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typecheck_fails_simple_schema(
+        p.clone(),
+        vec![TypeError::impossible_policy(p.condition())],
+    );
+}
+
+#[test]
 fn policy_entity_has_then_get() {
     assert_policy_typechecks_simple_schema(parse_policy(
             Some("0".to_string()),

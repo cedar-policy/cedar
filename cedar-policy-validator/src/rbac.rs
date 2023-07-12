@@ -403,7 +403,12 @@ impl Validator {
                 EntityReference::EUID(euid),
             )) => {
                 // <var> in <literal euid>
-                Box::new(self.schema.get_entities_in(var, euid.as_ref().clone()))
+                Box::new(
+                    self.schema
+                        .get_entities_in(var, euid.as_ref().clone())
+                        .unwrap_or_default()
+                        .into_iter(),
+                )
             }
             HeadConstraint::PrincipalOrResource(PrincipalOrResourceConstraint::Eq(
                 EntityReference::Slot,
@@ -415,7 +420,9 @@ impl Validator {
                 // <var> in [<literal euid>...]
                 Box::new(
                     self.schema
-                        .get_entities_in_set(var, euids.iter().map(Arc::as_ref).cloned()),
+                        .get_entities_in_set(var, euids.iter().map(Arc::as_ref).cloned())
+                        .unwrap_or_default()
+                        .into_iter(),
                 )
             }
         }
@@ -486,6 +493,7 @@ mod test {
                     user_type.into(),
                     EntityType {
                         member_of_types: vec![group_type.into()],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -493,6 +501,7 @@ mod test {
                     group_type.into(),
                     EntityType {
                         member_of_types: vec![],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -500,6 +509,7 @@ mod test {
                     widget_type.into(),
                     EntityType {
                         member_of_types: vec![bin_type.into()],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -507,6 +517,7 @@ mod test {
                     bin_type.into(),
                     EntityType {
                         member_of_types: vec![],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -520,6 +531,7 @@ mod test {
                         context: AttributesOrContext::default(),
                     }),
                     member_of: None,
+                    member_of_incomplete: false,
                     attributes: None,
                 },
             )],
@@ -563,6 +575,7 @@ mod test {
                 foo_type.into(),
                 EntityType {
                     member_of_types: vec![],
+                    member_of_types_incomplete: false,
                     shape: AttributesOrContext::default(),
                 },
             )],
@@ -598,6 +611,7 @@ mod test {
                 "foo_type".into(),
                 EntityType {
                     member_of_types: vec![],
+                    member_of_types_incomplete: false,
                     shape: AttributesOrContext::default(),
                 },
             )],
@@ -685,6 +699,7 @@ mod test {
                 ActionType {
                     applies_to: None,
                     member_of: None,
+                    member_of_incomplete: false,
                     attributes: None,
                 },
             )],
@@ -719,6 +734,7 @@ mod test {
                 p_name.into(),
                 EntityType {
                     member_of_types: vec![],
+                    member_of_types_incomplete: false,
                     shape: AttributesOrContext::default(),
                 },
             )],
@@ -751,6 +767,7 @@ mod test {
                 p_name.into(),
                 EntityType {
                     member_of_types: vec![],
+                    member_of_types_incomplete: false,
                     shape: AttributesOrContext::default(),
                 },
             )],
@@ -783,6 +800,7 @@ mod test {
                 p_name.into(),
                 EntityType {
                     member_of_types: vec![],
+                    member_of_types_incomplete: false,
                     shape: AttributesOrContext::default(),
                 },
             )],
@@ -827,6 +845,7 @@ mod test {
                 ActionType {
                     applies_to: None,
                     member_of: None,
+                    member_of_incomplete: false,
                     attributes: None,
                 },
             )],
@@ -1025,6 +1044,7 @@ mod test {
                 ActionType {
                     applies_to: None,
                     member_of: None,
+                    member_of_incomplete: false,
                     attributes: None,
                 },
             )],
@@ -1062,6 +1082,7 @@ mod test {
                 ActionType {
                     applies_to: None,
                     member_of: None,
+                    member_of_incomplete: false,
                     attributes: None,
                 },
             )],
@@ -1099,6 +1120,7 @@ mod test {
                 ActionType {
                     applies_to: None,
                     member_of: None,
+                    member_of_incomplete: false,
                     attributes: None,
                 },
             )],
@@ -1134,6 +1156,7 @@ mod test {
                 foo_type.into(),
                 EntityType {
                     member_of_types: vec![],
+                    member_of_types_incomplete: false,
                     shape: AttributesOrContext::default(),
                 },
             )],
@@ -1169,6 +1192,7 @@ mod test {
                     principal_type.into(),
                     EntityType {
                         member_of_types: vec![],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -1176,6 +1200,7 @@ mod test {
                     resource_type.into(),
                     EntityType {
                         member_of_types: vec![],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -1189,6 +1214,7 @@ mod test {
                         context: AttributesOrContext::default(),
                     }),
                     member_of: Some(vec![]),
+                    member_of_incomplete: false,
                     attributes: None,
                 },
             )],
@@ -1377,6 +1403,7 @@ mod test {
                     principal_type.into(),
                     EntityType {
                         member_of_types: vec![],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -1384,6 +1411,7 @@ mod test {
                     resource_type.into(),
                     EntityType {
                         member_of_types: vec![resource_parent_type.into()],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -1391,6 +1419,7 @@ mod test {
                     resource_parent_type.into(),
                     EntityType {
                         member_of_types: vec![resource_grandparent_type.into()],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -1398,6 +1427,7 @@ mod test {
                     resource_grandparent_type.into(),
                     EntityType {
                         member_of_types: vec![],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -1415,6 +1445,7 @@ mod test {
                             ty: None,
                             id: action_parent_name.into(),
                         }]),
+                        member_of_incomplete: false,
                         attributes: None,
                     },
                 ),
@@ -1426,6 +1457,7 @@ mod test {
                             ty: None,
                             id: action_grandparent_name.into(),
                         }]),
+                        member_of_incomplete: false,
                         attributes: None,
                     },
                 ),
@@ -1434,6 +1466,7 @@ mod test {
                     ActionType {
                         applies_to: None,
                         member_of: Some(vec![]),
+                        member_of_incomplete: false,
                         attributes: None,
                     },
                 ),
@@ -1643,5 +1676,61 @@ mod test {
                 TypeErrorKind::ImpossiblePolicy
             )]
         );
+    }
+}
+
+#[cfg(test)]
+#[cfg(feature = "partial_schema")]
+mod partial_schema {
+    use cedar_policy_core::{
+        ast::{StaticPolicy, Template},
+        parser::parse_policy,
+    };
+
+    use crate::{NamespaceDefinition, Validator};
+
+    fn assert_validates_with_empty_schema(policy: StaticPolicy) {
+        let schema = serde_json::from_str::<NamespaceDefinition>(
+            r#"
+        {
+            "entityTypes": { },
+            "actions": {}
+        }
+        "#,
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let (template, _) = Template::link_static_policy(policy);
+        let validate = Validator::new(schema);
+        let errs = validate
+            .validate_policy(&template, crate::ValidationMode::Partial)
+            .collect::<Vec<_>>();
+        assert_eq!(errs, vec![], "Did not expect any validation errors.");
+    }
+
+    #[test]
+    fn undeclared_entity_type_partial_schema() {
+        let policy = parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal == User::"alice", action, resource);"#,
+        )
+        .unwrap();
+        assert_validates_with_empty_schema(policy);
+
+        let policy = parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action == Action::"view", resource);"#,
+        )
+        .unwrap();
+        assert_validates_with_empty_schema(policy);
+
+        let policy = parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action, resource == Photo::"party.jpg");"#,
+        )
+        .unwrap();
+        assert_validates_with_empty_schema(policy);
     }
 }

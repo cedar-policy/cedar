@@ -34,11 +34,74 @@ use super::schema::{
 /// represent the full type of (principal, action, resource, context)
 /// authorization request.
 #[derive(Debug, PartialEq)]
-pub struct RequestEnv<'a> {
-    pub principal: &'a EntityType,
-    pub action: &'a EntityUID,
-    pub resource: &'a EntityType,
-    pub context: &'a Attributes,
+pub enum RequestEnv<'a> {
+    Unknown,
+    Known {
+        principal: &'a EntityType,
+        action: &'a EntityUID,
+        resource: &'a EntityType,
+        context: &'a Attributes,
+    },
+}
+
+impl<'a> RequestEnv<'a> {
+    pub fn principal_entity_type(&self) -> Option<&'a EntityType> {
+        match self {
+            RequestEnv::Unknown => None,
+            RequestEnv::Known { principal, .. } => Some(principal),
+        }
+    }
+
+    pub fn principal_type(&self) -> Type {
+        match self.principal_entity_type() {
+            Some(principal) => Type::possibly_unspecified_entity_reference(principal.clone()),
+            None => Type::any_entity_reference(),
+        }
+    }
+
+    pub fn action_entity_uid(&self) -> Option<&'a EntityUID> {
+        match self {
+            RequestEnv::Unknown => None,
+            RequestEnv::Known { action, .. } => Some(action),
+        }
+    }
+
+    pub fn action_type(&self, schema: &ValidatorSchema) -> Option<Type> {
+        match self.action_entity_uid() {
+            Some(action) => Type::euid_literal(action.clone(), schema),
+            None => Some(Type::any_entity_reference()),
+        }
+    }
+
+    pub fn resource_entity_type(&self) -> Option<&'a EntityType> {
+        match self {
+            RequestEnv::Unknown => None,
+            RequestEnv::Known { resource, .. } => Some(resource),
+        }
+    }
+
+    pub fn resource_type(&self) -> Type {
+        match self.resource_entity_type() {
+            Some(resource) => Type::possibly_unspecified_entity_reference(resource.clone()),
+            None => Type::any_entity_reference(),
+        }
+    }
+
+    pub fn context_attributes(&self) -> Option<&'a Attributes> {
+        match self {
+            RequestEnv::Unknown => None,
+            RequestEnv::Known { context, .. } => Some(context),
+        }
+    }
+
+    pub fn context_type(&self) -> Type {
+        match self.context_attributes() {
+            Some(context) => {
+                Type::record_with_attributes(context.clone(), OpenTag::ClosedAttributes)
+            }
+            None => Type::any_record(),
+        }
+    }
 }
 
 /// The main type structure.
@@ -108,7 +171,7 @@ impl Type {
     /// type for the type of the EntityUID.
     pub(crate) fn euid_literal(entity: EntityUID, schema: &ValidatorSchema) -> Option<Type> {
         match entity.entity_type() {
-            EntityType::Unspecified => None,
+            EntityType::Unspecified => Some(Type::any_entity_reference()),
             EntityType::Concrete(name) => {
                 if is_action_entity_type(name) {
                     schema
@@ -360,7 +423,7 @@ impl Type {
             Type::Never => true,
             // An EntityOrRecord might have an open attributes record, in which
             // case it could have any attribute.
-            Type::EntityOrRecord(k) if k.has_open_attributes_record() => true,
+            Type::EntityOrRecord(k) if k.has_open_attributes_record(schema) => true,
             // In this case and all following `EntityOrRecord` cases, we know it
             // does not have an open attributes record, so we know that an
             // attribute may not exist if it is not explicitly listed in the
@@ -375,7 +438,7 @@ impl Type {
                         .map_or(false, |entity_type| entity_type.attr(attr).is_some())
                 })
             }
-            // UBs of ActionEntities are AnyEntity. So if we have an ActionEntity here its attrs are known
+            // UBs of ActionEntities are AnyEntity. So if we have an ActionEntity here its attrs are known.
             Type::EntityOrRecord(EntityRecordKind::ActionEntity { attrs, .. }) => {
                 attrs.iter().any(|(found_attr, _)| attr.eq(found_attr))
             }
@@ -973,7 +1036,7 @@ impl EntityRecordKind {
 
     /// Return `true` if this entity or record may have additional undeclared
     /// attributes.
-    pub(crate) fn has_open_attributes_record(&self) -> bool {
+    pub(crate) fn has_open_attributes_record(&self, schema: &ValidatorSchema) -> bool {
         match self {
             // Records explicitly store this information.
             EntityRecordKind::Record {
@@ -988,11 +1051,18 @@ impl EntityRecordKind {
             // super type of all other entity types which may have attributes,
             // so it clearly may have additional attributes.
             EntityRecordKind::AnyEntity => true,
-            // An entity LUB may not have an open attributes record. The record
-            // type returned by `get_attributes_type` _may_ be open, but even in
-            // that case we can account for all attributes that might exist by
-            // examining the elements of the LUB.
-            EntityRecordKind::Entity(_) => false,
+            // An entity LUB may have additional attributes if any of the
+            // elements may have additional attributes.
+            EntityRecordKind::Entity(lub) => lub.iter().any(|e_name| {
+                schema
+                    .get_entity_type(e_name)
+                    .map(|e_type| e_type.open_attributes)
+                    // The entity type was not found in the schema, so we know
+                    // nothing about it and must assume that it may have
+                    // additional attributes.
+                    .unwrap_or(OpenTag::OpenAttributes)
+                    .is_open()
+            }),
         }
     }
 
