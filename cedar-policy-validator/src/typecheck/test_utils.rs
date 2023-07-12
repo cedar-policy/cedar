@@ -103,10 +103,10 @@ pub(crate) fn with_typechecker_from_schema<F>(
 /// improvement to the typechecker to return more specific types.
 pub(crate) fn assert_types_eq(schema: &ValidatorSchema, expected: &Type, actual: &Type) {
     assert!(
-            Type::is_subtype(schema, expected, actual),
+            Type::is_subtype(schema, expected, actual, false),
             "Type equality assertion failed: the expected type is not a subtype of the actual type.\nexpected: {:#?}\nactual: {:#?}", expected, actual);
     assert!(
-            Type::is_subtype(schema, actual, expected),
+            Type::is_subtype(schema, actual, expected, false),
              "Type equality assertion failed: the actual type is not a subtype of the expected type.\nexpected: {:#?}\nactual: {:#?}", expected, actual);
 }
 

@@ -578,6 +578,7 @@ impl<'a> Typechecker<'a> {
                                                     self.schema,
                                                     ty_then,
                                                     ty_else,
+                                                    self.mode.is_strict(),
                                                 )
                                                 .is_some();
                                                 if has_lub {
@@ -2374,10 +2375,9 @@ impl<'a> Typechecker<'a> {
         let actual = self.typecheck(request_env, prior_eff, expr, type_errors);
         actual.then_typecheck(|mut typ_actual, eff_actual| match typ_actual.data() {
             Some(actual_ty) => {
-                if !expected
-                    .iter()
-                    .any(|expected_ty| Type::is_subtype(self.schema, actual_ty, expected_ty))
-                {
+                if !expected.iter().any(|expected_ty| {
+                    Type::is_subtype(self.schema, actual_ty, expected_ty, self.mode.is_strict())
+                }) {
                     type_errors.push(TypeError::expected_one_of_types(
                         expr.clone(),
                         expected.to_vec(),
@@ -2433,7 +2433,11 @@ impl<'a> Typechecker<'a> {
             // defined.
             .collect::<Option<Vec<_>>>()
             .and_then(|typechecked_types| {
-                let lub = Type::reduce_to_least_upper_bound(self.schema, &typechecked_types);
+                let lub = Type::reduce_to_least_upper_bound(
+                    self.schema,
+                    &typechecked_types,
+                    self.mode.is_strict(),
+                );
                 if lub.is_none() {
                     // A type error is generated if we could not find a least
                     // upper bound for the types. The computed least upper bound
