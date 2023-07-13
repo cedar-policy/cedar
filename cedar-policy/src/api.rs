@@ -301,6 +301,7 @@ impl Authorizer {
         self.0.is_authorized(&r.0, &p.ast, &e.0).into()
     }
 
+    #[cfg(feature = "partial_eval")]
     /// A partially evaluated authorization request.
     /// The Authorizer will attempt to make as much progress as possible in the presence of unknowns.
     /// If the Authorizer can reach a response, it will return that response.
