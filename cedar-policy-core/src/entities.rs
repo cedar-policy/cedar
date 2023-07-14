@@ -69,6 +69,7 @@ impl Entities {
     /// Transform the store into a partial store, where
     /// attempting to dereference a non-existent EntityUID results in
     /// a residual instead of an error.
+    #[cfg(feature = "partial-eval")]
     pub fn partial(self) -> Self {
         Self {
             entities: self.entities,
@@ -82,6 +83,7 @@ impl Entities {
             Some(e) => Dereference::Data(e),
             None => match self.mode {
                 Mode::Concrete => Dereference::NoSuchEntity,
+                #[cfg(feature = "partial-eval")]
                 Mode::Partial => Dereference::Residual(Expr::unknown(format!("{uid}"))),
             },
         }
@@ -226,6 +228,7 @@ where
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Concrete,
+    #[cfg(feature = "partial-eval")]
     Partial,
 }
 

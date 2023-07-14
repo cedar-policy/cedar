@@ -164,6 +164,7 @@ impl Entities {
     /// attempting to dereference a non-existent `EntityUID` results in
     /// a residual instead of an error.
     #[must_use]
+    #[cfg(feature = "partial-eval")]
     pub fn partial(self) -> Self {
         Self(self.0.partial())
     }
@@ -301,11 +302,11 @@ impl Authorizer {
         self.0.is_authorized(&r.0, &p.ast, &e.0).into()
     }
 
-    #[cfg(feature = "partial_eval")]
     /// A partially evaluated authorization request.
     /// The Authorizer will attempt to make as much progress as possible in the presence of unknowns.
     /// If the Authorizer can reach a response, it will return that response.
     /// Otherwise, it will return a list of residual policies that still need to be evaluated.
+    #[cfg(feature = "partial-eval")]
     pub fn is_authorized_partial(
         &self,
         query: &Request,
