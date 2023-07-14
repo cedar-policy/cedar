@@ -23,8 +23,12 @@ jobs:
       - run: cargo clippy
       - run: ./panic_safety.sh
       - run: cargo test --verbose -- --ignored
-      - run: cargo test --no-default-features --verbose
       - run: cargo bench --no-run
+      - run: cd cedar-policy ; cargo test --no-default-features --verbose
+      - run: cd cedar-policy-cli ; cargo test --no-default-features --verbose
+      - run: cd cedar-policy-core ; cargo test --no-default-features --verbose
+      - run: cd cedar-policy-formatter ; cargo test --no-default-features --verbose
+      - run: cd cedar-policy-validator ; cargo test --no-default-features --verbose
 
   cargo_audit:
     name: Cargo Audit
