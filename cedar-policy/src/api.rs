@@ -351,10 +351,12 @@ pub enum PartialResponse {
     /// A full, concrete response.
     Concrete(Response),
     /// A residual response. Determining the concrete response requires further processing.
+    #[cfg(feature = "partial-eval")]
     Residual(ResidualResponse),
 }
 
 /// A residual response obtained from `is_authorized_partial`.
+#[cfg(feature = "partial-eval")]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ResidualResponse {
     /// Residual policies
@@ -420,6 +422,7 @@ impl From<authorizer::Response> for Response {
     }
 }
 
+#[cfg(feature = "partial-eval")]
 impl ResidualResponse {
     /// Create a new `ResidualResponse`
     pub fn new(residuals: PolicySet, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
@@ -2343,6 +2346,7 @@ pub fn eval_expression(
 }
 
 #[cfg(test)]
+#[cfg(feature = "partial-eval")]
 mod test {
     use std::collections::HashSet;
 
