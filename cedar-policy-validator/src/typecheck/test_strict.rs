@@ -362,6 +362,7 @@ fn empty_set_literal() {
     })
 }
 
+#[cfg(feature = "ipaddr")]
 #[test]
 fn ext_struct_non_lit() {
     with_simple_schema_and_request(|s, q| {
@@ -375,6 +376,7 @@ fn ext_struct_non_lit() {
         )
     });
 
+    #[cfg(feature = "decimal")]
     with_simple_schema_and_request(|s, q| {
         assert_strict_type_error(
             s,
