@@ -38,8 +38,8 @@ corpus-timing = []
 integration_testing = []
 
 # Experimental features
-experimental = ["partial_eval"]
-partial_eval = []
+experimental = ["partial-eval"]
+partial-eval = []
 
 [lib]
 crate_type = ["rlib"]
