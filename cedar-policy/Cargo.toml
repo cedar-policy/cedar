@@ -37,9 +37,10 @@ corpus-timing = []
 
 integration_testing = []
 
-# Experimental features
+# Experimental features.
+# Enable all experimental features with `cargo build --features "experimental"`
 experimental = ["partial-eval"]
-partial-eval = []
+partial-eval = ["cedar-policy-core/partial-eval"]
 
 [lib]
 crate_type = ["rlib"]

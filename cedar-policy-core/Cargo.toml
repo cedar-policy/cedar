@@ -41,6 +41,9 @@ decimal = ["dep:regex"]
 # Enables `Arbitrary` implementations for several types in this crate
 arbitrary = ["dep:arbitrary"]
 
+# Experimental features.
+partial-eval = []
+
 [build-dependencies]
 lalrpop = "0.19.12"
 
