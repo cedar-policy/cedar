@@ -261,6 +261,7 @@ mod json_parsing_tests {
     use super::*;
     use crate::extensions::Extensions;
 
+    #[cfg(feature = "partial-eval")]
     #[test]
     fn basic_partial() {
         // Alice -> Jane -> Bob
