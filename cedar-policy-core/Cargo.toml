@@ -39,6 +39,9 @@ default = ["ipaddr", "decimal"]
 ipaddr = ["dep:ipnet"]
 decimal = []
 
+# Experimental features.
+partial-eval = []
+
 [build-dependencies]
 lalrpop = "0.19.12"
 
