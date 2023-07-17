@@ -943,6 +943,7 @@ pub mod test {
         .expect("Failed to create rich entities")
     }
 
+    #[cfg(feature = "partial-eval")]
     #[test]
     fn partial_entity_stores_in_set() {
         let q = basic_request();
@@ -983,6 +984,7 @@ pub mod test {
         assert!(r == Either::Right(expected_residual) || r == Either::Right(expected_residual2));
     }
 
+    #[cfg(feature = "partial-eval")]
     #[test]
     fn partial_entity_stores_in() {
         let q = basic_request();
@@ -1011,6 +1013,7 @@ pub mod test {
         assert_eq!(r, Either::Right(expected_residual));
     }
 
+    #[cfg(feature = "partial-eval")]
     #[test]
     fn partial_entity_stores_hasattr() {
         let q = basic_request();
@@ -1030,6 +1033,7 @@ pub mod test {
         assert_eq!(r, Either::Right(expected_residual));
     }
 
+    #[cfg(feature = "partial-eval")]
     #[test]
     fn partial_entity_stores_getattr() {
         let q = basic_request();
