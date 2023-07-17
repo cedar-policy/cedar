@@ -2347,7 +2347,7 @@ pub fn eval_expression(
 
 #[cfg(test)]
 #[cfg(feature = "partial-eval")]
-mod test {
+mod partial_eval_test {
     use std::collections::HashSet;
 
     use crate::{PolicyId, PolicySet, ResidualResponse};
