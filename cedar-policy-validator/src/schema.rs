@@ -1422,6 +1422,18 @@ impl ValidatorEntityType {
     pub fn attributes(&self) -> impl Iterator<Item = (&SmolStr, &AttributeType)> {
         self.attributes.iter()
     }
+
+    /// Return `true` if this entity type has an `EntityType` declared as a
+    /// possible descendant in the schema. This takes an `EntityType` rather
+    /// than a `Name`, It's not possible to declare the unspecified entity type
+    /// is a descendant of an entity type in the schema, so we can return false
+    /// in the unspecified case.
+    pub fn has_descendant_entity_type(&self, ety: &EntityType) -> bool {
+        match ety {
+            EntityType::Concrete(ety) => self.descendants.contains(ety),
+            EntityType::Unspecified => false,
+        }
+    }
 }
 
 impl TCNode<Name> for ValidatorEntityType {
