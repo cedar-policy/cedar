@@ -346,12 +346,12 @@ pub struct Response {
 
 /// Authorization response returned from `is_authorized_partial`
 /// It can either be a full concrete response, or a residual response.
+#[cfg(feature = "partial-eval")]
 #[derive(Debug, PartialEq, Clone)]
 pub enum PartialResponse {
     /// A full, concrete response.
     Concrete(Response),
     /// A residual response. Determining the concrete response requires further processing.
-    #[cfg(feature = "partial-eval")]
     Residual(ResidualResponse),
 }
 
