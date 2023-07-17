@@ -15,7 +15,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: a::\"\" does not have the required attribute: A"
+        "error occurred while evaluating policy `policy0`: a::\"\" does not have the required attribute: A"
       ]
     },
     {
@@ -29,7 +29,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: a::\"\" does not have the required attribute: A"
+        "error occurred while evaluating policy `policy0`: a::\"\" does not have the required attribute: A"
       ]
     },
     {
@@ -43,7 +43,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: a::\"\" does not have the required attribute: A"
+        "error occurred while evaluating policy `policy0`: a::\"\" does not have the required attribute: A"
       ]
     },
     {
@@ -57,7 +57,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: a::\"\" does not have the required attribute: A"
+        "error occurred while evaluating policy `policy0`: a::\"\" does not have the required attribute: A"
       ]
     },
     {
@@ -71,7 +71,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: a::\"\" does not have the required attribute: A"
+        "error occurred while evaluating policy `policy0`: a::\"\" does not have the required attribute: A"
       ]
     },
     {
@@ -85,7 +85,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: a::\"\" does not have the required attribute: A"
+        "error occurred while evaluating policy `policy0`: a::\"\" does not have the required attribute: A"
       ]
     },
     {
@@ -99,7 +99,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: a::\"\" does not have the required attribute: A"
+        "error occurred while evaluating policy `policy0`: a::\"\" does not have the required attribute: A"
       ]
     },
     {
@@ -113,7 +113,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: a::\"\" does not have the required attribute: A"
+        "error occurred while evaluating policy `policy0`: a::\"\" does not have the required attribute: A"
       ]
     }
   ]

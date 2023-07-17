@@ -323,7 +323,9 @@ pub fn perform_integration_test_from_json_custom(
             let mut found_matching_non_existent_fn_fuzzing = false;
             for e in expected_response.diagnostics().errors() {
                 let EvaluationError::StringMessage(msg) = e;
-                if msg.contains("while evaluating policy policy0, encountered the following error: function does not exist:") {
+                if msg.contains(
+                    "error occurred while evaluating policy `policy0`: function does not exist:",
+                ) {
                     let fuzzing_fn_name = Some(msg.split_whitespace().last().unwrap().to_string());
                     if parsing_fn_name == fuzzing_fn_name {
                         found_matching_non_existent_fn_fuzzing = true;

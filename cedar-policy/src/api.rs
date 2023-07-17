@@ -315,20 +315,8 @@ impl Authorizer {
             .0
             .is_authorized_core(&query.0, &policy_set.ast, &entities.0);
         match response {
-            authorizer::ResponseKind::FullyEvaluated(a) => PartialResponse::Concrete(Response {
-                decision: a.decision,
-                diagnostics: Diagnostics {
-                    reason: a.diagnostics.reason.into_iter().map(PolicyId).collect(),
-                    errors: a.diagnostics.errors.into_iter().collect(),
-                },
-            }),
-            authorizer::ResponseKind::Partial(p) => PartialResponse::Residual(ResidualResponse {
-                residuals: PolicySet::from_ast(p.residuals),
-                diagnostics: Diagnostics {
-                    reason: p.diagnostics.reason.into_iter().map(PolicyId).collect(),
-                    errors: p.diagnostics.errors.into_iter().collect(),
-                },
-            }),
+            authorizer::ResponseKind::FullyEvaluated(a) => PartialResponse::Concrete(a.into()),
+            authorizer::ResponseKind::Partial(p) => PartialResponse::Residual(p.into()),
         }
     }
 }
@@ -371,6 +359,19 @@ pub struct Diagnostics {
     errors: HashSet<String>,
 }
 
+impl From<authorizer::Diagnostics> for Diagnostics {
+    fn from(diagnostics: authorizer::Diagnostics) -> Self {
+        Self {
+            reason: diagnostics.reason.into_iter().map(PolicyId).collect(),
+            errors: diagnostics
+                .errors
+                .into_iter()
+                .map(|e| e.to_string())
+                .collect(),
+        }
+    }
+}
+
 impl Diagnostics {
     /// Get the policies that contributed to the decision
     pub fn reason(&self) -> impl Iterator<Item = &PolicyId> {
@@ -410,10 +411,7 @@ impl From<authorizer::Response> for Response {
     fn from(a: authorizer::Response) -> Self {
         Self {
             decision: a.decision,
-            diagnostics: Diagnostics {
-                reason: a.diagnostics.reason.into_iter().map(PolicyId).collect(),
-                errors: a.diagnostics.errors.into_iter().collect(),
-            },
+            diagnostics: a.diagnostics.into(),
         }
     }
 }
@@ -435,6 +433,15 @@ impl ResidualResponse {
     /// Get the authorization diagnostics
     pub fn diagnostics(&self) -> &Diagnostics {
         &self.diagnostics
+    }
+}
+
+impl From<authorizer::PartialResponse> for ResidualResponse {
+    fn from(p: authorizer::PartialResponse) -> Self {
+        ResidualResponse {
+            residuals: PolicySet::from_ast(p.residuals),
+            diagnostics: p.diagnostics.into(),
+        }
     }
 }
 

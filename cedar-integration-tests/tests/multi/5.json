@@ -25,7 +25,7 @@
             },
             "decision": "Deny",
             "reasons": [],
-            "errors": ["while evaluating policy policy0, encountered the following error: cannot access attribute of unspecified entity: department", "while evaluating policy policy2, encountered the following error: cannot access attribute of unspecified entity: jobLevel"]
+            "errors": ["error occurred while evaluating policy `policy0`: cannot access attribute of unspecified entity: department", "error occurred while evaluating policy `policy2`: cannot access attribute of unspecified entity: jobLevel"]
         },
         {
             "desc": "a request with unspecified entities should be implicitly denied",
@@ -48,7 +48,7 @@
             },
             "decision": "Deny",
             "reasons": ["policy1"],
-            "errors": ["while evaluating policy policy2, encountered the following error: cannot access attribute of unspecified entity: jobLevel"]
+            "errors": ["error occurred while evaluating policy `policy2`: cannot access attribute of unspecified entity: jobLevel"]
         },
         {
             "desc": "giuseppe should be able to read any file",

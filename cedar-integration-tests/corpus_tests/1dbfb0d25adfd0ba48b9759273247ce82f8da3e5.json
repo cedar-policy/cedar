@@ -13,7 +13,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type Action)"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type Action)"
       ]
     },
     {
@@ -25,7 +25,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type Action)"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type Action)"
       ]
     },
     {
@@ -57,7 +57,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type Action)"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type Action)"
       ]
     },
     {
@@ -69,7 +69,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type Action)"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type Action)"
       ]
     },
     {
@@ -81,7 +81,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type Action)"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type Action)"
       ]
     },
     {
@@ -93,7 +93,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got (entity of type Action)"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type Action)"
       ]
     }
   ]
