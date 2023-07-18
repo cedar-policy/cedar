@@ -143,7 +143,7 @@ pub trait CustomCedarImpl {
         q: &cedar_policy_core::ast::Request,
         p: &cedar_policy_core::ast::PolicySet,
         e: &cedar_policy_core::entities::Entities,
-    ) -> cedar_policy_core::authorizer::Response;
+    ) -> Response;
 
     /// Custom validator entry point.
     ///
@@ -286,7 +286,6 @@ pub fn perform_integration_test_from_json_custom(
         let response = if let Some(custom_impl) = custom_impl_opt {
             custom_impl
                 .is_authorized(&request.0, &policies.ast, &entities.0)
-                .into()
         } else {
             Authorizer::new().is_authorized(&request, &policies, &entities)
         };
