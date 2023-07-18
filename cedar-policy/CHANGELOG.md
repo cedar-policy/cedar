@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Move public API for partial evaluation behind experimental feature flag.
 
 ### Added
 
