@@ -1491,7 +1491,7 @@ impl Template {
     fn from_json(
         id: Option<PolicyId>,
         json: serde_json::Value,
-    ) -> Result<Self, cedar_policy_core::est::EstToAstError> {
+    ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
         let est: est::Policy =
             serde_json::from_value(json).map_err(JsonDeserializationError::Serde)?;
         Ok(Self {
@@ -1778,7 +1778,7 @@ impl Policy {
     pub fn from_json(
         id: Option<PolicyId>,
         json: serde_json::Value,
-    ) -> Result<Self, cedar_policy_core::est::EstToAstError> {
+    ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
         let est: est::Policy =
             serde_json::from_value(json).map_err(JsonDeserializationError::Serde)?;
         Ok(Self {

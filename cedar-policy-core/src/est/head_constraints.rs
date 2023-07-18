@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use super::{EstToAstError, InstantiationError};
+use super::{FromJsonError, InstantiationError};
 use crate::ast;
 use crate::entities::{EntityUidJSON, JsonDeserializationErrorContext};
 use serde::{Deserialize, Serialize};
@@ -208,10 +208,8 @@ impl From<ast::PrincipalConstraint> for PrincipalConstraint {
 }
 
 impl TryFrom<PrincipalConstraint> for ast::PrincipalConstraint {
-    type Error = EstToAstError;
-    fn try_from(
-        constraint: PrincipalConstraint,
-    ) -> Result<ast::PrincipalConstraint, EstToAstError> {
+    type Error = FromJsonError;
+    fn try_from(constraint: PrincipalConstraint) -> Result<ast::PrincipalConstraint, Self::Error> {
         constraint.try_into().map(ast::PrincipalConstraint::new)
     }
 }
@@ -223,8 +221,8 @@ impl From<ast::ResourceConstraint> for ResourceConstraint {
 }
 
 impl TryFrom<ResourceConstraint> for ast::ResourceConstraint {
-    type Error = EstToAstError;
-    fn try_from(constraint: ResourceConstraint) -> Result<ast::ResourceConstraint, EstToAstError> {
+    type Error = FromJsonError;
+    fn try_from(constraint: ResourceConstraint) -> Result<ast::ResourceConstraint, Self::Error> {
         constraint.try_into().map(ast::ResourceConstraint::new)
     }
 }
@@ -286,10 +284,10 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
 }
 
 impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
-    type Error = EstToAstError;
+    type Error = FromJsonError;
     fn try_from(
         constraint: PrincipalConstraint,
-    ) -> Result<ast::PrincipalOrResourceConstraint, EstToAstError> {
+    ) -> Result<ast::PrincipalOrResourceConstraint, Self::Error> {
         match constraint {
             PrincipalConstraint::All => Ok(ast::PrincipalOrResourceConstraint::Any),
             PrincipalConstraint::Eq(EqConstraint::Entity { entity }) => Ok(
@@ -303,7 +301,7 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
                         ast::EntityReference::Slot,
                     ))
                 } else {
-                    Err(EstToAstError::InvalidSlotName)
+                    Err(Self::Error::InvalidSlotName)
                 }
             }
             PrincipalConstraint::In(PrincipalOrResourceInConstraint::Entity { entity }) => Ok(
@@ -317,7 +315,7 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
                         ast::EntityReference::Slot,
                     ))
                 } else {
-                    Err(EstToAstError::InvalidSlotName)
+                    Err(Self::Error::InvalidSlotName)
                 }
             }
         }
@@ -325,10 +323,10 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
 }
 
 impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
-    type Error = EstToAstError;
+    type Error = FromJsonError;
     fn try_from(
         constraint: ResourceConstraint,
-    ) -> Result<ast::PrincipalOrResourceConstraint, EstToAstError> {
+    ) -> Result<ast::PrincipalOrResourceConstraint, Self::Error> {
         match constraint {
             ResourceConstraint::All => Ok(ast::PrincipalOrResourceConstraint::Any),
             ResourceConstraint::Eq(EqConstraint::Entity { entity }) => Ok(
@@ -342,7 +340,7 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
                         ast::EntityReference::Slot,
                     ))
                 } else {
-                    Err(EstToAstError::InvalidSlotName)
+                    Err(Self::Error::InvalidSlotName)
                 }
             }
             ResourceConstraint::In(PrincipalOrResourceInConstraint::Entity { entity }) => Ok(
@@ -356,7 +354,7 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
                         ast::EntityReference::Slot,
                     ))
                 } else {
-                    Err(EstToAstError::InvalidSlotName)
+                    Err(Self::Error::InvalidSlotName)
                 }
             }
         }
@@ -386,14 +384,14 @@ impl From<ast::ActionConstraint> for ActionConstraint {
 }
 
 impl TryFrom<ActionConstraint> for ast::ActionConstraint {
-    type Error = EstToAstError;
-    fn try_from(constraint: ActionConstraint) -> Result<ast::ActionConstraint, EstToAstError> {
+    type Error = FromJsonError;
+    fn try_from(constraint: ActionConstraint) -> Result<ast::ActionConstraint, Self::Error> {
         match constraint {
             ActionConstraint::All => Ok(ast::ActionConstraint::Any),
             ActionConstraint::Eq(EqConstraint::Entity { entity }) => Ok(ast::ActionConstraint::Eq(
                 Arc::new(entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?),
             )),
-            ActionConstraint::Eq(EqConstraint::Slot { .. }) => Err(EstToAstError::ActionSlot),
+            ActionConstraint::Eq(EqConstraint::Slot { .. }) => Err(Self::Error::ActionSlot),
             ActionConstraint::In(ActionInConstraint::Single { entity }) => {
                 Ok(ast::ActionConstraint::In(vec![Arc::new(
                     entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,

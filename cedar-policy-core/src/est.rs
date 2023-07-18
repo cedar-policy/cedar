@@ -188,7 +188,7 @@ impl Policy {
     pub fn try_into_ast_policy(
         self,
         id: Option<ast::PolicyID>,
-    ) -> Result<ast::Policy, EstToAstError> {
+    ) -> Result<ast::Policy, FromJsonError> {
         let template: ast::Template = self.try_into_ast_template(id)?;
         ast::StaticPolicy::try_from(template)
             .map(Into::into)
@@ -202,7 +202,7 @@ impl Policy {
     pub fn try_into_ast_template(
         self,
         id: Option<ast::PolicyID>,
-    ) -> Result<ast::Template, EstToAstError> {
+    ) -> Result<ast::Template, FromJsonError> {
         let conditions = match self.conditions.len() {
             0 => ast::Expr::val(true),
             _ => {
@@ -229,8 +229,8 @@ impl Policy {
 }
 
 impl TryFrom<Clause> for ast::Expr {
-    type Error = EstToAstError;
-    fn try_from(clause: Clause) -> Result<ast::Expr, EstToAstError> {
+    type Error = FromJsonError;
+    fn try_from(clause: Clause) -> Result<ast::Expr, Self::Error> {
         match clause {
             Clause::When(expr) => expr.try_into(),
             Clause::Unless(expr) => Ok(ast::Expr::not(expr.try_into()?)),
@@ -2466,7 +2466,7 @@ mod test {
         );
         let est: Policy = serde_json::from_value(bad).unwrap();
         let ast: Result<ast::Policy, _> = est.try_into_ast_policy(None);
-        assert_matches!(ast, Err(EstToAstError::MissingOperator));
+        assert_matches!(ast, Err(FromJsonError::MissingOperator));
 
         let bad = json!(
             {
@@ -2528,7 +2528,7 @@ mod test {
         let ast: Result<ast::Policy, _> = est.try_into_ast_policy(None);
         assert_matches!(
             ast,
-            Err(EstToAstError::TemplateToPolicy(ast::ContainsSlot::Named(_)))
+            Err(FromJsonError::TemplateToPolicy(ast::ContainsSlot::Named(_)))
         );
     }
 }
