@@ -375,7 +375,7 @@ impl Default for Authorizer {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 struct EvaluationResults<'a> {
     satisfied_permits: Vec<&'a Policy>,
     satisfied_forbids: Vec<&'a Policy>,
@@ -383,19 +383,6 @@ struct EvaluationResults<'a> {
     errors: Vec<(PolicyID, EvaluationError)>,
     permit_residuals: Vec<Policy>,
     forbid_residuals: Vec<Policy>,
-}
-
-impl Default for EvaluationResults<'_> {
-    fn default() -> Self {
-        Self {
-            satisfied_permits: vec![],
-            satisfied_forbids: vec![],
-            global_deny_policies: HashSet::new(),
-            errors: vec![],
-            permit_residuals: vec![],
-            forbid_residuals: vec![],
-        }
-    }
 }
 
 impl std::fmt::Debug for Authorizer {

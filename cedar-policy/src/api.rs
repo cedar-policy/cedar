@@ -365,8 +365,8 @@ impl From<authorizer::Diagnostics> for Diagnostics {
             reason: diagnostics.reason.into_iter().map(PolicyId).collect(),
             errors: diagnostics
                 .errors
-                .into_iter()
-                .map(|e| e.to_string())
+                .iter()
+                .map(ToString::to_string)
                 .collect(),
         }
     }
