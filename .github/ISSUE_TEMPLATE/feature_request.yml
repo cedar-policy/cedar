@@ -32,14 +32,6 @@ body:
 
   - type: textarea
     attributes:
-      label: Describe the solution you'd like
-      description: |
-        A clear and concise description of your proposed solution.
-    validations:
-      required: true
-
-  - type: textarea
-    attributes:
       label: Describe alternatives you've considered
       description: |
         A clear and concise description of any alternative solutions or features you've considered.
@@ -58,4 +50,3 @@ body:
       options:
         - label: 👋 I may be able to implement this feature request
         - label: ⚠️ This feature might incur a breaking change
-
