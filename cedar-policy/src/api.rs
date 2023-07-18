@@ -437,6 +437,7 @@ impl ResidualResponse {
     }
 }
 
+#[cfg(feature = "partial-eval")]
 impl From<authorizer::PartialResponse> for ResidualResponse {
     fn from(p: authorizer::PartialResponse) -> Self {
         Self {
