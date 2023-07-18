@@ -16,11 +16,10 @@
 
 use crate::ast::*;
 use crate::evaluator::EvaluationError;
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Errors that can occur during authorization
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Error)]
+#[derive(Debug, PartialEq, Clone, Error)]
 pub enum AuthorizationError {
     /// Failed to eagerly evaluate entity attributes when initializing the `Evaluator`.
     #[error("error occurred while evaluating entity attributes: {0}")]

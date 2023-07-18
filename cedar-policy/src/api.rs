@@ -363,11 +363,7 @@ impl From<authorizer::Diagnostics> for Diagnostics {
     fn from(diagnostics: authorizer::Diagnostics) -> Self {
         Self {
             reason: diagnostics.reason.into_iter().map(PolicyId).collect(),
-            errors: diagnostics
-                .errors
-                .iter()
-                .map(ToString::to_string)
-                .collect(),
+            errors: diagnostics.errors.iter().map(ToString::to_string).collect(),
         }
     }
 }
@@ -438,7 +434,7 @@ impl ResidualResponse {
 
 impl From<authorizer::PartialResponse> for ResidualResponse {
     fn from(p: authorizer::PartialResponse) -> Self {
-        ResidualResponse {
+        Self {
             residuals: PolicySet::from_ast(p.residuals),
             diagnostics: p.diagnostics.into(),
         }

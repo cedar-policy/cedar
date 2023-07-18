@@ -375,7 +375,7 @@ impl Default for Authorizer {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone, Default)]
 struct EvaluationResults<'a> {
     satisfied_permits: Vec<&'a Policy>,
     satisfied_forbids: Vec<&'a Policy>,
@@ -807,7 +807,7 @@ mod test {
 // GRCOV_BEGIN_COVERAGE
 
 /// Authorization response returned from the `Authorizer`
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Response {
     /// Authorization decision
     pub decision: Decision,
@@ -839,7 +839,7 @@ impl PartialResponse {
 }
 
 /// Diagnostics providing more information on how a `Decision` was reached
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Diagnostics {
     /// `PolicyID`s of the policies that contributed to the decision. If no
     /// policies applied to the request, this set will be empty.
