@@ -844,7 +844,7 @@ pub struct Diagnostics {
     /// `PolicyID`s of the policies that contributed to the decision. If no
     /// policies applied to the request, this set will be empty.
     pub reason: HashSet<PolicyID>,
-    /// list of error messages which occurred
+    /// List of errors that occurred
     pub errors: Vec<AuthorizationError>,
 }
 
