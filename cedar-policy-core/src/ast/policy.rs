@@ -255,12 +255,18 @@ pub enum LinkingError {
     },
 
     /// The attempted instantiation failed as the template did not exist.
-    #[error("failed to find a template with id: {0}")]
-    NoSuchTemplate(PolicyID),
+    #[error("failed to find a template with id: {id}")]
+    NoSuchTemplate {
+        /// [`PolicyID`] of the template we failed to find
+        id: PolicyID,
+    },
 
     /// The new instance conflicts with an existing [`PolicyID`].
-    #[error("template-linked policy id conflicts with an existing policy id")]
-    PolicyIdConflict,
+    #[error("template-linked policy id conflicts with an existing policy id: {id}")]
+    PolicyIdConflict {
+        /// [`PolicyID`] where the conflict exists
+        id: PolicyID,
+    },
 }
 
 impl LinkingError {
