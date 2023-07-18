@@ -284,8 +284,7 @@ pub fn perform_integration_test_from_json_custom(
             });
         let request = Request::new(principal, action, resource, context);
         let response = if let Some(custom_impl) = custom_impl_opt {
-            custom_impl
-                .is_authorized(&request.0, &policies.ast, &entities.0)
+            custom_impl.is_authorized(&request.0, &policies.ast, &entities.0)
         } else {
             Authorizer::new().is_authorized(&request, &policies, &entities)
         };
