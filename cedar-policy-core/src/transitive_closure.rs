@@ -111,9 +111,9 @@ where
 }
 
 /// Given a DAG (as a map from keys to `TCNode`), enforce that
-/// all transitive edges are included, ie, the transitive closure has already
+/// all transitive edges are included, i.e., the transitive closure has already
 /// been computed. If this is not the case, return an appropriate
-/// `MissingTcEdge`.
+/// `MissingTcEdge` error.
 fn enforce_tc<K, V>(entities: &HashMap<K, V>) -> Result<(), K>
 where
     K: Clone + Eq + Hash + Debug + Display,
