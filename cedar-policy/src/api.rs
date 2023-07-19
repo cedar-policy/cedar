@@ -1118,12 +1118,15 @@ impl std::fmt::Display for EntityUid {
 pub enum PolicySetError {
     /// There was a duplicate [`PolicyId`] encountered in either the set of
     /// templates or the set of policies.
-    #[error("duplicate template or policy id")]
-    AlreadyDefined,
+    #[error("duplicate template or policy id: {id}")]
+    AlreadyDefined {
+        /// [`PolicyId`] that was duplicate
+        id: PolicyId,
+    },
     /// Error when linking a template
     #[error("unable to link template: {0}")]
     LinkingError(#[from] ast::LinkingError),
-    /// Expected a static policy, but a template-linked policy was provided.
+    /// Expected a static policy, but a template-linked policy was provided
     #[error("expected a static policy, but a template-linked policy was provided")]
     ExpectedStatic,
 }
@@ -1131,7 +1134,7 @@ pub enum PolicySetError {
 impl From<ast::PolicySetError> for PolicySetError {
     fn from(e: ast::PolicySetError) -> Self {
         match e {
-            ast::PolicySetError::Occupied => Self::AlreadyDefined,
+            ast::PolicySetError::Occupied { id } => Self::AlreadyDefined { id: PolicyId(id) },
         }
     }
 }
@@ -2779,7 +2782,9 @@ mod policy_set_tests {
 
         match r {
             Ok(_) => panic!("Should have failed due to conflict"),
-            Err(PolicySetError::LinkingError(LinkingError::PolicyIdConflict)) => (),
+            Err(PolicySetError::LinkingError(LinkingError::PolicyIdConflict { id })) => {
+                assert_eq!(id, ast::PolicyID::from_string("id"))
+            }
             Err(e) => panic!("Incorrect error: {e}"),
         };
     }

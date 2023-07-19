@@ -29,6 +29,8 @@
     builtin types but missing a required field for that type will generate an
     error stating that a required field is missing instead of claiming that it
     could not find "common types" definition for that builtin type.
+- Some error types now carry more information about the error, with error
+  messages updated appropriately
 - Update how record types are treated by the validator to support "open" and
   "closed" record types.  Record types written in schema are now closed. In
   particular, this applies to the action context, so `context has attr` can now
