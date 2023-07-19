@@ -48,7 +48,7 @@ pub enum EvaluationError {
     RecordAttrDoesNotExist(SmolStr),
 
     /// An error occurred when dispatching an extension function call. This
-    /// should be be confused with `ExtensionError`, which is an error thrown
+    /// should not be confused with `ExtensionError`, which is an error thrown
     /// when evaluating an individual extension function.
     #[error(transparent)]
     ExtensionsError(#[from] crate::extensions::ExtensionsError),
