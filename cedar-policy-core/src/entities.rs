@@ -507,7 +507,7 @@ mod json_parsing_tests {
             .from_json_value(json)
             .expect_err("should be an invalid uid field");
         match err {
-            EntitiesError::DeserializationError(err) => {
+            EntitiesError::Deserialization(err) => {
                 assert!(
                     err.to_string().contains(
                         "In uid field of <unknown entity>, expected a literal entity reference, but got \"hello\""
@@ -532,7 +532,7 @@ mod json_parsing_tests {
             .from_json_value(json)
             .expect_err("should be an invalid uid field");
         match err {
-            EntitiesError::DeserializationError(err) => assert!(
+            EntitiesError::Deserialization(err) => assert!(
                 err.to_string()
                     .contains("expected a literal entity reference, but got \"hello\""),
                 "actual error message was {}",
@@ -554,7 +554,7 @@ mod json_parsing_tests {
             .from_json_value(json)
             .expect_err("should be an invalid uid field");
         match err {
-            EntitiesError::DeserializationError(err) => assert!(err
+            EntitiesError::Deserialization(err) => assert!(err
                 .to_string()
                 .contains("did not match any variant of untagged enum")),
             _ => panic!("expected deserialization error, got a different error: {err}"),
@@ -573,7 +573,7 @@ mod json_parsing_tests {
             .from_json_value(json)
             .expect_err("should be an invalid parents field");
         match err {
-            EntitiesError::DeserializationError(err) => {
+            EntitiesError::Deserialization(err) => {
                 assert!(err.to_string().contains("invalid type: string"))
             }
             _ => panic!("expected deserialization error, got a different error: {err}"),
@@ -595,7 +595,7 @@ mod json_parsing_tests {
             .from_json_value(json)
             .expect_err("should be an invalid parents field");
         match err {
-            EntitiesError::DeserializationError(err) => assert!(err
+            EntitiesError::Deserialization(err) => assert!(err
                 .to_string()
                 .contains("did not match any variant of untagged enum")),
             _ => panic!("expected deserialization error, got a different error: {err}"),
@@ -725,7 +725,7 @@ mod json_parsing_tests {
         .expect("Failed to construct entities");
         assert!(matches!(
             roundtrip(&entities),
-            Err(EntitiesError::SerializationError(JsonSerializationError::ReservedKey { key })) if key.as_str() == "__entity"
+            Err(EntitiesError::Serialization(JsonSerializationError::ReservedKey { key })) if key.as_str() == "__entity"
         ));
     }
 
