@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 2.3.1
+
+### Fixed
+
+- Fix a panic in `PolicySet::link` that could occur when the function was called
+  with a policy id corresponding to a static policy.
+
 ## 2.3.0
 
 ### Changed
