@@ -134,20 +134,20 @@ impl<'a> Extensions<'a> {
 #[derive(Debug, PartialEq, Clone, Error)]
 pub enum ExtensionsError {
     /// Tried to call a function that doesn't exist
-    #[error("function does not exist: {name}")]
+    #[error("extension function does not exist: {name}")]
     FuncDoesNotExist {
         /// Name of the function that doesn't exist
         name: Name,
     },
 
-    #[error("The extension function called has no type: {name}")]
     /// Attempted to typecheck an expression that had no type
+    #[error("extension function has no type: {name}")]
     HasNoType {
         /// Name of the function that returns no type
         name: Name,
     },
 
-    /// Tried to call a function but it was defined multiple times (eg, by
+    /// Tried to call a function but it was defined multiple times (e.g., by
     /// multiple different extensions)
     #[error("function is defined {num_defs} times: {name}")]
     FuncMultiplyDefined {
