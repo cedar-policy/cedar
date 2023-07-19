@@ -16,8 +16,10 @@ body:
       options:
         - Cedar language features
         - Cedar validation features
-        - Cedar grammar changes/additions
+        - Cedar syntax changes/additions
         - User level API changes
+        - Purely internal refactors/changes
+        - Documentation and code comments
         - Other
     validations:
       required: true
