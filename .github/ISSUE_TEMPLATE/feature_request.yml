@@ -18,7 +18,7 @@ body:
         - Cedar validation features
         - Cedar syntax changes/additions
         - User level API changes
-        - Purely internal refactors/changes
+        - Internal refactors/changes
         - Documentation and code comments
         - Other
     validations:
