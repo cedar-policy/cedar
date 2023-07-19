@@ -26,8 +26,8 @@ pub enum FromJsonError {
     /// Error while deserializing JSON
     #[error(transparent)]
     JsonDeserializationError(#[from] JsonDeserializationError),
-    /// Tried to convert an EST representing a template to an AST representing a policy
-    #[error("tried to convert JSON representing a template to a policy rather than template: {0}")]
+    /// Tried to convert an EST representing a template to an AST representing a static policy
+    #[error("tried to convert JSON representing a template to a static policy: {0}")]
     TemplateToPolicy(#[from] ast::ContainsSlot),
     /// Slot name was not valid for the position it was used in. (Currently, principal slots must
     /// be named `?principal`, and resource slots must be named `?resource`.)
@@ -46,7 +46,9 @@ pub enum FromJsonError {
         ops: Vec<SmolStr>,
     },
     /// At most one of the operands in `a * b * c * d * ...` can be a non-{constant int}
-    #[error("multiplication must be by a constant int: neither `{arg1}` nor `{arg2}` is a constant")]
+    #[error(
+        "multiplication must be by a constant int: neither `{arg1}` nor `{arg2}` is a constant"
+    )]
     MultiplicationByNonConstant {
         /// First non-constant argument
         arg1: ast::Expr,
