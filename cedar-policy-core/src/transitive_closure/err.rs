@@ -32,7 +32,7 @@ pub enum TcError<K: Debug + Display> {
         child: K,
         /// Parent entity at fault
         parent: K,
-        /// Grandparent entity at fault. This is a parent of [`parent`] but not an
+        /// Grandparent entity at fault. This is a parent of `parent` but not an
         /// ancestor of `child`.
         grandparent: K,
     },
