@@ -13,7 +13,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got string"
       ]
     },
     {
@@ -25,7 +25,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got string"
       ]
     },
     {
@@ -47,7 +47,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got string"
       ]
     },
     {
@@ -59,7 +59,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got string"
       ]
     },
     {
@@ -71,7 +71,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got string"
       ]
     },
     {
@@ -83,7 +83,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got string"
       ]
     },
     {
@@ -95,7 +95,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got string"
       ]
     }
   ]

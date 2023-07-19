@@ -600,7 +600,7 @@ impl TryFrom<Expr> for ast::Expr {
                             JsonDeserializationError::ExtnParseError(WithContext {
                                 context: format!("expected valid operator or extension function name; got {fn_name}"),
                                 errs,
-                            }.into())
+                            })
                         )?;
                         Ok(ast::Expr::call_extension_fn(
                             fn_name,

@@ -172,16 +172,13 @@ impl JSONValue {
             Self::ExprEscape { __expr: expr } => {
                 use crate::parser;
                 let expr: Expr = parser::parse_expr(&expr).map_err(|errs| {
-                    JsonDeserializationError::ExprParseError(
-                        parser::err::WithContext {
-                            context: format!(
-                                "contents of __expr escape {} are not a valid Cedar expression",
-                                expr
-                            ),
-                            errs,
-                        }
-                        .into(),
-                    )
+                    JsonDeserializationError::ExprParseError(parser::err::WithContext {
+                        context: format!(
+                            "contents of __expr escape {} are not a valid Cedar expression",
+                            expr
+                        ),
+                        errs,
+                    })
                 })?;
                 Ok(RestrictedExpr::new(expr)?)
             }
@@ -196,7 +193,7 @@ impl JSONValue {
                                     serde_json::to_string_pretty(&entity).unwrap_or_else(|_| format!("{:?}", &entity))
                                 ),
                                 errs,
-                            }.into(),
+                            },
                         )
                     })?,
                 ))
@@ -294,16 +291,13 @@ impl FnAndArg {
         use crate::parser;
         Ok(RestrictedExpr::call_extension_fn(
             Name::from_normalized_str(&self.ext_fn).map_err(|errs| {
-                JsonDeserializationError::ExtnParseError(
-                    parser::err::WithContext {
-                        context: format!(
-                            "in __extn escape, {:?} is not a valid function name",
-                            &self.ext_fn,
-                        ),
-                        errs,
-                    }
-                    .into(),
-                )
+                JsonDeserializationError::ExtnParseError(parser::err::WithContext {
+                    context: format!(
+                        "in __extn escape, {:?} is not a valid function name",
+                        &self.ext_fn,
+                    ),
+                    errs,
+                })
             })?,
             vec![JSONValue::into_expr(*self.arg)?],
         ))
