@@ -1308,17 +1308,14 @@ impl PolicySet {
             .into_iter()
             .map(|(key, value)| (key.into(), value.0))
             .collect();
-        self.ast
+        let linked_ast = self
+            .ast
             .link(
                 template_id.0.clone(),
                 new_id.0.clone(),
                 unwrapped_vals.clone(),
             )
             .map_err(PolicySetError::LinkingError)?;
-        let linked_ast = self
-            .ast
-            .get(&new_id.0)
-            .expect("ast.link() didn't fail above, so this shouldn't fail");
         let linked_lossless = self
             .templates
             .get(&template_id)

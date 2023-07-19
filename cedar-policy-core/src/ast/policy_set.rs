@@ -187,7 +187,10 @@ impl PolicySet {
         }
     }
 
-    /// Attempt to create a new template linked policy and add it to the policy set
+    /// Attempt to create a new template linked policy and add it to the policy
+    /// set. Returns a references to the new template linked policy if
+    /// successful.
+    ///
     /// Errors for two reasons
     ///   1) The the passed SlotEnv either does not match the slots in the templates
     ///   2) The passed link Id conflicts with an Id already in the set
@@ -196,7 +199,7 @@ impl PolicySet {
         template_id: PolicyID,
         new_id: PolicyID,
         values: HashMap<SlotId, EntityUID>,
-    ) -> Result<(), LinkingError> {
+    ) -> Result<&Policy, LinkingError> {
         let t = self
             .get_template(&template_id)
             .ok_or_else(|| LinkingError::NoSuchTemplate {
@@ -209,10 +212,7 @@ impl PolicySet {
             self.links.entry(new_id.clone()),
             self.templates.entry(new_id),
         ) {
-            (Entry::Vacant(links_entry), Entry::Vacant(_)) => {
-                links_entry.insert(r);
-                Ok(())
-            }
+            (Entry::Vacant(links_entry), Entry::Vacant(_)) => Ok(links_entry.insert(r)),
             (Entry::Occupied(oentry), _) => Err(LinkingError::PolicyIdConflict {
                 id: oentry.key().clone(),
             }),
