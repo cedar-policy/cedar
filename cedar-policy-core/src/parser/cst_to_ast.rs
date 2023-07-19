@@ -105,7 +105,7 @@ impl ASTNode<Option<cst::Policies>> {
                     if let Err(e) = pset.add_template(template) {
                         match e {
                             PolicySetError::Occupied => errs.push(ParseError::ToAST(
-                                "A template with this ID already exists within the policy set"
+                                "A template with this id already exists within the policy set"
                                     .to_string(),
                             )),
                         };
@@ -117,7 +117,7 @@ impl ASTNode<Option<cst::Policies>> {
                     if let Err(e) = pset.add_static(inline_policy) {
                         match e {
                             PolicySetError::Occupied => errs.push(ParseError::ToAST(
-                                "A policy with this ID already exists within the policy set"
+                                "A policy with this id already exists within the policy set"
                                     .to_string(),
                             )),
                         };
