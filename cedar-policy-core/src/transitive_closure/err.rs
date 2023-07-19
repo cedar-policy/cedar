@@ -26,7 +26,7 @@ use thiserror::Error;
 pub enum TcError<K: Debug + Display> {
     /// Error raised when `TCComputation::EnforceAlreadyComputed` finds that the
     /// TC was in fact not already computed
-    #[error("expected all transitive edges to exist, but they don't. {child} is a child of {parent} is a child of {grandparent}, but {grandparent} is not marked as an ancestor of {child}")]
+    #[error("expected all transitive edges to exist, but `{child}` -> `{parent}` and `{parent}` -> `{grandparent}` exists, while `{child}` -> `{grandparent}` does not")]
     MissingTcEdge {
         /// Child entity at fault
         child: K,
