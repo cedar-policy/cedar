@@ -2186,7 +2186,7 @@ impl Context {
         schema
             .0
             .get_context_schema(&action.0)
-            .ok_or_else(|| ContextJsonError::ActionDoesNotExist {
+            .ok_or_else(|| ContextJsonError::MissingAction {
                 action: action.clone(),
             })
     }
@@ -2197,10 +2197,10 @@ impl Context {
 pub enum ContextJsonError {
     /// Error deserializing the JSON into a Context
     #[error(transparent)]
-    JsonDeserializationError(#[from] JsonDeserializationError),
+    JsonDeserialization(#[from] JsonDeserializationError),
     /// The supplied action doesn't exist in the supplied schema
-    #[error("Action {action} doesn't exist in the supplied schema")]
-    ActionDoesNotExist {
+    #[error("action `{action}` doesn't exist in the supplied schema")]
+    MissingAction {
         /// UID of the action which doesn't exist
         action: EntityUid,
     },
