@@ -19,8 +19,7 @@ use smol_str::SmolStr;
 use std::sync::Arc;
 use thiserror::Error;
 
-/// Error type for various kinds of errors that can be raised by the policy
-/// evaluator.
+/// Errors that can occur during evaluation
 #[derive(Debug, PartialEq, Clone, Error)]
 pub enum EvaluationError {
     /// Tried to lookup this entity UID, but it didn't exist in the provided
@@ -32,7 +31,7 @@ pub enum EvaluationError {
     /// have that attribute
     #[error("`{}` does not have the attribute: {}", &.entity, &.attr)]
     EntityAttrDoesNotExist {
-        /// Entity which didn't have the attribute
+        /// Entity that didn't have the attribute
         entity: Arc<EntityUID>,
         /// Name of the attribute it didn't have
         attr: SmolStr,
@@ -42,7 +41,7 @@ pub enum EvaluationError {
     #[error("cannot access attribute of unspecified entity: {0}")]
     UnspecifiedEntityAccess(SmolStr),
 
-    /// Tried to get this attribute of a (non-entity) record, but that record
+    /// Tried to get an attribute of a (non-entity) record, but that record
     /// didn't have that attribute
     #[error("record does not have the attribute: {0}")]
     RecordAttrDoesNotExist(SmolStr),
@@ -96,8 +95,9 @@ pub enum EvaluationError {
         msg: String,
     },
 
-    /// This error is raised if an expression contains unknowns, but we weren’t
-    /// using the partial evaluation APIs.
+    /// This error is raised if an expression contains unknowns and cannot be
+    /// reduced to a [`Value`]. In order to return partial results, use the
+    /// partial evaluation APIs instead.
     #[error("the expression contains unknown(s) (consider using the partial evaluation API): {0}")]
     NonValue(Expr),
 
