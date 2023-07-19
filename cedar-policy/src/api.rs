@@ -2179,7 +2179,7 @@ pub enum ContextJsonError {
     #[error(transparent)]
     JsonDeserialization(#[from] JsonDeserializationError),
     /// The supplied action doesn't exist in the supplied schema
-    #[error("action {action} doesn't exist in the supplied schema")]
+    #[error("action `{action}` doesn't exist in the supplied schema")]
     MissingAction {
         /// UID of the action which doesn't exist
         action: EntityUid,
