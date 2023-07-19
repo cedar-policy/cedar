@@ -13,32 +13,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# This script ensures that exceptions to the clippy lints have explanations in
+# the comments. It assumes that clippy is properly configured to forbid the
+# lints listed in `panic_markers` and that clippy is being run regularly.
+# Clippy is automatically run against PRs on GitHub.  Clippy lints are
+# controlled for all of our crates by `./.cargo/config.toml`.
 
-# This script ensures that exceptions to the clippy lints have explanations in the comments
-
-total_checked_panics=0
 total_panics=0
 failed=0
 
-crates=("cedar-policy-core")
+crates=($(cargo metadata --no-deps --format-version 1 | jq -r '.packages | map(.name) | join(" ")'))
 panic_markers=("unwrap_used expect_used fallible_impl_from unreachable indexing_slicing")
 
 for crate in ${crates[@]}; do
+    crate_panics=0
     for panic_marker in ${panic_markers[@]}; do
         while read -r filename linenum ; do 
             msg_line=$(($linenum - 1))
             if sed "$msg_line!d" $filename | grep 'PANIC SAFETY' > /dev/null ; then 
-                total_checked_panics=$(($total_checked_panics + 1))
-                total_panics=$(($total_panics + 1))
+                crate_panics=$(($crate_panics + 1))
             else
                 echo "Unchecked panic at $filename:$linenum"
-                total_panics=$(($total_panics + 1))
+                crate_panics=$(($crate_panics + 1))
                 failed=1
             fi
         done < <(grep -n -r "allow(clippy::$panic_marker)" ./"$crate" | awk -F ':' '{ print $1 " " $2 }')
     done
+    echo "$crate: $crate_panics"
+    total_panics=$(($total_panics + $crate_panics))
 done
 
-echo $total_checked_panics
+echo "Total Panics: $total_panics"
 
 exit $failed

@@ -4,6 +4,8 @@
 
 ### Changed
 - Input policies for `check-parse` command can be read from standard input.
+- Duplicate policy ids in `@id` annotations cause the CLI to exit gracefully
+  instead of panicking.
 
 ## 2.2.0
 

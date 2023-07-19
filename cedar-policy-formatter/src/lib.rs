@@ -17,6 +17,12 @@
 //! Formatter for Cedar policies
 #![forbid(unsafe_code)]
 #![warn(missing_debug_implementations, rust_2018_idioms)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::unreachable,
+    clippy::indexing_slicing
+)]
 
 mod pprint;
 pub use pprint::*;

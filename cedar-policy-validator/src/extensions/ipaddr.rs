@@ -84,9 +84,12 @@ fn validate_ip_string(exprs: &[Expr]) -> Result<(), String> {
         Some(arg) if matches!(arg.expr_kind(), ExprKind::Lit(Literal::String(_))) => {
             let exts = Extensions::all_available();
             let evaluator = RestrictedEvaluator::new(&exts);
-            let expr = RestrictedExpr::from_str(&format!("ip({arg})")).expect("parsing error");
-            match evaluator.interpret(expr.as_borrowed()) {
-                Ok(_) => Ok(()),
+
+            match RestrictedExpr::from_str(&format!("ip({arg})")) {
+                Ok(expr) => match evaluator.interpret(expr.as_borrowed()) {
+                    Ok(_) => Ok(()),
+                    Err(_) => Err(format!("Failed to parse as IP address: {arg}")),
+                },
                 Err(_) => Err(format!("Failed to parse as IP address: {arg}")),
             }
         }

@@ -1235,12 +1235,16 @@ impl FromStr for PolicySet {
     /// See [`Policy`] for more.
     fn from_str(policies: &str) -> Result<Self, Self::Err> {
         let (texts, pset) = parser::parse_policyset_and_also_return_policy_text(policies)?;
+        // PANIC SAFETY: By the invariant on `parse_policyset_and_also_return_policy_text(policies)`, every `PolicyId` in `pset.policies()` occurs as a key in `text`.
+        #[allow(clippy::expect_used)]
         let policies = pset.policies().map(|p|
             (
                 PolicyId(p.id().clone()),
                 Policy { lossless: LosslessPolicy::policy_or_template_text(*texts.get(p.id()).expect("internal invariant violation: policy id exists in asts but not texts")), ast: p.clone() }
             )
         ).collect();
+        // PANIC SAFETY: By the same invariant, every `PolicyId` in `pset.templates()` also occurs as a key in `text`.
+        #[allow(clippy::expect_used)]
         let templates = pset.templates().map(|t|
             (
                 PolicyId(t.id().clone()),
@@ -1361,17 +1365,16 @@ impl PolicySet {
             .into_iter()
             .map(|(key, value)| (key.into(), value.0))
             .collect();
-        self.ast
+        let linked_ast = self
+            .ast
             .link(
                 template_id.0.clone(),
                 new_id.0.clone(),
                 unwrapped_vals.clone(),
             )
             .map_err(PolicySetError::LinkingError)?;
-        let linked_ast = self
-            .ast
-            .get(&new_id.0)
-            .expect("ast.link() didn't fail above, so this shouldn't fail");
+        // PANIC SAFETY: `lossless.link()` will not fail after `ast.link()` succeeds
+        #[allow(clippy::expect_used)]
         let linked_lossless = self
             .templates
             .get(&template_id)
@@ -1822,6 +1825,12 @@ impl Policy {
         }
     }
 
+    /// To avoid panicking, this function may only be called when `slot` is the
+    /// SlotId corresponding to the scope constraint from which the entity
+    /// reference `r` was extracted. I.e., If `r` is taken from the principal
+    /// scope constraint, `slot` must be `?principal`. This ensures that the
+    /// SlotId exists in the policy (and therefore the slot environment map)
+    /// whenever the EntityReference `r` is the Slot variant.
     fn convert_entity_reference<'a>(
         &'a self,
         r: &'a ast::EntityReference,
@@ -1829,7 +1838,8 @@ impl Policy {
     ) -> &'a EntityUid {
         match r {
             ast::EntityReference::EUID(euid) => EntityUid::ref_cast(euid),
-            // This `unwrap` here is safe due the invariant (values total map) on policies.
+            // PANIC SAFETY: This `unwrap` here is safe due the invariant (values total map) on policies.
+            #[allow(clippy::unwrap_used)]
             ast::EntityReference::Slot => EntityUid::ref_cast(self.ast.env().get(&slot).unwrap()),
         }
     }
