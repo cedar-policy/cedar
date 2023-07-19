@@ -1116,14 +1116,15 @@ impl std::fmt::Display for EntityUid {
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum PolicySetError {
-    /// There was a `PolicyId` collision in either the set of templates or the set of policies.
-    #[error("Collision in template or policy id")]
+    /// There was a duplicate [`PolicyId`] encountered in either the set of
+    /// templates or the set of policies.
+    #[error("duplicate template or policy id")]
     AlreadyDefined,
-    /// Error when instantiating a template.
-    #[error("Unable to link template: {0}")]
+    /// Error when linking a template
+    #[error("unable to link template: {0}")]
     LinkingError(#[from] ast::LinkingError),
-    /// Expected an static policy, but a template-linked policy was provided.
-    #[error("Expected static policy, but a template-linked policy was provided")]
+    /// Expected a static policy, but a template-linked policy was provided.
+    #[error("expected a static policy, but a template-linked policy was provided")]
     ExpectedStatic,
 }
 

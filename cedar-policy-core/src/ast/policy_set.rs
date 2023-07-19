@@ -87,9 +87,9 @@ impl From<PolicySet> for LiteralPolicySet {
 /// Potential errors when working with `PolicySet`s.
 #[derive(Error, Debug)]
 pub enum PolicySetError {
-    /// There was a `PolicyId` collision in either the set of templates or the set of policies.
-    /// Nothing was added.
-    #[error("collision in policy id")]
+    /// There was a duplicate [`PolicyID`] encountered in either the set of
+    /// templates or the set of policies.
+    #[error("duplicate template or policy id")]
     Occupied,
 }
 
