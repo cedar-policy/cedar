@@ -20,7 +20,7 @@ use crate::parser::unescape;
 use smol_str::SmolStr;
 use thiserror::Error;
 
-/// Errors arising while converting EST to AST
+/// Errors arising while converting a policy from its JSON representation (aka EST) into an AST
 #[derive(Debug, Error)]
 pub enum FromJsonError {
     /// Error while deserializing JSON
@@ -46,7 +46,7 @@ pub enum FromJsonError {
         ops: Vec<SmolStr>,
     },
     /// At most one of the operands in `a * b * c * d * ...` can be a non-{constant int}
-    #[error("multiplication must be by a constant int: neither {arg1} nor {arg2} is a constant")]
+    #[error("multiplication must be by a constant int: neither `{arg1}` nor `{arg2}` is a constant")]
     MultiplicationByNonConstant {
         /// First non-constant argument
         arg1: ast::Expr,
