@@ -34,6 +34,7 @@
   particular, this applies to the action context, so `context has attr` can now
   have type False where before it had type Boolean, creating some new
   short-circuiting opportunities.  The same applies to record literals.
+- Renamed `cedar_policy_core::est::EstToAstError` to `cedar_policy_core::est::FromJsonError`
 
 ## 2.3.0
 
