@@ -53,10 +53,6 @@ pub enum ParseError {
     /// Error concerning restricted expressions.
     #[error(transparent)]
     RestrictedExpressionError(#[from] RestrictedExpressionError),
-    /// One or more parse errors occurred while performing a task.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    WithContext(#[from] WithContext),
 }
 
 /// Error from the CST parser.
