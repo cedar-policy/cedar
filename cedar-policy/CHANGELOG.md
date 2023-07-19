@@ -1,7 +1,27 @@
 # Changelog
 
 ## Unreleased
-- Move public API for partial evaluation behind experimental feature flag.
+
+## 2.3.1
+
+### Removed
+- Move public API for partial evaluation behind experimental feature flag. To
+  continue using this feature you must enable the `partial-eval` feature flag.
+
+### Changed
+
+- Improved error detection in schema based parsing (fix issues #73, #74).
+  - Detect entities with parents of an incorrect entity type.
+  - Detect entities with an undeclared entity type.
+- Slightly improved error text on some validation type errors
+- Improved error messages for some schema type parsing errors
+  - Parsing a schema type without the `"type"` field will generate an error
+    stating that `"type"` is a required field instead of an inscrutable error
+    complaining about the untagged enum `SchemaType`.
+  - Parsing a schema type with a `"type"` field corresponding to one of the
+    builtin types but missing a required field for that type will generate an
+    error stating that a required field is missing instead of claiming that it
+    could not find "common types" definition for that builtin type.
 
 ## 2.3.1
 
