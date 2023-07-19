@@ -38,6 +38,7 @@
   short-circuiting opportunities.  The same applies to record literals.
 - Fix a panic in `PolicySet::link` that could occur when the function was called
   with a policy id corresponding to a static policy.
+- Renamed `cedar_policy_core::est::EstToAstError` to `cedar_policy_core::est::FromJsonError`
 
 ## 2.3.0
 
