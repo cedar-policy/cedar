@@ -741,7 +741,7 @@ impl StaticPolicy {
         action_constraint: ActionConstraint,
         resource_constraint: ResourceConstraint,
         non_head_constraints: Expr,
-    ) -> Result<Self, ContainsSlot> {
+    ) -> Result<Self, UnexpectedSlotError> {
         let body = TemplateBody::new(
             id,
             annotations,
@@ -754,20 +754,20 @@ impl StaticPolicy {
         let num_slots = body.condition().slots().next().map(SlotId::clone);
         // INVARIANT (inline policy correctness), checks that no slots exists
         match num_slots {
-            Some(slot_id) => Err(ContainsSlot::Named(slot_id))?,
+            Some(slot_id) => Err(UnexpectedSlotError::Named(slot_id))?,
             None => Ok(Self(body)),
         }
     }
 }
 
 impl TryFrom<Template> for StaticPolicy {
-    type Error = ContainsSlot;
+    type Error = UnexpectedSlotError;
 
     fn try_from(value: Template) -> Result<Self, Self::Error> {
         // INVARIANT (Static policy correctness): Must ensure StaticPolicy contains no slots
         let o = value.slots().next().map(SlotId::clone);
         match o {
-            Some(slot_id) => Err(ContainsSlot::Named(slot_id)),
+            Some(slot_id) => Err(Self::Error::Named(slot_id)),
             None => Ok(Self(value.body)),
         }
     }
@@ -1143,22 +1143,22 @@ impl EntityReference {
 
 /// Error for unexpected slots
 #[derive(Debug, Clone, PartialEq, Error)]
-pub enum ContainsSlot {
+pub enum UnexpectedSlotError {
     /// Unexpected Slot without a known name
-    #[error("Found a slot where none was expected")]
+    #[error("found a slot where none was expected")]
     Unnamed,
     /// Unexpected Slot with a name
-    #[error("Found slot {0} where none was expected")]
+    #[error("found slot {0} where none was expected")]
     Named(SlotId),
 }
 
 impl TryInto<Arc<EntityUID>> for EntityReference {
-    type Error = ContainsSlot;
+    type Error = UnexpectedSlotError;
 
     fn try_into(self) -> Result<Arc<EntityUID>, Self::Error> {
         match self {
             EntityReference::EUID(euid) => Ok(euid),
-            EntityReference::Slot => Err(ContainsSlot::Unnamed),
+            EntityReference::Slot => Err(Self::Error::Unnamed),
         }
     }
 }
@@ -1756,8 +1756,8 @@ mod test {
         for template in all_templates() {
             if let Err(e) = StaticPolicy::try_from(template) {
                 match e {
-                    super::ContainsSlot::Unnamed => panic!("Didn't get a name!"),
-                    super::ContainsSlot::Named(_) => (),
+                    super::UnexpectedSlotError::Unnamed => panic!("Didn't get a name!"),
+                    super::UnexpectedSlotError::Named(_) => (),
                 }
             }
         }
