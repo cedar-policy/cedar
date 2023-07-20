@@ -29,11 +29,16 @@
     builtin types but missing a required field for that type will generate an
     error stating that a required field is missing instead of claiming that it
     could not find "common types" definition for that builtin type.
+- Some error types now carry more information about the error, with error
+  messages updated appropriately
 - Update how record types are treated by the validator to support "open" and
   "closed" record types.  Record types written in schema are now closed. In
   particular, this applies to the action context, so `context has attr` can now
   have type False where before it had type Boolean, creating some new
   short-circuiting opportunities.  The same applies to record literals.
+- Fix a panic in `PolicySet::link` that could occur when the function was called
+  with a policy id corresponding to a static policy.
+- Renamed `cedar_policy_core::est::EstToAstError` to `cedar_policy_core::est::FromJsonError`
 
 ## 2.3.0
 
