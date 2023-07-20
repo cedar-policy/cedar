@@ -263,15 +263,25 @@ impl Type {
 
             (Type::True | Type::False, Type::True | Type::False) => Some(Type::primitive_boolean()),
 
+            // `None` as an element type represents the top type for the set
+            // element, so every other set is a subtype of set<None>, making a
+            // least upper bound containing  set<None> and another set type
+            // equal to set<None>. This case should be impossible due to the
+            // subtype checks in the first two match cases, but we handle it
+            // explicitly as an alternative to panicking if it occurs.
+            (ty_lub @ Type::Set { element_type: None }, Type::Set { .. })
+            | (Type::Set { .. }, ty_lub @ Type::Set { element_type: None }) => Some(ty_lub.clone()),
+
             // The least upper bound of two set types is a set with
             // an element type that is the element type least upper bound.
-            (Type::Set { element_type: te0 }, Type::Set { element_type: te1 }) => {
-                Some(Type::set(Type::least_upper_bound(
-                    schema,
-                    Type::expect_non_top_element_type(te0),
-                    Type::expect_non_top_element_type(te1),
-                )?))
-            }
+            (
+                Type::Set {
+                    element_type: Some(te0),
+                },
+                Type::Set {
+                    element_type: Some(te1),
+                },
+            ) => Some(Type::set(Type::least_upper_bound(schema, te0, te1)?)),
 
             (Type::EntityOrRecord(rk0), Type::EntityOrRecord(rk1)) => Some(Type::EntityOrRecord(
                 EntityRecordKind::least_upper_bound(schema, rk0, rk1)?,
@@ -304,15 +314,6 @@ impl Type {
             }
             _ => false,
         }
-    }
-
-    // The top element type (None), should never be used in a least upper bounds
-    // computation. It could be meaningfully defined, but any occurrence is
-    // definitely an error.
-    pub(crate) fn expect_non_top_element_type(ty: &Option<Box<Type>>) -> &Type {
-        ty.as_ref().expect(
-            "Top element type should only be used in subtype comparison or error reporting.",
-        )
     }
 
     /// Given a list of types, compute the least upper bound of all types in the
@@ -700,6 +701,8 @@ impl EntityLUB {
     /// Check if this LUB is a singleton, and if so, return a reference to its entity type
     pub fn get_single_entity(&self) -> Option<&Name> {
         let mut names = self.lub_elements.iter();
+        // PANIC SAFETY: Invariant on `lub_elements` guarantees the set is non-empty.
+        #[allow(clippy::expect_used)]
         let first = names.next().expect("should have one element by invariant");
         match names.next() {
             Some(_) => None, // there are two or more names
@@ -711,6 +714,8 @@ impl EntityLUB {
     /// owned entity type name
     pub fn into_single_entity(self) -> Option<Name> {
         let mut names = self.lub_elements.into_iter();
+        // PANIC SAFETY: Invariant on `lub_elements` guarantees the set is non-empty.
+        #[allow(clippy::expect_used)]
         let first = names.next().expect("should have one element by invariant");
         match names.next() {
             Some(_) => None, // there are two or more names
@@ -743,6 +748,8 @@ impl EntityLUB {
         // would need a bottom record type that would contain every attribute with a
         // bottom type. We don't have that, so I instead restrict EntityLUB to
         // be a least upper bound of one or more entities.
+        // PANIC SAFETY: Invariant on `lub_elements` guarantees the set is non-empty.
+        #[allow(clippy::expect_used)]
         let arbitrary_first = Attributes::with_attributes(
             lub_element_attributes
                 .next()
@@ -792,6 +799,8 @@ impl EntityLUB {
             .collect()
         });
         if self.lub_elements.len() == 1 {
+            // PANIC SAFETY: Invariant on `lub_elements` guarantees the set is non-empty.
+            #[allow(clippy::expect_used)]
             lub_element_objs
                 .next()
                 .expect("Invariant violated: EntityLUB set must be non-empty.")

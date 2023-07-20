@@ -49,7 +49,13 @@ use super::NamespaceDefinition;
 /// types. All action entities are required to use a single `Action` entity
 /// type. However, the action entity type may be namespaced, so an action entity
 /// may have a fully qualified entity type `My::Namespace::Action`.
+/// This string must be parsable by as an entity type name.
 pub(crate) static ACTION_ENTITY_TYPE: &str = "Action";
+
+#[test]
+fn action_entity_type_parses() {
+    Id::from_normalized_str(ACTION_ENTITY_TYPE).unwrap();
+}
 
 /// Return true when an entity type is an action entity type. This compares the
 /// base name for the type, so this will return true for any entity type named
@@ -396,6 +402,8 @@ impl ValidatorNamespaceDef {
             // handling an error here would mean adding a new error variant to
             // `SchemaError` in the public API, but we didn't make that enum
             // `non_exhaustive`, so any new variants are a breaking change.
+            // PANIC SAFETY: See above.
+            #[allow(clippy::expect_used)]
             let e = v.into_expr().expect("`Self::jsonval_to_type_helper` will always return `Err` for a `JSONValue` that might make `into_expr` return `Err`");
             attr_values.insert(k.clone(), e);
         }
@@ -624,6 +632,8 @@ impl ValidatorNamespaceDef {
             Self::parse_possibly_qualified_name_with_default_namespace(action_ty, namespace)
                 .map_err(SchemaError::EntityTypeParseError)?
         } else {
+            // PANIC SAFETY: The constant ACTION_ENTITY_TYPE is valid entity type.
+            #[allow(clippy::expect_used)]
             let id = Id::from_normalized_str(ACTION_ENTITY_TYPE).expect(
                 "Expected that the constant ACTION_ENTITY_TYPE would be a valid entity type.",
             );
