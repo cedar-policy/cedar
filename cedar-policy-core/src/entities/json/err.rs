@@ -72,7 +72,7 @@ pub enum JsonDeserializationError {
     #[error(transparent)]
     ExtensionsError(#[from] ExtensionsError),
     /// A field that needs to be a literal entity reference, was some other JSON value
-    #[error("{ctx}, expected a literal entity reference, but got `{got}`")]
+    #[error("{ctx}, expected a literal entity reference, but got: {got}")]
     ExpectedLiteralEntityRef {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -80,7 +80,7 @@ pub enum JsonDeserializationError {
         got: Box<Expr>,
     },
     /// A field that needs to be an extension value, was some other JSON value
-    #[error("{ctx}, expected an extension value, but got `{got}`")]
+    #[error("{ctx}, expected an extension value, but got: {got}")]
     ExpectedExtnValue {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -103,7 +103,7 @@ pub enum JsonDeserializationError {
     },
     /// Schema-based parsing needed an implicit extension constructor, but no suitable
     /// constructor was found
-    #[error("{ctx}, missing extension constructor for `{arg_type}` -> `{return_type}`")]
+    #[error("{ctx}, missing extension constructor for {arg_type} -> {return_type}")]
     MissingImpliedConstructor {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -160,8 +160,8 @@ pub enum JsonDeserializationError {
         /// Name of the (Record) attribute which was unexpected
         record_attr: SmolStr,
     },
-    /// During schema-based parsing, didn't encounter this attribute of a
-    /// record, but that attribute should have existed
+    /// During schema-based parsing, didn't encounter this attribute of an
+    /// entity, but that attribute should have existed
     #[error("expected entity `{uid}` to have an attribute {attr:?}, but it doesn't")]
     MissingRequiredEntityAttr {
         /// Entity that is missing a required attribute
