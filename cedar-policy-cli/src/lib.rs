@@ -815,7 +815,7 @@ fn read_policy_set(
             Report::new(err).with_source_code(NamedSource::new(name, ps_str))
         })
         .wrap_err_with(|| format!("failed to parse {context}"))?;
-    Ok(rename_from_id_annotation(ps)?)
+    rename_from_id_annotation(ps)
 }
 
 fn read_schema_file(filename: impl AsRef<Path> + std::marker::Copy) -> Result<Schema> {
@@ -888,27 +888,24 @@ fn execute_request(
             Entities::empty()
         }
     };
-    let request = match request.get_request(schema.as_ref()) {
-        Ok(q) => Some(q),
+    match request.get_request(schema.as_ref()) {
+        Ok(request) if errs.is_empty() => {
+            let authorizer = Authorizer::new();
+            let auth_start = Instant::now();
+            let ans = authorizer.is_authorized(&request, &policies, &entities);
+            let auth_dur = auth_start.elapsed();
+            if compute_duration {
+                println!(
+                    "Authorization Time (micro seconds) : {}",
+                    auth_dur.as_micros()
+                );
+            }
+            Ok(ans)
+        }
+        Ok(_) => Err(errs),
         Err(e) => {
             errs.push(e.wrap_err("failed to parse request"));
-            None
+            Err(errs)
         }
-    };
-    if errs.is_empty() {
-        let request = request.expect("if errs is empty, we should have a request");
-        let authorizer = Authorizer::new();
-        let auth_start = Instant::now();
-        let ans = authorizer.is_authorized(&request, &policies, &entities);
-        let auth_dur = auth_start.elapsed();
-        if compute_duration {
-            println!(
-                "Authorization Time (micro seconds) : {}",
-                auth_dur.as_micros()
-            );
-        }
-        Ok(ans)
-    } else {
-        Err(errs)
     }
 }
