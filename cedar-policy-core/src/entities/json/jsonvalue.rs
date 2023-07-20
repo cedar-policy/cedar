@@ -21,7 +21,7 @@ use super::{
 use crate::ast::{
     BorrowedRestrictedExpr, Eid, EntityUID, Expr, ExprKind, Literal, Name, RestrictedExpr,
 };
-use crate::extensions::{Extensions, ExtensionFunctionLookupError};
+use crate::extensions::{Extensions, ExtensionsError};
 use crate::FromNormalizedStr;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -540,7 +540,7 @@ impl<'e> ValueParser<'e> {
             }
             ExprKind::ExtensionFunctionApp { fn_name, .. } => {
                 let efunc = self.extensions.func(fn_name)?;
-                Ok(efunc.return_type().cloned().ok_or_else(|| ExtensionFunctionLookupError::HasNoType {
+                Ok(efunc.return_type().cloned().ok_or_else(|| ExtensionsError::HasNoType {
                     name: efunc.name().clone()
                 })?)
             }

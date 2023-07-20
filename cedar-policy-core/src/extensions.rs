@@ -85,9 +85,9 @@ impl<'a> Extensions<'a> {
             .filter_map(|ext| ext.get_func(name))
             .collect();
         match extension_funcs.get(0) {
-            None => Err(ExtensionFunctionLookupError::FuncDoesNotExist { name: name.clone() }),
+            None => Err(ExtensionsError::FuncDoesNotExist { name: name.clone() }),
             Some(first) if extension_funcs.len() == 1 => Ok(first),
-            _ => Err(ExtensionFunctionLookupError::FuncMultiplyDefined {
+            _ => Err(ExtensionsError::FuncMultiplyDefined {
                 name: name.clone(),
                 num_defs: extension_funcs.len(),
             }),
@@ -123,7 +123,7 @@ impl<'a> Extensions<'a> {
             None => Ok(None),
             Some(first) if matches.len() == 1 => Ok(Some(first)),
             _ => Err(
-                ExtensionFunctionLookupError::MultipleConstructorsSameSignature {
+                ExtensionsError::MultipleConstructorsSameSignature {
                     return_type: Box::new(return_type.clone()),
                     arg_type: Box::new(arg_type.clone()),
                 },
@@ -132,9 +132,9 @@ impl<'a> Extensions<'a> {
     }
 }
 
-/// Errors thrown while looking up a function in [`Extensions`].
+/// Errors thrown during operations on `Extensions`.
 #[derive(Debug, PartialEq, Clone, Error)]
-pub enum ExtensionFunctionLookupError {
+pub enum ExtensionsError {
     /// Tried to call a function that doesn't exist
     #[error("extension function does not exist: {name}")]
     FuncDoesNotExist {
@@ -173,7 +173,7 @@ pub enum ExtensionFunctionLookupError {
 }
 
 /// Type alias for convenience
-pub type Result<T> = std::result::Result<T, ExtensionFunctionLookupError>;
+pub type Result<T> = std::result::Result<T, ExtensionsError>;
 
 #[cfg(test)]
 pub mod test {
