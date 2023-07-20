@@ -51,7 +51,7 @@ pub enum EvaluationError {
     /// (not to be confused with `ExtensionError`, which is an error thrown by
     /// an individual extension function)
     #[error(transparent)]
-    ExtensionsError(#[from] crate::extensions::ExtensionsError),
+    ExtensionsError(#[from] crate::extensions::ExtensionFunctionLookupError),
 
     /// Type error, showing the expected type and actual type
     /// INVARIANT `expected` must be non-empty
