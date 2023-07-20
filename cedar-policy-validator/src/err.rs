@@ -32,11 +32,11 @@ pub enum SchemaError {
     /// Errors occurring while computing or enforcing transitive closure on
     /// action id hierarchy.
     #[error("Transitive closure error on action hierarchy: {0}")]
-    ActionTransitiveClosureError(Box<transitive_closure::Err<EntityUID>>),
+    ActionTransitiveClosureError(Box<transitive_closure::TcError<EntityUID>>),
     /// Errors occurring while computing or enforcing transitive closure on
     /// entity type hierarchy.
     #[error("Transitive closure error on entity hierarchy: {0}")]
-    EntityTransitiveClosureError(transitive_closure::Err<Name>),
+    EntityTransitiveClosureError(transitive_closure::TcError<Name>),
     /// Error generated when processing a schema file that uses features which
     /// are not yet supported by the implementation.
     #[error("Unsupported feature used in schema: {0}")]
@@ -100,16 +100,16 @@ pub enum SchemaError {
     ActionEntityAttributeUnsupportedType,
 }
 
-impl From<transitive_closure::Err<EntityUID>> for SchemaError {
-    fn from(e: transitive_closure::Err<EntityUID>) -> Self {
+impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
+    fn from(e: transitive_closure::TcError<EntityUID>) -> Self {
         // we use code in transitive_closure to check for cycles in the action
         // hierarchy, but in case of an error we want to report the more descriptive
         // CycleInActionHierarchy instead of ActionTransitiveClosureError
         match e {
-            transitive_closure::Err::TCEnforcementError { .. } => {
+            transitive_closure::TcError::MissingTcEdge { .. } => {
                 SchemaError::ActionTransitiveClosureError(Box::new(e))
             }
-            transitive_closure::Err::HasCycle { .. } => SchemaError::CycleInActionHierarchy,
+            transitive_closure::TcError::HasCycle { .. } => SchemaError::CycleInActionHierarchy,
         }
     }
 }
@@ -120,8 +120,8 @@ impl From<serde_json::Error> for SchemaError {
     }
 }
 
-impl From<transitive_closure::Err<Name>> for SchemaError {
-    fn from(e: transitive_closure::Err<Name>) -> Self {
+impl From<transitive_closure::TcError<Name>> for SchemaError {
+    fn from(e: transitive_closure::TcError<Name>) -> Self {
         SchemaError::EntityTransitiveClosureError(e)
     }
 }

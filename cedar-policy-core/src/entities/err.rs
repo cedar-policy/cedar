@@ -34,7 +34,7 @@ pub enum EntitiesError {
     /// Errors occurring while computing or enforcing transitive closure on the
     /// entity hierarchy.
     #[error("transitive closure error: {0}")]
-    TransitiveClosureError(#[from] Box<transitive_closure::Err<EntityUID>>),
+    TransitiveClosureError(#[from] Box<transitive_closure::TcError<EntityUID>>),
 }
 
 /// Type alias for convenience
