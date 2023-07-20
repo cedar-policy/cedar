@@ -46,11 +46,9 @@ pub enum EvaluationError {
     #[error("record does not have the attribute: {0}")]
     RecordAttrDoesNotExist(SmolStr),
 
-    /// An error occurred when dispatching an extension function call. This
-    /// should not be confused with `ExtensionError`, which is an error thrown
-    /// when evaluating an individual extension function.
+    /// An error occurred when looking up an extension function
     #[error(transparent)]
-    ExtensionsError(#[from] crate::extensions::ExtensionsError),
+    FailedExtensionFunctionLookup(#[from] crate::extensions::FailedExtensionFunctionLookup),
 
     /// Tried to evaluate an operation on values with incorrect types for that
     /// operation
@@ -82,13 +80,14 @@ pub enum EvaluationError {
     #[error(transparent)]
     InvalidRestrictedExpression(#[from] RestrictedExpressionError),
 
-    /// Thrown when a policy is evaluated with an un-filled slot
-    #[error("template slot `{0}` was not filled")]
-    TemplateInstantiationError(SlotId),
+    /// Thrown when a policy is evaluated with a slot that is not linked to an
+    /// [`EntityUID`]
+    #[error("template slot `{0}` was not linked")]
+    UnlinkedSlot(SlotId),
 
     /// Evaluation error thrown by an extension function
     #[error("error while evaluating {extension_name} extension function: {msg}")]
-    ExtensionError {
+    FailedExtensionFunctionApplication {
         /// Name of the extension throwing the error
         extension_name: Name,
         /// Error message from the extension

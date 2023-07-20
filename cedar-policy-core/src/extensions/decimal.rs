@@ -161,7 +161,7 @@ impl ExtensionValue for Decimal {
 const EXTENSION_NAME: &str = "decimal";
 
 fn extension_err(msg: impl Into<String>) -> evaluator::EvaluationError {
-    evaluator::EvaluationError::ExtensionError {
+    evaluator::EvaluationError::FailedExtensionFunctionApplication {
         extension_name: names::DECIMAL_FROM_STR_NAME.clone(),
         msg: msg.into(),
     }
@@ -290,7 +290,7 @@ mod tests {
     /// Asserts that a `Result` is an `Err::ExtensionErr` with our extension name
     fn assert_decimal_err<T>(res: evaluator::Result<T>) {
         match res {
-            Err(evaluator::EvaluationError::ExtensionError {
+            Err(evaluator::EvaluationError::FailedExtensionFunctionApplication {
                 extension_name,
                 msg,
             }) => {
