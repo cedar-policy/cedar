@@ -114,7 +114,7 @@ pub enum JsonDeserializationError {
     },
     /// During schema-based parsing, encountered an entity of a type which is
     /// not declared in the schema. Note that this error is only used for non-Action entity types.
-    #[error("entity `{uid}` has type `{}` which is not declared in the schema. Suggested types: {}",
+    #[error("entity `{uid}` has type `{}` which is not declared in the schema{}",
         &.uid.entity_type(),
         match .suggested_types.as_slice() {
             [] => String::new(),
@@ -144,7 +144,7 @@ pub enum JsonDeserializationError {
     },
     /// During schema-based parsing, encountered this attribute on this entity, but that
     /// attribute shouldn't exist on entities of this type
-    #[error("attribute `{:?}` on `{uid}` shouldn't exist according to the schema", &.attr)]
+    #[error("attribute {:?} on `{uid}` shouldn't exist according to the schema", &.attr)]
     UnexpectedEntityAttr {
         /// Entity that had the unexpected attribute
         uid: EntityUID,
@@ -153,7 +153,7 @@ pub enum JsonDeserializationError {
     },
     /// During schema-based parsing, encountered this attribute on a record, but
     /// that attribute shouldn't exist on that record
-    #[error("{ctx}, record attribute `{record_attr:?}` shouldn't exist according to the schema")]
+    #[error("{ctx}, record attribute {record_attr:?} shouldn't exist according to the schema")]
     UnexpectedRecordAttr {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -162,7 +162,7 @@ pub enum JsonDeserializationError {
     },
     /// During schema-based parsing, didn't encounter this attribute of a
     /// record, but that attribute should have existed
-    #[error("expected entity `{uid}` to have an attribute `{attr:?}`, but it doesn't")]
+    #[error("expected entity `{uid}` to have an attribute {attr:?}, but it doesn't")]
     MissingRequiredEntityAttr {
         /// Entity that is missing a required attribute
         uid: EntityUID,
@@ -171,7 +171,7 @@ pub enum JsonDeserializationError {
     },
     /// During schema-based parsing, didn't encounter this attribute of a
     /// record, but that attribute should have existed
-    #[error("{ctx}, expected the record to have an attribute `{record_attr:?}`, but it doesn't")]
+    #[error("{ctx}, expected the record to have an attribute {record_attr:?}, but it doesn't")]
     MissingRequiredRecordAttr {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -180,7 +180,7 @@ pub enum JsonDeserializationError {
     },
     /// During schema-based parsing, the given attribute on the given entity had
     /// a different type than the schema indicated to expect
-    #[error("{ctx}, type mismatch: attribute was expected to have type `{expected}`, but actually has type `{actual}`")]
+    #[error("{ctx}, type mismatch: attribute was expected to have type {expected}, but actually has type {actual}")]
     TypeMismatch {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
