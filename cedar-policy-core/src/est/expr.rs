@@ -17,9 +17,9 @@
 use super::utils::unwrap_or_clone;
 use super::FromJsonError;
 use crate::ast;
-use crate::entities::{JSONValue, JsonDeserializationError, TypeAndId};
+use crate::entities::{EscapeKind, JSONValue, JsonDeserializationError, TypeAndId};
 use crate::parser::cst;
-use crate::parser::err::{ParseError, ParseErrors, WithContext};
+use crate::parser::err::{ParseError, ParseErrors};
 use crate::parser::unescape;
 use crate::parser::ASTNode;
 use either::Either;
@@ -596,12 +596,13 @@ impl TryFrom<Expr> for ast::Expr {
                             .into_iter()
                             .next()
                             .expect("already checked that len was 1");
-                        let fn_name = fn_name.parse().map_err(|errs|
-                            JsonDeserializationError::ExtnParseError(WithContext {
-                                context: format!("expected valid operator or extension function name; got {fn_name}"),
+                        let fn_name = fn_name.parse().map_err(|errs| {
+                            JsonDeserializationError::ParseEscape {
+                                kind: EscapeKind::Extension,
+                                value: fn_name.to_string(),
                                 errs,
-                            })
-                        )?;
+                            }
+                        })?;
                         Ok(ast::Expr::call_extension_fn(
                             fn_name,
                             args.into_iter()
