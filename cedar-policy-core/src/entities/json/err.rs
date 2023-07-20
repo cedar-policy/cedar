@@ -29,6 +29,8 @@ use thiserror::Error;
 #[derive(Debug)]
 pub enum EscapeKind {
     /// Escape `__expr`
+    /// Note that `__expr` is deprecated and once it is
+    /// removed, this variant will also be removed
     Expr,
     /// Escape `__entity`
     Entity,
@@ -53,9 +55,8 @@ pub enum JsonDeserializationError {
     #[error("{0}")]
     Serde(#[from] serde_json::Error),
     /// Contents of an escape failed to parse.
-    ///
-    /// Note that `__expr` is deprecated and once it is
-    /// removed, this error will also be removed
+    /// Note that escape `__expr` is deprecated and once it is
+    /// removed, `EscapeKind::Expr` will also be removed
     #[error("failed to parse escape `{kind}`: {value}, errors: {errs}")]
     ParseEscape {
         /// Escape kind

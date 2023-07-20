@@ -510,7 +510,7 @@ mod json_parsing_tests {
             EntitiesError::DeserializationError(err) => {
                 assert!(
                     err.to_string().contains(
-                        r#"In uid field of <unknown entity>, expected a literal entity reference, but got `"hello"`"#
+                        r#"In uid field of <unknown entity>, expected a literal entity reference, but got: "hello""#
                     ),
                     "actual error message was {}",
                     err
@@ -534,7 +534,7 @@ mod json_parsing_tests {
         match err {
             EntitiesError::DeserializationError(err) => assert!(
                 err.to_string()
-                    .contains(r#"expected a literal entity reference, but got `"hello"`"#),
+                    .contains(r#"expected a literal entity reference, but got: "hello""#),
                 "actual error message was {}",
                 err
             ),
@@ -1249,7 +1249,7 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to type mismatch on manager");
         assert!(
             err.to_string()
-                .contains(r#"In attribute "manager" on Employee::"12UA45", expected a literal entity reference, but got `"34FB87"`"#),
+                .contains(r#"In attribute "manager" on Employee::"12UA45", expected a literal entity reference, but got: "34FB87""#),
             "actual error message was {}",
             err
         );
