@@ -111,9 +111,9 @@ where
 }
 
 /// Given a DAG (as a map from keys to `TCNode`), enforce that
-/// all transitive edges are included, ie, the transitive closure has already
+/// all transitive edges are included, i.e., the transitive closure has already
 /// been computed. If this is not the case, return an appropriate
-/// `TCEnforcementError`.
+/// `MissingTcEdge` error.
 fn enforce_tc<K, V>(entities: &HashMap<K, V>) -> Result<(), K>
 where
     K: Clone + Eq + Hash + Debug + Display,
@@ -125,7 +125,7 @@ where
             if let Some(parent) = entities.get(parent_uid) {
                 for grandparent in parent.out_edges() {
                     if !entity.has_edge_to(grandparent) {
-                        return Err(Err::TCEnforcementError {
+                        return Err(TcError::MissingTcEdge {
                             child: entity.get_key(),
                             parent: parent_uid.clone(),
                             grandparent: grandparent.clone(),
@@ -175,7 +175,7 @@ where
     for entity in entities.values() {
         let key = entity.get_key();
         if entity.out_edges().contains(&key) {
-            return Err(Err::HasCycle {
+            return Err(TcError::HasCycle {
                 vertex_with_loop: key,
             });
         }
@@ -565,7 +565,7 @@ mod tests {
         // fails cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
-            Err(Err::HasCycle { vertex_with_loop }) => {
+            Err(TcError::HasCycle { vertex_with_loop }) => {
                 assert!(vertex_with_loop == EntityUID::with_eid("B"));
             }
             Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
@@ -582,7 +582,7 @@ mod tests {
         // still fails cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
-            Err(Err::HasCycle { vertex_with_loop }) => {
+            Err(TcError::HasCycle { vertex_with_loop }) => {
                 assert!(vertex_with_loop == EntityUID::with_eid("B"));
             }
             Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
@@ -611,7 +611,7 @@ mod tests {
         // fails cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
-            Err(Err::HasCycle { vertex_with_loop }) => {
+            Err(TcError::HasCycle { vertex_with_loop }) => {
                 assert!(
                     vertex_with_loop == EntityUID::with_eid("A")
                         || vertex_with_loop == EntityUID::with_eid("B")
@@ -634,7 +634,7 @@ mod tests {
         // still fails cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
-            Err(Err::HasCycle { vertex_with_loop }) => {
+            Err(TcError::HasCycle { vertex_with_loop }) => {
                 assert!(
                     vertex_with_loop == EntityUID::with_eid("A")
                         || vertex_with_loop == EntityUID::with_eid("B")
@@ -687,7 +687,7 @@ mod tests {
         // still fails cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
-            Err(Err::HasCycle { vertex_with_loop }) => {
+            Err(TcError::HasCycle { vertex_with_loop }) => {
                 // two possible cycles
                 assert!(
                     vertex_with_loop == EntityUID::with_eid("B")
@@ -743,7 +743,7 @@ mod tests {
         // but still fail cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
-            Err(Err::HasCycle {
+            Err(TcError::HasCycle {
                 vertex_with_loop: _,
             }) => (), // Every vertex is in a cycle
             Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),

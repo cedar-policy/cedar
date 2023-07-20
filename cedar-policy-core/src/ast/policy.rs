@@ -244,8 +244,8 @@ impl std::fmt::Display for Template {
 /// Errors instantiating templates
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum LinkingError {
-    /// An error with the number of slot arguments provided
-    /// INVARIANT: `unbound_values` and `extra_values` can't both be empty
+    /// An error with the slot arguments provided
+    // INVARIANT: `unbound_values` and `extra_values` can't both be empty
     #[error("{}", describe_arity_error(.unbound_values, .extra_values))]
     ArityError {
         /// Error for when some Slots were not provided values
@@ -253,13 +253,20 @@ pub enum LinkingError {
         /// Error for when more values than Slots are provided
         extra_values: Vec<SlotId>,
     },
-    /// The attempted instantiation failed as the template did not exist
-    #[error("No such template with id {0}")]
-    NoSuchTemplate(PolicyID),
 
-    /// The new instanced conflicted with an existing Policy Id
-    #[error("The new id conflicted with an existing Policy Id")]
-    PolicyIdConflict,
+    /// The attempted instantiation failed as the template did not exist.
+    #[error("failed to find a template with id: {id}")]
+    NoSuchTemplate {
+        /// [`PolicyID`] of the template we failed to find
+        id: PolicyID,
+    },
+
+    /// The new instance conflicts with an existing [`PolicyID`].
+    #[error("template-linked policy id conflicts with an existing policy id: {id}")]
+    PolicyIdConflict {
+        /// [`PolicyID`] where the conflict exists
+        id: PolicyID,
+    },
 }
 
 impl LinkingError {
@@ -279,9 +286,9 @@ fn describe_arity_error(unbound_values: &[SlotId], extra_values: &[SlotId]) -> S
         // PANIC SAFETY 0,0 case is not an error
         #[allow(clippy::unreachable)]
         (0,0) => unreachable!(),
-        (_unbound, 0) => format!("The following slots were unbound: {}", unbound_values.iter().join(",")),
-        (0, _extra) => format!("The following slots were provided as arguments, but did not exist in the template: {}", extra_values.iter().join(",")),
-        (_unbound, _extra) => format!("The following slots were unbound: {}\nThe following slots were provided as arguments, but did not exist in the template: {}", unbound_values.iter().join(","), extra_values.iter().join(","))
+        (_unbound, 0) => format!("the following slots were not provided as arguments: {}", unbound_values.iter().join(",")),
+        (0, _extra) => format!("the following slots were provided as arguments, but did not exist in the template: {}", extra_values.iter().join(",")),
+        (_unbound, _extra) => format!("the following slots were not provided as arguments: {}\nthe following slots were provided as arguments, but did not exist in the template: {}", unbound_values.iter().join(","), extra_values.iter().join(","))
     }
 }
 

@@ -33,13 +33,13 @@ pub enum JsonDeserializationError {
     /// `__expr` is deprecated (starting with the 1.2 release), and once it is
     /// removed, this error will also be removed.
     #[error(transparent)]
-    ExprParseError(crate::parser::err::ParseError),
+    ExprParseError(crate::parser::err::WithContext),
     /// Contents of an `__entity` escape failed to parse as an entity reference
     #[error(transparent)]
-    EntityParseError(crate::parser::err::ParseError),
+    EntityParseError(crate::parser::err::WithContext),
     /// Function name in an `__extn` escape failed to parse as an extension function name
     #[error(transparent)]
-    ExtnParseError(crate::parser::err::ParseError),
+    ExtnParseError(crate::parser::err::WithContext),
     /// Restricted expression error
     #[error(transparent)]
     RestrictedExpressionError(#[from] RestrictedExpressionError),

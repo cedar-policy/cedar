@@ -188,7 +188,7 @@ impl Policy {
     pub fn try_into_ast_policy(
         self,
         id: Option<ast::PolicyID>,
-    ) -> Result<ast::Policy, EstToAstError> {
+    ) -> Result<ast::Policy, FromJsonError> {
         let template: ast::Template = self.try_into_ast_template(id)?;
         ast::StaticPolicy::try_from(template)
             .map(Into::into)
@@ -202,7 +202,7 @@ impl Policy {
     pub fn try_into_ast_template(
         self,
         id: Option<ast::PolicyID>,
-    ) -> Result<ast::Template, EstToAstError> {
+    ) -> Result<ast::Template, FromJsonError> {
         let conditions = match self.conditions.len() {
             0 => ast::Expr::val(true),
             _ => {
@@ -229,8 +229,8 @@ impl Policy {
 }
 
 impl TryFrom<Clause> for ast::Expr {
-    type Error = EstToAstError;
-    fn try_from(clause: Clause) -> Result<ast::Expr, EstToAstError> {
+    type Error = FromJsonError;
+    fn try_from(clause: Clause) -> Result<ast::Expr, Self::Error> {
         match clause {
             Clause::When(expr) => expr.try_into(),
             Clause::Unless(expr) => Ok(ast::Expr::not(expr.try_into()?)),
@@ -1463,6 +1463,69 @@ mod test {
     }
 
     #[test]
+    fn nested_records() {
+        let policy = r#"
+            permit(principal, action, resource)
+            when { context.something1.something2.something3 };
+        "#;
+        let cst = parser::text_to_cst::parse_policy(policy)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let expected_json = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All",
+                },
+                "action": {
+                    "op": "All",
+                },
+                "resource": {
+                    "op": "All",
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            ".": {
+                                "left": {
+                                    ".": {
+                                        "left": {
+                                            ".": {
+                                                "left": {
+                                                    "Var": "context"
+                                                },
+                                                "attr": "something1"
+                                            }
+                                        },
+                                        "attr": "something2"
+                                    }
+                                },
+                                "attr": "something3"
+                            }
+                        }
+                    }
+                ]
+            }
+        );
+        assert_eq!(
+            serde_json::to_value(&est).unwrap(),
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&est).unwrap()
+        );
+        let old_est = est.clone();
+        let est = est_roundtrip(est);
+        assert_eq!(&old_est, &est);
+
+        assert_eq!(ast_roundtrip(est.clone()), est);
+        assert_eq!(circular_roundtrip(est.clone()), est);
+    }
+
+    #[test]
     fn neg_less_and_greater() {
         let policy = r#"
             permit(principal, action, resource)
@@ -2466,7 +2529,7 @@ mod test {
         );
         let est: Policy = serde_json::from_value(bad).unwrap();
         let ast: Result<ast::Policy, _> = est.try_into_ast_policy(None);
-        assert_matches!(ast, Err(EstToAstError::MissingOperator));
+        assert_matches!(ast, Err(FromJsonError::MissingOperator));
 
         let bad = json!(
             {
@@ -2528,7 +2591,7 @@ mod test {
         let ast: Result<ast::Policy, _> = est.try_into_ast_policy(None);
         assert_matches!(
             ast,
-            Err(EstToAstError::TemplateToPolicy(ast::ContainsSlot::Named(_)))
+            Err(FromJsonError::TemplateToPolicy(ast::ContainsSlot::Named(_)))
         );
     }
 }

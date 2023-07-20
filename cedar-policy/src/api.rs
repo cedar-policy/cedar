@@ -1116,21 +1116,28 @@ impl std::fmt::Display for EntityUid {
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum PolicySetError {
-    /// There was a `PolicyId` collision in either the set of templates or the set of policies.
-    #[error("Collision in template or policy id")]
-    AlreadyDefined,
-    /// Error when instantiating a template.
-    #[error("Unable to link template: {0}")]
+    /// There was a duplicate [`PolicyId`] encountered in either the set of
+    /// templates or the set of policies.
+    #[error("duplicate template or policy id: {id}")]
+    AlreadyDefined {
+        /// [`PolicyId`] that was duplicate
+        id: PolicyId,
+    },
+    /// Error when linking a template
+    #[error("unable to link template: {0}")]
     LinkingError(#[from] ast::LinkingError),
-    /// Expected an static policy, but a template-linked policy was provided.
-    #[error("Expected static policy, but a template-linked policy was provided")]
+    /// Expected a static policy, but a template-linked policy was provided
+    #[error("expected a static policy, but a template-linked policy was provided")]
     ExpectedStatic,
+    /// Expected a template, but a static policy was provided.
+    #[error("expected a template, but a static policy was provided")]
+    ExpectedTemplate,
 }
 
 impl From<ast::PolicySetError> for PolicySetError {
     fn from(e: ast::PolicySetError) -> Self {
         match e {
-            ast::PolicySetError::Occupied => Self::AlreadyDefined,
+            ast::PolicySetError::Occupied { id } => Self::AlreadyDefined { id: PolicyId(id) },
         }
     }
 }
@@ -1284,9 +1291,12 @@ impl PolicySet {
 
     /// Attempt to link a template and add the new template-linked policy to the policy set.
     /// If link fails, the `PolicySet` is not modified.
-    /// Failure can happen for two reasons
+    /// Failure can happen for three reasons
     ///   1) The map passed in `vals` may not match the slots in the template
     ///   2) The `new_id` may conflict w/ a policy that already exists in the set
+    ///   3) `template_id` does not correspond to a template. Either the id is
+    ///   not in the policy set, or it is in the policy set but is either a
+    ///   linked or static policy rather than a template
     #[allow(clippy::needless_pass_by_value)]
     pub fn link(
         &mut self,
@@ -1298,24 +1308,30 @@ impl PolicySet {
             .into_iter()
             .map(|(key, value)| (key.into(), value.0))
             .collect();
-        self.ast
+        let linked_ast = self
+            .ast
             .link(
                 template_id.0.clone(),
                 new_id.0.clone(),
                 unwrapped_vals.clone(),
             )
             .map_err(PolicySetError::LinkingError)?;
-        let linked_ast = self
-            .ast
-            .get(&new_id.0)
-            .expect("ast.link() didn't fail above, so this shouldn't fail");
         let linked_lossless = self
             .templates
             .get(&template_id)
-            .expect("ast.link() didn't fail above, so this shouldn't fail")
+            // We know `template_id` exists in the policy set as either a
+            // template or a static policy because otherwise `ast.link()` would
+            // have errored. If `ast.link()` did not error, then it could still
+            // be that the id corresponds to a static policy. This function
+            // should only be used to link templates, so this is an error.
+            .ok_or(PolicySetError::ExpectedTemplate)?
             .lossless
             .clone()
             .link(unwrapped_vals.iter().map(|(k, v)| (*k, v)))
+            // The only error case for `lossless.link()` is a template with
+            // slots which are not filled by the provided values. `ast.link()`
+            // will have already errored if there are any unfilled slots in the
+            // template.
             .expect("ast.link() didn't fail above, so this shouldn't fail");
         self.policies.insert(
             new_id,
@@ -1495,7 +1511,7 @@ impl Template {
     fn from_json(
         id: Option<PolicyId>,
         json: serde_json::Value,
-    ) -> Result<Self, cedar_policy_core::est::EstToAstError> {
+    ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
         let est: est::Policy =
             serde_json::from_value(json).map_err(JsonDeserializationError::Serde)?;
         Ok(Self {
@@ -1782,7 +1798,7 @@ impl Policy {
     pub fn from_json(
         id: Option<PolicyId>,
         json: serde_json::Value,
-    ) -> Result<Self, cedar_policy_core::est::EstToAstError> {
+    ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
         let est: est::Policy =
             serde_json::from_value(json).map_err(JsonDeserializationError::Serde)?;
         Ok(Self {
@@ -2170,7 +2186,7 @@ impl Context {
         schema
             .0
             .get_context_schema(&action.0)
-            .ok_or_else(|| ContextJsonError::ActionDoesNotExist {
+            .ok_or_else(|| ContextJsonError::MissingAction {
                 action: action.clone(),
             })
     }
@@ -2181,10 +2197,10 @@ impl Context {
 pub enum ContextJsonError {
     /// Error deserializing the JSON into a Context
     #[error(transparent)]
-    JsonDeserializationError(#[from] JsonDeserializationError),
+    JsonDeserialization(#[from] JsonDeserializationError),
     /// The supplied action doesn't exist in the supplied schema
-    #[error("Action {action} doesn't exist in the supplied schema")]
-    ActionDoesNotExist {
+    #[error("action `{action}` doesn't exist in the supplied schema")]
+    MissingAction {
         /// UID of the action which doesn't exist
         action: EntityUid,
     },
@@ -2753,6 +2769,7 @@ mod head_constraints_tests {
 mod policy_set_tests {
     use super::*;
     use ast::LinkingError;
+    use cool_asserts::assert_matches;
 
     #[test]
     fn link_conflicts() {
@@ -2778,7 +2795,9 @@ mod policy_set_tests {
 
         match r {
             Ok(_) => panic!("Should have failed due to conflict"),
-            Err(PolicySetError::LinkingError(LinkingError::PolicyIdConflict)) => (),
+            Err(PolicySetError::LinkingError(LinkingError::PolicyIdConflict { id })) => {
+                assert_eq!(id, ast::PolicyID::from_string("id"))
+            }
             Err(e) => panic!("Incorrect error: {e}"),
         };
     }
@@ -2903,6 +2922,56 @@ mod policy_set_tests {
                 .expect("lookup failed")
                 .id(),
             &"linked".parse().unwrap()
+        );
+    }
+
+    #[test]
+    fn link_static_policy() {
+        // Linking the `PolicyId` of a static policy should not be allowed.
+        // Attempting it should cause an `ExpectedTemplate` error.
+        let static_policy = Policy::parse(
+            Some("static".into()),
+            "permit(principal, action, resource);",
+        )
+        .expect("Static parse failure");
+        let mut pset = PolicySet::new();
+        pset.add(static_policy).unwrap();
+
+        let result = pset.link(
+            PolicyId::from_str("static").unwrap(),
+            PolicyId::from_str("linked").unwrap(),
+            HashMap::new(),
+        );
+        assert_matches!(result, Err(PolicySetError::ExpectedTemplate));
+    }
+
+    #[test]
+    fn link_linked_policy() {
+        let template = Template::parse(
+            Some("template".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Template Parse Failure");
+        let mut pset = PolicySet::new();
+        pset.add_template(template).unwrap();
+
+        pset.link(
+            PolicyId::from_str("template").unwrap(),
+            PolicyId::from_str("linked").unwrap(),
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
+        )
+        .unwrap();
+
+        let result = pset.link(
+            PolicyId::from_str("linked").unwrap(),
+            PolicyId::from_str("linked2").unwrap(),
+            HashMap::new(),
+        );
+        assert_matches!(
+            result,
+            Err(PolicySetError::LinkingError(
+                LinkingError::NoSuchTemplate { .. }
+            ))
         );
     }
 }
