@@ -13,11 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 # This script ensures that exceptions to the clippy lints have explanations in
-# the comments. It assumes that clippy is properly configured to forbied the
+# the comments. It assumes that clippy is properly configured to forbid the
 # lints listed in `panic_markers` and that clippy is being run regularly.
-# Clippy lints are controlled for all of our crates by `./.cargo/config.toml`.
+# Clippy is automatically run against PRs on GitHub.  Clippy lints are
+# controlled for all of our crates by `./.cargo/config.toml`.
 
 total_panics=0
 failed=0
@@ -43,6 +43,6 @@ for crate in ${crates[@]}; do
     total_panics=$(($total_panics + $crate_panics))
 done
 
-echo "Total Pancis: $total_panics"
+echo "Total Panics: $total_panics"
 
 exit $failed
