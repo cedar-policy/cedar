@@ -1179,12 +1179,16 @@ impl FromStr for PolicySet {
     /// See [`Policy`] for more.
     fn from_str(policies: &str) -> Result<Self, Self::Err> {
         let (texts, pset) = parser::parse_policyset_and_also_return_policy_text(policies)?;
+        // PANIC SAFETY: By the invariant on `parse_policyset_and_also_return_policy_text(policies)`, every `PolicyId` in `pset.policies()` occurs as a key in `text`.
+        #[allow(clippy::expect_used)]
         let policies = pset.policies().map(|p|
             (
                 PolicyId(p.id().clone()),
                 Policy { lossless: LosslessPolicy::policy_or_template_text(*texts.get(p.id()).expect("internal invariant violation: policy id exists in asts but not texts")), ast: p.clone() }
             )
         ).collect();
+        // PANIC SAFETY: By the same invariant, every `PolicyId` in `pset.templates()` also occurs as a key in `text`.
+        #[allow(clippy::expect_used)]
         let templates = pset.templates().map(|t|
             (
                 PolicyId(t.id().clone()),
@@ -1316,6 +1320,8 @@ impl PolicySet {
                 unwrapped_vals.clone(),
             )
             .map_err(PolicySetError::LinkingError)?;
+        // PANIC SAFETY: `lossless.link()` will not fail after `ast.link()` succeeds
+        #[allow(clippy::expect_used)]
         let linked_lossless = self
             .templates
             .get(&template_id)
