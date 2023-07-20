@@ -48,7 +48,7 @@ pub enum EvaluationError {
 
     /// An error occurred when looking up an extension function
     #[error(transparent)]
-    FailedExtensionFunctionLookup(#[from] crate::extensions::FailedExtensionFunctionLookup),
+    FailedExtensionFunctionLookup(#[from] crate::extensions::ExtensionFunctionLookupError),
 
     /// Tried to evaluate an operation on values with incorrect types for that
     /// operation
