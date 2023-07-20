@@ -730,23 +730,35 @@ fn load_entities(entities_filename: impl AsRef<Path>, schema: Option<&Schema>) -
 /// This will rename template-linked policies to the id of their template, which may
 /// cause id conflicts, so only call this function before instancing
 /// templates into the policy set.
-fn rename_from_id_annotation(ps: PolicySet) -> PolicySet {
+fn rename_from_id_annotation(ps: PolicySet) -> Result<PolicySet> {
     let mut new_ps = PolicySet::new();
     let t_iter = ps.templates().map(|t| match t.annotation("id") {
-        None => t.clone(),
-        Some(anno) => t.new_id(anno.parse().expect("id annotation should be valid id")),
+        None => Ok(t.clone()),
+        Some(anno) => anno.parse().map(|a| t.new_id(a)),
     });
     for t in t_iter {
-        new_ps.add_template(t).expect("should still be a template");
+        let template = t
+            .into_diagnostic()
+            .wrap_err("failed to parse policy id annotation")?;
+        new_ps
+            .add_template(template)
+            .into_diagnostic()
+            .wrap_err("failed to add template to policy set")?;
     }
     let p_iter = ps.policies().map(|p| match p.annotation("id") {
-        None => p.clone(),
-        Some(anno) => p.new_id(anno.parse().expect("id annotation should be valid id")),
+        None => Ok(p.clone()),
+        Some(anno) => anno.parse().map(|a| p.new_id(a)),
     });
     for p in p_iter {
-        new_ps.add(p).expect("should still be a policy");
+        let policy = p
+            .into_diagnostic()
+            .wrap_err("failed to parse policy id annotation")?;
+        new_ps
+            .add(policy)
+            .into_diagnostic()
+            .wrap_err("failed to add template to policy set")?;
     }
-    new_ps
+    Ok(new_ps)
 }
 
 fn read_policy_and_links(
@@ -803,7 +815,7 @@ fn read_policy_set(
             Report::new(err).with_source_code(NamedSource::new(name, ps_str))
         })
         .wrap_err_with(|| format!("failed to parse {context}"))?;
-    Ok(rename_from_id_annotation(ps))
+    Ok(rename_from_id_annotation(ps)?)
 }
 
 fn read_schema_file(filename: impl AsRef<Path> + std::marker::Copy) -> Result<Schema> {
