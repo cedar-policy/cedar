@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 2.3.1
+## 2.3.2
 
 ### Removed
 - Move public API for partial evaluation behind experimental feature flag. To
