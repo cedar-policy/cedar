@@ -22,7 +22,7 @@ use crate::ast::{
     BorrowedRestrictedExpr, Eid, EntityUID, Expr, ExprKind, Literal, Name, RestrictedExpr,
 };
 use crate::entities::EscapeKind;
-use crate::extensions::{Extensions, ExtensionFunctionLookupError};
+use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use crate::FromNormalizedStr;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;

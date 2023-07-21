@@ -122,10 +122,12 @@ impl<'a> Extensions<'a> {
         match matches.get(0) {
             None => Ok(None),
             Some(first) if matches.len() == 1 => Ok(Some(first)),
-            _ => Err(ExtensionFunctionLookupError::MultipleConstructorsSameSignature {
-                return_type: Box::new(return_type.clone()),
-                arg_type: Box::new(arg_type.clone()),
-            }),
+            _ => Err(
+                ExtensionFunctionLookupError::MultipleConstructorsSameSignature {
+                    return_type: Box::new(return_type.clone()),
+                    arg_type: Box::new(arg_type.clone()),
+                },
+            ),
         }
     }
 }
