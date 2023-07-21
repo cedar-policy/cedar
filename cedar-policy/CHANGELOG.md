@@ -40,7 +40,8 @@
   policy evaluation.
 - Fix a panic in `PolicySet::link` that could occur when the function was called
   with a policy id corresponding to a static policy.
-- Renamed `cedar_policy_core::est::EstToAstError` to `cedar_policy_core::est::FromJsonError`.
+- Renamed `cedar_policy_core::est::EstToAstError` to `cedar_policy_core::est::FromJsonError`
+- More precise "expected tokens" lists in some parse errors
 - Renamed `cedar_policy_core::entities::JsonDeserializationError::ExtensionsError` to `cedar_policy_core::entities::JsonDeserializationError::FailedExtensionsFunctionLookup`.
 
 ## 2.3.0
