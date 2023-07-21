@@ -1795,6 +1795,67 @@ impl Policy {
     /// If `id` is Some, the policy will be given that Policy Id.
     /// If `id` is None, then "JSON policy" will be used.
     /// The behavior around None may change in the future.
+    ///
+    /// ```
+    /// use cedar_policy::Policy;
+    /// let data = r#"
+    ///        {
+    ///            "effect":"permit",
+    ///            "principal":{
+    ///            "op":"==",
+    ///            "entity":{
+    ///                "type":"User",
+    ///                "id":"bob"
+    ///            }
+    ///            },
+    ///            "action":{
+    ///            "op":"==",
+    ///            "entity":{
+    ///                "type":"Action",
+    ///                "id":"view"
+    ///            }
+    ///            },
+    ///            "resource":{
+    ///            "op":"==",
+    ///            "entity":{
+    ///                "type":"Album",
+    ///                "id":"trip"
+    ///            }
+    ///            },
+    ///            "conditions":[
+    ///            {
+    ///                "kind":"when",
+    ///                "body":{
+    ///                   "<":{
+    ///                        "left":{
+    ///                        ".":{
+    ///                            "left":{
+    ///                                "Var":"principal"
+    ///                            },
+    ///                            "attr":"age"
+    ///                        }
+    ///                        },
+    ///                        "right":{
+    ///                        "Value":18
+    ///                        }
+    ///                    }
+    ///                }
+    ///            }
+    ///            ]
+    ///        }
+    /// "#;
+    /// let v = serde_json::from_str(data).unwrap();
+    /// let policy = Policy::from_json(None, v).unwrap();
+    /// println!("{}", policy);
+    /// // output:
+    /// // permit(
+    /// //    principal == User::"bob",
+    /// //    action == Action::"view",
+    /// //    resource == Album::"trip"
+    /// //  )
+    /// //  when
+    /// //    { principal.age > 18 };
+    /// ```
     pub fn from_json(
         id: Option<PolicyId>,
         json: serde_json::Value,
@@ -1807,7 +1868,7 @@ impl Policy {
         })
     }
 
-    /// Get the JSON representation of this `Policy`. 
+    /// Get the JSON representation of this `Policy`.
     ///  ```
     /// use cedar_policy::Policy;
     /// let src = r#"
@@ -1815,8 +1876,8 @@ impl Policy {
     ///     principal == User::"bob",
     ///     action == Action::"view",
     ///     resource == Album::"trip"
-    ///   ) 
-    ///   when 
+    ///   )
+    ///   when
     ///     { principal.age > 18 };"#;
 
     /// let policy = Policy::parse(None, src).unwrap();
