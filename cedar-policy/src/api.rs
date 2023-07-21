@@ -1807,7 +1807,24 @@ impl Policy {
         })
     }
 
-    /// Get the JSON representation of this `Policy`.
+    /// Get the JSON representation of this `Policy`. 
+    ///  ```
+    /// use cedar_policy::Policy;
+    /// let src = r#"
+    ///   permit(
+    ///     principal == User::"bob",
+    ///     action == Action::"view",
+    ///     resource == Album::"trip"
+    ///   ) 
+    ///   when 
+    ///     { principal.age > 18 };"#;
+
+    /// let policy = Policy::parse(None, src).unwrap();
+    /// println!("{}", policy);
+    /// // convert the policy to JSON
+    /// let json = policy.to_json().unwrap();
+    /// println!("{}", json);
+    /// ```
     pub fn to_json(&self) -> Result<serde_json::Value, impl std::error::Error> {
         let est = self.lossless.est()?;
         let json = serde_json::to_value(est)?;
