@@ -19,8 +19,7 @@ use smol_str::SmolStr;
 use std::sync::Arc;
 use thiserror::Error;
 
-/// Error type for various kinds of errors that can be raised by the policy
-/// evaluator.
+/// Errors that can occur during evaluation
 #[derive(Debug, PartialEq, Clone, Error)]
 pub enum EvaluationError {
     /// Tried to lookup this entity UID, but it didn't exist in the provided
@@ -30,9 +29,9 @@ pub enum EvaluationError {
 
     /// Tried to get this attribute, but the specified entity didn't
     /// have that attribute
-    #[error("{} does not have the required attribute: {}", &.entity, &.attr)]
+    #[error("`{}` does not have the attribute: {}", &.entity, &.attr)]
     EntityAttrDoesNotExist {
-        /// Entity which didn't have the attribute
+        /// Entity that didn't have the attribute
         entity: Arc<EntityUID>,
         /// Name of the attribute it didn't have
         attr: SmolStr,
@@ -42,19 +41,18 @@ pub enum EvaluationError {
     #[error("cannot access attribute of unspecified entity: {0}")]
     UnspecifiedEntityAccess(SmolStr),
 
-    /// Tried to get this attribute of a (non-entity) record, but that record
+    /// Tried to get an attribute of a (non-entity) record, but that record
     /// didn't have that attribute
-    #[error("record does not have the required attribute: {0}")]
+    #[error("record does not have the attribute: {0}")]
     RecordAttrDoesNotExist(SmolStr),
 
-    /// Error thown by an operation on `Extensions`
-    /// (not to be confused with `ExtensionError`, which is an error thrown by
-    /// an individual extension function)
+    /// An error occurred when looking up an extension function
     #[error(transparent)]
-    ExtensionsError(#[from] crate::extensions::ExtensionsError),
+    FailedExtensionFunctionLookup(#[from] crate::extensions::ExtensionsError),
 
-    /// Type error, showing the expected type and actual type
-    /// INVARIANT `expected` must be non-empty
+    /// Tried to evaluate an operation on values with incorrect types for that
+    /// operation
+    // INVARIANT `expected` must be non-empty
     #[error("{}", pretty_type_error(expected, actual))]
     TypeError {
         /// Expected (one of) these types
@@ -63,8 +61,8 @@ pub enum EvaluationError {
         actual: Type,
     },
 
-    /// Wrong number of arguments to an extension function
-    #[error("wrong number of arguments to {function_name}: expected {expected}, got {actual}")]
+    /// Wrong number of arguments provided to an extension function
+    #[error("wrong number of arguments provided to extension function {function_name}: expected {expected}, got {actual}")]
     WrongNumArguments {
         /// arguments to this function
         function_name: Name,
@@ -82,25 +80,28 @@ pub enum EvaluationError {
     #[error(transparent)]
     InvalidRestrictedExpression(#[from] RestrictedExpressionError),
 
-    /// Thrown when a policy is evaluated with an un-filled slot
-    #[error("Template slot {0} was not instantiated")]
-    TemplateInstantiationError(SlotId),
+    /// Thrown when a policy is evaluated with a slot that is not linked to an
+    /// [`EntityUID`]
+    #[error("template slot `{0}` was not linked")]
+    UnlinkedSlot(SlotId),
 
     /// Evaluation error thrown by an extension function
-    #[error("error from {extension_name} extension: {msg}")]
-    ExtensionError {
+    #[error("error while evaluating {extension_name} extension function: {msg}")]
+    FailedExtensionFunctionApplication {
         /// Name of the extension throwing the error
         extension_name: Name,
         /// Error message from the extension
         msg: String,
     },
 
-    /// Error raised if an expression did not reduce to a value when it was supposed to
-    #[error("The expression evaluated to a residual: {0}")]
+    /// This error is raised if an expression contains unknowns and cannot be
+    /// reduced to a [`Value`]. In order to return partial results, use the
+    /// partial evaluation APIs instead.
+    #[error("the expression contains unknown(s) (consider using the partial evaluation API): {0}")]
     NonValue(Expr),
 
     /// Maximum recursion limit reached for expression evaluation
-    #[error("Recursion Limit Reached")]
+    #[error("recursion limit reached")]
     RecursionLimit,
 }
 

@@ -296,7 +296,7 @@ impl<'q, 'e> Evaluator<'e> {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
             ExprKind::Slot(id) => slots
                 .get(id)
-                .ok_or_else(|| err::EvaluationError::TemplateInstantiationError(*id))
+                .ok_or_else(|| err::EvaluationError::UnlinkedSlot(*id))
                 .map(|euid| PartialValue::from(euid.clone())),
             ExprKind::Var(v) => match v {
                 Var::Principal => Ok(self.principal.evaluate(*v)),
@@ -3738,7 +3738,7 @@ pub mod test {
         let slots = HashMap::new();
         let r = evaluator.partial_interpret(&e, &slots);
         match r {
-            Err(EvaluationError::TemplateInstantiationError(slotid)) => {
+            Err(EvaluationError::UnlinkedSlot(slotid)) => {
                 assert_eq!(slotid, SlotId::principal())
             }
             Err(e) => panic!("Got wrong error: {e}"),

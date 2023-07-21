@@ -13,7 +13,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: wrong number of arguments to isMulticast: expected 1, got 0"
+        "error occurred while evaluating policy `policy0`: wrong number of arguments provided to extension function isMulticast: expected 1, got 0"
       ]
     },
     {
@@ -25,7 +25,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: wrong number of arguments to isMulticast: expected 1, got 0"
+        "error occurred while evaluating policy `policy0`: wrong number of arguments provided to extension function isMulticast: expected 1, got 0"
       ]
     },
     {
@@ -37,7 +37,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: wrong number of arguments to isMulticast: expected 1, got 0"
+        "error occurred while evaluating policy `policy0`: wrong number of arguments provided to extension function isMulticast: expected 1, got 0"
       ]
     },
     {
@@ -49,7 +49,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: wrong number of arguments to isMulticast: expected 1, got 0"
+        "error occurred while evaluating policy `policy0`: wrong number of arguments provided to extension function isMulticast: expected 1, got 0"
       ]
     },
     {
@@ -61,7 +61,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: wrong number of arguments to isMulticast: expected 1, got 0"
+        "error occurred while evaluating policy `policy0`: wrong number of arguments provided to extension function isMulticast: expected 1, got 0"
       ]
     },
     {
@@ -73,7 +73,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: wrong number of arguments to isMulticast: expected 1, got 0"
+        "error occurred while evaluating policy `policy0`: wrong number of arguments provided to extension function isMulticast: expected 1, got 0"
       ]
     },
     {
@@ -85,7 +85,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: wrong number of arguments to isMulticast: expected 1, got 0"
+        "error occurred while evaluating policy `policy0`: wrong number of arguments provided to extension function isMulticast: expected 1, got 0"
       ]
     },
     {
@@ -97,7 +97,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: wrong number of arguments to isMulticast: expected 1, got 0"
+        "error occurred while evaluating policy `policy0`: wrong number of arguments provided to extension function isMulticast: expected 1, got 0"
       ]
     }
   ]

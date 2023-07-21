@@ -29,7 +29,7 @@ fn throw_error(v: Value) -> evaluator::Result<ExtensionOutputValue> {
     let msg = v.get_as_string()?;
     // PANIC SAFETY: This name is fully static, and is a valid extension name
     #[allow(clippy::unwrap_used)]
-    let err = EvaluationError::ExtensionError {
+    let err = EvaluationError::FailedExtensionFunctionApplication {
         extension_name: "partial_evaluation".parse().unwrap(),
         msg: msg.to_string(),
     };
