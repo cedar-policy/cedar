@@ -19,6 +19,7 @@
 use crate::ast::*;
 use crate::transitive_closure::{compute_tc, enforce_tc_and_dag};
 use std::collections::{hash_map, HashMap};
+use std::fmt::Write;
 
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -151,6 +152,69 @@ impl Entities {
             .map(EntityJSON::from_entity)
             .collect::<std::result::Result<_, JsonSerializationError>>()
             .map_err(Into::into)
+    }
+
+    fn get_entities_by_entity_type(&self) -> HashMap<EntityType, Vec<&Entity>> {
+        let mut entities_by_type: HashMap<EntityType, Vec<&Entity>> = HashMap::new();
+        for entity in self.iter() {
+            let euid = entity.uid();
+            let entity_type = euid.entity_type();
+            if let Some(entities) = entities_by_type.get_mut(entity_type) {
+                entities.push(entity);
+            } else {
+                entities_by_type.insert(entity_type.clone(), Vec::from([entity]));
+            }
+        }
+        entities_by_type
+    }
+
+    /// Write entities into a DOT graph
+    pub fn to_dot_str(&self) -> std::result::Result<String, std::fmt::Error> {
+        let mut dot_str = String::new();
+        // write prelude
+        dot_str.write_str("strict digraph {\n\tordering=\"out\"\n\tnode[shape=box]\n")?;
+
+        // From DOT language reference:
+        // An ID is one of the following:
+        // Any string of alphabetic ([a-zA-Z\200-\377]) characters, underscores ('_') or digits([0-9]), not beginning with a digit;
+        // a numeral [-]?(.[0-9]⁺ | [0-9]⁺(.[0-9]*)? );
+        // any double-quoted string ("...") possibly containing escaped quotes (\")¹;
+        // an HTML string (<...>).
+        // The best option to convert a `Name` or an `EntityUid` is to use double-quoted string.
+        // The `escape_debug` method should be sufficient for our purpose.
+        fn to_dot_id(v: &impl std::fmt::Display) -> String {
+            format!("\"{}\"", v.to_string().escape_debug())
+        }
+
+        // write clusters (subgraphs)
+        let entities_by_type = self.get_entities_by_entity_type();
+
+        for (et, entities) in entities_by_type {
+            dot_str.write_str(&format!(
+                "\tsubgraph \"cluster_{et}\" {{\n\t\tlabel={}\n",
+                to_dot_id(&et)
+            ))?;
+            for entity in entities {
+                let euid = to_dot_id(&entity.uid());
+                let label = format!(r#"[label={}]"#, to_dot_id(&entity.uid().eid()));
+                dot_str.write_str(&format!("\t\t{euid} {label}\n"))?;
+            }
+            dot_str.write_str("\t}\n")?;
+        }
+
+        // adding edges
+        for entity in self.iter() {
+            for ancestor in entity.ancestors() {
+                dot_str.write_str(&format!(
+                    "\t{} -> {}\n",
+                    to_dot_id(&entity.uid()),
+                    to_dot_id(&ancestor)
+                ))?;
+            }
+        }
+
+        dot_str.write_str("}\n")?;
+        Ok(dot_str)
     }
 }
 
