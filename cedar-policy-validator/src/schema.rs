@@ -359,7 +359,7 @@ impl ValidatorNamespaceDef {
             }
             JSONValue::Set(v) => match v.get(0) {
                 //sets with elements of different types will be rejected elsewhere
-                None => Err(SchemaError::ActionEntityAttributeEmptySet),
+                None => Err(SchemaError::ActionAttributesContainEmptySet),
                 Some(element) => {
                     let element_type = Self::jsonval_to_type_helper(element);
                     match element_type {
@@ -370,7 +370,7 @@ impl ValidatorNamespaceDef {
                     }
                 }
             },
-            _ => Err(SchemaError::ActionEntityAttributeUnsupportedType),
+            _ => Err(SchemaError::UnsupportedActionAttributeType),
         }
     }
 
@@ -501,7 +501,7 @@ impl ValidatorNamespaceDef {
                 }
             }
             if !actions_with_attributes.is_empty() {
-                return Err(SchemaError::ActionEntityAttributes(actions_with_attributes));
+                return Err(SchemaError::ActionHasAttributes(actions_with_attributes));
             }
         }
 
@@ -660,7 +660,7 @@ impl ValidatorNamespaceDef {
                 additional_attributes,
             }) => {
                 if additional_attributes {
-                    Err(SchemaError::UnsupportedSchemaFeature(
+                    Err(SchemaError::UnsupportedFeature(
                         UnsupportedFeature::OpenRecordsAndEntities,
                     ))
                 } else {
@@ -692,7 +692,7 @@ impl ValidatorNamespaceDef {
                 .map_err(SchemaError::CommonTypeParseError)?;
                 Ok(WithUnresolvedTypeDefs::new(move |typ_defs| {
                     typ_defs.get(&defined_type_name).cloned().ok_or(
-                        SchemaError::UndeclaredCommonType(HashSet::from([type_name.to_string()])),
+                        SchemaError::UndeclaredCommonTypes(HashSet::from([type_name.to_string()])),
                     )
                 }))
             }
@@ -1714,7 +1714,7 @@ mod test {
         }}"#;
 
         match ValidatorSchema::from_str(src) {
-            Err(SchemaError::ParseFileFormat(_)) => (),
+            Err(SchemaError::Serde(_)) => (),
             _ => panic!("Expected serde error due to duplicate entity type."),
         }
     }
@@ -1749,7 +1749,7 @@ mod test {
             }
         }"#;
         match ValidatorSchema::from_str(src) {
-            Err(SchemaError::ParseFileFormat(_)) => (),
+            Err(SchemaError::Serde(_)) => (),
             _ => panic!("Expected serde error due to duplicate action type."),
         }
     }
@@ -2142,7 +2142,7 @@ mod test {
             ActionBehavior::ProhibitAttributes,
         );
         match schema {
-            Err(SchemaError::ActionEntityAttributes(actions)) => {
+            Err(SchemaError::ActionHasAttributes(actions)) => {
                 assert_eq!(
                     actions.into_iter().collect::<HashSet<_>>(),
                     HashSet::from([
@@ -2624,7 +2624,7 @@ mod test {
         }))
         .unwrap();
         match TryInto::<ValidatorSchema>::try_into(fragment) {
-            Err(SchemaError::UndeclaredCommonType(_)) => (),
+            Err(SchemaError::UndeclaredCommonTypes(_)) => (),
             s => panic!(
                 "Expected Err(SchemaError::UndeclaredCommonType), got {:?}",
                 s
@@ -2645,7 +2645,7 @@ mod test {
         }))
         .unwrap();
         match TryInto::<ValidatorSchema>::try_into(fragment) {
-            Err(SchemaError::UndeclaredCommonType(_)) => (),
+            Err(SchemaError::UndeclaredCommonTypes(_)) => (),
             s => panic!(
                 "Expected Err(SchemaError::UndeclaredCommonType), got {:?}",
                 s
