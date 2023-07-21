@@ -24,6 +24,8 @@
   messages updated appropriately
 - Improved error messages and documentation for some errors raised during
   policy evaluation.
+- Renamed `cedar_policy_core::est::EstToAstError` to `cedar_policy_core::est::FromJsonError`
+- More precise "expected tokens" lists in some parse errors
 
 ## 2.3.2
 

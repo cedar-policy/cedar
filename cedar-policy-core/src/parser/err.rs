@@ -96,3 +96,42 @@ impl<'a> std::fmt::Display for MultipleParseErrors<'a> {
         }
     }
 }
+
+impl From<Vec<ParseError>> for ParseErrors {
+    fn from(errs: Vec<ParseError>) -> Self {
+        ParseErrors(errs)
+    }
+}
+
+impl FromIterator<ParseError> for ParseErrors {
+    fn from_iter<T: IntoIterator<Item = ParseError>>(errs: T) -> Self {
+        ParseErrors(errs.into_iter().collect())
+    }
+}
+
+impl IntoIterator for ParseErrors {
+    type Item = ParseError;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a ParseErrors {
+    type Item = &'a ParseError;
+    type IntoIter = std::slice::Iter<'a, ParseError>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a mut ParseErrors {
+    type Item = &'a mut ParseError;
+    type IntoIter = std::slice::IterMut<'a, ParseError>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter_mut()
+    }
+}
