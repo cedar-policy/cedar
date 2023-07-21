@@ -199,8 +199,8 @@ impl Entities {
                 let label = format!(r#"[label={}]"#, to_dot_id(&entity.uid().eid()));
                 dot_str.write_str(&format!("\t\t{euid} {label}\n"))?;
             }
+            dot_str.write_str("\t}\n")?;
         }
-        dot_str.write_str("\t}\n")?;
 
         // adding edges
         for entity in self.iter() {
