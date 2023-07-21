@@ -20,7 +20,7 @@ use super::SchemaType;
 use crate::ast::{
     EntityType, EntityUID, Expr, ExprKind, Name, RestrictedExpr, RestrictedExpressionError,
 };
-use crate::extensions::ExtensionsError;
+use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -69,9 +69,9 @@ pub enum JsonDeserializationError {
     /// Restricted expression error
     #[error(transparent)]
     RestrictedExpressionError(#[from] RestrictedExpressionError),
-    /// Error thrown by an operation on `Extensions`
+    /// An error occurred when looking up an extension function
     #[error(transparent)]
-    ExtensionsError(#[from] ExtensionsError),
+    FailedExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
     /// A field that needs to be a literal entity reference, was some other JSON value
     #[error("{ctx}, expected a literal entity reference, but got: {got}")]
     ExpectedLiteralEntityRef {
