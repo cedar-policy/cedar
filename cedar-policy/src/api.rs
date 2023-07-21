@@ -3223,7 +3223,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on numDirectReports");
         assert!(
-            err.to_string().contains(r#"In attribute "numDirectReports" on Employee::"12UA45", type mismatch: attribute was expected to have type long, but actually has type string"#),
+            err.to_string().contains(r#"in attribute "numDirectReports" on Employee::"12UA45", type mismatch: attribute was expected to have type long, but actually has type string"#),
             "actual error message was {err}"
         );
 
@@ -3259,7 +3259,7 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to type mismatch on manager");
         assert!(
             err.to_string()
-                .contains(r#"In attribute "manager" on Employee::"12UA45", expected a literal entity reference, but got "34FB87""#),
+                .contains(r#"in attribute "manager" on Employee::"12UA45", expected a literal entity reference, but got "34FB87""#),
             "actual error message was {err}"
         );
 
@@ -3291,7 +3291,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on hr_contacts");
         assert!(
-            err.to_string().contains(r#"In attribute "hr_contacts" on Employee::"12UA45", type mismatch: attribute was expected to have type (set of (entity of type HR)), but actually has type record with attributes: ("#),
+            err.to_string().contains(r#"in attribute "hr_contacts" on Employee::"12UA45", type mismatch: attribute was expected to have type (set of (entity of type HR)), but actually has type record with attributes: ("#),
             "actual error message was {err}"
         );
 
@@ -3326,7 +3326,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on manager");
         assert!(
-            err.to_string().contains(r#"In attribute "manager" on Employee::"12UA45", type mismatch: attribute was expected to have type (entity of type Employee), but actually has type (entity of type HR)"#),
+            err.to_string().contains(r#"in attribute "manager" on Employee::"12UA45", type mismatch: attribute was expected to have type (entity of type Employee), but actually has type (entity of type HR)"#),
             "actual error message was {err}"
         );
 
@@ -3362,7 +3362,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on home_ip");
         assert!(
-            err.to_string().contains(r#"In attribute "home_ip" on Employee::"12UA45", type mismatch: attribute was expected to have type ipaddr, but actually has type decimal"#),
+            err.to_string().contains(r#"in attribute "home_ip" on Employee::"12UA45", type mismatch: attribute was expected to have type ipaddr, but actually has type decimal"#),
             "actual error message was {err}"
         );
 
@@ -3396,7 +3396,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to missing attribute \"inner2\"");
         assert!(
-            err.to_string().contains(r#"In attribute "json_blob" on Employee::"12UA45", expected the record to have an attribute "inner2", but it didn't"#),
+            err.to_string().contains(r#"in attribute "json_blob" on Employee::"12UA45", expected the record to have an attribute "inner2", but it didn't"#),
             "actual error message was {err}"
         );
 
@@ -3431,7 +3431,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on attribute \"inner1\"");
         assert!(
-            err.to_string().contains(r#"In attribute "json_blob" on Employee::"12UA45", type mismatch: attribute was expected to have type record with attributes: "#),
+            err.to_string().contains(r#"in attribute "json_blob" on Employee::"12UA45", type mismatch: attribute was expected to have type record with attributes: "#),
             "actual error message was {err}"
         );
 
@@ -3545,7 +3545,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to manager being wrong entity type (missing namespace)");
         assert!(
-            err.to_string().contains(r#"In attribute "manager" on XYZCorp::Employee::"12UA45", type mismatch: attribute was expected to have type (entity of type XYZCorp::Employee), but actually has type (entity of type Employee)"#),
+            err.to_string().contains(r#"in attribute "manager" on XYZCorp::Employee::"12UA45", type mismatch: attribute was expected to have type (entity of type XYZCorp::Employee), but actually has type (entity of type Employee)"#),
             "actual error message was {err}"
         );
     }
