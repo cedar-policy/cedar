@@ -2591,7 +2591,9 @@ mod test {
         let ast: Result<ast::Policy, _> = est.try_into_ast_policy(None);
         assert_matches!(
             ast,
-            Err(FromJsonError::TemplateToPolicy(ast::ContainsSlot::Named(_)))
+            Err(FromJsonError::TemplateToPolicy(
+                ast::UnexpectedSlotError::Named(_)
+            ))
         );
     }
 }

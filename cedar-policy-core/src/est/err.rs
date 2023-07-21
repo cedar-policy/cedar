@@ -28,7 +28,7 @@ pub enum FromJsonError {
     JsonDeserializationError(#[from] JsonDeserializationError),
     /// Tried to convert an EST representing a template to an AST representing a static policy
     #[error("tried to convert JSON representing a template to a static policy: {0}")]
-    TemplateToPolicy(#[from] ast::ContainsSlot),
+    TemplateToPolicy(#[from] ast::UnexpectedSlotError),
     /// Slot name was not valid for the position it was used in. (Currently, principal slots must
     /// be named `?principal`, and resource slots must be named `?resource`.)
     #[error("invalid slot name, or used in wrong position")]
