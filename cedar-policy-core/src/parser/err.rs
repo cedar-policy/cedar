@@ -77,7 +77,7 @@ impl Display for ToCSTError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.err {
             OwnedRawParseError::InvalidToken { .. } => write!(f, "invalid token"),
-            OwnedRawParseError::UnrecognizedEOF { .. } => write!(f, "unexpected end of input"),
+            OwnedRawParseError::UnrecognizedEof { .. } => write!(f, "unexpected end of input"),
             OwnedRawParseError::UnrecognizedToken {
                 token: (_, token, _),
                 ..
@@ -101,7 +101,7 @@ impl Diagnostic for ToCSTError {
             OwnedRawParseError::InvalidToken { location } => {
                 LabeledSpan::underline(*location..*location)
             }
-            OwnedRawParseError::UnrecognizedEOF { location, expected } => {
+            OwnedRawParseError::UnrecognizedEof { location, expected } => {
                 LabeledSpan::new_with_span(expected_to_string(expected), *location..*location)
             }
             OwnedRawParseError::UnrecognizedToken {

@@ -15,7 +15,7 @@ repository = "https://github.com/cedar-policy/cedar"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_with = { version = "3.0", features = ["json"] }
 serde_json = "1.0"
-lalrpop-util = { version = "0.19.12", features = ["lexer"] }
+lalrpop-util = { version = "0.20.0", features = ["lexer"] }
 lazy_static = "1.4"
 either = "1.8"
 itertools = "0.10"
@@ -45,7 +45,7 @@ arbitrary = ["dep:arbitrary"]
 partial-eval = []
 
 [build-dependencies]
-lalrpop = "0.19.12"
+lalrpop = "0.20.0"
 
 [dev-dependencies]
 cool_asserts = "2.0"
