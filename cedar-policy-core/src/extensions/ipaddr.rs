@@ -124,7 +124,7 @@ impl ExtensionValue for IPAddr {
 }
 
 fn extension_err(msg: impl Into<String>) -> evaluator::EvaluationError {
-    evaluator::EvaluationError::ExtensionError {
+    evaluator::EvaluationError::FailedExtensionFunctionApplication {
         extension_name: names::EXTENSION_NAME.clone(),
         msg: msg.into(),
     }
@@ -393,7 +393,10 @@ mod tests {
     /// `Err::ExtensionErr` with our extension name
     fn assert_ipaddr_err<T>(res: evaluator::Result<T>) {
         match res {
-            Err(evaluator::EvaluationError::ExtensionError { extension_name, .. }) => {
+            Err(evaluator::EvaluationError::FailedExtensionFunctionApplication {
+                extension_name,
+                ..
+            }) => {
                 assert_eq!(
                     extension_name,
                     Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier")
