@@ -1087,8 +1087,8 @@ impl From<ast::PolicySetError> for PolicySetError {
     }
 }
 
-impl From<ast::ContainsSlot> for PolicySetError {
-    fn from(_: ast::ContainsSlot) -> Self {
+impl From<ast::UnexpectedSlotError> for PolicySetError {
+    fn from(_: ast::UnexpectedSlotError) -> Self {
         Self::ExpectedStatic
     }
 }

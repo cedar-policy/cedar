@@ -2591,7 +2591,9 @@ mod test {
         let ast: Result<ast::Policy, _> = est.try_into_ast_policy(None);
         assert_matches!(
             ast,
-            Err(EstToAstError::TemplateToPolicy(ast::ContainsSlot::Named(_)))
+            Err(EstToAstError::TemplateToPolicy(
+                ast::UnexpectedSlotError::Named(_)
+            ))
         );
     }
 }
