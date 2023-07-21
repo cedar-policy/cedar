@@ -21,7 +21,7 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::unreachable,
-    clippy::indexing_slicing,
+    clippy::indexing_slicing
 )]
 
 mod pprint;

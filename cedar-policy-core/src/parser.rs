@@ -53,7 +53,7 @@ pub fn parse_policyset(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
 
 /// Like `parse_policyset()`, but also returns the (lossless) original text of
 /// each individual policy.
-/// INVARIANT: The `PolicyId` or every `Policy` and `Template` returned by the
+/// INVARIANT: The `PolicyId` of every `Policy` and `Template` returned by the
 /// `policies()` and `templates()` methods on the returned `Policy` _must_
 /// appear as a key in the returned map.
 pub fn parse_policyset_and_also_return_policy_text(
