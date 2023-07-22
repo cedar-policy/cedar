@@ -25,6 +25,7 @@ pub mod partial_evaluation;
 
 use crate::ast::{Extension, ExtensionFunction, Name};
 use crate::entities::SchemaType;
+use serde::{Serialize, Deserialize};
 use thiserror::Error;
 
 lazy_static::lazy_static! {
@@ -133,7 +134,7 @@ impl<'a> Extensions<'a> {
 }
 
 /// Errors thrown when looking up an extension function in [`Extensions`].
-#[derive(Debug, PartialEq, Clone, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, Error)]
 pub enum ExtensionFunctionLookupError {
     /// Tried to call a function that doesn't exist
     #[error("extension function does not exist: {name}")]

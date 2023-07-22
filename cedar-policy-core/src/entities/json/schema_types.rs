@@ -17,9 +17,10 @@
 use crate::ast::{EntityType, Name, Type};
 use smol_str::SmolStr;
 use std::collections::HashMap;
+use serde::{Serialize, Deserialize};
 
 /// Possible types that schema-based parsing can expect for Cedar values.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum SchemaType {
     /// Boolean
     Bool,
@@ -55,7 +56,7 @@ pub enum SchemaType {
 }
 
 /// Attribute type structure used in [`SchemaType`]
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub struct AttributeType {
     /// Type of the attribute
     attr_type: SchemaType,

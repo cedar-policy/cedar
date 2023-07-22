@@ -18,9 +18,10 @@ use crate::ast::*;
 use smol_str::SmolStr;
 use std::sync::Arc;
 use thiserror::Error;
+use serde::{Serialize, Deserialize};
 
 /// Errors that can occur during evaluation
-#[derive(Debug, PartialEq, Clone, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, Error)]
 pub enum EvaluationError {
     /// Tried to lookup this entity UID, but it didn't exist in the provided
     /// entities
@@ -125,7 +126,7 @@ fn pretty_type_error(expected: &[Type], actual: &Type) -> String {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, Error)]
 pub enum IntegerOverflowError {
     #[error("integer overflow while attempting to {} the values {arg1} and {arg2}", match .op { BinaryOp::Add => "add", BinaryOp::Sub => "subtract", _ => "perform an operation on" })]
     BinaryOp {

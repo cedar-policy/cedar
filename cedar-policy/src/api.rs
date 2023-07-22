@@ -29,6 +29,8 @@ use cedar_policy_core::entities::JsonDeserializationErrorContext;
 use cedar_policy_core::entities::{ContextSchema, Dereference, JsonDeserializationError};
 use cedar_policy_core::est;
 use cedar_policy_core::evaluator::{Evaluator, RestrictedEvaluator};
+pub use cedar_policy_core::evaluator::EvaluationError;
+pub use cedar_policy_core::authorizer::AuthorizationError;
 pub use cedar_policy_core::extensions;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
@@ -127,7 +129,7 @@ impl Entity {
             evaluator
                 .interpret(expr.as_borrowed())
                 .map(EvalResult::from)
-                .map_err(|e| EvaluationError::StringMessage(e.to_string())),
+                .map_err(EvaluationError::from),
         )
     }
 }
@@ -360,7 +362,7 @@ pub struct Diagnostics {
     /// If no policies applied to the request, this set will be empty.
     reason: HashSet<PolicyId>,
     /// list of error messages which occurred
-    errors: HashSet<String>,
+    errors: Vec<EvaluationError>,
 }
 
 impl From<authorizer::Diagnostics> for Diagnostics {
@@ -380,10 +382,7 @@ impl Diagnostics {
 
     /// Get the error messages
     pub fn errors(&self) -> impl Iterator<Item = EvaluationError> + '_ {
-        self.errors
-            .iter()
-            .cloned()
-            .map(EvaluationError::StringMessage)
+        self.errors.iter()
     }
 }
 
@@ -445,16 +444,6 @@ impl From<authorizer::PartialResponse> for ResidualResponse {
             diagnostics: p.diagnostics.into(),
         }
     }
-}
-
-/// Errors encountered while evaluating policies or expressions, or making
-/// authorization decisions.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum EvaluationError {
-    /// Error message, as string.
-    /// TODO in the future this can/should be the actual Core `EvaluationError`
-    #[error("{0}")]
-    StringMessage(String),
 }
 
 /// Used to select how a policy will be validated.
