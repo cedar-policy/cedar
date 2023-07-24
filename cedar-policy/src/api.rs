@@ -298,6 +298,55 @@ impl Authorizer {
     ///
     /// The language spec and Dafny model give a precise definition of how this
     /// is computed.
+    /// ```
+    /// use cedar_policy::{Authorizer,Context,Entities,EntityId,EntityTypeName,EntityUid, Request,PolicySet};
+    /// use std::str::FromStr;
+    ///
+    /// // create a request
+    /// let p_eid = EntityId::from_str("alice").unwrap();
+    /// let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
+    /// let p = EntityUid::from_type_name_and_id(p_name, p_eid);
+    ///
+    /// let a_eid = EntityId::from_str("view").unwrap();
+    /// let a_name: EntityTypeName = EntityTypeName::from_str("Action").unwrap();
+    /// let a = EntityUid::from_type_name_and_id(a_name, a_eid);
+    ///
+    /// let r_eid = EntityId::from_str("trip").unwrap();
+    /// let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
+    /// let r = EntityUid::from_type_name_and_id(r_name, r_eid);
+
+    /// let c = Context::empty();
+    ///
+    /// let request: Request = Request::new(Some(p), Some(a), Some(r), c);
+    ///
+    /// // create a policy
+    /// let s = r#"permit(
+    ///     principal == User::"alice",
+    ///     action == Action::"view",
+    ///     resource == Album::"trip"
+    ///   )when{
+    ///     principal.ip_addr.isIpv4()
+    ///   };
+    /// "#;
+    /// let policy = PolicySet::from_str(s).expect("policy error");
+
+    /// // create entities
+    /// let e = r#"[
+    ///     {
+    ///         "uid": {"type":"User","id":"alice"},
+    ///         "attrs": {
+    ///             "age":19,
+    ///             "ip_addr":{"__extn":{"fn":"ip", "arg":"10.0.1.101"}}
+    ///         },
+    ///         "parents": []
+    ///     }
+    /// ]"#;
+    /// let entities = Entities::from_json_str(e, None).expect("entity error");
+    ///
+    /// let authorizer = Authorizer::new();
+    /// let r = authorizer.is_authorized(&request, &policy, &entities);
+    /// println!("{:?}", r);
+    /// ```
     pub fn is_authorized(&self, r: &Request, p: &PolicySet, e: &Entities) -> Response {
         self.0.is_authorized(&r.0, &p.ast, &e.0).into()
     }
