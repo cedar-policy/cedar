@@ -43,6 +43,7 @@
 - Renamed `cedar_policy_core::est::EstToAstError` to `cedar_policy_core::est::FromJsonError`
 - More precise "expected tokens" lists in some parse errors
 - Renamed `cedar_policy_core::entities::JsonDeserializationError::ExtensionsError` to `cedar_policy_core::entities::JsonDeserializationError::FailedExtensionsFunctionLookup`.
+- Changed two variants of `api::SchemaError` to contain `EntityUid`s so that we get better error messages.
 
 ## 2.3.0
 
