@@ -37,7 +37,7 @@ pub enum SchemaError {
     /// entity type hierarchy.
     #[error("transitive closure computation/enforcement error on entity type hierarchy: {0}")]
     EntityTypeTransitiveClosure(#[from] transitive_closure::TcError<Name>),
-    /// Error generated when processing a schema file that uses unsuported features
+    /// Error generated when processing a schema file that uses unsupported features
     #[error("unsupported feature used in schema: {0}")]
     UnsupportedFeature(UnsupportedFeature),
     /// Undeclared entity type(s) used in the `memberOf` field of an entity
@@ -92,12 +92,12 @@ pub enum SchemaError {
     /// `context` or `shape` fields are not records
     #[error("{0} is declared with a type other than `Record`")]
     ContextOrShapeNotRecord(ContextOrShape),
-    /// An action entity (transitively) has an attribute that is an empty set
-    /// This error variant should be used when `PermitAttributes` is enabled.
+    /// An action entity (transitively) has an attribute that is an empty set.
+    /// This error variant should only be used when `PermitAttributes` is enabled.
     #[error("action has an attribute that is an empty set")]
     ActionAttributesContainEmptySet,
-    /// An action entity (transitively) has an attribute of unsupported type (`ExprEscape`, `EntityEscape` or `ExtnEscape`)
-    /// This error variant should be used when `PermitAttributes` is enabled.
+    /// An action entity (transitively) has an attribute of unsupported type (`ExprEscape`, `EntityEscape` or `ExtnEscape`).
+    /// This error variant should only be used when `PermitAttributes` is enabled.
     #[error(
         "action has an attribute with unsupported type: (escaped expression, entity or extension)"
     )]
