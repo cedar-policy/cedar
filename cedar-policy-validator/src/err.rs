@@ -87,21 +87,21 @@ pub enum SchemaError {
     ActionEntityTypeDeclared,
     /// One or more action entities are declared with `attributes`, but this is
     /// not currently supported.
-    #[error("actions declared with `attribute(s)`: [{}]", .0.iter().join(", "))]
+    #[error("action declared with `attribute`: [{}]", .0.iter().join(", "))]
     ActionHasAttributes(Vec<String>),
     /// `context` or `shape` fields are not records
     #[error("{0} is declared with a type other than `Record`")]
     ContextOrShapeNotRecord(ContextOrShape),
     /// An action entity (transitively) has an attribute that is an empty set.
     /// This error variant should only be used when `PermitAttributes` is enabled.
-    #[error("action has an attribute that is an empty set")]
-    ActionAttributesContainEmptySet,
+    #[error("action `{0}` has an attribute that is an empty set")]
+    ActionAttributesContainEmptySet(EntityUID),
     /// An action entity (transitively) has an attribute of unsupported type (`ExprEscape`, `EntityEscape` or `ExtnEscape`).
     /// This error variant should only be used when `PermitAttributes` is enabled.
     #[error(
-        "action has an attribute with unsupported type: (escaped expression, entity or extension)"
+        "action `{0}` has an attribute with unsupported type: (escaped expression, entity or extension)"
     )]
-    UnsupportedActionAttributeType,
+    UnsupportedActionAttributeType(EntityUID),
 }
 
 impl From<transitive_closure::TcError<EntityUID>> for SchemaError {

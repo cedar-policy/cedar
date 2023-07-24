@@ -338,7 +338,7 @@ impl ValidatorNamespaceDef {
     // `JSONValue`s, we must update `convert_attr_jsonval_map_to_attributes` to
     // handle errors that may occur when parsing these values. This will require
     // a breaking change in the `SchemaError` type in the public API.
-    fn jsonval_to_type_helper(v: &JSONValue) -> Result<Type> {
+    fn jsonval_to_type_helper(v: &JSONValue, action_id: &EntityUID) -> Result<Type> {
         match v {
             JSONValue::Bool(_) => Ok(Type::primitive_boolean()),
             JSONValue::Long(_) => Ok(Type::primitive_long()),
@@ -346,7 +346,7 @@ impl ValidatorNamespaceDef {
             JSONValue::Record(r) => {
                 let mut required_attrs: HashMap<SmolStr, Type> = HashMap::new();
                 for (k, v_prime) in r {
-                    let t = Self::jsonval_to_type_helper(v_prime);
+                    let t = Self::jsonval_to_type_helper(v_prime, action_id);
                     match t {
                         Ok(ty) => required_attrs.insert(k.clone(), ty),
                         Err(e) => return Err(e),
@@ -359,9 +359,11 @@ impl ValidatorNamespaceDef {
             }
             JSONValue::Set(v) => match v.get(0) {
                 //sets with elements of different types will be rejected elsewhere
-                None => Err(SchemaError::ActionAttributesContainEmptySet),
+                None => Err(SchemaError::ActionAttributesContainEmptySet(
+                    action_id.clone(),
+                )),
                 Some(element) => {
-                    let element_type = Self::jsonval_to_type_helper(element);
+                    let element_type = Self::jsonval_to_type_helper(element, action_id);
                     match element_type {
                         Ok(t) => Ok(Type::Set {
                             element_type: Some(Box::new(t)),
@@ -370,19 +372,22 @@ impl ValidatorNamespaceDef {
                     }
                 }
             },
-            _ => Err(SchemaError::UnsupportedActionAttributeType),
+            _ => Err(SchemaError::UnsupportedActionAttributeType(
+                action_id.clone(),
+            )),
         }
     }
 
     //Convert jsonval map to attributes
     fn convert_attr_jsonval_map_to_attributes(
         m: HashMap<SmolStr, JSONValue>,
+        action_id: &EntityUID,
     ) -> Result<(Attributes, HashMap<SmolStr, RestrictedExpr>)> {
         let mut attr_types: HashMap<SmolStr, Type> = HashMap::new();
         let mut attr_values: HashMap<SmolStr, RestrictedExpr> = HashMap::new();
 
         for (k, v) in m {
-            let t = Self::jsonval_to_type_helper(&v);
+            let t = Self::jsonval_to_type_helper(&v, action_id);
             match t {
                 Ok(ty) => attr_types.insert(k.clone(), ty),
                 Err(e) => return Err(e),
@@ -457,6 +462,7 @@ impl ValidatorNamespaceDef {
                     let (attribute_types, attributes) =
                         Self::convert_attr_jsonval_map_to_attributes(
                             action_type.attributes.unwrap_or_default(),
+                            &action_id,
                         )?;
 
                     Ok((
