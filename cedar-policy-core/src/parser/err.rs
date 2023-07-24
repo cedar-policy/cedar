@@ -25,8 +25,6 @@ use lazy_static::lazy_static;
 use miette::{Diagnostic, LabeledSpan, Severity, SourceCode};
 use thiserror::Error;
 
-use crate::ast::RestrictedExpressionError;
-
 use crate::parser::fmt::join_with_conjunction;
 use crate::parser::node::ASTNode;
 
@@ -50,9 +48,6 @@ pub enum ParseError {
     #[error("poorly formed: {0}")]
     #[diagnostic(code(cedar_policy_core::parser::to_ast_err))]
     ToAST(String),
-    /// Error concerning restricted expressions.
-    #[error(transparent)]
-    RestrictedExpressionError(#[from] RestrictedExpressionError),
 }
 
 /// Error from the CST parser.
@@ -77,7 +72,7 @@ impl Display for ToCSTError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.err {
             OwnedRawParseError::InvalidToken { .. } => write!(f, "invalid token"),
-            OwnedRawParseError::UnrecognizedEOF { .. } => write!(f, "unexpected end of input"),
+            OwnedRawParseError::UnrecognizedEof { .. } => write!(f, "unexpected end of input"),
             OwnedRawParseError::UnrecognizedToken {
                 token: (_, token, _),
                 ..
@@ -101,7 +96,7 @@ impl Diagnostic for ToCSTError {
             OwnedRawParseError::InvalidToken { location } => {
                 LabeledSpan::underline(*location..*location)
             }
-            OwnedRawParseError::UnrecognizedEOF { location, expected } => {
+            OwnedRawParseError::UnrecognizedEof { location, expected } => {
                 LabeledSpan::new_with_span(expected_to_string(expected), *location..*location)
             }
             OwnedRawParseError::UnrecognizedToken {
@@ -302,12 +297,6 @@ impl From<ParseError> for ParseErrors {
 
 impl From<ToCSTError> for ParseErrors {
     fn from(err: ToCSTError) -> Self {
-        ParseError::from(err).into()
-    }
-}
-
-impl From<RestrictedExpressionError> for ParseErrors {
-    fn from(err: RestrictedExpressionError) -> Self {
         ParseError::from(err).into()
     }
 }

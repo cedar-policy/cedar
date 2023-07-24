@@ -36,6 +36,7 @@ use smol_str::SmolStr;
 use std::collections::HashMap;
 
 use crate::ast;
+use crate::ast::RestrictedExprError;
 use crate::est;
 
 /// simple main function for parsing policies
@@ -212,9 +213,11 @@ pub(crate) fn parse_expr(ptext: &str) -> Result<ast::Expr, err::ParseErrors> {
 ///
 /// Private to this crate. Users outside Core should use `RestrictedExpr`'s
 /// `FromStr` impl or its constructors
-pub(crate) fn parse_restrictedexpr(ptext: &str) -> Result<ast::RestrictedExpr, err::ParseErrors> {
-    parse_expr(ptext)
-        .and_then(|expr| ast::RestrictedExpr::new(expr).map_err(err::ParseErrors::from))
+pub(crate) fn parse_restrictedexpr(
+    ptext: &str,
+) -> Result<ast::RestrictedExpr, RestrictedExprError> {
+    let expr = parse_expr(ptext)?;
+    ast::RestrictedExpr::new(expr)
 }
 
 /// parse an EntityUID
