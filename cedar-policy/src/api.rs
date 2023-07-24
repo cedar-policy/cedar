@@ -23,6 +23,7 @@
 pub use ast::Effect;
 pub use authorizer::Decision;
 use cedar_policy_core::ast;
+use cedar_policy_core::ast::RestrictedExprError;
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities;
 use cedar_policy_core::entities::JsonDeserializationErrorContext;
@@ -2020,7 +2021,7 @@ impl RestrictedExpression {
 }
 
 impl FromStr for RestrictedExpression {
-    type Err = ParseErrors;
+    type Err = RestrictedExprError;
 
     /// create a `RestrictedExpression` using Cedar syntax
     fn from_str(expression: &str) -> Result<Self, Self::Err> {

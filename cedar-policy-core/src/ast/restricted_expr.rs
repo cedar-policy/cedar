@@ -17,6 +17,7 @@
 use super::{Expr, ExprKind, Literal, Name};
 use crate::entities::JsonSerializationError;
 use crate::parser;
+use crate::parser::err::ParseErrors;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::hash::{Hash, Hasher};
@@ -58,7 +59,7 @@ impl RestrictedExpr {
     /// Note this check requires recursively walking the AST. For a version of
     /// this function that doesn't perform this check, see `new_unchecked()`
     /// below.
-    pub fn new(expr: Expr) -> Result<Self, RestrictedExpressionError> {
+    pub fn new(expr: Expr) -> Result<Self, RestrictedExprError> {
         is_restricted(&expr)?;
         Ok(Self(expr))
     }
@@ -118,7 +119,7 @@ impl RestrictedExpr {
 }
 
 impl std::str::FromStr for RestrictedExpr {
-    type Err = parser::err::ParseErrors;
+    type Err = RestrictedExprError;
 
     fn from_str(s: &str) -> Result<RestrictedExpr, Self::Err> {
         parser::parse_restrictedexpr(s)
@@ -140,7 +141,7 @@ impl<'a> BorrowedRestrictedExpr<'a> {
     /// Note this check requires recursively walking the AST. For a version of
     /// this function that doesn't perform this check, see `new_unchecked()`
     /// below.
-    pub fn new(expr: &'a Expr) -> Result<Self, RestrictedExpressionError> {
+    pub fn new(expr: &'a Expr) -> Result<Self, RestrictedExprError> {
         is_restricted(expr)?;
         Ok(Self(expr))
     }
@@ -176,47 +177,41 @@ impl<'a> BorrowedRestrictedExpr<'a> {
 /// Helper function: does the given `Expr` qualify as a "restricted" expression.
 ///
 /// Returns `Ok(())` if yes, or a `RestrictedExpressionError` if no.
-fn is_restricted(expr: &Expr) -> Result<(), RestrictedExpressionError> {
+fn is_restricted(expr: &Expr) -> Result<(), RestrictedExprError> {
     match expr.expr_kind() {
         ExprKind::Lit(_) => Ok(()),
         ExprKind::Unknown { .. } => Ok(()),
-        ExprKind::Var(_) => Err(RestrictedExpressionError::InvalidRestrictedExpression {
+        ExprKind::Var(_) => Err(RestrictedExprError::InvalidRestrictedExpression {
             feature: expr.to_string(),
         }),
-        ExprKind::Slot(_) => Err(RestrictedExpressionError::InvalidRestrictedExpression {
+        ExprKind::Slot(_) => Err(RestrictedExprError::InvalidRestrictedExpression {
             feature: "template slots".into(),
         }),
-        ExprKind::If { .. } => Err(RestrictedExpressionError::InvalidRestrictedExpression {
+        ExprKind::If { .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
             feature: "if-then-else".into(),
         }),
-        ExprKind::And { .. } => Err(RestrictedExpressionError::InvalidRestrictedExpression {
+        ExprKind::And { .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
             feature: "&&".into(),
         }),
-        ExprKind::Or { .. } => Err(RestrictedExpressionError::InvalidRestrictedExpression {
+        ExprKind::Or { .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
             feature: "||".into(),
         }),
-        ExprKind::UnaryApp { op, .. } => {
-            Err(RestrictedExpressionError::InvalidRestrictedExpression {
-                feature: op.to_string(),
-            })
-        }
-        ExprKind::BinaryApp { op, .. } => {
-            Err(RestrictedExpressionError::InvalidRestrictedExpression {
-                feature: op.to_string(),
-            })
-        }
-        ExprKind::MulByConst { .. } => {
-            Err(RestrictedExpressionError::InvalidRestrictedExpression {
-                feature: "multiplication".into(),
-            })
-        }
-        ExprKind::GetAttr { .. } => Err(RestrictedExpressionError::InvalidRestrictedExpression {
+        ExprKind::UnaryApp { op, .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
+            feature: op.to_string(),
+        }),
+        ExprKind::BinaryApp { op, .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
+            feature: op.to_string(),
+        }),
+        ExprKind::MulByConst { .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
+            feature: "multiplication".into(),
+        }),
+        ExprKind::GetAttr { .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
             feature: "get-attribute".into(),
         }),
-        ExprKind::HasAttr { .. } => Err(RestrictedExpressionError::InvalidRestrictedExpression {
+        ExprKind::HasAttr { .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
             feature: "'has'".into(),
         }),
-        ExprKind::Like { .. } => Err(RestrictedExpressionError::InvalidRestrictedExpression {
+        ExprKind::Like { .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
             feature: "'like'".into(),
         }),
         ExprKind::ExtensionFunctionApp { args, .. } => args.iter().try_for_each(is_restricted),
@@ -315,8 +310,8 @@ impl<'a> Hash for RestrictedExprShapeOnly<'a> {
 }
 
 /// Errors generated in the restricted_expr module
-#[derive(Debug, Clone, PartialEq, Hash, Error)]
-pub enum RestrictedExpressionError {
+#[derive(Debug, Clone, PartialEq, Error)]
+pub enum RestrictedExprError {
     /// A "restricted" expression contained a feature that is not allowed
     /// in "restricted" expressions. The `feature` is just a string description
     /// of the feature that is not allowed.
@@ -325,4 +320,8 @@ pub enum RestrictedExpressionError {
         /// what disallowed feature appeared in the expression
         feature: String,
     },
+
+    /// Failed to parse the expression that the restricted expression wraps.
+    #[error("failed to parse restricted expression: {0}")]
+    Parse(#[from] ParseErrors),
 }

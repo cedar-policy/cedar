@@ -78,7 +78,7 @@ pub enum EvaluationError {
 
     /// Error with the use of "restricted" expressions
     #[error(transparent)]
-    InvalidRestrictedExpression(#[from] RestrictedExpressionError),
+    InvalidRestrictedExpression(#[from] RestrictedExprError),
 
     /// Thrown when a policy is evaluated with a slot that is not linked to an
     /// [`EntityUID`]

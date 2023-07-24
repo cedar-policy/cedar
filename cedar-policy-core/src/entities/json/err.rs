@@ -18,7 +18,7 @@ use std::fmt::Display;
 
 use super::SchemaType;
 use crate::ast::{
-    EntityType, EntityUID, Expr, ExprKind, Name, RestrictedExpr, RestrictedExpressionError,
+    EntityType, EntityUID, Expr, ExprKind, Name, RestrictedExpr, RestrictedExprError,
 };
 use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
@@ -68,7 +68,7 @@ pub enum JsonDeserializationError {
     },
     /// Restricted expression error
     #[error(transparent)]
-    RestrictedExpressionError(#[from] RestrictedExpressionError),
+    RestrictedExpressionError(#[from] RestrictedExprError),
     /// An error occurred when looking up an extension function
     #[error(transparent)]
     FailedExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
