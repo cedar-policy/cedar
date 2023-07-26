@@ -48,7 +48,7 @@ pub enum EvaluationError {
 
     /// An error occurred when looking up an extension function
     #[error(transparent)]
-    FailedExtensionFunctionLookup(#[from] crate::extensions::ExtensionsError),
+    FailedExtensionFunctionLookup(#[from] crate::extensions::ExtensionFunctionLookupError),
 
     /// Tried to evaluate an operation on values with incorrect types for that
     /// operation
@@ -78,7 +78,7 @@ pub enum EvaluationError {
 
     /// Error with the use of "restricted" expressions
     #[error(transparent)]
-    InvalidRestrictedExpression(#[from] RestrictedExpressionError),
+    InvalidRestrictedExpression(#[from] RestrictedExprError),
 
     /// Thrown when a policy is evaluated with a slot that is not linked to an
     /// [`EntityUID`]

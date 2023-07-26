@@ -37,14 +37,25 @@ pub fn levenshtein_distance(word1: &str, word2: &str) -> usize {
     let word2_length = w2.len() + 1;
     let mut matrix = vec![vec![0; word1_length]; word2_length];
 
+    // The access at 0 is safe because `word2_length` is at least 1.
+    // The access at `i` is safe because it stops before `word1_length`.
+    // PANIC SAFETY: See above.
+    #[allow(clippy::indexing_slicing)]
     for i in 1..word1_length {
         matrix[0][i] = i;
     }
+    // PANIC SAFETY: Similar to above, but fixing the column index instead.
+    #[allow(clippy::indexing_slicing)]
     #[allow(clippy::needless_range_loop)]
     for j in 1..word2_length {
         matrix[j][0] = j;
     }
 
+    // `i` and `j` start at 1, so the accesses at `i - 1` and `j - 1` are safe.
+    // `i` and `j` stop before the length of the array in their respective
+    // dimensions, so accesses at `i` and `j` are safe.
+    // PANIC SAFETY: See above.
+    #[allow(clippy::indexing_slicing)]
     for j in 1..word2_length {
         for i in 1..word1_length {
             let x: usize = if w1[i - 1] == w2[j - 1] {
@@ -58,6 +69,8 @@ pub fn levenshtein_distance(word1: &str, word2: &str) -> usize {
             matrix[j][i] = x;
         }
     }
+    // PANIC SAFETY: Accesses at one less than length in both dimensions. The length in both dimensions is non-zero.
+    #[allow(clippy::indexing_slicing)]
     matrix[word2_length - 1][word1_length - 1]
 }
 

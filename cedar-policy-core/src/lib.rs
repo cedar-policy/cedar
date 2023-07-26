@@ -17,12 +17,6 @@
 //! Implementation of the Cedar parser and evaluation engine in Rust.
 #![forbid(unsafe_code)]
 #![warn(missing_docs, missing_debug_implementations, rust_2018_idioms)]
-// Clippy configuration
-#![deny(clippy::unwrap_used)]
-#![deny(clippy::expect_used)]
-#![deny(clippy::fallible_impl_from)]
-#![deny(clippy::unreachable)]
-#![deny(clippy::indexing_slicing)]
 
 #[macro_use]
 extern crate lalrpop_util;

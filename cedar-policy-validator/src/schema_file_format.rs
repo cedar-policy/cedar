@@ -80,14 +80,6 @@ impl NamespaceDefinition {
     }
 }
 
-impl std::fmt::Display for NamespaceDefinition {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str(
-            &serde_json::to_string_pretty(&self).expect("failed to serialize NamespaceContents"),
-        )
-    }
-}
-
 /// Entity types describe the relationships in the entity store, including what
 /// entities can be members of groups of what types, and what attributes
 /// can/should be included on entities of each type.

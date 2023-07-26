@@ -18,9 +18,9 @@ use std::fmt::Display;
 
 use super::SchemaType;
 use crate::ast::{
-    EntityType, EntityUID, Expr, ExprKind, Name, RestrictedExpr, RestrictedExpressionError,
+    EntityType, EntityUID, Expr, ExprKind, Name, RestrictedExpr, RestrictedExprError,
 };
-use crate::extensions::ExtensionsError;
+use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -68,10 +68,10 @@ pub enum JsonDeserializationError {
     },
     /// Restricted expression error
     #[error(transparent)]
-    RestrictedExpressionError(#[from] RestrictedExpressionError),
-    /// Error thrown by an operation on `Extensions`
+    RestrictedExpressionError(#[from] RestrictedExprError),
+    /// An error occurred when looking up an extension function
     #[error(transparent)]
-    ExtensionsError(#[from] ExtensionsError),
+    FailedExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
     /// A field that needs to be a literal entity reference, was some other JSON value
     #[error("{ctx}, expected a literal entity reference, but got: {got}")]
     ExpectedLiteralEntityRef {
@@ -278,10 +278,10 @@ pub enum JsonDeserializationErrorContext {
 impl std::fmt::Display for JsonDeserializationErrorContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::EntityAttribute { uid, attr } => write!(f, "In attribute {attr:?} on {uid}"),
-            Self::EntityParents { uid } => write!(f, "In parents field of {uid}"),
-            Self::EntityUid => write!(f, "In uid field of <unknown entity>"),
-            Self::Context => write!(f, "While parsing Context"),
+            Self::EntityAttribute { uid, attr } => write!(f, "in attribute {attr:?} on {uid}"),
+            Self::EntityParents { uid } => write!(f, "in parents field of {uid}"),
+            Self::EntityUid => write!(f, "in uid field of <unknown entity>"),
+            Self::Context => write!(f, "while parsing context"),
         }
     }
 }
