@@ -743,21 +743,21 @@ impl From<cedar_policy_validator::ContextOrShape> for ContextOrShape {
 impl From<cedar_policy_validator::SchemaError> for SchemaError {
     fn from(value: cedar_policy_validator::SchemaError) -> Self {
         match value {
-            cedar_policy_validator::SchemaError::ParseFileFormat(e) => Self::ParseJson(e),
-            cedar_policy_validator::SchemaError::ActionTransitiveClosureError(e) => {
+            cedar_policy_validator::SchemaError::Serde(e) => Self::ParseJson(e),
+            cedar_policy_validator::SchemaError::ActionTransitiveClosure(e) => {
                 Self::ActionTransitiveClosureError(e.to_string())
             }
-            cedar_policy_validator::SchemaError::EntityTransitiveClosureError(e) => {
+            cedar_policy_validator::SchemaError::EntityTypeTransitiveClosure(e) => {
                 Self::EntityTransitiveClosureError(e.to_string())
             }
-            cedar_policy_validator::SchemaError::UnsupportedSchemaFeature(e) => {
+            cedar_policy_validator::SchemaError::UnsupportedFeature(e) => {
                 Self::UnsupportedSchemaFeature(e.to_string())
             }
             cedar_policy_validator::SchemaError::UndeclaredEntityTypes(e) => {
                 Self::UndeclaredEntityTypes(e)
             }
             cedar_policy_validator::SchemaError::UndeclaredActions(e) => Self::UndeclaredActions(e),
-            cedar_policy_validator::SchemaError::UndeclaredCommonType(c) => {
+            cedar_policy_validator::SchemaError::UndeclaredCommonTypes(c) => {
                 Self::UndeclaredCommonType(c)
             }
             cedar_policy_validator::SchemaError::DuplicateEntityType(e) => {
@@ -783,16 +783,16 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             cedar_policy_validator::SchemaError::ActionEntityTypeDeclared => {
                 Self::ActionEntityTypeDeclared
             }
-            cedar_policy_validator::SchemaError::ActionEntityAttributes(e) => {
+            cedar_policy_validator::SchemaError::ActionHasAttributes(e) => {
                 Self::ActionEntityAttributes(e)
             }
             cedar_policy_validator::SchemaError::ContextOrShapeNotRecord(context_or_shape) => {
                 Self::ContextOrShapeNotRecord(context_or_shape.into())
             }
-            cedar_policy_validator::SchemaError::ActionEntityAttributeEmptySet => {
+            cedar_policy_validator::SchemaError::ActionAttributesContainEmptySet(_) => {
                 Self::ActionEntityAttributeEmptySet
             }
-            cedar_policy_validator::SchemaError::ActionEntityAttributeUnsupportedType => {
+            cedar_policy_validator::SchemaError::UnsupportedActionAttributeType(_) => {
                 Self::ActionEntityAttributeUnsupportedType
             }
         }
