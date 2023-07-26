@@ -290,6 +290,11 @@ impl Default for Authorizer {
 
 impl Authorizer {
     /// Create a new `Authorizer`
+    /// ```
+    /// use cedar_policy::Authorizer;
+    /// let authorizer = Authorizer::new();
+    /// // let r = authorizer.is_authorized(&request, &policy, &entities);
+    /// ```
     pub fn new() -> Self {
         Self(authorizer::Authorizer::new())
     }
@@ -300,7 +305,8 @@ impl Authorizer {
     /// The language spec and Dafny model give a precise definition of how this
     /// is computed.
     /// ```
-    /// use cedar_policy::{Authorizer,Context,Entities,EntityId,EntityTypeName,EntityUid, Request,PolicySet};
+    /// use cedar_policy::{Authorizer,Context,Entities,EntityId,EntityTypeName,
+    /// EntityUid, Request,PolicySet};
     /// use std::str::FromStr;
     ///
     /// // create a request
@@ -2241,6 +2247,11 @@ pub struct Context(ast::Context);
 
 impl Context {
     /// Create an empty `Context`
+    /// ```
+    /// use cedar_policy::Context;
+    /// let c = Context::empty();
+    /// // let request: Request = Request::new(Some(principal), Some(action), Some(resource), c);
+    /// ```
     pub fn empty() -> Self {
         Self(ast::Context::empty())
     }
@@ -2248,6 +2259,25 @@ impl Context {
     /// Create a `Context` from a map of key to "restricted expression",
     /// or a Vec of `(key, restricted expression)` pairs, or any other iterator
     /// of `(key, restricted expression)` pairs.
+    /// ```
+    /// use cedar_policy::{Context,RestrictedExpression};
+    /// use std::collections::HashMap;
+    /// use std::str::FromStr;
+    /// let t = r#"{
+    ///     "sub": "1234",
+    ///     "groups": {
+    ///         "1234": {
+    ///             "group_id": "abcd",
+    ///             "group_name": "test-group"
+    ///         }
+    ///     }
+    /// }"#;
+    /// let mut groups: HashMap<String, RestrictedExpression> = HashMap::new();
+    /// groups.insert("key".to_string(), RestrictedExpression::from_str(&t).unwrap());
+    /// groups.insert("age".to_string(), RestrictedExpression::from_str("18").unwrap());
+    /// let context = Context::from_pairs(groups);
+    /// // let request: Request = Request::new(Some(principal), Some(action), Some(resource), context);
+    /// ```
     pub fn from_pairs(pairs: impl IntoIterator<Item = (String, RestrictedExpression)>) -> Self {
         Self(ast::Context::from_pairs(
             pairs.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
