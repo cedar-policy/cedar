@@ -694,13 +694,13 @@ pub enum SchemaError {
     #[error("{0} is not a record")]
     ContextOrShapeNotRecord(ContextOrShape),
     /// An Action Entity (transitively) has an attribute that is an empty set
-    #[error("Action `{0}` attribute is an empty set")]
-    ActionEntityAttributeEmptySet(EntityUid),
+    #[error("Action attribute is an empty set")]
+    ActionEntityAttributeEmptySet,
     /// An Action Entity (transitively) has an attribute of unsupported type (ExprEscape, EntityEscape or ExtnEscape)
     #[error(
-        "Action `{0}` has an attribute of unsupported type (escaped expression, entity or extension)"
+        "Action has an attribute of unsupported type (escaped expression, entity or extension)"
     )]
-    ActionEntityAttributeUnsupportedType(EntityUid),
+    ActionEntityAttributeUnsupportedType,
 }
 
 /// Describes in what action context or entity type shape a schema parsing error
@@ -789,11 +789,11 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             cedar_policy_validator::SchemaError::ContextOrShapeNotRecord(context_or_shape) => {
                 Self::ContextOrShapeNotRecord(context_or_shape.into())
             }
-            cedar_policy_validator::SchemaError::ActionAttributesContainEmptySet(uid) => {
-                Self::ActionEntityAttributeEmptySet(EntityUid(uid))
+            cedar_policy_validator::SchemaError::ActionAttributesContainEmptySet(_) => {
+                Self::ActionEntityAttributeEmptySet
             }
-            cedar_policy_validator::SchemaError::UnsupportedActionAttributeType(uid) => {
-                Self::ActionEntityAttributeUnsupportedType(EntityUid(uid))
+            cedar_policy_validator::SchemaError::UnsupportedActionAttributeType(_) => {
+                Self::ActionEntityAttributeUnsupportedType
             }
         }
     }
