@@ -27,7 +27,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum SchemaError {
     /// Error thrown by the `serde_json` crate during deserialization
-    #[error(transparent)]
+    #[error("failed to parse schema: {0}")]
     Serde(#[from] serde_json::Error),
     /// Errors occurring while computing or enforcing transitive closure on
     /// action hierarchy.
