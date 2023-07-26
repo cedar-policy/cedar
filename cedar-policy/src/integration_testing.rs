@@ -27,6 +27,11 @@
 //
 // GRCOV_STOP_COVERAGE
 
+// PANIC SAFETY: This module is used only for testing.
+#![allow(clippy::unwrap_used)]
+// PANIC SAFETY: This module is used only for testing.
+#![allow(clippy::expect_used)]
+
 use crate::{
     Authorizer, Context, Decision, Entities, EntityUid, EvaluationError, Policy, PolicyId,
     PolicySet, Request, Response, Schema, ValidationMode, Validator,
