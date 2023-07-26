@@ -83,6 +83,7 @@ impl Entities {
         Self {
             entities: self.entities,
             mode: Mode::Partial,
+            evaluated_entities: self.evaluated_entities,
         }
     }
 
