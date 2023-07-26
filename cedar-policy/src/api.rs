@@ -627,80 +627,82 @@ impl Schema {
 /// Errors encountered during construction of a Validation Schema
 #[derive(Debug, Error)]
 pub enum SchemaError {
-    /// Errors loading and parsing schema files
-    #[error("JSON Schema file could not be parsed: {0}")]
-    ParseJson(serde_json::Error),
+    /// Error thrown by the `serde_json` crate during deserialization
+    #[error("failed to parse schema: {0}")]
+    Serde(#[from] serde_json::Error),
     /// Errors occurring while computing or enforcing transitive closure on
-    /// action id hierarchy.
-    #[error("Transitive closure error on action hierarchy: {0}")]
-    ActionTransitiveClosureError(String),
+    /// action hierarchy.
+    #[error("transitive closure computation/enforcement error on action hierarchy: {0}")]
+    ActionTransitiveClosure(String),
     /// Errors occurring while computing or enforcing transitive closure on
     /// entity type hierarchy.
-    #[error("Transitive closure error on entity hierarchy: {0}")]
-    EntityTransitiveClosureError(String),
-    /// Error generated when processing a schema file that uses features which
-    /// are not yet supported by the implementation.
-    #[error("Unsupported feature used in schema: {0}")]
-    UnsupportedSchemaFeature(String),
-    /// Undeclared entity type(s) used in an entity type's memberOf field or an
-    /// action's appliesTo fields.
-    #[error("Undeclared entity types: {0:?}")]
+    #[error("transitive closure computation/enforcement error on entity type hierarchy: {0}")]
+    EntityTypeTransitiveClosure(String),
+    /// Error generated when processing a schema file that uses unsupported features
+    #[error("unsupported feature used in schema: {0}")]
+    UnsupportedFeature(String),
+    /// Undeclared entity type(s) used in the `memberOf` field of an entity
+    /// type, the `appliesTo` fields of an action, or an attribute type in a
+    /// context or entity attribute record. Entity types in the error message
+    /// are fully qualified, including any implicit or explicit namespaces.
+    #[error("undeclared entity type(s): {0:?}")]
     UndeclaredEntityTypes(HashSet<String>),
-    /// Undeclared action(s) used in an action's memberOf field.
-    #[error("Undeclared actions: {0:?}")]
+    /// Undeclared action(s) used in the `memberOf` field of an action.
+    #[error("undeclared action(s): {0:?}")]
     UndeclaredActions(HashSet<String>),
-    /// Undeclared type used in entity or context attributes.
-    #[error("Undeclared common types: {0:?}")]
-    UndeclaredCommonType(HashSet<String>),
+    /// Undeclared common type(s) used in entity or context attributes.
+    #[error("undeclared common type(s): {0:?}")]
+    UndeclaredCommonTypes(HashSet<String>),
     /// Duplicate specifications for an entity type. Argument is the name of
     /// the duplicate entity type.
-    #[error("Duplicate entity type {0}")]
+    #[error("duplicate entity type: {0}")]
     DuplicateEntityType(String),
     /// Duplicate specifications for an action. Argument is the name of the
     /// duplicate action.
-    #[error("Duplicate action {0}")]
+    #[error("duplicate action: {0}")]
     DuplicateAction(String),
-    /// Duplicate specifications for a reusable common type. Argument is the
-    /// name of the duplicate type.
-    #[error("Duplicate common type {0}")]
+    /// Duplicate specification for a reusable type declaration.
+    #[error("duplicate common type: {0}")]
     DuplicateCommonType(String),
     /// Cycle in the schema's action hierarchy.
-    #[error("Cycle in action hierarchy")]
+    #[error("cycle in action hierarchy")]
     CycleInActionHierarchy,
     /// Parse errors occurring while parsing an entity type.
-    #[error("Parse error in entity type: {0}")]
-    EntityTypeParse(ParseErrors),
+    #[error("parse error in entity type: {0}")]
+    EntityTypeParseError(ParseErrors),
     /// Parse errors occurring while parsing a namespace identifier.
-    #[error("Parse error in namespace identifier: {0}")]
-    NamespaceParse(ParseErrors),
-    /// Parse errors occurring while parsing a common type identifier.
-    #[error("Parse error in common type identifier: {0}")]
-    CommonTypeParseError(ParseErrors),
+    #[error("parse error in namespace identifier: {0}")]
+    NamespaceParseError(ParseErrors),
     /// Parse errors occurring while parsing an extension type.
-    #[error("Parse error in extension type: {0}")]
-    ExtensionTypeParse(ParseErrors),
+    #[error("parse error in extension type: {0}")]
+    ExtensionTypeParseError(ParseErrors),
+    /// Parse errors occurring while parsing the name of one of reusable
+    /// declared types.
+    #[error("parse error in common type identifier: {0}")]
+    CommonTypeParseError(ParseErrors),
     /// The schema file included an entity type `Action` in the entity type
     /// list. The `Action` entity type is always implicitly declared, and it
     /// cannot currently have attributes or be in any groups, so there is no
     /// purposes in adding an explicit entry.
-    #[error("Entity type `Action` declared in `entityTypes` list.")]
+    #[error("entity type `Action` declared in `entityTypes` list")]
     ActionEntityTypeDeclared,
-    /// One or more action entities are declared with `attributes` lists, but
-    /// action entities cannot have attributes.
-    #[error("Actions declared with `attributes`: [{}]", .0.iter().map(String::as_str).join(", "))]
-    ActionEntityAttributes(Vec<String>),
-    /// An action context or entity type shape was declared to have a type other
-    /// than `Record`.
-    #[error("{0} is not a record")]
+    /// One or more action entities are declared with `attributes`, but this is
+    /// not currently supported.
+    #[error("action declared with `attribute`: [{}]", .0.iter().join(", "))]
+    ActionHasAttributes(Vec<String>),
+    /// `context` or `shape` fields are not records
+    #[error("`{0}` is not a record")]
     ContextOrShapeNotRecord(ContextOrShape),
-    /// An Action Entity (transitively) has an attribute that is an empty set
-    #[error("Action attribute is an empty set")]
-    ActionEntityAttributeEmptySet,
-    /// An Action Entity (transitively) has an attribute of unsupported type (ExprEscape, EntityEscape or ExtnEscape)
+    /// An action entity (transitively) has an attribute that is an empty set.
+    /// This error variant should only be used when `PermitAttributes` is enabled.
+    #[error("action `{0}` has an attribute that is an empty set")]
+    ActionAttributesContainEmptySet(EntityUid),
+    /// An action entity (transitively) has an attribute of unsupported type (`ExprEscape`, `EntityEscape` or `ExtnEscape`).
+    /// This error variant should only be used when `PermitAttributes` is enabled.
     #[error(
-        "Action has an attribute of unsupported type (escaped expression, entity or extension)"
+        "action `{0}` has an attribute with unsupported type: (escaped expression, entity or extension)"
     )]
-    ActionEntityAttributeUnsupportedType,
+    UnsupportedActionAttributeType(EntityUid),
 }
 
 /// Describes in what action context or entity type shape a schema parsing error
@@ -743,22 +745,22 @@ impl From<cedar_policy_validator::ContextOrShape> for ContextOrShape {
 impl From<cedar_policy_validator::SchemaError> for SchemaError {
     fn from(value: cedar_policy_validator::SchemaError) -> Self {
         match value {
-            cedar_policy_validator::SchemaError::Serde(e) => Self::ParseJson(e),
+            cedar_policy_validator::SchemaError::Serde(e) => Self::Serde(e),
             cedar_policy_validator::SchemaError::ActionTransitiveClosure(e) => {
-                Self::ActionTransitiveClosureError(e.to_string())
+                Self::ActionTransitiveClosure(e.to_string())
             }
             cedar_policy_validator::SchemaError::EntityTypeTransitiveClosure(e) => {
-                Self::EntityTransitiveClosureError(e.to_string())
+                Self::EntityTypeTransitiveClosure(e.to_string())
             }
             cedar_policy_validator::SchemaError::UnsupportedFeature(e) => {
-                Self::UnsupportedSchemaFeature(e.to_string())
+                Self::UnsupportedFeature(e.to_string())
             }
             cedar_policy_validator::SchemaError::UndeclaredEntityTypes(e) => {
                 Self::UndeclaredEntityTypes(e)
             }
             cedar_policy_validator::SchemaError::UndeclaredActions(e) => Self::UndeclaredActions(e),
             cedar_policy_validator::SchemaError::UndeclaredCommonTypes(c) => {
-                Self::UndeclaredCommonType(c)
+                Self::UndeclaredCommonTypes(c)
             }
             cedar_policy_validator::SchemaError::DuplicateEntityType(e) => {
                 Self::DuplicateEntityType(e)
@@ -771,29 +773,31 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
                 Self::CycleInActionHierarchy
             }
             cedar_policy_validator::SchemaError::EntityTypeParseError(e) => {
-                Self::EntityTypeParse(e)
+                Self::EntityTypeParseError(e)
             }
-            cedar_policy_validator::SchemaError::NamespaceParseError(e) => Self::NamespaceParse(e),
+            cedar_policy_validator::SchemaError::NamespaceParseError(e) => {
+                Self::NamespaceParseError(e)
+            }
             cedar_policy_validator::SchemaError::CommonTypeParseError(e) => {
                 Self::CommonTypeParseError(e)
             }
             cedar_policy_validator::SchemaError::ExtensionTypeParseError(e) => {
-                Self::ExtensionTypeParse(e)
+                Self::ExtensionTypeParseError(e)
             }
             cedar_policy_validator::SchemaError::ActionEntityTypeDeclared => {
                 Self::ActionEntityTypeDeclared
             }
             cedar_policy_validator::SchemaError::ActionHasAttributes(e) => {
-                Self::ActionEntityAttributes(e)
+                Self::ActionHasAttributes(e)
             }
             cedar_policy_validator::SchemaError::ContextOrShapeNotRecord(context_or_shape) => {
                 Self::ContextOrShapeNotRecord(context_or_shape.into())
             }
-            cedar_policy_validator::SchemaError::ActionAttributesContainEmptySet(_) => {
-                Self::ActionEntityAttributeEmptySet
+            cedar_policy_validator::SchemaError::ActionAttributesContainEmptySet(uid) => {
+                Self::ActionAttributesContainEmptySet(EntityUid(uid))
             }
-            cedar_policy_validator::SchemaError::UnsupportedActionAttributeType(_) => {
-                Self::ActionEntityAttributeUnsupportedType
+            cedar_policy_validator::SchemaError::UnsupportedActionAttributeType(uid) => {
+                Self::UnsupportedActionAttributeType(EntityUid(uid))
             }
         }
     }
@@ -3095,7 +3099,7 @@ mod schema_tests {
                 }
             }}"#
             )),
-            Err(SchemaError::ParseJson(_))
+            Err(SchemaError::Serde(_))
         );
     }
 }
@@ -3726,7 +3730,7 @@ mod schema_based_parsing_tests {
     /// Test that involves open entities
     #[test]
     #[should_panic(
-        expected = "UnsupportedSchemaFeature(\"Records and entities with additional attributes are not yet implemented.\")"
+        expected = "UnsupportedFeature(\"Records and entities with additional attributes are not yet implemented.\")"
     )]
     fn open_entities() {
         let schema = Schema::from_str(
@@ -3794,7 +3798,7 @@ mod schema_based_parsing_tests {
     #[test]
     fn schema_sanity_check() {
         let src = "{ , .. }";
-        assert_matches!(Schema::from_str(src), Err(super::SchemaError::ParseJson(_)));
+        assert_matches!(Schema::from_str(src), Err(super::SchemaError::Serde(_)));
     }
 
     #[test]
