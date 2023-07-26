@@ -314,7 +314,7 @@ impl Authorizer {
     /// let r_eid = EntityId::from_str("trip").unwrap();
     /// let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
     /// let r = EntityUid::from_type_name_and_id(r_name, r_eid);
-
+    ///
     /// let c = Context::empty();
     ///
     /// let request: Request = Request::new(Some(p), Some(a), Some(r), c);
@@ -1846,7 +1846,9 @@ impl Policy {
     /// The behavior around None may change in the future.
     ///
     /// ```
-    /// use cedar_policy::Policy;
+    /// use cedar_policy::{Policy, PolicyId};
+    /// use std::str::FromStr;
+    ///
     /// let data = r#"
     ///        {
     ///            "effect":"permit",
@@ -1875,7 +1877,7 @@ impl Policy {
     ///            {
     ///                "kind":"when",
     ///                "body":{
-    ///                   "<":{
+    ///                   ">":{
     ///                        "left":{
     ///                        ".":{
     ///                            "left":{
@@ -1895,15 +1897,16 @@ impl Policy {
     /// "#;
     /// let v = serde_json::from_str(data).unwrap();
     /// let policy = Policy::from_json(None, v).unwrap();
-    /// println!("{}", policy);
-    /// // output:
-    /// // permit(
-    /// //    principal == User::"bob",
-    /// //    action == Action::"view",
-    /// //    resource == Album::"trip"
-    /// //  )
-    /// //  when
-    /// //    { principal.age > 18 };
+    /// let src = r#"
+    /// permit(
+    ///   principal == User::"bob",
+    ///   action == Action::"view",
+    ///   resource == Album::"trip"
+    /// )
+    /// when
+    ///   { principal.age > 18 };"#;
+    /// let expected_output = Policy::parse(None, src).unwrap();
+    /// assert_eq!(policy.to_string(), expected_output.to_string());
     /// ```
     pub fn from_json(
         id: Option<PolicyId>,
@@ -1934,6 +1937,7 @@ impl Policy {
     /// // convert the policy to JSON
     /// let json = policy.to_json().unwrap();
     /// println!("{}", json);
+    /// assert_eq!(policy.to_string(), Policy::from_json(None, json).unwrap().to_string());
     /// ```
     pub fn to_json(&self) -> Result<serde_json::Value, impl std::error::Error> {
         let est = self.lossless.est()?;
