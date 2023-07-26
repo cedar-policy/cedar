@@ -2,6 +2,7 @@
 
 ## Unreleased
 - Move public API for partial evaluation behind experimental feature flag.
+- Added an option to eagerly evaluate entity attributes and re-use across calls to `is_authorized`
 
 ### Added
 
