@@ -310,7 +310,7 @@ impl<'a> Hash for RestrictedExprShapeOnly<'a> {
 }
 
 /// Errors generated in the restricted_expr module
-#[derive(Debug, Clone, PartialEq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum RestrictedExprError {
     /// A "restricted" expression contained a feature that is not allowed
     /// in "restricted" expressions. The `feature` is just a string description

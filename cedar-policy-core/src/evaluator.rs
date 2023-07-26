@@ -17,8 +17,9 @@
 //! This module contains the Cedar evaluator.
 
 use crate::ast::*;
-use crate::entities::{Dereference, Entities};
+use crate::entities::{Dereference, Entities, EntityAttrValues};
 use crate::extensions::Extensions;
+#[cfg(test)]
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -141,49 +142,6 @@ impl<'e> RestrictedEvaluator<'e> {
     }
 }
 
-struct EntityAttrValues<'a> {
-    attrs: HashMap<EntityUID, HashMap<SmolStr, PartialValue>>,
-    entities: &'a Entities,
-}
-
-impl<'a> EntityAttrValues<'a> {
-    pub fn new<'e>(entities: &'a Entities, extensions: &'e Extensions<'e>) -> Result<Self> {
-        let restricted_eval = RestrictedEvaluator::new(extensions);
-        // Eagerly evaluate each attribute expression in the entities.
-        let attrs = entities
-            .iter()
-            .map(|entity| {
-                Ok((
-                    entity.uid(),
-                    entity
-                        .attrs()
-                        .iter()
-                        .map(|(attr, v)| {
-                            Ok((
-                                attr.to_owned(),
-                                restricted_eval.partial_interpret(v.as_borrowed())?,
-                            ))
-                        })
-                        .collect::<Result<HashMap<SmolStr, PartialValue>>>()?,
-                ))
-            })
-            .collect::<Result<HashMap<EntityUID, HashMap<SmolStr, PartialValue>>>>()?;
-        Ok(Self { attrs, entities })
-    }
-
-    pub fn get(&self, uid: &EntityUID) -> Dereference<'_, HashMap<SmolStr, PartialValue>> {
-        match self.entities.entity(uid) {
-            Dereference::NoSuchEntity => Dereference::NoSuchEntity,
-            Dereference::Residual(r) => Dereference::Residual(r),
-            Dereference::Data(_) => self
-                .attrs
-                .get(uid)
-                .map(Dereference::Data)
-                .unwrap_or_else(|| Dereference::NoSuchEntity),
-        }
-    }
-}
-
 impl<'q, 'e> Evaluator<'e> {
     /// Create a fresh `Evaluator` for the given `request`, which uses the given
     /// `Entities` to resolve entity references. Use the given `Extension`s when
@@ -200,7 +158,7 @@ impl<'q, 'e> Evaluator<'e> {
         extensions: &'e Extensions<'e>,
     ) -> Result<Self> {
         // Eagerly evaluate each attribute expression in the entities.
-        let entity_attr_values = EntityAttrValues::new(entities, extensions)?;
+        let entity_attr_values = entities.get_attr_values()?;
         Ok(Self {
             principal: q.principal().clone(),
             action: q.action().clone(),
@@ -848,7 +806,7 @@ fn stack_size_check() -> Result<()> {
 
 #[cfg(test)]
 pub mod test {
-    use std::str::FromStr;
+    use std::{collections::HashMap, str::FromStr};
 
     use super::*;
 

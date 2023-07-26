@@ -170,6 +170,15 @@ impl Entities {
         Self(self.0.partial())
     }
 
+    /// Attempt to eagerly compute the values of attributes for all entities in the slice.
+    /// This can fail if evaluation of the [`RestrictedExpression`] fails.
+    /// In a future major version, we will likely make this function automatically called via the constructor.
+    pub fn evaluate(self) -> Result<Self, EvaluationError> {
+        Ok(Self(self.0.evaluate().map_err(|e| {
+            EvaluationError::StringMessage(e.to_string())
+        })?))
+    }
+
     /// Iterate over the `Entity`'s in the `Entities`
     pub fn iter(&self) -> impl Iterator<Item = &Entity> {
         self.0.iter().map(Entity::ref_cast)
