@@ -15,7 +15,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: record does not have the attribute: f"
+        "error occurred while evaluating policy `policy0`: record does not have the attribute: f. Available attributes: [\"\"]"
       ]
     },
     {
@@ -29,7 +29,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: record does not have the attribute: f"
+        "error occurred while evaluating policy `policy0`: record does not have the attribute: f. Available attributes: [\"\"]"
       ]
     },
     {
@@ -43,7 +43,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: record does not have the attribute: f"
+        "error occurred while evaluating policy `policy0`: record does not have the attribute: f. Available attributes: [\"\"]"
       ]
     },
     {
@@ -57,7 +57,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: record does not have the attribute: f"
+        "error occurred while evaluating policy `policy0`: record does not have the attribute: f. Available attributes: [\"\"]"
       ]
     },
     {
@@ -71,7 +71,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: record does not have the attribute: f"
+        "error occurred while evaluating policy `policy0`: record does not have the attribute: f. Available attributes: [\"\"]"
       ]
     },
     {
@@ -85,7 +85,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: record does not have the attribute: f"
+        "error occurred while evaluating policy `policy0`: record does not have the attribute: f. Available attributes: [\"\"]"
       ]
     },
     {
@@ -99,7 +99,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: record does not have the attribute: f"
+        "error occurred while evaluating policy `policy0`: record does not have the attribute: f. Available attributes: [\"\"]"
       ]
     },
     {
@@ -113,7 +113,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: record does not have the attribute: f"
+        "error occurred while evaluating policy `policy0`: record does not have the attribute: f. Available attributes: [\"\"]"
       ]
     }
   ]
