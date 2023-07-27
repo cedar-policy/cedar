@@ -307,7 +307,7 @@ fn build_evaluated_entities<'e>(
 }
 
 impl<'a> EntityAttrValues<'a> {
-    /// Construct an [EntityAttrValues] with either an owned or borrowed set of evlauted attributes.
+    /// Construct an [`EntityAttrValues`] with either an owned or borrowed set of evaluated attributes.
     pub fn new(
         attrs: Either<&'a EvaluatedEntities, EvaluatedEntities>,
         entities: &'a Entities,
