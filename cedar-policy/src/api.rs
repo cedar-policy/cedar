@@ -2302,6 +2302,7 @@ impl Context {
     /// use cedar_policy::{Context, RestrictedExpression};
     /// use std::collections::HashMap;
     /// use std::str::FromStr;
+    /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request,PolicySet};
     /// let data : serde_json::Value = serde_json::json!({
     ///     "sub": "1234",
     ///     "groups": {
@@ -2315,7 +2316,19 @@ impl Context {
     /// groups.insert("key".to_string(), RestrictedExpression::from_str(&data.to_string()).unwrap());
     /// groups.insert("age".to_string(), RestrictedExpression::from_str("18").unwrap());
     /// let context = Context::from_pairs(groups);
-    /// // let request: Request = Request::new(Some(principal), Some(action), Some(resource), context);
+    /// # // create a request
+    /// # let p_eid = EntityId::from_str("alice").unwrap();
+    /// # let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
+    /// # let p = EntityUid::from_type_name_and_id(p_name, p_eid);
+    /// #
+    /// # let a_eid = EntityId::from_str("view").unwrap();
+    /// # let a_name: EntityTypeName = EntityTypeName::from_str("Action").unwrap();
+    /// # let a = EntityUid::from_type_name_and_id(a_name, a_eid);
+    /// # let r_eid = EntityId::from_str("trip").unwrap();
+    /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
+    /// # let r = EntityUid::from_type_name_and_id(r_name, r_eid);
+    /// # let c = Context::empty();
+    /// let request: Request = Request::new(Some(p), Some(a), Some(r), context);
     /// ```
     pub fn from_pairs(pairs: impl IntoIterator<Item = (String, RestrictedExpression)>) -> Self {
         Self(ast::Context::from_pairs(
