@@ -202,11 +202,11 @@ fn is_restricted(expr: &Expr) -> Result<(), RestrictedExprError> {
             expr: expr.clone(),
         }),
         ExprKind::UnaryApp { op, .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
-            feature: op.to_string(),
+            feature: op.to_string().into(),
             expr: expr.clone(),
         }),
         ExprKind::BinaryApp { op, .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
-            feature: op.to_string(),
+            feature: op.to_string().into(),
             expr: expr.clone(),
         }),
         ExprKind::MulByConst { .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
@@ -331,7 +331,7 @@ pub enum RestrictedExprError {
     #[error("not allowed to use {feature} in a restricted expression: {expr}")]
     InvalidRestrictedExpression {
         /// what disallowed feature appeared in the expression
-        feature: String,
+        feature: SmolStr,
         /// the (sub-)expression that uses the disallowed feature
         expr: Expr,
     },
