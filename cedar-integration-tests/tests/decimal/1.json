@@ -10,7 +10,7 @@
             "action": "Action::\"view\"",
             "resource": "Photo::\"VacationPhoto94.jpg\"",
             "context": {
-                "confidence_score": {"__expr" : "decimal(\"0.8\")"},
+                "confidence_score": {"__extn" : {"fn": "decimal", "arg":"0.8" }},
                 "source_ip": "123.123.123.123",
                 "authenticated": false
             },
@@ -24,7 +24,7 @@
             "action": "Action::\"view\"",
             "resource": "Photo::\"VacationPhoto94.jpg\"",
             "context": {
-                "confidence_score": {"__expr" : "decimal(\"0.2345\")"},
+                "confidence_score": {"__extn" : {"fn": "decimal", "arg":"0.2345" }},
                 "source_ip": "123.123.123.123",
                 "authenticated": true
             },

@@ -10,7 +10,7 @@
             "action": "Action::\"view\"",
             "resource": "Photo::\"VacationPhoto94.jpg\"",
             "context": {
-                "confidence_score": {"__expr" : "decimal(\"0.455\")"},
+                "confidence_score": {"__extn" : {"fn": "decimal", "arg": "0.455"} },
                 "source_ip": "123.123.123.123",
                 "authenticated": false
             },
@@ -24,7 +24,7 @@
             "action": "Action::\"view\"",
             "resource": "Photo::\"VacationPhoto94.jpg\"",
             "context": {
-                "confidence_score": {"__expr" : "decimal(\"0.0001\")"},
+                "confidence_score": {"__extn" : {"fn": "decimal", "arg": "0.0001"} },
                 "source_ip": "123.123.123.123",
                 "authenticated": true
             },
@@ -38,7 +38,7 @@
             "action": "Action::\"view\"",
             "resource": "Photo::\"VacationPhoto94.jpg\"",
             "context": {
-                "confidence_score": {"__expr" : "decimal(\"0.9\")"},
+                "confidence_score": {"__extn" : {"fn": "decimal", "arg": "0.9"} },
                 "source_ip": "123.123.123.123",
                 "authenticated": true
             },
