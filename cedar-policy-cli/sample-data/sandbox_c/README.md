@@ -21,7 +21,7 @@ cargo run authorize \
 	--principal 'User::"alice"' \
 	--action 'Action::"view"' \
 	--resource 'Photo::"VacationPhoto94.jpg"' \
-	--policies policies.txt \
+	--policies policies.cedar \
 	--entities entities.json
 ```
 
@@ -43,7 +43,7 @@ This looks like a regular policy, but it has `?principal` instead of a concrete 
 Let's link this template to give `alice` access:
 ```
 cargo run link \
-	policies.txt \
+	policies.cedar \
 	./linked \
 	"AccessVacation" \
 	"AliceAccess" \
@@ -59,7 +59,7 @@ cargo run authorize \
 	--principal 'User::"alice"' \
 	--action 'Action::"view"' \
 	--resource 'Photo::"VacationPhoto94.jpg"' \
-	--policies policies.txt \
+	--policies policies.cedar \
 	--entities entities.json \
 	--template-linked ./linked
 ```
@@ -69,7 +69,7 @@ And we should now get `ALLOW`.
 Let's also give `bob` access:
 ```
 cargo run link \
-	policies.txt \
+	policies.cedar \
 	./linked \
 	"AccessVacation" \
 	"BobAccess" \
@@ -103,7 +103,7 @@ cargo run authorize \
 	--principal 'User::"bob"' \
 	--action 'Action::"view"' \
 	--resource 'Photo::"VacationPhoto94.jpg"' \
-	--policies policies.txt \
+	--policies policies.cedar \
 	--entities entities.json \
 	--template-linked ./linked
 ```
@@ -114,7 +114,7 @@ cargo run authorize \
 	--principal 'User::"alice"' \
 	--action 'Action::"view"' \
 	--resource 'Photo::"VacationPhoto94.jpg"' \
-	--policies policies.txt \
+	--policies policies.cedar \
 	--entities entities.json \
 	--template-linked ./linked
 ```
