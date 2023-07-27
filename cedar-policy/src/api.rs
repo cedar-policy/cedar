@@ -2302,7 +2302,7 @@ impl Context {
     /// use cedar_policy::{Context, RestrictedExpression};
     /// use std::collections::HashMap;
     /// use std::str::FromStr;
-    /// let t = r#"{
+    /// let data : serde_json::value::Value = serde_json::json!({
     ///     "sub": "1234",
     ///     "groups": {
     ///         "1234": {
@@ -2310,9 +2310,9 @@ impl Context {
     ///             "group_name": "test-group"
     ///         }
     ///     }
-    /// }"#;
+    /// });
     /// let mut groups: HashMap<String, RestrictedExpression> = HashMap::new();
-    /// groups.insert("key".to_string(), RestrictedExpression::from_str(&t).unwrap());
+    /// groups.insert("key".to_string(), RestrictedExpression::from_str(&data.to_string()).unwrap());
     /// groups.insert("age".to_string(), RestrictedExpression::from_str("18").unwrap());
     /// let context = Context::from_pairs(groups);
     /// // let request: Request = Request::new(Some(principal), Some(action), Some(resource), context);
