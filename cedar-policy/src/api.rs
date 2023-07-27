@@ -291,9 +291,51 @@ impl Default for Authorizer {
 impl Authorizer {
     /// Create a new `Authorizer`
     /// ```
-    /// use cedar_policy::Authorizer;
+
+    /// # use cedar_policy::{Authorizer, Context, Entities, EntityId, EntityTypeName,
+    /// # EntityUid, Request,PolicySet};
+    /// # use std::str::FromStr;
+    /// # // create a request
+    /// # let p_eid = EntityId::from_str("alice").unwrap();
+    /// # let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
+    /// # let p = EntityUid::from_type_name_and_id(p_name, p_eid);
+    /// #
+    /// # let a_eid = EntityId::from_str("view").unwrap();
+    /// # let a_name: EntityTypeName = EntityTypeName::from_str("Action").unwrap();
+    /// # let a = EntityUid::from_type_name_and_id(a_name, a_eid);
+    /// #
+    /// # let r_eid = EntityId::from_str("trip").unwrap();
+    /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
+    /// # let r = EntityUid::from_type_name_and_id(r_name, r_eid);
+    /// #
+    /// # let c = Context::empty();
+    /// #
+    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), c);
+    /// #
+    /// # // create a policy
+    /// # let s = r#"permit(
+    /// #     principal == User::"alice",
+    /// #     action == Action::"view",
+    /// #     resource == Album::"trip"
+    /// #   )when{
+    /// #     principal.ip_addr.isIpv4()
+    /// #   };
+    /// # "#;
+    /// # let policy = PolicySet::from_str(s).expect("policy error");
+    /// # // create entities
+    /// # let e = r#"[
+    /// #     {
+    /// #         "uid": {"type":"User","id":"alice"},
+    /// #         "attrs": {
+    /// #             "age":19,
+    /// #             "ip_addr":{"__extn":{"fn":"ip", "arg":"10.0.1.101"}}
+    /// #         },
+    /// #         "parents": []
+    /// #     }
+    /// # ]"#;
+    /// # let entities = Entities::from_json_str(e, None).expect("entity error");
     /// let authorizer = Authorizer::new();
-    /// // let r = authorizer.is_authorized(&request, &policy, &entities);
+    /// let r = authorizer.is_authorized(&request, &policy, &entities);
     /// ```
     pub fn new() -> Self {
         Self(authorizer::Authorizer::new())
@@ -327,13 +369,13 @@ impl Authorizer {
     /// let request: Request = Request::new(Some(p), Some(a), Some(r), c);
     ///
     /// // create a policy
-    /// let s = r#"permit(
-    ///     principal == User::"alice",
-    ///     action == Action::"view",
-    ///     resource == Album::"trip"
-    ///   )when{
-    ///     principal.ip_addr.isIpv4()
-    ///   };
+    /// let s = r#"
+    /// permit (
+    ///   principal == User::"alice",
+    ///   action == Action::"view",
+    ///   resource == Album::"trip"
+    /// )
+    /// when { principal.ip_addr.isIpv4() };
     /// "#;
     /// let policy = PolicySet::from_str(s).expect("policy error");
 
@@ -1869,7 +1911,7 @@ impl Policy {
     /// use cedar_policy::{Policy, PolicyId};
     /// use std::str::FromStr;
     ///
-    /// let data = r#"
+    /// let data : serde_json::value::Value = serde_json::json!(
     ///        {
     ///            "effect":"permit",
     ///            "principal":{
@@ -1914,17 +1956,15 @@ impl Policy {
     ///            }
     ///            ]
     ///        }
-    /// "#;
-    /// let v = serde_json::from_str(data).unwrap();
-    /// let policy = Policy::from_json(None, v).unwrap();
+    /// );
+    /// let policy = Policy::from_json(None, data).unwrap();
     /// let src = r#"
-    /// permit(
-    ///   principal == User::"bob",
-    ///   action == Action::"view",
-    ///   resource == Album::"trip"
-    /// )
-    /// when
-    ///   { principal.age > 18 };"#;
+    ///   permit(
+    ///     principal == User::"bob",
+    ///     action == Action::"view",
+    ///     resource == Album::"trip"
+    ///   )
+    ///   when { principal.age > 18 };"#;
     /// let expected_output = Policy::parse(None, src).unwrap();
     /// assert_eq!(policy.to_string(), expected_output.to_string());
     /// ```
@@ -1949,8 +1989,7 @@ impl Policy {
     ///     action == Action::"view",
     ///     resource == Album::"trip"
     ///   )
-    ///   when
-    ///     { principal.age > 18 };"#;
+    ///   when { principal.age > 18 };"#;
 
     /// let policy = Policy::parse(None, src).unwrap();
     /// println!("{}", policy);
@@ -2260,7 +2299,7 @@ impl Context {
     /// or a Vec of `(key, restricted expression)` pairs, or any other iterator
     /// of `(key, restricted expression)` pairs.
     /// ```
-    /// use cedar_policy::{Context,RestrictedExpression};
+    /// use cedar_policy::{Context, RestrictedExpression};
     /// use std::collections::HashMap;
     /// use std::str::FromStr;
     /// let t = r#"{
