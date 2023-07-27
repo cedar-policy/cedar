@@ -10,7 +10,7 @@
             "action": "Action::\"view\"",
             "resource": "Photo::\"VacationPhoto94.jpg\"",
             "context": {
-                "source_ip": {"__expr" : "ip(\"222.222.222.222\")"},
+                "source_ip": {"__extn" : {"fn": "ip", "arg": "222.222.222.222"} },
                 "confidence_score": "0.6",
                 "authenticated": true
             },
@@ -24,7 +24,7 @@
             "action": "Action::\"view\"",
             "resource": "Photo::\"VacationPhoto94.jpg\"",
             "context": {
-                "source_ip": {"__expr" : "ip(\"222.222.111.0\")"},
+                "source_ip": {"__extn" : {"fn": "ip", "arg": "222.222.111.0"} },
                 "confidence_score": "0.6",
                 "authenticated": true
             },

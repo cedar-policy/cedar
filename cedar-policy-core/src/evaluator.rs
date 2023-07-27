@@ -643,7 +643,10 @@ impl<'q, 'e> Evaluator<'e> {
                                 .filter_map(|(k, v)| if k == attr { Some(v) } else { None })
                                 .next()
                                 .ok_or_else(|| {
-                                    EvaluationError::RecordAttrDoesNotExist(attr.clone())
+                                    EvaluationError::RecordAttrDoesNotExist(
+                                        attr.clone(),
+                                        pairs.iter().map(|(f, _)| f.clone()).collect(),
+                                    )
                                 })
                                 .and_then(|e| self.partial_interpret(e, slots))
                         } else if pairs.iter().any(|(k, _v)| k == attr) {
@@ -652,7 +655,10 @@ impl<'q, 'e> Evaluator<'e> {
                                 attr.clone(),
                             )))
                         } else {
-                            Err(EvaluationError::RecordAttrDoesNotExist(attr.clone()))
+                            Err(EvaluationError::RecordAttrDoesNotExist(
+                                attr.clone(),
+                                pairs.iter().map(|(f, _)| f.clone()).collect(),
+                            ))
                         }
                     }
                     // We got a residual, that is not a record at the top level
@@ -662,7 +668,12 @@ impl<'q, 'e> Evaluator<'e> {
             PartialValue::Value(Value::Record(attrs)) => attrs
                 .as_ref()
                 .get(attr)
-                .ok_or_else(|| EvaluationError::RecordAttrDoesNotExist(attr.clone()))
+                .ok_or_else(|| {
+                    EvaluationError::RecordAttrDoesNotExist(
+                        attr.clone(),
+                        attrs.iter().map(|(f, _)| f.clone()).collect(),
+                    )
+                })
                 .map(|v| PartialValue::Value(v.clone())),
             PartialValue::Value(Value::Lit(Literal::EntityUID(uid))) => {
                 match self.entity_attr_values.get(uid.as_ref()) {
@@ -1344,7 +1355,10 @@ pub mod test {
                 Expr::val(3),
                 Expr::get_attr(Expr::record(vec![]), "foo".into()),
             )),
-            Err(EvaluationError::RecordAttrDoesNotExist("foo".into()))
+            Err(EvaluationError::RecordAttrDoesNotExist(
+                "foo".into(),
+                vec![]
+            ))
         );
         // if true then <err> else 3
         assert_eq!(
@@ -1353,7 +1367,10 @@ pub mod test {
                 Expr::get_attr(Expr::record(vec![]), "foo".into()),
                 Expr::val(3),
             )),
-            Err(EvaluationError::RecordAttrDoesNotExist("foo".into()))
+            Err(EvaluationError::RecordAttrDoesNotExist(
+                "foo".into(),
+                vec![]
+            ))
         );
         // if false then <err> else 3
         assert_eq!(
@@ -1542,7 +1559,10 @@ pub mod test {
         // {"ham": 3, "eggs": 7}["what"]
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(ham_and_eggs, "what".into())),
-            Err(EvaluationError::RecordAttrDoesNotExist("what".into()))
+            Err(EvaluationError::RecordAttrDoesNotExist(
+                "what".into(),
+                vec!["eggs".into(), "ham".into()]
+            ))
         );
 
         // {"ham": 3, "eggs": "why"}["ham"]
