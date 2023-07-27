@@ -139,7 +139,7 @@ pub enum IntegerOverflowError {
     },
 
     /// Overflow during multiplication
-    #[error("integer overflow while attempting to multiply `{arg}` by {constant}")]
+    #[error("integer overflow while attempting to multiply `{arg}` by `{constant}`")]
     Multiplication {
         /// first argument, which wasn't necessarily a constant in the policy
         arg: Value,
