@@ -97,10 +97,7 @@
     },
     "attrs": {
       "private": false,
-      "account": {
-        "type": "Account",
-        "id": "alice"
-      },
+      "account": { "type":"Account", "id":"alice" },
       "admins": []
     },
     "parents": [
