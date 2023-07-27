@@ -1911,7 +1911,7 @@ impl Policy {
     /// use cedar_policy::{Policy, PolicyId};
     /// use std::str::FromStr;
     ///
-    /// let data : serde_json::value::Value = serde_json::json!(
+    /// let data : serde_json::Value = serde_json::json!(
     ///        {
     ///            "effect":"permit",
     ///            "principal":{
@@ -2302,7 +2302,7 @@ impl Context {
     /// use cedar_policy::{Context, RestrictedExpression};
     /// use std::collections::HashMap;
     /// use std::str::FromStr;
-    /// let data : serde_json::value::Value = serde_json::json!({
+    /// let data : serde_json::Value = serde_json::json!({
     ///     "sub": "1234",
     ///     "groups": {
     ///         "1234": {
