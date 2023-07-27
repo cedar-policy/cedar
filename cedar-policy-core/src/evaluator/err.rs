@@ -44,8 +44,8 @@ pub enum EvaluationError {
 
     /// Tried to get this attribute of a (non-entity) record, but that record
     /// didn't have that attribute
-    #[error("record does not have the required attribute: {0}")]
-    RecordAttrDoesNotExist(SmolStr),
+    #[error("record does not have the attribute: {0}. Available attributes: {1:?}")]
+    RecordAttrDoesNotExist(SmolStr, Vec<SmolStr>),
 
     /// Error thown by an operation on `Extensions`
     /// (not to be confused with `ExtensionError`, which is an error thrown by

@@ -186,6 +186,8 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             .arg(&policy_file)
             .arg("--entities")
             .arg(&entity_file)
+            .arg("--schema")
+            .arg(&schema_file)
             .arg("--verbose") // so that reasons are displayed
             .assert()
             .append_context("authorization", json_request.desc.clone());
