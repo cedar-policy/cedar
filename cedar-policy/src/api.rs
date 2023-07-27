@@ -676,8 +676,8 @@ pub enum SchemaError {
     /// Parse errors occurring while parsing an extension type.
     #[error("parse error in extension type: {0}")]
     ExtensionTypeParseError(ParseErrors),
-    /// Parse errors occurring while parsing the name of one of reusable
-    /// declared types.
+    /// Parse errors occurring while parsing the name of a reusable
+    /// declared type.
     #[error("parse error in common type identifier: {0}")]
     CommonTypeParseError(ParseErrors),
     /// The schema file included an entity type `Action` in the entity type
