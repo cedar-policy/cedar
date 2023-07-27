@@ -1,7 +1,7 @@
 {
     "policies": "tests/decimal/policies_1.cedar",
     "entities": "sample-data/sandbox_b/entities.json",
-    "schema": "sample-data/sandbox_b/schema_exts.cedarschema.json",
+    "schema": "sample-data/sandbox_b/schema_exts.cedarschema.cedarschema.cedarschema.cedarschema.cedarschema.json",
     "should_validate": true,
     "queries": [
         {
