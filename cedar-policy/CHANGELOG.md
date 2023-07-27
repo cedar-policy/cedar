@@ -14,6 +14,8 @@
 
 ### Changed
 
+- Added list of attributes that do exist to `RecordAttrDoesNotExist` error message.
+- Removed deprecated `__expr` escapes from integration tests.
 - Improved error detection in schema based parsing (fix issues #73, #74).
   - Detect entities with parents of an incorrect entity type.
   - Detect entities with an undeclared entity type.
