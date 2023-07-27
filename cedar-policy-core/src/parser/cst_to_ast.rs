@@ -650,11 +650,13 @@ impl ASTNode<Option<cst::Cond>> {
             }
         };
 
-        match (maybe_is_when, maybe_expr) {
-            (true, Some(e)) => Some(e),
-            (false, Some(e)) => Some(construct_expr_not(e, src.clone())),
-            _ => None,
-        }
+        maybe_expr.map(|e| {
+            if maybe_is_when {
+                e
+            } else {
+                construct_expr_not(e, src.clone())
+            }
+        })
     }
 }
 
