@@ -22,6 +22,7 @@ use crate::evaluator;
 use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
+use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::Arc;
 
 /// Cedar extension.
@@ -328,7 +329,7 @@ impl std::fmt::Debug for ExtensionFunction {
 /// Anything implementing this trait can be used as a first-class value in
 /// Cedar. For instance, the `ipaddr` extension uses this mechanism
 /// to implement IPAddr as a Cedar first-class value.
-pub trait ExtensionValue: Debug + Display + Send + Sync {
+pub trait ExtensionValue: Debug + Display + Send + Sync + UnwindSafe + RefUnwindSafe {
     /// Get the name of the type of this value.
     ///
     /// Cedar has nominal typing, so two values have the same type iff they
