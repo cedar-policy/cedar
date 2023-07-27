@@ -270,9 +270,9 @@ pub struct EntityAttrValues<'a> {
     entities: &'a Entities,
 }
 
-fn build_evaluated_entities<'e>(
+fn build_evaluated_entities(
     entities: &Entities,
-    extensions: &'e Extensions<'e>,
+    extensions: &'_ Extensions<'_>,
 ) -> std::result::Result<EvaluatedEntities, EvaluationError> {
     let restricted_eval = RestrictedEvaluator::new(extensions);
     // Eagerly evaluate each attribute expression in the entities.
