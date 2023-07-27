@@ -321,6 +321,7 @@ impl<'a> Hash for RestrictedExprShapeOnly<'a> {
 }
 
 /// Errors related to restricted expressions
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum RestrictedExprError {
     /// An expression was expected to be a "restricted" expression, but contained
