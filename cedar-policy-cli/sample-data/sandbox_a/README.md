@@ -92,9 +92,9 @@ You can validate if a policy conforms with the schema. Try the following:
 ```
 cargo run validate \
   --policies policies_1.cedar \
-  --schema schema.json
+  --schema schema.cedarschema.json
 ```
-Validation should pass. If you look at the `schema.json` file, you will see it has two sections: the `entityTypes` section, first, and the `actions` section. The first section describes the legal entity types, including member relationships. For example, we see that entities of type `Photo` can be members of entities of type `Album` or `Account` -- membership is tantamount to a parent-child relationship in the entity hierarchy.
+Validation should pass. If you look at the `schema.cedarschema.json` file, you will see it has two sections: the `entityTypes` section, first, and the `actions` section. The first section describes the legal entity types, including member relationships. For example, we see that entities of type `Photo` can be members of entities of type `Album` or `Account` -- membership is tantamount to a parent-child relationship in the entity hierarchy.
 
 The second section of the schema defines all of the legal actions (each of which has entity type `Action`, not shown), and the principal and resource types of entities that are allowed in authorization requests for that action. We can see that there are four legal actions, and each one has the same assumptions: only `User` entities can be passed in as principals in requests, and either `Photo`, `Album`, or `Video` entities can be passed in as resources.
 

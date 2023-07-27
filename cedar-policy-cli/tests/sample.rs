@@ -430,7 +430,7 @@ fn run_validate_test(policies_file: &str, schema_file: &str, exit_code: CedarExi
 fn test_validate_samples() {
     run_validate_test(
         "sample-data/doesnotexist.cedar",
-        "sample-data/sandbox_a/schema.json",
+        "sample-data/sandbox_a/schema.cedarschema.json",
         CedarExitCode::Failure,
     );
     run_validate_test(
@@ -440,79 +440,79 @@ fn test_validate_samples() {
     );
     run_validate_test(
         "sample-data/sandbox_a/policies_1.cedar",
-        "sample-data/sandbox_a/schema.json",
+        "sample-data/sandbox_a/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     // Contains misspelled entity type.
     run_validate_test(
         "sample-data/sandbox_a/policies_1_bad.cedar",
-        "sample-data/sandbox_a/schema.json",
+        "sample-data/sandbox_a/schema.cedarschema.json",
         CedarExitCode::ValidationFailure,
     );
     run_validate_test(
         "sample-data/sandbox_a/policies_2.cedar",
-        "sample-data/sandbox_a/schema.json",
+        "sample-data/sandbox_a/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
         "sample-data/sandbox_a/policies_3.cedar",
-        "sample-data/sandbox_a/schema.json",
+        "sample-data/sandbox_a/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
         "sample-data/sandbox_b/policies_4.cedar",
-        "sample-data/sandbox_b/schema.json",
+        "sample-data/sandbox_b/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     // Contains an access to an optional attribute without a `has` check.
     run_validate_test(
         "sample-data/sandbox_b/policies_5_bad.cedar",
-        "sample-data/sandbox_b/schema.json",
+        "sample-data/sandbox_b/schema.cedarschema.json",
         CedarExitCode::ValidationFailure,
     );
     run_validate_test(
         "sample-data/sandbox_b/policies_5.cedar",
-        "sample-data/sandbox_b/schema.json",
+        "sample-data/sandbox_b/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
         "sample-data/sandbox_b/policies_6.cedar",
-        "sample-data/sandbox_b/schema.json",
+        "sample-data/sandbox_b/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
         "sample-data/tiny_sandboxes/sample1/policy.cedar",
-        "sample-data/tiny_sandboxes/sample1/schema.json",
+        "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
         "sample-data/tiny_sandboxes/sample2/policy.cedar",
-        "sample-data/tiny_sandboxes/sample2/schema.json",
+        "sample-data/tiny_sandboxes/sample2/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
         "sample-data/tiny_sandboxes/sample3/policy.cedar",
-        "sample-data/tiny_sandboxes/sample3/schema.json",
+        "sample-data/tiny_sandboxes/sample3/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
         "sample-data/tiny_sandboxes/sample4/policy.cedar",
-        "sample-data/tiny_sandboxes/sample4/schema.json",
+        "sample-data/tiny_sandboxes/sample4/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
         "sample-data/tiny_sandboxes/sample5/policy.cedar",
-        "sample-data/tiny_sandboxes/sample5/schema.json",
+        "sample-data/tiny_sandboxes/sample5/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
         "sample-data/tiny_sandboxes/sample6/policy.cedar",
-        "sample-data/tiny_sandboxes/sample6/schema.json",
+        "sample-data/tiny_sandboxes/sample6/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
         "sample-data/tiny_sandboxes/sample7/policy.cedar",
-        "sample-data/tiny_sandboxes/sample7/schema.json",
+        "sample-data/tiny_sandboxes/sample7/schema.cedarschema.json",
         CedarExitCode::Success,
     );
 }

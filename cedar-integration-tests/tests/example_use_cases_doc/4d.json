@@ -1,5 +1,5 @@
 {
-    "policies": "tests/example_use_cases_doc/policies_4d.txt",
+    "policies": "tests/example_use_cases_doc/policies_4d.cedar",
     "entities": "sample-data/sandbox_b/entities.json",
     "schema": "sample-data/sandbox_b/schema.json",
     "should_validate": true,

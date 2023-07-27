@@ -77,9 +77,9 @@ You can validate if a policy conforms with the schema. Try the following:
 ```
 cargo run validate \
   --policies policies_5.cedar \
-  --schema schema.json
+  --schema schema.cedarschema.json
 ```
-You can see that validation passes. If you look at `schema.json` you can see that it is larger than the schema used for `sandbox_a`. The `entityTypes` section now contains information about some of the entity types' legal attributes. This information is in the `shapes` portion of the entity type description. Notice that some attributes are paired with a `required` field which indicates whether they are optional or not. The `actions` section also has an additional element for some of the actions, which describes the legal shape of the `context` that can be passed in on authorization requests for that action.
+You can see that validation passes. If you look at `schema.cedarschema.json` you can see that it is larger than the schema used for `sandbox_a`. The `entityTypes` section now contains information about some of the entity types' legal attributes. This information is in the `shapes` portion of the entity type description. Notice that some attributes are paired with a `required` field which indicates whether they are optional or not. The `actions` section also has an additional element for some of the actions, which describes the legal shape of the `context` that can be passed in on authorization requests for that action.
 
 If you try validating `policies_5_bad.cedar` instead, you'll see a validation failure. This is because the second policy (the `forbid` one) does not have the expression `resource.account has owner` prior to accessing the `owner` attribute; since that attribute is optional, the lack of a `has` check could result in a failure, so the validator flags it.
 
