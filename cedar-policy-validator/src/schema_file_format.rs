@@ -355,7 +355,7 @@ impl SchemaTypeVisitor {
         M: MapAccess<'de>,
     {
         use TypeFields::*;
-        let present_fields = [
+        let _present_fields = [
             (Type, type_name.is_some()),
             (Element, element.is_some()),
             (Attributes, attributes.is_some()),
@@ -368,14 +368,13 @@ impl SchemaTypeVisitor {
         .collect::<HashSet<_>>();
         // Used to generate the appropriate serde error if a field is present
         // when it is not expected.
-        let error_if_fields = |fs: &[TypeFields],
-                               expected: &'static [&'static str]|
+        let error_if_fields = |_fs: &[TypeFields],
+                               _expected: &'static [&'static str]|
          -> std::result::Result<(), M::Error> {
-            for f in fs {
-                if present_fields.contains(f) {
-                    return Err(serde::de::Error::unknown_field(f.as_str(), expected));
-                }
-            }
+            // This is where we would return an error if any of the unexpected
+            // fields in `fs` are in present_fields`. The automatically derived
+            // schema parser did not return these errors, so this is a breaking
+            // change for any schema where a type contains an unexpected field.
             Ok(())
         };
         let error_if_any_fields = || -> std::result::Result<(), M::Error> {
@@ -901,7 +900,34 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "unknown field `attributes`")]
+    fn test_schema_file_with_field_from_other_type() {
+        let src = serde_json::json!(
+        {
+            "entityTypes": {
+                "User": {
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "favorite": {
+                                "type": "String",
+                                // These fields shouldn't exist for a String,
+                                // and we could detect this error, but we allow
+                                // it to maintain backwards compatibility.
+                                "name": "Photo",
+                                "attributes": {},
+                                "element": "",
+                            }
+                        }
+                    }
+                }
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
+        println!("{:#?}", schema);
+    }
+
+    #[test]
     fn schema_file_unexpected_malformed_attribute() {
         let src = serde_json::json!(
         {
@@ -912,6 +938,10 @@ mod test {
                         "attributes": {
                             "a": {
                                 "type": "Long",
+                                // Similar to above, `attributes` shouldn't
+                                // exist, and `"foo": "bar"` is an invalid
+                                // attribute when it should exist. We allow this
+                                // for backwards compatibility.
                                 "attributes": {
                                     "b": {"foo": "bar"}
                                 }
