@@ -23,15 +23,23 @@ fn add_comments(token_stream: &mut [WrappedToken], input: &str) {
     if token_stream.is_empty() {
         return;
     }
+    // PANIC SAFETY: first token must exist for a non-empty token stream.
+    #[allow(clippy::unwrap_used)]
     let first_token = token_stream.first_mut().unwrap();
     let first_range = &first_token.span;
     if first_range.start > 0 {
+        // PANIC SAFETY: this range should exist since `first_token` refers to the first token of a non-empty token stream.
+        #[allow(clippy::indexing_slicing)]
         first_token.add_leading_comment(&input[..first_range.start]);
     }
 
     while i + 1 < token_stream.len() {
         let (curr_tokens, next_tokens) = token_stream.split_at_mut(i + 1);
+        // PANIC SAFETY: `i + 1` is less the token stream length.
+        #[allow(clippy::unwrap_used)]
         let curr_token = curr_tokens.last_mut().unwrap();
+        // PANIC SAFETY: `i + 1` is less the token stream length.
+        #[allow(clippy::unwrap_used)]
         let next_token = next_tokens.first_mut().unwrap();
         let curr_range = &curr_token.span;
         let next_range = &next_token.span;
@@ -39,6 +47,8 @@ fn add_comments(token_stream: &mut [WrappedToken], input: &str) {
             i += 1;
             continue;
         }
+        // PANIC SAFETY: this range should exist since `curr_token` and `next_token` refer to tokens in the token stream.
+        #[allow(clippy::indexing_slicing)]
         let gap = &input[curr_range.end..next_range.start];
         match gap.split_once('\n') {
             Some((f, r)) => {
