@@ -378,8 +378,19 @@ impl ValidatorNamespaceDef {
                     }
                 }
             },
-            _ => Err(SchemaError::UnsupportedActionAttributeType(
+            JSONValue::EntityEscape { __entity: _ } => {
+                Err(SchemaError::UnsupportedActionAttribute(
+                    action_id.clone(),
+                    "entity escape (`__entity`)".to_owned(),
+                ))
+            }
+            JSONValue::ExprEscape { __expr: _ } => Err(SchemaError::UnsupportedActionAttribute(
                 action_id.clone(),
+                "expression escape (`__expr`)".to_owned(),
+            )),
+            JSONValue::ExtnEscape { __extn: _ } => Err(SchemaError::UnsupportedActionAttribute(
+                action_id.clone(),
+                "extension function escape (`__extn`)".to_owned(),
             )),
         }
     }
@@ -515,7 +526,9 @@ impl ValidatorNamespaceDef {
                 }
             }
             if !actions_with_attributes.is_empty() {
-                return Err(SchemaError::ActionHasAttributes(actions_with_attributes));
+                return Err(SchemaError::UnsupportedFeature(
+                    UnsupportedFeature::ActionAttributes(actions_with_attributes),
+                ));
             }
         }
 
@@ -2177,7 +2190,7 @@ mod test {
             ActionBehavior::ProhibitAttributes,
         );
         match schema {
-            Err(SchemaError::ActionHasAttributes(actions)) => {
+            Err(SchemaError::UnsupportedFeature(UnsupportedFeature::ActionAttributes(actions))) => {
                 assert_eq!(
                     actions.into_iter().collect::<HashSet<_>>(),
                     HashSet::from([
