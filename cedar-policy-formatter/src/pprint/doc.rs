@@ -729,13 +729,13 @@ impl Doc for ASTNode<Option<Policy>> {
         let principal_doc = vars.get(0)?.to_doc(context)?;
         let action_doc = vars.get(1)?.to_doc(context)?;
         let resource_doc = vars.get(2)?.to_doc(context)?;
-        // PANIC SAFETY: principal (index 0), action (index 1), and resource (index 2) should all exist at this program point.
-        #[allow(clippy::unwrap_used)]
-        #[allow(clippy::indexing_slicing)]
-        let vars_doc = if vars[0..3]
-            .iter()
-            .all(|v| v.as_inner().unwrap().ineq.is_none())
-        {
+        let vars_doc = if vars.get(0..3)?.iter().all(|v| {
+            if let Some(v) = v.as_inner() {
+                v.ineq.is_none()
+            } else {
+                false
+            }
+        }) {
             principal_doc
                 .append(add_comment(
                     RcDoc::text(","),
