@@ -213,26 +213,26 @@ impl Doc for ASTNode<Option<Relation>> {
         let e = self.as_inner()?;
         match e {
             Relation::Common { initial, extended } => {
-                Some(match extended.as_slice() {
-                    [] => initial.to_doc(context)?,
+                match extended.as_slice() {
+                    [] => initial.to_doc(context),
                     [(op, n)] =>
                     // do not group due to the limitation of current design
                     {
-                        initial
-                            .to_doc(context)?
-                            .append(RcDoc::space())
-                            .append(add_comment(
-                                RcDoc::as_string(op),
-                                get_comment_after_end(initial.info.0.end, &mut context.tokens)?,
-                                RcDoc::nil(),
-                            ))
-                            .append(RcDoc::space())
-                            .append(n.to_doc(context))
+                        Some(
+                            initial
+                                .to_doc(context)?
+                                .append(RcDoc::space())
+                                .append(add_comment(
+                                    RcDoc::as_string(op),
+                                    get_comment_after_end(initial.info.0.end, &mut context.tokens)?,
+                                    RcDoc::nil(),
+                                ))
+                                .append(RcDoc::space())
+                                .append(n.to_doc(context)),
+                        )
                     }
-                    // PANIC SAFETY: chained relations should be rejected by our parser.
-                    #[allow(clippy::unreachable)]
-                    _ => unreachable!("chained relation disallowed!"),
-                })
+                    _ => None,
+                }
             }
             Relation::Has { target, field } => Some(
                 target
@@ -349,9 +349,7 @@ impl Doc for ASTNode<Option<Unary>> {
         let e = self.as_inner()?;
         if let Some(op) = e.op {
             match op {
-                // PANIC SAFETY: policies with too many unary consective unary operatos should be rejected by our parser.
-                #[allow(clippy::unreachable)]
-                NegOp::OverBang | NegOp::OverDash => unreachable!("invalid policy!"),
+                NegOp::OverBang | NegOp::OverDash => None,
                 NegOp::Bang(n) | NegOp::Dash(n) => {
                     let comment = get_comment_in_range(
                         self.info.0.start,
@@ -363,19 +361,19 @@ impl Doc for ASTNode<Option<Unary>> {
                     }
                     Some(
                         RcDoc::intersperse(
-                            (0..n).map(|i| {
-                                add_comment(
-                                    if matches!(op, NegOp::Bang(_)) {
-                                        RcDoc::as_string("!")
-                                    } else {
-                                        RcDoc::as_string("-")
-                                    },
-                                    // PANIC SAFETY: comment vector size should be equal to n and i is less than n.
-                                    #[allow(clippy::indexing_slicing)]
-                                    comment[i as usize].clone(),
-                                    RcDoc::nil(),
-                                )
-                            }),
+                            (0..n)
+                                .map(|i| {
+                                    Some(add_comment(
+                                        if matches!(op, NegOp::Bang(_)) {
+                                            RcDoc::as_string("!")
+                                        } else {
+                                            RcDoc::as_string("-")
+                                        },
+                                        comment.get(i as usize)?.clone(),
+                                        RcDoc::nil(),
+                                    ))
+                                })
+                                .collect::<Option<Vec<RcDoc<'_>>>>()?,
                             RcDoc::nil(),
                         )
                         .append(e.item.as_inner()?.to_doc(context)?),
@@ -474,19 +472,18 @@ impl Doc for ASTNode<Option<Str>> {
 
 impl Doc for ASTNode<Option<Ref>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
-        Some(match self.as_inner()? {
-            Ref::Uid { path, eid } => path
-                .to_doc(context)?
-                .append(add_comment(
-                    RcDoc::text("::"),
-                    get_comment_after_end(path.info.0.end, &mut context.tokens)?,
-                    RcDoc::nil(),
-                ))
-                .append(eid.to_doc(context)?),
-            // PANIC SAFETY: policies with type annotations should be rejected as our parser currently does not support them.
-            #[allow(clippy::unreachable)]
-            Ref::Ref { path: _, rinits: _ } => unreachable!("unsupported feature"),
-        })
+        match self.as_inner()? {
+            Ref::Uid { path, eid } => Some(
+                path.to_doc(context)?
+                    .append(add_comment(
+                        RcDoc::text("::"),
+                        get_comment_after_end(path.info.0.end, &mut context.tokens)?,
+                        RcDoc::nil(),
+                    ))
+                    .append(eid.to_doc(context)?),
+            ),
+            Ref::Ref { path: _, rinits: _ } => None,
+        }
     }
 }
 

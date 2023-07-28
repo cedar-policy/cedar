@@ -82,16 +82,20 @@ pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
         .to_policyset(&mut errs)
         .ok_or(errs)
         .wrap_err("cannot parse input policies to ASTs")?;
-    let tokens = get_token_stream(ps);
-    // PANIC SAFETY: there must be at least one token as our parser rejects empty strings.
-    #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
-    let end_comment_str = &ps[tokens.last().unwrap().span.end..];
+    let tokens = get_token_stream(ps).ok_or(miette!("cannot get token stream"))?;
+    let end_comment_str = ps
+        .get(
+            tokens
+                .last()
+                .ok_or(miette!("token stream is empty"))?
+                .span
+                .end..,
+        )
+        .ok_or(miette!("cannot get ending comment string"))?;
     let mut context = config::Context { config, tokens };
-    // PANIC SAFETY: a CST should exist provided an AST exists
-    #[allow(clippy::unwrap_used)]
     let mut formatted_policies = cst
         .as_inner()
-        .unwrap()
+        .ok_or(miette!("fail to get input policy CST"))?
         .0
         .iter()
         .map(|p| Ok(remove_empty_lines(tree_to_pretty(p, &mut context)?.trim())))
