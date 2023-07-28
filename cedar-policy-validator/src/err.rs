@@ -150,11 +150,11 @@ impl std::fmt::Display for UnsupportedFeature {
         match self {
             Self::OpenRecordsAndEntities => write!(
                 f,
-                "Records and entities with additional attributes are not yet implemented."
+                "records and entities with additional attributes are not yet implemented"
             ),
             Self::ActionAttributes(attrs) => write!(
                 f,
-                "Action declared with attributes: [{}]",
+                "action declared with attributes: [{}]",
                 attrs.iter().join(", ")
             ),
         }
