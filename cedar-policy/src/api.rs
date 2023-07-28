@@ -36,7 +36,9 @@ use cedar_policy_core::parser;
 pub use cedar_policy_core::parser::err::ParseErrors;
 use cedar_policy_core::parser::SourceInfo;
 use cedar_policy_core::FromNormalizedStr;
-pub use cedar_policy_validator::{TypeErrorKind, ValidationErrorKind, ValidationWarningKind};
+pub use cedar_policy_validator::{
+    TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
+};
 use itertools::Itertools;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
@@ -847,9 +849,12 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             cedar_policy_validator::SchemaError::EntityTypeTransitiveClosure(e) => {
                 Self::EntityTransitiveClosureError(e.to_string())
             }
-            cedar_policy_validator::SchemaError::UnsupportedFeature(e) => {
-                Self::UnsupportedSchemaFeature(e.to_string())
-            }
+            cedar_policy_validator::SchemaError::UnsupportedFeature(e) => match e {
+                UnsupportedFeature::ActionAttributes(attrs) => Self::ActionEntityAttributes(attrs),
+                UnsupportedFeature::OpenRecordsAndEntities => {
+                    Self::UnsupportedSchemaFeature(e.to_string())
+                }
+            },
             cedar_policy_validator::SchemaError::UndeclaredEntityTypes(e) => {
                 Self::UndeclaredEntityTypes(e)
             }
@@ -867,21 +872,16 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             cedar_policy_validator::SchemaError::CycleInActionHierarchy => {
                 Self::CycleInActionHierarchy
             }
-            cedar_policy_validator::SchemaError::EntityTypeParseError(e) => {
-                Self::EntityTypeParse(e)
-            }
-            cedar_policy_validator::SchemaError::NamespaceParseError(e) => Self::NamespaceParse(e),
-            cedar_policy_validator::SchemaError::CommonTypeParseError(e) => {
+            cedar_policy_validator::SchemaError::ParseEntityType(e) => Self::EntityTypeParse(e),
+            cedar_policy_validator::SchemaError::ParseNamespace(e) => Self::NamespaceParse(e),
+            cedar_policy_validator::SchemaError::ParseCommonType(e) => {
                 Self::CommonTypeParseError(e)
             }
-            cedar_policy_validator::SchemaError::ExtensionTypeParseError(e) => {
+            cedar_policy_validator::SchemaError::ParseExtensionType(e) => {
                 Self::ExtensionTypeParse(e)
             }
             cedar_policy_validator::SchemaError::ActionEntityTypeDeclared => {
                 Self::ActionEntityTypeDeclared
-            }
-            cedar_policy_validator::SchemaError::ActionHasAttributes(e) => {
-                Self::ActionEntityAttributes(e)
             }
             cedar_policy_validator::SchemaError::ContextOrShapeNotRecord(context_or_shape) => {
                 Self::ContextOrShapeNotRecord(context_or_shape.into())
@@ -889,7 +889,7 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             cedar_policy_validator::SchemaError::ActionAttributesContainEmptySet(_) => {
                 Self::ActionEntityAttributeEmptySet
             }
-            cedar_policy_validator::SchemaError::UnsupportedActionAttributeType(_) => {
+            cedar_policy_validator::SchemaError::UnsupportedActionAttribute(_, _) => {
                 Self::ActionEntityAttributeUnsupportedType
             }
         }
@@ -3966,7 +3966,7 @@ mod schema_based_parsing_tests {
     /// Test that involves open entities
     #[test]
     #[should_panic(
-        expected = "UnsupportedSchemaFeature(\"Records and entities with additional attributes are not yet implemented.\")"
+        expected = "UnsupportedSchemaFeature(\"records and entities with additional attributes are not yet implemented\")"
     )]
     fn open_entities() {
         let schema = Schema::from_str(

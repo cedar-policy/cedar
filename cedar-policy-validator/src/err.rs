@@ -68,40 +68,35 @@ pub enum SchemaError {
     CycleInActionHierarchy,
     /// Parse errors occurring while parsing an entity type.
     #[error("parse error in entity type: {}", Self::format_parse_errs(.0))]
-    EntityTypeParseError(ParseErrors),
+    ParseEntityType(ParseErrors),
     /// Parse errors occurring while parsing a namespace identifier.
     #[error("parse error in namespace identifier: {}", Self::format_parse_errs(.0))]
-    NamespaceParseError(ParseErrors),
+    ParseNamespace(ParseErrors),
     /// Parse errors occurring while parsing an extension type.
     #[error("parse error in extension type: {}", Self::format_parse_errs(.0))]
-    ExtensionTypeParseError(ParseErrors),
+    ParseExtensionType(ParseErrors),
     /// Parse errors occurring while parsing the name of one of reusable
     /// declared types.
     #[error("parse error in common type identifier: {}", Self::format_parse_errs(.0))]
-    CommonTypeParseError(ParseErrors),
+    ParseCommonType(ParseErrors),
     /// The schema file included an entity type `Action` in the entity type
     /// list. The `Action` entity type is always implicitly declared, and it
     /// cannot currently have attributes or be in any groups, so there is no
     /// purposes in adding an explicit entry.
     #[error("entity type `Action` declared in `entityTypes` list")]
     ActionEntityTypeDeclared,
-    /// One or more action entities are declared with `attributes`, but this is
-    /// not currently supported.
-    #[error("action declared with `attribute`: [{}]", .0.iter().join(", "))]
-    ActionHasAttributes(Vec<String>),
     /// `context` or `shape` fields are not records
     #[error("{0} is declared with a type other than `Record`")]
     ContextOrShapeNotRecord(ContextOrShape),
     /// An action entity (transitively) has an attribute that is an empty set.
+    /// The validator cannot assign a type to an empty set.
     /// This error variant should only be used when `PermitAttributes` is enabled.
     #[error("action `{0}` has an attribute that is an empty set")]
     ActionAttributesContainEmptySet(EntityUID),
     /// An action entity (transitively) has an attribute of unsupported type (`ExprEscape`, `EntityEscape` or `ExtnEscape`).
     /// This error variant should only be used when `PermitAttributes` is enabled.
-    #[error(
-        "action `{0}` has an attribute with unsupported type: (escaped expression, entity or extension)"
-    )]
-    UnsupportedActionAttributeType(EntityUID),
+    #[error("action `{0}` has an attribute with unsupported JSON representation: {1}")]
+    UnsupportedActionAttribute(EntityUID, String),
 }
 
 impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
@@ -146,14 +141,21 @@ impl std::fmt::Display for ContextOrShape {
 #[derive(Debug)]
 pub enum UnsupportedFeature {
     OpenRecordsAndEntities,
+    // Action attributes are allowed if `ActionBehavior` is `PermitAttributes`
+    ActionAttributes(Vec<String>),
 }
 
 impl std::fmt::Display for UnsupportedFeature {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            UnsupportedFeature::OpenRecordsAndEntities => write!(
+            Self::OpenRecordsAndEntities => write!(
                 f,
-                "Records and entities with additional attributes are not yet implemented."
+                "records and entities with additional attributes are not yet implemented"
+            ),
+            Self::ActionAttributes(attrs) => write!(
+                f,
+                "action declared with attributes: [{}]",
+                attrs.iter().join(", ")
             ),
         }
     }
