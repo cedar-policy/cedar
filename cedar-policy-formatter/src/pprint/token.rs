@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+// PANIC SAFETY: there's little we can do about Logos.
+#![allow(clippy::indexing_slicing)]
 use itertools::Itertools;
 use logos::{Logos, Span};
 use regex::Regex;
@@ -64,8 +66,6 @@ impl Display for Comment {
 }
 
 // Cedar tokens
-// PANIC SAFETY: there's little we can do about Logos.
-#[allow(clippy::indexing_slicing)]
 #[derive(Logos, Clone, Debug, PartialEq)]
 pub enum Token {
     #[error]
