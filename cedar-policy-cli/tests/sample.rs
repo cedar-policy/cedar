@@ -166,11 +166,11 @@ fn run_authorize_test_json(
 #[test]
 fn test_authorize_samples() {
     run_check_parse_test(
-        "sample-data/sandbox_a/policies_1.txt",
+        "sample-data/sandbox_a/policies_1.cedar",
         CedarExitCode::Success,
     );
     run_authorize_test(
-        "sample-data/sandbox_a/policies_1.txt",
+        "sample-data/sandbox_a/policies_1.cedar",
         "sample-data/sandbox_a/entities.json",
         "User::\"alice\"",
         "Action::\"view\"",
@@ -178,11 +178,11 @@ fn test_authorize_samples() {
         CedarExitCode::Success,
     );
     run_check_parse_test(
-        "sample-data/sandbox_a/policies_2.txt",
+        "sample-data/sandbox_a/policies_2.cedar",
         CedarExitCode::Success,
     );
     run_authorize_test(
-        "sample-data/sandbox_a/policies_2.txt",
+        "sample-data/sandbox_a/policies_2.cedar",
         "sample-data/sandbox_a/entities.json",
         "User::\"alice\"",
         "Action::\"view\"",
@@ -190,7 +190,7 @@ fn test_authorize_samples() {
         CedarExitCode::Success,
     );
     run_authorize_test(
-        "sample-data/sandbox_a/policies_2.txt",
+        "sample-data/sandbox_a/policies_2.cedar",
         "sample-data/sandbox_a/entities.json",
         "User::\"alice\"",
         "Action::\"edit\"",
@@ -198,7 +198,7 @@ fn test_authorize_samples() {
         CedarExitCode::Success,
     );
     run_authorize_test(
-        "sample-data/sandbox_a/policies_2.txt",
+        "sample-data/sandbox_a/policies_2.cedar",
         "sample-data/sandbox_a/entities.json",
         "User::\"alice\"",
         "Action::\"delete\"",
@@ -206,7 +206,7 @@ fn test_authorize_samples() {
         CedarExitCode::Success,
     );
     run_authorize_test(
-        "sample-data/sandbox_a/policies_2.txt",
+        "sample-data/sandbox_a/policies_2.cedar",
         "sample-data/sandbox_a/entities.json",
         "User::\"alice\"",
         "Action::\"comment\"",
@@ -214,7 +214,7 @@ fn test_authorize_samples() {
         CedarExitCode::AuthorizeDeny,
     );
     run_authorize_test(
-        "sample-data/sandbox_a/policies_2.txt",
+        "sample-data/sandbox_a/policies_2.cedar",
         "sample-data/sandbox_a/entities.json",
         "User::\"bob\"",
         "Action::\"view\"",
@@ -222,7 +222,7 @@ fn test_authorize_samples() {
         CedarExitCode::Success,
     );
     run_authorize_test(
-        "sample-data/sandbox_a/policies_2.txt",
+        "sample-data/sandbox_a/policies_2.cedar",
         "sample-data/sandbox_a/entities.json",
         "User::\"bob\"",
         "Action::\"edit\"",
@@ -230,7 +230,7 @@ fn test_authorize_samples() {
         CedarExitCode::AuthorizeDeny,
     );
     run_authorize_test(
-        "sample-data/sandbox_a/policies_2.txt",
+        "sample-data/sandbox_a/policies_2.cedar",
         "sample-data/sandbox_a/entities.json",
         "User::\"bob\"",
         "Action::\"delete\"",
@@ -238,7 +238,7 @@ fn test_authorize_samples() {
         CedarExitCode::AuthorizeDeny,
     );
     run_authorize_test(
-        "sample-data/sandbox_a/policies_2.txt",
+        "sample-data/sandbox_a/policies_2.cedar",
         "sample-data/sandbox_a/entities.json",
         "User::\"bob\"",
         "Action::\"comment\"",
@@ -246,11 +246,11 @@ fn test_authorize_samples() {
         CedarExitCode::AuthorizeDeny,
     );
     run_check_parse_test(
-        "sample-data/sandbox_a/policies_3.txt",
+        "sample-data/sandbox_a/policies_3.cedar",
         CedarExitCode::Success,
     );
     run_authorize_test(
-        "sample-data/sandbox_a/policies_3.txt",
+        "sample-data/sandbox_a/policies_3.cedar",
         "sample-data/sandbox_a/entities.json",
         "User::\"alice\"",
         "Action::\"view\"",
@@ -258,7 +258,7 @@ fn test_authorize_samples() {
         CedarExitCode::Success,
     );
     run_authorize_test(
-        "sample-data/sandbox_a/policies_3.txt",
+        "sample-data/sandbox_a/policies_3.cedar",
         "sample-data/sandbox_a/entities.json",
         "User::\"bob\"",
         "Action::\"view\"",
@@ -266,7 +266,7 @@ fn test_authorize_samples() {
         CedarExitCode::Success,
     );
     run_authorize_test(
-        "sample-data/sandbox_a/policies_3.txt",
+        "sample-data/sandbox_a/policies_3.cedar",
         "sample-data/sandbox_a/entities.json",
         "User::\"tim\"",
         "Action::\"view\"",
@@ -274,7 +274,7 @@ fn test_authorize_samples() {
         CedarExitCode::Success,
     );
     run_authorize_test(
-        "sample-data/sandbox_a/policies_3.txt",
+        "sample-data/sandbox_a/policies_3.cedar",
         "sample-data/sandbox_a/entities.json",
         "User::\"alice\"",
         "Action::\"listPhotos\"",
@@ -282,7 +282,7 @@ fn test_authorize_samples() {
         CedarExitCode::Success,
     );
     run_authorize_test(
-        "sample-data/sandbox_a/policies_3.txt",
+        "sample-data/sandbox_a/policies_3.cedar",
         "sample-data/sandbox_a/entities.json",
         "User::\"bob\"",
         "Action::\"listPhotos\"",
@@ -290,7 +290,7 @@ fn test_authorize_samples() {
         CedarExitCode::Success,
     );
     run_authorize_test(
-        "sample-data/sandbox_a/policies_3.txt",
+        "sample-data/sandbox_a/policies_3.cedar",
         "sample-data/sandbox_a/entities.json",
         "User::\"tim\"",
         "Action::\"listPhotos\"",
@@ -299,11 +299,11 @@ fn test_authorize_samples() {
     );
 
     run_check_parse_test(
-        "sample-data/sandbox_b/policies_4.txt",
+        "sample-data/sandbox_b/policies_4.cedar",
         CedarExitCode::Success,
     );
     run_authorize_test(
-        "sample-data/sandbox_b/policies_4.txt",
+        "sample-data/sandbox_b/policies_4.cedar",
         "sample-data/sandbox_b/entities.json",
         "User::\"alice\"",
         "Action::\"view\"",
@@ -311,7 +311,7 @@ fn test_authorize_samples() {
         CedarExitCode::Success,
     );
     run_authorize_test(
-        "sample-data/sandbox_b/policies_4.txt",
+        "sample-data/sandbox_b/policies_4.cedar",
         "sample-data/sandbox_b/entities.json",
         "User::\"stacey\"",
         "Action::\"view\"",
@@ -319,7 +319,7 @@ fn test_authorize_samples() {
         CedarExitCode::AuthorizeDeny,
     );
     run_authorize_test(
-        "sample-data/sandbox_b/policies_4.txt",
+        "sample-data/sandbox_b/policies_4.cedar",
         "sample-data/sandbox_b/entities.json",
         "User::\"ahmad\"",
         "Action::\"view\"",
@@ -327,7 +327,7 @@ fn test_authorize_samples() {
         CedarExitCode::AuthorizeDeny,
     );
     run_authorize_test(
-        "sample-data/sandbox_b/policies_5.txt",
+        "sample-data/sandbox_b/policies_5.cedar",
         "sample-data/sandbox_b/entities.json",
         "User::\"stacey\"",
         "Action::\"view\"",
@@ -335,11 +335,11 @@ fn test_authorize_samples() {
         CedarExitCode::AuthorizeDeny,
     );
     run_check_parse_test(
-        "sample-data/sandbox_b/policies_5.txt",
+        "sample-data/sandbox_b/policies_5.cedar",
         CedarExitCode::Success,
     );
     run_authorize_test(
-        "sample-data/sandbox_b/policies_5.txt",
+        "sample-data/sandbox_b/policies_5.cedar",
         "sample-data/sandbox_b/entities.json",
         "User::\"alice\"",
         "Action::\"view\"",
@@ -347,7 +347,7 @@ fn test_authorize_samples() {
         CedarExitCode::Success,
     );
     run_authorize_test(
-        "sample-data/sandbox_b/policies_5.txt",
+        "sample-data/sandbox_b/policies_5.cedar",
         "sample-data/sandbox_b/entities.json",
         "User::\"stacey\"",
         "Action::\"view\"",
@@ -355,7 +355,7 @@ fn test_authorize_samples() {
         CedarExitCode::Success,
     );
     run_authorize_test_context(
-        "sample-data/sandbox_b/policies_6.txt",
+        "sample-data/sandbox_b/policies_6.cedar",
         "sample-data/sandbox_b/entities.json",
         "User::\"alice\"",
         "Action::\"view\"",
@@ -364,7 +364,7 @@ fn test_authorize_samples() {
         CedarExitCode::Failure,
     );
     run_authorize_test_context(
-        "sample-data/sandbox_b/policies_6.txt",
+        "sample-data/sandbox_b/policies_6.cedar",
         "sample-data/sandbox_b/entities.json",
         "User::\"alice\"",
         "Action::\"view\"",
@@ -374,43 +374,43 @@ fn test_authorize_samples() {
     );
 
     run_authorize_test_json(
-        "sample-data/tiny_sandboxes/sample1/policy.txt",
+        "sample-data/tiny_sandboxes/sample1/policy.cedar",
         "sample-data/tiny_sandboxes/sample1/entity.json",
         "sample-data/tiny_sandboxes/sample1/request.json",
         CedarExitCode::Success,
     );
     run_authorize_test_json(
-        "sample-data/tiny_sandboxes/sample2/policy.txt",
+        "sample-data/tiny_sandboxes/sample2/policy.cedar",
         "sample-data/tiny_sandboxes/sample2/entity.json",
         "sample-data/tiny_sandboxes/sample2/request.json",
         CedarExitCode::Success,
     );
     run_authorize_test_json(
-        "sample-data/tiny_sandboxes/sample3/policy.txt",
+        "sample-data/tiny_sandboxes/sample3/policy.cedar",
         "sample-data/tiny_sandboxes/sample3/entity.json",
         "sample-data/tiny_sandboxes/sample3/request.json",
         CedarExitCode::AuthorizeDeny,
     );
     run_authorize_test_json(
-        "sample-data/tiny_sandboxes/sample4/policy.txt",
+        "sample-data/tiny_sandboxes/sample4/policy.cedar",
         "sample-data/tiny_sandboxes/sample4/entity.json",
         "sample-data/tiny_sandboxes/sample4/request.json",
         CedarExitCode::Success,
     );
     run_authorize_test_json(
-        "sample-data/tiny_sandboxes/sample5/policy.txt",
+        "sample-data/tiny_sandboxes/sample5/policy.cedar",
         "sample-data/tiny_sandboxes/sample5/entity.json",
         "sample-data/tiny_sandboxes/sample5/request.json",
         CedarExitCode::Success,
     );
     run_authorize_test_json(
-        "sample-data/tiny_sandboxes/sample6/policy.txt",
+        "sample-data/tiny_sandboxes/sample6/policy.cedar",
         "sample-data/tiny_sandboxes/sample6/entity.json",
         "sample-data/tiny_sandboxes/sample6/request.json",
         CedarExitCode::AuthorizeDeny,
     );
     run_authorize_test_json(
-        "sample-data/tiny_sandboxes/sample7/policy.txt",
+        "sample-data/tiny_sandboxes/sample7/policy.cedar",
         "sample-data/tiny_sandboxes/sample7/entity.json",
         "sample-data/tiny_sandboxes/sample7/request.json",
         CedarExitCode::Success,
@@ -429,90 +429,90 @@ fn run_validate_test(policies_file: &str, schema_file: &str, exit_code: CedarExi
 #[test]
 fn test_validate_samples() {
     run_validate_test(
-        "sample-data/doesnotexist.txt",
-        "sample-data/sandbox_a/schema.json",
+        "sample-data/doesnotexist.cedar",
+        "sample-data/sandbox_a/schema.cedarschema.json",
         CedarExitCode::Failure,
     );
     run_validate_test(
-        "sample-data/sandbox_a/policies_1.txt",
+        "sample-data/sandbox_a/policies_1.cedar",
         "sample-data/doesnotexist.json",
         CedarExitCode::Failure,
     );
     run_validate_test(
-        "sample-data/sandbox_a/policies_1.txt",
-        "sample-data/sandbox_a/schema.json",
+        "sample-data/sandbox_a/policies_1.cedar",
+        "sample-data/sandbox_a/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     // Contains misspelled entity type.
     run_validate_test(
-        "sample-data/sandbox_a/policies_1_bad.txt",
-        "sample-data/sandbox_a/schema.json",
+        "sample-data/sandbox_a/policies_1_bad.cedar",
+        "sample-data/sandbox_a/schema.cedarschema.json",
         CedarExitCode::ValidationFailure,
     );
     run_validate_test(
-        "sample-data/sandbox_a/policies_2.txt",
-        "sample-data/sandbox_a/schema.json",
+        "sample-data/sandbox_a/policies_2.cedar",
+        "sample-data/sandbox_a/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
-        "sample-data/sandbox_a/policies_3.txt",
-        "sample-data/sandbox_a/schema.json",
+        "sample-data/sandbox_a/policies_3.cedar",
+        "sample-data/sandbox_a/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
-        "sample-data/sandbox_b/policies_4.txt",
-        "sample-data/sandbox_b/schema.json",
+        "sample-data/sandbox_b/policies_4.cedar",
+        "sample-data/sandbox_b/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     // Contains an access to an optional attribute without a `has` check.
     run_validate_test(
-        "sample-data/sandbox_b/policies_5_bad.txt",
-        "sample-data/sandbox_b/schema.json",
+        "sample-data/sandbox_b/policies_5_bad.cedar",
+        "sample-data/sandbox_b/schema.cedarschema.json",
         CedarExitCode::ValidationFailure,
     );
     run_validate_test(
-        "sample-data/sandbox_b/policies_5.txt",
-        "sample-data/sandbox_b/schema.json",
+        "sample-data/sandbox_b/policies_5.cedar",
+        "sample-data/sandbox_b/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
-        "sample-data/sandbox_b/policies_6.txt",
-        "sample-data/sandbox_b/schema.json",
+        "sample-data/sandbox_b/policies_6.cedar",
+        "sample-data/sandbox_b/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
-        "sample-data/tiny_sandboxes/sample1/policy.txt",
-        "sample-data/tiny_sandboxes/sample1/schema.json",
+        "sample-data/tiny_sandboxes/sample1/policy.cedar",
+        "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
-        "sample-data/tiny_sandboxes/sample2/policy.txt",
-        "sample-data/tiny_sandboxes/sample2/schema.json",
+        "sample-data/tiny_sandboxes/sample2/policy.cedar",
+        "sample-data/tiny_sandboxes/sample2/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
-        "sample-data/tiny_sandboxes/sample3/policy.txt",
-        "sample-data/tiny_sandboxes/sample3/schema.json",
+        "sample-data/tiny_sandboxes/sample3/policy.cedar",
+        "sample-data/tiny_sandboxes/sample3/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
-        "sample-data/tiny_sandboxes/sample4/policy.txt",
-        "sample-data/tiny_sandboxes/sample4/schema.json",
+        "sample-data/tiny_sandboxes/sample4/policy.cedar",
+        "sample-data/tiny_sandboxes/sample4/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
-        "sample-data/tiny_sandboxes/sample5/policy.txt",
-        "sample-data/tiny_sandboxes/sample5/schema.json",
+        "sample-data/tiny_sandboxes/sample5/policy.cedar",
+        "sample-data/tiny_sandboxes/sample5/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
-        "sample-data/tiny_sandboxes/sample6/policy.txt",
-        "sample-data/tiny_sandboxes/sample6/schema.json",
+        "sample-data/tiny_sandboxes/sample6/policy.cedar",
+        "sample-data/tiny_sandboxes/sample6/schema.cedarschema.json",
         CedarExitCode::Success,
     );
     run_validate_test(
-        "sample-data/tiny_sandboxes/sample7/policy.txt",
-        "sample-data/tiny_sandboxes/sample7/schema.json",
+        "sample-data/tiny_sandboxes/sample7/policy.cedar",
+        "sample-data/tiny_sandboxes/sample7/schema.cedarschema.json",
         CedarExitCode::Success,
     );
 }
@@ -653,7 +653,7 @@ fn test_evaluate_samples() {
 #[test]
 fn test_link_samples() {
     run_authorize_test(
-        "sample-data/sandbox_c/doesnotexist.txt",
+        "sample-data/sandbox_c/doesnotexist.cedar",
         "sample-data/sandbox_c/entities.json",
         "User::\"alice\"",
         "Action::\"view\"",
@@ -662,7 +662,7 @@ fn test_link_samples() {
     );
 
     run_authorize_test(
-        "sample-data/sandbox_c/policies.txt",
+        "sample-data/sandbox_c/policies.cedar",
         "sample-data/sandbox_c/doesnotexist.json",
         "User::\"alice\"",
         "Action::\"view\"",
@@ -671,7 +671,7 @@ fn test_link_samples() {
     );
 
     run_authorize_test(
-        "sample-data/sandbox_c/policies.txt",
+        "sample-data/sandbox_c/policies.cedar",
         "sample-data/sandbox_c/entities.json",
         "invalid",
         "Action::\"view\"",
@@ -680,7 +680,7 @@ fn test_link_samples() {
     );
 
     run_authorize_test(
-        "sample-data/sandbox_c/policies.txt",
+        "sample-data/sandbox_c/policies.cedar",
         "sample-data/sandbox_c/entities.json",
         "User::\"alice\"",
         "invalid",
@@ -689,7 +689,7 @@ fn test_link_samples() {
     );
 
     run_authorize_test(
-        "sample-data/sandbox_c/policies.txt",
+        "sample-data/sandbox_c/policies.cedar",
         "sample-data/sandbox_c/entities.json",
         "User::\"alice\"",
         "Action::\"view\"",
@@ -698,7 +698,7 @@ fn test_link_samples() {
     );
 
     run_authorize_test(
-        "sample-data/sandbox_c/policies.txt",
+        "sample-data/sandbox_c/policies.cedar",
         "sample-data/sandbox_c/entities.json",
         "User::\"alice\"",
         "Action::\"view\"",
@@ -707,7 +707,7 @@ fn test_link_samples() {
     );
 
     run_authorize_test(
-        "sample-data/sandbox_c/policies.txt",
+        "sample-data/sandbox_c/policies.cedar",
         "sample-data/sandbox_c/entities.json",
         "User::\"bob\"",
         "Action::\"view\"",
@@ -719,7 +719,7 @@ fn test_link_samples() {
     let linked_file_name = linked_file.path().as_os_str().to_string_lossy().to_string();
 
     run_link_test(
-        "sample-data/sandbox_c/doesnotexist.txt",
+        "sample-data/sandbox_c/doesnotexist.cedar",
         &linked_file_name,
         "AccessVacation",
         "AliceAccess",
@@ -730,7 +730,7 @@ fn test_link_samples() {
     );
 
     run_link_test(
-        "sample-data/sandbox_c/policies.txt",
+        "sample-data/sandbox_c/policies.cedar",
         &linked_file_name,
         "AccessVacation",
         "AliceAccess",
@@ -741,7 +741,7 @@ fn test_link_samples() {
     );
 
     run_link_test(
-        "sample-data/sandbox_c/policies.txt",
+        "sample-data/sandbox_c/policies.cedar",
         &linked_file_name,
         "AccessVacation",
         "AliceAccess",
@@ -752,7 +752,7 @@ fn test_link_samples() {
     );
 
     run_authorize_test_with_linked_policies(
-        "sample-data/sandbox_c/policies.txt",
+        "sample-data/sandbox_c/policies.cedar",
         "sample-data/sandbox_c/entities.json",
         Some(&linked_file_name),
         "User::\"alice\"",
@@ -762,7 +762,7 @@ fn test_link_samples() {
     );
 
     run_authorize_test_with_linked_policies(
-        "sample-data/sandbox_c/policies.txt",
+        "sample-data/sandbox_c/policies.cedar",
         "sample-data/sandbox_c/entities.json",
         Some(&linked_file_name),
         "User::\"bob\"",
@@ -772,7 +772,7 @@ fn test_link_samples() {
     );
 
     run_link_test(
-        "sample-data/sandbox_c/policies.txt",
+        "sample-data/sandbox_c/policies.cedar",
         &linked_file_name,
         "AccessVacation",
         "BobAccess",
@@ -783,7 +783,7 @@ fn test_link_samples() {
     );
 
     run_authorize_test_with_linked_policies(
-        "sample-data/sandbox_c/policies.txt",
+        "sample-data/sandbox_c/policies.cedar",
         "sample-data/sandbox_c/entities.json",
         Some(&linked_file_name),
         "User::\"alice\"",
@@ -793,7 +793,7 @@ fn test_link_samples() {
     );
 
     run_authorize_test_with_linked_policies(
-        "sample-data/sandbox_c/policies.txt",
+        "sample-data/sandbox_c/policies.cedar",
         "sample-data/sandbox_c/entities.json",
         Some(&linked_file_name),
         "User::\"bob\"",
@@ -803,7 +803,7 @@ fn test_link_samples() {
     );
 
     run_authorize_test_with_linked_policies(
-        "sample-data/sandbox_c/policies_edited.txt",
+        "sample-data/sandbox_c/policies_edited.cedar",
         "sample-data/sandbox_c/entities.json",
         Some(&linked_file_name),
         "User::\"alice\"",
@@ -813,7 +813,7 @@ fn test_link_samples() {
     );
 
     run_authorize_test_with_linked_policies(
-        "sample-data/sandbox_c/policies_edited.txt",
+        "sample-data/sandbox_c/policies_edited.cedar",
         "sample-data/sandbox_c/entities.json",
         Some(&linked_file_name),
         "User::\"bob\"",
@@ -826,6 +826,6 @@ fn test_link_samples() {
 #[test]
 fn test_format_samples() {
     use glob::glob;
-    let ps_files = glob("sample-data/**/polic*.txt").unwrap();
+    let ps_files = glob("sample-data/**/polic*.cedar").unwrap();
     ps_files.for_each(|ps_file| run_format_test(ps_file.unwrap().to_str().unwrap()));
 }

@@ -29,4 +29,4 @@ To build the CLI, run `cargo build` or `cargo build --release`
 
 ### Run
 
-To run the CLI, try `cargo run -- --help` or `../target/release/cedar --help`. The sub-folder [`sample-data`](sample-data) contains examples for the CLI. Please refer to the instructions in `README.md` or `command.txt` to run the examples. 
+To run the CLI, try `cargo run -- --help`. The sub-folder [`sample-data`](sample-data) contains examples for the CLI. Please refer to the instructions in each `README.md` to run the examples.

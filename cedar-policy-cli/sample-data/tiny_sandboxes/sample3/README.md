@@ -13,19 +13,19 @@
 
 ```
 cargo run  authorize \
-    --policies policy.txt \
+    --policies policy.cedar \
     --entities entity.json \
     --request-json request.json
 ```
 
 ### Validation:
 
-Is policy.txt valid based on the schema schema.json
+Is policy.cedar valid based on the schema schema.cedarschema.json
 
 ```
 cargo run  validate \
-    --policies policy.txt \
-    --schema schema.json
+    --policies policy.cedar \
+    --schema schema.cedarschema.json
 ```
 
 ### Evaluate
