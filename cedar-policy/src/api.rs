@@ -3966,7 +3966,7 @@ mod schema_based_parsing_tests {
     /// Test that involves open entities
     #[test]
     #[should_panic(
-        expected = "UnsupportedSchemaFeature(\"Records and entities with additional attributes are not yet implemented.\")"
+        expected = "UnsupportedSchemaFeature(\"records and entities with additional attributes are not yet implemented\")"
     )]
     fn open_entities() {
         let schema = Schema::from_str(
