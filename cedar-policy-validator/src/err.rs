@@ -68,17 +68,17 @@ pub enum SchemaError {
     CycleInActionHierarchy,
     /// Parse errors occurring while parsing an entity type.
     #[error("parse error in entity type: {}", Self::format_parse_errs(.0))]
-    EntityTypeParseError(ParseErrors),
+    ParseEntityType(ParseErrors),
     /// Parse errors occurring while parsing a namespace identifier.
     #[error("parse error in namespace identifier: {}", Self::format_parse_errs(.0))]
-    NamespaceParseError(ParseErrors),
+    ParseNamespace(ParseErrors),
     /// Parse errors occurring while parsing an extension type.
     #[error("parse error in extension type: {}", Self::format_parse_errs(.0))]
-    ExtensionTypeParseError(ParseErrors),
+    ParseExtensionType(ParseErrors),
     /// Parse errors occurring while parsing the name of one of reusable
     /// declared types.
     #[error("parse error in common type identifier: {}", Self::format_parse_errs(.0))]
-    CommonTypeParseError(ParseErrors),
+    ParseCommonType(ParseErrors),
     /// The schema file included an entity type `Action` in the entity type
     /// list. The `Action` entity type is always implicitly declared, and it
     /// cannot currently have attributes or be in any groups, so there is no

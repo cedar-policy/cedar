@@ -872,14 +872,12 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             cedar_policy_validator::SchemaError::CycleInActionHierarchy => {
                 Self::CycleInActionHierarchy
             }
-            cedar_policy_validator::SchemaError::EntityTypeParseError(e) => {
-                Self::EntityTypeParse(e)
-            }
-            cedar_policy_validator::SchemaError::NamespaceParseError(e) => Self::NamespaceParse(e),
-            cedar_policy_validator::SchemaError::CommonTypeParseError(e) => {
+            cedar_policy_validator::SchemaError::ParseEntityType(e) => Self::EntityTypeParse(e),
+            cedar_policy_validator::SchemaError::ParseNamespace(e) => Self::NamespaceParse(e),
+            cedar_policy_validator::SchemaError::ParseCommonType(e) => {
                 Self::CommonTypeParseError(e)
             }
-            cedar_policy_validator::SchemaError::ExtensionTypeParseError(e) => {
+            cedar_policy_validator::SchemaError::ParseExtensionType(e) => {
                 Self::ExtensionTypeParse(e)
             }
             cedar_policy_validator::SchemaError::ActionEntityTypeDeclared => {

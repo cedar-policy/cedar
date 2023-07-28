@@ -239,9 +239,7 @@ impl ValidatorNamespaceDef {
         let schema_namespace = match namespace.as_deref() {
             None => None,
             Some("") => None, // we consider "" to be the same as the empty namespace for this purpose
-            Some(ns) => {
-                Some(Name::from_normalized_str(ns).map_err(SchemaError::NamespaceParseError)?)
-            }
+            Some(ns) => Some(Name::from_normalized_str(ns).map_err(SchemaError::ParseNamespace)?),
         };
 
         // Return early with an error if actions cannot be in groups or have
@@ -284,7 +282,7 @@ impl ValidatorNamespaceDef {
                     &name_str,
                     schema_namespace.cloned(),
                 )
-                .map_err(SchemaError::CommonTypeParseError)?;
+                .map_err(SchemaError::ParseCommonType)?;
                 let ty = Self::try_schema_type_into_validator_type(schema_namespace, schema_ty)?
                     .resolve_type_defs(&HashMap::new())?;
                 Ok((name, ty))
@@ -308,7 +306,7 @@ impl ValidatorNamespaceDef {
                         &name_str,
                         schema_namespace.cloned(),
                     )
-                    .map_err(SchemaError::EntityTypeParseError)?;
+                    .map_err(SchemaError::ParseEntityType)?;
 
                     let parents = entity_type
                         .member_of_types
@@ -318,7 +316,7 @@ impl ValidatorNamespaceDef {
                                 parent,
                                 schema_namespace,
                             )
-                            .map_err(SchemaError::EntityTypeParseError)
+                            .map_err(SchemaError::ParseEntityType)
                         })
                         .collect::<Result<HashSet<_>>>()?;
 
@@ -588,7 +586,7 @@ impl ValidatorNamespaceDef {
                             Self::parse_possibly_qualified_name_with_default_namespace(
                                 ty_str, namespace,
                             )
-                            .map_err(SchemaError::EntityTypeParseError)?,
+                            .map_err(SchemaError::ParseEntityType)?,
                         ))
                     })
                     // Fail if any of the types failed.
@@ -649,7 +647,7 @@ impl ValidatorNamespaceDef {
     ) -> Result<EntityUID> {
         let namespaced_action_type = if let Some(action_ty) = &action_id.ty {
             Self::parse_possibly_qualified_name_with_default_namespace(action_ty, namespace)
-                .map_err(SchemaError::EntityTypeParseError)?
+                .map_err(SchemaError::ParseEntityType)?
         } else {
             // PANIC SAFETY: The constant ACTION_ENTITY_TYPE is valid entity type.
             #[allow(clippy::expect_used)]
@@ -705,12 +703,12 @@ impl ValidatorNamespaceDef {
                     &name,
                     default_namespace,
                 )
-                .map_err(SchemaError::EntityTypeParseError)?;
+                .map_err(SchemaError::ParseEntityType)?;
                 Ok(Type::named_entity_reference(entity_type_name).into())
             }
             SchemaType::Type(SchemaTypeVariant::Extension { name }) => {
-                let extension_type_name = Name::from_normalized_str(&name)
-                    .map_err(SchemaError::ExtensionTypeParseError)?;
+                let extension_type_name =
+                    Name::from_normalized_str(&name).map_err(SchemaError::ParseExtensionType)?;
                 Ok(Type::extension(extension_type_name).into())
             }
             SchemaType::TypeDef { type_name } => {
@@ -718,7 +716,7 @@ impl ValidatorNamespaceDef {
                     &type_name,
                     default_namespace,
                 )
-                .map_err(SchemaError::CommonTypeParseError)?;
+                .map_err(SchemaError::ParseCommonType)?;
                 Ok(WithUnresolvedTypeDefs::new(move |typ_defs| {
                     typ_defs.get(&defined_type_name).cloned().ok_or(
                         SchemaError::UndeclaredCommonTypes(HashSet::from([type_name.to_string()])),
@@ -2058,7 +2056,7 @@ mod test {
         "#;
         let schema_file: NamespaceDefinition = serde_json::from_str(src).expect("Parse Error");
         assert!(
-            matches!(TryInto::<ValidatorSchema>::try_into(schema_file), Err(SchemaError::EntityTypeParseError(_))),
+            matches!(TryInto::<ValidatorSchema>::try_into(schema_file), Err(SchemaError::ParseEntityType(_))),
             "Expected that namespace in the entity type NS::User would cause a EntityType parse error.");
     }
 
@@ -2256,8 +2254,8 @@ mod test {
             Some(&Name::parse_unqualified_name("NS").expect("Expected namespace.")),
             schema_ty,
         ) {
-            Err(SchemaError::EntityTypeParseError(_)) => (),
-            _ => panic!("Did not see expected EntityTypeParseError."),
+            Err(SchemaError::ParseEntityType(_)) => (),
+            _ => panic!("Did not see expected entity type parse error."),
         }
     }
 
