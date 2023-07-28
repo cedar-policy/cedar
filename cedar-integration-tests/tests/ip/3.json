@@ -1,7 +1,7 @@
 {
-    "policies": "tests/ip/policies_1.txt",
+    "policies": "tests/ip/policies_1.cedar",
     "entities": "sample-data/sandbox_a/entities.json",
-    "schema": "sample-data/sandbox_a/schema.json",
+    "schema": "sample-data/sandbox_a/schema.cedarschema.json",
     "should_validate": true,
     "queries": [
         {
