@@ -166,8 +166,8 @@ mod tests {
         };
         let dir_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
         let pairs = vec![
-            ("test.txt", "test_formatted.txt"),
-            ("policies.txt", "policies_formatted.txt"),
+            ("test.cedar", "test_formatted.cedar"),
+            ("policies.cedar", "policies_formatted.cedar"),
         ];
         for (pf, ef) in pairs {
             // editors or cargo run try to append a newline at the end of files

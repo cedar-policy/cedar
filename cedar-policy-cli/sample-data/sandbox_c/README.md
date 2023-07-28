@@ -21,7 +21,7 @@ cargo run authorize \
 	--principal 'User::"alice"' \
 	--action 'Action::"view"' \
 	--resource 'Photo::"VacationPhoto94.jpg"' \
-	--policies policies.txt \
+	--policies policies.cedar \
 	--entities entities.json
 ```
 
@@ -43,11 +43,11 @@ This looks like a regular policy, but it has `?principal` instead of a concrete 
 Let's link this template to give `alice` access:
 ```
 cargo run link \
-	policies.txt \
-	./linked \
-	"AccessVacation" \
-	"AliceAccess" \
-	'{ "?principal" : "User::\"alice\"" }'
+	--policies-file policies.cedar \
+	--template-linked-file ./linked \
+	--template-id "AccessVacation" \
+	--new-id "AliceAccess" \
+	--arguments '{ "?principal" : "User::\"alice\"" }'
 ```
 
 This will fill the Slot `?principal` with `User::\"alice\"` in the template with ID "AccessVacation".
@@ -59,7 +59,7 @@ cargo run authorize \
 	--principal 'User::"alice"' \
 	--action 'Action::"view"' \
 	--resource 'Photo::"VacationPhoto94.jpg"' \
-	--policies policies.txt \
+	--policies policies.cedar \
 	--entities entities.json \
 	--template-linked ./linked
 ```
@@ -69,11 +69,11 @@ And we should now get `ALLOW`.
 Let's also give `bob` access:
 ```
 cargo run link \
-	policies.txt \
-	./linked \
-	"AccessVacation" \
-	"BobAccess" \
-	'{ "?principal" : "User::\"bob\"" }'
+	--policies-file policies.cedar \
+	--template-linked-file ./linked \
+	--template-id "AccessVacation" \
+	--new-id "BobAccess" \
+	--arguments '{ "?principal" : "User::\"bob\"" }'
 ```
 
 And now both `bob` and `alice` have access.
@@ -103,7 +103,7 @@ cargo run authorize \
 	--principal 'User::"bob"' \
 	--action 'Action::"view"' \
 	--resource 'Photo::"VacationPhoto94.jpg"' \
-	--policies policies.txt \
+	--policies policies.cedar \
 	--entities entities.json \
 	--template-linked ./linked
 ```
@@ -114,7 +114,7 @@ cargo run authorize \
 	--principal 'User::"alice"' \
 	--action 'Action::"view"' \
 	--resource 'Photo::"VacationPhoto94.jpg"' \
-	--policies policies.txt \
+	--policies policies.cedar \
 	--entities entities.json \
 	--template-linked ./linked
 ```

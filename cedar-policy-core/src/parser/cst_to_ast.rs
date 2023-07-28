@@ -637,7 +637,7 @@ impl ASTNode<Option<cst::Cond>> {
         // return right away if there's no data, parse provided error
         let cond = maybe_cond?;
 
-        let maybe_is_when = cond.cond.to_cond_is_when(errs);
+        let maybe_is_when = cond.cond.to_cond_is_when(errs)?;
 
         let maybe_expr = match &cond.expr {
             Some(expr) => expr.to_expr(errs),
@@ -650,11 +650,13 @@ impl ASTNode<Option<cst::Cond>> {
             }
         };
 
-        match (maybe_is_when, maybe_expr) {
-            (Some(true), Some(e)) => Some(e),
-            (Some(false), Some(e)) => Some(construct_expr_not(e, src.clone())),
-            _ => None,
-        }
+        maybe_expr.map(|e| {
+            if maybe_is_when {
+                e
+            } else {
+                construct_expr_not(e, src.clone())
+            }
+        })
     }
 }
 

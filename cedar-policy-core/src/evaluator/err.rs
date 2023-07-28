@@ -43,8 +43,8 @@ pub enum EvaluationError {
 
     /// Tried to get an attribute of a (non-entity) record, but that record
     /// didn't have that attribute
-    #[error("record does not have the attribute: {0}")]
-    RecordAttrDoesNotExist(SmolStr),
+    #[error("record does not have the attribute: {0}. Available attributes: {1:?}")]
+    RecordAttrDoesNotExist(SmolStr, Vec<SmolStr>),
 
     /// An error occurred when looking up an extension function
     #[error(transparent)]
@@ -127,7 +127,8 @@ fn pretty_type_error(expected: &[Type], actual: &Type) -> String {
 
 #[derive(Debug, PartialEq, Clone, Error)]
 pub enum IntegerOverflowError {
-    #[error("integer overflow while attempting to {} the values {arg1} and {arg2}", match .op { BinaryOp::Add => "add", BinaryOp::Sub => "subtract", _ => "perform an operation on" })]
+    /// Overflow during a binary operation
+    #[error("integer overflow while attempting to {} the values `{arg1}` and `{arg2}`", match .op { BinaryOp::Add => "add", BinaryOp::Sub => "subtract", _ => "perform an operation on" })]
     BinaryOp {
         /// overflow while evaluating this operator
         op: BinaryOp,
@@ -137,7 +138,8 @@ pub enum IntegerOverflowError {
         arg2: Value,
     },
 
-    #[error("integer overflow while attempting to multiply {arg} by {constant}")]
+    /// Overflow during multiplication
+    #[error("integer overflow while attempting to multiply `{arg}` by `{constant}`")]
     Multiplication {
         /// first argument, which wasn't necessarily a constant in the policy
         arg: Value,
@@ -145,8 +147,8 @@ pub enum IntegerOverflowError {
         constant: i64,
     },
 
-    /// Overflow during an integer negation operation
-    #[error("integer overflow while attempting to {} the value {arg}", match .op { UnaryOp::Neg => "negate", _ => "perform an operation on" })]
+    /// Overflow during a unary operation
+    #[error("integer overflow while attempting to {} the value `{arg}`", match .op { UnaryOp::Neg => "negate", _ => "perform an operation on" })]
     UnaryOp {
         /// overflow while evaluating this operator
         op: UnaryOp,
