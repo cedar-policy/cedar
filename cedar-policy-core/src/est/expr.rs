@@ -19,7 +19,7 @@ use super::FromJsonError;
 use crate::ast;
 use crate::entities::{EscapeKind, JSONValue, JsonDeserializationError, TypeAndId};
 use crate::parser::cst;
-use crate::parser::err::{ParseError, ParseErrors, ToASTError, WithContext};
+use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::unescape;
 use crate::parser::ASTNode;
 use either::Either;
