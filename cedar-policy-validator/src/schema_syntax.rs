@@ -4,11 +4,9 @@ use std::{
 };
 
 use cedar_policy_core::ast::{Id, Name};
-use combine::{
-    between, choice, eof, many, many1, optional, parser, satisfy_map, sep_by1, Parser, Stream,
-};
+use combine::{between, choice, eof, many1, optional, satisfy_map, sep_by1, Parser};
 use itertools::Itertools;
-use logos::{Logos, Span};
+use logos::Logos;
 use smol_str::SmolStr;
 
 use crate::{
@@ -90,22 +88,6 @@ fn parse_id<'a>() -> impl Parser<&'a [Token], Output = Id> {
 
 fn accept<'a>(t: Token) -> impl Parser<&'a [Token], Output = ()> {
     satisfy_map(move |tt| if tt == t { Some(()) } else { None })
-}
-
-fn parse_keyword<'a>(keyword: Token) -> impl Parser<&'a [Token], Output = ()> {
-    accept(keyword)
-}
-
-fn parse_punct<'a>(punct: Token) -> impl Parser<&'a [Token], Output = ()> {
-    accept(punct)
-}
-
-fn parse_keyword_namespace<'a>() -> impl Parser<&'a [Token], Output = ()> {
-    parse_keyword(Token::Namespace)
-}
-
-fn parse_builtin_ty<'a>(ty: Token) -> impl Parser<&'a [Token], Output = ()> {
-    parse_keyword(ty)
 }
 
 struct AppParser();
@@ -215,7 +197,7 @@ impl<'a> Parser<&'a [Token]> for AttrParser {
     ) -> Result<(Self::Output, &'a [Token]), <&'a [Token] as combine::StreamOnce>::Error> {
         if let Ok((id, tokens)) = parse_id().parse(input) {
             if let Ok((_, tokens)) = accept(Token::Colon).parse(tokens) {
-                if let Ok((ty, tokens)) = TypeParser().parse(tokens) {
+                if let Ok((ty, tokens)) = parse_type().parse(tokens) {
                     let mut pair = BTreeMap::new();
                     pair.insert(
                         SmolStr::new(id.as_ref()),
@@ -313,22 +295,6 @@ fn parse_type<'a>() -> impl Parser<&'a [Token], Output = SchemaType> {
     TypeParser()
 }
 
-fn parse_double_colon<'a>() -> impl Parser<&'a [Token], Output = ()> {
-    parse_punct(Token::DoubleColon)
-}
-
-fn parse_quote<'a>() -> impl Parser<&'a [Token], Output = ()> {
-    parse_punct(Token::Quote)
-}
-
-fn parse_lbrace<'a>() -> impl Parser<&'a [Token], Output = ()> {
-    parse_punct(Token::LBrace)
-}
-
-fn parse_rbrace<'a>() -> impl Parser<&'a [Token], Output = ()> {
-    parse_punct(Token::RBrace)
-}
-
 fn parse_decl<'a>() -> impl Parser<&'a [Token], Output = NamespaceDefinition> {
     let merge_nds = |nds: Vec<NamespaceDefinition>| {
         let mut common_types = HashMap::new();
@@ -355,6 +321,11 @@ fn parse_decl<'a>() -> impl Parser<&'a [Token], Output = NamespaceDefinition> {
             common_types: HashMap::new(),
             entity_types: HashMap::new(),
             actions: action,
+        }),
+        parse_common_type_decl().map(|ct| NamespaceDefinition {
+            common_types: HashMap::from_iter(std::iter::once(ct)),
+            entity_types: HashMap::new(),
+            actions: HashMap::new(),
         }),
     )))
     .map(move |nds: Vec<NamespaceDefinition>| merge_nds(nds))
@@ -385,18 +356,16 @@ fn parse_names<'a>() -> impl Parser<&'a [Token], Output = Vec<SmolStr>> {
 
 fn parse_namespace<'a>() -> impl Parser<&'a [Token], Output = (SmolStr, NamespaceDefinition)> {
     (
-        parse_keyword_namespace(),
+        accept(Token::Namespace),
         parse_str(),
-        parse_lbrace(),
-        parse_decl(),
-        parse_rbrace(),
+        between(accept(Token::LBrace), accept(Token::RBrace), parse_decl()),
         eof(),
     )
-        .map(|(_, ns_str, _, ns_def, _, _)| (ns_str, ns_def))
+        .map(|(_, ns_str, ns_def, _)| (ns_str, ns_def))
 }
 
 fn parse_path<'a>() -> impl Parser<&'a [Token], Output = Name> {
-    sep_by1(parse_id(), parse_double_colon())
+    sep_by1(parse_id(), accept(Token::DoubleColon))
         .map(|ids: Vec<Id>| Name::new(ids[0].clone(), ids[1..].iter().map(|id| id.clone())))
 }
 
@@ -491,6 +460,18 @@ fn parse_ets<'a>() -> impl Parser<&'a [Token], Output = Vec<Name>> {
     )
 }
 
+// TypeDecl  := 'type' IDENT '=' Type ';'
+fn parse_common_type_decl<'a>() -> impl Parser<&'a [Token], Output = (SmolStr, SchemaType)> {
+    (
+        accept(Token::Type),
+        parse_id().map(|id| SmolStr::new(id.as_ref())),
+        accept(Token::Eq),
+        parse_type(),
+        accept(Token::SemiColon),
+    )
+        .map(|(_, id, _, ty, _)| (id, ty))
+}
+
 fn get_tokens(input: &str) -> Vec<Token> {
     Token::lexer(input)
         .spanned()
@@ -536,6 +517,18 @@ mod test_parser {
         );
         let action = parse_action_decl().parse(&tokens);
         assert!(action.is_ok());
+    }
+    #[test]
+    fn test_parse_common_type_decl() {
+        let tokens = get_tokens(
+            "type authcontext = {
+                ip: ipaddr,
+                is_authenticated: Boolean,
+                timestamp: Long
+            };",
+        );
+        let ty = parse_common_type_decl().parse(&tokens);
+        assert!(ty.is_ok());
     }
     #[test]
     fn test_parse_ns_decl() {
