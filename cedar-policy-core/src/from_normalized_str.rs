@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 /// Trait for parsing "normalized" strings only, throwing an error if a
 /// non-normalized string is encountered. See docs on the
-/// [`from_normalized_str`] trait function.
+/// [`FromNormalizedStr::from_normalized_str`] trait function.
 pub trait FromNormalizedStr: FromStr<Err = ParseErrors> + Display {
     /// Create a `Self` by parsing a string, which is required to be normalized.
     /// That is, the input is required to roundtrip with the `Display` impl on `Self`:

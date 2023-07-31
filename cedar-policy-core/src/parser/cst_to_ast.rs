@@ -161,7 +161,7 @@ impl ASTNode<Option<cst::Policy>> {
         let tp = self.to_policy_template(id, errs)?;
         match ast::StaticPolicy::try_from(tp) {
             Ok(p) => Some(p),
-            Err(e) => {
+            Err(_) => {
                 errs.push(err::ParseError::ToAST(ToASTError::SlotsInConditionClause));
                 None
             }
@@ -206,7 +206,7 @@ impl ASTNode<Option<cst::Policy>> {
             .collect();
 
         for e in conds.iter() {
-            for slot in e.slots() {
+            for _slot in e.slots() {
                 errs.push(ParseError::ToAST(ToASTError::SlotsInConditionClause))
             }
         }
@@ -481,7 +481,7 @@ impl ASTNode<Option<cst::VariableDef>> {
                 cst::RelOp::Eq => Some(PrincipalOrResourceConstraint::Eq(eref)),
                 cst::RelOp::In => Some(PrincipalOrResourceConstraint::In(eref)),
                 op => {
-                    errs.push(ToASTError::InvalidConstraintOperator(op.clone()).into());
+                    errs.push(ToASTError::InvalidConstraintOperator(*op).into());
                     None
                 }
             }
@@ -538,7 +538,7 @@ impl ASTNode<Option<cst::VariableDef>> {
                     None
                 }
                 (op, _) => {
-                    errs.push(ToASTError::InvalidConstraintOperator(op.clone()).into());
+                    errs.push(ToASTError::InvalidConstraintOperator(*op).into());
                     None
                 }
             }
@@ -701,7 +701,7 @@ impl ExprOrSpecial<'_> {
                     None
                 }
             },
-            Self::Expr(e) => {
+            Self::Expr(_) => {
                 errs.push(ToASTError::InvalidAttribute.into());
                 None
             }
@@ -1129,7 +1129,7 @@ impl ASTNode<Option<cst::Mult>> {
                         return None;
                     }
                     cst::MultOp::Mod => {
-                        errs.push(ToASTError::Remainder.into());
+                        errs.push(ToASTError::Modulo.into());
                         return None;
                     }
                 }
@@ -1359,7 +1359,7 @@ impl ASTNode<Option<cst::Member>> {
                 }
                 // variable call - error
                 (Some(Var(v, _)), [Some(Call(_)), rest @ ..]) => {
-                    errs.push(ToASTError::VariableCall(v.clone()).into());
+                    errs.push(ToASTError::VariableCall(*v).into());
                     head = None;
                     tail = rest;
                 }

@@ -24,7 +24,6 @@ use either::Either;
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
 use miette::{Diagnostic, LabeledSpan, Severity, SourceCode};
-use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::ast::RestrictedExprError;
@@ -67,6 +66,8 @@ pub enum ParseError {
 /// Errors in the top-level parse literal entrypoint
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum ParseLiteralError {
+    /// The top-level parser endpoint for parsing a literal encountered a non-literal
+    /// Since this can be any possible other expression, we just return it as a string.
     #[error("the source `{0}` is not a literal")]
     ParseLiteral(String),
 }
@@ -75,128 +76,195 @@ pub enum ParseLiteralError {
 #[derive(Debug, Diagnostic, Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum ToASTError {
+    /// Returned when we attempt to parse a template with a conflicting ID
     #[error("a template with this ID already exists in the policy set: {0}")]
     DuplicateTemplateID(PolicyID),
+    /// Returned when we attempt to parse a policy with a conflicting ID
     #[error("a policy with this ID already exists in the policy set: {0}")]
     DuplicatePolicyID(PolicyID),
+    /// Returned when we attempt to parse a policy with malformed or conflicting annotations
     #[error("this policy uses poorly formed or duplicate annotations")]
     BadAnnotations,
+    /// Returned when a policy contains Template Slots in the condition clause. This is not currently supported.
     #[error("template slots are currently unsupported in policy condition clauses")]
     SlotsInConditionClause,
+    /// Returned when a policy is missing one of the 3 required scope clauses. (`principal`, `action`, and `resource`)
     #[error("this policy requires the {0} variable in the scope")]
     MissingScopeConstraint(Var),
+    /// Returned when a policy has an extra scope clause. This is not valid syntax
     #[error("this policy has extra variable in the scope A policy must have exactly `principal`, `action`, and `resource`")]
     ExtraHeadConstraints,
+    /// Returned when a policy uses a reserved keyword as an identifier.
     #[error("this identifier is reserved and cannot be used: {0}")]
     ReservedIdentifier(cst::Ident),
+    /// Returned when a policy contains a non-identifier
     #[error("not a valid identifier: {0}")]
     InvalidIdentifier(String),
+    /// Returned when a policy uses a effect keyword beyond `permit` or `forbid`
     #[error("not a valid policy effect: `{0}`. Effect must be either `permit` or `forbid`")]
     InvalidEffect(cst::Ident),
+    /// Returned when a policy uses a condition keyword beyond `when` or `unless`
     #[error("not a valid policy condition: `{0}`. Condition must be either `when` or `unless`")]
     InvalidCondition(cst::Ident),
+    /// Returned when a policy uses a variable in the scope beyond `principal`, `action`, or `resource`
     #[error("expected a variable that's valid in the policy scope. Must be one of `principal`, `action` or `resource`. Found: {0}")]
     InvalidScopeConstraintVariable(cst::Ident),
+    /// Returned when a policy uses a variable in the scope beyond `principal`, `action`, or `resource`
     #[error("expected a variable that's valid in the policy scope. Must be one of `principal`, `action` or `resource`")]
     InvalidScopeConstraintVariableNoIdent,
+    /// Returned when a policy uses an arbitrary variable name. Cedar supports exactly four variables (`principal`, `action`, `resource`, and `context`)
     #[error("`{0}` is not a valid variable. Valid variables are: `principal`, `action`, `resource`, or `context`")]
     InvalidVariable(cst::Ident),
+    /// Returned when a policy contains an invalid method name
     #[error("not a valid method name: {0}")]
     InvalidMethodName(String),
+    /// Returned when a policy scope clause contains the wrong variable. (`principal` must be in the first clause, etc...)
     #[error("the variable `{0}` is invalid in this policy scope clause")]
     IncorrectVariable(Var),
+    /// Returned when a policy scope clauses uses an operator beyond `==` or `in`.
     #[error("policy scope constraints must either `==` or `in`. Found `{0}`")]
     InvalidConstraintOperator(cst::RelOp),
-    #[error("right-hand side of equality in policy scope must be a single Entity UID")]
+    /// Returned when the right hand side of `==` in a policy scope clause is not a single Entity UID.
+    /// This is valid in Cedar conditions, but not in the Scope
+    #[error("right hand side of equality in policy scope must be a single Entity UID")]
     InvalidScopeEqualityRHS,
+    /// Returned when an Entity UID used as an action does not have the type `Action`
     #[error("expected an EntityUID with the type `Action`. Got: {0}. Action entities must have type `Action`")]
     InvalidActionType(crate::ast::EntityUID),
+    /// Returned when a condition clause is empty
     #[error("`{0}` condition clause cannot be empty")]
     EmptyClause(cst::Ident),
+    /// Returned when a condition clause is empty in the EST
     #[error("condition clauses in the EST cannot be empty")]
     EmptyCond,
+    /// Returned when the internal invariant around annotation info has been violated
     #[error("internal invariant violated. No parse errors were reported but annotation information was missing")]
     AnnotationInvariantViolation,
+    /// Returned for an invalid use of `{}`
     #[error("invalid use of `{{}}`")]
     InvalidBraces,
+    /// Returned for a non-parse-able string literal
     #[error("invalid string literal: `\"{0}\"`")]
     InvalidString(String),
+    /// Returned for attempting to use an arbitrary variable name. Cedar does not support arbitrary variables.
     #[error("arbitrary variables are not supported; did you mean to enclose `{0}` in quotes to make a string?")]
     ArbitraryVariable(crate::ast::Name),
+    /// Returned for attempting to use an invalid attribute name
     #[error(
         "invalid attribute name. Attribute names can either be identifiers or string literals"
     )]
     InvalidAttribute,
+    /// Returned for attempting to use an invalid attribute name in a record name
     #[error("record literal has invalid attributes")]
     InvalidAttributesInRecordLiteral,
+    /// Returned for attempting to use an attribute with a namespace
     #[error("`{0}` cannot be used as an attribute as it contains a namespace")]
     PathAsAttribute(String),
+    /// Returned when a policy attempts to call a method function-style
     #[error("`{0}` is a method, not a function. Use a method-style call: `e.{0}(..)`")]
     FunctionCallOnMethod(crate::ast::Id),
+    /// Returned when the right hand side of a `like` expression is not a constant pattern literal
     #[error("right hand side of a `like` expression must be a pattern literal. Got: {0}")]
     InvalidPattern(String),
+    /// Returned when an unexpected node is in the policy scope clause
     #[error("expected a {expected}, found a `{got}` statement")]
-    WrongNode { expected: &'static str, got: String },
+    WrongNode {
+        /// What the expected AST node kind was
+        expected: &'static str,
+        /// What AST node was present in the policy source
+        got: String,
+    },
+    /// Returned when a policy contains ambiguous ordering of operators.
+    /// This can be resolved by using parenthesis to make order explicit
     #[error("multiple relational operators (>, ==, in, etc.) without parentheses")]
     AmbiguousOperators,
+    /// Returned when a policy uses the division operator (`/`), which is not supported
     #[error("division is not supported")]
     Division,
+    /// Returned when a policy uses the remainder/modulo operator (`%`), which is not supported
     #[error("remainder/modulo is not supported")]
-    Remainder,
+    Modulo,
+    /// Returned when a policy attempts to multiply by a non-constant integer
     #[error("multiplication must be by an integer literal")]
     NonConstantMultiplication,
+    /// Returned when a policy contains an integer literal that is out of range
     #[error(
         "integer literal `{0}` is too large. Maximum allowed integer literal is `{}`",
         i64::MAX
     )]
     IntegerLiteralTooLarge(u64),
+    /// Returned when a unary operator is chained more than 4 times in a row
     #[error(
         "too many occurrences of `{0}`. Cannot chain more the 4 applications of a unary operator"
     )]
     UnaryOppLimit(crate::ast::UnaryOp),
+    /// Returned when a variable is called as a function, which is not allowed.
+    /// Functions are not first class values in Cedar
     #[error("variables cannot be called as functions. `{0}(...)` is not a valid function call")]
     VariableCall(crate::ast::Var),
+    /// Returned when a policy attempts to call a method on a value that has no methods
     #[error("`{0}` does not have any methods")]
     NoMethods(crate::ast::Name),
+    /// Returned when a policy attempts to call a function that does not exist
     #[error("`{0}` is not a function")]
     NotAFunction(crate::ast::Name),
+    /// Returned when a policy attempts to lookup an arbitrary entity
     #[error("arbitrary entity lookups are not supported")]
     ArbitraryEntityLookup,
+    /// Returned when an expression is the target of a function call.
+    /// Functions are not first class values in Cedar
     #[error("function calls in cedar must be of the form: `<name>(arg1, arg2, ...)`")]
     ExpressionCall,
+    /// Returned when a policy attempts to access the fields of a value with no fields
     #[error("`{0}` has no fields or methods")]
     InvalidAccess(crate::ast::Name),
+    /// Returned when a string-literal is expected but not found
     #[error("`{0}` is not a string literal")]
     NonStringLiteral(cst::Primary),
+    /// Returned when the contents of an indexing expression is not a string literal
     #[error("The contents of an index expression must be a string literal")]
     NonStringIndex,
+    /// Returned when a user attempts to use type-constraint syntax. This is not currently supported
     #[error("type constraints are not currently supported")]
     TypeConstraints,
+    /// Returned when a policy uses a path in an invalid context
     #[error("a path is not valid in this context")]
     InvalidPath,
+    /// Returned when a string needs to be fully normalized
     #[error("{kind} needs to be normalized (e.g., whitespace removed): `{src}` The normalized form is `{normalized_src}`")]
     NonNormalizedString {
+        /// The kind of string we are expecting
         kind: &'static str,
+        /// The source string passed in
         src: String,
+        /// The normalized form of the string
         normalized_src: String,
     },
+    /// Returned when an EST node is empty
     #[error("data should not be empty")]
     MissingNodeData,
+    /// Returned when the right hand side of a `has` expression is neither a field name or a string literal
     #[error("the right-hand-side of a `has` expression must be a field name or a string literal")]
     HasNonLiteralRHS,
+    /// Returned when an EST expression is invalid
     #[error("{0} is not a valid expression")]
     InvalidExpression(cst::Name),
+    /// Returned when a method call in an EST is invalid
     #[error("Invalid Method Call")]
     InvalidMethodCall,
+    /// Returned when a function has wrong arity
     #[error("call to {0} requires exactly one argument, but got {0} arguments")]
     WrongArity(&'static str, usize),
+    /// Returned when a string contains invalid escapes
     #[error("{0}")]
     Unescape(#[from] UnescapeError),
+    /// Returns when a policy scope has incorrect EntityUIDs/Template Slots
     #[error("{0}")]
     RefCreation(#[from] RefCreationError),
 }
 
 impl ToASTError {
+    /// Constructor for the [`ToASTError::WrongNode`] error
     pub fn wrong_node(expected: &'static str, got: impl Into<String>) -> Self {
         Self::WrongNode {
             expected,
@@ -205,13 +273,18 @@ impl ToASTError {
     }
 }
 
+/// Error surrounding EntityUIds/Template slots in policy scopes
 #[derive(Debug, Clone, PartialEq)]
 pub struct RefCreationError {
+    /// What kinds of references the given scope clause required.
+    /// Some scope clauses require exactly one kind of reference, some require one of two
     expected: Either<Ref, (Ref, Ref)>,
+    /// The kind of reference that was present in the policy
     got: Ref,
 }
 
 impl RefCreationError {
+    /// Constructor for when a policy scope requires exactly one kind of reference
     pub fn one_expected(expected: Ref, got: Ref) -> Self {
         Self {
             expected: Either::Left(expected),
@@ -219,15 +292,16 @@ impl RefCreationError {
         }
     }
 
+    /// Constructor for when a policy scope requires one of two kinds of references
     pub fn two_expected(r1: Ref, r2: Ref, got: Ref) -> Self {
         let expected = Either::Right((r1, r2));
         Self { expected, got }
     }
 }
 
-impl Into<ParseError> for RefCreationError {
-    fn into(self) -> ParseError {
-        ToASTError::RefCreation(self).into()
+impl From<RefCreationError> for ParseError {
+    fn from(value: RefCreationError) -> Self {
+        ParseError::ToAST(value.into())
     }
 }
 
@@ -242,11 +316,15 @@ impl std::fmt::Display for RefCreationError {
 
 impl std::error::Error for RefCreationError {}
 
+/// The 3 kinds of literals that can be in a policy scope
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ref {
+    /// A single entity uids
     Single,
-    Template,
+    /// A list of entity uids
     Set,
+    /// A template slot
+    Template,
 }
 
 impl std::fmt::Display for Ref {

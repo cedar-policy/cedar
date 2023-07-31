@@ -971,7 +971,7 @@ impl TryFrom<cst::Mult> for Expr {
                     expr = Expr::mul(expr, rhs);
                 }
                 cst::MultOp::Divide => return Err(ParseError::ToAST(ToASTError::Division).into()),
-                cst::MultOp::Mod => return Err(ParseError::ToAST(ToASTError::Remainder).into()),
+                cst::MultOp::Mod => return Err(ParseError::ToAST(ToASTError::Modulo).into()),
             }
         }
         Ok(expr)
@@ -1203,7 +1203,7 @@ impl TryFrom<cst::Member> for Expr {
                                 .collect::<Result<Vec<_>, _>>()?,
                         )),
                         Either::Right(Expr::ExprNoExt(ExprNoExt::GetAttr { left, attr })) => {
-                            let mut args = args
+                            let args = args
                                 .into_iter()
                                 .map(|node| match node.node {
                                     Some(arg) => arg.try_into(),
@@ -1255,7 +1255,7 @@ impl TryFrom<cst::Member> for Expr {
             }
         }
         match item {
-            Either::Left(name) => Err(ParseError::ToAST(ToASTError::InvalidMethodCall))?,
+            Either::Left(_) => Err(ParseError::ToAST(ToASTError::InvalidMethodCall))?,
             Either::Right(expr) => Ok(expr),
         }
     }

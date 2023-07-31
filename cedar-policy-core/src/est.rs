@@ -158,10 +158,10 @@ impl TryFrom<cst::Cond> for Clause {
         let mut errs = ParseErrors::new();
         let expr: Result<Expr, ParseErrors> = match cond.expr {
             None => Err(ParseError::ToAST(ToASTError::EmptyCond).into()),
-            Some(ASTNode { node, .. }) => match node {
-                Some(e) => e.try_into(),
-                None => Err(ParseError::ToAST(ToASTError::EmptyCond).into()),
-            },
+            Some(ASTNode { node: Some(e), .. }) => e.try_into(),
+            Some(ASTNode { node: None, .. }) => {
+                Err(ParseError::ToAST(ToASTError::EmptyCond).into())
+            }
         };
         let expr = match expr {
             Ok(expr) => Some(expr),
