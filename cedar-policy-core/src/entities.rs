@@ -20,10 +20,10 @@ use crate::ast::*;
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::transitive_closure::{compute_tc, enforce_tc_and_dag};
+use std::borrow::Cow;
 use std::collections::{hash_map, HashMap};
 use std::fmt::Write;
 
-use either::Either;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -252,8 +252,8 @@ impl Entities {
     /// Otherwise, the attributes will be evaluated.
     pub fn get_attr_values(&self) -> std::result::Result<EntityAttrValues<'_>, EvaluationError> {
         let map = match &self.evaluated_entities {
-            Some(cached) => Either::Left(cached),
-            None => Either::Right(self.compute_entities_values()?),
+            Some(cached) => Cow::Borrowed(cached),
+            None => Cow::Owned(self.compute_entities_values()?),
         };
         Ok(EntityAttrValues::new(map, self))
     }
@@ -265,7 +265,7 @@ type EvaluatedEntities = HashMap<EntityUID, HashMap<SmolStr, PartialValue>>;
 #[derive(Debug)]
 pub struct EntityAttrValues<'a> {
     /// The evaluated entity attributes. The attributes may either be owner or borrowed.
-    attrs: Either<&'a EvaluatedEntities, EvaluatedEntities>,
+    attrs: Cow<'a, EvaluatedEntities>,
     /// The original entity slice, which contains hierarchy information.
     entities: &'a Entities,
 }
@@ -308,10 +308,7 @@ fn build_evaluated_entities(
 
 impl<'a> EntityAttrValues<'a> {
     /// Construct an [`EntityAttrValues`] with either an owned or borrowed set of evaluated attributes.
-    pub fn new(
-        attrs: Either<&'a EvaluatedEntities, EvaluatedEntities>,
-        entities: &'a Entities,
-    ) -> Self {
+    pub fn new(attrs: Cow<'a, EvaluatedEntities>, entities: &'a Entities) -> Self {
         Self { attrs, entities }
     }
 
@@ -320,13 +317,11 @@ impl<'a> EntityAttrValues<'a> {
         match self.entities.entity(uid) {
             Dereference::NoSuchEntity => Dereference::NoSuchEntity,
             Dereference::Residual(r) => Dereference::Residual(r),
-            Dereference::Data(_) => match &self.attrs {
-                Either::Left(borrowed) => borrowed,
-                Either::Right(owned) => owned,
-            }
-            .get(uid)
-            .map(Dereference::Data)
-            .unwrap_or_else(|| Dereference::NoSuchEntity),
+            Dereference::Data(_) => self
+                .attrs
+                .get(uid)
+                .map(Dereference::Data)
+                .unwrap_or_else(|| Dereference::NoSuchEntity),
         }
     }
 }
