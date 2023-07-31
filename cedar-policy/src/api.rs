@@ -2387,6 +2387,49 @@ impl Context {
     /// if attributes have the wrong types (e.g., string instead of integer).
     /// Since different Actions have different schemas for `Context`, you also
     /// must specify the `Action` for schema-based parsing.
+    /// ```
+    /// use cedar_policy::{Context, RestrictedExpression, Schema};
+    /// use std::collections::HashMap;
+    /// use std::str::FromStr;
+    /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request,PolicySet};
+    /// let data = serde_json::json!(
+    /// {
+    ///     "sub": "1234"
+    /// });
+    /// let schema_data =r#"
+    ///     {
+    ///       "": {
+    ///         "entityTypes": {},
+    ///           "actions": {
+    ///             "view": {
+    ///                "appliesTo": {
+    ///                  "principalTypes": [],
+    ///                   "resourceTypes": [],
+    ///                   "context": {
+    ///                     "type": "Record",
+    ///                     "attributes": {
+    ///                       "sub": { "type": "Long" }
+    ///                     }
+    ///                   }
+    ///                 }
+    ///               }
+    ///           }
+    ///       }
+    ///     }"#;
+    /// # // create a request
+    /// # let p_eid = EntityId::from_str("alice").unwrap();
+    /// # let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
+    /// # let principal = EntityUid::from_type_name_and_id(p_name, p_eid);
+    /// # let a_eid = EntityId::from_str("view").unwrap();
+    /// # let a_name: EntityTypeName = EntityTypeName::from_str("Action").unwrap();
+    /// # let action = EntityUid::from_type_name_and_id(a_name, a_eid);
+    /// # let r_eid = EntityId::from_str("trip").unwrap();
+    /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
+    /// # let resource = EntityUid::from_type_name_and_id(r_name, r_eid);
+    /// let schema = Schema::from_str(schema_data).unwrap();
+    /// let context = Context::from_json_value(data, Some((&schema, &action))).unwrap();
+    /// let request: Request = Request::new(Some(principal), Some(action), Some(resource), context);
+    /// ```
     pub fn from_json_value(
         json: serde_json::Value,
         schema: Option<(&Schema, &EntityUid)>,
