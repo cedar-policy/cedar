@@ -269,7 +269,12 @@ pub(crate) fn parse_literal(val: &str) -> Result<ast::Literal, err::ParseErrors>
     if errs.is_empty() {
         match ast.into_expr_kind() {
             ast::ExprKind::Lit(v) => Ok(v),
-            _ => Err(err::ParseError::ToAST("text is not a literal".to_string()).into()),
+            _ => Err(
+                err::ParseError::ParseLiteral(err::ParseLiteralError::ParseLiteral(
+                    val.to_string(),
+                ))
+                .into(),
+            ),
         }
     } else {
         Err(errs)

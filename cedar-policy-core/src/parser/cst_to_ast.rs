@@ -35,7 +35,7 @@
 // cases where there is a secondary conversion. This prevents any further
 // cloning.
 
-use super::err::{ParseError, ParseErrors};
+use super::err::{ParseError, ParseErrors, Ref, RefCreationError, ToASTError};
 use super::node::{ASTNode, SourceInfo};
 use super::unescape::{to_pattern, to_unescaped_string};
 use super::{cst, err};
@@ -104,9 +104,9 @@ impl ASTNode<Option<cst::Policies>> {
                 Some(Either::Right(template)) => {
                     if let Err(e) = pset.add_template(template) {
                         match e {
-                            PolicySetError::Occupied { id } => errs.push(ParseError::ToAST(
-                                format!("A template with this id already exists within the policy set: {id}")
-                            )),
+                            PolicySetError::Occupied { id } => {
+                                errs.push(ParseError::ToAST(ToASTError::DuplicateTemplateID(id)))
+                            }
                         };
 
                         complete_set = false
@@ -116,9 +116,7 @@ impl ASTNode<Option<cst::Policies>> {
                     if let Err(e) = pset.add_static(inline_policy) {
                         match e {
                             PolicySetError::Occupied { id } => {
-                                errs.push(ParseError::ToAST(format!(
-                                "A policy with this id already exists within the policy set: {id}"
-                            )))
+                                errs.push(ParseError::ToAST(ToASTError::DuplicatePolicyID(id)))
                             }
                         };
 
@@ -164,7 +162,7 @@ impl ASTNode<Option<cst::Policy>> {
         match ast::StaticPolicy::try_from(tp) {
             Ok(p) => Some(p),
             Err(e) => {
-                errs.push(err::ParseError::ToAST(format!("{e}")));
+                errs.push(err::ParseError::ToAST(ToASTError::SlotsInConditionClause));
                 None
             }
         }
@@ -194,9 +192,7 @@ impl ASTNode<Option<cst::Policy>> {
             .collect();
         if annotations.len() != policy.annotations.len() {
             failure = true;
-            errs.push(err::ParseError::ToAST(
-                "This policy uses poorly formed or duplicate annotations".to_string(),
-            ));
+            errs.push(err::ParseError::ToAST(ToASTError::BadAnnotations))
         }
 
         // convert head
@@ -211,7 +207,7 @@ impl ASTNode<Option<cst::Policy>> {
 
         for e in conds.iter() {
             for slot in e.slots() {
-                errs.push(ParseError::ToAST(format!("Template slots are currently unsupported in policy condition clauses, found slot {slot}")));
+                errs.push(ParseError::ToAST(ToASTError::SlotsInConditionClause))
             }
         }
 
@@ -255,31 +251,29 @@ impl cst::Policy {
         let principal = if let Some(head1) = vars.next() {
             head1.to_principal_constraint(errs)
         } else {
-            errs.push(err::ParseError::ToAST(
-                "This policy requires the `principal` variable in the head".to_string(),
-            ));
+            errs.push(err::ParseError::ToAST(ToASTError::MissingScopeConstraint(
+                ast::Var::Principal,
+            )));
             None
         };
         let action = if let Some(head2) = vars.next() {
             head2.to_action_constraint(errs)
         } else {
-            errs.push(err::ParseError::ToAST(
-                "This policy requires the `action` variable in the head".to_string(),
-            ));
+            errs.push(err::ParseError::ToAST(ToASTError::MissingScopeConstraint(
+                ast::Var::Action,
+            )));
             None
         };
         let resource = if let Some(head3) = vars.next() {
             head3.to_resource_constraint(errs)
         } else {
-            errs.push(err::ParseError::ToAST(
-                "This policy requires the `resource` variable in the head".to_string(),
-            ));
+            errs.push(err::ParseError::ToAST(ToASTError::MissingScopeConstraint(
+                ast::Var::Resource,
+            )));
             None
         };
         if vars.next().is_some() {
-            errs.push(err::ParseError::ToAST(
-                "This policy has extra variables in the head".to_string(),
-            ));
+            errs.push(err::ParseError::ToAST(ToASTError::ExtraHeadConstraints));
         }
         (principal, action, resource)
     }
@@ -301,7 +295,7 @@ impl ASTNode<Option<cst::Annotation>> {
                 errs.extend(
                     unescape_errs
                         .into_iter()
-                        .map(|e| ParseError::ToAST(e.to_string())),
+                        .map(|e| ParseError::ToAST(e.into())),
                 );
                 None
             }
@@ -330,14 +324,14 @@ impl ASTNode<Option<cst::Ident>> {
             | cst::Ident::In
             | cst::Ident::Has
             | cst::Ident::Like => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "This identifier is reserved and cannot be used: {ident}"
+                errs.push(err::ParseError::ToAST(ToASTError::ReservedIdentifier(
+                    ident.clone(),
                 )));
                 None
             }
             cst::Ident::Invalid(i) => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "not a valid identifier: {i}"
+                errs.push(err::ParseError::ToAST(ToASTError::InvalidIdentifier(
+                    i.clone(),
                 )));
                 None
             }
@@ -355,9 +349,7 @@ impl ASTNode<Option<cst::Ident>> {
             cst::Ident::Permit => Some(ast::Effect::Permit),
             cst::Ident::Forbid => Some(ast::Effect::Forbid),
             _ => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "not a valid policy effect: {effect}"
-                )));
+                errs.push(ToASTError::InvalidEffect(effect.clone()).into());
                 None
             }
         }
@@ -371,9 +363,7 @@ impl ASTNode<Option<cst::Ident>> {
             cst::Ident::When => Some(true),
             cst::Ident::Unless => Some(false),
             _ => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "not a valid policy condition: {cond}"
-                )));
+                errs.push(ToASTError::InvalidCondition(cond.clone()).into());
                 None
             }
         }
@@ -386,13 +376,11 @@ impl ASTNode<Option<cst::Ident>> {
             Some(cst::Ident::Action) => Some(ast::Var::Action),
             Some(cst::Ident::Resource) => Some(ast::Var::Resource),
             Some(ident) => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "expected an identifier, got {ident}"
-                )));
+                errs.push(ToASTError::InvalidScopeConstraintVariable(ident.clone()).into());
                 None
             }
             None => {
-                errs.push(err::ParseError::ToAST("expected an identifier".to_string()));
+                errs.push(ToASTError::InvalidScopeConstraintVariableNoIdent.into());
                 None
             }
         }
@@ -429,10 +417,7 @@ impl ast::Id {
                     // INVARIANT (MethodStyleArgs), we call insert above, so args is non-empty
                     Some(construct_ext_meth(name.to_string(), args, l))
                 } else {
-                    errs.push(err::ParseError::ToAST(format!(
-                        "expected method name, found {}",
-                        name
-                    )));
+                    errs.push(ToASTError::InvalidMethodName(name.to_string()).into());
                     None
                 }
             }
@@ -451,9 +436,7 @@ impl ASTNode<Option<cst::VariableDef>> {
         match self.to_principal_or_resource_constraint(errs)? {
             PrincipalOrResource::Principal(p) => Some(p),
             PrincipalOrResource::Resource(_) => {
-                errs.push(err::ParseError::ToAST(
-                    "expected principal constraint, found resource constraint".to_string(),
-                ));
+                errs.push(ToASTError::IncorrectVariable(ast::Var::Resource).into());
                 None
             }
         }
@@ -462,9 +445,7 @@ impl ASTNode<Option<cst::VariableDef>> {
     fn to_resource_constraint(&self, errs: &mut ParseErrors) -> Option<ResourceConstraint> {
         match self.to_principal_or_resource_constraint(errs)? {
             PrincipalOrResource::Principal(_) => {
-                errs.push(err::ParseError::ToAST(
-                    "expected resource constraint, found principal constraint".to_string(),
-                ));
+                errs.push(ToASTError::IncorrectVariable(ast::Var::Resource).into());
                 None
             }
             PrincipalOrResource::Resource(r) => Some(r),
@@ -479,14 +460,12 @@ impl ASTNode<Option<cst::VariableDef>> {
         // return right away if there's no data, parse provided error
         let vardef = maybe_vardef?;
 
-        let var = vardef.variable.to_var(errs)?;
+        let expected = vardef.variable.to_var(errs)?;
 
         match vardef.variable.to_var(errs) {
-            Some(v) if v == var => Some(()),
+            Some(v) if v == expected => Some(()),
             Some(other) => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "expected {var} found {other}"
-                )));
+                errs.push(ToASTError::IncorrectVariable(other).into());
                 None
             }
             None => None,
@@ -497,31 +476,29 @@ impl ASTNode<Option<cst::VariableDef>> {
         }
 
         let c = if let Some((op, rel_expr)) = &vardef.ineq {
-            let eref = rel_expr.to_ref_or_slot(errs, var)?;
+            let eref = rel_expr.to_ref_or_slot(errs, expected)?;
             match op {
                 cst::RelOp::Eq => Some(PrincipalOrResourceConstraint::Eq(eref)),
                 cst::RelOp::In => Some(PrincipalOrResourceConstraint::In(eref)),
-                _ => {
-                    errs.push(err::ParseError::ToAST(
-                        "policy head constraints must be `in` or `==`".to_string(),
-                    ));
+                op => {
+                    errs.push(ToASTError::InvalidConstraintOperator(op.clone()).into());
                     None
                 }
             }
         } else {
             Some(PrincipalOrResourceConstraint::Any)
         }?;
-        match var {
+        match expected {
             ast::Var::Principal => {
                 Some(PrincipalOrResource::Principal(PrincipalConstraint::new(c)))
             }
             ast::Var::Action => {
-                errs.push(err::ParseError::ToAST("unexpected `action`".to_string()));
+                errs.push(ToASTError::IncorrectVariable(ast::Var::Action).into());
                 None
             }
             ast::Var::Resource => Some(PrincipalOrResource::Resource(ResourceConstraint::new(c))),
             ast::Var::Context => {
-                errs.push(err::ParseError::ToAST("unexpected `context`".to_string()));
+                errs.push(ToASTError::IncorrectVariable(ast::Var::Action).into());
                 None
             }
         }
@@ -534,10 +511,7 @@ impl ASTNode<Option<cst::VariableDef>> {
         match vardef.variable.to_var(errs) {
             Some(ast::Var::Action) => Some(()),
             Some(other) => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "expected {}, found {other}",
-                    ast::Var::Action
-                )));
+                errs.push(ToASTError::IncorrectVariable(other).into());
                 None
             }
             None => None,
@@ -560,15 +534,11 @@ impl ASTNode<Option<cst::VariableDef>> {
                     Some(ActionConstraint::is_eq(euid))
                 }
                 (cst::RelOp::Eq, OneOrMultipleRefs::Multiple(_)) => {
-                    errs.push(err::ParseError::ToAST(
-                        "constraints for `==` must be a single literal euid".to_string(),
-                    ));
+                    errs.push(ToASTError::InvalidScopeEqualityRHS.into());
                     None
                 }
-                _ => {
-                    errs.push(err::ParseError::ToAST(
-                        "policy head constraints must be `in` or `==`".to_string(),
-                    ));
+                (op, _) => {
+                    errs.push(ToASTError::InvalidConstraintOperator(op.clone()).into());
                     None
                 }
             }
@@ -584,11 +554,6 @@ impl ASTNode<Option<cst::VariableDef>> {
             }
         }
     }
-}
-
-fn action_type_error_msg(euid: &EntityUID) -> ParseError {
-    let msg = format!("Expected an EntityUID with the type `Action`. Got: {euid}");
-    ParseError::ToAST(msg)
 }
 
 /// Check that all of the EUIDs in an action constraint have the type `Action`, under an arbitrary namespace
@@ -607,7 +572,7 @@ fn action_constraint_contains_only_action_types(
             } else {
                 Err(non_actions
                     .into_iter()
-                    .map(|euid| action_type_error_msg(euid.as_ref()))
+                    .map(|euid| ToASTError::InvalidActionType(euid.as_ref().clone()).into())
                     .collect())
             }
         }
@@ -615,7 +580,10 @@ fn action_constraint_contains_only_action_types(
             if euid_has_action_type(euid) {
                 Ok(a)
             } else {
-                Err(action_type_error_msg(euid).into())
+                Err(ParseErrors(vec![ToASTError::InvalidActionType(
+                    euid.as_ref().clone(),
+                )
+                .into()]))
             }
         }
     }
@@ -643,8 +611,8 @@ impl ASTNode<Option<cst::Cond>> {
             Some(expr) => expr.to_expr(errs),
             None => {
                 errs.push(err::ParseError::ToAST(match cond.cond.as_ref().node {
-                    Some(ident) => format!("{} clause should not be empty", &ident),
-                    None => "bad use of {}".to_string(), // neither a keyword like `when`, nor a body
+                    Some(ident) => ToASTError::EmptyClause(ident.clone()),
+                    None => ToASTError::InvalidBraces, // neither a keyword like `when`, nor a body
                 }));
                 None
             }
@@ -670,9 +638,7 @@ impl ASTNode<Option<cst::Str>> {
             cst::Str::String(s) => Some(s),
             // at time of comment, all strings are valid
             cst::Str::Invalid(s) => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "this is an invalid string: {s}"
-                )));
+                errs.push(ToASTError::InvalidString(s.to_string()).into());
                 None
             }
         }
@@ -702,9 +668,7 @@ impl ExprOrSpecial<'_> {
             Self::Expr(e) => Some(e),
             Self::Var(v, l) => Some(construct_expr_var(v, l)),
             Self::Name(n) => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "Arbitrary variables are not supported; did you mean to enclose {n} in quotes to make a string?",
-                )));
+                errs.push(ToASTError::ArbitraryVariable(n).into());
                 None
             }
             Self::StrLit(s, l) => match to_unescaped_string(s) {
@@ -713,7 +677,7 @@ impl ExprOrSpecial<'_> {
                     errs.extend(
                         escape_errs
                             .into_iter()
-                            .map(|e| ParseError::ToAST(e.to_string())),
+                            .map(|e| ToASTError::Unescape(e).into()),
                     );
                     None
                 }
@@ -732,13 +696,13 @@ impl ExprOrSpecial<'_> {
                     errs.extend(
                         escape_errs
                             .into_iter()
-                            .map(|e| ParseError::ToAST(e.to_string())),
+                            .map(|e| ToASTError::Unescape(e).into()),
                     );
                     None
                 }
             },
             Self::Expr(e) => {
-                errs.push(err::ParseError::ToAST(format!("not a valid string: {e}")));
+                errs.push(ToASTError::InvalidAttribute.into());
                 None
             }
         }
@@ -752,25 +716,21 @@ impl ExprOrSpecial<'_> {
                     errs.extend(
                         escape_errs
                             .into_iter()
-                            .map(|e| ParseError::ToAST(e.to_string())),
+                            .map(|e| ToASTError::Unescape(e).into()),
                     );
                     None
                 }
             },
             Self::Var(var, _) => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "not a string literal: {var}"
-                )));
+                errs.push(ToASTError::InvalidPattern(var.to_string()).into());
                 None
             }
             Self::Name(name) => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "not a string literal: {name}"
-                )));
+                errs.push(ToASTError::InvalidPattern(name.to_string()).into());
                 None
             }
             Self::Expr(e) => {
-                errs.push(err::ParseError::ToAST(format!("not a string literal: {e}")));
+                errs.push(ToASTError::InvalidPattern(e.to_string()).into());
                 None
             }
         }
@@ -784,25 +744,21 @@ impl ExprOrSpecial<'_> {
                     errs.extend(
                         escape_errs
                             .into_iter()
-                            .map(|e| ParseError::ToAST(e.to_string())),
+                            .map(|e| ToASTError::Unescape(e).into()),
                     );
                     None
                 }
             },
             Self::Var(var, _) => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "not a string literal: {var}"
-                )));
+                errs.push(ToASTError::InvalidString(var.to_string()).into());
                 None
             }
             Self::Name(name) => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "not a string literal: {name}"
-                )));
+                errs.push(ToASTError::InvalidString(name.to_string()).into());
                 None
             }
             Self::Expr(e) => {
-                errs.push(err::ParseError::ToAST(format!("not a string literal: {e}")));
+                errs.push(ToASTError::InvalidString(e.to_string()).into());
                 None
             }
         }
@@ -829,10 +785,7 @@ impl ASTNode<Option<cst::Expr>> {
         match expr {
             cst::ExprData::Or(o) => o.to_ref_or_refs::<T>(errs, var),
             cst::ExprData::If(_, _, _) => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "expected {}, found an if statement",
-                    T::err_string()
-                )));
+                errs.push(ToASTError::wrong_node(T::err_str(), "if").into());
                 None
             }
         }
@@ -869,7 +822,7 @@ impl ASTNode<Option<cst::Expr>> {
 /// This presents having either a large level of code duplication
 /// or runtime data.
 trait RefKind: Sized {
-    fn err_string() -> &'static str;
+    fn err_str() -> &'static str;
     fn create_single_ref(e: EntityUID, errs: &mut ParseErrors) -> Option<Self>;
     fn create_multiple_refs(es: Vec<EntityUID>, errs: &mut ParseErrors) -> Option<Self>;
     fn create_slot(errs: &mut ParseErrors) -> Option<Self>;
@@ -878,7 +831,7 @@ trait RefKind: Sized {
 struct SingleEntity(pub EntityUID);
 
 impl RefKind for SingleEntity {
-    fn err_string() -> &'static str {
+    fn err_str() -> &'static str {
         "entity uid"
     }
 
@@ -887,22 +840,18 @@ impl RefKind for SingleEntity {
     }
 
     fn create_multiple_refs(_es: Vec<EntityUID>, errs: &mut ParseErrors) -> Option<Self> {
-        errs.push(err::ParseError::ToAST(
-            "expected single entity uid, got a set of entity uids".to_string(),
-        ));
+        errs.push(RefCreationError::one_expected(Ref::Single, Ref::Set).into());
         None
     }
 
     fn create_slot(errs: &mut ParseErrors) -> Option<Self> {
-        errs.push(err::ParseError::ToAST(
-            "expected a single entity uid, got a template slot".to_string(),
-        ));
+        errs.push(RefCreationError::one_expected(Ref::Single, Ref::Template).into());
         None
     }
 }
 
 impl RefKind for EntityReference {
-    fn err_string() -> &'static str {
+    fn err_str() -> &'static str {
         "entity uid or template slot"
     }
 
@@ -915,9 +864,7 @@ impl RefKind for EntityReference {
     }
 
     fn create_multiple_refs(_es: Vec<EntityUID>, errs: &mut ParseErrors) -> Option<Self> {
-        errs.push(err::ParseError::ToAST(
-            "expected single entity uid or template slot, got a set of entity uids".to_string(),
-        ));
+        errs.push(RefCreationError::two_expected(Ref::Single, Ref::Template, Ref::Set).into());
         None
     }
 }
@@ -930,12 +877,12 @@ enum OneOrMultipleRefs {
 }
 
 impl RefKind for OneOrMultipleRefs {
-    fn err_string() -> &'static str {
+    fn err_str() -> &'static str {
         "entity uid, set of entity uids, or template slot"
     }
 
     fn create_slot(errs: &mut ParseErrors) -> Option<Self> {
-        errs.push(err::ParseError::ToAST("Unexpected slot".to_string()));
+        errs.push(RefCreationError::two_expected(Ref::Single, Ref::Set, Ref::Template).into());
         None
     }
 
@@ -976,10 +923,7 @@ impl ASTNode<Option<cst::Or>> {
         match or.extended.len() {
             0 => or.initial.to_ref_or_refs::<T>(errs, var),
             _n => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "expected {}, found ||",
-                    T::err_string()
-                )));
+                errs.push(ToASTError::wrong_node(T::err_str(), "||").into());
                 None
             }
         }
@@ -993,10 +937,7 @@ impl ASTNode<Option<cst::And>> {
         match and.extended.len() {
             0 => and.initial.to_ref_or_refs::<T>(errs, var),
             _n => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "expected {}, found &&",
-                    T::err_string()
-                )));
+                errs.push(ToASTError::wrong_node(T::err_str(), "&&").into());
                 None
             }
         }
@@ -1034,25 +975,16 @@ impl ASTNode<Option<cst::Relation>> {
             cst::Relation::Common { initial, extended } => match extended.len() {
                 0 => initial.to_ref_or_refs::<T>(errs, var),
                 _n => {
-                    errs.push(err::ParseError::ToAST(format!(
-                        "expected {}, found binary operation",
-                        T::err_string()
-                    )));
+                    errs.push(ToASTError::wrong_node(T::err_str(), "binary operator").into());
                     None
                 }
             },
             cst::Relation::Has { .. } => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "expected {}, found `has` relation",
-                    T::err_string()
-                )));
+                errs.push(ToASTError::wrong_node(T::err_str(), "has").into());
                 None
             }
             cst::Relation::Like { .. } => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "expected {}, found `like` relation",
-                    T::err_string()
-                )));
+                errs.push(ToASTError::wrong_node(T::err_str(), "like").into());
                 None
             }
         }
@@ -1079,10 +1011,7 @@ impl ASTNode<Option<cst::Relation>> {
 
                 match (maybe_first, maybe_second, extended.len()) {
                     (_, _, l) if l > 1 => {
-                        errs.push(err::ParseError::ToAST(
-                            "Multiple relational operators (>, ==, in, etc.) without parentheses"
-                                .to_string(),
-                        ));
+                        errs.push(ToASTError::AmbiguousOperators.into());
                         None
                     }
                     // error reported and result filtered out
@@ -1127,10 +1056,7 @@ impl ASTNode<Option<cst::Add>> {
         match add.extended.len() {
             0 => add.initial.to_ref_or_refs::<T>(errs, var),
             _n => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "expected {}, found arithmetic",
-                    T::err_string()
-                )));
+                errs.push(ToASTError::wrong_node(T::err_str(), "+").into());
                 None
             }
         }
@@ -1170,10 +1096,7 @@ impl ASTNode<Option<cst::Mult>> {
         match mult.extended.len() {
             0 => mult.initial.to_ref_or_refs::<T>(errs, var),
             _n => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "expected {}, found arithmetic",
-                    T::err_string()
-                )));
+                errs.push(ToASTError::wrong_node(T::err_str(), "*").into());
                 None
             }
         }
@@ -1202,13 +1125,11 @@ impl ASTNode<Option<cst::Mult>> {
                 match op {
                     cst::MultOp::Times => {}
                     cst::MultOp::Divide => {
-                        errs.push(ParseError::ToAST("division is not supported".to_string()));
+                        errs.push(ToASTError::Division.into());
                         return None;
                     }
                     cst::MultOp::Mod => {
-                        errs.push(ParseError::ToAST(
-                            "remainder/modulo is not supported".to_string(),
-                        ));
+                        errs.push(ToASTError::Remainder.into());
                         return None;
                     }
                 }
@@ -1235,9 +1156,7 @@ impl ASTNode<Option<cst::Mult>> {
                 .collect::<Vec<i64>>();
             if nonconstantints.len() > 1 {
                 // at most one of the operands in `a * b * c * d * ...` can be a nonconstantint
-                errs.push(err::ParseError::ToAST(
-                    "Multiplication must be by a constant int".to_string(), // you could see this error for division by a nonconstant as well, but this error message seems like the appropriate one, it will be the common case
-                ));
+                errs.push(ToASTError::NonConstantMultiplication.into());
                 None
             } else if nonconstantints.is_empty() {
                 // PANIC SAFETY If nonconstantints is empty then constantints must have at least one value
@@ -1271,10 +1190,8 @@ impl ASTNode<Option<cst::Unary>> {
         let maybe_unary = self.as_inner();
         let unary = maybe_unary?;
         match &unary.op {
-            Some(_op) => {
-                errs.push(err::ParseError::ToAST(
-                    "expected entity uid found unary operation".to_string(),
-                ));
+            Some(op) => {
+                errs.push(ToASTError::wrong_node(T::err_str(), op.to_string()).into());
                 None
             }
             None => unary.item.to_ref_or_refs::<T>(errs, var),
@@ -1327,9 +1244,7 @@ impl ASTNode<Option<cst::Unary>> {
                             c - 1,
                         ),
                         Ordering::Greater => {
-                            errs.push(err::ParseError::ToAST(
-                                "Integer constant is too large!".to_string(),
-                            ));
+                            errs.push(ToASTError::IntegerLiteralTooLarge(*n).into());
                             (None, 0)
                         }
                     }
@@ -1344,11 +1259,11 @@ impl ASTNode<Option<cst::Unary>> {
                     .map(ExprOrSpecial::Expr)
             }
             Some(cst::NegOp::OverBang) => {
-                errs.push(err::ParseError::ToAST("Too many '!'s".to_string()));
+                errs.push(ToASTError::UnaryOppLimit(ast::UnaryOp::Not).into());
                 None
             }
             Some(cst::NegOp::OverDash) => {
-                errs.push(err::ParseError::ToAST("Too many '-'s".to_string()));
+                errs.push(ToASTError::UnaryOppLimit(ast::UnaryOp::Neg).into());
                 None
             }
         }
@@ -1384,9 +1299,7 @@ impl ASTNode<Option<cst::Member>> {
         match mem.access.len() {
             0 => mem.item.to_ref_or_refs::<T>(errs, var),
             _n => {
-                errs.push(err::ParseError::ToAST(
-                    "expected entity uid, found member access".to_string(),
-                ));
+                errs.push(ToASTError::wrong_node(T::err_str(), ".").into());
                 None
             }
         }
@@ -1445,18 +1358,14 @@ impl ASTNode<Option<cst::Member>> {
                     tail = rest;
                 }
                 // variable call - error
-                (Some(Var(_, _)), [Some(Call(_)), rest @ ..]) => {
-                    errs.push(err::ParseError::ToAST(
-                        "Variables cannot be used as functions".to_string(),
-                    ));
+                (Some(Var(v, _)), [Some(Call(_)), rest @ ..]) => {
+                    errs.push(ToASTError::VariableCall(v.clone()).into());
                     head = None;
                     tail = rest;
                 }
                 // arbitrary call - error
                 (_, [Some(Call(_)), rest @ ..]) => {
-                    errs.push(err::ParseError::ToAST(
-                        "All functions are named, this cannot be called".to_string(),
-                    ));
+                    errs.push(ToASTError::ExpressionCall.into());
                     head = None;
                     tail = rest;
                 }
@@ -1465,10 +1374,8 @@ impl ASTNode<Option<cst::Member>> {
                     tail = rest;
                 }
                 // method call on name - error
-                (Some(Name(_)), [Some(Field(_)), Some(Call(_)), rest @ ..]) => {
-                    errs.push(err::ParseError::ToAST(
-                        "This item does not have methods".to_string(),
-                    ));
+                (Some(Name(n)), [Some(Field(_)), Some(Call(_)), rest @ ..]) => {
+                    errs.push(ToASTError::NoMethods(n.clone()).into());
                     head = None;
                     tail = rest;
                 }
@@ -1504,7 +1411,7 @@ impl ASTNode<Option<cst::Member>> {
                             errs.extend(
                                 escape_errs
                                     .into_iter()
-                                    .map(|e| ParseError::ToAST(e.to_string())),
+                                    .map(|e| ToASTError::Unescape(e).into()),
                             );
                             None
                         }
@@ -1518,10 +1425,8 @@ impl ASTNode<Option<cst::Member>> {
                     tail = rest;
                 }
                 // access on arbitrary name - error
-                (Some(Name(_)), [Some(Field(_)) | Some(Index(_)), rest @ ..]) => {
-                    errs.push(err::ParseError::ToAST(
-                        "This item is not a data structure".to_string(),
-                    ));
+                (Some(Name(n)), [Some(Field(_)) | Some(Index(_)), rest @ ..]) => {
+                    errs.push(ToASTError::InvalidAccess(n.clone()).into());
                     head = None;
                     tail = rest;
                 }
@@ -1556,7 +1461,7 @@ impl ASTNode<Option<cst::Member>> {
                             errs.extend(
                                 escape_errs
                                     .into_iter()
-                                    .map(|e| ParseError::ToAST(e.to_string())),
+                                    .map(|e| ToASTError::Unescape(e).into()),
                             );
                             None
                         }
@@ -1592,7 +1497,7 @@ impl ASTNode<Option<cst::Member>> {
                             errs.extend(
                                 escape_errs
                                     .into_iter()
-                                    .map(|e| ParseError::ToAST(e.to_string())),
+                                    .map(|e| ToASTError::Unescape(e).into()),
                             );
                             None
                         }
@@ -1642,17 +1547,12 @@ impl ASTNode<Option<cst::Primary>> {
                 if slot.matches(var) {
                     Ok(T::create_slot(errs))
                 } else {
-                    Err(format!(
-                        "A slot here must be named ?{}, found ?{}",
-                        var, slot
-                    ))
+                    Err(format!("?{slot}"))
                 }
             }
-            cst::Primary::Literal(_) => {
-                Err(format!("expected {} found a literal", T::err_string()))
-            }
+            cst::Primary::Literal(_) => Err("literal".to_string()),
             cst::Primary::Ref(x) => Ok(T::create_single_ref(x.to_ref(errs)?, errs)),
-            cst::Primary::Name(_) => Err(format!("expected {} found a name", T::err_string())),
+            cst::Primary::Name(_) => Err("name".to_string()),
             cst::Primary::Expr(x) => Ok(x.to_ref_or_refs::<T>(errs, var)),
             cst::Primary::EList(lst) => {
                 let v: Option<Vec<EntityUID>> =
@@ -1664,11 +1564,7 @@ impl ASTNode<Option<cst::Primary>> {
         match r {
             Ok(t) => t,
             Err(found) => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "expected {}, found {}",
-                    T::err_string(),
-                    found
-                )));
+                errs.push(ToASTError::wrong_node(T::err_str(), found).into());
                 None
             }
         }
@@ -1711,9 +1607,7 @@ impl ASTNode<Option<cst::Primary>> {
                 if rec.len() == is.len() {
                     Some(ExprOrSpecial::Expr(construct_expr_record(rec, src.clone())))
                 } else {
-                    errs.push(err::ParseError::ToAST(
-                        "record literal has some invalid attributes".to_string(),
-                    ));
+                    errs.push(ToASTError::InvalidAttributesInRecordLiteral.into());
                     None
                 }
             }
@@ -1730,9 +1624,7 @@ impl ASTNode<Option<cst::Primary>> {
         match prim {
             cst::Primary::Literal(l) => l.to_expr_or_special(errs)?.into_string_literal(errs),
             _ => {
-                errs.push(err::ParseError::ToAST(format!(
-                    "{prim} is not a string literal"
-                )));
+                errs.push(ToASTError::NonStringLiteral(prim.clone()).into());
                 None
             }
         }
@@ -1759,9 +1651,7 @@ impl ASTNode<Option<cst::Name>> {
         let (src, maybe_name) = self.as_inner_pair();
         match maybe_name {
             Some(_) => {
-                errs.push(err::ParseError::ToAST(
-                    "type constraints are not currently supported".to_string(),
-                ));
+                errs.push(ToASTError::TypeConstraints.into());
                 None
             }
             None => Some(construct_expr_bool(true, src.clone())),
@@ -1797,9 +1687,7 @@ impl ASTNode<Option<cst::Name>> {
             .filter_map(|i| i.to_valid_ident(errs))
             .collect();
         if path.len() > 1 {
-            errs.push(err::ParseError::ToAST(
-                "A path is not valid in this context".to_string(),
-            ));
+            errs.push(ToASTError::InvalidPath.into());
             return None;
         }
 
@@ -1813,11 +1701,8 @@ impl ASTNode<Option<cst::Name>> {
             cst::Ident::Action => Some(ast::Var::Action),
             cst::Ident::Resource => Some(ast::Var::Resource),
             cst::Ident::Context => Some(ast::Var::Context),
-            _ => {
-                errs.push(err::ParseError::ToAST(
-                    "This is not a variable, use principal, action, resource, or context"
-                        .to_string(),
-                ));
+            n => {
+                errs.push(ToASTError::InvalidVariable(n.clone()).into());
                 None
             }
         }
@@ -1828,9 +1713,7 @@ impl ast::Name {
     /// Convert the `Name` into a `String` attribute, which fails if it had any namespaces
     fn into_valid_attr(self, errs: &mut ParseErrors) -> Option<SmolStr> {
         if !self.path.is_empty() {
-            errs.push(err::ParseError::ToAST(
-                "A name with a path is not a valid attribute".to_string(),
-            ));
+            errs.push(ToASTError::PathAsAttribute(format!("{self}")).into());
             None
         } else {
             Some(self.id.to_smolstr())
@@ -1848,10 +1731,7 @@ impl ast::Name {
             let id = self.id.as_ref();
             match id {
                 "contains" | "containsAll" | "containsAny" => {
-                    errs.push(err::ParseError::ToAST(format!(
-                        "invalid syntax, use method-style function call like e.{}(...)",
-                        id
-                    )));
+                    errs.push(ToASTError::FunctionCallOnMethod(self.id).into());
                     return None;
                 }
                 _ => {}
@@ -1860,10 +1740,7 @@ impl ast::Name {
         if EXTENSION_STYLES.functions.contains(&self) {
             Some(construct_ext_func(self, args, l))
         } else {
-            errs.push(err::ParseError::ToAST(format!(
-                "invalid syntax, expected function, found {}",
-                self
-            )));
+            errs.push(ToASTError::NotAFunction(self).into());
             None
         }
     }
@@ -1889,7 +1766,7 @@ impl ASTNode<Option<cst::Ref>> {
                         errs.extend(
                             escape_errs
                                 .into_iter()
-                                .map(|e| ParseError::ToAST(e.to_string())),
+                                .map(|e| ToASTError::Unescape(e).into()),
                         );
                         None
                     }
@@ -1901,9 +1778,7 @@ impl ASTNode<Option<cst::Ref>> {
                 }
             }
             cst::Ref::Ref { .. } => {
-                errs.push(err::ParseError::ToAST(
-                    "arbitrary entity lookups are not currently supported".to_string(),
-                ));
+                errs.push(ToASTError::ArbitraryEntityLookup.into());
                 None
             }
         }
@@ -1928,7 +1803,7 @@ impl ASTNode<Option<cst::Literal>> {
             cst::Literal::Num(n) => match i64::try_from(*n) {
                 Ok(i) => Some(ExprOrSpecial::Expr(construct_expr_num(i, src.clone()))),
                 Err(_) => {
-                    errs.push(ParseError::ToAST(format!("Literal {n} is too large")));
+                    errs.push(ToASTError::IntegerLiteralTooLarge(*n).into());
                     None
                 }
             },
@@ -3379,7 +3254,7 @@ mod tests {
                     );
                 } else {
                     for euid in euids {
-                        let err = action_type_error_msg(&euid);
+                        let err = ToASTError::InvalidActionType(euid).into();
                         assert!(es.contains(&err));
                     }
                 }
@@ -3597,13 +3472,16 @@ mod tests {
         }
 
         for (es, em) in [
-            ("-9223372036854775809", "Integer constant is too large"),
+            (
+                "-9223372036854775809",
+                ParseError::ToAST(ToASTError::IntegerLiteralTooLarge(9223372036854775809)),
+            ),
             // Contrary to Rust, this expression is not valid because the
             // parser treats it as a negation operation whereas the operand
             // (9223372036854775808) is too large.
             (
                 "-(9223372036854775808)",
-                "Literal 9223372036854775808 is too large",
+                ParseError::ToAST(ToASTError::IntegerLiteralTooLarge(9223372036854775808)),
             ),
         ] {
             let mut errs = ParseErrors::new();
@@ -3611,7 +3489,8 @@ mod tests {
                 .expect("should construct a CST")
                 .to_expr(&mut errs);
             assert!(e.is_none());
-            assert!(errs.to_string().contains(em));
+            println!("{:?}", errs);
+            assert!(errs.contains(&em));
         }
     }
 }

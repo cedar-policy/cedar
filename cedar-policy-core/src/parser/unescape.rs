@@ -66,7 +66,7 @@ pub(crate) fn to_pattern(s: &str) -> Result<Vec<PatternElem>, Vec<UnescapeError>
 }
 
 /// Errors generated when processing escapes
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub struct UnescapeError {
     /// underlying EscapeError
     err: EscapeError,

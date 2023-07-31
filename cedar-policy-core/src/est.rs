@@ -27,7 +27,7 @@ mod utils;
 use crate::ast;
 use crate::entities::EntityUidJSON;
 use crate::parser::cst;
-use crate::parser::err::{ParseError, ParseErrors};
+use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::ASTNode;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -117,20 +117,27 @@ impl TryFrom<cst::Policy> for Policy {
                 .into_iter()
                 .map(|node| {
                     let (cond, _) = node.into_inner();
-                    let cond =
-                        cond.ok_or_else(|| ParseError::ToAST("policy cond was empty".to_string()))?;
+                    let cond = cond.ok_or_else(|| {
+                        ParseErrors(vec![ParseError::ToAST(ToASTError::EmptyCond)])
+                    })?;
                     cond.try_into()
                 })
                 .collect::<Result<Vec<_>, ParseErrors>>()?;
-            let annotations = policy.annotations.into_iter().map(|node| {
-                let mut errs = ParseErrors::new();
-                let kv = node.to_kv_pair(&mut errs);
-                match (errs.is_empty(), kv) {
-                    (true, Some((k, v))) => Ok((k, v)),
-                    (false, _) => Err(errs),
-                    (true, None) => Err(ParseError::ToAST("internal invariant violation: expected there to be an error if data is None here".to_string()).into()),
-                }
-            }).collect::<Result<_, ParseErrors>>()?;
+            let annotations = policy
+                .annotations
+                .into_iter()
+                .map(|node| {
+                    let mut errs = ParseErrors::new();
+                    let kv = node.to_kv_pair(&mut errs);
+                    match (errs.is_empty(), kv) {
+                        (true, Some((k, v))) => Ok((k, v)),
+                        (false, _) => Err(errs),
+                        (true, None) => {
+                            Err(ParseError::ToAST(ToASTError::AnnotationInvariantViolation).into())
+                        }
+                    }
+                })
+                .collect::<Result<_, ParseErrors>>()?;
             Ok(Policy {
                 effect,
                 principal: principal.into(),
@@ -150,10 +157,10 @@ impl TryFrom<cst::Cond> for Clause {
     fn try_from(cond: cst::Cond) -> Result<Clause, ParseErrors> {
         let mut errs = ParseErrors::new();
         let expr: Result<Expr, ParseErrors> = match cond.expr {
-            None => Err(ParseError::ToAST("clause should not be empty".to_string()).into()),
+            None => Err(ParseError::ToAST(ToASTError::EmptyCond).into()),
             Some(ASTNode { node, .. }) => match node {
                 Some(e) => e.try_into(),
-                None => Err(ParseError::ToAST("data should not be empty".to_string()).into()),
+                None => Err(ParseError::ToAST(ToASTError::EmptyCond).into()),
             },
         };
         let expr = match expr {

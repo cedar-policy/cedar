@@ -1,4 +1,4 @@
-use crate::parser::err::{ParseError, ParseErrors};
+use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use std::fmt::Display;
 use std::str::FromStr;
 
@@ -20,15 +20,17 @@ pub trait FromNormalizedStr: FromStr<Err = ParseErrors> + Display {
     /// actual `FromStr` implementations.
     fn from_normalized_str(s: &str) -> Result<Self, ParseErrors> {
         let parsed = Self::from_str(s)?;
-        let normalized = parsed.to_string();
-        if normalized == s {
+        let normalized_src = parsed.to_string();
+        if normalized_src == s {
             // the normalized representation is indeed the one that was provided
             Ok(parsed)
         } else {
-            Err(ParseError::ToAST(format!(
-                "{} needs to be normalized (e.g., whitespace removed): {s} The normalized form is {normalized}",
-                Self::describe_self()
-            )).into())
+            Err(ParseError::ToAST(ToASTError::NonNormalizedString {
+                kind: Self::describe_self(),
+                src: s.to_string(),
+                normalized_src,
+            })
+            .into())
         }
     }
 
