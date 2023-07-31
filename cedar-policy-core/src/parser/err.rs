@@ -64,7 +64,7 @@ pub enum ParseError {
 }
 
 /// Errors in the top-level parse literal entrypoint
-#[derive(Debug, Clone, PartialEq, Error)]
+#[derive(Debug, Clone, PartialEq, Error, Eq)]
 pub enum ParseLiteralError {
     /// The top-level parser endpoint for parsing a literal encountered a non-literal
     /// Since this can be any possible other expression, we just return it as a string.
@@ -73,7 +73,7 @@ pub enum ParseLiteralError {
 }
 
 /// Errors in  the CST -> AST transform, mostly well-formedness issues.
-#[derive(Debug, Diagnostic, Error, Clone, PartialEq)]
+#[derive(Debug, Diagnostic, Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ToASTError {
     /// Returned when we attempt to parse a template with a conflicting ID
@@ -274,7 +274,7 @@ impl ToASTError {
 }
 
 /// Error surrounding EntityUIds/Template slots in policy scopes
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RefCreationError {
     /// What kinds of references the given scope clause required.
     /// Some scope clauses require exactly one kind of reference, some require one of two
@@ -317,7 +317,7 @@ impl std::fmt::Display for RefCreationError {
 impl std::error::Error for RefCreationError {}
 
 /// The 3 kinds of literals that can be in a policy scope
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ref {
     /// A single entity uids
     Single,
