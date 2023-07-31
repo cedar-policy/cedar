@@ -5,20 +5,20 @@ use std::{
 
 use cedar_policy_core::ast::{Id, Name};
 use combine::{
-    between, choice, many, many1, optional, parser, satisfy_map, sep_by1, Parser, Stream,
+    between, choice, eof, many, many1, optional, parser, satisfy_map, sep_by1, Parser, Stream,
 };
 use itertools::Itertools;
 use logos::{Logos, Span};
 use smol_str::SmolStr;
 
 use crate::{
-    AttributesOrContext, EntityType, NamespaceDefinition, SchemaType, SchemaTypeVariant,
-    TypeOfAttribute,
+    ActionEntityUID, ActionType, ApplySpec, AttributesOrContext, EntityType, NamespaceDefinition,
+    SchemaType, SchemaTypeVariant, TypeOfAttribute,
 };
 
 // Cedar tokens
 #[derive(Logos, Clone, Debug, PartialEq)]
-pub enum Token {
+enum Token {
     #[regex(r"\s*", logos::skip)]
     Whitespace,
     #[regex(r"//[^\n\r]*[\n\r]*", logos::skip)]
@@ -106,6 +106,88 @@ fn parse_keyword_namespace<'a>() -> impl Parser<&'a [Token], Output = ()> {
 
 fn parse_builtin_ty<'a>(ty: Token) -> impl Parser<&'a [Token], Output = ()> {
     parse_keyword(ty)
+}
+
+struct AppParser();
+
+impl<'a> Parser<&'a [Token]> for AppParser {
+    type Output = ApplySpec;
+    type PartialState = ();
+    fn parse_lazy(
+        &mut self,
+        input: &mut &'a [Token],
+    ) -> combine::ParseResult<Self::Output, <&'a [Token] as combine::StreamOnce>::Error> {
+        match self.parse(input) {
+            Ok((res, tokens)) => {
+                *input = tokens;
+                combine::ParseResult::CommitOk(res)
+            }
+            Err(_) => combine::ParseResult::PeekErr(combine::error::Tracked::from(
+                combine::error::UnexpectedParse::Unexpected,
+            )),
+        }
+    }
+    fn parse(
+        &mut self,
+        input: &'a [Token],
+    ) -> Result<(Self::Output, &'a [Token]), <&'a [Token] as combine::StreamOnce>::Error> {
+        if let Ok((id, tokens)) = choice((
+            accept(Token::VarPrincipal).map(|_| "principal"),
+            accept(Token::VarResource).map(|_| "resource"),
+        ))
+        .parse(input)
+        {
+            if let Ok((_, tokens)) = accept(Token::Colon).parse(tokens) {
+                if let Ok((ty, tokens)) = parse_ets().parse(tokens) {
+                    let singleton = {
+                        match id {
+                            "principal" => ApplySpec {
+                                resource_types: None,
+                                principal_types: Some(
+                                    ty.into_iter()
+                                        .map(|n| SmolStr::new(n.to_string()))
+                                        .collect_vec(),
+                                ),
+                                context: AttributesOrContext::default(),
+                            },
+                            "resource" => ApplySpec {
+                                resource_types: Some(
+                                    ty.into_iter()
+                                        .map(|n| SmolStr::new(n.to_string()))
+                                        .collect_vec(),
+                                ),
+                                principal_types: None,
+                                context: AttributesOrContext::default(),
+                            },
+                            _ => unreachable!("wrong id"),
+                        }
+                    };
+                    if let Ok((_, tokens)) = accept(Token::Comma).parse(tokens) {
+                        if let Ok((cdr, tokens)) = self.parse(tokens) {
+                            let merge = |lst1: Option<Vec<SmolStr>>, lst2| match (lst1, lst2) {
+                                (Some(l1), Some(l2)) => Some([l1, l2].concat()),
+                                (Some(l1), None) => Some(l1),
+                                (None, Some(l2)) => Some(l2),
+                                _ => None,
+                            };
+                            let lst = ApplySpec {
+                                principal_types: merge(
+                                    singleton.principal_types,
+                                    cdr.principal_types,
+                                ),
+                                resource_types: merge(singleton.resource_types, cdr.resource_types),
+                                context: AttributesOrContext::default(),
+                            };
+                            return Ok((lst, tokens));
+                        }
+                        return Ok((singleton, tokens));
+                    }
+                    return Ok((singleton, tokens));
+                }
+            }
+        }
+        return Err(combine::error::UnexpectedParse::Unexpected);
+    }
 }
 
 struct AttrParser();
@@ -248,11 +330,34 @@ fn parse_rbrace<'a>() -> impl Parser<&'a [Token], Output = ()> {
 }
 
 fn parse_decl<'a>() -> impl Parser<&'a [Token], Output = NamespaceDefinition> {
-    many1(parse_et_decl()).map(|et: Vec<(SmolStr, EntityType)>| NamespaceDefinition {
-        common_types: HashMap::new(),
-        entity_types: HashMap::from_iter(et.into_iter()),
-        actions: HashMap::new(),
-    })
+    let merge_nds = |nds: Vec<NamespaceDefinition>| {
+        let mut common_types = HashMap::new();
+        let mut entity_types = HashMap::new();
+        let mut actions = HashMap::new();
+        for nd in nds.into_iter() {
+            common_types.extend(nd.common_types);
+            entity_types.extend(nd.entity_types);
+            actions.extend(nd.actions);
+        }
+        NamespaceDefinition {
+            common_types,
+            entity_types,
+            actions,
+        }
+    };
+    many1(choice((
+        parse_et_decl().map(|et| NamespaceDefinition {
+            common_types: HashMap::new(),
+            entity_types: HashMap::from_iter(std::iter::once(et)),
+            actions: HashMap::new(),
+        }),
+        parse_action_decl().map(|action| NamespaceDefinition {
+            common_types: HashMap::new(),
+            entity_types: HashMap::new(),
+            actions: action,
+        }),
+    )))
+    .map(move |nds: Vec<NamespaceDefinition>| merge_nds(nds))
 }
 
 fn parse_str<'a>() -> impl Parser<&'a [Token], Output = SmolStr> {
@@ -262,6 +367,22 @@ fn parse_str<'a>() -> impl Parser<&'a [Token], Output = SmolStr> {
     })
 }
 
+fn parse_name<'a>() -> impl Parser<&'a [Token], Output = SmolStr> {
+    satisfy_map(|v| match v {
+        Token::Str(s) => Some(s),
+        Token::Identifier(id) => Some(id),
+        _ => None,
+    })
+}
+
+fn parse_names<'a>() -> impl Parser<&'a [Token], Output = Vec<SmolStr>> {
+    between(
+        accept(Token::LBracket),
+        accept(Token::RBracket),
+        sep_by1(parse_name(), accept(Token::Comma)),
+    )
+}
+
 fn parse_namespace<'a>() -> impl Parser<&'a [Token], Output = (SmolStr, NamespaceDefinition)> {
     (
         parse_keyword_namespace(),
@@ -269,8 +390,9 @@ fn parse_namespace<'a>() -> impl Parser<&'a [Token], Output = (SmolStr, Namespac
         parse_lbrace(),
         parse_decl(),
         parse_rbrace(),
+        eof(),
     )
-        .map(|(_, ns_str, _, ns_def, _)| (ns_str, ns_def))
+        .map(|(_, ns_str, _, ns_def, _, _)| (ns_str, ns_def))
 }
 
 fn parse_path<'a>() -> impl Parser<&'a [Token], Output = Name> {
@@ -278,16 +400,55 @@ fn parse_path<'a>() -> impl Parser<&'a [Token], Output = Name> {
         .map(|ids: Vec<Id>| Name::new(ids[0].clone(), ids[1..].iter().map(|id| id.clone())))
 }
 
+// Action    := 'action' Name ['in' (Name | '[' [Names] ']')] [AppliesTo] ';'
+fn parse_action_decl<'a>() -> impl Parser<&'a [Token], Output = HashMap<SmolStr, ActionType>> {
+    (
+        accept(Token::VarAction),
+        sep_by1(parse_name(), accept(Token::Comma)).map(|vs: Vec<SmolStr>| vs),
+        optional(
+            (
+                accept(Token::In),
+                choice((parse_name().map(|p| vec![p]), parse_names())),
+            )
+                .map(|(_, ns)| ns),
+        ),
+        optional(
+            (
+                accept(Token::AppliesTo),
+                between(accept(Token::LBrace), accept(Token::RBrace), AppParser()),
+            )
+                .map(|(_, apps)| apps),
+        ),
+        accept(Token::SemiColon),
+    )
+        .map(|(_, ids, ancestors, apps, _)| {
+            HashMap::from_iter(ids.into_iter().map(|id| {
+                (
+                    SmolStr::new(id),
+                    ActionType {
+                        attributes: None,
+                        applies_to: apps.clone(),
+                        member_of: ancestors.clone().map(|ns| {
+                            ns.into_iter()
+                                .map(|n| ActionEntityUID { id: n, ty: None })
+                                .collect_vec()
+                        }),
+                    },
+                )
+            }))
+        })
+}
+
 // Entity    := 'entity' IDENT ['in' (EntType | '[' [EntTypes] ']')] [['='] RecType] ';'
 fn parse_et_decl<'a>() -> impl Parser<&'a [Token], Output = (SmolStr, EntityType)> {
     (
         accept(Token::Entity),
         parse_id(),
-        optional(choice((
-            (accept(Token::In), parse_path()).map(|(_, p)| vec![p]),
-            parse_ets(),
-        )))
-        .map(|opt| if let Some(vs) = opt { vs } else { vec![] }),
+        optional((
+            accept(Token::In),
+            choice((parse_path().map(|p| vec![p]), parse_ets())),
+        ))
+        .map(|opt| if let Some((_, vs)) = opt { vs } else { vec![] }),
         optional(
             (
                 optional(accept(Token::Eq)),
@@ -363,24 +524,43 @@ mod test_parser {
     }
     #[test]
     fn test_parse_et_decl() {
-        let tokens = get_tokens(
-            " entity Issue {
-            repo: Repository,
-            reporter: User
-        };",
-        );
+        let tokens = get_tokens(" entity User in [Team,Application] { name: String };");
         let et = parse_et_decl().parse(&tokens);
         assert!(et.is_ok());
     }
     #[test]
+    fn test_parse_action_decl() {
+        let tokens = get_tokens(
+            " action CreateList
+            appliesTo { principal: [User], resource: [Application] };",
+        );
+        let action = parse_action_decl().parse(&tokens);
+        assert!(action.is_ok());
+    }
+    #[test]
     fn test_parse_ns_decl() {
         let tokens = get_tokens(
-            "namespace \"lol\" {
-            entity Application;
-        }",
+            r#"namespace "" {
+                entity Application;
+                entity User in [Team,Application] { name: String };
+                entity Team in [Team,Application];
+                entity List in [Application] {
+                    owner: User,
+                    name: String,
+                    readers: Team,
+                    editors: Team,
+                    tasks: Set<{name: String, id: Long, state: String}>
+                };
+
+                action CreateList, GetLists
+                    appliesTo { principal: [User], resource: [Application] };
+
+                action GetList, UpdateList, DeleteList, CreateTask, UpdateTask, DeleteTask, EditShares
+                    appliesTo { principal: [User], resource:[List] };
+            }"#,
         );
         let ns = parse_namespace().parse(&tokens);
-        assert!(ns.is_ok());
+        assert!(ns.is_ok(), "{:?}", ns.unwrap_err());
     }
 }
 
