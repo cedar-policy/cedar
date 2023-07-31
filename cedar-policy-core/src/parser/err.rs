@@ -38,7 +38,7 @@ pub(crate) type RawErrorRecovery<'a> = lalr::ErrorRecovery<RawLocation, RawToken
 type OwnedRawParseError = lalr::ParseError<RawLocation, String, RawUserError>;
 
 /// For errors during parsing
-#[derive(Clone, Debug, Diagnostic, Error, PartialEq)]
+#[derive(Clone, Debug, Diagnostic, Error, PartialEq, Eq)]
 pub enum ParseError {
     /// Error from the CST parser.
     #[error(transparent)]
@@ -51,7 +51,7 @@ pub enum ParseError {
 }
 
 /// Error from the CST parser.
-#[derive(Clone, Debug, Error, PartialEq)]
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub struct ToCSTError {
     err: OwnedRawParseError,
 }
@@ -159,7 +159,7 @@ fn expected_to_string(expected: &[String]) -> Option<String> {
 }
 
 /// Multiple related parse errors.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ParseErrors(pub Vec<ParseError>);
 
 impl ParseErrors {

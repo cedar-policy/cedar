@@ -133,7 +133,7 @@ impl<'a> Extensions<'a> {
 }
 
 /// Errors thrown when looking up an extension function in [`Extensions`].
-#[derive(Debug, PartialEq, Clone, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Error)]
 pub enum ExtensionFunctionLookupError {
     /// Tried to call a function that doesn't exist
     #[error("extension function does not exist: {name}")]

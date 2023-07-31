@@ -22,6 +22,7 @@ use crate::evaluator;
 use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
+use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::Arc;
 
 /// Cedar extension.
@@ -328,7 +329,7 @@ impl std::fmt::Debug for ExtensionFunction {
 /// Anything implementing this trait can be used as a first-class value in
 /// Cedar. For instance, the `ipaddr` extension uses this mechanism
 /// to implement IPAddr as a Cedar first-class value.
-pub trait ExtensionValue: Debug + Display {
+pub trait ExtensionValue: Debug + Display + Send + Sync + UnwindSafe + RefUnwindSafe {
     /// Get the name of the type of this value.
     ///
     /// Cedar has nominal typing, so two values have the same type iff they
@@ -355,7 +356,7 @@ pub struct ExtensionValueWithArgs {
 
 impl ExtensionValueWithArgs {
     /// Get the internal value
-    pub fn value(&self) -> &dyn InternalExtensionValue {
+    pub fn value(&self) -> &(dyn InternalExtensionValue) {
         self.value.as_ref()
     }
 
@@ -365,7 +366,11 @@ impl ExtensionValueWithArgs {
     }
 
     /// Constructor
-    pub fn new(value: Arc<dyn InternalExtensionValue>, args: Vec<Expr>, constructor: Name) -> Self {
+    pub fn new(
+        value: Arc<dyn InternalExtensionValue + Send + Sync>,
+        args: Vec<Expr>,
+        constructor: Name,
+    ) -> Self {
         Self {
             value,
             args,
@@ -436,7 +441,7 @@ pub trait InternalExtensionValue: ExtensionValue {
     fn cmp_extvalue(&self, other: &dyn InternalExtensionValue) -> std::cmp::Ordering;
 }
 
-impl<V: 'static + Eq + Ord + ExtensionValue> InternalExtensionValue for V {
+impl<V: 'static + Eq + Ord + ExtensionValue + Send + Sync> InternalExtensionValue for V {
     fn as_any(&self) -> &dyn Any {
         self
     }
