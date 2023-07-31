@@ -21,6 +21,8 @@ unicode-security = "0.1.0"
 smol_str = { version = "0.2", features = ["serde"] }
 stacker = "0.1.15"
 arbitrary = { version = "1", features = ["derive"], optional = true }
+logos = "0.13.0"
+combine = "4.6.6"
 
 [features]
 # by default, enable all Cedar extensions

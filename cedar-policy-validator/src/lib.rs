@@ -38,6 +38,7 @@ mod schema_file_format;
 pub use schema_file_format::*;
 mod type_error;
 pub use type_error::*;
+pub mod schema_syntax;
 pub mod typecheck;
 pub mod types;
 
