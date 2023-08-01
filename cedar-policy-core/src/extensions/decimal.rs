@@ -195,6 +195,7 @@ fn as_decimal(v: &Value) -> Result<&Decimal, evaluator::EvaluationError> {
                 name: Decimal::typename(),
             }],
             actual: v.type_of(),
+            advice: None,
         }),
     }
 }
@@ -599,6 +600,7 @@ mod tests {
                     name: Name::parse_unqualified_name("decimal")
                         .expect("should be a valid identifier")
                 },
+                advice: None,
             })
         );
         assert_eq!(
@@ -611,6 +613,7 @@ mod tests {
                         .expect("should be a valid identifier")
                 }],
                 actual: Type::String,
+                advice: None,
             })
         );
         // bad use of `lessThan` as function

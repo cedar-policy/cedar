@@ -441,7 +441,27 @@ impl<'q, 'e> Evaluator<'e> {
                     }
                     // hierarchy membership operator; see note on `BinaryOp::In`
                     BinaryOp::In => {
-                        let uid1 = arg1.get_as_entity()?;
+                        let uid1 = arg1.get_as_entity().map_err(|e|
+                            // If arg1 is not an entity and arg2 is a set, then possibly
+                            // the user intended `arg2.contains(arg1)` rather than `arg1 in arg2`.
+                            // If arg2 is a record, then possibly they intended `arg2 has arg1`.
+                            if let EvaluationError::TypeError { expected, actual, advice } = e {
+                                match arg2 {
+                                    Value::Set(_) => EvaluationError::TypeError {
+                                        expected,
+                                        actual,
+                                        advice: Some("`in` is for checking the entity hierarchy, use `.contains()` to test set membership".into()),
+                                    },
+                                    Value::Record(_) => EvaluationError::TypeError {
+                                        expected,
+                                        actual,
+                                        advice: Some("`in` is for checking the entity hierarchy, use `has` to test if a record has a key".into()),
+                                    },
+                                    _ => EvaluationError::TypeError { expected, actual, advice }
+                                }
+                            } else {
+                                e
+                            })?;
                         match self.entities.entity(uid1) {
                             Dereference::Residual(r) => Ok(PartialValue::Residual(
                                 Expr::binary_app(BinaryOp::In, r, arg2.into()),
@@ -462,6 +482,7 @@ impl<'q, 'e> Evaluator<'e> {
                         _ => Err(EvaluationError::TypeError {
                             expected: vec![Type::Set],
                             actual: arg1.type_of(),
+                            advice: None,
                         }),
                     },
                     // ContainsAll and ContainsAny, which work on Sets
@@ -564,6 +585,7 @@ impl<'q, 'e> Evaluator<'e> {
                         Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
                     ],
                     actual: val.type_of(),
+                    advice: None,
                 }),
                 PartialValue::Residual(r) => Ok(Expr::has_attr(r, attr.clone()).into()),
             },
@@ -622,6 +644,7 @@ impl<'q, 'e> Evaluator<'e> {
                 return Err(EvaluationError::TypeError {
                     expected: vec![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
                     actual: arg2.type_of(),
+                    advice: None,
                 })
             }
         };
@@ -746,6 +769,7 @@ impl<'q, 'e> Evaluator<'e> {
                         Type::entity_type(Name::parse_unqualified_name("any_entity_type").unwrap()),
                     ],
                     actual: v.type_of(),
+                    advice: None,
                 })
             }
         }
@@ -794,6 +818,7 @@ impl Value {
             _ => Err(EvaluationError::TypeError {
                 expected: vec![Type::Bool],
                 actual: self.type_of(),
+                advice: None,
             }),
         }
     }
@@ -806,6 +831,7 @@ impl Value {
             _ => Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
                 actual: self.type_of(),
+                advice: None,
             }),
         }
     }
@@ -818,6 +844,7 @@ impl Value {
             _ => Err(EvaluationError::TypeError {
                 expected: vec![Type::String],
                 actual: self.type_of(),
+                advice: None,
             }),
         }
     }
@@ -829,6 +856,7 @@ impl Value {
             _ => Err(EvaluationError::TypeError {
                 expected: vec![Type::Set],
                 actual: self.type_of(),
+                advice: None,
             }),
         }
     }
@@ -841,6 +869,7 @@ impl Value {
             _ => Err(EvaluationError::TypeError {
                 expected: vec![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
                 actual: self.type_of(),
+                advice: None,
             }),
         }
     }
@@ -1292,7 +1321,8 @@ pub mod test {
             )),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Bool],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // if principal then 3 else 8
@@ -1306,7 +1336,8 @@ pub mod test {
                 expected: vec![Type::Bool],
                 actual: Type::Entity {
                     ty: EntityUID::test_entity_type(),
-                }
+                },
+                advice: None,
             })
         );
         // if true then "hello" else 2
@@ -1473,6 +1504,7 @@ pub mod test {
                     ),
                 ],
                 actual: Type::Set,
+                advice: None,
             })
         );
         // indexing into empty set
@@ -1487,6 +1519,7 @@ pub mod test {
                     ),
                 ],
                 actual: Type::Set,
+                advice: None,
             })
         );
         // set("hello", 2, true, <entity foo>)
@@ -1516,7 +1549,8 @@ pub mod test {
                             .expect("should be a valid identifier")
                     ),
                 ],
-                actual: Type::Set
+                actual: Type::Set,
+                advice: None,
             })
         );
         // set(set(8, 2), set(13, 702), set(3))
@@ -1550,7 +1584,8 @@ pub mod test {
                             .expect("should be a valid identifier")
                     ),
                 ],
-                actual: Type::Set
+                actual: Type::Set,
+                advice: None,
             })
         );
         // set(set(8, 2), set(13, 702), set(3))["ham"]["eggs"]
@@ -1567,7 +1602,8 @@ pub mod test {
                             .expect("should be a valid identifier")
                     ),
                 ],
-                actual: Type::Set
+                actual: Type::Set,
+                advice: None,
             })
         );
     }
@@ -1810,7 +1846,8 @@ pub mod test {
                             .expect("should be a valid identifier")
                     ),
                 ],
-                actual: Type::Long
+                actual: Type::Long,
+                advice: None,
             })
         );
         // indexing into something that's not a record, "hello"["eggs"]
@@ -1824,7 +1861,8 @@ pub mod test {
                             .expect("should be a valid identifier")
                     ),
                 ],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // has_attr on something that's not a record, has(1010122.hello)
@@ -1838,7 +1876,8 @@ pub mod test {
                             .expect("should be a valid identifier")
                     ),
                 ],
-                actual: Type::Long
+                actual: Type::Long,
+                advice: None,
             })
         );
         // has_attr on something that's not a record, has("hello".eggs)
@@ -1852,7 +1891,8 @@ pub mod test {
                             .expect("should be a valid identifier")
                     ),
                 ],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
     }
@@ -1878,7 +1918,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::not(Expr::val(8))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Bool],
-                actual: Type::Long
+                actual: Type::Long,
+                advice: None,
             })
         );
         // not(action)
@@ -1888,7 +1929,8 @@ pub mod test {
                 expected: vec![Type::Bool],
                 actual: Type::Entity {
                     ty: EntityUID::test_entity_type(),
-                }
+                },
+                advice: None,
             })
         );
         // not(not(true))
@@ -1966,7 +2008,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::neg(Expr::val(false))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::Bool
+                actual: Type::Bool,
+                advice: None,
             })
         );
         // neg([1, 2, 3])
@@ -1978,7 +2021,8 @@ pub mod test {
             ]))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::Set
+                actual: Type::Set,
+                advice: None,
             })
         );
     }
@@ -2282,7 +2326,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(true))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::Bool
+                actual: Type::Bool,
+                advice: None,
             })
         );
         // false < false
@@ -2290,7 +2335,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(false))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::Bool
+                actual: Type::Bool,
+                advice: None,
             })
         );
         // true <= false
@@ -2298,7 +2344,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val(true), Expr::val(false))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::Bool
+                actual: Type::Bool,
+                advice: None,
             })
         );
         // false <= false
@@ -2306,7 +2353,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val(false), Expr::val(false))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::Bool
+                actual: Type::Bool,
+                advice: None,
             })
         );
         // false > true
@@ -2314,7 +2362,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::greater(Expr::val(false), Expr::val(true))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::Bool
+                actual: Type::Bool,
+                advice: None,
             })
         );
         // true > true
@@ -2322,7 +2371,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::greater(Expr::val(true), Expr::val(true))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::Bool
+                actual: Type::Bool,
+                advice: None,
             })
         );
         // true >= false
@@ -2330,7 +2380,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(true), Expr::val(false))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::Bool
+                actual: Type::Bool,
+                advice: None,
             })
         );
         // true >= true
@@ -2338,7 +2389,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(true), Expr::val(true))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::Bool
+                actual: Type::Bool,
+                advice: None,
             })
         );
         // bc < zzz
@@ -2346,7 +2398,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val("bc"), Expr::val("zzz"))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // banana < zzz
@@ -2354,7 +2407,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val("banana"), Expr::val("zzz"))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // "" < zzz
@@ -2362,7 +2416,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val(""), Expr::val("zzz"))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // a < 1
@@ -2370,7 +2425,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val("a"), Expr::val("1"))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // a < A
@@ -2378,7 +2434,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val("a"), Expr::val("A"))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // A < A
@@ -2386,7 +2443,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val("A"), Expr::val("A"))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // zebra < zebras
@@ -2394,7 +2452,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val("zebra"), Expr::val("zebras"))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // zebra <= zebras
@@ -2402,7 +2461,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebra"), Expr::val("zebras"))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // zebras <= zebras
@@ -2410,7 +2470,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebras"), Expr::val("zebras"))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // zebras <= Zebras
@@ -2418,7 +2479,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebras"), Expr::val("Zebras"))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // 123 > 78
@@ -2426,7 +2488,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::greater(Expr::val("123"), Expr::val("78"))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // <space>zebras >= zebras
@@ -2437,7 +2500,8 @@ pub mod test {
             )),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // "" >= ""
@@ -2445,7 +2509,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(""), Expr::val(""))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // "" >= _hi
@@ -2453,7 +2518,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(""), Expr::val("_hi"))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // 🦀 >= _hi
@@ -2461,7 +2527,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val("🦀"), Expr::val("_hi"))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // 2 < "4"
@@ -2469,7 +2536,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val(2), Expr::val("4"))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // "4" < 2
@@ -2477,7 +2545,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val("4"), Expr::val(2))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // false < 1
@@ -2485,7 +2554,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(1))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::Bool
+                actual: Type::Bool,
+                advice: None,
             })
         );
         // 1 < false
@@ -2493,7 +2563,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val(1), Expr::val(false))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::Bool
+                actual: Type::Bool,
+                advice: None,
             })
         );
         // [1, 2] < [47, 0]
@@ -2504,7 +2575,8 @@ pub mod test {
             )),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::Set
+                actual: Type::Set,
+                advice: None,
             })
         );
     }
@@ -2546,7 +2618,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::add(Expr::val(7), Expr::val("3"))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // 44 - 31
@@ -2575,7 +2648,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::sub(Expr::val("ham"), Expr::val("ha"))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // 5 * (-3)
@@ -2593,7 +2667,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::mul(Expr::val("5"), 0)),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Long],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // overflow
@@ -2755,7 +2830,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::contains(Expr::val(3), Expr::val(7))),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Set],
-                actual: Type::Long
+                actual: Type::Long,
+                advice: None,
             })
         );
         // { ham: "eggs" } contains "ham"
@@ -2767,6 +2843,7 @@ pub mod test {
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Set],
                 actual: Type::Record,
+                advice: None,
             })
         );
         // wrong argument order
@@ -2778,6 +2855,7 @@ pub mod test {
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Set],
                 actual: Type::Long,
+                advice: None,
             })
         );
     }
@@ -2976,6 +3054,7 @@ pub mod test {
                         .expect("should be a valid identifier")
                 )],
                 actual: Type::Bool,
+                advice: None,
             })
         );
         // A in [A, B] where A and B do not exist
@@ -3030,7 +3109,8 @@ pub mod test {
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // "spoon" in A (where has(A.spoon))
@@ -3044,7 +3124,8 @@ pub mod test {
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // 3 in [34, -2, 7]
@@ -3058,7 +3139,8 @@ pub mod test {
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )],
-                actual: Type::Long
+                actual: Type::Long,
+                advice: Some("`in` is for checking the entity hierarchy, use `.contains()` to test set membership".into()),
             })
         );
         // "foo" in { "foo": 2, "bar": true }
@@ -3075,7 +3157,8 @@ pub mod test {
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )],
-                actual: Type::String
+                actual: Type::String,
+                advice: Some("`in` is for checking the entity hierarchy, use `has` to test if a record has a key".into()),
             })
         );
         // A in { "foo": 2, "bar": true }
@@ -3095,7 +3178,8 @@ pub mod test {
                             .expect("should be a valid identifier")
                     )
                 ],
-                actual: Type::Record
+                actual: Type::Record,
+                advice: None,
             })
         );
     }
@@ -3302,7 +3386,8 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::like(Expr::val(354), vec![])),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::String],
-                actual: Type::Long
+                actual: Type::Long,
+                advice: None,
             })
         );
         // 'contains' is not allowed on strings
@@ -3313,7 +3398,8 @@ pub mod test {
             )),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Set],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // '\0' should not match '*'
@@ -3494,7 +3580,8 @@ pub mod test {
             )),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Set],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // {"2": "ham", "3": "eggs"} containsall {"2": "ham"} ?
@@ -3508,7 +3595,8 @@ pub mod test {
             )),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Set],
-                actual: Type::Record
+                actual: Type::Record,
+                advice: None,
             })
         );
         // test for [1, -22] contains_any of [1, -22, 34]
@@ -3611,7 +3699,8 @@ pub mod test {
             )),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Set],
-                actual: Type::String
+                actual: Type::String,
+                advice: None,
             })
         );
         // test for {"2": "ham"} contains_any of {"2": "ham", "3": "eggs"}
@@ -3625,7 +3714,8 @@ pub mod test {
             )),
             Err(EvaluationError::TypeError {
                 expected: vec![Type::Set],
-                actual: Type::Record
+                actual: Type::Record,
+                advice: None,
             })
         );
         Ok(())

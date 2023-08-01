@@ -53,12 +53,14 @@ pub enum EvaluationError {
     /// Tried to evaluate an operation on values with incorrect types for that
     /// operation
     // INVARIANT `expected` must be non-empty
-    #[error("{}", pretty_type_error(expected, actual))]
+    #[error("{}", pretty_type_error(expected, actual, advice))]
     TypeError {
         /// Expected (one of) these types
         expected: Vec<Type>,
         /// Encountered this type instead
         actual: Type,
+        /// Optional advice on how to fix the error
+        advice: Option<String>,
     },
 
     /// Wrong number of arguments provided to an extension function
@@ -107,8 +109,8 @@ pub enum EvaluationError {
 
 /// helper function for pretty-printing type errors
 /// INVARIANT: `expected` must have at least one value
-fn pretty_type_error(expected: &[Type], actual: &Type) -> String {
-    match expected.len() {
+fn pretty_type_error(expected: &[Type], actual: &Type, advice: &Option<String>) -> String {
+    let err_msg = match expected.len() {
         // PANIC SAFETY, `expected` is non-empty by invariant
         #[allow(clippy::unreachable)]
         0 => unreachable!("should expect at least one type"),
@@ -122,6 +124,11 @@ fn pretty_type_error(expected: &[Type], actual: &Type) -> String {
                 expected.iter().join(", ")
             )
         }
+    };
+    if let Some(help_msg) = advice {
+        format!("{}. {}", err_msg, help_msg)
+    } else {
+        err_msg
     }
 }
 

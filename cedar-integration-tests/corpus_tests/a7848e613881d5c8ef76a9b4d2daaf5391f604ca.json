@@ -13,7 +13,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got string. Maybe you forgot to apply the `ip` constructor?"
       ]
     },
     {
@@ -25,7 +25,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got string. Maybe you forgot to apply the `ip` constructor?"
       ]
     },
     {
@@ -37,7 +37,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got string. Maybe you forgot to apply the `ip` constructor?"
       ]
     },
     {
@@ -49,7 +49,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got string. Maybe you forgot to apply the `ip` constructor?"
       ]
     },
     {
@@ -61,7 +61,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got string. Maybe you forgot to apply the `ip` constructor?"
       ]
     },
     {
@@ -73,7 +73,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got string. Maybe you forgot to apply the `ip` constructor?"
       ]
     },
     {
@@ -85,7 +85,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got string. Maybe you forgot to apply the `ip` constructor?"
       ]
     },
     {
@@ -97,7 +97,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got string. Maybe you forgot to apply the `ip` constructor?"
       ]
     }
   ]

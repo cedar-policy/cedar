@@ -18,7 +18,7 @@
 
 use crate::ast::{
     CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue,
-    ExtensionValueWithArgs, Name, StaticallyTyped, Type, Value,
+    ExtensionValueWithArgs, Literal, Name, StaticallyTyped, Type, Value,
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
@@ -39,6 +39,10 @@ mod names {
         pub static ref IS_IN_RANGE : Name = Name::parse_unqualified_name("isInRange").expect("should be a valid identifier");
     }
 }
+
+/// Help message to display when a String was provided where an IP value was expected.
+/// This error is likely due to confusion between "127.0.0.1" and ip("127.0.0.1").
+const ADVICE_MSG: &str = "Maybe you forgot to apply the `ip` constructor?";
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 struct IPAddr {
@@ -192,13 +196,20 @@ fn ip_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
 fn is_ipv4(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let ipaddr_ev = match arg {
         Value::ExtensionValue(ev) if ev.typename() == IPAddr::typename() => ev,
+        // If applied to a string: maybe you meant to apply the ip constructor?
         _ => {
+            let advice = if matches!(&arg, Value::Lit(Literal::String(_))) {
+                Some(ADVICE_MSG.into())
+            } else {
+                None
+            };
             return Err(evaluator::EvaluationError::TypeError {
                 expected: vec![Type::Extension {
                     name: IPAddr::typename(),
                 }],
                 actual: arg.type_of(),
-            })
+                advice,
+            });
         }
     };
     // PANIC SAFETY Typechecking performed above
@@ -216,13 +227,20 @@ fn is_ipv4(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
 fn is_ipv6(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let ipaddr_ev = match arg {
         Value::ExtensionValue(ev) if ev.typename() == IPAddr::typename() => ev,
+        // If applied to a string: maybe you meant to apply the ip constructor?
         _ => {
+            let advice = if matches!(&arg, Value::Lit(Literal::String(_))) {
+                Some(ADVICE_MSG.into())
+            } else {
+                None
+            };
             return Err(evaluator::EvaluationError::TypeError {
                 expected: vec![Type::Extension {
                     name: IPAddr::typename(),
                 }],
                 actual: arg.type_of(),
-            })
+                advice,
+            });
         }
     };
     // PANIC SAFETY Typechecking performed above
@@ -241,12 +259,18 @@ fn is_loopback(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let ipaddr_ev = match arg {
         Value::ExtensionValue(ev) if ev.typename() == IPAddr::typename() => ev,
         _ => {
+            let advice = if matches!(&arg, Value::Lit(Literal::String(_))) {
+                Some(ADVICE_MSG.into())
+            } else {
+                None
+            };
             return Err(evaluator::EvaluationError::TypeError {
                 expected: vec![Type::Extension {
                     name: IPAddr::typename(),
                 }],
                 actual: arg.type_of(),
-            })
+                advice,
+            });
         }
     };
     // PANIC SAFETY Typechecking performed above
@@ -265,12 +289,18 @@ fn is_multicast(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let ipaddr_ev = match arg {
         Value::ExtensionValue(ev) if ev.typename() == IPAddr::typename() => ev,
         _ => {
+            let advice = if matches!(&arg, Value::Lit(Literal::String(_))) {
+                Some(ADVICE_MSG.into())
+            } else {
+                None
+            };
             return Err(evaluator::EvaluationError::TypeError {
                 expected: vec![Type::Extension {
                     name: IPAddr::typename(),
                 }],
                 actual: arg.type_of(),
-            })
+                advice,
+            });
         }
     };
     // PANIC SAFETY Typechecking performed above
@@ -290,23 +320,35 @@ fn is_in_range(child: Value, parent: Value) -> evaluator::Result<ExtensionOutput
     let child_ev = match child {
         Value::ExtensionValue(ev) if ev.typename() == IPAddr::typename() => ev,
         _ => {
+            let advice = if matches!(&child, Value::Lit(Literal::String(_))) {
+                Some(ADVICE_MSG.into())
+            } else {
+                None
+            };
             return Err(evaluator::EvaluationError::TypeError {
                 expected: vec![Type::Extension {
                     name: IPAddr::typename(),
                 }],
                 actual: child.type_of(),
-            })
+                advice,
+            });
         }
     };
     let parent_ev = match parent {
         Value::ExtensionValue(ev) if ev.typename() == IPAddr::typename() => ev,
         _ => {
+            let advice = if matches!(&parent, Value::Lit(Literal::String(_))) {
+                Some(ADVICE_MSG.into())
+            } else {
+                None
+            };
             return Err(evaluator::EvaluationError::TypeError {
                 expected: vec![Type::Extension {
                     name: IPAddr::typename(),
                 }],
                 actual: parent.type_of(),
-            })
+                advice,
+            });
         }
     };
     // PANIC SAFETY Typechecking performed above
@@ -562,6 +604,7 @@ mod tests {
             Err(evaluator::EvaluationError::TypeError {
                 expected: vec![Type::String],
                 actual: Type::Set,
+                advice: None,
             })
         );
 
@@ -583,6 +626,7 @@ mod tests {
                     name: Name::parse_unqualified_name("ipaddr")
                         .expect("should be a valid identifier")
                 },
+                advice: None,
             })
         );
         // test that isIpv4 on a String is an error
@@ -597,6 +641,7 @@ mod tests {
                         .expect("should be a valid identifier")
                 }],
                 actual: Type::String,
+                advice: Some(ADVICE_MSG.into()),
             })
         );
     }
