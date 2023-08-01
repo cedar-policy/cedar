@@ -135,7 +135,7 @@ pub enum ToASTError {
     #[error("expected an EntityUID with the type `Action`. Got: {0}. Action entities must have type `Action`")]
     InvalidActionType(crate::ast::EntityUID),
     /// Returned when a condition clause is empty
-    #[error("{}condition clause cannot be empty", match .0 { Some(ident) => format!("`{}`", ident), None => "".to_string() })]
+    #[error("{}condition clause cannot be empty", match .0 { Some(ident) => format!("`{}` ", ident), None => "".to_string() })]
     EmptyClause(Option<cst::Ident>),
     /// Returned when the internal invariant around annotation info has been violated
     #[error("internal invariant violated. No parse errors were reported but annotation information was missing")]
