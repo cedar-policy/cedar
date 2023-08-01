@@ -15,12 +15,14 @@
  */
 
 use cedar_policy_core::ast::{Pattern, PolicyID, Template};
+use thiserror::Error;
 
 use crate::expr_iterator::expr_text;
 use crate::expr_iterator::TextKind;
 use unicode_security::GeneralSecurityProfile;
 use unicode_security::MixedScript;
 
+/// Returned by the standalone `confusable_string_checker` function, which checks a policy set for potentially confusing/obfuscating text.
 #[derive(Debug, Clone)]
 pub struct ValidationWarning<'a> {
     location: &'a PolicyID,
@@ -45,32 +47,29 @@ impl std::fmt::Display for ValidationWarning<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Warning: {} in policy with ID {}",
+            "warning: {} in policy with id {}",
             self.kind, self.location
         )
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Error, Eq)]
 pub enum ValidationWarningKind {
+    /// A string contains mixed scripts. Different scripts can contain visually similar characters which may be confused for each other.
+    #[error("string \"{0}\" contains mixed scripts")]
     MixedScriptString(String),
+    /// A string contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
+    #[error("string \"{0}\" contains BIDI control characters")]
     BidiCharsInString(String),
+    /// An id contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
+    #[error("identifier `{0}` contains BIDI control characters")]
     BidiCharsInIdentifier(String),
+    /// An id contains mixed scripts. This can cause characters to be confused for each other.
+    #[error("identifier `{0}` contains mixed scripts")]
     MixedScriptIdentifier(String),
+    /// An id contains characters that fall outside of the General Security Profile for Identifiers. We recommend adhering to this if possible. See Unicode® Technical Standard #39 for more info.
+    #[error("identifier `{0}` contains characters that fall outside of the General Security Profile for Identifiers")]
     ConfusableIdentifier(String),
-}
-
-impl std::fmt::Display for ValidationWarningKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ValidationWarningKind::MixedScriptString(s) =>
-                write!(f, "The string \"{s}\" contains mixed scripts. This can cause characters to be confused for each other."),
-            ValidationWarningKind::MixedScriptIdentifier(s) => write!(f, "The identifier \"{s}\" contains mixed scripts. This can cause characters to be confused for each other."),
-            ValidationWarningKind::BidiCharsInString(s) => write!(f, "The string \"{s}\" contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow."),
-            ValidationWarningKind::BidiCharsInIdentifier(s) => write!(f, "The identifier \"{s}\" contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow."),
-            ValidationWarningKind::ConfusableIdentifier(s) => write!(f, "The identifier \"{s}\" contains characters that fall outside of the General Security Profile for Identifiers. We recommend adhering to this if possible. See Unicode® Technical Standard #39 for more info."),
-        }
-    }
 }
 
 /// Perform identifier and string safety checks.
@@ -188,7 +187,10 @@ mod test {
             kind,
             ValidationWarningKind::MixedScriptIdentifier(r#"say_һello"#.to_string())
         );
-        assert_eq!(format!("{warning}"), "Warning: The identifier \"say_һello\" contains mixed scripts. This can cause characters to be confused for each other. in policy with ID test");
+        assert_eq!(
+            format!("{warning}"),
+            "warning: identifier `say_һello` contains mixed scripts in policy with id test"
+        );
         assert_eq!(location, &PolicyID::from_string("test"));
         assert_eq!(warning.clone().to_kind_and_location(), (location, kind));
     }
@@ -228,7 +230,10 @@ mod test {
             kind,
             ValidationWarningKind::MixedScriptString(r#"*_һello"#.to_string())
         );
-        assert_eq!(format!("{warning}"), "Warning: The string \"*_һello\" contains mixed scripts. This can cause characters to be confused for each other. in policy with ID test");
+        assert_eq!(
+            format!("{warning}"),
+            "warning: string \"*_һello\" contains mixed scripts in policy with id test"
+        );
         assert_eq!(location, &PolicyID::from_string("test"));
         assert_eq!(warning.clone().to_kind_and_location(), (location, kind));
     }
@@ -254,7 +259,7 @@ mod test {
             kind,
             ValidationWarningKind::BidiCharsInString(r#"user‮ ⁦&& principal.is_admin⁩ ⁦"#.to_string())
         );
-        assert_eq!(format!("{warning}"), "Warning: The string \"user‮ ⁦&& principal.is_admin⁩ ⁦\" contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow. in policy with ID test");
+        assert_eq!(format!("{warning}"), "warning: string \"user‮ ⁦&& principal.is_admin⁩ ⁦\" contains BIDI control characters in policy with id test");
         assert_eq!(location, &PolicyID::from_string("test"));
         assert_eq!(warning.clone().to_kind_and_location(), (location, kind));
     }

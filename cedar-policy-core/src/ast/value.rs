@@ -81,7 +81,7 @@ impl TryFrom<Expr> for Value {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 /// Intermediate results of partial evaluation
 pub enum PartialValue {
     /// Fully evaluated values

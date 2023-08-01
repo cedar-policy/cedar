@@ -125,22 +125,22 @@ impl<'a> SourceLocation<'a> {
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[non_exhaustive]
 pub enum ValidationErrorKind {
-    /// An entity type was seen in a policy but was not found in the schema.
+    /// A policy contains an entity type that is not declared in the schema.
     #[error(
-        "Unrecognized entity type {}{}",
+        "unrecognized entity type `{}`{}",
         .0.actual_entity_type,
         match &.0.suggested_entity_type {
-            Some(s) => format!(", did you mean {}?", s),
+            Some(s) => format!(", did you mean `{}`?", s),
             None => "".to_string()
         }
     )]
     UnrecognizedEntityType(UnrecognizedEntityType),
-    /// An action id was seen in a policy but was not found in the schema.
+    /// A policy contains an action that is not declared in the schema.
     #[error(
-        "Unrecognized action id {}{}",
+        "unrecognized action `{}`{}",
         .0.actual_action_id,
         match &.0.suggested_action_id {
-            Some(s) => format!(", did you mean {}?", s),
+            Some(s) => format!(", did you mean `{}`?", s),
             None => "".to_string()
         }
     )]
@@ -149,18 +149,18 @@ pub enum ValidationErrorKind {
     /// applied to a principal and resources that both satisfy their respective
     /// head conditions.
     #[error(
-        "Unable to find an applicable action given the policy head constraints{}{}",
+        "unable to find an applicable action given the policy head constraints{}{}",
         if .0.would_in_fix_principal { ". Note: Try replacing `==` with `in` in the principal clause" } else { "" },
         if .0.would_in_fix_resource { ". Note: Try replacing `==` with `in` in the resource clause" } else { "" }
     )]
     InvalidActionApplication(InvalidActionApplication),
-    /// A type error was found by the type checker.
+    /// The type checker found an error.
     #[error(transparent)]
     TypeError(TypeErrorKind),
     /// An unspecified entity was used in a policy. This should be impossible,
-    /// assuming that the policy was constructed using the parser.
+    /// assuming that the policy was constructed by the parser.
     #[error(
-        "Unspecified entity with eid {}. Unspecified entities cannot be used in policies",
+        "unspecified entity with eid `{}`. Unspecified entities cannot be used in policies",
         .0.entity_id,
     )]
     UnspecifiedEntity(UnspecifiedEntity),
