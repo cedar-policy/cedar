@@ -253,7 +253,7 @@ pub enum ToASTError {
     #[error("Invalid Method Call")]
     InvalidMethodCall,
     /// Returned when a function has wrong arity
-    #[error("call to {0} requires exactly one argument, but got {0} arguments")]
+    #[error("call to `{0}` requires exactly one argument, but got {1} arguments")]
     WrongArity(&'static str, usize),
     /// Returned when a string contains invalid escapes
     #[error("{0}")]
