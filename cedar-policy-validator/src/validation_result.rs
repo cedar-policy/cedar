@@ -135,9 +135,9 @@ pub enum ValidationErrorKind {
         }
     )]
     UnrecognizedEntityType(UnrecognizedEntityType),
-    /// A policy contains an action id that is not declared in the schema.
+    /// A policy contains an action that is not declared in the schema.
     #[error(
-        "unrecognized action id `{}`{}",
+        "unrecognized action `{}`{}",
         .0.actual_action_id,
         match &.0.suggested_action_id {
             Some(s) => format!(", did you mean `{}`?", s),
