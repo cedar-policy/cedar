@@ -47,15 +47,15 @@ impl std::fmt::Display for ValidationWarning<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "warning: {} in policy with ID {}",
+            "warning: {} in policy with id {}",
             self.kind, self.location
         )
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Error)]
+#[derive(Debug, Clone, PartialEq, Error, Eq)]
 pub enum ValidationWarningKind {
-    /// A string contains mixed scripts. This can cause characters to be confused for each other.
+    /// A string contains mixed scripts. Different scripts can contain visually similar characters which may be confused for each other.
     #[error("string \"{0}\" contains mixed scripts")]
     MixedScriptString(String),
     /// A string contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
