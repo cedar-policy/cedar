@@ -118,7 +118,7 @@ impl TryFrom<cst::Policy> for Policy {
                 .map(|node| {
                     let (cond, _) = node.into_inner();
                     let cond = cond.ok_or_else(|| {
-                        ParseErrors(vec![ParseError::ToAST(ToASTError::EmptyCond)])
+                        ParseErrors(vec![ParseError::ToAST(ToASTError::EmptyClause(None))])
                     })?;
                     cond.try_into()
                 })
@@ -156,11 +156,17 @@ impl TryFrom<cst::Cond> for Clause {
     type Error = ParseErrors;
     fn try_from(cond: cst::Cond) -> Result<Clause, ParseErrors> {
         let mut errs = ParseErrors::new();
+        let is_when = cond.cond.to_cond_is_when(&mut errs);
         let expr: Result<Expr, ParseErrors> = match cond.expr {
-            None => Err(ParseError::ToAST(ToASTError::EmptyCond).into()),
+            None => {
+                let ident = is_when.map(|is_when| {
+                    cst::Ident::Ident(if is_when { "when" } else { "unless" }.into())
+                });
+                Err(ParseError::ToAST(ToASTError::EmptyClause(ident)).into())
+            }
             Some(ASTNode { node: Some(e), .. }) => e.try_into(),
             Some(ASTNode { node: None, .. }) => {
-                Err(ParseError::ToAST(ToASTError::EmptyCond).into())
+                Err(ParseError::ToAST(ToASTError::MissingNodeData).into())
             }
         };
         let expr = match expr {
@@ -170,8 +176,6 @@ impl TryFrom<cst::Cond> for Clause {
                 None
             }
         };
-
-        let is_when = cond.cond.to_cond_is_when(&mut errs);
 
         if let (Some(expr), true) = (expr, errs.is_empty()) {
             Ok(match is_when {

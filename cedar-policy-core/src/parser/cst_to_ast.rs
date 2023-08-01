@@ -610,13 +610,13 @@ impl ASTNode<Option<cst::Cond>> {
         let maybe_expr = match &cond.expr {
             Some(expr) => expr.to_expr(errs),
             None => {
-                let ident = if maybe_is_when {
+                let ident = Some(if maybe_is_when {
                     cst::Ident::Ident("when".into())
                 } else {
                     cst::Ident::Ident("unless".into())
-                };
+                });
                 errs.push(err::ParseError::ToAST(match cond.cond.as_ref().node {
-                    Some(ident) => ToASTError::EmptyClause(ident.clone()),
+                    Some(ident) => ToASTError::EmptyClause(Some(ident.clone())),
                     None => ToASTError::EmptyClause(ident),
                 }));
                 None
