@@ -1172,7 +1172,7 @@ impl TryFrom<cst::Member> for Expr {
                         item = match item {
                             Either::Left(name) => {
                                 return Err(
-                                    ParseError::ToAST(ToASTError::InvalidAccess(name)).into()
+                                    ParseError::ToAST(ToASTError::InvalidAccess(name, i)).into()
                                 )
                             }
                             Either::Right(expr) => Either::Right(Expr::get_attr(expr, i)),
@@ -1250,7 +1250,7 @@ impl TryFrom<cst::Member> for Expr {
                         .map_err(|_| ParseError::ToAST(ToASTError::NonStringIndex))?;
                     item = match item {
                         Either::Left(name) => {
-                            return Err(ParseError::ToAST(ToASTError::InvalidAccess(name)).into())
+                            return Err(ParseError::ToAST(ToASTError::InvalidIndex(name, s)).into())
                         }
                         Either::Right(expr) => Either::Right(Expr::get_attr(expr, s)),
                     };

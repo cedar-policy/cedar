@@ -24,6 +24,7 @@ use either::Either;
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
 use miette::{Diagnostic, LabeledSpan, Severity, SourceCode};
+use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::ast::RestrictedExprError;
@@ -212,8 +213,11 @@ pub enum ToASTError {
     #[error("function calls in cedar must be of the form: `<name>(arg1, arg2, ...)`")]
     ExpressionCall,
     /// Returned when a policy attempts to access the fields of a value with no fields
-    #[error("`{0}` has no fields or methods")]
-    InvalidAccess(crate::ast::Name),
+    #[error("incorrect member access `{0}.{1}`, `{0}` has no fields or methods")]
+    InvalidAccess(crate::ast::Name, SmolStr),
+    /// Returned when a policy attempts to index on a fields of a value with no fields
+    #[error("incorrect indexing expression `{0}[{1}]`, `{0}` has no fields")]
+    InvalidIndex(crate::ast::Name, SmolStr),
     /// Returned when a string-literal is expected but not found
     #[error("`{0}` is not a string literal")]
     NonStringLiteral(cst::Primary),

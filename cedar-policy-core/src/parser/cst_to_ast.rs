@@ -1430,8 +1430,15 @@ impl ASTNode<Option<cst::Member>> {
                     tail = rest;
                 }
                 // access on arbitrary name - error
-                (Some(Name(n)), [Some(Field(_)) | Some(Index(_)), rest @ ..]) => {
-                    errs.push(ToASTError::InvalidAccess(n.clone()).into());
+                (Some(Name(n)), [Some(Field(f)), rest @ ..]) => {
+                    errs.push(
+                        ToASTError::InvalidAccess(n.clone(), f.clone().to_string().into()).into(),
+                    );
+                    head = None;
+                    tail = rest;
+                }
+                (Some(Name(n)), [Some(Index(i)), rest @ ..]) => {
+                    errs.push(ToASTError::InvalidIndex(n.clone(), i.clone()).into());
                     head = None;
                     tail = rest;
                 }
