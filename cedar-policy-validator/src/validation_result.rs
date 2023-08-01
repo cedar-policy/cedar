@@ -154,7 +154,7 @@ pub enum ValidationErrorKind {
         if .0.would_in_fix_resource { ". Note: Try replacing `==` with `in` in the resource clause" } else { "" }
     )]
     InvalidActionApplication(InvalidActionApplication),
-    /// The type checker found a type error.
+    /// The type checker found an error.
     #[error(transparent)]
     TypeError(TypeErrorKind),
     /// An unspecified entity was used in a policy. This should be impossible,
