@@ -1273,9 +1273,9 @@ fn extract_single_argument(
     let first = iter.next();
     let second = iter.peek();
     match (first, second) {
-        (None, _) => Err(ParseError::ToAST(ToASTError::WrongArity(fn_name, 0)).into()),
+        (None, _) => Err(ParseError::ToAST(ToASTError::wrong_arity(fn_name, 1, 0)).into()),
         (Some(_), Some(_)) => {
-            Err(ParseError::ToAST(ToASTError::WrongArity(fn_name, iter.len())).into())
+            Err(ParseError::ToAST(ToASTError::wrong_arity(fn_name, 1, iter.len())).into())
         }
         (Some(first), None) => Ok(first),
     }

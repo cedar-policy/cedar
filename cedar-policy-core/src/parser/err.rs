@@ -253,8 +253,15 @@ pub enum ToASTError {
     #[error("Invalid Method Call")]
     InvalidMethodCall,
     /// Returned when a function has wrong arity
-    #[error("call to `{0}` requires exactly one argument, but got {1} arguments")]
-    WrongArity(&'static str, usize),
+    #[error("call to `{name}` requires exactly {expected} argument{}, but got {got} arguments", if .expected == &1 { "" } else { "s" })]
+    WrongArity {
+        /// Name of the function being called
+        name: &'static str,
+        /// The expected number of arguments
+        expected: usize,
+        /// The number of arguments present in source
+        got: usize,
+    },
     /// Returned when a string contains invalid escapes
     #[error("{0}")]
     Unescape(#[from] UnescapeError),
@@ -269,6 +276,15 @@ impl ToASTError {
         Self::WrongNode {
             expected,
             got: got.into(),
+        }
+    }
+
+    /// Constructor for the [`ToASTError::WrongArity`] error
+    pub fn wrong_arity(name: &'static str, expected: usize, got: usize) -> Self {
+        Self::WrongArity {
+            name,
+            expected,
+            got,
         }
     }
 }
