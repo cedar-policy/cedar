@@ -20,7 +20,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 /// Errors that can occur during evaluation
-#[derive(Debug, PartialEq, Clone, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Error)]
 pub enum EvaluationError {
     /// Tried to lookup this entity UID, but it didn't exist in the provided
     /// entities
@@ -132,7 +132,7 @@ fn pretty_type_error(expected: &[Type], actual: &Type, advice: &Option<String>) 
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Error)]
 pub enum IntegerOverflowError {
     /// Overflow during a binary operation
     #[error("integer overflow while attempting to {} the values `{arg1}` and `{arg2}`", match .op { BinaryOp::Add => "add", BinaryOp::Sub => "subtract", _ => "perform an operation on" })]

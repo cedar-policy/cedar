@@ -1,5 +1,5 @@
 {
-    "policies": "tests/ip/policies_1.cedar",
+    "policies": "tests/ip/policies_3.cedar",
     "entities": "sample-data/sandbox_a/entities.json",
     "schema": "sample-data/sandbox_a/schema.cedarschema.json",
     "should_validate": true,
