@@ -189,7 +189,7 @@ mod test {
         );
         assert_eq!(
             format!("{warning}"),
-            "warning: identifier `say_һello` contains mixed scripts in policy with ID test"
+            "warning: identifier `say_һello` contains mixed scripts in policy with id test"
         );
         assert_eq!(location, &PolicyID::from_string("test"));
         assert_eq!(warning.clone().to_kind_and_location(), (location, kind));
@@ -232,7 +232,7 @@ mod test {
         );
         assert_eq!(
             format!("{warning}"),
-            "warning: string \"*_һello\" contains mixed scripts in policy with ID test"
+            "warning: string \"*_һello\" contains mixed scripts in policy with id test"
         );
         assert_eq!(location, &PolicyID::from_string("test"));
         assert_eq!(warning.clone().to_kind_and_location(), (location, kind));
@@ -259,7 +259,7 @@ mod test {
             kind,
             ValidationWarningKind::BidiCharsInString(r#"user‮ ⁦&& principal.is_admin⁩ ⁦"#.to_string())
         );
-        assert_eq!(format!("{warning}"), "warning: string \"user‮ ⁦&& principal.is_admin⁩ ⁦\" contains BIDI control characters in policy with ID test");
+        assert_eq!(format!("{warning}"), "warning: string \"user‮ ⁦&& principal.is_admin⁩ ⁦\" contains BIDI control characters in policy with id test");
         assert_eq!(location, &PolicyID::from_string("test"));
         assert_eq!(warning.clone().to_kind_and_location(), (location, kind));
     }
