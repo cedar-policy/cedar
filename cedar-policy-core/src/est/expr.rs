@@ -453,7 +453,7 @@ impl Expr {
         })
     }
 
-    /// Consume the `Expr`, producing a string literal if it was a string literal, otherwise `None`
+    /// Consume the `Expr`, producing a string literal if it was a string literal, otherwise returns the literal in the `Err` variant.
     pub fn into_string_literal(self) -> Result<SmolStr, Self> {
         match self {
             Expr::ExprNoExt(ExprNoExt::Value(JSONValue::String(s))) => Ok(s),
