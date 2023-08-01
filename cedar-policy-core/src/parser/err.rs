@@ -289,20 +289,27 @@ impl ToASTError {
     }
 }
 
+// Either::Left(r) => write!(f, "expected {r}, got {}", self.got),
+// Either::Right((r1, r2)) => write!(f, "expected {r1} or {r2}, got: {}", self.got),
+
 /// Error surrounding EntityUIds/Template slots in policy scopes
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RefCreationError {
-    /// What kinds of references the given scope clause required.
-    /// Some scope clauses require exactly one kind of reference, some require one of two
-    expected: Either<Ref, (Ref, Ref)>,
-    /// The kind of reference that was present in the policy
-    got: Ref,
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+pub enum RefCreationError {
+    /// Error surrounding EntityUIds/Template slots in policy scopes
+    #[error("expected {}, got: {got}", match .expected { Either::Left(r) => r.to_string(), Either::Right((r1, r2)) => format!("{r1} or {r2}") })]
+    RefCreation {
+        /// What kinds of references the given scope clause required.
+        /// Some scope clauses require exactly one kind of reference, some require one of two
+        expected: Either<Ref, (Ref, Ref)>,
+        /// The kind of reference that was present in the policy
+        got: Ref,
+    },
 }
 
 impl RefCreationError {
     /// Constructor for when a policy scope requires exactly one kind of reference
     pub fn one_expected(expected: Ref, got: Ref) -> Self {
-        Self {
+        Self::RefCreation {
             expected: Either::Left(expected),
             got,
         }
@@ -311,7 +318,7 @@ impl RefCreationError {
     /// Constructor for when a policy scope requires one of two kinds of references
     pub fn two_expected(r1: Ref, r2: Ref, got: Ref) -> Self {
         let expected = Either::Right((r1, r2));
-        Self { expected, got }
+        Self::RefCreation { expected, got }
     }
 }
 
@@ -320,17 +327,6 @@ impl From<RefCreationError> for ParseError {
         ParseError::ToAST(value.into())
     }
 }
-
-impl std::fmt::Display for RefCreationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.expected {
-            Either::Left(r) => write!(f, "expected {r}, got {}", self.got),
-            Either::Right((r1, r2)) => write!(f, "expected {r1} or {r2}, got: {}", self.got),
-        }
-    }
-}
-
-impl std::error::Error for RefCreationError {}
 
 /// The 3 kinds of literals that can be in a policy scope
 #[derive(Debug, Clone, PartialEq, Eq)]
