@@ -76,8 +76,8 @@ pub enum ParseLiteralError {
 #[derive(Debug, Diagnostic, Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ToASTError {
-    /// Returned when we attempt to parse a template with a conflicting ID
-    #[error("a template with this ID already exists in the policy set: {0}")]
+    /// Returned when we attempt to parse a template with a conflicting id
+    #[error("a template with this id already exists in the policy set: {0}")]
     DuplicateTemplateID(PolicyID),
     /// Returned when we attempt to parse a policy with a conflicting ID
     #[error("a policy with this ID already exists in the policy set: {0}")]
