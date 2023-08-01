@@ -240,7 +240,7 @@ pub enum ToASTError {
         /// The normalized form of the string
         normalized_src: String,
     },
-    /// Returned when an EST node is empty
+    /// Returned when a CST node is empty
     #[error("data should not be empty")]
     MissingNodeData,
     /// Returned when the right hand side of a `has` expression is neither a field name or a string literal
