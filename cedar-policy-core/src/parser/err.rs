@@ -180,10 +180,10 @@ pub enum ToASTError {
     AmbiguousOperators,
     /// Returned when a policy uses the division operator (`/`), which is not supported
     #[error("division is not supported")]
-    Division,
+    UnsupportedDivision,
     /// Returned when a policy uses the remainder/modulo operator (`%`), which is not supported
     #[error("remainder/modulo is not supported")]
-    Modulo,
+    UnsupportedModulo,
     /// Returned when a policy attempts to multiply by a non-constant integer
     #[error("multiplication must be by an integer literal")]
     NonConstantMultiplication,

@@ -970,8 +970,12 @@ impl TryFrom<cst::Mult> for Expr {
                 cst::MultOp::Times => {
                     expr = Expr::mul(expr, rhs);
                 }
-                cst::MultOp::Divide => return Err(ParseError::ToAST(ToASTError::Division).into()),
-                cst::MultOp::Mod => return Err(ParseError::ToAST(ToASTError::Modulo).into()),
+                cst::MultOp::Divide => {
+                    return Err(ParseError::ToAST(ToASTError::UnsupportedDivision).into())
+                }
+                cst::MultOp::Mod => {
+                    return Err(ParseError::ToAST(ToASTError::UnsupportedModulo).into())
+                }
             }
         }
         Ok(expr)

@@ -1125,11 +1125,11 @@ impl ASTNode<Option<cst::Mult>> {
                 match op {
                     cst::MultOp::Times => {}
                     cst::MultOp::Divide => {
-                        errs.push(ToASTError::Division.into());
+                        errs.push(ToASTError::UnsupportedDivision.into());
                         return None;
                     }
                     cst::MultOp::Mod => {
-                        errs.push(ToASTError::Modulo.into());
+                        errs.push(ToASTError::UnsupportedModulo.into());
                         return None;
                     }
                 }
