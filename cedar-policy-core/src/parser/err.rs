@@ -126,7 +126,9 @@ pub enum ToASTError {
     InvalidConstraintOperator(cst::RelOp),
     /// Returned when the right hand side of `==` in a policy scope clause is not a single Entity UID or template slot.
     /// This is valid in Cedar conditions, but not in the Scope
-    #[error("right hand side of equality in policy scope must be a single Entity UID or template slot")]
+    #[error(
+        "right hand side of equality in policy scope must be a single Entity UID or template slot"
+    )]
     InvalidScopeEqualityRHS,
     /// Returned when an Entity UID used as an action does not have the type `Action`
     #[error("expected an EntityUID with the type `Action`. Got: {0}. Action entities must have type `Action`")]
@@ -140,9 +142,6 @@ pub enum ToASTError {
     /// Returned when the internal invariant around annotation info has been violated
     #[error("internal invariant violated. No parse errors were reported but annotation information was missing")]
     AnnotationInvariantViolation,
-    /// Returned for an invalid use of `{}`
-    #[error("invalid use of `{{}}`")]
-    InvalidBraces,
     /// Returned for a non-parse-able string literal
     #[error("invalid string literal: `\"{0}\"`")]
     InvalidString(String),
@@ -197,7 +196,7 @@ pub enum ToASTError {
     #[error(
         "too many occurrences of `{0}`. Cannot chain more the 4 applications of a unary operator"
     )]
-    UnaryOppLimit(crate::ast::UnaryOp),
+    UnaryOpLimit(crate::ast::UnaryOp),
     /// Returned when a variable is called as a function, which is not allowed.
     /// Functions are not first class values in Cedar
     #[error("variables cannot be called as functions. `{0}(...)` is not a valid function call")]
@@ -208,9 +207,9 @@ pub enum ToASTError {
     /// Returned when a policy attempts to call a function that does not exist
     #[error("`{0}` is not a function")]
     NotAFunction(crate::ast::Name),
-    /// Returned when a policy attempts to lookup an arbitrary entity
-    #[error("arbitrary entity lookups are not supported")]
-    ArbitraryEntityLookup,
+    /// Returned when a policy attempts to write an entity literal
+    #[error("entity literals are not supported")]
+    UnsupportedEntityLiterals,
     /// Returned when an expression is the target of a function call.
     /// Functions are not first class values in Cedar
     #[error("function calls in cedar must be of the form: `<name>(arg1, arg2, ...)`")]

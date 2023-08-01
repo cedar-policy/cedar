@@ -1076,7 +1076,7 @@ fn interpret_primary(p: cst::Primary) -> Result<Either<ast::Name, Expr>, ParseEr
                 }
             }
             Some(cst::Ref::Ref { .. }) => {
-                Err(ParseError::ToAST(ToASTError::ArbitraryEntityLookup).into())
+                Err(ParseError::ToAST(ToASTError::UnsupportedEntityLiterals).into())
             }
             None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
         },

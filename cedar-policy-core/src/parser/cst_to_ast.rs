@@ -610,9 +610,14 @@ impl ASTNode<Option<cst::Cond>> {
         let maybe_expr = match &cond.expr {
             Some(expr) => expr.to_expr(errs),
             None => {
+                let ident = if maybe_is_when {
+                    cst::Ident::Ident("when".into())
+                } else {
+                    cst::Ident::Ident("unless".into())
+                };
                 errs.push(err::ParseError::ToAST(match cond.cond.as_ref().node {
                     Some(ident) => ToASTError::EmptyClause(ident.clone()),
-                    None => ToASTError::InvalidBraces, // neither a keyword like `when`, nor a body
+                    None => ToASTError::EmptyClause(ident),
                 }));
                 None
             }
@@ -1259,11 +1264,11 @@ impl ASTNode<Option<cst::Unary>> {
                     .map(ExprOrSpecial::Expr)
             }
             Some(cst::NegOp::OverBang) => {
-                errs.push(ToASTError::UnaryOppLimit(ast::UnaryOp::Not).into());
+                errs.push(ToASTError::UnaryOpLimit(ast::UnaryOp::Not).into());
                 None
             }
             Some(cst::NegOp::OverDash) => {
-                errs.push(ToASTError::UnaryOppLimit(ast::UnaryOp::Neg).into());
+                errs.push(ToASTError::UnaryOpLimit(ast::UnaryOp::Neg).into());
                 None
             }
         }
@@ -1778,7 +1783,7 @@ impl ASTNode<Option<cst::Ref>> {
                 }
             }
             cst::Ref::Ref { .. } => {
-                errs.push(ToASTError::ArbitraryEntityLookup.into());
+                errs.push(ToASTError::UnsupportedEntityLiterals.into());
                 None
             }
         }

@@ -384,9 +384,29 @@ mod test {
 
 #[cfg(test)]
 mod eval_tests {
+    use super::err::{ParseErrors, ToASTError};
     use super::*;
     use crate::evaluator as eval;
     use crate::extensions::Extensions;
+    use crate::parser::err::ParseError;
+
+    #[test]
+    fn entity_literals1() {
+        let src = r#"Test::{ test : "Test" }"#;
+        let ParseErrors(errs) = parse_euid(src).err().unwrap();
+        assert_eq!(errs.len(), 1);
+        let expected = ParseError::ToAST(ToASTError::UnsupportedEntityLiterals);
+        assert!(errs.contains(&expected));
+    }
+
+    #[test]
+    fn entity_literals2() {
+        let src = r#"permit(principal == Test::{ test : "Test" }, action, resource);"#;
+        let ParseErrors(errs) = parse_policy(None, src).err().unwrap();
+        assert_eq!(errs.len(), 1);
+        let expected = ParseError::ToAST(ToASTError::UnsupportedEntityLiterals);
+        assert!(errs.contains(&expected));
+    }
 
     #[test]
     fn interpret_exprs() {
