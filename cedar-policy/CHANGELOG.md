@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.4.1
+- Support `Request`s with `Unknown` fields for partial evaluation.
+
 ## 2.4.0
 
 ### Added
