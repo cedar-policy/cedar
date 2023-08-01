@@ -89,7 +89,7 @@ pub enum ToASTError {
     #[error("template slots are currently unsupported in policy condition clauses")]
     SlotsInConditionClause,
     /// Returned when a policy is missing one of the 3 required scope clauses. (`principal`, `action`, and `resource`)
-    #[error("this policy requires the {0} variable in the scope")]
+    #[error("this policy is missing the {0} variable in the scope")]
     MissingScopeConstraint(Var),
     /// Returned when a policy has an extra scope clause. This is not valid syntax
     #[error("this policy has extra variable in the scope A policy must have exactly `principal`, `action`, and `resource`")]
