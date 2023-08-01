@@ -1035,10 +1035,10 @@ impl TryFrom<cst::Unary> for Expr {
                 }
             }
             Some(cst::NegOp::OverBang) => {
-                Err(ParseError::ToAST(ToASTError::UnaryOppLimit(ast::UnaryOp::Not)).into())
+                Err(ParseError::ToAST(ToASTError::UnaryOpLimit(ast::UnaryOp::Not)).into())
             }
             Some(cst::NegOp::OverDash) => {
-                Err(ParseError::ToAST(ToASTError::UnaryOppLimit(ast::UnaryOp::Neg)).into())
+                Err(ParseError::ToAST(ToASTError::UnaryOpLimit(ast::UnaryOp::Neg)).into())
             }
             None => Ok(inner),
         }
