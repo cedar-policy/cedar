@@ -246,7 +246,7 @@ pub enum ToASTError {
     /// Returned when the right hand side of a `has` expression is neither a field name or a string literal
     #[error("the right-hand-side of a `has` expression must be a field name or a string literal")]
     HasNonLiteralRHS,
-    /// Returned when an EST expression is invalid
+    /// Returned when a CST expression is invalid
     #[error("{0} is not a valid expression")]
     InvalidExpression(cst::Name),
     /// Returned when a method call in an EST is invalid
