@@ -110,7 +110,7 @@ pub enum ToASTError {
     #[error("expected a variable that's valid in the policy scope. Must be one of `principal`, `action`, or `resource`. Found: {0}")]
     InvalidScopeConstraintVariable(cst::Ident),
     /// Returned when a policy uses a variable in the scope beyond `principal`, `action`, or `resource`
-    #[error("expected a variable that's valid in the policy scope. Must be one of `principal`, `action` or `resource`")]
+    #[error("expected a variable that's valid in the policy scope. Must be one of `principal`, `action`, or `resource`")]
     InvalidScopeConstraintVariableNoIdent,
     /// Returned when a policy uses an arbitrary variable name. Cedar supports exactly four variables (`principal`, `action`, `resource`, and `context`)
     #[error("`{0}` is not a valid variable. Valid variables are: `principal`, `action`, `resource`, or `context`")]
