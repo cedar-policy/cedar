@@ -66,7 +66,7 @@ pub enum ParseError {
 /// Errors in the top-level parse literal entrypoint
 #[derive(Debug, Clone, PartialEq, Error, Eq)]
 pub enum ParseLiteralError {
-    /// The top-level parser endpoint for parsing a literal encountered a non-literal
+    /// The top-level parser endpoint for parsing a literal encountered a non-literal.
     /// Since this can be any possible other expression, we just return it as a string.
     #[error("the source `{0}` is not a literal")]
     ParseLiteral(String),
