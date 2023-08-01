@@ -91,6 +91,15 @@ impl Entity {
     ///
     /// Attribute values are specified here as "restricted expressions".
     /// See docs on `RestrictedExpression`
+    /// ```
+    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// use std::collections::{HashMap, HashSet};
+    /// use std::str::FromStr;
+    /// let eid = EntityId::from_str("alice").unwrap();
+    /// let type_name = EntityTypeName::from_str("User").unwrap();
+    /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
+    /// let entity = Entity::new(euid, HashMap::new(), HashSet::new());
+    ///```
     pub fn new(
         uid: EntityUid,
         attrs: HashMap<String, RestrictedExpression>,
@@ -150,6 +159,10 @@ pub use entities::EntitiesError;
 
 impl Entities {
     /// Create a fresh `Entities` with no entities
+    /// ```
+    /// use cedar_policy::Entities;
+    /// let entities = Entities::empty();
+    /// ```
     pub fn empty() -> Self {
         Self(entities::Entities::new())
     }
