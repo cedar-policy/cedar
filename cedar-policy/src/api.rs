@@ -185,7 +185,7 @@ impl Entities {
         self.0.iter().map(Entity::ref_cast)
     }
 
-    /// Create an `Entities` object with the given entities
+    /// Create an `Entities` object with the given entities.
     /// It will error if the entities cannot be read or if the entities hierarchy is cyclic
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
@@ -440,7 +440,7 @@ pub struct Response {
     diagnostics: Diagnostics,
 }
 
-/// Authorization response returned from `is_authorized_partial`
+/// Authorization response returned from `is_authorized_partial`.
 /// It can either be a full concrete response, or a residual response.
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, PartialEq, Clone)]
@@ -1271,7 +1271,7 @@ impl FromStr for PolicySet {
 
     /// Create a policy set from multiple statements.
     ///
-    /// Policy ids will default to "policy*" with numbers from 0
+    /// Policy ids will default to "policy*" with numbers from 0.
     /// If you load more policies, do not use the default id, or there will be conflicts.
     ///
     /// See [`Policy`] for more.
@@ -1674,7 +1674,7 @@ pub enum TemplatePrincipalConstraint {
     /// Must be In the given EntityUid.
     /// If [`None`], then it is a template slot.
     In(Option<EntityUid>),
-    /// Must be equal to the given EntityUid
+    /// Must be equal to the given EntityUid.
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
 }
@@ -1719,7 +1719,7 @@ pub enum TemplateResourceConstraint {
     /// Must be In the given EntityUid.
     /// If [`None`], then it is a template slot.
     In(Option<EntityUid>),
-    /// Must be equal to the given EntityUid
+    /// Must be equal to the given EntityUid.
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
 }
@@ -2694,7 +2694,7 @@ impl std::fmt::Display for EvalResult {
     }
 }
 
-/// Evaluate
+/// Evaluates an expression.
 /// If evaluation results in an error (e.g., attempting to access a non-existent Entity or Record,
 /// passing the wrong number of arguments to a function etc.), that error is returned as a String
 pub fn eval_expression(
