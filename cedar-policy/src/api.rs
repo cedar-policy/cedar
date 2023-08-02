@@ -118,11 +118,29 @@ impl Entity {
     }
 
     /// Create a new `Entity` with this Uid, no attributes, and no parents.
+    /// ```
+    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// # use std::str::FromStr;
+    /// let eid = EntityId::from_str("alice").unwrap();
+    /// let type_name = EntityTypeName::from_str("User").unwrap();
+    /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
+    /// let alice = Entity::with_uid(euid);
+    /// # assert_eq!(alice.attr("age"), None);
+    /// ```
     pub fn with_uid(uid: EntityUid) -> Self {
         Self(ast::Entity::with_uid(uid.0))
     }
 
     /// Get the Uid of this entity
+    /// ```
+    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// # use std::str::FromStr;
+    /// let eid = EntityId::from_str("alice").unwrap();
+    /// let type_name = EntityTypeName::from_str("User").unwrap();
+    /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
+    /// let alice = Entity::with_uid(euid.clone());
+    /// assert_eq!(alice.uid(), euid);
+    /// ```
     pub fn uid(&self) -> EntityUid {
         EntityUid(self.0.uid())
     }
@@ -130,6 +148,7 @@ impl Entity {
     /// Get the value for the given attribute, or `None` if not present.
     ///
     /// This can also return Some(Err) if the attribute had an illegal value.
+ 
     pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, EvaluationError>> {
         let expr = self.0.get(attr)?;
         let all_ext = Extensions::all_available();
@@ -1286,10 +1305,13 @@ impl EntityUid {
 
     /// Creates `EntityUid` from a JSON value, which should have
     /// either the implicit or explicit `__entity` form.
-    ///
-    /// Examples:
-    /// * `{ "__entity": { "type": "User", "id": "123abc" } }`
-    /// * `{ "type": "User", "id": "123abc" }`
+    /// ```
+    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// use std::str::FromStr;
+    /// let json_data = serde_json::json!({ "__entity": { "type": "User", "id": "123abc" } });
+    /// let euid = EntityUid::from_json(json_data).unwrap();
+    /// assert_eq!(euid.type_name(),&EntityTypeName::from_str("User").unwrap());
+    /// ```
     pub fn from_json(json: serde_json::Value) -> Result<Self, impl std::error::Error> {
         let parsed: entities::EntityUidJSON = serde_json::from_value(json)?;
         Ok::<Self, entities::JsonDeserializationError>(Self(
