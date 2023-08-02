@@ -60,7 +60,7 @@ pub enum ParseError {
     #[error(transparent)]
     RestrictedExpr(#[from] RestrictedExprError),
     /// Errors concerning parsing literals on their own
-    #[error("{0}")]
+    #[error(transparent)]
     ParseLiteral(#[from] ParseLiteralError),
 }
 
