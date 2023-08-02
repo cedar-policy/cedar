@@ -13,7 +13,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected decimal, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected decimal, got string. Maybe you forgot to apply the `decimal` constructor?"
       ]
     },
     {
@@ -25,7 +25,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected decimal, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected decimal, got string. Maybe you forgot to apply the `decimal` constructor?"
       ]
     },
     {
@@ -37,7 +37,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected decimal, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected decimal, got string. Maybe you forgot to apply the `decimal` constructor?"
       ]
     },
     {
@@ -49,7 +49,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected decimal, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected decimal, got string. Maybe you forgot to apply the `decimal` constructor?"
       ]
     },
     {
@@ -61,7 +61,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected decimal, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected decimal, got string. Maybe you forgot to apply the `decimal` constructor?"
       ]
     },
     {
@@ -73,7 +73,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected decimal, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected decimal, got string. Maybe you forgot to apply the `decimal` constructor?"
       ]
     },
     {
@@ -85,7 +85,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected decimal, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected decimal, got string. Maybe you forgot to apply the `decimal` constructor?"
       ]
     },
     {
@@ -97,7 +97,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected decimal, got string"
+        "error occurred while evaluating policy `policy0`: type error: expected decimal, got string. Maybe you forgot to apply the `decimal` constructor?"
       ]
     }
   ]

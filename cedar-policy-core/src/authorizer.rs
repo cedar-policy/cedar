@@ -104,7 +104,7 @@ impl Authorizer {
                 errors.extend(partial.residuals.policies().map(|p| {
                     AuthorizationError::PolicyEvaluationError {
                         id: p.id().clone(),
-                        error: EvaluationError::NonValue(p.condition()),
+                        error: EvaluationError::non_value(p.condition()),
                     }
                 }));
 
