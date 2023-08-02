@@ -607,13 +607,12 @@ mod tests {
             eval.interpret_inline_policy(
                 &parse_expr(r#"decimal("1.23") < decimal("1.24")"#).expect("parsing error")
             ),
-            Err(evaluator::EvaluationError::type_error_with_advice(
+            Err(evaluator::EvaluationError::type_error(
                 vec![Type::Long],
                 Type::Extension {
                     name: Name::parse_unqualified_name("decimal")
                         .expect("should be a valid identifier")
                 },
-                ADVICE_MSG.into(),
             ))
         );
         assert_eq!(
