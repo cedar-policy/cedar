@@ -445,7 +445,7 @@ impl ASTNode<Option<cst::VariableDef>> {
     fn to_resource_constraint(&self, errs: &mut ParseErrors) -> Option<ResourceConstraint> {
         match self.to_principal_or_resource_constraint(errs)? {
             PrincipalOrResource::Principal(_) => {
-                errs.push(ToASTError::IncorrectVariable(ast::Var::Resource).into());
+                errs.push(ToASTError::IncorrectVariable(ast::Var::Principal).into());
                 None
             }
             PrincipalOrResource::Resource(r) => Some(r),
