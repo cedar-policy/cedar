@@ -269,7 +269,12 @@ pub(crate) fn parse_literal(val: &str) -> Result<ast::Literal, err::ParseErrors>
     if errs.is_empty() {
         match ast.into_expr_kind() {
             ast::ExprKind::Lit(v) => Ok(v),
-            _ => Err(err::ParseError::ToAST("text is not a literal".to_string()).into()),
+            _ => Err(
+                err::ParseError::ParseLiteral(err::ParseLiteralError::ParseLiteral(
+                    val.to_string(),
+                ))
+                .into(),
+            ),
         }
     } else {
         Err(errs)
@@ -379,9 +384,29 @@ mod test {
 
 #[cfg(test)]
 mod eval_tests {
+    use super::err::{ParseErrors, ToASTError};
     use super::*;
     use crate::evaluator as eval;
     use crate::extensions::Extensions;
+    use crate::parser::err::ParseError;
+
+    #[test]
+    fn entity_literals1() {
+        let src = r#"Test::{ test : "Test" }"#;
+        let ParseErrors(errs) = parse_euid(src).err().unwrap();
+        assert_eq!(errs.len(), 1);
+        let expected = ParseError::ToAST(ToASTError::UnsupportedEntityLiterals);
+        assert!(errs.contains(&expected));
+    }
+
+    #[test]
+    fn entity_literals2() {
+        let src = r#"permit(principal == Test::{ test : "Test" }, action, resource);"#;
+        let ParseErrors(errs) = parse_policy(None, src).err().unwrap();
+        assert_eq!(errs.len(), 1);
+        let expected = ParseError::ToAST(ToASTError::UnsupportedEntityLiterals);
+        assert!(errs.contains(&expected));
+    }
 
     #[test]
     fn interpret_exprs() {
