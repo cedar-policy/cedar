@@ -210,7 +210,7 @@ pub enum ToASTError {
     UnsupportedEntityLiterals,
     /// Returned when an expression is the target of a function call.
     /// Functions are not first class values in Cedar
-    #[error("function calls in cedar must be of the form: `<name>(arg1, arg2, ...)`")]
+    #[error("function calls in Cedar must be of the form: `<name>(arg1, arg2, ...)`")]
     ExpressionCall,
     /// Returned when a policy attempts to access the fields of a value with no fields
     #[error("incorrect member access `{0}.{1}`, `{0}` has no fields or methods")]
