@@ -3,7 +3,7 @@ name: Build Downstream Dependencies
 on:
   pull_request:
 
-env: 
+env:
   CARGO_TERM_COLOR: always
 jobs:
   cedar-drt:
@@ -53,13 +53,17 @@ jobs:
         uses: actions/checkout@v3
         with:
           path: cedar-java/cedar
+      - name: configure cedar-java
+        working-directory: cedar-java/CedarJava
+        shell: bash
+        run: bash config.sh run_int_tests
       - name: build cedar-java/CedarJavaFFI
         working-directory: cedar-java/CedarJavaFFI
         run: RUSTFLAGS="-D warnings" cargo build
       - name: build cedar-java/CedarJava
         working-directory: cedar-java/CedarJava
-        run: bash config.sh && ./gradlew build
-      
+        run: export MUST_RUN_CEDAR_INTEGRATION_TESTS=1 && ./gradlew build
+
 
   cedar-examples:
     name: Rust project - latest
@@ -93,5 +97,4 @@ jobs:
              printf "\npath = \"../cedar/cedar-policy\"" >> Cargo.toml
              cargo build
              cargo test
-      
-      
+
