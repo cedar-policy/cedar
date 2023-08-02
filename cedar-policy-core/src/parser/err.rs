@@ -27,7 +27,7 @@ use miette::{Diagnostic, LabeledSpan, Severity, SourceCode};
 use smol_str::SmolStr;
 use thiserror::Error;
 
-use crate::ast::RestrictedExprError;
+use crate::ast::{self, RestrictedExprError};
 use crate::ast::{PolicyID, Var};
 use crate::parser::unescape::UnescapeError;
 
@@ -83,6 +83,11 @@ pub enum ToASTError {
     /// Returned when we attempt to parse a policy with a conflicting id
     #[error("a policy with this id already exists in the policy set: {0}")]
     DuplicatePolicyId(PolicyID),
+    /// Returned when a template is encountered but a static policy is expected
+    #[error(
+        "expected a static policy, got a template. Try removing template slots from this policy"
+    )]
+    InvalidTemplate,
     /// Returned when we attempt to parse a policy with malformed or conflicting annotations
     #[error("this policy uses poorly formed or duplicate annotations")]
     BadAnnotations,
@@ -93,8 +98,8 @@ pub enum ToASTError {
     #[error("this policy is missing the {0} variable in the scope")]
     MissingScopeConstraint(Var),
     /// Returned when a policy has an extra scope clause. This is not valid syntax
-    #[error("this policy has an extra variable in the scope; a policy must have exactly `principal`, `action`, and `resource`")]
-    ExtraHeadConstraints,
+    #[error("this policy an extra head constraint in the scope; a policy must have exactly `principal`, `action`, and `resource` constraints: {0}")]
+    ExtraHeadConstraints(cst::VariableDef),
     /// Returned when a policy uses a reserved keyword as an identifier.
     #[error("this identifier is reserved and cannot be used: {0}")]
     ReservedIdentifier(cst::Ident),
@@ -110,18 +115,17 @@ pub enum ToASTError {
     /// Returned when a policy uses a variable in the scope beyond `principal`, `action`, or `resource`
     #[error("expected a variable that's valid in the policy scope. Must be one of `principal`, `action`, or `resource`. Found: {0}")]
     InvalidScopeConstraintVariable(cst::Ident),
-    /// Returned when a policy uses a variable in the scope beyond `principal`, `action`, or `resource`
-    #[error("expected a variable that's valid in the policy scope. Must be one of `principal`, `action`, or `resource`")]
-    InvalidScopeConstraintVariableNoIdent,
-    /// Returned when a policy uses an arbitrary variable name. Cedar supports exactly four variables (`principal`, `action`, `resource`, and `context`)
-    #[error("`{0}` is not a valid variable. Valid variables are: `principal`, `action`, `resource`, or `context`")]
-    InvalidVariable(cst::Ident),
     /// Returned when a policy contains an invalid method name
     #[error("not a valid method name: {0}")]
     InvalidMethodName(String),
     /// Returned when a policy scope clause contains the wrong variable. (`principal` must be in the first clause, etc...)
-    #[error("the variable `{0}` is invalid in this policy scope clause")]
-    IncorrectVariable(Var),
+    #[error("the variable `{got}` is invalid in this policy scope clause, the variable `{expected}` is expected")]
+    IncorrectVariable {
+        /// The variable that is expected in this clause
+        expected: Var,
+        /// The variable that was present in this clause
+        got: Var,
+    },
     /// Returned when a policy scope clauses uses an operator beyond `==` or `in`.
     #[error("policy scope constraints must either `==` or `in`. Found `{0}`")]
     InvalidConstraintOperator(cst::RelOp),
@@ -140,17 +144,20 @@ pub enum ToASTError {
     /// Returned when the internal invariant around annotation info has been violated
     #[error("internal invariant violated. No parse errors were reported but annotation information was missing")]
     AnnotationInvariantViolation,
+    /// Returned when membership chains do not resolve to an expression, violating an internal invariant
+    #[error("internal invariant violated. Membership chain did not resolve to an expression")]
+    MembershipInvariantViolation,
     /// Returned for a non-parse-able string literal
     #[error("invalid string literal: `\"{0}\"`")]
     InvalidString(String),
     /// Returned for attempting to use an arbitrary variable name. Cedar does not support arbitrary variables.
-    #[error("arbitrary variables are not supported; did you mean to enclose `{0}` in quotes to make a string?")]
-    ArbitraryVariable(crate::ast::Name),
+    #[error("arbitrary variables are not supported; did you mean to enclose `{0}` in quotes to make a string? The valid Cedar variable are `principal`, `action`, `resource`, and `context`")]
+    ArbitraryVariable(SmolStr),
     /// Returned for attempting to use an invalid attribute name
     #[error(
-        "invalid attribute name. Attribute names can either be identifiers or string literals"
+        "invalid attribute name: `{0}`. Attribute names can either be identifiers or string literals"
     )]
-    InvalidAttribute,
+    InvalidAttribute(SmolStr),
     /// Returned for attempting to use an invalid attribute name in a record name
     #[error("record literal has invalid attributes")]
     InvalidAttributesInRecordLiteral,
@@ -200,8 +207,8 @@ pub enum ToASTError {
     #[error("variables cannot be called as functions. `{0}(...)` is not a valid function call")]
     VariableCall(crate::ast::Var),
     /// Returned when a policy attempts to call a method on a value that has no methods
-    #[error("`{0}` does not have any methods")]
-    NoMethods(crate::ast::Name),
+    #[error("Attempted to call `{0}.{1}`, but `{0}` does not have any methods")]
+    NoMethods(crate::ast::Name, ast::Id),
     /// Returned when a policy attempts to call a function that does not exist
     #[error("`{0}` is not a function")]
     NotAFunction(crate::ast::Name),
@@ -218,9 +225,6 @@ pub enum ToASTError {
     /// Returned when a policy attempts to index on a fields of a value with no fields
     #[error("incorrect indexing expression `{0}[{1}]`, `{0}` has no fields")]
     InvalidIndex(crate::ast::Name, SmolStr),
-    /// Returned when a string-literal is expected but not found
-    #[error("`{0}` is not a string literal")]
-    NonStringLiteral(cst::Primary),
     /// Returned when the contents of an indexing expression is not a string literal
     #[error("The contents of an index expression must be a string literal")]
     NonStringIndex,
@@ -249,9 +253,6 @@ pub enum ToASTError {
     /// Returned when a CST expression is invalid
     #[error("{0} is not a valid expression")]
     InvalidExpression(cst::Name),
-    /// Returned when a method call in an EST is invalid
-    #[error("Invalid Method Call")]
-    InvalidMethodCall,
     /// Returned when a function has wrong arity
     #[error("call to `{name}` requires exactly {expected} argument{}, but got {got} arguments", if .expected == &1 { "" } else { "s" })]
     WrongArity {

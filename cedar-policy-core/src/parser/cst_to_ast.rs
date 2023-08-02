@@ -247,7 +247,7 @@ impl cst::Policy {
         Option<ActionConstraint>,
         Option<ResourceConstraint>,
     ) {
-        let mut vars = self.variables.iter();
+        let mut vars = self.variables.iter().peekable();
         let principal = if let Some(head1) = vars.next() {
             head1.to_principal_constraint(errs)
         } else {
@@ -272,8 +272,14 @@ impl cst::Policy {
             )));
             None
         };
-        if vars.next().is_some() {
-            errs.push(err::ParseError::ToAST(ToASTError::ExtraHeadConstraints));
+        if vars.peek().is_some() {
+            // Add each of the extra constraints to the error list
+            // If the extra constraint is `None`, we've already added it to the error list
+            for extra_var in vars {
+                if let Some(def) = extra_var.as_inner() {
+                    errs.push(ToASTError::ExtraHeadConstraints(def.clone()).into())
+                }
+            }
         }
         (principal, action, resource)
     }
@@ -371,16 +377,15 @@ impl ASTNode<Option<cst::Ident>> {
 
     fn to_var(&self, errs: &mut ParseErrors) -> Option<ast::Var> {
         let maybe_ident = self.as_inner();
-        match maybe_ident {
-            Some(cst::Ident::Principal) => Some(ast::Var::Principal),
-            Some(cst::Ident::Action) => Some(ast::Var::Action),
-            Some(cst::Ident::Resource) => Some(ast::Var::Resource),
-            Some(ident) => {
+        if maybe_ident.is_none() && errs.is_empty() {
+            errs.push(ToASTError::MissingNodeData.into());
+        }
+        match maybe_ident? {
+            cst::Ident::Principal => Some(ast::Var::Principal),
+            cst::Ident::Action => Some(ast::Var::Action),
+            cst::Ident::Resource => Some(ast::Var::Resource),
+            ident => {
                 errs.push(ToASTError::InvalidScopeConstraintVariable(ident.clone()).into());
-                None
-            }
-            None => {
-                errs.push(ToASTError::InvalidScopeConstraintVariableNoIdent.into());
                 None
             }
         }
@@ -433,19 +438,31 @@ enum PrincipalOrResource {
 
 impl ASTNode<Option<cst::VariableDef>> {
     fn to_principal_constraint(&self, errs: &mut ParseErrors) -> Option<PrincipalConstraint> {
-        match self.to_principal_or_resource_constraint(errs)? {
+        match self.to_principal_or_resource_constraint(ast::Var::Principal, errs)? {
             PrincipalOrResource::Principal(p) => Some(p),
             PrincipalOrResource::Resource(_) => {
-                errs.push(ToASTError::IncorrectVariable(ast::Var::Resource).into());
+                errs.push(
+                    ToASTError::IncorrectVariable {
+                        expected: ast::Var::Principal,
+                        got: ast::Var::Resource,
+                    }
+                    .into(),
+                );
                 None
             }
         }
     }
 
     fn to_resource_constraint(&self, errs: &mut ParseErrors) -> Option<ResourceConstraint> {
-        match self.to_principal_or_resource_constraint(errs)? {
+        match self.to_principal_or_resource_constraint(ast::Var::Resource, errs)? {
             PrincipalOrResource::Principal(_) => {
-                errs.push(ToASTError::IncorrectVariable(ast::Var::Principal).into());
+                errs.push(
+                    ToASTError::IncorrectVariable {
+                        expected: ast::Var::Resource,
+                        got: ast::Var::Principal,
+                    }
+                    .into(),
+                );
                 None
             }
             PrincipalOrResource::Resource(r) => Some(r),
@@ -454,18 +471,19 @@ impl ASTNode<Option<cst::VariableDef>> {
 
     fn to_principal_or_resource_constraint(
         &self,
+        expected: ast::Var,
         errs: &mut ParseErrors,
     ) -> Option<PrincipalOrResource> {
         let maybe_vardef = self.as_inner();
         // return right away if there's no data, parse provided error
         let vardef = maybe_vardef?;
 
-        let expected = vardef.variable.to_var(errs)?;
+        let var = vardef.variable.to_var(errs)?;
 
         match vardef.variable.to_var(errs) {
-            Some(v) if v == expected => Some(()),
-            Some(other) => {
-                errs.push(ToASTError::IncorrectVariable(other).into());
+            Some(v) if v == var => Some(()),
+            Some(got) => {
+                errs.push(ToASTError::IncorrectVariable { expected: var, got }.into());
                 None
             }
             None => None,
@@ -476,7 +494,7 @@ impl ASTNode<Option<cst::VariableDef>> {
         }
 
         let c = if let Some((op, rel_expr)) = &vardef.ineq {
-            let eref = rel_expr.to_ref_or_slot(errs, expected)?;
+            let eref = rel_expr.to_ref_or_slot(errs, var)?;
             match op {
                 cst::RelOp::Eq => Some(PrincipalOrResourceConstraint::Eq(eref)),
                 cst::RelOp::In => Some(PrincipalOrResourceConstraint::In(eref)),
@@ -488,17 +506,13 @@ impl ASTNode<Option<cst::VariableDef>> {
         } else {
             Some(PrincipalOrResourceConstraint::Any)
         }?;
-        match expected {
+        match var {
             ast::Var::Principal => {
                 Some(PrincipalOrResource::Principal(PrincipalConstraint::new(c)))
             }
-            ast::Var::Action => {
-                errs.push(ToASTError::IncorrectVariable(ast::Var::Action).into());
-                None
-            }
             ast::Var::Resource => Some(PrincipalOrResource::Resource(ResourceConstraint::new(c))),
-            ast::Var::Context => {
-                errs.push(ToASTError::IncorrectVariable(ast::Var::Context).into());
+            got => {
+                errs.push(ToASTError::IncorrectVariable { expected, got }.into());
                 None
             }
         }
@@ -510,8 +524,14 @@ impl ASTNode<Option<cst::VariableDef>> {
 
         match vardef.variable.to_var(errs) {
             Some(ast::Var::Action) => Some(()),
-            Some(other) => {
-                errs.push(ToASTError::IncorrectVariable(other).into());
+            Some(got) => {
+                errs.push(
+                    ToASTError::IncorrectVariable {
+                        expected: ast::Var::Action,
+                        got,
+                    }
+                    .into(),
+                );
                 None
             }
             None => None,
@@ -673,7 +693,7 @@ impl ExprOrSpecial<'_> {
             Self::Expr(e) => Some(e),
             Self::Var(v, l) => Some(construct_expr_var(v, l)),
             Self::Name(n) => {
-                errs.push(ToASTError::ArbitraryVariable(n).into());
+                errs.push(ToASTError::ArbitraryVariable(n.to_string().into()).into());
                 None
             }
             Self::StrLit(s, l) => match to_unescaped_string(s) {
@@ -706,8 +726,8 @@ impl ExprOrSpecial<'_> {
                     None
                 }
             },
-            Self::Expr(_) => {
-                errs.push(ToASTError::InvalidAttribute.into());
+            Self::Expr(e) => {
+                errs.push(ToASTError::InvalidAttribute(e.to_string().into()).into());
                 None
             }
         }
@@ -1061,7 +1081,7 @@ impl ASTNode<Option<cst::Add>> {
         match add.extended.len() {
             0 => add.initial.to_ref_or_refs::<T>(errs, var),
             _n => {
-                errs.push(ToASTError::wrong_node(T::err_str(), "+").into());
+                errs.push(ToASTError::wrong_node(T::err_str(), "+/-").into());
                 None
             }
         }
@@ -1379,8 +1399,8 @@ impl ASTNode<Option<cst::Member>> {
                     tail = rest;
                 }
                 // method call on name - error
-                (Some(Name(n)), [Some(Field(_)), Some(Call(_)), rest @ ..]) => {
-                    errs.push(ToASTError::NoMethods(n.clone()).into());
+                (Some(Name(n)), [Some(Field(f)), Some(Call(_)), rest @ ..]) => {
+                    errs.push(ToASTError::NoMethods(n.clone(), f.clone()).into());
                     head = None;
                     tail = rest;
                 }
@@ -1627,7 +1647,6 @@ impl ASTNode<Option<cst::Primary>> {
     }
 
     /// convert `cst::Primary` representing a string literal to a `SmolStr`.
-    /// Fails (and adds to `errs`) if the `Primary` wasn't a string literal.
     pub fn to_string_literal(&self, errs: &mut ParseErrors) -> Option<SmolStr> {
         let maybe_prim = self.as_inner();
         // return right away if there's no data, parse provided error
@@ -1635,10 +1654,7 @@ impl ASTNode<Option<cst::Primary>> {
 
         match prim {
             cst::Primary::Literal(l) => l.to_expr_or_special(errs)?.into_string_literal(errs),
-            _ => {
-                errs.push(ToASTError::NonStringLiteral(prim.clone()).into());
-                None
-            }
+            _ => None,
         }
     }
 }
@@ -1714,7 +1730,7 @@ impl ASTNode<Option<cst::Name>> {
             cst::Ident::Resource => Some(ast::Var::Resource),
             cst::Ident::Context => Some(ast::Var::Context),
             n => {
-                errs.push(ToASTError::InvalidVariable(n.clone()).into());
+                errs.push(ToASTError::ArbitraryVariable(n.to_string().into()).into());
                 None
             }
         }

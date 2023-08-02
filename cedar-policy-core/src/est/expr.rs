@@ -1194,6 +1194,7 @@ impl TryFrom<cst::Member> for Expr {
                     //      `for` loop we would have made `item` equal to
                     //      `Expr::GetAttr(x, y)`. Now we have to undo that to make a
                     //      method call instead.
+                    //   - any other expression: it's an illegal call as the target is a higher order expression
                     item = match item {
                         Either::Left(name) => Either::Right(Expr::ext_call(
                             name.to_string().into(),
@@ -1239,7 +1240,7 @@ impl TryFrom<cst::Member> for Expr {
                                 }
                             }
                         }
-                        _ => return Err(ParseError::ToAST(ToASTError::InvalidMethodCall).into()),
+                        _ => return Err(ParseError::ToAST(ToASTError::ExpressionCall).into()),
                     };
                 }
                 Some(cst::MemAccess::Index(ASTNode {
@@ -1259,7 +1260,7 @@ impl TryFrom<cst::Member> for Expr {
             }
         }
         match item {
-            Either::Left(_) => Err(ParseError::ToAST(ToASTError::InvalidMethodCall))?,
+            Either::Left(_) => Err(ParseError::ToAST(ToASTError::MembershipInvariantViolation))?,
             Either::Right(expr) => Ok(expr),
         }
     }
