@@ -313,9 +313,9 @@ mod tests {
                             .expect("should be a valid identifier")
                     )
                 }
-                _ => panic!("Expected an decimal ExtensionErr, got {:?}", e),
+                _ => panic!("Expected a decimal ExtensionErr, got {:?}", e),
             },
-            Ok(_) => panic!("Expected an decimal ExtensionErr, got Ok"),
+            Ok(_) => panic!("Expected a decimal ExtensionErr, got Ok"),
         }
     }
 
