@@ -1725,7 +1725,7 @@ impl ast::Name {
     /// Convert the `Name` into a `String` attribute, which fails if it had any namespaces
     fn into_valid_attr(self, errs: &mut ParseErrors) -> Option<SmolStr> {
         if !self.path.is_empty() {
-            errs.push(ToASTError::PathAsAttribute(format!("{self}")).into());
+            errs.push(ToASTError::PathAsAttribute(self.to_string())).into());
             None
         } else {
             Some(self.id.to_smolstr())
