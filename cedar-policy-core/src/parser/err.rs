@@ -80,8 +80,8 @@ pub enum ToASTError {
     /// Returned when we attempt to parse a template with a conflicting id
     #[error("a template with this id already exists in the policy set: {0}")]
     DuplicateTemplateId(PolicyID),
-    /// Returned when we attempt to parse a policy with a conflicting ID
-    #[error("a policy with this ID already exists in the policy set: {0}")]
+    /// Returned when we attempt to parse a policy with a conflicting id
+    #[error("a policy with this id already exists in the policy set: {0}")]
     DuplicatePolicyId(PolicyID),
     /// Returned when we attempt to parse a policy with malformed or conflicting annotations
     #[error("this policy uses poorly formed or duplicate annotations")]
