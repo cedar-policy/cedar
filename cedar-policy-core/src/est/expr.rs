@@ -1179,8 +1179,9 @@ impl TryFrom<cst::Member> for Expr {
                         };
                     }
                     Some(i) => {
-                        return Err(ParseError::ToAST(ToASTError::InvalidIdentifier(i.to_string()))
-                        .into())
+                        return Err(
+                            ParseError::ToAST(ToASTError::InvalidIdentifier(i.to_string())).into(),
+                        )
                     }
                     None => return Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
                 },
