@@ -21,7 +21,7 @@ use serde::{
 };
 use serde_with::serde_as;
 use smol_str::SmolStr;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
 use crate::Result;
 
@@ -355,51 +355,12 @@ impl SchemaTypeVisitor {
         M: MapAccess<'de>,
     {
         use TypeFields::*;
-        let _present_fields = [
-            (Type, type_name.is_some()),
-            (Element, element.is_some()),
-            (Attributes, attributes.is_some()),
-            (AdditionalAttributes, additional_attributes.is_some()),
-            (Name, name.is_some()),
-        ]
-        .into_iter()
-        .filter(|(_, present)| *present)
-        .map(|(field, _)| field)
-        .collect::<HashSet<_>>();
-        // Used to generate the appropriate serde error if a field is present
-        // when it is not expected.
-        let error_if_fields = |_fs: &[TypeFields],
-                               _expected: &'static [&'static str]|
-         -> std::result::Result<(), M::Error> {
-            // This is where we would return an error if any of the unexpected
-            // fields in `fs` are in present_fields`. The automatically derived
-            // schema parser did not return these errors, so this is a breaking
-            // change for any schema where a type contains an unexpected field.
-            Ok(())
-        };
-        let error_if_any_fields = || -> std::result::Result<(), M::Error> {
-            error_if_fields(&[Element, Attributes, AdditionalAttributes, Name], &[])
-        };
 
         match type_name.transpose()?.as_ref().map(|s| s.as_str()) {
-            Some("String") => {
-                error_if_any_fields()?;
-                Ok(SchemaType::Type(SchemaTypeVariant::String))
-            }
-            Some("Long") => {
-                error_if_any_fields()?;
-                Ok(SchemaType::Type(SchemaTypeVariant::Long))
-            }
-            Some("Boolean") => {
-                error_if_any_fields()?;
-                Ok(SchemaType::Type(SchemaTypeVariant::Boolean))
-            }
+            Some("String") => Ok(SchemaType::Type(SchemaTypeVariant::String)),
+            Some("Long") => Ok(SchemaType::Type(SchemaTypeVariant::Long)),
+            Some("Boolean") => Ok(SchemaType::Type(SchemaTypeVariant::Boolean)),
             Some("Set") => {
-                error_if_fields(
-                    &[Attributes, AdditionalAttributes, Name],
-                    &[type_field_name!(Element)],
-                )?;
-
                 if let Some(element) = element {
                     Ok(SchemaType::Type(SchemaTypeVariant::Set {
                         element: Box::new(element?),
@@ -409,14 +370,6 @@ impl SchemaTypeVisitor {
                 }
             }
             Some("Record") => {
-                error_if_fields(
-                    &[Element, Name],
-                    &[
-                        type_field_name!(Attributes),
-                        type_field_name!(AdditionalAttributes),
-                    ],
-                )?;
-
                 if let Some(attributes) = attributes {
                     let additional_attributes =
                         additional_attributes.unwrap_or(Ok(additional_attributes_default()));
@@ -429,11 +382,6 @@ impl SchemaTypeVisitor {
                 }
             }
             Some("Entity") => {
-                error_if_fields(
-                    &[Element, Attributes, AdditionalAttributes],
-                    &[type_field_name!(Name)],
-                )?;
-
                 if let Some(name) = name {
                     Ok(SchemaType::Type(SchemaTypeVariant::Entity { name: name? }))
                 } else {
@@ -441,11 +389,6 @@ impl SchemaTypeVisitor {
                 }
             }
             Some("Extension") => {
-                error_if_fields(
-                    &[Element, Attributes, AdditionalAttributes],
-                    &[type_field_name!(Name)],
-                )?;
-
                 if let Some(name) = name {
                     Ok(SchemaType::Type(SchemaTypeVariant::Extension {
                         name: name?,
@@ -454,12 +397,9 @@ impl SchemaTypeVisitor {
                     Err(serde::de::Error::missing_field(Name.as_str()))
                 }
             }
-            Some(type_name) => {
-                error_if_any_fields()?;
-                Ok(SchemaType::TypeDef {
-                    type_name: type_name.into(),
-                })
-            }
+            Some(type_name) => Ok(SchemaType::TypeDef {
+                type_name: type_name.into(),
+            }),
             None => Err(serde::de::Error::missing_field(Type.as_str())),
         }
     }
