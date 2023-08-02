@@ -82,7 +82,7 @@ pub enum ToASTError {
     DuplicateTemplateId(PolicyID),
     /// Returned when we attempt to parse a policy with a conflicting ID
     #[error("a policy with this ID already exists in the policy set: {0}")]
-    DuplicatePolicyID(PolicyID),
+    DuplicatePolicyId(PolicyID),
     /// Returned when we attempt to parse a policy with malformed or conflicting annotations
     #[error("this policy uses poorly formed or duplicate annotations")]
     BadAnnotations,
