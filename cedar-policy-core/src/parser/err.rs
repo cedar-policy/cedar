@@ -58,7 +58,7 @@ pub enum ParseError {
     ToAST(#[from] ToASTError),
     /// Error concerning restricted expressions.
     #[error(transparent)]
-    RestrictedExpressionError(#[from] RestrictedExprError),
+    RestrictedExpr(#[from] RestrictedExprError),
     /// Errors concerning parsing literals on their own
     #[error("{0}")]
     ParseLiteral(#[from] ParseLiteralError),
