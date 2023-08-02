@@ -103,7 +103,9 @@ pub enum ToASTError {
     /// Returned when a policy uses a reserved keyword as an identifier.
     #[error("this identifier is reserved and cannot be used: {0}")]
     ReservedIdentifier(cst::Ident),
-    /// Returned when a policy contains a non-identifier
+    /// Returned when a policy contains an invalid identifier
+    /// This error is not currently returned, but is here for future-proofing.
+    /// See [`cst::Ident::Invalid`]
     #[error("not a valid identifier: {0}")]
     InvalidIdentifier(String),
     /// Returned when a policy uses a effect keyword beyond `permit` or `forbid`
