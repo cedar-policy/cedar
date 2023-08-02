@@ -16,12 +16,169 @@
 
 use crate::ast::*;
 use smol_str::SmolStr;
-use std::sync::Arc;
+use std::{fmt::Display, sync::Arc};
 use thiserror::Error;
 
-/// Errors that can occur during evaluation
+/// An error generated while evaluating an expression
 #[derive(Debug, PartialEq, Eq, Clone, Error)]
-pub enum EvaluationError {
+pub struct EvaluationError {
+    /// The kind of error that occurred
+    error_kind: EvaluationErrorKind,
+    /// Optional advice on how to fix the error
+    advice: Option<String>,
+}
+
+impl Display for EvaluationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(help_msg) = &self.advice {
+            write!(f, "{}. {}", self.error_kind, help_msg)
+        } else {
+            self.error_kind.fmt(f)
+        }
+    }
+}
+
+impl EvaluationError {
+    /// Extract the kind of issue detected during evaluation
+    pub fn error_kind(&self) -> &EvaluationErrorKind {
+        &self.error_kind
+    }
+
+    /// Set the advice field of an error
+    pub fn set_advice(&mut self, advice: String) {
+        self.advice = Some(advice);
+    }
+
+    /// Construct a [`EntityDoesNotExist`] error
+    pub(crate) fn entity_does_not_exist(euid: Arc<EntityUID>) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::EntityDoesNotExist(euid),
+            advice: None,
+        }
+    }
+
+    /// Construct a [`EntityAttrDoesNotExist`] error
+    pub(crate) fn entity_attr_does_not_exist(entity: Arc<EntityUID>, attr: SmolStr) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::EntityAttrDoesNotExist { entity, attr },
+            advice: None,
+        }
+    }
+
+    /// Construct a [`UnspecifiedEntityAccess`] error
+    pub(crate) fn unspecified_entity_access(attr: SmolStr) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::UnspecifiedEntityAccess(attr),
+            advice: None,
+        }
+    }
+
+    /// Construct a [`RecordAttrDoesNotExist`] error
+    pub(crate) fn record_attr_does_not_exist(attr: SmolStr, alternatives: Vec<SmolStr>) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::RecordAttrDoesNotExist(attr, alternatives),
+            advice: None,
+        }
+    }
+
+    /// Construct a [`TypeError`] error
+    pub(crate) fn type_error(expected: Vec<Type>, actual: Type) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::TypeError { expected, actual },
+            advice: None,
+        }
+    }
+
+    /// Construct a [`TypeError`] error with the advice field set
+    pub(crate) fn type_error_with_advice(
+        expected: Vec<Type>,
+        actual: Type,
+        advice: String,
+    ) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::TypeError { expected, actual },
+            advice: Some(advice),
+        }
+    }
+
+    /// Construct a [`WrongNumArguments`] error
+    pub(crate) fn wrong_num_arguments(function_name: Name, expected: usize, actual: usize) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::WrongNumArguments {
+                function_name,
+                expected,
+                actual,
+            },
+            advice: None,
+        }
+    }
+
+    /// Construct a [`UnlinkedSlot`] error
+    pub(crate) fn unlinked_slot(id: SlotId) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::UnlinkedSlot(id),
+            advice: None,
+        }
+    }
+
+    /// Construct a [`FailedExtensionFunctionApplication`] error
+    pub(crate) fn failed_extension_function_application(extension_name: Name, msg: String) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::FailedExtensionFunctionApplication {
+                extension_name,
+                msg,
+            },
+            advice: None,
+        }
+    }
+
+    /// Construct a [`NonValue`] error
+    pub(crate) fn non_value(e: Expr) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::NonValue(e),
+            advice: Some("Consider using the partial evaluation APIs".into()),
+        }
+    }
+
+    /// Construct a [`RecursionLimit`] error
+    pub(crate) fn recursion_limit() -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::RecursionLimit,
+            advice: None,
+        }
+    }
+}
+
+impl From<crate::extensions::ExtensionFunctionLookupError> for EvaluationError {
+    fn from(err: crate::extensions::ExtensionFunctionLookupError) -> Self {
+        Self {
+            error_kind: err.into(),
+            advice: None,
+        }
+    }
+}
+
+impl From<IntegerOverflowError> for EvaluationError {
+    fn from(err: IntegerOverflowError) -> Self {
+        Self {
+            error_kind: err.into(),
+            advice: None,
+        }
+    }
+}
+
+impl From<RestrictedExprError> for EvaluationError {
+    fn from(err: RestrictedExprError) -> Self {
+        Self {
+            error_kind: err.into(),
+            advice: None,
+        }
+    }
+}
+
+/// Enumeration of the possible errors that can occur during evaluation
+#[derive(Debug, PartialEq, Eq, Clone, Error)]
+pub enum EvaluationErrorKind {
     /// Tried to lookup this entity UID, but it didn't exist in the provided
     /// entities
     #[error("entity does not exist: {0}")]
@@ -97,7 +254,7 @@ pub enum EvaluationError {
     /// This error is raised if an expression contains unknowns and cannot be
     /// reduced to a [`Value`]. In order to return partial results, use the
     /// partial evaluation APIs instead.
-    #[error("the expression contains unknown(s) (consider using the partial evaluation API): {0}")]
+    #[error("the expression contains unknown(s): {0}")]
     NonValue(Expr),
 
     /// Maximum recursion limit reached for expression evaluation

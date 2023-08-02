@@ -20,7 +20,7 @@ use regex::Regex;
 
 use crate::ast::{
     CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue,
-    ExtensionValueWithArgs, Name, StaticallyTyped, Type, Value,
+    ExtensionValueWithArgs, Literal, Name, StaticallyTyped, Type, Value,
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
@@ -51,6 +51,10 @@ mod names {
         pub static ref GREATER_THAN_OR_EQUAL : Name = Name::parse_unqualified_name("greaterThanOrEqual").expect("should be a valid identifier");
     }
 }
+
+/// Help message to display when a String was provided where a decimal value was expected.
+/// This error is likely due to confusion between "1.23" and decimal("1.23").
+const ADVICE_MSG: &str = "Maybe you forgot to apply the `decimal` constructor?";
 
 /// Potential errors when working with decimal values. Note that these are
 /// converted to evaluator::Err::ExtensionErr (which takes a string argument)
@@ -161,10 +165,10 @@ impl ExtensionValue for Decimal {
 const EXTENSION_NAME: &str = "decimal";
 
 fn extension_err(msg: impl Into<String>) -> evaluator::EvaluationError {
-    evaluator::EvaluationError::FailedExtensionFunctionApplication {
-        extension_name: names::DECIMAL_FROM_STR_NAME.clone(),
-        msg: msg.into(),
-    }
+    evaluator::EvaluationError::failed_extension_function_application(
+        names::DECIMAL_FROM_STR_NAME.clone(),
+        msg.into(),
+    )
 }
 
 /// Cedar function that constructs a `decimal` Cedar type from a
@@ -190,12 +194,19 @@ fn as_decimal(v: &Value) -> Result<&Decimal, evaluator::EvaluationError> {
                 .expect("already typechecked, so this downcast should succeed");
             Ok(d)
         }
-        _ => Err(evaluator::EvaluationError::TypeError {
-            expected: vec![Type::Extension {
+        Value::Lit(Literal::String(_)) => Err(evaluator::EvaluationError::type_error_with_advice(
+            vec![Type::Extension {
                 name: Decimal::typename(),
             }],
-            actual: v.type_of(),
-        }),
+            v.type_of(),
+            ADVICE_MSG.into(),
+        )),
+        _ => Err(evaluator::EvaluationError::type_error(
+            vec![Type::Extension {
+                name: Decimal::typename(),
+            }],
+            v.type_of(),
+        )),
     }
 }
 
@@ -290,18 +301,21 @@ mod tests {
     /// Asserts that a `Result` is an `Err::ExtensionErr` with our extension name
     fn assert_decimal_err<T>(res: evaluator::Result<T>) {
         match res {
-            Err(evaluator::EvaluationError::FailedExtensionFunctionApplication {
-                extension_name,
-                msg,
-            }) => {
-                println!("{msg}");
-                assert_eq!(
+            Err(e) => match e.error_kind() {
+                evaluator::EvaluationErrorKind::FailedExtensionFunctionApplication {
                     extension_name,
-                    Name::parse_unqualified_name("decimal").expect("should be a valid identifier")
-                )
-            }
-            Err(e) => panic!("Expected an decimal ExtensionErr, got {:?}", e),
-            Ok(_) => panic!("Expected an decimal ExtensionErr, got Ok"),
+                    msg,
+                } => {
+                    println!("{msg}");
+                    assert_eq!(
+                        *extension_name,
+                        Name::parse_unqualified_name("decimal")
+                            .expect("should be a valid identifier")
+                    )
+                }
+                _ => panic!("Expected a decimal ExtensionErr, got {:?}", e),
+            },
+            Ok(_) => panic!("Expected a decimal ExtensionErr, got Ok"),
         }
     }
 
@@ -593,25 +607,26 @@ mod tests {
             eval.interpret_inline_policy(
                 &parse_expr(r#"decimal("1.23") < decimal("1.24")"#).expect("parsing error")
             ),
-            Err(evaluator::EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::Extension {
+            Err(evaluator::EvaluationError::type_error(
+                vec![Type::Long],
+                Type::Extension {
                     name: Name::parse_unqualified_name("decimal")
                         .expect("should be a valid identifier")
                 },
-            })
+            ))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#"decimal("-1.23").lessThan("1.23")"#).expect("parsing error")
             ),
-            Err(evaluator::EvaluationError::TypeError {
-                expected: vec![Type::Extension {
+            Err(evaluator::EvaluationError::type_error_with_advice(
+                vec![Type::Extension {
                     name: Name::parse_unqualified_name("decimal")
                         .expect("should be a valid identifier")
                 }],
-                actual: Type::String,
-            })
+                Type::String,
+                ADVICE_MSG.into(),
+            ))
         );
         // bad use of `lessThan` as function
         parse_expr(r#"lessThan(decimal("-1.23"), decimal("1.23"))"#).expect_err("should fail");
