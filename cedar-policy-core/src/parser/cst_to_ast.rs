@@ -498,7 +498,7 @@ impl ASTNode<Option<cst::VariableDef>> {
             }
             ast::Var::Resource => Some(PrincipalOrResource::Resource(ResourceConstraint::new(c))),
             ast::Var::Context => {
-                errs.push(ToASTError::IncorrectVariable(ast::Var::Action).into());
+                errs.push(ToASTError::IncorrectVariable(ast::Var::Context).into());
                 None
             }
         }
