@@ -105,7 +105,7 @@ impl ASTNode<Option<cst::Policies>> {
                     if let Err(e) = pset.add_template(template) {
                         match e {
                             PolicySetError::Occupied { id } => {
-                                errs.push(ParseError::ToAST(ToASTError::DuplicateTemplateID(id)))
+                                errs.push(ParseError::ToAST(ToASTError::DuplicateTemplateId(id)))
                             }
                         };
 
@@ -116,7 +116,7 @@ impl ASTNode<Option<cst::Policies>> {
                     if let Err(e) = pset.add_static(inline_policy) {
                         match e {
                             PolicySetError::Occupied { id } => {
-                                errs.push(ParseError::ToAST(ToASTError::DuplicatePolicyID(id)))
+                                errs.push(ParseError::ToAST(ToASTError::DuplicatePolicyId(id)))
                             }
                         };
 
@@ -1725,7 +1725,7 @@ impl ast::Name {
     /// Convert the `Name` into a `String` attribute, which fails if it had any namespaces
     fn into_valid_attr(self, errs: &mut ParseErrors) -> Option<SmolStr> {
         if !self.path.is_empty() {
-            errs.push(ToASTError::PathAsAttribute(self.to_string())).into());
+            errs.push(ToASTError::PathAsAttribute(self.to_string()).into());
             None
         } else {
             Some(self.id.to_smolstr())
