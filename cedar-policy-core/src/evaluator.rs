@@ -830,6 +830,8 @@ pub mod test {
         parser::{parse_expr, parse_policy_template},
     };
 
+    use cool_asserts::assert_matches;
+
     // Many of these tests use this Request
     pub fn basic_request() -> Request {
         Request::new(
@@ -3650,10 +3652,10 @@ pub mod test {
 
     fn assert_restricted_expression_error(v: Result<PartialValue>) {
         match v {
-            Err(e) => assert!(matches!(
+            Err(e) => assert_matches!(
                 e.error_kind(),
                 EvaluationErrorKind::InvalidRestrictedExpression { .. }
-            )),
+            ),
             Ok(v) => panic!("Got wrong response: {v}"),
         }
     }
@@ -3745,7 +3747,7 @@ pub mod test {
             .and_then(|e| evaluator.partial_interpret(e)),
         );
         #[cfg(feature = "ipaddr")]
-        assert!(matches!(
+        assert_matches!(
             BorrowedRestrictedExpr::new(&Expr::call_extension_fn(
                 "ip".parse().expect("should be a valid Name"),
                 vec![Expr::val("222.222.222.222")]
@@ -3753,7 +3755,7 @@ pub mod test {
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
             Ok(PartialValue::Value(Value::ExtensionValue(_)))
-        ));
+        );
         assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::get_attr(
                 Expr::val(EntityUID::with_eid("alice")),
@@ -3783,13 +3785,13 @@ pub mod test {
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
         );
-        assert!(matches!(
+        assert_matches!(
             BorrowedRestrictedExpr::new(&Expr::set([Expr::val("hi"), Expr::val("there")]))
                 .map_err(Into::into)
                 .and_then(|e| evaluator.partial_interpret(e)),
             Ok(PartialValue::Value(Value::Set(_)))
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             BorrowedRestrictedExpr::new(&Expr::record([
                 ("hi".into(), Expr::val(1001)),
                 ("foo".into(), Expr::val("bar"))
@@ -3797,7 +3799,7 @@ pub mod test {
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
             Ok(PartialValue::Value(Value::Record(_)))
-        ));
+        );
 
         // complex expressions -- for instance, violation not at top level
         assert_restricted_expression_error(
