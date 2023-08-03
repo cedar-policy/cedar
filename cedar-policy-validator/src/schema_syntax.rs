@@ -4,9 +4,12 @@ use std::{
 };
 
 use cedar_policy_core::ast::{Id, Name};
-use combine::{between, choice, eof, many1, optional, satisfy_map, sep_by1, Parser};
+use combine::{
+    between, choice, eof, error::StreamError, many1, optional, satisfy_map, sep_by1,
+    stream::ResetStream, ParseError, Parser, Positioned, StreamOnce,
+};
 use itertools::Itertools;
-use logos::Logos;
+use logos::{Logos, Span};
 use smol_str::SmolStr;
 
 use crate::{
@@ -79,40 +82,176 @@ enum Token {
     Eq,
 }
 
-fn parse_id<'a>() -> impl Parser<&'a [Token], Output = Id> {
-    satisfy_map(|t| match t {
-        Token::Identifier(d) => Some(Id::from_str(&d).unwrap()),
+#[derive(Debug, Clone, PartialEq)]
+enum ParseErrors {
+    Expected(SmolStr),
+    Unexpected(SmolStr),
+    Message(SmolStr),
+    Eoi,
+}
+
+impl<'a> StreamError<(Token, Span), &'a [(Token, Span)]> for ParseErrors {
+    fn unexpected_token(token: (Token, Span)) -> Self {
+        Self::Unexpected(SmolStr::new(format!("token: {token:?}")))
+    }
+    fn unexpected_range(tokens: &'a [(Token, Span)]) -> Self {
+        Self::Unexpected(SmolStr::new(format!("range: {tokens:?}")))
+    }
+    fn unexpected_format<T>(msg: T) -> Self
+    where
+        T: std::fmt::Display,
+    {
+        Self::Unexpected(SmolStr::new(msg.to_string()))
+    }
+    fn expected_token(token: (Token, Span)) -> Self {
+        Self::Expected(SmolStr::new(format!("token: {token:?}")))
+    }
+    fn expected_range(tokens: &'a [(Token, Span)]) -> Self {
+        Self::Expected(SmolStr::new(format!("range: {tokens:?}")))
+    }
+    fn expected_format<T>(msg: T) -> Self
+    where
+        T: std::fmt::Display,
+    {
+        Self::Expected(SmolStr::new(msg.to_string()))
+    }
+    fn message_token(token: (Token, Span)) -> Self {
+        Self::Message(SmolStr::new(format!("{token:?}")))
+    }
+    fn message_range(tokens: &'a [(Token, Span)]) -> Self {
+        Self::Message(SmolStr::new(format!("{tokens:?}")))
+    }
+    fn message_format<T>(msg: T) -> Self
+    where
+        T: std::fmt::Display,
+    {
+        Self::Message(SmolStr::new(msg.to_string()))
+    }
+    fn is_unexpected_end_of_input(&self) -> bool {
+        match self {
+            Self::Eoi => true,
+            _ => false,
+        }
+    }
+    fn into_other<T>(self) -> T
+    where
+        T: StreamError<(Token, Span), &'a [(Token, Span)]>,
+    {
+        match self {
+            Self::Eoi => T::end_of_input(),
+            Self::Expected(s) => T::expected_format(s),
+            Self::Message(s) => T::message_format(s),
+            Self::Unexpected(s) => T::unexpected_format(s),
+        }
+    }
+}
+
+impl<'a> ParseError<(Token, Span), &'a [(Token, Span)], usize> for ParseErrors {
+    type StreamError = Self;
+    fn empty(position: usize) -> Self {
+        println!("empty");
+        Self::Eoi
+    }
+    fn set_position(&mut self, position: usize) {
+        println!("position: {}", position);
+    }
+    fn add(&mut self, err: Self::StreamError) {
+        println!("add: {err:?}");
+        *self = err;
+    }
+    fn set_expected<F>(self_: &mut combine::error::Tracked<Self>, info: Self::StreamError, f: F)
+    where
+        F: FnOnce(&mut combine::error::Tracked<Self>),
+    {
+        println!("set_expected: {info:?}");
+    }
+    fn is_unexpected_end_of_input(&self) -> bool {
+        StreamError::is_unexpected_end_of_input(self)
+    }
+    fn into_other<T>(self) -> T
+    where
+        T: ParseError<(Token, Span), &'a [(Token, Span)], usize>,
+    {
+        println!("into_other");
+        T::empty(0)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TokenStream<'a> {
+    pub token_spans: &'a [(Token, Span)],
+}
+
+impl<'a> StreamOnce for TokenStream<'a> {
+    type Error = ParseErrors;
+    type Position = usize;
+    type Token = (Token, Span);
+    type Range = &'a [(Token, Span)];
+
+    fn uncons(&mut self) -> Result<Self::Token, combine::stream::StreamErrorFor<Self>> {
+        match &self.token_spans[..] {
+            [] => Err(ParseErrors::Eoi),
+            _ => {
+                let (f, r) = self.token_spans.split_first().unwrap();
+                self.token_spans = r;
+                Ok(f.clone())
+            }
+        }
+    }
+}
+
+impl<'a> ResetStream for TokenStream<'a> {
+    type Checkpoint = Self;
+    fn checkpoint(&self) -> Self::Checkpoint {
+        self.clone()
+    }
+    fn reset(&mut self, checkpoint: Self::Checkpoint) -> Result<(), Self::Error> {
+        *self = checkpoint;
+        Ok(())
+    }
+}
+
+impl<'a> Positioned for TokenStream<'a> {
+    fn position(&self) -> Self::Position {
+        0
+    }
+}
+
+fn parse_id<'a>() -> impl Parser<TokenStream<'a>, Output = Id> {
+    satisfy_map(|ts| match ts {
+        (Token::Identifier(d), _) => Some(Id::from_str(&d).unwrap()),
         _ => None,
     })
 }
 
-fn accept<'a>(t: Token) -> impl Parser<&'a [Token], Output = ()> {
-    satisfy_map(move |tt| if tt == t { Some(()) } else { None })
+fn accept<'a>(t: Token) -> impl Parser<TokenStream<'a>, Output = ()> {
+    satisfy_map(move |tt: (Token, Span)| if tt.0 == t { Some(()) } else { None })
 }
 
 struct AppParser();
 
-impl<'a> Parser<&'a [Token]> for AppParser {
+impl<'a> Parser<TokenStream<'a>> for AppParser {
     type Output = ApplySpec;
     type PartialState = ();
     fn parse_lazy(
         &mut self,
-        input: &mut &'a [Token],
-    ) -> combine::ParseResult<Self::Output, <&'a [Token] as combine::StreamOnce>::Error> {
-        match self.parse(input) {
+        input: &mut TokenStream<'a>,
+    ) -> combine::ParseResult<Self::Output, <TokenStream<'a> as combine::StreamOnce>::Error> {
+        match self.parse(input.clone()) {
             Ok((res, tokens)) => {
                 *input = tokens;
                 combine::ParseResult::CommitOk(res)
             }
             Err(_) => combine::ParseResult::PeekErr(combine::error::Tracked::from(
-                combine::error::UnexpectedParse::Unexpected,
+                ParseErrors::unexpected_format("app"),
             )),
         }
     }
     fn parse(
         &mut self,
-        input: &'a [Token],
-    ) -> Result<(Self::Output, &'a [Token]), <&'a [Token] as combine::StreamOnce>::Error> {
+        input: TokenStream<'a>,
+    ) -> Result<(Self::Output, TokenStream<'a>), <TokenStream<'a> as combine::StreamOnce>::Error>
+    {
         if let Ok((id, tokens)) = choice((
             accept(Token::VarPrincipal).map(|_| "principal"),
             accept(Token::VarResource).map(|_| "resource"),
@@ -144,8 +283,8 @@ impl<'a> Parser<&'a [Token]> for AppParser {
                             _ => unreachable!("wrong id"),
                         }
                     };
-                    if let Ok((_, tokens)) = accept(Token::Comma).parse(tokens) {
-                        if let Ok((cdr, tokens)) = self.parse(tokens) {
+                    if let Ok((_, tokens)) = accept(Token::Comma).parse(tokens.clone()) {
+                        if let Ok((cdr, tokens)) = self.parse(tokens.clone()) {
                             let merge = |lst1: Option<Vec<SmolStr>>, lst2| match (lst1, lst2) {
                                 (Some(l1), Some(l2)) => Some([l1, l2].concat()),
                                 (Some(l1), None) => Some(l1),
@@ -168,33 +307,34 @@ impl<'a> Parser<&'a [Token]> for AppParser {
                 }
             }
         }
-        return Err(combine::error::UnexpectedParse::Unexpected);
+        return Err(ParseErrors::unexpected_format("app"));
     }
 }
 
 struct AttrParser();
 
-impl<'a> Parser<&'a [Token]> for AttrParser {
+impl<'a> Parser<TokenStream<'a>> for AttrParser {
     type Output = BTreeMap<SmolStr, TypeOfAttribute>;
     type PartialState = ();
     fn parse_lazy(
         &mut self,
-        input: &mut &'a [Token],
-    ) -> combine::ParseResult<Self::Output, <&'a [Token] as combine::StreamOnce>::Error> {
-        match self.parse(input) {
+        input: &mut TokenStream<'a>,
+    ) -> combine::ParseResult<Self::Output, <TokenStream<'a> as combine::StreamOnce>::Error> {
+        match self.parse(input.clone()) {
             Ok((res, tokens)) => {
                 *input = tokens;
                 combine::ParseResult::CommitOk(res)
             }
             Err(_) => combine::ParseResult::PeekErr(combine::error::Tracked::from(
-                combine::error::UnexpectedParse::Unexpected,
+                ParseErrors::unexpected_format("attr"),
             )),
         }
     }
     fn parse(
         &mut self,
-        input: &'a [Token],
-    ) -> Result<(Self::Output, &'a [Token]), <&'a [Token] as combine::StreamOnce>::Error> {
+        input: TokenStream<'a>,
+    ) -> Result<(Self::Output, TokenStream<'a>), <TokenStream<'a> as combine::StreamOnce>::Error>
+    {
         if let Ok((id, tokens)) = parse_id().parse(input) {
             if let Ok((_, tokens)) = accept(Token::Colon).parse(tokens) {
                 if let Ok((ty, tokens)) = parse_type().parse(tokens) {
@@ -203,8 +343,8 @@ impl<'a> Parser<&'a [Token]> for AttrParser {
                         SmolStr::new(id.as_ref()),
                         TypeOfAttribute { ty, required: true },
                     );
-                    if let Ok((_, tokens)) = accept(Token::Comma).parse(tokens) {
-                        if let Ok((mut pairs, tokens)) = self.parse(tokens) {
+                    if let Ok((_, tokens)) = accept(Token::Comma).parse(tokens.clone()) {
+                        if let Ok((mut pairs, tokens)) = self.parse(tokens.clone()) {
                             pairs.extend(pair);
                             return Ok((pairs, tokens));
                         }
@@ -214,45 +354,46 @@ impl<'a> Parser<&'a [Token]> for AttrParser {
                 }
             }
         }
-        return Err(combine::error::UnexpectedParse::Unexpected);
+        return Err(ParseErrors::unexpected_format("attr"));
     }
 }
 
 struct TypeParser();
 
-impl<'a> Parser<&'a [Token]> for TypeParser {
+impl<'a> Parser<TokenStream<'a>> for TypeParser {
     type Output = SchemaType;
     type PartialState = ();
 
     fn parse_lazy(
         &mut self,
-        input: &mut &'a [Token],
-    ) -> combine::ParseResult<Self::Output, <&'a [Token] as combine::StreamOnce>::Error> {
-        match self.parse(input) {
+        input: &mut TokenStream<'a>,
+    ) -> combine::ParseResult<Self::Output, <TokenStream<'a> as combine::StreamOnce>::Error> {
+        match self.parse(input.clone()) {
             Ok((res, tokens)) => {
                 *input = tokens;
                 combine::ParseResult::CommitOk(res)
             }
             Err(_) => combine::ParseResult::PeekErr(combine::error::Tracked::from(
-                combine::error::UnexpectedParse::Unexpected,
+                ParseErrors::unexpected_format("type"),
             )),
         }
     }
 
     fn parse(
         &mut self,
-        input: &'a [Token],
-    ) -> Result<(Self::Output, &'a [Token]), <&'a [Token] as combine::StreamOnce>::Error> {
-        if let Ok((_, tokens)) = accept(Token::TyBool).parse(input) {
+        input: TokenStream<'a>,
+    ) -> Result<(Self::Output, TokenStream<'a>), <TokenStream<'a> as combine::StreamOnce>::Error>
+    {
+        if let Ok((_, tokens)) = accept(Token::TyBool).parse(input.clone()) {
             return Ok((SchemaType::Type(SchemaTypeVariant::Boolean), tokens));
         }
-        if let Ok((_, tokens)) = accept(Token::TyLong).parse(input) {
+        if let Ok((_, tokens)) = accept(Token::TyLong).parse(input.clone()) {
             return Ok((SchemaType::Type(SchemaTypeVariant::Long), tokens));
         }
-        if let Ok((_, tokens)) = accept(Token::TyString).parse(input) {
+        if let Ok((_, tokens)) = accept(Token::TyString).parse(input.clone()) {
             return Ok((SchemaType::Type(SchemaTypeVariant::String), tokens));
         }
-        if let Ok((_, tokens)) = accept(Token::Set).parse(input) {
+        if let Ok((_, tokens)) = accept(Token::Set).parse(input.clone()) {
             if let Ok((_, tokens)) = accept(Token::LAngle).parse(tokens) {
                 if let Ok((elem_ty, tokens)) = parse_type().parse(tokens) {
                     if let Ok((_, tokens)) = accept(Token::RAngle).parse(tokens) {
@@ -266,7 +407,7 @@ impl<'a> Parser<&'a [Token]> for TypeParser {
                 }
             }
         }
-        if let Ok((_, tokens)) = accept(Token::LBrace).parse(input) {
+        if let Ok((_, tokens)) = accept(Token::LBrace).parse(input.clone()) {
             if let Ok((attrs, tokens)) = AttrParser().parse(tokens) {
                 if let Ok((_, tokens)) = accept(Token::RBrace).parse(tokens) {
                     return Ok((
@@ -279,7 +420,7 @@ impl<'a> Parser<&'a [Token]> for TypeParser {
                 }
             }
         }
-        if let Ok((id, tokens)) = parse_id().parse(input) {
+        if let Ok((id, tokens)) = parse_id().parse(input.clone()) {
             return Ok((
                 SchemaType::Type(SchemaTypeVariant::Entity {
                     name: SmolStr::new(id.as_ref()),
@@ -287,15 +428,15 @@ impl<'a> Parser<&'a [Token]> for TypeParser {
                 tokens,
             ));
         }
-        return Err(combine::error::UnexpectedParse::Unexpected);
+        return Err(ParseErrors::unexpected_format("type"));
     }
 }
 
-fn parse_type<'a>() -> impl Parser<&'a [Token], Output = SchemaType> {
+fn parse_type<'a>() -> impl Parser<TokenStream<'a>, Output = SchemaType> {
     TypeParser()
 }
 
-fn parse_decl<'a>() -> impl Parser<&'a [Token], Output = NamespaceDefinition> {
+fn parse_decl<'a>() -> impl Parser<TokenStream<'a>, Output = NamespaceDefinition> {
     let merge_nds = |nds: Vec<NamespaceDefinition>| {
         let mut common_types = HashMap::new();
         let mut entity_types = HashMap::new();
@@ -331,22 +472,22 @@ fn parse_decl<'a>() -> impl Parser<&'a [Token], Output = NamespaceDefinition> {
     .map(move |nds: Vec<NamespaceDefinition>| merge_nds(nds))
 }
 
-fn parse_str<'a>() -> impl Parser<&'a [Token], Output = SmolStr> {
+fn parse_str<'a>() -> impl Parser<TokenStream<'a>, Output = SmolStr> {
     satisfy_map(|v| match v {
-        Token::Str(s) => Some(s),
+        (Token::Str(s), _) => Some(s),
         _ => None,
     })
 }
 
-fn parse_name<'a>() -> impl Parser<&'a [Token], Output = SmolStr> {
+fn parse_name<'a>() -> impl Parser<TokenStream<'a>, Output = SmolStr> {
     satisfy_map(|v| match v {
-        Token::Str(s) => Some(s),
-        Token::Identifier(id) => Some(id),
+        (Token::Str(s), _) => Some(s),
+        (Token::Identifier(id), _) => Some(id),
         _ => None,
     })
 }
 
-fn parse_names<'a>() -> impl Parser<&'a [Token], Output = Vec<SmolStr>> {
+fn parse_names<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<SmolStr>> {
     between(
         accept(Token::LBracket),
         accept(Token::RBracket),
@@ -354,7 +495,7 @@ fn parse_names<'a>() -> impl Parser<&'a [Token], Output = Vec<SmolStr>> {
     )
 }
 
-fn parse_namespace<'a>() -> impl Parser<&'a [Token], Output = (SmolStr, NamespaceDefinition)> {
+fn parse_namespace<'a>() -> impl Parser<TokenStream<'a>, Output = (SmolStr, NamespaceDefinition)> {
     (
         accept(Token::Namespace),
         parse_str(),
@@ -364,13 +505,13 @@ fn parse_namespace<'a>() -> impl Parser<&'a [Token], Output = (SmolStr, Namespac
         .map(|(_, ns_str, ns_def, _)| (ns_str, ns_def))
 }
 
-fn parse_path<'a>() -> impl Parser<&'a [Token], Output = Name> {
+fn parse_path<'a>() -> impl Parser<TokenStream<'a>, Output = Name> {
     sep_by1(parse_id(), accept(Token::DoubleColon))
         .map(|ids: Vec<Id>| Name::new(ids[0].clone(), ids[1..].iter().map(|id| id.clone())))
 }
 
 // Action    := 'action' Name ['in' (Name | '[' [Names] ']')] [AppliesTo] ';'
-fn parse_action_decl<'a>() -> impl Parser<&'a [Token], Output = HashMap<SmolStr, ActionType>> {
+fn parse_action_decl<'a>() -> impl Parser<TokenStream<'a>, Output = HashMap<SmolStr, ActionType>> {
     (
         accept(Token::VarAction),
         sep_by1(parse_name(), accept(Token::Comma)).map(|vs: Vec<SmolStr>| vs),
@@ -409,7 +550,7 @@ fn parse_action_decl<'a>() -> impl Parser<&'a [Token], Output = HashMap<SmolStr,
 }
 
 // Entity    := 'entity' IDENT ['in' (EntType | '[' [EntTypes] ']')] [['='] RecType] ';'
-fn parse_et_decl<'a>() -> impl Parser<&'a [Token], Output = (SmolStr, EntityType)> {
+fn parse_et_decl<'a>() -> impl Parser<TokenStream<'a>, Output = (SmolStr, EntityType)> {
     (
         accept(Token::Entity),
         parse_id(),
@@ -452,7 +593,7 @@ fn parse_et_decl<'a>() -> impl Parser<&'a [Token], Output = (SmolStr, EntityType
 }
 
 // '[' [EntTypes] ']'
-fn parse_ets<'a>() -> impl Parser<&'a [Token], Output = Vec<Name>> {
+fn parse_ets<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<Name>> {
     between(
         accept(Token::LBracket),
         accept(Token::RBracket),
@@ -461,7 +602,7 @@ fn parse_ets<'a>() -> impl Parser<&'a [Token], Output = Vec<Name>> {
 }
 
 // TypeDecl  := 'type' IDENT '=' Type ';'
-fn parse_common_type_decl<'a>() -> impl Parser<&'a [Token], Output = (SmolStr, SchemaType)> {
+fn parse_common_type_decl<'a>() -> impl Parser<TokenStream<'a>, Output = (SmolStr, SchemaType)> {
     (
         accept(Token::Type),
         parse_id().map(|id| SmolStr::new(id.as_ref())),
@@ -472,30 +613,34 @@ fn parse_common_type_decl<'a>() -> impl Parser<&'a [Token], Output = (SmolStr, S
         .map(|(_, id, _, ty, _)| (id, ty))
 }
 
-fn get_tokens(input: &str) -> Vec<Token> {
+fn get_tokens(input: &str) -> Vec<(Token, Span)> {
     Token::lexer(input)
         .spanned()
-        .map(|p| p.0.unwrap())
+        .map(|p| (p.0.unwrap(), p.1))
         .collect_vec()
 }
 
 #[cfg(test)]
 mod test_parser {
-    use std::str::FromStr;
-
     use super::*;
-    use cedar_policy_core::ast::Id;
     use combine::Parser;
     #[test]
     fn test_parse_id() {
-        let tokens = get_tokens("lol");
-        let id: Id = parse_id().parse(&tokens).expect("should parse").0;
-        assert!(id == Id::from_str("lol").unwrap());
+        let tokens = get_tokens(",lollol");
+        let id = parse_path().parse(TokenStream {
+            token_spans: &tokens,
+        });
+        assert!(id.is_ok(), "{:?}", id.unwrap_err());
     }
     #[test]
     fn test_parse_type() {
         let tokens = get_tokens("{lol: Set <String>, abc: { efg: Bool}}");
-        let ty = parse_type().parse(&tokens).expect("should parse").0;
+        let ty = parse_type()
+            .parse(TokenStream {
+                token_spans: &tokens,
+            })
+            .expect("should parse")
+            .0;
         assert!(
             ty != SchemaType::Type(SchemaTypeVariant::Set {
                 element: Box::new(SchemaType::Type(SchemaTypeVariant::String))
@@ -506,7 +651,9 @@ mod test_parser {
     #[test]
     fn test_parse_et_decl() {
         let tokens = get_tokens(" entity User in [Team,Application] { name: String };");
-        let et = parse_et_decl().parse(&tokens);
+        let et = parse_et_decl().parse(TokenStream {
+            token_spans: &tokens,
+        });
         assert!(et.is_ok());
     }
     #[test]
@@ -515,7 +662,9 @@ mod test_parser {
             " action CreateList
             appliesTo { principal: [User], resource: [Application] };",
         );
-        let action = parse_action_decl().parse(&tokens);
+        let action = parse_action_decl().parse(TokenStream {
+            token_spans: &tokens,
+        });
         assert!(action.is_ok());
     }
     #[test]
@@ -527,7 +676,9 @@ mod test_parser {
                 timestamp: Long
             };",
         );
-        let ty = parse_common_type_decl().parse(&tokens);
+        let ty = parse_common_type_decl().parse(TokenStream {
+            token_spans: &tokens,
+        });
         assert!(ty.is_ok());
     }
     #[test]
@@ -552,7 +703,9 @@ mod test_parser {
                     appliesTo { principal: [User], resource:[List] };
             }"#,
         );
-        let ns = parse_namespace().parse(&tokens);
+        let ns = parse_namespace().parse(TokenStream {
+            token_spans: &tokens,
+        });
         assert!(ns.is_ok(), "{:?}", ns.unwrap_err());
     }
 }
