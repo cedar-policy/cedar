@@ -11,6 +11,7 @@ use combine::{
 use itertools::Itertools;
 use logos::{Logos, Span};
 use smol_str::SmolStr;
+use thiserror::Error;
 
 use crate::{
     ActionEntityUID, ActionType, ApplySpec, AttributesOrContext, EntityType, NamespaceDefinition,
@@ -82,21 +83,26 @@ enum Token {
     Eq,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-enum ParseErrors {
+#[derive(Debug, Clone, PartialEq, Error)]
+pub enum ParseErrors {
+    #[error("Lexer error: {0}")]
     Lexing(SmolStr),
+    #[error("Expecting: {0}")]
     Expected(SmolStr),
+    #[error("Unexpected: {0}")]
     Unexpected(SmolStr),
+    #[error("Parser error: {0}")]
     Message(SmolStr),
+    #[error("End of input")]
     Eoi,
 }
 
 impl<'a> StreamError<(Token, Span), &'a [(Token, Span)]> for ParseErrors {
     fn unexpected_token(token: (Token, Span)) -> Self {
-        Self::Unexpected(SmolStr::new(format!("token: {token:?}")))
+        Self::Unexpected(SmolStr::new(format!("{token:?}")))
     }
     fn unexpected_range(tokens: &'a [(Token, Span)]) -> Self {
-        Self::Unexpected(SmolStr::new(format!("range: {tokens:?}")))
+        Self::Unexpected(SmolStr::new(format!("{tokens:?}")))
     }
     fn unexpected_format<T>(msg: T) -> Self
     where
@@ -105,10 +111,10 @@ impl<'a> StreamError<(Token, Span), &'a [(Token, Span)]> for ParseErrors {
         Self::Unexpected(SmolStr::new(msg.to_string()))
     }
     fn expected_token(token: (Token, Span)) -> Self {
-        Self::Expected(SmolStr::new(format!("token: {token:?}")))
+        Self::Expected(SmolStr::new(format!("{token:?}")))
     }
     fn expected_range(tokens: &'a [(Token, Span)]) -> Self {
-        Self::Expected(SmolStr::new(format!("range: {tokens:?}")))
+        Self::Expected(SmolStr::new(format!("{tokens:?}")))
     }
     fn expected_format<T>(msg: T) -> Self
     where
@@ -150,16 +156,16 @@ impl<'a> StreamError<(Token, Span), &'a [(Token, Span)]> for ParseErrors {
 
 impl<'a> ParseError<(Token, Span), &'a [(Token, Span)], ()> for ParseErrors {
     type StreamError = Self;
-    fn empty(position: ()) -> Self {
+    fn empty(_position: ()) -> Self {
         Self::Eoi
     }
-    fn set_position(&mut self, position: ()) {
+    fn set_position(&mut self, _position: ()) {
         unimplemented!("set_position")
     }
     fn add(&mut self, err: Self::StreamError) {
         *self = err;
     }
-    fn set_expected<F>(self_: &mut combine::error::Tracked<Self>, info: Self::StreamError, f: F)
+    fn set_expected<F>(_self_: &mut combine::error::Tracked<Self>, _info: Self::StreamError, _f: F)
     where
         F: FnOnce(&mut combine::error::Tracked<Self>),
     {
@@ -249,7 +255,6 @@ impl<'a> Parser<TokenStream<'a>> for AppParser {
         input: TokenStream<'a>,
     ) -> Result<(Self::Output, TokenStream<'a>), <TokenStream<'a> as combine::StreamOnce>::Error>
     {
-        println!("{:?}", input);
         (
             choice((
                 accept(Token::VarPrincipal).map(|_| "principal"),
@@ -599,6 +604,14 @@ fn get_tokens(input: &str) -> Result<Vec<(Token, Span)>, ParseErrors> {
             Err(_) => Err(ParseErrors::Lexing(SmolStr::new(format!("{span:?}")))),
         })
         .collect()
+}
+
+pub fn parse_from_str(input: &str) -> Result<(SmolStr, NamespaceDefinition), ParseErrors> {
+    let tokens = get_tokens(input)?;
+    let (res, _) = parse_namespace().parse(TokenStream {
+        token_spans: &tokens,
+    })?;
+    Ok(res)
 }
 
 #[cfg(test)]
