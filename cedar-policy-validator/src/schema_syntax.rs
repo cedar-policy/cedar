@@ -84,6 +84,7 @@ enum Token {
 
 #[derive(Debug, Clone, PartialEq)]
 enum ParseErrors {
+    Lexing(SmolStr),
     Expected(SmolStr),
     Unexpected(SmolStr),
     Message(SmolStr),
@@ -138,6 +139,7 @@ impl<'a> StreamError<(Token, Span), &'a [(Token, Span)]> for ParseErrors {
         T: StreamError<(Token, Span), &'a [(Token, Span)]>,
     {
         match self {
+            Self::Lexing(s) => T::message_format(s),
             Self::Eoi => T::end_of_input(),
             Self::Expected(s) => T::expected_format(s),
             Self::Message(s) => T::message_format(s),
@@ -146,34 +148,31 @@ impl<'a> StreamError<(Token, Span), &'a [(Token, Span)]> for ParseErrors {
     }
 }
 
-impl<'a> ParseError<(Token, Span), &'a [(Token, Span)], usize> for ParseErrors {
+impl<'a> ParseError<(Token, Span), &'a [(Token, Span)], ()> for ParseErrors {
     type StreamError = Self;
-    fn empty(position: usize) -> Self {
-        println!("empty");
+    fn empty(position: ()) -> Self {
         Self::Eoi
     }
-    fn set_position(&mut self, position: usize) {
-        println!("position: {}", position);
+    fn set_position(&mut self, position: ()) {
+        unimplemented!("set_position")
     }
     fn add(&mut self, err: Self::StreamError) {
-        println!("add: {err:?}");
         *self = err;
     }
     fn set_expected<F>(self_: &mut combine::error::Tracked<Self>, info: Self::StreamError, f: F)
     where
         F: FnOnce(&mut combine::error::Tracked<Self>),
     {
-        println!("set_expected: {info:?}");
+        unimplemented!("set_expected")
     }
     fn is_unexpected_end_of_input(&self) -> bool {
         StreamError::is_unexpected_end_of_input(self)
     }
     fn into_other<T>(self) -> T
     where
-        T: ParseError<(Token, Span), &'a [(Token, Span)], usize>,
+        T: ParseError<(Token, Span), &'a [(Token, Span)], ()>,
     {
-        println!("into_other");
-        T::empty(0)
+        unimplemented!("into_other")
     }
 }
 
@@ -184,7 +183,7 @@ struct TokenStream<'a> {
 
 impl<'a> StreamOnce for TokenStream<'a> {
     type Error = ParseErrors;
-    type Position = usize;
+    type Position = ();
     type Token = (Token, Span);
     type Range = &'a [(Token, Span)];
 
@@ -213,7 +212,7 @@ impl<'a> ResetStream for TokenStream<'a> {
 
 impl<'a> Positioned for TokenStream<'a> {
     fn position(&self) -> Self::Position {
-        0
+        ()
     }
 }
 
@@ -242,9 +241,7 @@ impl<'a> Parser<TokenStream<'a>> for AppParser {
                 *input = tokens;
                 combine::ParseResult::CommitOk(res)
             }
-            Err(_) => combine::ParseResult::PeekErr(combine::error::Tracked::from(
-                ParseErrors::unexpected_format("app"),
-            )),
+            Err(err) => combine::ParseResult::PeekErr(combine::error::Tracked::from(err)),
         }
     }
     fn parse(
@@ -252,62 +249,65 @@ impl<'a> Parser<TokenStream<'a>> for AppParser {
         input: TokenStream<'a>,
     ) -> Result<(Self::Output, TokenStream<'a>), <TokenStream<'a> as combine::StreamOnce>::Error>
     {
-        if let Ok((id, tokens)) = choice((
-            accept(Token::VarPrincipal).map(|_| "principal"),
-            accept(Token::VarResource).map(|_| "resource"),
-        ))
-        .parse(input)
-        {
-            if let Ok((_, tokens)) = accept(Token::Colon).parse(tokens) {
-                if let Ok((ty, tokens)) = parse_ets().parse(tokens) {
-                    let singleton = {
-                        match id {
-                            "principal" => ApplySpec {
-                                resource_types: None,
-                                principal_types: Some(
-                                    ty.into_iter()
-                                        .map(|n| SmolStr::new(n.to_string()))
-                                        .collect_vec(),
-                                ),
-                                context: AttributesOrContext::default(),
-                            },
-                            "resource" => ApplySpec {
-                                resource_types: Some(
-                                    ty.into_iter()
-                                        .map(|n| SmolStr::new(n.to_string()))
-                                        .collect_vec(),
-                                ),
-                                principal_types: None,
-                                context: AttributesOrContext::default(),
-                            },
-                            _ => unreachable!("wrong id"),
-                        }
-                    };
-                    if let Ok((_, tokens)) = accept(Token::Comma).parse(tokens.clone()) {
-                        if let Ok((cdr, tokens)) = self.parse(tokens.clone()) {
-                            let merge = |lst1: Option<Vec<SmolStr>>, lst2| match (lst1, lst2) {
-                                (Some(l1), Some(l2)) => Some([l1, l2].concat()),
-                                (Some(l1), None) => Some(l1),
-                                (None, Some(l2)) => Some(l2),
-                                _ => None,
-                            };
-                            let lst = ApplySpec {
-                                principal_types: merge(
-                                    singleton.principal_types,
-                                    cdr.principal_types,
-                                ),
-                                resource_types: merge(singleton.resource_types, cdr.resource_types),
-                                context: AttributesOrContext::default(),
-                            };
-                            return Ok((lst, tokens));
-                        }
-                        return Ok((singleton, tokens));
+        println!("{:?}", input);
+        (
+            choice((
+                accept(Token::VarPrincipal).map(|_| "principal"),
+                accept(Token::VarResource).map(|_| "resource"),
+            )),
+            accept(Token::Colon),
+            parse_ets(),
+            optional(choice((
+                (accept(Token::Comma), AppParser()).map(|(_, cdr)| cdr),
+                accept(Token::Comma).map(|_| ApplySpec {
+                    resource_types: None,
+                    principal_types: None,
+                    context: AttributesOrContext::default(),
+                }),
+            ))),
+        )
+            .map(|(id, _, ty, cdr)| {
+                let singleton = {
+                    match id {
+                        "principal" => ApplySpec {
+                            resource_types: None,
+                            principal_types: Some(
+                                ty.into_iter()
+                                    .map(|n| SmolStr::new(n.to_string()))
+                                    .collect_vec(),
+                            ),
+                            context: AttributesOrContext::default(),
+                        },
+                        "resource" => ApplySpec {
+                            resource_types: Some(
+                                ty.into_iter()
+                                    .map(|n| SmolStr::new(n.to_string()))
+                                    .collect_vec(),
+                            ),
+                            principal_types: None,
+                            context: AttributesOrContext::default(),
+                        },
+                        _ => unreachable!("wrong id"),
                     }
-                    return Ok((singleton, tokens));
+                };
+                if let Some(cdr) = cdr {
+                    let merge = |lst1: Option<Vec<SmolStr>>, lst2| match (lst1, lst2) {
+                        (Some(l1), Some(l2)) => Some([l1, l2].concat()),
+                        (Some(l1), None) => Some(l1),
+                        (None, Some(l2)) => Some(l2),
+                        _ => None,
+                    };
+                    let lst = ApplySpec {
+                        principal_types: merge(singleton.principal_types, cdr.principal_types),
+                        resource_types: merge(singleton.resource_types, cdr.resource_types),
+                        context: AttributesOrContext::default(),
+                    };
+                    lst
+                } else {
+                    singleton
                 }
-            }
-        }
-        return Err(ParseErrors::unexpected_format("app"));
+            })
+            .parse(input)
     }
 }
 
@@ -325,9 +325,7 @@ impl<'a> Parser<TokenStream<'a>> for AttrParser {
                 *input = tokens;
                 combine::ParseResult::CommitOk(res)
             }
-            Err(_) => combine::ParseResult::PeekErr(combine::error::Tracked::from(
-                ParseErrors::unexpected_format("attr"),
-            )),
+            Err(err) => combine::ParseResult::PeekErr(combine::error::Tracked::from(err)),
         }
     }
     fn parse(
@@ -335,26 +333,27 @@ impl<'a> Parser<TokenStream<'a>> for AttrParser {
         input: TokenStream<'a>,
     ) -> Result<(Self::Output, TokenStream<'a>), <TokenStream<'a> as combine::StreamOnce>::Error>
     {
-        if let Ok((id, tokens)) = parse_id().parse(input) {
-            if let Ok((_, tokens)) = accept(Token::Colon).parse(tokens) {
-                if let Ok((ty, tokens)) = parse_type().parse(tokens) {
-                    let mut pair = BTreeMap::new();
-                    pair.insert(
-                        SmolStr::new(id.as_ref()),
-                        TypeOfAttribute { ty, required: true },
-                    );
-                    if let Ok((_, tokens)) = accept(Token::Comma).parse(tokens.clone()) {
-                        if let Ok((mut pairs, tokens)) = self.parse(tokens.clone()) {
-                            pairs.extend(pair);
-                            return Ok((pairs, tokens));
-                        }
-                        return Ok((pair, tokens));
-                    }
-                    return Ok((pair, tokens));
+        (
+            parse_id(),
+            accept(Token::Colon),
+            parse_type(),
+            optional(choice((
+                (accept(Token::Comma), AttrParser()).map(|(_, attrs)| attrs),
+                accept(Token::Comma).map(|_| BTreeMap::new()),
+            ))),
+        )
+            .map(|(id, _, ty, rs)| {
+                let mut pairs = BTreeMap::new();
+                pairs.insert(
+                    SmolStr::new(id.as_ref()),
+                    TypeOfAttribute { ty, required: true },
+                );
+                if let Some(rs) = rs {
+                    pairs.extend(rs);
                 }
-            }
-        }
-        return Err(ParseErrors::unexpected_format("attr"));
+                pairs
+            })
+            .parse(input)
     }
 }
 
@@ -373,9 +372,7 @@ impl<'a> Parser<TokenStream<'a>> for TypeParser {
                 *input = tokens;
                 combine::ParseResult::CommitOk(res)
             }
-            Err(_) => combine::ParseResult::PeekErr(combine::error::Tracked::from(
-                ParseErrors::unexpected_format("type"),
-            )),
+            Err(err) => combine::ParseResult::PeekErr(combine::error::Tracked::from(err)),
         }
     }
 
@@ -384,51 +381,32 @@ impl<'a> Parser<TokenStream<'a>> for TypeParser {
         input: TokenStream<'a>,
     ) -> Result<(Self::Output, TokenStream<'a>), <TokenStream<'a> as combine::StreamOnce>::Error>
     {
-        if let Ok((_, tokens)) = accept(Token::TyBool).parse(input.clone()) {
-            return Ok((SchemaType::Type(SchemaTypeVariant::Boolean), tokens));
-        }
-        if let Ok((_, tokens)) = accept(Token::TyLong).parse(input.clone()) {
-            return Ok((SchemaType::Type(SchemaTypeVariant::Long), tokens));
-        }
-        if let Ok((_, tokens)) = accept(Token::TyString).parse(input.clone()) {
-            return Ok((SchemaType::Type(SchemaTypeVariant::String), tokens));
-        }
-        if let Ok((_, tokens)) = accept(Token::Set).parse(input.clone()) {
-            if let Ok((_, tokens)) = accept(Token::LAngle).parse(tokens) {
-                if let Ok((elem_ty, tokens)) = parse_type().parse(tokens) {
-                    if let Ok((_, tokens)) = accept(Token::RAngle).parse(tokens) {
-                        return Ok((
-                            SchemaType::Type(SchemaTypeVariant::Set {
-                                element: (Box::new(elem_ty)),
-                            }),
-                            tokens,
-                        ));
-                    }
-                }
-            }
-        }
-        if let Ok((_, tokens)) = accept(Token::LBrace).parse(input.clone()) {
-            if let Ok((attrs, tokens)) = AttrParser().parse(tokens) {
-                if let Ok((_, tokens)) = accept(Token::RBrace).parse(tokens) {
-                    return Ok((
-                        SchemaType::Type(SchemaTypeVariant::Record {
-                            attributes: attrs,
-                            additional_attributes: false,
-                        }),
-                        tokens,
-                    ));
-                }
-            }
-        }
-        if let Ok((id, tokens)) = parse_id().parse(input.clone()) {
-            return Ok((
+        choice((
+            accept(Token::TyBool).map(|_| SchemaType::Type(SchemaTypeVariant::Boolean)),
+            accept(Token::TyLong).map(|_| SchemaType::Type(SchemaTypeVariant::Long)),
+            accept(Token::TyString).map(|_| SchemaType::Type(SchemaTypeVariant::String)),
+            (
+                accept(Token::Set),
+                between(accept(Token::LAngle), accept(Token::RAngle), parse_type()),
+            )
+                .map(|(_, elem_ty)| {
+                    SchemaType::Type(SchemaTypeVariant::Set {
+                        element: (Box::new(elem_ty)),
+                    })
+                }),
+            between(accept(Token::LBrace), accept(Token::RBrace), AttrParser()).map(|attrs| {
+                SchemaType::Type(SchemaTypeVariant::Record {
+                    attributes: attrs,
+                    additional_attributes: false,
+                })
+            }),
+            parse_id().map(|id| {
                 SchemaType::Type(SchemaTypeVariant::Entity {
                     name: SmolStr::new(id.as_ref()),
-                }),
-                tokens,
-            ));
-        }
-        return Err(ParseErrors::unexpected_format("type"));
+                })
+            }),
+        ))
+        .parse(input)
     }
 }
 
@@ -613,11 +591,14 @@ fn parse_common_type_decl<'a>() -> impl Parser<TokenStream<'a>, Output = (SmolSt
         .map(|(_, id, _, ty, _)| (id, ty))
 }
 
-fn get_tokens(input: &str) -> Vec<(Token, Span)> {
+fn get_tokens(input: &str) -> Result<Vec<(Token, Span)>, ParseErrors> {
     Token::lexer(input)
         .spanned()
-        .map(|p| (p.0.unwrap(), p.1))
-        .collect_vec()
+        .map(|(token, span)| match token {
+            Ok(t) => Ok((t, span)),
+            Err(_) => Err(ParseErrors::Lexing(SmolStr::new(format!("{span:?}")))),
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -626,15 +607,15 @@ mod test_parser {
     use combine::Parser;
     #[test]
     fn test_parse_id() {
-        let tokens = get_tokens(",lollol");
+        let tokens = get_tokens(",lollol").expect("lexing is ok");
         let id = parse_path().parse(TokenStream {
             token_spans: &tokens,
         });
-        assert!(id.is_ok(), "{:?}", id.unwrap_err());
+        assert!(id.is_err(), "{:?}", id.unwrap());
     }
     #[test]
     fn test_parse_type() {
-        let tokens = get_tokens("{lol: Set <String>, abc: { efg: Bool}}");
+        let tokens = get_tokens("{lol: Set <String>, abc: { efg: Bool}}").expect("lexing is ok");
         let ty = parse_type()
             .parse(TokenStream {
                 token_spans: &tokens,
@@ -650,7 +631,8 @@ mod test_parser {
     }
     #[test]
     fn test_parse_et_decl() {
-        let tokens = get_tokens(" entity User in [Team,Application] { name: String };");
+        let tokens = get_tokens(" entity User in [Team,Application] { name: String };")
+            .expect("lexing is ok");
         let et = parse_et_decl().parse(TokenStream {
             token_spans: &tokens,
         });
@@ -661,11 +643,12 @@ mod test_parser {
         let tokens = get_tokens(
             " action CreateList
             appliesTo { principal: [User], resource: [Application] };",
-        );
+        )
+        .expect("lexing is ok");
         let action = parse_action_decl().parse(TokenStream {
             token_spans: &tokens,
         });
-        assert!(action.is_ok());
+        assert!(action.is_ok(), "{:?}", action.unwrap_err());
     }
     #[test]
     fn test_parse_common_type_decl() {
@@ -675,7 +658,8 @@ mod test_parser {
                 is_authenticated: Boolean,
                 timestamp: Long
             };",
-        );
+        )
+        .expect("lexing is ok");
         let ty = parse_common_type_decl().parse(TokenStream {
             token_spans: &tokens,
         });
@@ -702,7 +686,7 @@ mod test_parser {
                 action GetList, UpdateList, DeleteList, CreateTask, UpdateTask, DeleteTask, EditShares
                     appliesTo { principal: [User], resource:[List] };
             }"#,
-        );
+        ).expect("lexing is ok");
         let ns = parse_namespace().parse(TokenStream {
             token_spans: &tokens,
         });
