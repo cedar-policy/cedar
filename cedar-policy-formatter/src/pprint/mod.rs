@@ -22,3 +22,5 @@ mod doc;
 pub mod lexer;
 pub mod token;
 mod utils;
+mod schema;
+pub use schema::*;

@@ -98,6 +98,14 @@ pub enum Commands {
     Link(LinkArgs),
     /// Format a policy set
     Format(FormatArgs),
+    /// Translate JSON schema to custom schema syntax
+    TranslateSchema(TranslateSchemaArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct TranslateSchemaArgs {
+    #[arg(short, long = "schema", value_name = "FILE")]
+    pub schema_file: String,
 }
 
 #[derive(Args, Debug)]
@@ -503,6 +511,23 @@ pub fn format_policies(args: &FormatArgs) -> CedarExitCode {
         CedarExitCode::Failure
     } else {
         CedarExitCode::Success
+    }
+}
+
+fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
+    let schema_fragment = cedar_policy_validator::SchemaFragment::from_file(std::fs::File::open(&args.schema_file).map_err(|err| miette!("fail to open file: {err}"))?).map_err(|err| miette!("fail to parse schema fragment: {err}"))?;
+    cedar_policy_formatter::schema_fragment_to_pretty(&schema_fragment)
+}
+pub fn translate_schema(args: &TranslateSchemaArgs) -> CedarExitCode {
+    match translate_schema_inner(args) {
+        Ok(sf) => {
+            println!("{sf}");
+            CedarExitCode::Success
+        }
+        Err(err) => {
+            eprintln!("Error: {err:?}");
+            CedarExitCode::Failure
+        }
     }
 }
 
