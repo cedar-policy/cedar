@@ -33,8 +33,8 @@
 #![allow(clippy::expect_used)]
 
 use crate::{
-    Authorizer, Context, Decision, Entities, EntityUid, EvaluationError, Policy, PolicyId,
-    PolicySet, Request, Response, Schema, ValidationMode, Validator,
+    Authorizer, Context, Decision, Entities, EntityUid, Policy, PolicyId, PolicySet, Request,
+    Response, Schema, ValidationMode, Validator,
 };
 use serde::Deserialize;
 use std::{
@@ -293,65 +293,36 @@ pub fn perform_integration_test_from_json_custom(
         } else {
             Authorizer::new().is_authorized(&request, &policies, &entities)
         };
-        let expected_response = Response::new(
+
+        assert_eq!(
+            response.decision(),
             json_request.decision,
-            json_request
-                .reasons
-                .into_iter()
-                .map(|s| PolicyId::from_str(&s).unwrap())
-                .collect(),
-            json_request.errors.into_iter().collect(),
+            "test {} failed for request \"{}\"",
+            jsonfile.display(),
+            &json_request.desc
         );
-
-        //If an expected response is for an error due to a non-existent function call, we may
-        //see a failure to parse instead: (see comment at ast/exprs.rs:500)
-        let mut parsing_fn_name: Option<String> = None;
-        for e in response.diagnostics().errors() {
-            let EvaluationError::StringMessage(msg) = e;
-            if msg.contains("poorly formed: invalid syntax, expected function, found") {
-                parsing_fn_name = Some(msg.split_whitespace().last().unwrap().to_string());
-                break;
-            }
-        }
-        if parsing_fn_name.is_some() {
-            //For these tests we must have the same decision and the undefined function when running the fuzzer should be the same when parsing
-            assert_eq!(
-                response.decision(),
-                expected_response.decision(),
-                "test {} failed for request \"{}\"",
-                jsonfile.display(),
-                &json_request.desc
-            );
-
-            let mut found_matching_non_existent_fn_fuzzing = false;
-            for e in expected_response.diagnostics().errors() {
-                let EvaluationError::StringMessage(msg) = e;
-                if msg.contains(
-                    "error occurred while evaluating policy `policy0`: function does not exist:",
-                ) {
-                    let fuzzing_fn_name = Some(msg.split_whitespace().last().unwrap().to_string());
-                    if parsing_fn_name == fuzzing_fn_name {
-                        found_matching_non_existent_fn_fuzzing = true;
-                        break;
-                    }
-                }
-            }
-
-            assert!(
-                found_matching_non_existent_fn_fuzzing,
-                "test {} failed for request \"{}\" \n Non existent function names did not match.",
-                jsonfile.display(),
-                &json_request.desc
-            );
-        } else {
-            assert_eq!(
-                response,
-                expected_response,
-                "test {} failed for request \"{}\"",
-                jsonfile.display(),
-                &json_request.desc
-            );
-        }
+        assert_eq!(
+            response
+                .diagnostics()
+                .reason()
+                .map(ToString::to_string)
+                .collect::<Vec<String>>(),
+            json_request.reasons,
+            "test {} failed for request \"{}\"",
+            jsonfile.display(),
+            &json_request.desc
+        );
+        assert_eq!(
+            response
+                .diagnostics()
+                .errors()
+                .map(ToString::to_string)
+                .collect::<Vec<String>>(),
+            json_request.errors,
+            "test {} failed for request \"{}\"",
+            jsonfile.display(),
+            &json_request.desc
+        );
 
         // test that EST roundtrip works for this policy set
         // we can't test that the roundtrip produces the same policies exactly

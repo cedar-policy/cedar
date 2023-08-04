@@ -25,10 +25,12 @@ pub use authorizer::Decision;
 use cedar_policy_core::ast;
 use cedar_policy_core::ast::RestrictedExprError;
 use cedar_policy_core::authorizer;
+pub use cedar_policy_core::authorizer::AuthorizationError;
 use cedar_policy_core::entities;
 use cedar_policy_core::entities::JsonDeserializationErrorContext;
 use cedar_policy_core::entities::{ContextSchema, Dereference, JsonDeserializationError};
 use cedar_policy_core::est;
+pub use cedar_policy_core::evaluator::EvaluationError;
 use cedar_policy_core::evaluator::{Evaluator, RestrictedEvaluator};
 pub use cedar_policy_core::extensions;
 use cedar_policy_core::extensions::Extensions;
@@ -128,8 +130,7 @@ impl Entity {
         Some(
             evaluator
                 .interpret(expr.as_borrowed())
-                .map(EvalResult::from)
-                .map_err(|e| EvaluationError::StringMessage(e.to_string())),
+                .map(EvalResult::from),
         )
     }
 }
@@ -175,9 +176,7 @@ impl Entities {
     /// This can fail if evaluation of the [`RestrictedExpression`] fails.
     /// In a future major version, we will likely make this function automatically called via the constructor.
     pub fn evaluate(self) -> Result<Self, EvaluationError> {
-        Ok(Self(self.0.evaluate().map_err(|e| {
-            EvaluationError::StringMessage(e.to_string())
-        })?))
+        Ok(Self(self.0.evaluate()?))
     }
 
     /// Iterate over the `Entity`'s in the `Entities`
@@ -432,7 +431,7 @@ impl Authorizer {
 }
 
 /// Authorization response returned from the `Authorizer`
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Response {
     /// Authorization decision
     decision: Decision,
@@ -462,20 +461,21 @@ pub struct ResidualResponse {
 }
 
 /// Diagnostics providing more information on how a `Decision` was reached
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Diagnostics {
     /// `PolicyId`s of the policies that contributed to the decision.
     /// If no policies applied to the request, this set will be empty.
     reason: HashSet<PolicyId>,
-    /// list of error messages which occurred
-    errors: HashSet<String>,
+    /// Errors that occurred during authorization. The errors should be
+    /// treated as unordered, since policies may be evaluated in any order.
+    errors: Vec<AuthorizationError>,
 }
 
 impl From<authorizer::Diagnostics> for Diagnostics {
     fn from(diagnostics: authorizer::Diagnostics) -> Self {
         Self {
             reason: diagnostics.reason.into_iter().map(PolicyId).collect(),
-            errors: diagnostics.errors.iter().map(ToString::to_string).collect(),
+            errors: diagnostics.errors,
         }
     }
 }
@@ -486,18 +486,19 @@ impl Diagnostics {
         self.reason.iter()
     }
 
-    /// Get the error messages
-    pub fn errors(&self) -> impl Iterator<Item = EvaluationError> + '_ {
-        self.errors
-            .iter()
-            .cloned()
-            .map(EvaluationError::StringMessage)
+    /// Get the errors
+    pub fn errors(&self) -> impl Iterator<Item = &AuthorizationError> + '_ {
+        self.errors.iter()
     }
 }
 
 impl Response {
     /// Create a new `Response`
-    pub fn new(decision: Decision, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
+    pub fn new(
+        decision: Decision,
+        reason: HashSet<PolicyId>,
+        errors: Vec<AuthorizationError>,
+    ) -> Self {
         Self {
             decision,
             diagnostics: Diagnostics { reason, errors },
@@ -553,16 +554,6 @@ impl From<authorizer::PartialResponse> for ResidualResponse {
             diagnostics: p.diagnostics.into(),
         }
     }
-}
-
-/// Errors encountered while evaluating policies or expressions, or making
-/// authorization decisions.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum EvaluationError {
-    /// Error message, as string.
-    /// TODO in the future this can/should be the actual Core `EvaluationError`
-    #[error("{0}")]
-    StringMessage(String),
 }
 
 /// Used to select how a policy will be validated.
@@ -2703,12 +2694,10 @@ pub fn eval_expression(
     expr: &Expression,
 ) -> Result<EvalResult, EvaluationError> {
     let all_ext = Extensions::all_available();
-    let eval = Evaluator::new(&request.0, &entities.0, &all_ext)
-        .map_err(|e| EvaluationError::StringMessage(e.to_string()))?;
+    let eval = Evaluator::new(&request.0, &entities.0, &all_ext)?;
     Ok(EvalResult::from(
         // Evaluate under the empty slot map, as an expression should not have slots
-        eval.interpret(&expr.0, &ast::SlotEnv::new())
-            .map_err(|e| EvaluationError::StringMessage(e.to_string()))?,
+        eval.interpret(&expr.0, &ast::SlotEnv::new())?,
     ))
 }
 
