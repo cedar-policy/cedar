@@ -66,7 +66,7 @@ pub(crate) fn to_pattern(s: &str) -> Result<Vec<PatternElem>, Vec<UnescapeError>
 }
 
 /// Errors generated when processing escapes
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub struct UnescapeError {
     /// underlying EscapeError
     err: EscapeError,
@@ -75,6 +75,43 @@ pub struct UnescapeError {
     /// Range of the input string where the error occurred
     /// This range must be within the length of `input`
     range: Range<usize>,
+}
+
+impl Clone for UnescapeError {
+    fn clone(&self) -> Self {
+        Self {
+            err: clone_escape_error(&self.err),
+            input: self.input.clone(),
+            range: self.range.clone(),
+        }
+    }
+}
+
+/// [`EscapeError`] doesn't implement clone or copy
+fn clone_escape_error(e: &EscapeError) -> EscapeError {
+    match e {
+        EscapeError::ZeroChars => EscapeError::ZeroChars,
+        EscapeError::MoreThanOneChar => EscapeError::MoreThanOneChar,
+        EscapeError::LoneSlash => EscapeError::LoneSlash,
+        EscapeError::InvalidEscape => EscapeError::InvalidEscape,
+        EscapeError::BareCarriageReturn => EscapeError::BareCarriageReturn,
+        EscapeError::BareCarriageReturnInRawString => EscapeError::BareCarriageReturnInRawString,
+        EscapeError::EscapeOnlyChar => EscapeError::EscapeOnlyChar,
+        EscapeError::TooShortHexEscape => EscapeError::TooShortHexEscape,
+        EscapeError::InvalidCharInHexEscape => EscapeError::InvalidCharInHexEscape,
+        EscapeError::OutOfRangeHexEscape => EscapeError::OutOfRangeHexEscape,
+        EscapeError::NoBraceInUnicodeEscape => EscapeError::NoBraceInUnicodeEscape,
+        EscapeError::InvalidCharInUnicodeEscape => EscapeError::InvalidCharInUnicodeEscape,
+        EscapeError::EmptyUnicodeEscape => EscapeError::EmptyUnicodeEscape,
+        EscapeError::UnclosedUnicodeEscape => EscapeError::UnclosedUnicodeEscape,
+        EscapeError::LeadingUnderscoreUnicodeEscape => EscapeError::LeadingUnderscoreUnicodeEscape,
+        EscapeError::OverlongUnicodeEscape => EscapeError::OverlongUnicodeEscape,
+        EscapeError::LoneSurrogateUnicodeEscape => EscapeError::LoneSurrogateUnicodeEscape,
+        EscapeError::OutOfRangeUnicodeEscape => EscapeError::OutOfRangeUnicodeEscape,
+        EscapeError::UnicodeEscapeInByte => EscapeError::UnicodeEscapeInByte,
+        EscapeError::NonAsciiCharInByte => EscapeError::NonAsciiCharInByte,
+        EscapeError::NonAsciiCharInByteString => EscapeError::NonAsciiCharInByteString,
+    }
 }
 
 impl std::fmt::Display for UnescapeError {

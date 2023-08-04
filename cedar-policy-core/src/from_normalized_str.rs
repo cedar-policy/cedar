@@ -1,10 +1,10 @@
-use crate::parser::err::{ParseError, ParseErrors};
+use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use std::fmt::Display;
 use std::str::FromStr;
 
 /// Trait for parsing "normalized" strings only, throwing an error if a
 /// non-normalized string is encountered. See docs on the
-/// [`from_normalized_str`] trait function.
+/// [`FromNormalizedStr::from_normalized_str`] trait function.
 pub trait FromNormalizedStr: FromStr<Err = ParseErrors> + Display {
     /// Create a `Self` by parsing a string, which is required to be normalized.
     /// That is, the input is required to roundtrip with the `Display` impl on `Self`:
@@ -20,15 +20,17 @@ pub trait FromNormalizedStr: FromStr<Err = ParseErrors> + Display {
     /// actual `FromStr` implementations.
     fn from_normalized_str(s: &str) -> Result<Self, ParseErrors> {
         let parsed = Self::from_str(s)?;
-        let normalized = parsed.to_string();
-        if normalized == s {
+        let normalized_src = parsed.to_string();
+        if normalized_src == s {
             // the normalized representation is indeed the one that was provided
             Ok(parsed)
         } else {
-            Err(ParseError::ToAST(format!(
-                "{} needs to be normalized (e.g., whitespace removed): {s} The normalized form is {normalized}",
-                Self::describe_self()
-            )).into())
+            Err(ParseError::ToAST(ToASTError::NonNormalizedString {
+                kind: Self::describe_self(),
+                src: s.to_string(),
+                normalized_src,
+            })
+            .into())
         }
     }
 

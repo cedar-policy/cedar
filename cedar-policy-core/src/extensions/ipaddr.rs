@@ -18,7 +18,7 @@
 
 use crate::ast::{
     CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue,
-    ExtensionValueWithArgs, Name, StaticallyTyped, Type, Value,
+    ExtensionValueWithArgs, Literal, Name, StaticallyTyped, Type, Value,
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
@@ -39,6 +39,10 @@ mod names {
         pub static ref IS_IN_RANGE : Name = Name::parse_unqualified_name("isInRange").expect("should be a valid identifier");
     }
 }
+
+/// Help message to display when a String was provided where an IP value was expected.
+/// This error is likely due to confusion between "127.0.0.1" and ip("127.0.0.1").
+const ADVICE_MSG: &str = "Maybe you forgot to apply the `ip` constructor?";
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 struct IPAddr {
@@ -124,10 +128,10 @@ impl ExtensionValue for IPAddr {
 }
 
 fn extension_err(msg: impl Into<String>) -> evaluator::EvaluationError {
-    evaluator::EvaluationError::FailedExtensionFunctionApplication {
-        extension_name: names::EXTENSION_NAME.clone(),
-        msg: msg.into(),
-    }
+    evaluator::EvaluationError::failed_extension_function_application(
+        names::EXTENSION_NAME.clone(),
+        msg.into(),
+    )
 }
 
 /// Check whether `s` contains at least three occurences of `c`
@@ -187,99 +191,59 @@ fn ip_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     Ok(Value::ExtensionValue(Arc::new(ipaddr)).into())
 }
 
+fn as_ipaddr(v: &Value) -> Result<&IPAddr, evaluator::EvaluationError> {
+    match v {
+        Value::ExtensionValue(ev) if ev.typename() == IPAddr::typename() => {
+            // PANIC SAFETY Conditional above performs a typecheck
+            #[allow(clippy::expect_used)]
+            let ipaddr = ev
+                .value()
+                .as_any()
+                .downcast_ref::<IPAddr>()
+                .expect("already typechecked, so this downcast should succeed");
+            Ok(ipaddr)
+        }
+        Value::Lit(Literal::String(_)) => Err(evaluator::EvaluationError::type_error_with_advice(
+            vec![Type::Extension {
+                name: IPAddr::typename(),
+            }],
+            v.type_of(),
+            ADVICE_MSG.into(),
+        )),
+        _ => Err(evaluator::EvaluationError::type_error(
+            vec![Type::Extension {
+                name: IPAddr::typename(),
+            }],
+            v.type_of(),
+        )),
+    }
+}
+
 /// Cedar function which tests whether an `ipaddr` Cedar type is an IPv4
 /// address, returning a Cedar bool
 fn is_ipv4(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let ipaddr_ev = match arg {
-        Value::ExtensionValue(ev) if ev.typename() == IPAddr::typename() => ev,
-        _ => {
-            return Err(evaluator::EvaluationError::TypeError {
-                expected: vec![Type::Extension {
-                    name: IPAddr::typename(),
-                }],
-                actual: arg.type_of(),
-            })
-        }
-    };
-    // PANIC SAFETY Typechecking performed above
-    #[allow(clippy::expect_used)]
-    let ipaddr = ipaddr_ev
-        .value()
-        .as_any()
-        .downcast_ref::<IPAddr>()
-        .expect("already typechecked above, so this downcast should succeed");
+    let ipaddr = as_ipaddr(&arg)?;
     Ok(ipaddr.is_ipv4().into())
 }
 
 /// Cedar function which tests whether an `ipaddr` Cedar type is an IPv6
 /// address, returning a Cedar bool
 fn is_ipv6(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let ipaddr_ev = match arg {
-        Value::ExtensionValue(ev) if ev.typename() == IPAddr::typename() => ev,
-        _ => {
-            return Err(evaluator::EvaluationError::TypeError {
-                expected: vec![Type::Extension {
-                    name: IPAddr::typename(),
-                }],
-                actual: arg.type_of(),
-            })
-        }
-    };
-    // PANIC SAFETY Typechecking performed above
-    #[allow(clippy::expect_used)]
-    let ipaddr = ipaddr_ev
-        .value()
-        .as_any()
-        .downcast_ref::<IPAddr>()
-        .expect("already typechecked above, so this downcast should succeed");
+    let ipaddr = as_ipaddr(&arg)?;
     Ok(ipaddr.is_ipv6().into())
 }
 
 /// Cedar function which tests whether an `ipaddr` Cedar type is a
 /// loopback address, returning a Cedar bool
 fn is_loopback(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let ipaddr_ev = match arg {
-        Value::ExtensionValue(ev) if ev.typename() == IPAddr::typename() => ev,
-        _ => {
-            return Err(evaluator::EvaluationError::TypeError {
-                expected: vec![Type::Extension {
-                    name: IPAddr::typename(),
-                }],
-                actual: arg.type_of(),
-            })
-        }
-    };
-    // PANIC SAFETY Typechecking performed above
-    #[allow(clippy::expect_used)]
-    let ipaddr = ipaddr_ev
-        .value()
-        .as_any()
-        .downcast_ref::<IPAddr>()
-        .expect("already typechecked above, so this downcast should succeed");
+    let ipaddr = as_ipaddr(&arg)?;
     Ok(ipaddr.is_loopback().into())
 }
 
 /// Cedar function which tests whether an `ipaddr` Cedar type is a
 /// multicast address, returning a Cedar bool
 fn is_multicast(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let ipaddr_ev = match arg {
-        Value::ExtensionValue(ev) if ev.typename() == IPAddr::typename() => ev,
-        _ => {
-            return Err(evaluator::EvaluationError::TypeError {
-                expected: vec![Type::Extension {
-                    name: IPAddr::typename(),
-                }],
-                actual: arg.type_of(),
-            })
-        }
-    };
-    // PANIC SAFETY Typechecking performed above
-    #[allow(clippy::expect_used)]
-    let ipaddr = ipaddr_ev
-        .value()
-        .as_any()
-        .downcast_ref::<IPAddr>()
-        .expect("already typechecked above, so this downcast should succeed");
+    let ipaddr = as_ipaddr(&arg)?;
     Ok(ipaddr.is_multicast().into())
 }
 
@@ -287,42 +251,8 @@ fn is_multicast(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
 /// in the IP range represented by the second `ipaddr` Cedar type, returning
 /// a Cedar bool
 fn is_in_range(child: Value, parent: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let child_ev = match child {
-        Value::ExtensionValue(ev) if ev.typename() == IPAddr::typename() => ev,
-        _ => {
-            return Err(evaluator::EvaluationError::TypeError {
-                expected: vec![Type::Extension {
-                    name: IPAddr::typename(),
-                }],
-                actual: child.type_of(),
-            })
-        }
-    };
-    let parent_ev = match parent {
-        Value::ExtensionValue(ev) if ev.typename() == IPAddr::typename() => ev,
-        _ => {
-            return Err(evaluator::EvaluationError::TypeError {
-                expected: vec![Type::Extension {
-                    name: IPAddr::typename(),
-                }],
-                actual: parent.type_of(),
-            })
-        }
-    };
-    // PANIC SAFETY Typechecking performed above
-    #[allow(clippy::expect_used)]
-    let child_ip = child_ev
-        .value()
-        .as_any()
-        .downcast_ref::<IPAddr>()
-        .expect("already typechecked above, so this downcast should succeed");
-    // PANIC SAFETY Typechecking performed above
-    #[allow(clippy::expect_used)]
-    let parent_ip = parent_ev
-        .value()
-        .as_any()
-        .downcast_ref::<IPAddr>()
-        .expect("already typechecked above, so this downcast should succeed");
+    let child_ip = as_ipaddr(&child)?;
+    let parent_ip = as_ipaddr(&parent)?;
     Ok(child_ip.is_in_range(parent_ip).into())
 }
 
@@ -393,16 +323,19 @@ mod tests {
     /// `Err::ExtensionErr` with our extension name
     fn assert_ipaddr_err<T>(res: evaluator::Result<T>) {
         match res {
-            Err(evaluator::EvaluationError::FailedExtensionFunctionApplication {
-                extension_name,
-                ..
-            }) => {
-                assert_eq!(
+            Err(e) => match e.error_kind() {
+                evaluator::EvaluationErrorKind::FailedExtensionFunctionApplication {
                     extension_name,
-                    Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier")
-                )
-            }
-            Err(e) => panic!("Expected an ipaddr ExtensionErr, got {:?}", e),
+                    ..
+                } => {
+                    assert_eq!(
+                        *extension_name,
+                        Name::parse_unqualified_name("ipaddr")
+                            .expect("should be a valid identifier")
+                    )
+                }
+                _ => panic!("Expected an ipaddr ExtensionErr, got {:?}", e),
+            },
             Ok(_) => panic!("Expected an ipaddr ExtensionErr, got Ok"),
         }
     }
@@ -559,10 +492,10 @@ mod tests {
                     Expr::val(1)
                 ))]
             )),
-            Err(evaluator::EvaluationError::TypeError {
-                expected: vec![Type::String],
-                actual: Type::Set,
-            })
+            Err(evaluator::EvaluationError::type_error(
+                vec![Type::String],
+                Type::Set
+            ))
         );
 
         // test that < on ipaddr values is an error
@@ -577,13 +510,13 @@ mod tests {
                     vec![Expr::val("10.0.0.10")],
                 )
             )),
-            Err(evaluator::EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::Extension {
+            Err(evaluator::EvaluationError::type_error(
+                vec![Type::Long],
+                Type::Extension {
                     name: Name::parse_unqualified_name("ipaddr")
                         .expect("should be a valid identifier")
                 },
-            })
+            ))
         );
         // test that isIpv4 on a String is an error
         assert_eq!(
@@ -591,13 +524,14 @@ mod tests {
                 Name::parse_unqualified_name("isIpv4").expect("should be a valid identifier"),
                 vec![Expr::val("127.0.0.1")]
             )),
-            Err(evaluator::EvaluationError::TypeError {
-                expected: vec![Type::Extension {
+            Err(evaluator::EvaluationError::type_error_with_advice(
+                vec![Type::Extension {
                     name: Name::parse_unqualified_name("ipaddr")
                         .expect("should be a valid identifier")
                 }],
-                actual: Type::String,
-            })
+                Type::String,
+                ADVICE_MSG.into(),
+            ))
         );
     }
 
