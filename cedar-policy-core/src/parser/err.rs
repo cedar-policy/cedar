@@ -98,7 +98,7 @@ pub enum ToASTError {
     #[error("this policy is missing the {0} variable in the scope")]
     MissingScopeConstraint(Var),
     /// Returned when a policy has an extra scope clause. This is not valid syntax
-    #[error("this policy an extra head constraint in the scope; a policy must have exactly `principal`, `action`, and `resource` constraints: {0}")]
+    #[error("this policy has an extra head constraint in the scope; a policy must have exactly `principal`, `action`, and `resource` constraints: {0}")]
     ExtraHeadConstraints(cst::VariableDef),
     /// Returned when a policy uses a reserved keyword as an identifier.
     #[error("this identifier is reserved and cannot be used: {0}")]
