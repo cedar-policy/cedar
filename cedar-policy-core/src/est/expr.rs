@@ -18,7 +18,7 @@ use super::utils::unwrap_or_clone;
 use super::FromJsonError;
 use crate::ast;
 use crate::entities::{EscapeKind, JSONValue, JsonDeserializationError, TypeAndId};
-use crate::parser::cst;
+use crate::parser::cst::{self, Ident};
 use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::unescape;
 use crate::parser::ASTNode;
@@ -1106,7 +1106,10 @@ fn interpret_primary(p: cst::Primary) -> Result<Either<ast::Name, Expr>, ParseEr
                 ))),
                 (path, Some(id)) => {
                     let (l, r) = match (path.first(), path.last()) {
-                        (Some(l), Some(r)) => (l.info.range_start(), r.info.range_end()),
+                        (Some(l), Some(r)) => (
+                            l.info.range_start(),
+                            r.info.range_end() + ident_to_str_len(&id),
+                        ),
                         (_, _) => (0, 0),
                     };
                     Err(ParseError::ToAST(ToASTError::InvalidExpression(cst::Name {
@@ -1318,7 +1321,10 @@ impl TryFrom<cst::Name> for Expr {
             (&[], Some(cst::Ident::Context)) => Ok(Expr::var(ast::Var::Context)),
             (path, Some(id)) => {
                 let (l, r) = match (path.first(), path.last()) {
-                    (Some(l), Some(r)) => (l.info.range_start(), r.info.range_end()),
+                    (Some(l), Some(r)) => (
+                        l.info.range_start(),
+                        r.info.range_end() + ident_to_str_len(&id),
+                    ),
                     (_, _) => (0, 0),
                 };
                 Err(ParseError::ToAST(ToASTError::InvalidExpression(cst::Name {
@@ -1332,6 +1338,30 @@ impl TryFrom<cst::Name> for Expr {
     }
 }
 
+/// Get the string length of an `Ident`. Used to print the source location for error messages
+fn ident_to_str_len(i: &Ident) -> usize {
+    match i {
+        Ident::Principal => 9,
+        Ident::Action => 6,
+        Ident::Resource => 8,
+        Ident::Context => 7,
+        Ident::True => 4,
+        Ident::False => 5,
+        Ident::Permit => 6,
+        Ident::Forbid => 6,
+        Ident::When => 4,
+        Ident::Unless => 6,
+        Ident::In => 2,
+        Ident::Has => 3,
+        Ident::Like => 4,
+        Ident::If => 2,
+        Ident::Then => 4,
+        Ident::Else => 4,
+        Ident::Ident(s) => s.len(),
+        Ident::Invalid(s) => s.len(),
+    }
+}
+
 #[test]
 fn test_invalid_expr_from_cst_name() {
     let path = vec![ASTNode::new(
@@ -1339,7 +1369,7 @@ fn test_invalid_expr_from_cst_name() {
         0,
         12,
     )];
-    let name = ASTNode::new(Some(cst::Ident::Else), 12, 15);
+    let name = ASTNode::new(Some(cst::Ident::Else), 13, 16);
     let cst_name = cst::Name { path, name };
 
     match Expr::try_from(cst_name) {
@@ -1349,7 +1379,7 @@ fn test_invalid_expr_from_cst_name() {
             match &e[0] {
                 ParseError::ToAST(ToASTError::InvalidExpression(e)) => {
                     println!("{:?}", e);
-                    assert_eq!(e.name.info.range_end(), 12);
+                    assert_eq!(e.name.info.range_end(), 16);
                 }
                 _ => panic!("wrong error"),
             }
