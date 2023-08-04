@@ -149,7 +149,7 @@ impl Entity {
     ///
     /// This can also return Some(Err) if the attribute had an illegal value.
     /// ```
-    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid, EvalResult, 
+    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid, EvalResult,
     ///     RestrictedExpression};
     /// use std::collections::{HashMap, HashSet};
     /// use std::str::FromStr;
@@ -249,6 +249,36 @@ impl Entities {
     /// If a `schema` is provided, this will inform the parsing: for instance, it
     /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
     /// if attributes have the wrong types (e.g., string instead of integer).
+    /// ```
+    /// use std::collections::HashMap;
+    /// use std::str::FromStr;
+    /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, EvalResult, Request,PolicySet};
+    /// let data =r#"
+    /// [
+    /// {
+    ///   "uid": {"type":"User","id":"alice"},
+    ///   "attrs": {
+    ///     "age":19,
+    ///     "ip_addr":{"__extn":{"fn":"ip", "arg":"10.0.1.101"}}
+    ///   },
+    ///   "parents": [{"type":"Group","id":"admin"}]
+    /// },
+    /// {
+    ///   "uid": {"type":"Groupd","id":"admin"},
+    ///   "attrs": {},
+    ///   "parents": []
+    /// }
+    /// ]
+    /// "#;
+    /// let entities = Entities::from_json_str(data, None).unwrap();
+    /// let eid = EntityId::from_str("alice").unwrap();
+    /// let type_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
+    /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
+    /// let entity = entities.get(&euid).unwrap();
+    /// assert_eq!(entity.attr("age").unwrap(), Ok(EvalResult::Long(19)));
+    /// let ip = entity.attr("ip_addr").unwrap().unwrap();
+    /// assert_eq!(ip, EvalResult::ExtensionValue("10.0.1.101/32".to_string()));
+    /// ```
     pub fn from_json_str(
         json: &str,
         schema: Option<&Schema>,
@@ -267,6 +297,29 @@ impl Entities {
     /// If a `schema` is provided, this will inform the parsing: for instance, it
     /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
     /// if attributes have the wrong types (e.g., string instead of integer).
+    /// ```
+    /// use std::collections::HashMap;
+    /// use std::str::FromStr;
+    /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, EvalResult, Request,PolicySet};
+    /// let data =serde_json::json!(
+    /// [
+    /// {
+    ///   "uid": {"type":"User","id":"alice"},
+    ///   "attrs": {
+    ///     "age":19,
+    ///     "ip_addr":{"__extn":{"fn":"ip", "arg":"10.0.1.101"}}
+    ///   },
+    ///   "parents": [{"type":"Group","id":"admin"}]
+    /// },
+    /// {
+    ///   "uid": {"type":"Groupd","id":"admin"},
+    ///   "attrs": {},
+    ///   "parents": []
+    /// }
+    /// ]
+    /// );
+    /// let entities = Entities::from_json_value(data, None).unwrap();
+    /// ```
     pub fn from_json_value(
         json: serde_json::Value,
         schema: Option<&Schema>,
@@ -1238,21 +1291,38 @@ pub struct EntityTypeName(ast::Name);
 
 impl EntityTypeName {
     /// Get the basename of the `EntityTypeName` (ie, with namespaces stripped).
+    /// ```
+    /// use cedar_policy::EntityTypeName;
+    /// use std::str::FromStr;
+    /// let type_name = EntityTypeName::from_str("MySpace::User").unwrap();
+    /// assert_eq!(type_name.basename(), "User");
+    /// ```
     pub fn basename(&self) -> &str {
         self.0.basename().as_ref()
     }
 
     /// Get the namespace of the `EntityTypeName`, as components
+    /// ```
+    /// use cedar_policy::EntityTypeName;
+    /// use std::str::FromStr;
+    /// let type_name = EntityTypeName::from_str("Namespace::MySpace::User").unwrap();
+    /// let mut components = type_name.namespace_components();
+    /// assert_eq!(components.next(), Some("Namespace"));
+    /// assert_eq!(components.next(), Some("MySpace"));
+    /// assert_eq!(components.next(), None);
+    /// ```
     pub fn namespace_components(&self) -> impl Iterator<Item = &str> {
         self.0.namespace_components().map(AsRef::as_ref)
     }
 
     /// Get the full namespace of the `EntityTypeName`, as a single string.
-    ///
-    /// Examples:
-    /// - `foo::bar` --> the namespace is `"foo"`
-    /// - `bar` --> the namespace is `""`
-    /// - `foo::bar::baz` --> the namespace is `"foo::bar"`
+    /// ```
+    /// use cedar_policy::EntityTypeName;
+    /// use std::str::FromStr;
+    /// let type_name = EntityTypeName::from_str("Namespace::MySpace::User").unwrap();
+    /// let components = type_name.namespace();
+    /// assert_eq!(components,"Namespace::MySpace");
+    /// ```
     pub fn namespace(&self) -> String {
         self.0.namespace()
     }
@@ -1301,6 +1371,13 @@ pub struct EntityUid(ast::EntityUID);
 
 impl EntityUid {
     /// Returns the portion of the Euid that represents namespace and entity type
+    /// ```
+    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// use std::str::FromStr;
+    /// let json_data = serde_json::json!({ "__entity": { "type": "User", "id": "alice" } });
+    /// let euid = EntityUid::from_json(json_data).unwrap();
+    /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
+    /// ```
     pub fn type_name(&self) -> &EntityTypeName {
         match self.0.entity_type() {
             ast::EntityType::Unspecified => panic!("Impossible to have an unspecified entity"),
@@ -1309,11 +1386,28 @@ impl EntityUid {
     }
 
     /// Returns the id portion of the Euid
+    /// ```
+    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// use std::str::FromStr;
+    /// let json_data = serde_json::json!({ "__entity": { "type": "User", "id": "alice" } });
+    /// let euid = EntityUid::from_json(json_data).unwrap();
+    /// assert_eq!(euid.id(), &EntityId::from_str("alice").unwrap());
+    /// ```
     pub fn id(&self) -> &EntityId {
         EntityId::ref_cast(self.0.eid())
     }
 
     /// Creates `EntityUid` from `EntityTypeName` and `EntityId`
+    ///```
+    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// use std::str::FromStr;
+    /// let eid = EntityId::from_str("alice").unwrap();
+    /// let type_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
+    /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
+    /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
+    /// assert_eq!(euid.id(), &EntityId::from_str("alice").unwrap());
+    ///
+    /// ```
     pub fn from_type_name_and_id(name: EntityTypeName, id: EntityId) -> Self {
         Self(ast::EntityUID::from_components(name.0, id.0))
     }
@@ -1325,7 +1419,7 @@ impl EntityUid {
     /// use std::str::FromStr;
     /// let json_data = serde_json::json!({ "__entity": { "type": "User", "id": "123abc" } });
     /// let euid = EntityUid::from_json(json_data).unwrap();
-    /// assert_eq!(euid.type_name(),&EntityTypeName::from_str("User").unwrap());
+    /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
     /// ```
     pub fn from_json(json: serde_json::Value) -> Result<Self, impl std::error::Error> {
         let parsed: entities::EntityUidJSON = serde_json::from_value(json)?;
