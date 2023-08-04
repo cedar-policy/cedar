@@ -148,7 +148,21 @@ impl Entity {
     /// Get the value for the given attribute, or `None` if not present.
     ///
     /// This can also return Some(Err) if the attribute had an illegal value.
- 
+    /// ```
+    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid, EvalResult, RestrictedExpression};
+    /// use std::collections::{HashMap, HashSet};
+    /// use std::str::FromStr;
+    /// let eid = EntityId::from_str("alice").unwrap();
+    /// let type_name = EntityTypeName::from_str("User").unwrap();
+    /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
+    /// let attrs = HashMap::from([
+    ///     ("age".to_string(), RestrictedExpression::from_str("21").unwrap()),
+    ///     ("department".to_string(), RestrictedExpression::from_str("\"CS\"").unwrap()),
+    /// ]);
+    /// let entity = Entity::new(euid, attrs, HashSet::new());
+    /// assert_eq!(entity.attr("age").unwrap(),Ok(EvalResult::Long(21)));
+    /// assert_eq!(entity.attr("department").unwrap(), Ok(EvalResult::String("CS".to_string())));
+    ///```
     pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, EvaluationError>> {
         let expr = self.0.get(attr)?;
         let all_ext = Extensions::all_available();
