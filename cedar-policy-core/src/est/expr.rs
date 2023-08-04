@@ -1105,9 +1105,13 @@ fn interpret_primary(p: cst::Primary) -> Result<Either<ast::Name, Expr>, ParseEr
                         .collect::<Result<Vec<ast::Id>, _>>()?,
                 ))),
                 (path, Some(id)) => {
+                    let (l, r) = match (path.first(), path.last()) {
+                        (Some(l), Some(r)) => (l.info.range_start(), r.info.range_end()),
+                        (_, _) => (0, 0),
+                    };
                     Err(ParseError::ToAST(ToASTError::InvalidExpression(cst::Name {
                         path: path.to_vec(),
-                        name: ASTNode::new(Some(id), 0, 0),
+                        name: ASTNode::new(Some(id), l, r),
                     }))
                     .into())
                 }
@@ -1312,12 +1316,43 @@ impl TryFrom<cst::Name> for Expr {
             (&[], Some(cst::Ident::Action)) => Ok(Expr::var(ast::Var::Action)),
             (&[], Some(cst::Ident::Resource)) => Ok(Expr::var(ast::Var::Resource)),
             (&[], Some(cst::Ident::Context)) => Ok(Expr::var(ast::Var::Context)),
-            (path, Some(id)) => Err(ParseError::ToAST(ToASTError::InvalidExpression(cst::Name {
-                path: path.to_vec(),
-                name: ASTNode::new(Some(id), 0, 0),
-            }))
-            .into()),
+            (path, Some(id)) => {
+                let (l, r) = match (path.first(), path.last()) {
+                    (Some(l), Some(r)) => (l.info.range_start(), r.info.range_end()),
+                    (_, _) => (0, 0),
+                };
+                Err(ParseError::ToAST(ToASTError::InvalidExpression(cst::Name {
+                    path: path.to_vec(),
+                    name: ASTNode::new(Some(id), l, r),
+                }))
+                .into())
+            }
             (_, None) => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
+        }
+    }
+}
+
+#[test]
+fn test_invalid_expr_from_cst_name() {
+    let path = vec![ASTNode::new(
+        Some(cst::Ident::Ident("some_long_str".into())),
+        0,
+        12,
+    )];
+    let name = ASTNode::new(Some(cst::Ident::Else), 12, 15);
+    let cst_name = cst::Name { path, name };
+
+    match Expr::try_from(cst_name) {
+        Ok(_) => panic!("wrong error"),
+        Err(e) => {
+            assert!(e.len() == 1);
+            match &e[0] {
+                ParseError::ToAST(ToASTError::InvalidExpression(e)) => {
+                    println!("{:?}", e);
+                    assert_eq!(e.name.info.range_end(), 12);
+                }
+                _ => panic!("wrong error"),
+            }
         }
     }
 }
