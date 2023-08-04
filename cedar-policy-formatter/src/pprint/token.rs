@@ -68,7 +68,6 @@ impl Display for Comment {
 // Cedar tokens
 #[derive(Logos, Clone, Debug, PartialEq)]
 pub enum Token {
-    #[error]
     #[regex(r"\s*", logos::skip)]
     Whitespace,
 
