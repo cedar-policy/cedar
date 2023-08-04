@@ -171,12 +171,21 @@ impl Entities {
         Self(self.0.partial())
     }
 
+    /// Attempt to eagerly compute the values of attributes for all entities in the slice.
+    /// This can fail if evaluation of the [`RestrictedExpression`] fails.
+    /// In a future major version, we will likely make this function automatically called via the constructor.
+    pub fn evaluate(self) -> Result<Self, EvaluationError> {
+        Ok(Self(self.0.evaluate().map_err(|e| {
+            EvaluationError::StringMessage(e.to_string())
+        })?))
+    }
+
     /// Iterate over the `Entity`'s in the `Entities`
     pub fn iter(&self) -> impl Iterator<Item = &Entity> {
         self.0.iter().map(Entity::ref_cast)
     }
 
-    /// Create an `Entities` object with the given entities
+    /// Create an `Entities` object with the given entities.
     /// It will error if the entities cannot be read or if the entities hierarchy is cyclic
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
@@ -431,7 +440,7 @@ pub struct Response {
     diagnostics: Diagnostics,
 }
 
-/// Authorization response returned from `is_authorized_partial`
+/// Authorization response returned from `is_authorized_partial`.
 /// It can either be a full concrete response, or a residual response.
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, PartialEq, Clone)]
@@ -1262,7 +1271,7 @@ impl FromStr for PolicySet {
 
     /// Create a policy set from multiple statements.
     ///
-    /// Policy ids will default to "policy*" with numbers from 0
+    /// Policy ids will default to "policy*" with numbers from 0.
     /// If you load more policies, do not use the default id, or there will be conflicts.
     ///
     /// See [`Policy`] for more.
@@ -1665,7 +1674,7 @@ pub enum TemplatePrincipalConstraint {
     /// Must be In the given EntityUid.
     /// If [`None`], then it is a template slot.
     In(Option<EntityUid>),
-    /// Must be equal to the given EntityUid
+    /// Must be equal to the given EntityUid.
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
 }
@@ -1710,7 +1719,7 @@ pub enum TemplateResourceConstraint {
     /// Must be In the given EntityUid.
     /// If [`None`], then it is a template slot.
     In(Option<EntityUid>),
-    /// Must be equal to the given EntityUid
+    /// Must be equal to the given EntityUid.
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
 }
@@ -2209,12 +2218,105 @@ impl FromStr for RestrictedExpression {
     }
 }
 
+/// Builder for a [`Request`]
+///
+/// Note that you can create the `EntityUid`s using `.parse()` on any
+/// string (via the `FromStr` implementation for `EntityUid`).
+/// The principal, action, and resource fields are optional to support
+/// the case where these fields do not contribute to authorization
+/// decisions (e.g., because they are not used in your policies).
+/// If any of the fields are `None`, we will automatically generate
+/// a unique entity UID that is not equal to any UID in the store.
+///
+/// The default for principal, action and resource fields is Unknown.
+#[cfg(feature = "partial-eval")]
+#[derive(Debug, Default)]
+pub struct RequestBuilder {
+    principal: Option<ast::EntityUIDEntry>,
+    action: Option<ast::EntityUIDEntry>,
+    resource: Option<ast::EntityUIDEntry>,
+    context: Option<ast::Context>,
+}
+
+#[cfg(feature = "partial-eval")]
+impl RequestBuilder {
+    /// Set the principal
+    pub fn principal(self, principal: Option<EntityUid>) -> Self {
+        Self {
+            principal: Some(match principal {
+                Some(p) => ast::EntityUIDEntry::concrete(p.0),
+                None => ast::EntityUIDEntry::concrete(ast::EntityUID::unspecified_from_eid(
+                    ast::Eid::new("principal"),
+                )),
+            }),
+            ..self
+        }
+    }
+
+    /// Set the action
+    pub fn action(self, action: Option<EntityUid>) -> Self {
+        Self {
+            action: Some(match action {
+                Some(a) => ast::EntityUIDEntry::concrete(a.0),
+                None => ast::EntityUIDEntry::concrete(ast::EntityUID::unspecified_from_eid(
+                    ast::Eid::new("action"),
+                )),
+            }),
+            ..self
+        }
+    }
+
+    /// Set the resource
+    pub fn resource(self, resource: Option<EntityUid>) -> Self {
+        Self {
+            resource: Some(match resource {
+                Some(r) => ast::EntityUIDEntry::concrete(r.0),
+                None => ast::EntityUIDEntry::concrete(ast::EntityUID::unspecified_from_eid(
+                    ast::Eid::new("resource"),
+                )),
+            }),
+            ..self
+        }
+    }
+
+    /// Set the context
+    pub fn context(self, context: Context) -> Self {
+        Self {
+            context: Some(context.0),
+            ..self
+        }
+    }
+
+    /// Create the [`Request`]
+    pub fn build(self) -> Request {
+        let p = match self.principal {
+            Some(p) => p,
+            None => ast::EntityUIDEntry::Unknown,
+        };
+        let a = match self.action {
+            Some(a) => a,
+            None => ast::EntityUIDEntry::Unknown,
+        };
+        let r = match self.resource {
+            Some(r) => r,
+            None => ast::EntityUIDEntry::Unknown,
+        };
+        Request(ast::Request::new_with_unknowns(p, a, r, self.context))
+    }
+}
+
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
 #[repr(transparent)]
 #[derive(Debug, RefCast)]
 pub struct Request(pub(crate) ast::Request);
 
 impl Request {
+    /// Create a [`RequestBuilder`]
+    #[cfg(feature = "partial-eval")]
+    pub fn builder() -> RequestBuilder {
+        RequestBuilder::default()
+    }
+
     /// Create a Request.
     ///
     /// Note that you can create the `EntityUid`s using `.parse()` on any
@@ -2592,7 +2694,7 @@ impl std::fmt::Display for EvalResult {
     }
 }
 
-/// Evaluate
+/// Evaluates an expression.
 /// If evaluation results in an error (e.g., attempting to access a non-existent Entity or Record,
 /// passing the wrong number of arguments to a function etc.), that error is returned as a String
 pub fn eval_expression(

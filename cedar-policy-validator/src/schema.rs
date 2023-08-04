@@ -1690,6 +1690,7 @@ mod test {
 
     use crate::types::Type;
 
+    use cedar_policy_core::parser::err::{ParseError, ToASTError};
     use serde_json::json;
 
     use super::*;
@@ -2752,11 +2753,17 @@ mod test {
             .expect("constructing the fragment itself should succeed"); // should this fail in the future?
         let err = ValidatorSchema::try_from(fragment)
             .expect_err("should error due to invalid entity type name");
-        assert!(
-            err.to_string()
-                .contains("needs to be normalized (e.g., whitespace removed): User // comment"),
-            "actual error message was {err}"
-        );
+        let expected_err = ParseError::ToAST(ToASTError::NonNormalizedString {
+            kind: "Id",
+            src: "User // comment".to_string(),
+            normalized_src: "User".to_string(),
+        })
+        .into();
+
+        match err {
+            SchemaError::ParseEntityType(parse_error) => assert_eq!(parse_error, expected_err),
+            err => panic!("Incorrect error {err}"),
+        }
 
         // non-normalized schema namespace
         let bad2 = json!({
@@ -2773,12 +2780,16 @@ mod test {
             .expect("constructing the fragment itself should succeed"); // should this fail in the future?
         let err = ValidatorSchema::try_from(fragment)
             .expect_err("should error due to invalid schema namespace");
-        assert!(
-            err.to_string().contains(
-                "needs to be normalized (e.g., whitespace removed): ABC     :: //comment "
-            ),
-            "actual error message was {err}"
-        );
+        let expected_err = ParseError::ToAST(ToASTError::NonNormalizedString {
+            kind: "Name",
+            src: "ABC     :: //comment \n XYZ  ".to_string(),
+            normalized_src: "ABC::XYZ".to_string(),
+        })
+        .into();
+        match err {
+            SchemaError::ParseNamespace(parse_error) => assert_eq!(parse_error, expected_err),
+            err => panic!("Incorrect error {:?}", err),
+        };
     }
 
     #[test]

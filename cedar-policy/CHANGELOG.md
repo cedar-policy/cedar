@@ -2,6 +2,8 @@
 
 ## Unreleased
 - Move public API for partial evaluation behind experimental feature flag.
+- Added an option to eagerly evaluate entity attributes and re-use across calls to `is_authorized`
+- Revamped errors in cst-to-ast transformation
 
 ### Added
 
@@ -11,6 +13,7 @@
   - `namespace_components` to get the namespace as an iterator over its components.
   - `namespace` to get the namespace as a single string.
 - Fixed bug (#150) around implicit namespaces in action definitions.
+- Support `Request`s with `Unknown` fields for partial evaluation.
 
 ### Changed
 
