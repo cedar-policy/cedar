@@ -162,7 +162,7 @@ impl ASTNode<Option<cst::Policy>> {
         match ast::StaticPolicy::try_from(tp) {
             Ok(p) => Some(p),
             Err(_) => {
-                errs.push(err::ParseError::ToAST(ToASTError::SlotsInConditionClause));
+                errs.push(err::ParseError::ToAST(ToASTError::UnexpectedTemplate));
                 None
             }
         }

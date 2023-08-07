@@ -94,6 +94,9 @@ pub enum ToASTError {
     /// Returned when a policy contains Template Slots in the condition clause. This is not currently supported.
     #[error("template slots are currently unsupported in policy condition clauses")]
     SlotsInConditionClause,
+    /// Returned when a template is found when attempting to parse a policy
+    #[error("a policy was expected but a template was found")]
+    UnexpectedTemplate,
     /// Returned when a policy is missing one of the 3 required scope clauses. (`principal`, `action`, and `resource`)
     #[error("this policy is missing the {0} variable in the scope")]
     MissingScopeConstraint(Var),
