@@ -87,16 +87,13 @@ pub enum ToASTError {
     #[error(
         "expected a static policy, got a template. Try removing template slots from this policy"
     )]
-    InvalidTemplate,
+    UnexpectedTemplate,
     /// Returned when we attempt to parse a policy with malformed or conflicting annotations
     #[error("this policy uses poorly formed or duplicate annotations")]
     BadAnnotations,
     /// Returned when a policy contains Template Slots in the condition clause. This is not currently supported.
     #[error("template slots are currently unsupported in policy condition clauses")]
     SlotsInConditionClause,
-    /// Returned when a template is found when attempting to parse a policy
-    #[error("a policy was expected but a template was found")]
-    UnexpectedTemplate,
     /// Returned when a policy is missing one of the 3 required scope clauses. (`principal`, `action`, and `resource`)
     #[error("this policy is missing the {0} variable in the scope")]
     MissingScopeConstraint(Var),
