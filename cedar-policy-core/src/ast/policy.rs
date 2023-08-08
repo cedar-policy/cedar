@@ -1879,12 +1879,12 @@ mod test {
     fn unexpected_templates() {
         let policy_str = r#"permit(principal == ?principal, action, resource);"#;
         let ParseErrors(errs) = parse_policy(Some("id".into()), policy_str).err().unwrap();
-        assert_eq!(errs.len(), 1);
         assert_eq!(&errs[0], &ParseError::ToAST(ToASTError::UnexpectedTemplate));
+        assert_eq!(errs.len(), 1);
         let policy_str =
             r#"permit(principal == ?principal, action, resource) when { ?principal == 3 } ;"#;
         let ParseErrors(errs) = parse_policy(Some("id".into()), policy_str).err().unwrap();
-        assert_eq!(errs.len(), 2);
         assert!(errs.contains(&ParseError::ToAST(ToASTError::UnexpectedTemplate)));
+        assert_eq!(errs.len(), 2);
     }
 }
