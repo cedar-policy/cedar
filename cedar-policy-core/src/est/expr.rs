@@ -1362,26 +1362,32 @@ fn ident_to_str_len(i: &Ident) -> usize {
     }
 }
 
-#[test]
-fn test_invalid_expr_from_cst_name() {
-    let path = vec![ASTNode::new(
-        Some(cst::Ident::Ident("some_long_str".into())),
-        0,
-        12,
-    )];
-    let name = ASTNode::new(Some(cst::Ident::Else), 13, 16);
-    let cst_name = cst::Name { path, name };
+#[cfg(test)]
+// PANIC SAFETY: this is unit test code
+#[allow(clippy::indexing_slicing)]
+mod test {
+    use super::*;
+    #[test]
+    fn test_invalid_expr_from_cst_name() {
+        let path = vec![ASTNode::new(
+            Some(cst::Ident::Ident("some_long_str".into())),
+            0,
+            12,
+        )];
+        let name = ASTNode::new(Some(cst::Ident::Else), 13, 16);
+        let cst_name = cst::Name { path, name };
 
-    match Expr::try_from(cst_name) {
-        Ok(_) => panic!("wrong error"),
-        Err(e) => {
-            assert!(e.len() == 1);
-            match &e[0] {
-                ParseError::ToAST(ToASTError::InvalidExpression(e)) => {
-                    println!("{:?}", e);
-                    assert_eq!(e.name.info.range_end(), 16);
+        match Expr::try_from(cst_name) {
+            Ok(_) => panic!("wrong error"),
+            Err(e) => {
+                assert!(e.len() == 1);
+                match &e[0] {
+                    ParseError::ToAST(ToASTError::InvalidExpression(e)) => {
+                        println!("{:?}", e);
+                        assert_eq!(e.name.info.range_end(), 16);
+                    }
+                    _ => panic!("wrong error"),
                 }
-                _ => panic!("wrong error"),
             }
         }
     }
