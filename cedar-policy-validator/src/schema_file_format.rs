@@ -531,6 +531,7 @@ impl SchemaType {
 impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<SchemaType> {
         use cedar_policy_core::ast::Name;
+        use std::collections::BTreeSet;
 
         Ok(SchemaType::Type(match u.int_in_range::<u8>(1..=8)? {
             1 => SchemaTypeVariant::String,
@@ -541,7 +542,7 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
             },
             5 => {
                 let attributes = {
-                    let attr_names: HashSet<String> = u.arbitrary()?;
+                    let attr_names: BTreeSet<String> = u.arbitrary()?;
                     attr_names
                         .into_iter()
                         .map(|attr_name| Ok((attr_name.into(), u.arbitrary()?)))
