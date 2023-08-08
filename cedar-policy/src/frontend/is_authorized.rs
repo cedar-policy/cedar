@@ -65,7 +65,7 @@ pub fn json_is_authorized(input: &str) -> InterfaceResult {
 }
 
 /// Interface version of a `Response` that uses `InterfaceDiagnostics` for simpler (de)serialization
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InterfaceResponse {
     /// Authorization decision
     decision: Decision,
@@ -84,8 +84,8 @@ pub struct InterfaceDiagnostics {
 }
 
 impl InterfaceResponse {
-    // Construct an `InterfaceResponse`
-    fn new(decision: Decision, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
+    /// Construct an `InterfaceResponse`
+    pub fn new(decision: Decision, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
         Self {
             decision,
             diagnostics: InterfaceDiagnostics { reason, errors },

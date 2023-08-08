@@ -38,7 +38,6 @@ use crate::{
 };
 use serde::Deserialize;
 use std::{
-    collections::HashSet,
     env,
     path::{Path, PathBuf},
     str::FromStr,
@@ -297,30 +296,19 @@ pub fn perform_integration_test_from_json_custom(
                 .into()
         };
 
-        assert_eq!(
-            response.decision(),
+        let expected_response = InterfaceResponse::new(
             json_request.decision,
-            "test {} failed for request \"{}\"",
-            jsonfile.display(),
-            &json_request.desc
-        );
-        assert_eq!(
-            response
-                .diagnostics()
-                .reason()
-                .map(ToString::to_string)
-                .collect::<HashSet<String>>(),
             json_request
                 .reasons
                 .into_iter()
-                .collect::<HashSet<String>>(),
-            "test {} failed for request \"{}\"",
-            jsonfile.display(),
-            &json_request.desc
+                .map(|s| PolicyId::from_str(&s).unwrap())
+                .collect(),
+            json_request.errors.into_iter().collect(),
         );
+
         assert_eq!(
-            response.diagnostics().errors().collect::<HashSet<String>>(),
-            json_request.errors.into_iter().collect::<HashSet<String>>(),
+            response,
+            expected_response,
             "test {} failed for request \"{}\"",
             jsonfile.display(),
             &json_request.desc
