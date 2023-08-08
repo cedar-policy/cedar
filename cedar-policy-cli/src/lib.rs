@@ -94,6 +94,8 @@ pub enum Commands {
     Validate(ValidateArgs),
     /// Check that policies successfully parse
     CheckParse(CheckParseArgs),
+    /// Check that a schema successfully parses.
+    CheckSchema(CheckSchemaArgs),
     /// Link a template
     Link(LinkArgs),
     /// Format a policy set
@@ -115,6 +117,13 @@ pub struct CheckParseArgs {
     /// File containing the policy set
     #[clap(short, long = "policies", value_name = "FILE")]
     pub policies_file: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct CheckSchemaArgs {
+    /// File containing the schema
+    #[clap(short, long = "schema", value_name = "FILE")]
+    pub schema_file: String,
 }
 
 /// This struct contains the arguments that together specify a request.
@@ -382,6 +391,16 @@ impl Termination for CedarExitCode {
 
 pub fn check_parse(args: &CheckParseArgs) -> CedarExitCode {
     match read_policy_set(args.policies_file.as_ref()) {
+        Ok(_) => CedarExitCode::Success,
+        Err(e) => {
+            println!("Error: {e:?}");
+            CedarExitCode::Failure
+        }
+    }
+}
+
+pub fn check_schema(args: &CheckSchemaArgs) -> CedarExitCode {
+    match read_schema_file(&args.schema_file) {
         Ok(_) => CedarExitCode::Success,
         Err(e) => {
             println!("Error: {e:?}");

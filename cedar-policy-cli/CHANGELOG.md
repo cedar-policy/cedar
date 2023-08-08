@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- A `check-schema` command to check that a schema file parses.
+
 ### Changed
 - Input policies for `check-parse` command can be read from standard input.
 - Duplicate policy ids in `@id` annotations cause the CLI to exit gracefully
