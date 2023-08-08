@@ -84,11 +84,22 @@ pub struct InterfaceDiagnostics {
 }
 
 impl InterfaceResponse {
+    // Construct an `InterfaceResponse`
     fn new(decision: Decision, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
         Self {
             decision,
             diagnostics: InterfaceDiagnostics { reason, errors },
         }
+    }
+
+    /// Get the authorization decision
+    pub fn decision(&self) -> Decision {
+        self.decision
+    }
+
+    /// Get the authorization diagnostics
+    pub fn diagnostics(&self) -> &InterfaceDiagnostics {
+        &self.diagnostics
     }
 }
 
@@ -103,6 +114,18 @@ impl From<Response> for InterfaceResponse {
                 .map(ToString::to_string)
                 .collect(),
         )
+    }
+}
+
+impl InterfaceDiagnostics {
+    /// Get the policies that contributed to the decision
+    pub fn reason(&self) -> impl Iterator<Item = &PolicyId> {
+        self.reason.iter()
+    }
+
+    /// Get the errors
+    pub fn errors(&self) -> impl Iterator<Item = String> + '_ {
+        self.errors.iter().cloned()
     }
 }
 

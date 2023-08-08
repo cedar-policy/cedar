@@ -33,8 +33,8 @@
 #![allow(clippy::expect_used)]
 
 use crate::{
-    Authorizer, Context, Decision, Entities, EntityUid, Policy, PolicyId, PolicySet, Request,
-    Response, Schema, ValidationMode, Validator,
+    frontend::is_authorized::InterfaceResponse, Authorizer, Context, Decision, Entities, EntityUid,
+    Policy, PolicyId, PolicySet, Request, Schema, ValidationMode, Validator,
 };
 use serde::Deserialize;
 use std::{
@@ -149,7 +149,7 @@ pub trait CustomCedarImpl {
         q: &cedar_policy_core::ast::Request,
         p: &cedar_policy_core::ast::PolicySet,
         e: &cedar_policy_core::entities::Entities,
-    ) -> Response;
+    ) -> InterfaceResponse;
 
     /// Custom validator entry point.
     ///
@@ -292,7 +292,9 @@ pub fn perform_integration_test_from_json_custom(
         let response = if let Some(custom_impl) = custom_impl_opt {
             custom_impl.is_authorized(&request.0, &policies.ast, &entities.0)
         } else {
-            Authorizer::new().is_authorized(&request, &policies, &entities)
+            Authorizer::new()
+                .is_authorized(&request, &policies, &entities)
+                .into()
         };
 
         assert_eq!(
@@ -317,11 +319,7 @@ pub fn perform_integration_test_from_json_custom(
             &json_request.desc
         );
         assert_eq!(
-            response
-                .diagnostics()
-                .errors()
-                .map(ToString::to_string)
-                .collect::<HashSet<String>>(),
+            response.diagnostics().errors().collect::<HashSet<String>>(),
             json_request.errors.into_iter().collect::<HashSet<String>>(),
             "test {} failed for request \"{}\"",
             jsonfile.display(),
