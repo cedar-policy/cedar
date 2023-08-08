@@ -5,8 +5,9 @@
 // .owner, but they do have .account.owner)
 // (but some resources, like Account itself, don't have .account, so we
 // also added a `has` check)
-permit(principal, action, resource)
-when {
-    (resource has account && principal == resource.account.owner) ||
-    resource.admins.contains(principal)
+permit (principal, action, resource)
+when
+{
+  (resource has account && principal == resource.account.owner) ||
+  resource.admins.contains(principal)
 };
