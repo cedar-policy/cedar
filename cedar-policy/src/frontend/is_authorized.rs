@@ -703,6 +703,7 @@ mod test {
                     }
                     AuthorizationAnswer::Success { response } => {
                         assert_eq!(response.decision, Decision::Deny);
+                        assert_eq!(response.diagnostics.errors.len(), 0);
                     }
                 }
             }

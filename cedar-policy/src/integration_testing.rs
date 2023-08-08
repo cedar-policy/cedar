@@ -38,6 +38,7 @@ use crate::{
 };
 use serde::Deserialize;
 use std::{
+    collections::HashSet,
     env,
     path::{Path, PathBuf},
     str::FromStr,
@@ -306,8 +307,11 @@ pub fn perform_integration_test_from_json_custom(
                 .diagnostics()
                 .reason()
                 .map(ToString::to_string)
-                .collect::<Vec<String>>(),
-            json_request.reasons,
+                .collect::<HashSet<String>>(),
+            json_request
+                .reasons
+                .into_iter()
+                .collect::<HashSet<String>>(),
             "test {} failed for request \"{}\"",
             jsonfile.display(),
             &json_request.desc
@@ -317,8 +321,8 @@ pub fn perform_integration_test_from_json_custom(
                 .diagnostics()
                 .errors()
                 .map(ToString::to_string)
-                .collect::<Vec<String>>(),
-            json_request.errors,
+                .collect::<HashSet<String>>(),
+            json_request.errors.into_iter().collect::<HashSet<String>>(),
             "test {} failed for request \"{}\"",
             jsonfile.display(),
             &json_request.desc

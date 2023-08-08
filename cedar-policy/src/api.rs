@@ -431,7 +431,7 @@ impl Authorizer {
 }
 
 /// Authorization response returned from the `Authorizer`
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Response {
     /// Authorization decision
     decision: Decision,
@@ -442,7 +442,7 @@ pub struct Response {
 /// Authorization response returned from `is_authorized_partial`.
 /// It can either be a full concrete response, or a residual response.
 #[cfg(feature = "partial-eval")]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum PartialResponse {
     /// A full, concrete response.
     Concrete(Response),
@@ -461,7 +461,7 @@ pub struct ResidualResponse {
 }
 
 /// Diagnostics providing more information on how a `Decision` was reached
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Diagnostics {
     /// `PolicyId`s of the policies that contributed to the decision.
     /// If no policies applied to the request, this set will be empty.
@@ -528,7 +528,11 @@ impl From<authorizer::Response> for Response {
 #[cfg(feature = "partial-eval")]
 impl ResidualResponse {
     /// Create a new `ResidualResponse`
-    pub fn new(residuals: PolicySet, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
+    pub fn new(
+        residuals: PolicySet,
+        reason: HashSet<PolicyId>,
+        errors: Vec<AuthorizationError>,
+    ) -> Self {
         Self {
             residuals,
             diagnostics: Diagnostics { reason, errors },

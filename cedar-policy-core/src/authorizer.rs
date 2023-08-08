@@ -863,7 +863,7 @@ impl Response {
 }
 
 /// Decision returned from the `Authorizer`
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Copy)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
 pub enum Decision {
     /// The `Authorizer` determined that the request should be allowed
     Allow,
