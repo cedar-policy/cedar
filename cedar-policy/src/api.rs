@@ -1888,6 +1888,10 @@ impl Policy {
     /// If `id` is Some, the policy will be given that Policy Id.
     /// If `id` is None, then "policy0" will be used.
     /// The behavior around None may change in the future.
+    ///
+    /// This can fail if the policy fails to parse.
+    /// It can also fail if a template was passed in, as this function only accepts static
+    /// policies
     pub fn parse(id: Option<String>, policy_src: impl AsRef<str>) -> Result<Self, ParseErrors> {
         let inline_ast = parser::parse_policy(id, policy_src.as_ref())?;
         let (_, ast) = ast::Template::link_static_policy(inline_ast);

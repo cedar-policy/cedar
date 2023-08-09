@@ -87,7 +87,7 @@ pub enum ToASTError {
     #[error(
         "expected a static policy, got a template. Try removing template slots from this policy"
     )]
-    InvalidTemplate,
+    UnexpectedTemplate,
     /// Returned when we attempt to parse a policy with malformed or conflicting annotations
     #[error("this policy uses poorly formed or duplicate annotations")]
     BadAnnotations,
