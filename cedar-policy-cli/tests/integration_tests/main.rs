@@ -95,7 +95,7 @@ fn resolve_integration_test_path(path: impl AsRef<Path>) -> PathBuf {
 /// the test.
 ///
 /// Relative paths are assumed to be relative to the root of the
-/// CedarIntegrationTests repo.
+/// cedar-integration-tests folder.
 /// Absolute paths are handled without modification.
 fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
     let jsonfile = resolve_integration_test_path(jsonfile);
@@ -108,36 +108,32 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
     let schema_file = resolve_integration_test_path(&test.schema);
 
     for json_request in test.queries.into_iter() {
-        //Need to skip over policies that will fail to parse:
         let policies_text = std::fs::read_to_string(policy_file.clone())
             .unwrap_or_else(|e| panic!("error loading policy file {}: {e}", &test.policies));
         let policies_res = PolicySet::from_str(&policies_text);
-
+        // If parsing fails we don't want to quit immediately. Instead we want to
+        // check that the expected decision is "Deny" and that the parse error is
+        // of the expected type (NotAFunction).
         if let Err(parse_errs) = policies_res {
-            //we may see a failure to parse instead of the original error: (see comment at ast/exprs.rs:500)
-            //If an expected response is for an error due to a non-existent function call or if e.g.,
-            // "isInRange" is used as a function instead of a method
-            //(Maybe due to null principal?)
+            // We may see a `NotAFunction` parse error for auto-generated policies:
+            // See the comment in the `ExtensionFunctionApp` case of the `Display`
+            // implementation for `Expr` in ast/exprs.rs.
             assert_eq!(
-             json_request.decision,
-             Decision::Deny,
-             "test {} failed for request \"{}\" \n Failed to parse policy \n Parse errors should only occur for deny",
-             jsonfile.display(),
-             &json_request.desc
-         );
-            let mut error_for_nonexist_fn = false;
-            for err_msg in parse_errs.errors_as_strings() {
-                if err_msg.contains("poorly formed: invalid syntax, expected function, found") {
-                    error_for_nonexist_fn = true;
-                    break;
-                }
-            }
+                json_request.decision,
+                Decision::Deny,
+                "test {} failed for request \"{}\" \n Parse errors should only occur for deny",
+                jsonfile.display(),
+                &json_request.desc
+            );
             assert!(
-                     error_for_nonexist_fn,
-                     "test {} failed for request \"{}\" \n Failed to parse policy \n Parse errors should only occur for undefined functions",
-                     jsonfile.display(),
-                     &json_request.desc
-                 );
+                parse_errs
+                    .errors_as_strings()
+                    .iter()
+                    .any(|s| s.ends_with("not a function")),
+                "unexpected parse errors in test {}: {}",
+                jsonfile.display(),
+                parse_errs,
+            );
             continue;
         };
         let validation_cmd = assert_cmd::Command::cargo_bin("cedar")

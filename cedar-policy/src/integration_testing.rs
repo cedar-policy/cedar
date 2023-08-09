@@ -171,7 +171,7 @@ pub trait CustomCedarImpl {
 /// test, otherwise perform the test on the `Cedar` API.
 ///
 /// Relative paths are assumed to be relative to the root of the
-/// `CedarIntegrationTests` repo.
+/// cedar-integration-tests folder.
 /// Absolute paths are handled without modification.
 /// # Panics
 /// When integration test data cannot be found
@@ -189,13 +189,14 @@ pub fn perform_integration_test_from_json_custom(
     let policy_file = resolve_integration_test_path(&test.policies);
     let policies_text = std::fs::read_to_string(policy_file)
         .unwrap_or_else(|e| panic!("error loading policy file {}: {e}", &test.policies));
-    //If parsing fails we don't want to quit immediately. Instead we want to check that the parse error corresponds to the original error when running the fuzzer
+    // If parsing fails we don't want to quit immediately. Instead we want to
+    // check that the expected decision is "Deny" and that the parse error is
+    // of the expected type.
     let policies_res = PolicySet::from_str(&policies_text);
-    if policies_res.is_err() {
-        //we may see a failure to parse instead of the orginal error: (see comment at ast/exprs.rs:500)
-        //If an expected response is for an error due to a non-existent function call or if e.g.,
-        // "isInRange" is used as a function instead of a method
-        //(Maybe due to null principal?)
+    if let Err(parse_errs) = policies_res {
+        // We may see a `NotAFunction` parse error for auto-generated policies:
+        // See the comment in the `ExtensionFunctionApp` case of the `Display`
+        // implementation for `Expr` in ast/exprs.rs.
         for json_request in test.requests {
             assert_eq!(
                 json_request.decision,
@@ -205,6 +206,15 @@ pub fn perform_integration_test_from_json_custom(
                 &json_request.desc
             );
         }
+        assert!(
+            parse_errs
+                .errors_as_strings()
+                .iter()
+                .any(|s| s.ends_with("not a function")),
+            "unexpected parse errors in test {}: {}",
+            jsonfile.display(),
+            parse_errs,
+        );
         return;
     }
     let policies = policies_res
