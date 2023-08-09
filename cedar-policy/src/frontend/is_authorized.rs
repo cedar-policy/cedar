@@ -622,7 +622,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic] // this currently returns a parse error due to using Policy::parse instead of PolicySet::parse
     fn test_authorized_with_template_as_policy_should_fail() {
         let call = r#"
 	             { "principal": "User::\"alice\""
@@ -630,9 +629,7 @@ mod test {
 	             , "resource" : "Photo::\"door\""
 	             , "context" : {}
 	             , "slice" : {
-	                   "policies" : {
-                        "ID0": "permit(principal == ?principal, action, resource);"
-                      }
+	                   "policies" : "permit(principal == ?principal, action, resource);"
 	                 , "entities" : []
                      , "templates" : {}
 	             }
