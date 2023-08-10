@@ -92,13 +92,21 @@ impl Entity {
     /// Attribute values are specified here as "restricted expressions".
     /// See docs on `RestrictedExpression`
     /// ```
-    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
-    /// use std::collections::{HashMap, HashSet};
-    /// use std::str::FromStr;
+    /// # use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid, RestrictedExpression};
+    /// # use std::collections::{HashMap, HashSet};
+    /// # use std::str::FromStr;
     /// let eid = EntityId::from_str("alice").unwrap();
     /// let type_name = EntityTypeName::from_str("User").unwrap();
     /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
-    /// let entity = Entity::new(euid, HashMap::new(), HashSet::new());
+    /// let attrs = HashMap::from([
+    ///     ("age".to_string(), RestrictedExpression::from_str("21").unwrap()),
+    ///     ("department".to_string(), RestrictedExpression::from_str("\"CS\"").unwrap()),
+    /// ]);
+    /// let parent_eid = EntityId::from_str("admin").unwrap();
+    /// let parent_type_name = EntityTypeName::from_str("Group").unwrap();
+    /// let parent_euid = EntityUid::from_type_name_and_id(parent_type_name, parent_eid);
+    /// let parents = HashSet::from([parent_euid]);
+    /// let entity = Entity::new(euid, attrs, parents);
     ///```
     pub fn new(
         uid: EntityUid,
@@ -133,9 +141,9 @@ impl Entity {
 
     /// Get the Uid of this entity
     /// ```
-    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// # use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
     /// # use std::str::FromStr;
-    /// let eid = EntityId::from_str("alice").unwrap();
+    /// # let eid = EntityId::from_str("alice").unwrap();
     /// let type_name = EntityTypeName::from_str("User").unwrap();
     /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
     /// let alice = Entity::with_uid(euid.clone());
@@ -1415,8 +1423,8 @@ impl EntityUid {
     /// Creates `EntityUid` from a JSON value, which should have
     /// either the implicit or explicit `__entity` form.
     /// ```
-    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
-    /// use std::str::FromStr;
+    /// # use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// # use std::str::FromStr;
     /// let json_data = serde_json::json!({ "__entity": { "type": "User", "id": "123abc" } });
     /// let euid = EntityUid::from_json(json_data).unwrap();
     /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
@@ -2772,9 +2780,9 @@ impl Context {
     /// # let p_eid = EntityId::from_str("alice").unwrap();
     /// # let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
     /// # let principal = EntityUid::from_type_name_and_id(p_name, p_eid);
-    /// # let a_eid = EntityId::from_str("view").unwrap();
-    /// # let a_name: EntityTypeName = EntityTypeName::from_str("Action").unwrap();
-    /// # let action = EntityUid::from_type_name_and_id(a_name, a_eid);
+    /// let a_eid = EntityId::from_str("view").unwrap();
+    /// let a_name: EntityTypeName = EntityTypeName::from_str("Action").unwrap();
+    /// let action = EntityUid::from_type_name_and_id(a_name, a_eid);
     /// # let r_eid = EntityId::from_str("trip").unwrap();
     /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
     /// # let resource = EntityUid::from_type_name_and_id(r_name, r_eid);
@@ -2806,11 +2814,11 @@ impl Context {
     /// Since different Actions have different schemas for `Context`, you also
     /// must specify the `Action` for schema-based parsing.
     /// ```no_run
-    /// use cedar_policy::{Context, RestrictedExpression};
+    /// # use cedar_policy::{Context, RestrictedExpression};
     /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request,PolicySet};
-    /// use std::collections::HashMap;
-    /// use std::str::FromStr;
-    /// use std::fs::File;
+    /// # use std::collections::HashMap;
+    /// # use std::str::FromStr;
+    /// # use std::fs::File;
     /// let mut json = File::open("json_file.txt").expect("failed");
     /// let context = Context::from_json_file(&json, None).unwrap();
     /// # // create a request
