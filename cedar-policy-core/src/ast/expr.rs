@@ -691,12 +691,12 @@ impl std::fmt::Display for Expr {
                         args[1..].iter().join(", ")
                     )
                 } else {
-                    // a function without a name or a method-style function
-                    // call with with zero arguments can only occur when
-                    // manually constructing an AST,
-                    // and even then, this form will be representable because the entire name and
-                    // all the args can be displayed with proper syntax. However, it will not parse
-                    // because the parser requires the extention name.
+                    // This case can only be reached for a manually constructed AST.
+                    // In order to reach this case, either the function name `fn_name`
+                    // is not in the list of available extension functions, or this
+                    // is a method-style function call with zero arguments. Both of
+                    // these cases can be displayed, but neither will parse. The
+                    // resulting `ParseError` will be `NotAFunction`.
                     write!(f, "{}({})", fn_name, args.iter().join(", "))
                 }
             }
