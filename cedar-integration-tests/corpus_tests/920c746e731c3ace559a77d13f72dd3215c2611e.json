@@ -13,7 +13,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected set, got record"
+        "error occurred while evaluating policy `policy0`: type error: expected set, got record"
       ]
     },
     {
@@ -25,7 +25,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected set, got record"
+        "error occurred while evaluating policy `policy0`: type error: expected set, got record"
       ]
     },
     {
@@ -37,7 +37,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected set, got record"
+        "error occurred while evaluating policy `policy0`: type error: expected set, got record"
       ]
     },
     {
@@ -49,7 +49,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected set, got record"
+        "error occurred while evaluating policy `policy0`: type error: expected set, got record"
       ]
     },
     {
@@ -61,7 +61,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected set, got record"
+        "error occurred while evaluating policy `policy0`: type error: expected set, got record"
       ]
     },
     {
@@ -73,7 +73,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected set, got record"
+        "error occurred while evaluating policy `policy0`: type error: expected set, got record"
       ]
     },
     {
@@ -85,7 +85,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected set, got record"
+        "error occurred while evaluating policy `policy0`: type error: expected set, got record"
       ]
     },
     {
@@ -97,7 +97,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected set, got record"
+        "error occurred while evaluating policy `policy0`: type error: expected set, got record"
       ]
     }
   ]

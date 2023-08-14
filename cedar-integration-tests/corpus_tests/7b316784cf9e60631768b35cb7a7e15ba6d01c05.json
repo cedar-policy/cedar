@@ -13,7 +13,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: integer overflow while attempting to multiply -1537158028109086738 by 60138"
+        "error occurred while evaluating policy `policy0`: integer overflow while attempting to multiply -1537158028109086738 by 60138"
       ]
     },
     {
@@ -25,7 +25,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: integer overflow while attempting to multiply -1537158028109086738 by 60138"
+        "error occurred while evaluating policy `policy0`: integer overflow while attempting to multiply -1537158028109086738 by 60138"
       ]
     },
     {
@@ -37,7 +37,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: integer overflow while attempting to multiply -1537158028109086738 by 60138"
+        "error occurred while evaluating policy `policy0`: integer overflow while attempting to multiply -1537158028109086738 by 60138"
       ]
     },
     {
@@ -49,7 +49,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: integer overflow while attempting to multiply -1537158028109086738 by 60138"
+        "error occurred while evaluating policy `policy0`: integer overflow while attempting to multiply -1537158028109086738 by 60138"
       ]
     },
     {
@@ -61,7 +61,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: integer overflow while attempting to multiply -1537158028109086738 by 60138"
+        "error occurred while evaluating policy `policy0`: integer overflow while attempting to multiply -1537158028109086738 by 60138"
       ]
     },
     {
@@ -73,7 +73,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: integer overflow while attempting to multiply -1537158028109086738 by 60138"
+        "error occurred while evaluating policy `policy0`: integer overflow while attempting to multiply -1537158028109086738 by 60138"
       ]
     },
     {
@@ -85,7 +85,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: integer overflow while attempting to multiply -1537158028109086738 by 60138"
+        "error occurred while evaluating policy `policy0`: integer overflow while attempting to multiply -1537158028109086738 by 60138"
       ]
     },
     {
@@ -97,7 +97,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: integer overflow while attempting to multiply -1537158028109086738 by 60138"
+        "error occurred while evaluating policy `policy0`: integer overflow while attempting to multiply -1537158028109086738 by 60138"
       ]
     }
   ]

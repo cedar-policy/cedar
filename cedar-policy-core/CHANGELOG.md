@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added an `AuthorizationError` type and updated the `Response` type (returned by `is_authorized`) to use this new error type.
+
 ## 2.2.0
 
 ### Changed

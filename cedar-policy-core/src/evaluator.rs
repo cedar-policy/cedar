@@ -3895,6 +3895,7 @@ pub mod test {
             .and_then(|e| evaluator.partial_interpret(e)),
             Err(EvaluationError::InvalidRestrictedExpression { .. })
         ));
+        #[cfg(feature = "ipaddr")]
         assert!(matches!(
             BorrowedRestrictedExpr::new(&Expr::call_extension_fn(
                 "ip".parse().expect("should be a valid Name"),
@@ -4867,6 +4868,7 @@ pub mod test {
         assert_eq!(r, PartialValue::Residual(e));
     }
 
+    #[cfg(feature = "ipaddr")]
     #[test]
     fn partial_ext_unfold() {
         let es = Entities::new();

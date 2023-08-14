@@ -40,11 +40,11 @@ impl ContextSchema for NullContextSchema {
 #[derive(Debug, Clone)]
 pub struct ContextJsonParser<'e, 's, S: ContextSchema = NullContextSchema> {
     /// If a `schema` is present, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
-    /// That does not mean it will fully enforce that the produced `Context`
-    /// conform to the `schema` -- for instance, as of this writing, it will not
-    /// error for unexpected (additional) record attributes.
+    /// will allow `__entity` and `__extn` escapes to be implicit.
+    /// It will also ensure that the produced `Context` fully conforms to the
+    /// `schema` -- for instance, it will error if attributes have the wrong
+    /// types (e.g., string instead of integer), or if required attributes are
+    /// missing or superfluous attributes are provided.
     schema: Option<&'s S>,
 
     /// Extensions which are active for the JSON parsing.
@@ -54,12 +54,12 @@ pub struct ContextJsonParser<'e, 's, S: ContextSchema = NullContextSchema> {
 impl<'e, 's, S: ContextSchema> ContextJsonParser<'e, 's, S> {
     /// Create a new `ContextJsonParser`.
     ///
-    /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
-    /// That does not mean it will fully enforce that the produced `Entities`
-    /// conform to the `schema` -- for instance, as of this writing, it will not
-    /// error for unexpected (additional) record attributes.
+    /// If a `schema` is present, this will inform the parsing: for instance, it
+    /// will allow `__entity` and `__extn` escapes to be implicit.
+    /// It will also ensure that the produced `Context` fully conforms to the
+    /// `schema` -- for instance, it will error if attributes have the wrong
+    /// types (e.g., string instead of integer), or if required attributes are
+    /// missing or superfluous attributes are provided.
     pub fn new(schema: Option<&'s S>, extensions: Extensions<'e>) -> Self {
         Self { schema, extensions }
     }

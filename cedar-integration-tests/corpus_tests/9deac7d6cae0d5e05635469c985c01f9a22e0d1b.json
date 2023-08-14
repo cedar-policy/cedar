@@ -15,7 +15,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: record does not have the required attribute: f"
+        "error occurred while evaluating policy `policy0`: record does not have the required attribute: f"
       ]
     },
     {
@@ -29,7 +29,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: record does not have the required attribute: f"
+        "error occurred while evaluating policy `policy0`: record does not have the required attribute: f"
       ]
     },
     {
@@ -43,7 +43,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: record does not have the required attribute: f"
+        "error occurred while evaluating policy `policy0`: record does not have the required attribute: f"
       ]
     },
     {
@@ -57,7 +57,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: record does not have the required attribute: f"
+        "error occurred while evaluating policy `policy0`: record does not have the required attribute: f"
       ]
     },
     {
@@ -71,7 +71,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: record does not have the required attribute: f"
+        "error occurred while evaluating policy `policy0`: record does not have the required attribute: f"
       ]
     },
     {
@@ -85,7 +85,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: record does not have the required attribute: f"
+        "error occurred while evaluating policy `policy0`: record does not have the required attribute: f"
       ]
     },
     {
@@ -99,7 +99,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: record does not have the required attribute: f"
+        "error occurred while evaluating policy `policy0`: record does not have the required attribute: f"
       ]
     },
     {
@@ -113,7 +113,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: record does not have the required attribute: f"
+        "error occurred while evaluating policy `policy0`: record does not have the required attribute: f"
       ]
     }
   ]

@@ -23,7 +23,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected one of [set, (entity of type any_entity_type)], got record"
+        "error occurred while evaluating policy `policy0`: type error: expected one of [set, (entity of type any_entity_type)], got record"
       ]
     },
     {
@@ -35,7 +35,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected one of [set, (entity of type any_entity_type)], got record"
+        "error occurred while evaluating policy `policy0`: type error: expected one of [set, (entity of type any_entity_type)], got record"
       ]
     },
     {
@@ -47,7 +47,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected one of [set, (entity of type any_entity_type)], got record"
+        "error occurred while evaluating policy `policy0`: type error: expected one of [set, (entity of type any_entity_type)], got record"
       ]
     },
     {
@@ -59,7 +59,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected one of [set, (entity of type any_entity_type)], got record"
+        "error occurred while evaluating policy `policy0`: type error: expected one of [set, (entity of type any_entity_type)], got record"
       ]
     },
     {
@@ -71,7 +71,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected one of [set, (entity of type any_entity_type)], got record"
+        "error occurred while evaluating policy `policy0`: type error: expected one of [set, (entity of type any_entity_type)], got record"
       ]
     },
     {
@@ -83,7 +83,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected one of [set, (entity of type any_entity_type)], got record"
+        "error occurred while evaluating policy `policy0`: type error: expected one of [set, (entity of type any_entity_type)], got record"
       ]
     },
     {
@@ -95,7 +95,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected one of [set, (entity of type any_entity_type)], got record"
+        "error occurred while evaluating policy `policy0`: type error: expected one of [set, (entity of type any_entity_type)], got record"
       ]
     }
   ]

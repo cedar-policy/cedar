@@ -3,7 +3,7 @@ name = "cedar-policy-core"
 edition = "2021"
 build = "build.rs"
 
-version = "2.3.2"
+version = "2.3.3"
 license = "Apache-2.0"
 categories = ["compilers", "config"]
 description = "Core implemenation of the Cedar Policy language."
@@ -22,22 +22,23 @@ itertools = "0.10"
 rustc_lexer = "0.1"
 thiserror = "1.0"
 smol_str = { version = "0.2", features = ["serde"] }
+stacker = "0.1.15"
+arbitrary = { version = "1", features = ["derive"], optional = true }
 
 # ipaddr extension requires ipnet
 ipnet = { version = "2.5.0", optional = true }
 
 # decimal extension requires regex
-regex = { version = "1.8", features = ["unicode"] }
-
-# Fuzzer requires arbitrary
-arbitrary = { version = "1", features = ["derive"] }
-stacker = "0.1.15"
+regex = { version = "1.8", features = ["unicode"], optional = true }
 
 [features]
 # by default, enable all Cedar extensions
 default = ["ipaddr", "decimal"]
 ipaddr = ["dep:ipnet"]
-decimal = []
+decimal = ["dep:regex"]
+
+# Enables `Arbitrary` implementations for several types in this crate
+arbitrary = ["dep:arbitrary"]
 
 # Experimental features.
 partial-eval = []

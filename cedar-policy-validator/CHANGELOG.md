@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed bug (#150) around implicit namespaces in action definitions.
+
 ## 2.2.0
 
 ### Changed

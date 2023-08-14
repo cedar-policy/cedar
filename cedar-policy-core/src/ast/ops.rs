@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 /// Built-in operators with exactly one argument
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Copy, Hash)]
-#[cfg_attr(fuzzing, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum UnaryOp {
     /// Logical negation
     ///
@@ -33,7 +33,7 @@ pub enum UnaryOp {
 
 /// Built-in operators with exactly two arguments
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Copy, Hash)]
-#[cfg_attr(fuzzing, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum BinaryOp {
     /// Equality
     ///
