@@ -15,7 +15,7 @@
   - `namespace` to get the namespace as a single string.
 - Fixed bug (#150) around implicit namespaces in action definitions.
 - Support `Request`s with `Unknown` fields for partial evaluation.
-- Export the `cedar_policy_core::evaluator::EvaluationError` and
+- Export the `cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind}` and
   `cedar_policy_core::authorizer::AuthorizationError` error types.
 
 ### Changed
