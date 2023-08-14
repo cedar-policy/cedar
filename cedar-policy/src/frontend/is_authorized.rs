@@ -124,8 +124,8 @@ impl InterfaceDiagnostics {
     }
 
     /// Get the errors
-    pub fn errors(&self) -> impl Iterator<Item = String> + '_ {
-        self.errors.iter().cloned()
+    pub fn errors(&self) -> impl Iterator<Item = &str> + '_ {
+        self.errors.iter().map(String::as_str)
     }
 }
 
