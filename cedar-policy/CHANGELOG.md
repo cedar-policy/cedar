@@ -20,6 +20,12 @@
   particular, this applies to the action context, so `context has attr` can now
   have type False where before it had type Boolean, creating some new
   short-circuiting opportunities.  The same applies to record literals.
+- Some error types now carry more information about the error, with error
+  messages updated appropriately
+- Improved error messages and documentation for some errors raised during
+  policy evaluation.
+- Renamed `cedar_policy_core::est::EstToAstError` to `cedar_policy_core::est::FromJsonError`
+- More precise "expected tokens" lists in some parse errors
 
 ## 2.3.2
 

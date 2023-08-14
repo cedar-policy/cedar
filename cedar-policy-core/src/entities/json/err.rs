@@ -252,10 +252,10 @@ pub enum JsonDeserializationErrorContext {
 impl std::fmt::Display for JsonDeserializationErrorContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::EntityAttribute { uid, attr } => write!(f, "In attribute {attr:?} on {uid}"),
-            Self::EntityParents { uid } => write!(f, "In parents field of {uid}"),
-            Self::EntityUid => write!(f, "In uid field of <unknown entity>"),
-            Self::Context => write!(f, "While parsing Context"),
+            Self::EntityAttribute { uid, attr } => write!(f, "in attribute {attr:?} on {uid}"),
+            Self::EntityParents { uid } => write!(f, "in parents field of {uid}"),
+            Self::EntityUid => write!(f, "in uid field of <unknown entity>"),
+            Self::Context => write!(f, "while parsing context"),
         }
     }
 }
