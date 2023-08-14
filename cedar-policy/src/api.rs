@@ -30,7 +30,7 @@ use cedar_policy_core::entities;
 use cedar_policy_core::entities::JsonDeserializationErrorContext;
 use cedar_policy_core::entities::{ContextSchema, Dereference, JsonDeserializationError};
 use cedar_policy_core::est;
-pub use cedar_policy_core::evaluator::EvaluationError;
+pub use cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind};
 use cedar_policy_core::evaluator::{Evaluator, RestrictedEvaluator};
 pub use cedar_policy_core::extensions;
 use cedar_policy_core::extensions::Extensions;
