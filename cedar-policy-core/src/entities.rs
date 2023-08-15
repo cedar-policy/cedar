@@ -104,6 +104,36 @@ impl Entities {
         self.entities.values()
     }
 
+    /// Adds the `[crate::ast::Entity]` to this `[Entities]`.
+    /// Fails if the passed iterator contains any duplicate entities with this structure,
+    /// or if any error is encountered in the transitive closure computation.
+    ///
+    /// If you pass `TCComputation::AssumeAlreadyComputed`, then the caller is
+    /// responsible for ensuring that TC and DAG hold before calling this method.
+    pub fn add_entities(
+        mut self,
+        collection: impl IntoIterator<Item = Entity>,
+        mode: TCComputation,
+    ) -> Result<Self> {
+        for entity in collection.into_iter() {
+            match self.entities.entry(entity.uid()) {
+                hash_map::Entry::Occupied(_) => return Err(EntitiesError::Duplicate(entity.uid())),
+                hash_map::Entry::Vacant(vacant_entry) => {
+                    vacant_entry.insert(entity);
+                }
+            }
+        }
+        match mode {
+            TCComputation::AssumeAlreadyComputed => (),
+            TCComputation::EnforceAlreadyComputed => {
+                enforce_tc_and_dag(&self.entities).map_err(Box::new)?
+            }
+            TCComputation::ComputeNow => compute_tc(&mut self.entities, true).map_err(Box::new)?,
+        };
+        self.evaluated_entities = None;
+        Ok(self)
+    }
+
     /// Create an `Entities` object with the given entities.
     ///
     /// If you pass `TCComputation::AssumeAlreadyComputed`, then the caller is
@@ -432,6 +462,129 @@ pub enum TCComputation {
 mod json_parsing_tests {
     use super::*;
     use crate::extensions::Extensions;
+
+    #[test]
+    fn adds_extends_tc() {
+        let parser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let new = serde_json::json!([
+            {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"alice\""]}]);
+
+        let stream = parser
+            .iter_from_json_value(new)
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        let es = simple_entities(&parser);
+        let es = es.add_entities(stream, TCComputation::ComputeNow).unwrap();
+        let euid = r#"Test::"jeff""#.parse().unwrap();
+        let jeff = es.entity(&euid).unwrap();
+        assert!(jeff.is_descendant_of(&r#"Test::"alice""#.parse().unwrap()));
+        assert!(jeff.is_descendant_of(&r#"Test::"bob""#.parse().unwrap()));
+        simple_entities_still_sane(&es);
+    }
+
+    #[test]
+    fn adds_works() {
+        let parser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let new = serde_json::json!([
+            {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"susan\""]}]);
+
+        let stream = parser
+            .iter_from_json_value(new)
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        let es = simple_entities(&parser);
+        let es = es.add_entities(stream, TCComputation::ComputeNow).unwrap();
+        let euid = r#"Test::"jeff""#.parse().unwrap();
+        let jeff = es.entity(&euid).unwrap();
+        let rexpr = jeff.get("foo").unwrap();
+        let expected_rexpr = RestrictedExpr::new(Expr::val(3)).unwrap();
+        assert_eq!(rexpr, &expected_rexpr);
+        assert!(jeff.is_descendant_of(&r#"Test::"susan""#.parse().unwrap()));
+        simple_entities_still_sane(&es);
+    }
+
+    #[test]
+    fn add_duplicates_fail2() {
+        let parser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let new = serde_json::json!([
+            {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : {}, "parents" : []},
+            {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : {}, "parents" : []}]);
+
+        let stream = parser
+            .iter_from_json_value(new)
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        let es = simple_entities(&parser);
+        let err = es
+            .add_entities(stream, TCComputation::ComputeNow)
+            .err()
+            .unwrap();
+        let expected = r#"Test::"jeff""#.parse().unwrap();
+        match err {
+            EntitiesError::Duplicate(e) => assert_eq!(e, expected),
+            e => panic!("Wrong error: {e}"),
+        }
+    }
+
+    #[test]
+    fn add_duplicates_fail1() {
+        let parser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let new =
+            serde_json::json!([{"uid":{"__expr":"Test::\"alice\""}, "attrs" : {}, "parents" : []}]);
+        let stream = parser
+            .iter_from_json_value(new)
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        let es = simple_entities(&parser);
+        let err = es
+            .add_entities(stream, TCComputation::ComputeNow)
+            .err()
+            .unwrap();
+        let expected = r#"Test::"alice""#.parse().unwrap();
+        match err {
+            EntitiesError::Duplicate(e) => assert_eq!(e, expected),
+            e => panic!("Wrong error: {e}"),
+        }
+    }
+
+    fn simple_entities(parser: &EntityJsonParser<'_>) -> Entities {
+        let json = serde_json::json!(
+            [
+                {
+                    "uid" : { "__expr" : "Test::\"alice\"" },
+                    "attrs" : { "bar" : 2},
+                    "parents" : ["Test::\"bob\""]
+                },
+                {
+                    "uid" : { "__expr" : "Test::\"bob\"" },
+                    "attrs" : {},
+                    "parents" : []
+                },
+            ]
+        );
+        parser.from_json_value(json).expect("JSON is correct")
+    }
+
+    /// Ensure the initial conditions of the entiites still hold
+    fn simple_entities_still_sane(e: &Entities) {
+        let bob = r#"Test::"bob""#.parse().unwrap();
+        let alice = e.entity(&r#"Test::"alice""#.parse().unwrap()).unwrap();
+        let bar = alice.get("bar").unwrap();
+        let two = RestrictedExpr::new(Expr::val(2)).unwrap();
+        assert_eq!(bar, &two);
+        assert!(alice.is_descendant_of(&bob));
+        assert_eq!(alice.ancestors().collect::<Vec<_>>().len(), 1);
+        let bob = e.entity(&bob).unwrap();
+        assert!(bob.ancestors().collect::<Vec<_>>().is_empty());
+    }
 
     #[cfg(feature = "partial-eval")]
     #[test]

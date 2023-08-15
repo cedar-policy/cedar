@@ -854,11 +854,10 @@ impl TryFrom<cst::Relation> for Expr {
                     let target_expr = target.try_into()?;
                     let pat_expr: Expr = pattern.try_into()?;
                     let pat_str = pat_expr.into_string_literal().map_err(|e| {
-                        ParseError::ToAST(ToASTError::InvalidPattern(format!(
-                            "{}",
+                        ParseError::ToAST(ToASTError::InvalidPattern(
                             serde_json::to_string(&e)
-                                .unwrap_or_else(|_| "<malformed est>".to_string())
-                        )))
+                                .unwrap_or_else(|_| "<malformed est>".to_string()),
+                        ))
                     })?;
                     Ok(Expr::like(target_expr, pat_str))
                 }
