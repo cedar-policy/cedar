@@ -5,6 +5,7 @@
 - Move public API for partial evaluation behind experimental feature flag.
 - Added an option to eagerly evaluate entity attributes and re-use across calls to `is_authorized`
 - Revamped errors in cst-to-ast transformation
+- Adds APIs to `Entities` to make it easy to add a collection of entities to an existing `Entities` structure
 
 ### Added
 

@@ -96,28 +96,64 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
         }
     }
 
-    /// Parse an entities JSON file (in `&str` form) into an `Entities` object
+    /// Parse an entities JSON file (in [`&str`] form) into an [`Entities`] object
     pub fn from_json_str(&self, json: &str) -> Result<Entities, EntitiesError> {
         let ejsons: Vec<EntityJSON> =
             serde_json::from_str(json).map_err(JsonDeserializationError::from)?;
         self.parse_ejsons(ejsons)
     }
 
-    /// Parse an entities JSON file (in `serde_json::Value` form) into an `Entities` object
+    /// Parse an entities JSON file (in [`serde_json::Value`] form) into an [`Entities`] object
     pub fn from_json_value(&self, json: serde_json::Value) -> Result<Entities, EntitiesError> {
         let ejsons: Vec<EntityJSON> =
             serde_json::from_value(json).map_err(JsonDeserializationError::from)?;
         self.parse_ejsons(ejsons)
     }
 
-    /// Parse an entities JSON file (in `std::io::Read` form) into an `Entities` object
+    /// Parse an entities JSON file (in [`std::io::Read`] form) into an [`Entities`] object
     pub fn from_json_file(&self, json: impl std::io::Read) -> Result<Entities, EntitiesError> {
         let ejsons: Vec<EntityJSON> =
             serde_json::from_reader(json).map_err(JsonDeserializationError::from)?;
         self.parse_ejsons(ejsons)
     }
 
-    /// internal function that creates an `Entities` from a stream of `EntityJSON`
+    /// Parse an entities JSON file (in [`&str`] form) into an iterator over [`Entity`]s
+    pub fn iter_from_json_str(
+        &self,
+        json: &str,
+    ) -> Result<impl Iterator<Item = Result<Entity, EntitiesError>> + '_, EntitiesError> {
+        let ejsons: Vec<EntityJSON> =
+            serde_json::from_str(json).map_err(JsonDeserializationError::from)?;
+        Ok(ejsons
+            .into_iter()
+            .map(|ejson| self.parse_ejson(ejson).map_err(EntitiesError::from)))
+    }
+
+    /// Parse an entities JSON file (in [`serde_json::Value`] form) into an iterator over [`Entity`]s
+    pub fn iter_from_json_value(
+        &self,
+        json: serde_json::Value,
+    ) -> Result<impl Iterator<Item = Result<Entity, EntitiesError>> + '_, EntitiesError> {
+        let ejsons: Vec<EntityJSON> =
+            serde_json::from_value(json).map_err(JsonDeserializationError::from)?;
+        Ok(ejsons
+            .into_iter()
+            .map(|ejson| self.parse_ejson(ejson).map_err(EntitiesError::from)))
+    }
+
+    /// Parse an entities JSON file (in [`std::io::Read`] form) into an iterator over  [`Entity`]s
+    pub fn iter_from_json_file(
+        &self,
+        json: impl std::io::Read,
+    ) -> Result<impl Iterator<Item = Result<Entity, EntitiesError>> + '_, EntitiesError> {
+        let ejsons: Vec<EntityJSON> =
+            serde_json::from_reader(json).map_err(JsonDeserializationError::from)?;
+        Ok(ejsons
+            .into_iter()
+            .map(|ejson| self.parse_ejson(ejson).map_err(EntitiesError::from)))
+    }
+
+    /// internal function that creates an [`Entities`] from a stream of [`EntityJSON`]
     fn parse_ejsons(
         &self,
         ejsons: impl IntoIterator<Item = EntityJSON>,
