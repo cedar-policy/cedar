@@ -22,7 +22,7 @@ use thiserror::Error;
 /// error type is parametrized by a type `K` which is the type of a unique
 /// identifier for graph nodes and the type returned by `get_key` on the
 /// `TCNode` trait.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum TcError<K: Debug + Display> {
     /// Error raised when `TCComputation::EnforceAlreadyComputed` finds that the
     /// TC was in fact not already computed

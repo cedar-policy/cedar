@@ -104,7 +104,7 @@ impl Entities {
         self.entities.values()
     }
 
-    /// Adds the [`crate::ast::Entity`] to this [`Entities`].
+    /// Adds the [`crate::ast::Entity`]s in the iterator to this [`Entities`].
     /// Fails if the passed iterator contains any duplicate entities with this structure,
     /// or if any error is encountered in the transitive closure computation.
     ///
@@ -461,7 +461,138 @@ pub enum TCComputation {
 #[cfg(test)]
 mod json_parsing_tests {
     use super::*;
-    use crate::extensions::Extensions;
+    use crate::{extensions::Extensions, transitive_closure::TcError};
+
+    #[test]
+    fn enforces_tc_fail_cycle_almost() {
+        let parser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let new = serde_json::json!([
+            {"uid":{"__expr":"Test::\"george\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"george\"", "Test::\"alice\"", "Test::\"bob\""]}]);
+
+        let stream = parser
+            .iter_from_json_value(new)
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        let es = simple_entities(&parser);
+        let es = es
+            .add_entities(stream, TCComputation::EnforceAlreadyComputed)
+            .err()
+            .unwrap();
+        // Despite this being a cycle, alice doesn't have the appropriate edges to form the cycle, so we get this error
+        let expected = TcError::MissingTcEdge {
+            child: r#"Test::"alice""#.parse().unwrap(),
+            parent: r#"Test::"george""#.parse().unwrap(),
+            grandparent: r#"Test::"alice""#.parse().unwrap(),
+        };
+        match es {
+            EntitiesError::TransitiveClosureError(e) => assert_eq!(&expected, e.as_ref()),
+            e => panic!("Wrong error: {e}"),
+        }
+    }
+
+    #[test]
+    fn enforces_tc_fail_connecting() {
+        let parser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let new = serde_json::json!([
+            {"uid":{"__expr":"Test::\"george\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"henry\""]}]);
+
+        let stream = parser
+            .iter_from_json_value(new)
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        let es = simple_entities(&parser);
+        let es = es
+            .add_entities(stream, TCComputation::EnforceAlreadyComputed)
+            .err()
+            .unwrap();
+        let expected = TcError::MissingTcEdge {
+            child: r#"Test::"alice""#.parse().unwrap(),
+            parent: r#"Test::"george""#.parse().unwrap(),
+            grandparent: r#"Test::"henry""#.parse().unwrap(),
+        };
+        match es {
+            EntitiesError::TransitiveClosureError(e) => assert_eq!(&expected, e.as_ref()),
+            e => panic!("Wrong error: {e}"),
+        }
+    }
+
+    #[test]
+    fn enforces_tc_fail_missing_edge() {
+        let parser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let new = serde_json::json!([
+            {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"alice\""]}]);
+
+        let stream = parser
+            .iter_from_json_value(new)
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        let es = simple_entities(&parser);
+        let es = es
+            .add_entities(stream, TCComputation::EnforceAlreadyComputed)
+            .err()
+            .unwrap();
+        let expected = TcError::MissingTcEdge {
+            child: r#"Test::"jeff""#.parse().unwrap(),
+            parent: r#"Test::"alice""#.parse().unwrap(),
+            grandparent: r#"Test::"george""#.parse().unwrap(),
+        };
+        match es {
+            EntitiesError::TransitiveClosureError(e) => assert_eq!(&expected, e.as_ref()),
+            e => panic!("Wrong error: {e}"),
+        }
+    }
+
+    #[test]
+    fn enforces_tc_success() {
+        let parser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let new = serde_json::json!([
+            {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"alice\"", "Test::\"bob\"", "Test::\"george\""]}]);
+
+        let stream = parser
+            .iter_from_json_value(new)
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        let es = simple_entities(&parser);
+        let es = es
+            .add_entities(stream, TCComputation::EnforceAlreadyComputed)
+            .unwrap();
+        let euid = r#"Test::"jeff""#.parse().unwrap();
+        let jeff = es.entity(&euid).unwrap();
+        assert!(jeff.is_descendant_of(&r#"Test::"alice""#.parse().unwrap()));
+        assert!(jeff.is_descendant_of(&r#"Test::"bob""#.parse().unwrap()));
+        assert!(jeff.is_descendant_of(&r#"Test::"george""#.parse().unwrap()));
+        simple_entities_still_sane(&es);
+    }
+
+    #[test]
+    fn adds_extends_tc_connecting() {
+        let parser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let new = serde_json::json!([
+            {"uid":{"__expr":"Test::\"george\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"henry\""] }]);
+
+        let stream = parser
+            .iter_from_json_value(new)
+            .unwrap()
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        let es = simple_entities(&parser);
+        let es = es.add_entities(stream, TCComputation::ComputeNow).unwrap();
+        let euid = r#"Test::"george""#.parse().unwrap();
+        let jeff = es.entity(&euid).unwrap();
+        assert!(jeff.is_descendant_of(&r#"Test::"henry""#.parse().unwrap()));
+        let alice = es.entity(&r#"Test::"alice""#.parse().unwrap()).unwrap();
+        assert!(alice.is_descendant_of(&r#"Test::"henry""#.parse().unwrap()));
+        simple_entities_still_sane(&es);
+    }
 
     #[test]
     fn adds_extends_tc() {
@@ -561,10 +692,15 @@ mod json_parsing_tests {
                 {
                     "uid" : { "__expr" : "Test::\"alice\"" },
                     "attrs" : { "bar" : 2},
-                    "parents" : ["Test::\"bob\""]
+                    "parents" : ["Test::\"bob\"", "Test::\"george\""]
                 },
                 {
                     "uid" : { "__expr" : "Test::\"bob\"" },
+                    "attrs" : {},
+                    "parents" : []
+                },
+                {
+                    "uid" : { "__expr" : "Test::\"henry\"" },
                     "attrs" : {},
                     "parents" : []
                 },
@@ -576,12 +712,13 @@ mod json_parsing_tests {
     /// Ensure the initial conditions of the entiites still hold
     fn simple_entities_still_sane(e: &Entities) {
         let bob = r#"Test::"bob""#.parse().unwrap();
+        let george = r#"Test::"george""#.parse().unwrap();
         let alice = e.entity(&r#"Test::"alice""#.parse().unwrap()).unwrap();
         let bar = alice.get("bar").unwrap();
         let two = RestrictedExpr::new(Expr::val(2)).unwrap();
         assert_eq!(bar, &two);
         assert!(alice.is_descendant_of(&bob));
-        assert_eq!(alice.ancestors().collect::<Vec<_>>().len(), 1);
+        assert!(alice.is_descendant_of(&george));
         let bob = e.entity(&bob).unwrap();
         assert!(bob.ancestors().collect::<Vec<_>>().is_empty());
     }
