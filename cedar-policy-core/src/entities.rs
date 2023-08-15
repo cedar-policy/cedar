@@ -104,11 +104,11 @@ impl Entities {
         self.entities.values()
     }
 
-    /// Adds the `[crate::ast::Entity]` to this `[Entities]`.
+    /// Adds the [`crate::ast::Entity`] to this [`Entities`].
     /// Fails if the passed iterator contains any duplicate entities with this structure,
     /// or if any error is encountered in the transitive closure computation.
     ///
-    /// If you pass `TCComputation::AssumeAlreadyComputed`, then the caller is
+    /// If you pass [`TCComputation::AssumeAlreadyComputed`], then the caller is
     /// responsible for ensuring that TC and DAG hold before calling this method.
     pub fn add_entities(
         mut self,

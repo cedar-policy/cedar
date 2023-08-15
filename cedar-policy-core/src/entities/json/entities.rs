@@ -96,28 +96,28 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
         }
     }
 
-    /// Parse an entities JSON file (in `&str` form) into an `Entities` object
+    /// Parse an entities JSON file (in [`&str`] form) into an [`Entities`] object
     pub fn from_json_str(&self, json: &str) -> Result<Entities, EntitiesError> {
         let ejsons: Vec<EntityJSON> =
             serde_json::from_str(json).map_err(JsonDeserializationError::from)?;
         self.parse_ejsons(ejsons)
     }
 
-    /// Parse an entities JSON file (in `serde_json::Value` form) into an `Entities` object
+    /// Parse an entities JSON file (in [`serde_json::Value`] form) into an [`Entities`] object
     pub fn from_json_value(&self, json: serde_json::Value) -> Result<Entities, EntitiesError> {
         let ejsons: Vec<EntityJSON> =
             serde_json::from_value(json).map_err(JsonDeserializationError::from)?;
         self.parse_ejsons(ejsons)
     }
 
-    /// Parse an entities JSON file (in `std::io::Read` form) into an `Entities` object
+    /// Parse an entities JSON file (in [`std::io::Read`] form) into an [`Entities`] object
     pub fn from_json_file(&self, json: impl std::io::Read) -> Result<Entities, EntitiesError> {
         let ejsons: Vec<EntityJSON> =
             serde_json::from_reader(json).map_err(JsonDeserializationError::from)?;
         self.parse_ejsons(ejsons)
     }
 
-    /// Parse an entities JSON file (in `&str` form) into an iterator over [Entity]s
+    /// Parse an entities JSON file (in [`&str`] form) into an iterator over [Entity]s
     pub fn iter_from_json_str(
         &self,
         json: &str,
@@ -129,7 +129,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
             .map(|ejson| self.parse_ejson(ejson).map_err(EntitiesError::from)))
     }
 
-    /// Parse an entities JSON file (in `serde_json::Value` form) into an iterator over [Entity]s
+    /// Parse an entities JSON file (in [`serde_json::Value`] form) into an iterator over [`Entity`]s
     pub fn iter_from_json_value(
         &self,
         json: serde_json::Value,
@@ -141,7 +141,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
             .map(|ejson| self.parse_ejson(ejson).map_err(EntitiesError::from)))
     }
 
-    /// Parse an entities JSON file (in `std::io::Read` form) into an iterator over  [Entity]s
+    /// Parse an entities JSON file (in [`std::io::Read`] form) into an iterator over  [`Entity`]s
     pub fn iter_from_json_file(
         &self,
         json: impl std::io::Read,
@@ -153,7 +153,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
             .map(|ejson| self.parse_ejson(ejson).map_err(EntitiesError::from)))
     }
 
-    /// internal function that creates an `Entities` from a stream of `EntityJSON`
+    /// internal function that creates an [`Entities`] from a stream of [`EntityJSON`]
     fn parse_ejsons(
         &self,
         ejsons: impl IntoIterator<Item = EntityJSON>,
