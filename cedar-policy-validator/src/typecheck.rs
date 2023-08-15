@@ -510,8 +510,8 @@ impl<'a> Typechecker<'a> {
 
     /// Get the entity types which could instantiate the slot given in this
     /// template based on the policy scope constraints. We use this function to
-    /// avoid typechecking with for slot bindings that will always be false
-    /// based only on the scope constraints.
+    /// avoid typechecking with slot bindings that will always be false based
+    /// only on the scope constraints.
     fn possible_slot_instantiations(
         &self,
         t: &Template,
