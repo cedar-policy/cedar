@@ -196,6 +196,95 @@ impl Entities {
         .map(Entities)
     }
 
+    /// Add all of the [`Entity`]s in the collection to this [`Entities`] structure, re-computing the transitive closure
+    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    pub fn add_entities(
+        self,
+        entities: impl IntoIterator<Item = Entity>,
+    ) -> Result<Self, EntitiesError> {
+        Ok(Self(self.0.add_entities(
+            entities.into_iter().map(|e| e.0),
+            entities::TCComputation::ComputeNow,
+        )?))
+    }
+
+    /// Parse an entities JSON file (in [&str] form) and add them into this [`Entities`] structure, re-computing the transitive closure
+    ///
+    /// If a `schema` is provided, this will inform the parsing: for instance, it
+    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
+    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    pub fn add_entities_from_json_str(
+        self,
+        json: &str,
+        schema: Option<&Schema>,
+    ) -> Result<Self, EntitiesError> {
+        let eparser = entities::EntityJsonParser::new(
+            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            Extensions::all_available(),
+            entities::TCComputation::ComputeNow,
+        );
+        let new_entities = eparser
+            .iter_from_json_str(json)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self(self.0.add_entities(
+            new_entities,
+            entities::TCComputation::ComputeNow,
+        )?))
+    }
+
+    /// Parse an entities JSON file (in [`serde_json::Value`] form) and add them into this [`Entities`] structure, re-computing the transitive closure
+    ///
+    /// If a `schema` is provided, this will inform the parsing: for instance, it
+    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
+    /// if attributes have the wrong types (e.g., string instead of integer).
+    ///
+    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    pub fn add_entities_from_json_value(
+        self,
+        json: serde_json::Value,
+        schema: Option<&Schema>,
+    ) -> Result<Self, EntitiesError> {
+        let eparser = entities::EntityJsonParser::new(
+            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            Extensions::all_available(),
+            entities::TCComputation::ComputeNow,
+        );
+        let new_entities = eparser
+            .iter_from_json_value(json)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self(self.0.add_entities(
+            new_entities,
+            entities::TCComputation::ComputeNow,
+        )?))
+    }
+
+    /// Parse an entities JSON file (in [`std::io::Read`] form) and add them into this [`Entities`] structure, re-computing the transitive closure
+    ///
+    /// If a `schema` is provided, this will inform the parsing: for instance, it
+    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
+    /// if attributes have the wrong types (e.g., string instead of integer).
+    ///
+    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    pub fn add_entities_from_json_file(
+        self,
+        json: impl std::io::Read,
+        schema: Option<&Schema>,
+    ) -> Result<Self, EntitiesError> {
+        let eparser = entities::EntityJsonParser::new(
+            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            Extensions::all_available(),
+            entities::TCComputation::ComputeNow,
+        );
+        let new_entities = eparser
+            .iter_from_json_file(json)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self(self.0.add_entities(
+            new_entities,
+            entities::TCComputation::ComputeNow,
+        )?))
+    }
+
     /// Parse an entities JSON file (in `&str` form) into an `Entities` object
     ///
     /// If a `schema` is provided, this will inform the parsing: for instance, it
