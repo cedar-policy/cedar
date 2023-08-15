@@ -117,7 +117,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
         self.parse_ejsons(ejsons)
     }
 
-    /// Parse an entities JSON file (in [`&str`] form) into an iterator over [Entity]s
+    /// Parse an entities JSON file (in [`&str`] form) into an iterator over [`Entity`]s
     pub fn iter_from_json_str(
         &self,
         json: &str,
