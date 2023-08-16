@@ -30,4 +30,5 @@ pub mod est;
 pub mod evaluator;
 pub mod extensions;
 pub mod parser;
+pub mod slicer;
 pub mod transitive_closure;

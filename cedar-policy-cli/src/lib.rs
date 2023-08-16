@@ -98,6 +98,8 @@ pub enum Commands {
     Link(LinkArgs),
     /// Format a policy set
     Format(FormatArgs),
+    /// Slice a policy set
+    Slice(SliceArgs),
 }
 
 #[derive(Args, Debug)]
@@ -289,6 +291,19 @@ pub struct FormatArgs {
     /// Custom indentation width (default: 2).
     #[arg(short, long, value_name = "INT", default_value_t = 2)]
     pub indent_width: isize,
+}
+
+#[derive(Args, Debug)]
+pub struct SliceArgs {
+    /// Request args (incorporated by reference)
+    #[command(flatten)]
+    pub request: RequestArgs,
+    /// File containing the static Cedar policies and templates to evaluate against
+    #[arg(long = "policies", value_name = "FILE")]
+    pub policies_file: String,
+    /// File containing JSON representation of the Cedar entity hierarchy
+    #[arg(long = "entities", value_name = "FILE")]
+    pub entities_file: String,
 }
 
 /// Wrapper struct
@@ -648,6 +663,29 @@ fn write_template_linked_file(linked: &[TemplateLinked], path: impl AsRef<Path>)
         .open(path)
         .into_diagnostic()?;
     serde_json::to_writer(f, linked).into_diagnostic()
+}
+
+fn slice_inner(args: &SliceArgs) -> Result<()> {
+    let policies = read_policy_set(Some(<std::string::String as AsRef<Path>>::as_ref(
+        &args.policies_file,
+    )))?;
+    let entities = load_entities(
+        <std::string::String as AsRef<Path>>::as_ref(&args.entities_file),
+        None,
+    )?;
+    let request = args.request.get_request(None)?;
+    println!("{}", get_policy_set_slice(&request, &entities, &policies));
+    Ok(())
+}
+
+pub fn slice(args: &SliceArgs) -> CedarExitCode {
+    match slice_inner(args) {
+        Ok(_) => CedarExitCode::Success,
+        Err(err) => {
+            eprintln!("{err:?}");
+            CedarExitCode::Failure
+        }
+    }
 }
 
 pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {

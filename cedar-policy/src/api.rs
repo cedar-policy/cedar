@@ -37,6 +37,7 @@ use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 pub use cedar_policy_core::parser::err::ParseErrors;
 use cedar_policy_core::parser::SourceInfo;
+use cedar_policy_core::slicer::Slicer;
 use cedar_policy_core::FromNormalizedStr;
 pub use cedar_policy_validator::{
     TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
@@ -2796,6 +2797,16 @@ pub fn eval_expression(
         // Evaluate under the empty slot map, as an expression should not have slots
         eval.interpret(&expr.0, &ast::SlotEnv::new())?,
     ))
+}
+
+/// Get a slice of a policy set based on a reques and a store
+pub fn get_policy_set_slice(
+    request: &Request,
+    entities: &Entities,
+    policy_set: &PolicySet,
+) -> PolicySet {
+    let slicer = Slicer::new(&request.0, &entities.0);
+    PolicySet::from_ast(slicer.get_slice(&policy_set.ast))
 }
 
 #[cfg(test)]
