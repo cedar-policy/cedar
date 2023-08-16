@@ -1,154 +1,179 @@
 [
   {
     "uid": {
-      "__expr": "User::\"alice\""
+      "type": "User",
+      "id": "alice"
     },
     "attrs": {},
     "parents": [
       {
-        "__expr": "UserGroup::\"jane_friends\""
+        "type": "UserGroup",
+        "id": "jane_friends"
       }
     ]
   },
   {
     "uid": {
-      "__expr": "User::\"bob\""
+      "type": "User",
+      "id": "bob"
     },
     "attrs": {},
     "parents": []
   },
   {
     "uid": {
-      "__expr": "User::\"tim\""
+      "type": "User",
+      "id": "tim"
     },
     "attrs": {},
     "parents": [
       {
-        "__expr": "UserGroup::\"jane_friends\""
+        "type": "UserGroup",
+        "id": "jane_friends"
       }
     ]
   },
   {
     "uid": {
-      "__expr": "UserGroup::\"jane_friends\""
+      "type": "UserGroup",
+      "id": "jane_friends"
     },
     "attrs": {},
     "parents": []
   },
   {
     "uid": {
-      "__expr": "Administrator::\"ahmad\""
+      "type": "Administrator",
+      "id": "ahmad"
     },
     "attrs": {},
     "parents": []
   },
   {
     "uid": {
-      "__expr": "Action::\"view\""
+      "type": "Action",
+      "id": "view"
     },
     "attrs": {},
     "parents": []
   },
   {
     "uid": {
-      "__expr": "Action::\"comment\""
+      "type": "Action",
+      "id": "comment"
     },
     "attrs": {},
     "parents": []
   },
   {
     "uid": {
-      "__expr": "Action::\"edit\""
+      "type": "Action",
+      "id": "edit"
     },
     "attrs": {},
     "parents": []
   },
   {
     "uid": {
-      "__expr": "Action::\"delete\""
+      "type": "Action",
+      "id": "delete"
     },
     "attrs": {},
     "parents": []
   },
   {
     "uid": {
-      "__expr": "Action::\"listAlbums\""
+      "type": "Action",
+      "id": "listAlbums"
     },
     "attrs": {},
     "parents": []
   },
   {
     "uid": {
-      "__expr": "Action::\"listPhotos\""
+      "type": "Action",
+      "id": "listPhotos"
     },
     "attrs": {},
     "parents": []
   },
   {
     "uid": {
-      "__expr": "Photo::\"VacationPhoto94.jpg\""
+      "type": "Photo",
+      "id": "VacationPhoto94.jpg"
     },
     "attrs": {},
     "parents": [
       {
-        "__expr": "Album::\"jane_vacation\""
+        "type": "Album",
+        "id": "jane_vacation"
       }
     ]
   },
   {
     "uid": {
-      "__expr": "Photo::\"passportscan.jpg\""
+      "type": "Photo",
+      "id": "passportscan.jpg"
     },
     "attrs": {},
     "parents": [
       {
-        "__expr": "Account::\"jane\""
+        "type": "Account",
+        "id": "jane"
       }
     ]
   },
   {
     "uid": {
-      "__expr": "Video::\"surf.mp4\""
+      "type": "Video",
+      "id": "surf.mp4"
     },
     "attrs": {},
     "parents": [
       {
-        "__expr": "Album::\"jane_vacation\""
+        "type": "Album",
+        "id": "jane_vacation"
       }
     ]
   },
   {
     "uid": {
-      "__expr": "Photo::\"selfie.jpg\""
+      "type": "Photo",
+      "id": "selfie.jpg"
     },
     "attrs": {},
     "parents": [
       {
-        "__expr": "Account::\"bob\""
+        "type": "Account",
+        "id": "bob"
       }
     ]
   },
   {
     "uid": {
-      "__expr": "Album::\"jane_vacation\""
+      "type": "Album",
+      "id": "jane_vacation"
     },
     "attrs": {},
     "parents": [
       {
-        "__expr": "Account::\"jane\""
+        "type": "Account",
+        "id": "jane"
       }
     ]
   },
   {
     "uid": {
-      "__expr": "Account::\"jane\""
+      "type": "Account",
+      "id": "jane"
     },
     "attrs": {},
     "parents": []
   },
   {
     "uid": {
-      "__expr": "Account::\"bob\""
+      "type": "Account",
+      "id": "bob"
     },
     "attrs": {},
     "parents": []
