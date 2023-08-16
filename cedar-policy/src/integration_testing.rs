@@ -33,8 +33,8 @@
 #![allow(clippy::expect_used)]
 
 use crate::{
-    Authorizer, Context, Decision, Entities, EntityUid, EvaluationError, Policy, PolicyId,
-    PolicySet, Request, Response, Schema, ValidationMode, Validator,
+    frontend::is_authorized::InterfaceResponse, Authorizer, Context, Decision, Entities, EntityUid,
+    Policy, PolicyId, PolicySet, Request, Schema, ValidationMode, Validator,
 };
 use serde::Deserialize;
 use std::{
@@ -148,7 +148,7 @@ pub trait CustomCedarImpl {
         q: &cedar_policy_core::ast::Request,
         p: &cedar_policy_core::ast::PolicySet,
         e: &cedar_policy_core::entities::Entities,
-    ) -> Response;
+    ) -> InterfaceResponse;
 
     /// Custom validator entry point.
     ///
@@ -171,7 +171,7 @@ pub trait CustomCedarImpl {
 /// test, otherwise perform the test on the `Cedar` API.
 ///
 /// Relative paths are assumed to be relative to the root of the
-/// `CedarIntegrationTests` repo.
+/// cedar-integration-tests folder.
 /// Absolute paths are handled without modification.
 /// # Panics
 /// When integration test data cannot be found
@@ -189,13 +189,14 @@ pub fn perform_integration_test_from_json_custom(
     let policy_file = resolve_integration_test_path(&test.policies);
     let policies_text = std::fs::read_to_string(policy_file)
         .unwrap_or_else(|e| panic!("error loading policy file {}: {e}", &test.policies));
-    //If parsing fails we don't want to quit immediately. Instead we want to check that the parse error corresponds to the original error when running the fuzzer
+    // If parsing fails we don't want to quit immediately. Instead we want to
+    // check that the expected decision is "Deny" and that the parse error is
+    // of the expected type.
     let policies_res = PolicySet::from_str(&policies_text);
-    if policies_res.is_err() {
-        //we may see a failure to parse instead of the orginal error: (see comment at ast/exprs.rs:500)
-        //If an expected response is for an error due to a non-existent function call or if e.g.,
-        // "isInRange" is used as a function instead of a method
-        //(Maybe due to null principal?)
+    if let Err(parse_errs) = policies_res {
+        // We may see a `NotAFunction` parse error for auto-generated policies:
+        // See the comment in the `ExtensionFunctionApp` case of the `Display`
+        // implementation for `Expr` in ast/exprs.rs.
         for json_request in test.requests {
             assert_eq!(
                 json_request.decision,
@@ -205,6 +206,15 @@ pub fn perform_integration_test_from_json_custom(
                 &json_request.desc
             );
         }
+        assert!(
+            parse_errs
+                .errors_as_strings()
+                .iter()
+                .any(|s| s.ends_with("not a function")),
+            "unexpected parse errors in test {}: {}",
+            jsonfile.display(),
+            parse_errs,
+        );
         return;
     }
     let policies = policies_res
@@ -291,9 +301,12 @@ pub fn perform_integration_test_from_json_custom(
         let response = if let Some(custom_impl) = custom_impl_opt {
             custom_impl.is_authorized(&request.0, &policies.ast, &entities.0)
         } else {
-            Authorizer::new().is_authorized(&request, &policies, &entities)
+            Authorizer::new()
+                .is_authorized(&request, &policies, &entities)
+                .into()
         };
-        let expected_response = Response::new(
+
+        let expected_response = InterfaceResponse::new(
             json_request.decision,
             json_request
                 .reasons
@@ -303,55 +316,13 @@ pub fn perform_integration_test_from_json_custom(
             json_request.errors.into_iter().collect(),
         );
 
-        //If an expected response is for an error due to a non-existent function call, we may
-        //see a failure to parse instead: (see comment at ast/exprs.rs:500)
-        let mut parsing_fn_name: Option<String> = None;
-        for e in response.diagnostics().errors() {
-            let EvaluationError::StringMessage(msg) = e;
-            if msg.contains("poorly formed: invalid syntax, expected function, found") {
-                parsing_fn_name = Some(msg.split_whitespace().last().unwrap().to_string());
-                break;
-            }
-        }
-        if parsing_fn_name.is_some() {
-            //For these tests we must have the same decision and the undefined function when running the fuzzer should be the same when parsing
-            assert_eq!(
-                response.decision(),
-                expected_response.decision(),
-                "test {} failed for request \"{}\"",
-                jsonfile.display(),
-                &json_request.desc
-            );
-
-            let mut found_matching_non_existent_fn_fuzzing = false;
-            for e in expected_response.diagnostics().errors() {
-                let EvaluationError::StringMessage(msg) = e;
-                if msg.contains(
-                    "error occurred while evaluating policy `policy0`: function does not exist:",
-                ) {
-                    let fuzzing_fn_name = Some(msg.split_whitespace().last().unwrap().to_string());
-                    if parsing_fn_name == fuzzing_fn_name {
-                        found_matching_non_existent_fn_fuzzing = true;
-                        break;
-                    }
-                }
-            }
-
-            assert!(
-                found_matching_non_existent_fn_fuzzing,
-                "test {} failed for request \"{}\" \n Non existent function names did not match.",
-                jsonfile.display(),
-                &json_request.desc
-            );
-        } else {
-            assert_eq!(
-                response,
-                expected_response,
-                "test {} failed for request \"{}\"",
-                jsonfile.display(),
-                &json_request.desc
-            );
-        }
+        assert_eq!(
+            response,
+            expected_response,
+            "test {} failed for request \"{}\"",
+            jsonfile.display(),
+            &json_request.desc
+        );
 
         // test that EST roundtrip works for this policy set
         // we can't test that the roundtrip produces the same policies exactly

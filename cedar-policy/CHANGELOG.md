@@ -1,9 +1,11 @@
 # Changelog
 
 ## Unreleased
+
 - Move public API for partial evaluation behind experimental feature flag.
 - Added an option to eagerly evaluate entity attributes and re-use across calls to `is_authorized`
 - Revamped errors in cst-to-ast transformation
+- Adds APIs to `Entities` to make it easy to add a collection of entities to an existing `Entities` structure
 
 ### Added
 
@@ -14,6 +16,8 @@
   - `namespace` to get the namespace as a single string.
 - Fixed bug (#150) around implicit namespaces in action definitions.
 - Support `Request`s with `Unknown` fields for partial evaluation.
+- Export the `cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind}` and
+  `cedar_policy_core::authorizer::AuthorizationError` error types.
 
 ### Changed
 
@@ -49,10 +53,13 @@
 - More precise "expected tokens" lists in some parse errors
 - Renamed `cedar_policy_core::entities::JsonDeserializationError::ExtensionsError` to `cedar_policy_core::entities::JsonDeserializationError::FailedExtensionsFunctionLookup`.
 - Renamed variants in `cedar_policy::SchemaError`
+- The `Diagnostics::errors()` function now returns an iterator over `AuthorizationError`s.
+- The `Response::new()` constructor now expects a `Vec<AuthorizationError>` as its third argument.
 
 ## 2.3.0
 
 ### Changed
+
 - Implementation of
 [RFC 9](https://github.com/cedar-policy/rfcs/blob/main/text/0009-disallow-whitespace-in-entityuid.md)
 which disallows embedded whitespace, comments, and control characters in the
@@ -68,22 +75,27 @@ discussion in the RFC.
 ## 2.2.0
 
 ### Added
+
 - `Entities::write_to_json` function to api.rs
 
 ## 2.1.0
 
 ### Added
+
 - `Schema::action_entities` to provide access to action entities defined in a schema.
 
 ### Changed
+
 - Update `cedar-policy-core` dependency.
 
 ### Fixed
+
 - Resolve warning in `Cargo.toml` due to having both `license` and `license-file` metadata entries.
 
 ## 2.0.3
 
 ### Fixed
+
 - Update `Cargo.toml` metadata to correctly represent this crate as Apache-2.0 licensed.
 
 ## 2.0.2
