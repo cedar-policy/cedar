@@ -19,6 +19,7 @@ jobs:
       - run: cargo fmt --all --check
       - run: RUSTFLAGS="-D warnings -F unsafe-code" cargo build --verbose --features "experimental"
       - run: RUSTFLAGS="-D warnings -F unsafe-code" cargo build --verbose
+      - run: cargo test --verbose --features "experimental"
       - run: cargo test --verbose
       - run: cargo clippy
       - run: ./panic_safety.sh
