@@ -2803,7 +2803,7 @@ pub fn eval_expression(
 mod partial_eval_test {
     use std::collections::HashSet;
 
-    use crate::{AuthorizationError, EvaluationError, PolicyId, PolicySet, ResidualResponse};
+    use crate::{AuthorizationError, PolicyId, PolicySet, ResidualResponse};
 
     #[test]
     fn test_pe_response_constructor() {
