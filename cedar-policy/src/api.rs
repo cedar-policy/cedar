@@ -2803,13 +2803,13 @@ pub fn eval_expression(
 mod partial_eval_test {
     use std::collections::HashSet;
 
-    use crate::{PolicyId, PolicySet, ResidualResponse};
+    use crate::{AuthorizationError, EvaluationError, PolicyId, PolicySet, ResidualResponse};
 
     #[test]
     fn test_pe_response_constructor() {
         let p: PolicySet = "permit(principal, action, resource);".parse().unwrap();
         let reason: HashSet<PolicyId> = std::iter::once("id1".parse().unwrap()).collect();
-        let errors: HashSet<String> = std::iter::once("error".to_string()).collect();
+        let errors: Vec<AuthorizationError> = std::iter::empty().collect();
         let a = ResidualResponse::new(p.clone(), reason.clone(), errors.clone());
         assert_eq!(a.diagnostics().errors, errors);
         assert_eq!(a.diagnostics().reason, reason);
