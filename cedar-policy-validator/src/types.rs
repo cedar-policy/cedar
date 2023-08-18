@@ -33,12 +33,15 @@ use super::schema::{
 /// Contains the four variables bound in the type environment. These together
 /// represent the full type of (principal, action, resource, context)
 /// authorization request.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RequestEnv<'a> {
     pub principal: &'a EntityType,
     pub action: &'a EntityUID,
     pub resource: &'a EntityType,
     pub context: &'a Attributes,
+
+    pub principal_slot: Option<EntityType>,
+    pub resource_slot: Option<EntityType>,
 }
 
 /// The main type structure.

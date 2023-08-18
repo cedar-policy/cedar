@@ -75,6 +75,8 @@ impl Typechecker<'_> {
                     .expect("Placeholder type \"Resource\" failed to parse as valid type name."),
             ),
             context: &Attributes::with_attributes(None),
+            principal_slot: None,
+            resource_slot: None,
         };
         let mut type_errors = Vec::new();
         let ans = self.typecheck(&request_env, &EffectSet::new(), e, &mut type_errors);
@@ -148,13 +150,12 @@ pub(crate) fn assert_policy_typechecks(
 
 pub(crate) fn assert_policy_typecheck_fails(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
-    policy: StaticPolicy,
+    policy: impl Into<Arc<Template>>,
     expected_type_errors: Vec<TypeError>,
 ) {
     with_typechecker_from_schema(schema, |typechecker| {
         let mut type_errors: HashSet<TypeError> = HashSet::new();
-        let typechecked =
-            typechecker.typecheck_policy(&static_to_template(policy.clone()), &mut type_errors);
+        let typechecked = typechecker.typecheck_policy(&policy.into(), &mut type_errors);
         assert_expected_type_errors(&expected_type_errors, &type_errors);
         assert!(!typechecked, "Expected that policy would not typecheck.");
     });
