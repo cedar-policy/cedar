@@ -314,7 +314,7 @@ fn build_evaluated_entities(
                         (
                             entity.uid(),
                             entity
-                                .attrs()
+                                .attrs_map()
                                 .iter()
                                 .map(|(attr, v)| {
                                     Ok((
