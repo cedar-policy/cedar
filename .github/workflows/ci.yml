@@ -21,6 +21,7 @@ jobs:
       - run: RUSTFLAGS="-D warnings -F unsafe-code" cargo build --verbose
       - run: cargo test --verbose --features "experimental"
       - run: cargo test --verbose
+      - run: cargo doc --all-features
       - run: cargo clippy
       - run: ./panic_safety.sh
       - run: cargo test --verbose -- --ignored
