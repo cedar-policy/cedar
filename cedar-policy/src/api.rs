@@ -1956,11 +1956,11 @@ impl Policy {
     }
 
     /// To avoid panicking, this function may only be called when `slot` is the
-    /// SlotId corresponding to the scope constraint from which the entity
+    /// `SlotId` corresponding to the scope constraint from which the entity
     /// reference `r` was extracted. I.e., If `r` is taken from the principal
     /// scope constraint, `slot` must be `?principal`. This ensures that the
-    /// SlotId exists in the policy (and therefore the slot environment map)
-    /// whenever the EntityReference `r` is the Slot variant.
+    /// `SlotId` exists in the policy (and therefore the slot environment map)
+    /// whenever the `EntityReference` `r` is the Slot variant.
     fn convert_entity_reference<'a>(
         &'a self,
         r: &'a ast::EntityReference,
@@ -2814,13 +2814,13 @@ pub fn get_policy_set_slice(
 mod partial_eval_test {
     use std::collections::HashSet;
 
-    use crate::{PolicyId, PolicySet, ResidualResponse};
+    use crate::{AuthorizationError, PolicyId, PolicySet, ResidualResponse};
 
     #[test]
     fn test_pe_response_constructor() {
         let p: PolicySet = "permit(principal, action, resource);".parse().unwrap();
         let reason: HashSet<PolicyId> = std::iter::once("id1".parse().unwrap()).collect();
-        let errors: HashSet<String> = std::iter::once("error".to_string()).collect();
+        let errors: Vec<AuthorizationError> = std::iter::empty().collect();
         let a = ResidualResponse::new(p.clone(), reason.clone(), errors.clone());
         assert_eq!(a.diagnostics().errors, errors);
         assert_eq!(a.diagnostics().reason, reason);

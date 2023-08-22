@@ -205,7 +205,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                 // here, we ensure that all the attributes on the schema's copy of the
                 // action do exist in `ejson.attrs`. Later when consuming `ejson.attrs`,
                 // we'll do the rest of the checks for attribute agreement.
-                for schema_attr in action.attrs().keys() {
+                for schema_attr in action.attrs_map().keys() {
                     if !ejson.attrs.contains_key(schema_attr) {
                         return Err(JsonDeserializationError::ActionDeclarationMismatch { uid });
                     }
@@ -408,13 +408,7 @@ impl EntityJSON {
             uid: EntityUidJSON::ImplicitEntityEscape(TypeAndId::from(entity.uid())),
             attrs: entity
                 .attrs()
-                .iter()
-                .map(|(k, expr)| {
-                    Ok((
-                        k.clone(),
-                        serde_json::to_value(JSONValue::from_expr(expr.as_borrowed())?)?,
-                    ))
-                })
+                .map(|(k, expr)| Ok((k.into(), serde_json::to_value(JSONValue::from_expr(expr)?)?)))
                 .collect::<Result<_, JsonSerializationError>>()?,
             parents: entity
                 .ancestors()
