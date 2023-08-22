@@ -1955,11 +1955,11 @@ impl Policy {
     }
 
     /// To avoid panicking, this function may only be called when `slot` is the
-    /// SlotId corresponding to the scope constraint from which the entity
+    /// `SlotId` corresponding to the scope constraint from which the entity
     /// reference `r` was extracted. I.e., If `r` is taken from the principal
     /// scope constraint, `slot` must be `?principal`. This ensures that the
-    /// SlotId exists in the policy (and therefore the slot environment map)
-    /// whenever the EntityReference `r` is the Slot variant.
+    /// `SlotId` exists in the policy (and therefore the slot environment map)
+    /// whenever the `EntityReference` `r` is the Slot variant.
     fn convert_entity_reference<'a>(
         &'a self,
         r: &'a ast::EntityReference,
