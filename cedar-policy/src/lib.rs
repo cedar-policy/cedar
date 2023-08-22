@@ -16,12 +16,17 @@
 
 //! Public Rust interface for Cedar
 #![forbid(unsafe_code)]
-#![warn(
+#![warn(rust_2018_idioms, clippy::pedantic, clippy::nursery)]
+#![deny(
     missing_docs,
     missing_debug_implementations,
-    rust_2018_idioms,
-    clippy::pedantic,
-    clippy::nursery
+    rustdoc::broken_intra_doc_links,
+    rustdoc::private_intra_doc_links,
+    rustdoc::invalid_codeblock_attributes,
+    rustdoc::invalid_html_tags,
+    rustdoc::invalid_rust_codeblocks,
+    rustdoc::bare_urls,
+    clippy::doc_markdown
 )]
 #![allow(clippy::must_use_candidate, clippy::missing_const_for_fn)]
 
