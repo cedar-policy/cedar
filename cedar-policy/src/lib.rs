@@ -16,11 +16,7 @@
 
 //! Public Rust interface for Cedar
 #![forbid(unsafe_code)]
-#![warn(
-    rust_2018_idioms,
-    clippy::pedantic,
-    clippy::nursery
-)]
+#![warn(rust_2018_idioms, clippy::pedantic, clippy::nursery)]
 #![deny(
     missing_docs,
     missing_debug_implementations,
