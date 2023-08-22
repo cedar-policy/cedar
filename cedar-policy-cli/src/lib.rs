@@ -301,6 +301,9 @@ pub struct SliceArgs {
     /// File containing the static Cedar policies and templates to evaluate against
     #[arg(long = "policies", value_name = "FILE")]
     pub policies_file: String,
+    /// File containing template linked policies
+    #[arg(long = "template-linked", value_name = "FILE")]
+    pub template_linked_file: Option<String>,
     /// File containing JSON representation of the Cedar entity hierarchy
     #[arg(long = "entities", value_name = "FILE")]
     pub entities_file: String,
@@ -666,15 +669,20 @@ fn write_template_linked_file(linked: &[TemplateLinked], path: impl AsRef<Path>)
 }
 
 fn slice_inner(args: &SliceArgs) -> Result<()> {
-    let policies = read_policy_set(Some(<std::string::String as AsRef<Path>>::as_ref(
-        &args.policies_file,
-    )))?;
+    let policies = read_policy_and_links(&args.policies_file, args.template_linked_file.as_ref())?;
     let entities = load_entities(
         <std::string::String as AsRef<Path>>::as_ref(&args.entities_file),
         None,
     )?;
     let request = args.request.get_request(None)?;
-    println!("{}", get_policy_set_slice(&request, &entities, &policies));
+    println!(
+        "{} -> {}",
+        policies.policies().collect::<Vec<&Policy>>().len(),
+        get_policy_set_slice(&request, &entities, &policies)
+            .policies()
+            .collect::<Vec<&Policy>>()
+            .len()
+    );
     Ok(())
 }
 
