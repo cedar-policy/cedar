@@ -96,28 +96,64 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
         }
     }
 
-    /// Parse an entities JSON file (in `&str` form) into an `Entities` object
+    /// Parse an entities JSON file (in [`&str`] form) into an [`Entities`] object
     pub fn from_json_str(&self, json: &str) -> Result<Entities, EntitiesError> {
         let ejsons: Vec<EntityJSON> =
             serde_json::from_str(json).map_err(JsonDeserializationError::from)?;
         self.parse_ejsons(ejsons)
     }
 
-    /// Parse an entities JSON file (in `serde_json::Value` form) into an `Entities` object
+    /// Parse an entities JSON file (in [`serde_json::Value`] form) into an [`Entities`] object
     pub fn from_json_value(&self, json: serde_json::Value) -> Result<Entities, EntitiesError> {
         let ejsons: Vec<EntityJSON> =
             serde_json::from_value(json).map_err(JsonDeserializationError::from)?;
         self.parse_ejsons(ejsons)
     }
 
-    /// Parse an entities JSON file (in `std::io::Read` form) into an `Entities` object
+    /// Parse an entities JSON file (in [`std::io::Read`] form) into an [`Entities`] object
     pub fn from_json_file(&self, json: impl std::io::Read) -> Result<Entities, EntitiesError> {
         let ejsons: Vec<EntityJSON> =
             serde_json::from_reader(json).map_err(JsonDeserializationError::from)?;
         self.parse_ejsons(ejsons)
     }
 
-    /// internal function that creates an `Entities` from a stream of `EntityJSON`
+    /// Parse an entities JSON file (in [`&str`] form) into an iterator over [`Entity`]s
+    pub fn iter_from_json_str(
+        &self,
+        json: &str,
+    ) -> Result<impl Iterator<Item = Result<Entity, EntitiesError>> + '_, EntitiesError> {
+        let ejsons: Vec<EntityJSON> =
+            serde_json::from_str(json).map_err(JsonDeserializationError::from)?;
+        Ok(ejsons
+            .into_iter()
+            .map(|ejson| self.parse_ejson(ejson).map_err(EntitiesError::from)))
+    }
+
+    /// Parse an entities JSON file (in [`serde_json::Value`] form) into an iterator over [`Entity`]s
+    pub fn iter_from_json_value(
+        &self,
+        json: serde_json::Value,
+    ) -> Result<impl Iterator<Item = Result<Entity, EntitiesError>> + '_, EntitiesError> {
+        let ejsons: Vec<EntityJSON> =
+            serde_json::from_value(json).map_err(JsonDeserializationError::from)?;
+        Ok(ejsons
+            .into_iter()
+            .map(|ejson| self.parse_ejson(ejson).map_err(EntitiesError::from)))
+    }
+
+    /// Parse an entities JSON file (in [`std::io::Read`] form) into an iterator over  [`Entity`]s
+    pub fn iter_from_json_file(
+        &self,
+        json: impl std::io::Read,
+    ) -> Result<impl Iterator<Item = Result<Entity, EntitiesError>> + '_, EntitiesError> {
+        let ejsons: Vec<EntityJSON> =
+            serde_json::from_reader(json).map_err(JsonDeserializationError::from)?;
+        Ok(ejsons
+            .into_iter()
+            .map(|ejson| self.parse_ejson(ejson).map_err(EntitiesError::from)))
+    }
+
+    /// internal function that creates an [`Entities`] from a stream of [`EntityJSON`]
     fn parse_ejsons(
         &self,
         ejsons: impl IntoIterator<Item = EntityJSON>,
@@ -169,7 +205,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                 // here, we ensure that all the attributes on the schema's copy of the
                 // action do exist in `ejson.attrs`. Later when consuming `ejson.attrs`,
                 // we'll do the rest of the checks for attribute agreement.
-                for schema_attr in action.attrs().keys() {
+                for schema_attr in action.attrs_map().keys() {
                     if !ejson.attrs.contains_key(schema_attr) {
                         return Err(JsonDeserializationError::ActionDeclarationMismatch { uid });
                     }
@@ -372,13 +408,7 @@ impl EntityJSON {
             uid: EntityUidJSON::ImplicitEntityEscape(TypeAndId::from(entity.uid())),
             attrs: entity
                 .attrs()
-                .iter()
-                .map(|(k, expr)| {
-                    Ok((
-                        k.clone(),
-                        serde_json::to_value(JSONValue::from_expr(expr.as_borrowed())?)?,
-                    ))
-                })
+                .map(|(k, expr)| Ok((k.into(), serde_json::to_value(JSONValue::from_expr(expr)?)?)))
                 .collect::<Result<_, JsonSerializationError>>()?,
             parents: entity
                 .ancestors()

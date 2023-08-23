@@ -143,6 +143,8 @@ where
             action: &EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
             resource: &EntityType::Concrete("Photo".parse().unwrap()),
             context: &Attributes::with_attributes(None),
+            principal_slot: None,
+            resource_slot: None,
         },
     )
 }

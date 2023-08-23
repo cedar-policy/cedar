@@ -25,10 +25,12 @@ pub use authorizer::Decision;
 use cedar_policy_core::ast;
 use cedar_policy_core::ast::RestrictedExprError;
 use cedar_policy_core::authorizer;
+pub use cedar_policy_core::authorizer::AuthorizationError;
 use cedar_policy_core::entities;
 use cedar_policy_core::entities::JsonDeserializationErrorContext;
 use cedar_policy_core::entities::{ContextSchema, Dereference, JsonDeserializationError};
 use cedar_policy_core::est;
+pub use cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind};
 use cedar_policy_core::evaluator::{Evaluator, RestrictedEvaluator};
 pub use cedar_policy_core::extensions;
 use cedar_policy_core::extensions::Extensions;
@@ -128,8 +130,7 @@ impl Entity {
         Some(
             evaluator
                 .interpret(expr.as_borrowed())
-                .map(EvalResult::from)
-                .map_err(|e| EvaluationError::StringMessage(e.to_string())),
+                .map(EvalResult::from),
         )
     }
 }
@@ -175,9 +176,7 @@ impl Entities {
     /// This can fail if evaluation of the [`RestrictedExpression`] fails.
     /// In a future major version, we will likely make this function automatically called via the constructor.
     pub fn evaluate(self) -> Result<Self, EvaluationError> {
-        Ok(Self(self.0.evaluate().map_err(|e| {
-            EvaluationError::StringMessage(e.to_string())
-        })?))
+        Ok(Self(self.0.evaluate()?))
     }
 
     /// Iterate over the `Entity`'s in the `Entities`
@@ -195,6 +194,95 @@ impl Entities {
             entities::TCComputation::ComputeNow,
         )
         .map(Entities)
+    }
+
+    /// Add all of the [`Entity`]s in the collection to this [`Entities`] structure, re-computing the transitive closure
+    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    pub fn add_entities(
+        self,
+        entities: impl IntoIterator<Item = Entity>,
+    ) -> Result<Self, EntitiesError> {
+        Ok(Self(self.0.add_entities(
+            entities.into_iter().map(|e| e.0),
+            entities::TCComputation::ComputeNow,
+        )?))
+    }
+
+    /// Parse an entities JSON file (in [&str] form) and add them into this [`Entities`] structure, re-computing the transitive closure
+    ///
+    /// If a `schema` is provided, this will inform the parsing: for instance, it
+    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
+    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    pub fn add_entities_from_json_str(
+        self,
+        json: &str,
+        schema: Option<&Schema>,
+    ) -> Result<Self, EntitiesError> {
+        let eparser = entities::EntityJsonParser::new(
+            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            Extensions::all_available(),
+            entities::TCComputation::ComputeNow,
+        );
+        let new_entities = eparser
+            .iter_from_json_str(json)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self(self.0.add_entities(
+            new_entities,
+            entities::TCComputation::ComputeNow,
+        )?))
+    }
+
+    /// Parse an entities JSON file (in [`serde_json::Value`] form) and add them into this [`Entities`] structure, re-computing the transitive closure
+    ///
+    /// If a `schema` is provided, this will inform the parsing: for instance, it
+    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
+    /// if attributes have the wrong types (e.g., string instead of integer).
+    ///
+    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    pub fn add_entities_from_json_value(
+        self,
+        json: serde_json::Value,
+        schema: Option<&Schema>,
+    ) -> Result<Self, EntitiesError> {
+        let eparser = entities::EntityJsonParser::new(
+            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            Extensions::all_available(),
+            entities::TCComputation::ComputeNow,
+        );
+        let new_entities = eparser
+            .iter_from_json_value(json)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self(self.0.add_entities(
+            new_entities,
+            entities::TCComputation::ComputeNow,
+        )?))
+    }
+
+    /// Parse an entities JSON file (in [`std::io::Read`] form) and add them into this [`Entities`] structure, re-computing the transitive closure
+    ///
+    /// If a `schema` is provided, this will inform the parsing: for instance, it
+    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
+    /// if attributes have the wrong types (e.g., string instead of integer).
+    ///
+    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    pub fn add_entities_from_json_file(
+        self,
+        json: impl std::io::Read,
+        schema: Option<&Schema>,
+    ) -> Result<Self, EntitiesError> {
+        let eparser = entities::EntityJsonParser::new(
+            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            Extensions::all_available(),
+            entities::TCComputation::ComputeNow,
+        );
+        let new_entities = eparser
+            .iter_from_json_file(json)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self(self.0.add_entities(
+            new_entities,
+            entities::TCComputation::ComputeNow,
+        )?))
     }
 
     /// Parse an entities JSON file (in `&str` form) into an `Entities` object
@@ -432,7 +520,7 @@ impl Authorizer {
 }
 
 /// Authorization response returned from the `Authorizer`
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Response {
     /// Authorization decision
     decision: Decision,
@@ -443,7 +531,7 @@ pub struct Response {
 /// Authorization response returned from `is_authorized_partial`.
 /// It can either be a full concrete response, or a residual response.
 #[cfg(feature = "partial-eval")]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum PartialResponse {
     /// A full, concrete response.
     Concrete(Response),
@@ -462,20 +550,21 @@ pub struct ResidualResponse {
 }
 
 /// Diagnostics providing more information on how a `Decision` was reached
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Diagnostics {
     /// `PolicyId`s of the policies that contributed to the decision.
     /// If no policies applied to the request, this set will be empty.
     reason: HashSet<PolicyId>,
-    /// list of error messages which occurred
-    errors: HashSet<String>,
+    /// Errors that occurred during authorization. The errors should be
+    /// treated as unordered, since policies may be evaluated in any order.
+    errors: Vec<AuthorizationError>,
 }
 
 impl From<authorizer::Diagnostics> for Diagnostics {
     fn from(diagnostics: authorizer::Diagnostics) -> Self {
         Self {
             reason: diagnostics.reason.into_iter().map(PolicyId).collect(),
-            errors: diagnostics.errors.iter().map(ToString::to_string).collect(),
+            errors: diagnostics.errors,
         }
     }
 }
@@ -486,18 +575,19 @@ impl Diagnostics {
         self.reason.iter()
     }
 
-    /// Get the error messages
-    pub fn errors(&self) -> impl Iterator<Item = EvaluationError> + '_ {
-        self.errors
-            .iter()
-            .cloned()
-            .map(EvaluationError::StringMessage)
+    /// Get the errors
+    pub fn errors(&self) -> impl Iterator<Item = &AuthorizationError> + '_ {
+        self.errors.iter()
     }
 }
 
 impl Response {
     /// Create a new `Response`
-    pub fn new(decision: Decision, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
+    pub fn new(
+        decision: Decision,
+        reason: HashSet<PolicyId>,
+        errors: Vec<AuthorizationError>,
+    ) -> Self {
         Self {
             decision,
             diagnostics: Diagnostics { reason, errors },
@@ -527,7 +617,11 @@ impl From<authorizer::Response> for Response {
 #[cfg(feature = "partial-eval")]
 impl ResidualResponse {
     /// Create a new `ResidualResponse`
-    pub fn new(residuals: PolicySet, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
+    pub fn new(
+        residuals: PolicySet,
+        reason: HashSet<PolicyId>,
+        errors: Vec<AuthorizationError>,
+    ) -> Self {
         Self {
             residuals,
             diagnostics: Diagnostics { reason, errors },
@@ -553,16 +647,6 @@ impl From<authorizer::PartialResponse> for ResidualResponse {
             diagnostics: p.diagnostics.into(),
         }
     }
-}
-
-/// Errors encountered while evaluating policies or expressions, or making
-/// authorization decisions.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum EvaluationError {
-    /// Error message, as string.
-    /// TODO in the future this can/should be the actual Core `EvaluationError`
-    #[error("{0}")]
-    StringMessage(String),
 }
 
 /// Used to select how a policy will be validated.
@@ -1871,11 +1955,11 @@ impl Policy {
     }
 
     /// To avoid panicking, this function may only be called when `slot` is the
-    /// SlotId corresponding to the scope constraint from which the entity
+    /// `SlotId` corresponding to the scope constraint from which the entity
     /// reference `r` was extracted. I.e., If `r` is taken from the principal
     /// scope constraint, `slot` must be `?principal`. This ensures that the
-    /// SlotId exists in the policy (and therefore the slot environment map)
-    /// whenever the EntityReference `r` is the Slot variant.
+    /// `SlotId` exists in the policy (and therefore the slot environment map)
+    /// whenever the `EntityReference` `r` is the Slot variant.
     fn convert_entity_reference<'a>(
         &'a self,
         r: &'a ast::EntityReference,
@@ -1893,6 +1977,10 @@ impl Policy {
     /// If `id` is Some, the policy will be given that Policy Id.
     /// If `id` is None, then "policy0" will be used.
     /// The behavior around None may change in the future.
+    ///
+    /// This can fail if the policy fails to parse.
+    /// It can also fail if a template was passed in, as this function only accepts static
+    /// policies
     pub fn parse(id: Option<String>, policy_src: impl AsRef<str>) -> Result<Self, ParseErrors> {
         let inline_ast = parser::parse_policy(id, policy_src.as_ref())?;
         let (_, ast) = ast::Template::link_static_policy(inline_ast);
@@ -2703,12 +2791,10 @@ pub fn eval_expression(
     expr: &Expression,
 ) -> Result<EvalResult, EvaluationError> {
     let all_ext = Extensions::all_available();
-    let eval = Evaluator::new(&request.0, &entities.0, &all_ext)
-        .map_err(|e| EvaluationError::StringMessage(e.to_string()))?;
+    let eval = Evaluator::new(&request.0, &entities.0, &all_ext)?;
     Ok(EvalResult::from(
         // Evaluate under the empty slot map, as an expression should not have slots
-        eval.interpret(&expr.0, &ast::SlotEnv::new())
-            .map_err(|e| EvaluationError::StringMessage(e.to_string()))?,
+        eval.interpret(&expr.0, &ast::SlotEnv::new())?,
     ))
 }
 
@@ -2717,13 +2803,13 @@ pub fn eval_expression(
 mod partial_eval_test {
     use std::collections::HashSet;
 
-    use crate::{PolicyId, PolicySet, ResidualResponse};
+    use crate::{AuthorizationError, PolicyId, PolicySet, ResidualResponse};
 
     #[test]
     fn test_pe_response_constructor() {
         let p: PolicySet = "permit(principal, action, resource);".parse().unwrap();
         let reason: HashSet<PolicyId> = std::iter::once("id1".parse().unwrap()).collect();
-        let errors: HashSet<String> = std::iter::once("error".to_string()).collect();
+        let errors: Vec<AuthorizationError> = std::iter::empty().collect();
         let a = ResidualResponse::new(p.clone(), reason.clone(), errors.clone());
         assert_eq!(a.diagnostics().errors, errors);
         assert_eq!(a.diagnostics().reason, reason);

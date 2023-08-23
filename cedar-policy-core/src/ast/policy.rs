@@ -1533,11 +1533,19 @@ pub mod test_generators {
 }
 
 #[cfg(test)]
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::indexing_slicing)]
 mod test {
     use std::collections::HashSet;
 
     use super::{test_generators::*, *};
-    use crate::ast::{entity, name, EntityUID};
+    use crate::{
+        ast::{entity, name, EntityUID},
+        parser::{
+            err::{ParseError, ParseErrors, ToASTError},
+            parse_policy,
+        },
+    };
 
     #[test]
     fn literal_and_borrowed() {
@@ -1865,5 +1873,18 @@ mod test {
             PrincipalOrResourceConstraint::Eq(EntityReference::euid(EntityUID::with_eid("test")));
         let s = t.display(PrincipalOrResource::Principal);
         assert_eq!(s, "principal == test_entity_type::\"test\"");
+    }
+
+    #[test]
+    fn unexpected_templates() {
+        let policy_str = r#"permit(principal == ?principal, action, resource);"#;
+        let ParseErrors(errs) = parse_policy(Some("id".into()), policy_str).err().unwrap();
+        assert_eq!(&errs[0], &ParseError::ToAST(ToASTError::UnexpectedTemplate));
+        assert_eq!(errs.len(), 1);
+        let policy_str =
+            r#"permit(principal == ?principal, action, resource) when { ?principal == 3 } ;"#;
+        let ParseErrors(errs) = parse_policy(Some("id".into()), policy_str).err().unwrap();
+        assert!(errs.contains(&ParseError::ToAST(ToASTError::UnexpectedTemplate)));
+        assert_eq!(errs.len(), 2);
     }
 }

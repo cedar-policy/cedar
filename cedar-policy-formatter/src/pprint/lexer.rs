@@ -57,8 +57,8 @@ fn add_comments(token_stream: &mut [WrappedToken], input: &str) -> Option<()> {
 pub fn get_token_stream(input: &str) -> Option<Vec<WrappedToken>> {
     let mut wrapped_tokens: Vec<WrappedToken> = Token::lexer(input)
         .spanned()
-        .map(|(t, s)| WrappedToken::new(t, Comment::default(), s))
-        .collect();
+        .map(|(t, s)| Some(WrappedToken::new(t.ok()?, Comment::default(), s)))
+        .collect::<Option<Vec<WrappedToken>>>()?;
     add_comments(&mut wrapped_tokens, input);
     Some(wrapped_tokens)
 }
