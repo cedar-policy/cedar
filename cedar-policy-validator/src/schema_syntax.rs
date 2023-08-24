@@ -5,7 +5,7 @@ use std::{
 
 use cedar_policy_core::ast::{Id, Name};
 use combine::{
-    between, choice, eof, error::StreamError, many1, optional, satisfy_map, sep_by1,
+    between, choice, eof, error::StreamError, many, many1, optional, satisfy_map, sep_by1,
     stream::ResetStream, ParseError, Parser, Positioned, StreamOnce,
 };
 use itertools::Itertools;
@@ -15,7 +15,7 @@ use thiserror::Error;
 
 use crate::{
     ActionEntityUID, ActionType, ApplySpec, AttributesOrContext, EntityType, NamespaceDefinition,
-    SchemaType, SchemaTypeVariant, TypeOfAttribute,
+    SchemaFragment, SchemaType, SchemaTypeVariant, TypeOfAttribute,
 };
 
 // Cedar tokens
@@ -81,6 +81,8 @@ enum Token {
     Quote,
     #[token("=")]
     Eq,
+    #[token("?")]
+    Question,
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]
@@ -95,6 +97,8 @@ pub enum ParseErrors {
     Message(SmolStr),
     #[error("End of input")]
     Eoi,
+    #[error("Other error: {0}")]
+    Other(SmolStr),
 }
 
 impl<'a> StreamError<(Token, Span), &'a [(Token, Span)]> for ParseErrors {
@@ -150,6 +154,7 @@ impl<'a> StreamError<(Token, Span), &'a [(Token, Span)]> for ParseErrors {
             Self::Expected(s) => T::expected_format(s),
             Self::Message(s) => T::message_format(s),
             Self::Unexpected(s) => T::unexpected_format(s),
+            Self::Other(s) => T::message_format(s),
         }
     }
 }
@@ -229,6 +234,10 @@ fn parse_id<'a>() -> impl Parser<TokenStream<'a>, Output = Id> {
     })
 }
 
+fn parse_ids<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<Id>> {
+    sep_by1(parse_id(), accept(Token::Comma))
+}
+
 fn accept<'a>(t: Token) -> impl Parser<TokenStream<'a>, Output = ()> {
     satisfy_map(move |tt: (Token, Span)| if tt.0 == t { Some(()) } else { None })
 }
@@ -250,6 +259,8 @@ impl<'a> Parser<TokenStream<'a>> for AppParser {
             Err(err) => combine::ParseResult::PeekErr(combine::error::Tracked::from(err)),
         }
     }
+
+    // AppDecls  := VAR ':' EntOrTyps [',' | ',' AppDecls]
     fn parse(
         &mut self,
         input: TokenStream<'a>,
@@ -257,23 +268,28 @@ impl<'a> Parser<TokenStream<'a>> for AppParser {
     {
         (
             choice((
-                accept(Token::VarPrincipal).map(|_| "principal"),
-                accept(Token::VarResource).map(|_| "resource"),
-            )),
-            accept(Token::Colon),
-            parse_ets(),
-            optional(choice((
-                (accept(Token::Comma), AppParser()).map(|(_, cdr)| cdr),
-                accept(Token::Comma).map(|_| ApplySpec {
-                    resource_types: None,
-                    principal_types: None,
-                    context: AttributesOrContext::default(),
-                }),
-            ))),
-        )
-            .map(|(id, _, ty, cdr)| {
-                let singleton = {
-                    match id {
+                (
+                    accept(Token::VarContext),
+                    accept(Token::Colon),
+                    parse_rec_type(),
+                )
+                    .map(|(_, _, rec)| ApplySpec {
+                        resource_types: None,
+                        principal_types: None,
+                        context: AttributesOrContext(SchemaType::Type(SchemaTypeVariant::Record {
+                            attributes: rec,
+                            additional_attributes: false,
+                        })),
+                    }),
+                (
+                    choice((
+                        accept(Token::VarPrincipal).map(|_| "principal"),
+                        accept(Token::VarResource).map(|_| "resource"),
+                    )),
+                    accept(Token::Colon),
+                    choice((parse_path().map(|p| vec![p]), parse_ets())),
+                )
+                    .map(|(id, _, ty)| match id {
                         "principal" => ApplySpec {
                             resource_types: None,
                             principal_types: Some(
@@ -293,8 +309,18 @@ impl<'a> Parser<TokenStream<'a>> for AppParser {
                             context: AttributesOrContext::default(),
                         },
                         _ => unreachable!("wrong id"),
-                    }
-                };
+                    }),
+            )),
+            optional(choice((
+                (accept(Token::Comma), AppParser()).map(|(_, cdr)| cdr),
+                accept(Token::Comma).map(|_| ApplySpec {
+                    resource_types: None,
+                    principal_types: None,
+                    context: AttributesOrContext::default(),
+                }),
+            ))),
+        )
+            .map(|(singleton, cdr)| {
                 if let Some(cdr) = cdr {
                     let merge = |lst1: Option<Vec<SmolStr>>, lst2| match (lst1, lst2) {
                         (Some(l1), Some(l2)) => Some([l1, l2].concat()),
@@ -333,13 +359,15 @@ impl<'a> Parser<TokenStream<'a>> for AttrParser {
             Err(err) => combine::ParseResult::PeekErr(combine::error::Tracked::from(err)),
         }
     }
+    // AttrDecls := Name ['?'] ':' Type [',' | ',' AttrDecls]
     fn parse(
         &mut self,
         input: TokenStream<'a>,
     ) -> Result<(Self::Output, TokenStream<'a>), <TokenStream<'a> as combine::StreamOnce>::Error>
     {
         (
-            parse_id(),
+            parse_name(),
+            optional(accept(Token::Question)),
             accept(Token::Colon),
             parse_type(),
             optional(choice((
@@ -347,11 +375,14 @@ impl<'a> Parser<TokenStream<'a>> for AttrParser {
                 accept(Token::Comma).map(|_| BTreeMap::new()),
             ))),
         )
-            .map(|(id, _, ty, rs)| {
+            .map(|(id, q, _, ty, rs)| {
                 let mut pairs = BTreeMap::new();
                 pairs.insert(
                     SmolStr::new(id.as_ref()),
-                    TypeOfAttribute { ty, required: true },
+                    TypeOfAttribute {
+                        ty,
+                        required: q.is_none(),
+                    },
                 );
                 if let Some(rs) = rs {
                     pairs.extend(rs);
@@ -399,7 +430,7 @@ impl<'a> Parser<TokenStream<'a>> for TypeParser {
                         element: (Box::new(elem_ty)),
                     })
                 }),
-            between(accept(Token::LBrace), accept(Token::RBrace), AttrParser()).map(|attrs| {
+            parse_rec_type().map(|attrs| {
                 SchemaType::Type(SchemaTypeVariant::Record {
                     attributes: attrs,
                     additional_attributes: false,
@@ -419,7 +450,7 @@ fn parse_type<'a>() -> impl Parser<TokenStream<'a>, Output = SchemaType> {
     TypeParser()
 }
 
-fn parse_decl<'a>() -> impl Parser<TokenStream<'a>, Output = NamespaceDefinition> {
+fn parse_decls<'a>() -> impl Parser<TokenStream<'a>, Output = NamespaceDefinition> {
     let merge_nds = |nds: Vec<NamespaceDefinition>| {
         let mut common_types = HashMap::new();
         let mut entity_types = HashMap::new();
@@ -435,10 +466,11 @@ fn parse_decl<'a>() -> impl Parser<TokenStream<'a>, Output = NamespaceDefinition
             actions,
         }
     };
+    // cannot be `many` otherwise there will be an infinite recursion
     many1(choice((
         parse_et_decl().map(|et| NamespaceDefinition {
             common_types: HashMap::new(),
-            entity_types: HashMap::from_iter(std::iter::once(et)),
+            entity_types: HashMap::from_iter(et.into_iter()),
             actions: HashMap::new(),
         }),
         parse_action_decl().map(|action| NamespaceDefinition {
@@ -453,13 +485,6 @@ fn parse_decl<'a>() -> impl Parser<TokenStream<'a>, Output = NamespaceDefinition
         }),
     )))
     .map(move |nds: Vec<NamespaceDefinition>| merge_nds(nds))
-}
-
-fn parse_str<'a>() -> impl Parser<TokenStream<'a>, Output = SmolStr> {
-    satisfy_map(|v| match v {
-        (Token::Str(s), _) => Some(s),
-        _ => None,
-    })
 }
 
 fn parse_name<'a>() -> impl Parser<TokenStream<'a>, Output = SmolStr> {
@@ -479,13 +504,15 @@ fn parse_names<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<SmolStr>> {
 }
 
 fn parse_namespace<'a>() -> impl Parser<TokenStream<'a>, Output = (SmolStr, NamespaceDefinition)> {
-    (
-        accept(Token::Namespace),
-        parse_str(),
-        between(accept(Token::LBrace), accept(Token::RBrace), parse_decl()),
-        eof(),
-    )
-        .map(|(_, ns_str, ns_def, _)| (ns_str, ns_def))
+    choice((
+        (
+            accept(Token::Namespace),
+            parse_path(),
+            between(accept(Token::LBrace), accept(Token::RBrace), parse_decls()),
+        )
+            .map(|(_, ns_str, ns_def)| (SmolStr::new(ns_str.to_string()), ns_def)),
+        parse_decls().map(|ns_def| (SmolStr::new(""), ns_def)),
+    ))
 }
 
 fn parse_path<'a>() -> impl Parser<TokenStream<'a>, Output = Name> {
@@ -493,7 +520,9 @@ fn parse_path<'a>() -> impl Parser<TokenStream<'a>, Output = Name> {
         .map(|ids: Vec<Id>| Name::new(ids[0].clone(), ids[1..].iter().map(|id| id.clone())))
 }
 
-// Action    := 'action' Name ['in' (Name | '[' [Names] ']')] [AppliesTo] ';'
+// ActAttrs  := 'attributes' '{' AttrDecls '}'
+// AppliesTo := 'appliesTo' '{' AppDecls '}'
+// 'action' Names ['in' (Name | '[' [Names] ']')] [AppliesTo] [ActAttrs]';'
 fn parse_action_decl<'a>() -> impl Parser<TokenStream<'a>, Output = HashMap<SmolStr, ActionType>> {
     (
         accept(Token::VarAction),
@@ -532,46 +561,63 @@ fn parse_action_decl<'a>() -> impl Parser<TokenStream<'a>, Output = HashMap<Smol
         })
 }
 
-// Entity    := 'entity' IDENT ['in' (EntType | '[' [EntTypes] ']')] [['='] RecType] ';'
-fn parse_et_decl<'a>() -> impl Parser<TokenStream<'a>, Output = (SmolStr, EntityType)> {
+// RecType   := '{' [AttrDecls] '}'
+fn parse_rec_type<'a>() -> impl Parser<TokenStream<'a>, Output = BTreeMap<SmolStr, TypeOfAttribute>>
+{
+    between(
+        accept(Token::LBrace),
+        accept(Token::RBrace),
+        optional(AttrParser()),
+    )
+    .map(|o| o.unwrap_or(BTreeMap::new()))
+}
+
+// Entity    := 'entity' Idents ['in' EntOrTyps] [['='] RecType] ';'
+fn parse_et_decl<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<(SmolStr, EntityType)>> {
     (
         accept(Token::Entity),
-        parse_id(),
+        parse_ids(),
         optional((
             accept(Token::In),
             choice((parse_path().map(|p| vec![p]), parse_ets())),
         ))
-        .map(|opt| if let Some((_, vs)) = opt { vs } else { vec![] }),
-        optional(
-            (
-                optional(accept(Token::Eq)),
-                between(accept(Token::LBrace), accept(Token::RBrace), AttrParser()),
-            )
-                .map(|(_, attrs)| attrs),
-        )
         .map(|opt| {
-            if let Some(attrs) = opt {
-                AttributesOrContext(SchemaType::Type(SchemaTypeVariant::Record {
-                    attributes: attrs,
-                    additional_attributes: false,
-                }))
+            if let Some((_, vs)) = opt {
+                vs
             } else {
-                AttributesOrContext::default()
+                Vec::new()
             }
         }),
+        optional((optional(accept(Token::Eq)), parse_rec_type()).map(|(_, attrs)| attrs)).map(
+            |opt| {
+                if let Some(attrs) = opt {
+                    AttributesOrContext(SchemaType::Type(SchemaTypeVariant::Record {
+                        attributes: attrs,
+                        additional_attributes: false,
+                    }))
+                } else {
+                    AttributesOrContext::default()
+                }
+            },
+        ),
         accept(Token::SemiColon),
     )
-        .map(|(_, id, ancestors, attrs, _)| {
-            (
-                SmolStr::new(id),
-                EntityType {
-                    member_of_types: ancestors
-                        .into_iter()
-                        .map(|n| SmolStr::new(n.to_string()))
-                        .collect_vec(),
-                    shape: attrs,
-                },
-            )
+        .map(|(_, ids, ancestors, attrs, _)| {
+            ids.iter()
+                .map(|id| {
+                    (
+                        SmolStr::new(id),
+                        EntityType {
+                            member_of_types: ancestors
+                                .clone()
+                                .into_iter()
+                                .map(|n| SmolStr::new(n.to_string()))
+                                .collect_vec(),
+                            shape: attrs.clone(),
+                        },
+                    )
+                })
+                .collect()
         })
 }
 
@@ -580,7 +626,7 @@ fn parse_ets<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<Name>> {
     between(
         accept(Token::LBracket),
         accept(Token::RBracket),
-        sep_by1(parse_path(), accept(Token::Comma)),
+        optional(sep_by1(parse_path(), accept(Token::Comma))).map(|o| o.unwrap_or(Vec::new())),
     )
 }
 
@@ -606,12 +652,27 @@ fn get_tokens(input: &str) -> Result<Vec<(Token, Span)>, ParseErrors> {
         .collect()
 }
 
-pub fn parse_from_str(input: &str) -> Result<(SmolStr, NamespaceDefinition), ParseErrors> {
+fn parse_namespaces<'a>(
+) -> impl Parser<TokenStream<'a>, Output = Vec<(SmolStr, NamespaceDefinition)>> {
+    (many(parse_namespace()), eof::<TokenStream<'a>>()).0
+}
+
+pub fn parse_schema_fragment_from_str(input: &str) -> Result<SchemaFragment, ParseErrors> {
     let tokens = get_tokens(input)?;
-    let (res, _) = parse_namespace().parse(TokenStream {
+    let (namespaces, _) = parse_namespaces().parse(TokenStream {
         token_spans: &tokens,
     })?;
-    Ok(res)
+    let mut map = HashMap::new();
+    for (id, ns) in namespaces {
+        if map.contains_key(&id) {
+            return Err(ParseErrors::Other(SmolStr::new(format!(
+                "duplicate namespace id: {}",
+                id
+            ))));
+        }
+        map.insert(id, ns);
+    }
+    Ok(SchemaFragment(map))
 }
 
 #[cfg(test)]
@@ -681,7 +742,7 @@ mod test_parser {
     #[test]
     fn test_parse_ns_decl() {
         let tokens = get_tokens(
-            r#"namespace "" {
+            r#"namespace go {
                 entity Application;
                 entity User in [Team,Application] { name: String };
                 entity Team in [Team,Application];

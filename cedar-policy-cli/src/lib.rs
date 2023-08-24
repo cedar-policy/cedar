@@ -98,14 +98,16 @@ pub enum Commands {
     Link(LinkArgs),
     /// Format a policy set
     Format(FormatArgs),
-    /// Translate JSON schema to custom schema syntax
+    /// Translate JSON schema to custom schema syntax and vice versa
     TranslateSchema(TranslateSchemaArgs),
 }
 
 #[derive(Args, Debug)]
 pub struct TranslateSchemaArgs {
-    #[arg(short, long = "schema", value_name = "FILE")]
-    pub schema_file: String,
+    #[arg(long)]
+    pub from_json: bool,
+    #[arg(short, long, value_name = "FILE")]
+    pub input_file: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -515,8 +517,19 @@ pub fn format_policies(args: &FormatArgs) -> CedarExitCode {
 }
 
 fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
-    let schema_fragment = cedar_policy_validator::SchemaFragment::from_file(std::fs::File::open(&args.schema_file).map_err(|err| miette!("fail to open file: {err}"))?).map_err(|err| miette!("fail to parse schema fragment: {err}"))?;
-    cedar_policy_formatter::schema_fragment_to_pretty(&schema_fragment)
+    let input_str = read_from_file_or_stdin(args.input_file.clone(), "translate schema")?;
+    if args.from_json {
+        let schema_fragment =
+            cedar_policy_validator::SchemaFragment::from_file(input_str.as_bytes())
+                .map_err(|err| miette!("fail to parse schema fragment: {err}"))?;
+        cedar_policy_formatter::schema_fragment_to_pretty(&schema_fragment)
+    } else {
+        let new_schema =
+            cedar_policy_validator::schema_syntax::parse_schema_fragment_from_str(&input_str)
+                .map_err(|err| miette!("fail to parse custom schema: {err}"))?;
+        serde_json::to_string(&new_schema)
+            .map_err(|err| miette!("fail to serialize schema fragment: {err}"))
+    }
 }
 pub fn translate_schema(args: &TranslateSchemaArgs) -> CedarExitCode {
     match translate_schema_inner(args) {
