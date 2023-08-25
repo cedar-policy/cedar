@@ -325,8 +325,8 @@ impl Type {
         schema: &ValidatorSchema,
         tys: &[Type],
     ) -> Option<Type> {
-        tys.iter().fold(Some(Type::Never), |lub, next| {
-            lub.and_then(|lub| Type::least_upper_bound(schema, &lub, next))
+        tys.iter().try_fold(Type::Never, |lub, next| {
+            Type::least_upper_bound(schema, &lub, next)
         })
     }
 
