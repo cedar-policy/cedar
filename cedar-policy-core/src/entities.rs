@@ -1109,7 +1109,7 @@ mod json_parsing_tests {
             [
                 ("foo".into(), RestrictedExpr::val(false)),
                 ("bar".into(), RestrictedExpr::val(-234)),
-                ("ham".into(), RestrictedExpr::val(r#"a b c * / ? \"#)),
+                ("ham".into(), RestrictedExpr::val(r"a b c * / ? \")),
                 (
                     "123".into(),
                     RestrictedExpr::val(EntityUID::with_eid("mom")),
@@ -1496,14 +1496,18 @@ mod schema_based_parsing_tests {
             .expect("hr_contacts attr should exist");
         assert!(matches!(hr_contacts.expr_kind(), &ExprKind::Set(_)));
         let contact = {
-            let ExprKind::Set(set) = hr_contacts.expr_kind() else { panic!("already checked it was Set") };
+            let ExprKind::Set(set) = hr_contacts.expr_kind() else {
+                panic!("already checked it was Set")
+            };
             set.iter().next().expect("should be at least one contact")
         };
         assert!(matches!(contact.expr_kind(), &ExprKind::Record { .. }));
         let json_blob = parsed
             .get("json_blob")
             .expect("json_blob attr should exist");
-        let ExprKind::Record { pairs } = json_blob.expr_kind() else { panic!("expected json_blob to be a Record") };
+        let ExprKind::Record { pairs } = json_blob.expr_kind() else {
+            panic!("expected json_blob to be a Record")
+        };
         let (_, inner1) = pairs
             .iter()
             .find(|(k, _)| k == "inner1")
@@ -1517,7 +1521,9 @@ mod schema_based_parsing_tests {
             .find(|(k, _)| k == "inner3")
             .expect("inner3 attr should exist");
         assert!(matches!(inner3.expr_kind(), &ExprKind::Record { .. }));
-        let ExprKind::Record { pairs: innerpairs } = inner3.expr_kind() else { panic!("already checked it was Record") };
+        let ExprKind::Record { pairs: innerpairs } = inner3.expr_kind() else {
+            panic!("already checked it was Record")
+        };
         let (_, innerinner) = innerpairs
             .iter()
             .find(|(k, _)| k == "innerinner")
@@ -1571,7 +1577,9 @@ mod schema_based_parsing_tests {
             .expect("hr_contacts attr should exist");
         assert!(matches!(hr_contacts.expr_kind(), &ExprKind::Set(_)));
         let contact = {
-            let ExprKind::Set(set) = hr_contacts.expr_kind() else { panic!("already checked it was Set") };
+            let ExprKind::Set(set) = hr_contacts.expr_kind() else {
+                panic!("already checked it was Set")
+            };
             set.iter().next().expect("should be at least one contact")
         };
         assert!(matches!(
@@ -1581,7 +1589,9 @@ mod schema_based_parsing_tests {
         let json_blob = parsed
             .get("json_blob")
             .expect("json_blob attr should exist");
-        let ExprKind::Record { pairs } = json_blob.expr_kind() else { panic!("expected json_blob to be a Record") };
+        let ExprKind::Record { pairs } = json_blob.expr_kind() else {
+            panic!("expected json_blob to be a Record")
+        };
         let (_, inner1) = pairs
             .iter()
             .find(|(k, _)| k == "inner1")
@@ -1595,7 +1605,9 @@ mod schema_based_parsing_tests {
             .find(|(k, _)| k == "inner3")
             .expect("inner3 attr should exist");
         assert!(matches!(inner3.expr_kind(), &ExprKind::Record { .. }));
-        let ExprKind::Record { pairs: innerpairs } = inner3.expr_kind() else { panic!("already checked it was Record") };
+        let ExprKind::Record { pairs: innerpairs } = inner3.expr_kind() else {
+            panic!("already checked it was Record")
+        };
         let (_, innerinner) = innerpairs
             .iter()
             .find(|(k, _)| k == "innerinner")

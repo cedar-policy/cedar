@@ -172,7 +172,7 @@ impl TryFrom<cst::Cond> for Clause {
         let expr = match expr {
             Ok(expr) => Some(expr),
             Err(expr_errs) => {
-                errs.extend(expr_errs.0.into_iter());
+                errs.extend(expr_errs.0);
                 None
             }
         };

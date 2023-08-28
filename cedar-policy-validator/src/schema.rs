@@ -1172,7 +1172,7 @@ impl ValidatorSchema {
             .into_iter()
             .flatten()
             .map(Clone::clone)
-            .chain(var.get_euid_component_if_present(self, euid).into_iter())
+            .chain(var.get_euid_component_if_present(self, euid))
     }
 
     /// Get the validator entities that are in the descendants of any of the
