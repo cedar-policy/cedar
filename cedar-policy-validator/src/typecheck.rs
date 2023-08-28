@@ -802,7 +802,9 @@ impl<'a> Typechecker<'a> {
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
         let ExprKind::BinaryApp { op, arg1, arg2 } = bin_expr.expr_kind() else {
-            panic!("`strict_transform_binary` called with an expression kind other than `BinaryApp`");
+            panic!(
+                "`strict_transform_binary` called with an expression kind other than `BinaryApp`"
+            );
         };
 
         // Binary operators `==`, `contains`, `containsAll`, and `containsAny`

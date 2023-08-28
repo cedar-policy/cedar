@@ -3130,14 +3130,20 @@ mod schema_based_parsing_tests {
             Some(Ok(EvalResult::Record(_)))
         ));
         {
-            let Some(Ok(EvalResult::Set(set))) = parsed.attr("hr_contacts") else { panic!("expected hr_contacts attr to exist and be a Set") };
+            let Some(Ok(EvalResult::Set(set))) = parsed.attr("hr_contacts") else {
+                panic!("expected hr_contacts attr to exist and be a Set")
+            };
             let contact = set.iter().next().expect("should be at least one contact");
             assert!(matches!(contact, EvalResult::Record(_)));
         };
         {
-            let Some(Ok(EvalResult::Record(rec))) = parsed.attr("json_blob") else { panic!("expected json_blob attr to exist and be a Record") };
+            let Some(Ok(EvalResult::Record(rec))) = parsed.attr("json_blob") else {
+                panic!("expected json_blob attr to exist and be a Record")
+            };
             let inner3 = rec.get("inner3").expect("expected inner3 attr to exist");
-            let EvalResult::Record(rec) = inner3 else { panic!("expected inner3 to be a Record") };
+            let EvalResult::Record(rec) = inner3 else {
+                panic!("expected inner3 to be a Record")
+            };
             let innerinner = rec
                 .get("innerinner")
                 .expect("expected innerinner attr to exist");
@@ -3166,14 +3172,20 @@ mod schema_based_parsing_tests {
             ))))
         );
         {
-            let Some(Ok(EvalResult::Set(set))) = parsed.attr("hr_contacts") else { panic!("expected hr_contacts attr to exist and be a Set") };
+            let Some(Ok(EvalResult::Set(set))) = parsed.attr("hr_contacts") else {
+                panic!("expected hr_contacts attr to exist and be a Set")
+            };
             let contact = set.iter().next().expect("should be at least one contact");
             assert!(matches!(contact, EvalResult::EntityUid(_)));
         };
         {
-            let Some(Ok(EvalResult::Record(rec))) = parsed.attr("json_blob") else { panic!("expected json_blob attr to exist and be a Record") };
+            let Some(Ok(EvalResult::Record(rec))) = parsed.attr("json_blob") else {
+                panic!("expected json_blob attr to exist and be a Record")
+            };
             let inner3 = rec.get("inner3").expect("expected inner3 attr to exist");
-            let EvalResult::Record(rec) = inner3 else { panic!("expected inner3 to be a Record") };
+            let EvalResult::Record(rec) = inner3 else {
+                panic!("expected inner3 to be a Record")
+            };
             let innerinner = rec
                 .get("innerinner")
                 .expect("expected innerinner attr to exist");
