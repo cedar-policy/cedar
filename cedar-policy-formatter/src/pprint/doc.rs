@@ -281,7 +281,6 @@ impl Doc for ASTNode<Option<Add>> {
             extended
                 .iter()
                 .try_fold((initial.to_doc(context)?, initial), |pair, (op, e)| {
-                    let pair = pair;
                     Some((
                         pair.0
                             .append(RcDoc::space())
@@ -318,7 +317,6 @@ impl Doc for ASTNode<Option<Mult>> {
             extended
                 .iter()
                 .try_fold((initial.to_doc(context)?, initial), |pair, (op, e)| {
-                    let pair = pair;
                     Some((
                         pair.0
                             .append(RcDoc::space())
