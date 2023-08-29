@@ -100,7 +100,8 @@ To build, simply run `cargo build` (or `cargo build --release`).
 
 ## What's new / Changelog
 
-See [CHANGELOG](./cedar-policy/CHANGELOG.md) and [Releases](https://github.com/cedar-policy/cedar/releases).
+We maintain changelogs for our public-facing crates: [cedar-policy](./cedar-policy/CHANGELOG.md) and [cedar-policy-cli](./cedar-policy-cli/CHANGELOG.md).
+For a list of the current and past releases, see [crates.io](https://crates.io/crates/cedar-policy) or [Releases](https://github.com/cedar-policy/cedar/releases).
 
 ## Security
 
