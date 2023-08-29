@@ -98,6 +98,10 @@ Generated documentation for the latest version of the Rust crates can be accesse
 
 To build, simply run `cargo build` (or `cargo build --release`).
 
+## What's new / Changelog
+
+See [CHANGELOG](./cedar-policy/CHANGELOG.md) and [Releases](https://github.com/cedar-policy/cedar/releases).
+
 ## Security
 
 See [SECURITY](SECURITY.md) for more information.
