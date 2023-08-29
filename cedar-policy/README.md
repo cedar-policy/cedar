@@ -20,7 +20,7 @@ Let's write a super simple Cedar policy and test it:
 ```
 permit(principal == User::"alice", action == Action::"view", resource == File::"93");
 ```
-This policy permits _exactly_ one authorization request, `alice` is allowed to `view` file `93`. 
+This policy permits _exactly_ one authorization request, `alice` is allowed to `view` file `93`.
 Any other authorization request will be implicitly denied. Let's embed this policy in Rust and use the Cedar Authorizer:
 
 ```rust
@@ -65,7 +65,12 @@ Generated documentation for the latest version of the Rust crates can be accesse
 [on docs.rs](https://docs.rs/cedar-policy).
 
 ## Building
-To build, simply run `cargo build`.
+To build, simply run `cargo build` (or `cargo build --release`).
+
+
+## What's new / Changelog
+
+See [CHANGELOG](CHANGELOG.md)
 
 
 ## Security
@@ -79,4 +84,3 @@ We welcome contributions from the community. Please either file an issue, or see
 ## License
 
 This project is licensed under the Apache-2.0 License.
-

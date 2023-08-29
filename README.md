@@ -10,12 +10,12 @@ This repository contains source code of the Rust crates that implement the [Ceda
 
 Cedar is a language for writing and enforcing authorization policies in your applications. Using Cedar, you can write policies that specify your applications' fine-grained permissions. Your applications then authorize access requests by calling Cedar's authorization engine. Because Cedar policies are separate from application code, they can be independently authored, updated, analyzed, and audited. You can use Cedar's validator to check that Cedar policies are consistent with a declared schema which defines your application's authorization model.
 
-Cedar is: 
-### Expressive 
+Cedar is:
+### Expressive
 Cedar is a simple yet expressive language that is purpose-built to support authorization use cases for common authorization models such as RBAC and ABAC.
 ### Performant
 Cedar is fast and scalable. The policy structure is designed to be indexed for quick retrieval and to support fast and scalable real-time evaluation, with bounded latency.
-### Analyzable 
+### Analyzable
 Cedar is designed for analysis using Automated Reasoning. This enables analyzer tools capable of optimizing your policies and proving that your security model is what you believe it is.
 
 ## Using Cedar
@@ -31,7 +31,7 @@ cedar-policy = "2.0"
 * [cedar-policy](./cedar-policy) : Main crate for using Cedar to authorize access requests in your applications, and validate Cedar policies against a schema
 * [cedar-policy-cli](./cedar-policy-cli) : Crate containing a simple command-line interface (CLI) for interacting with Cedar
 * [cedar-policy-core](./cedar-policy-core) : Internal crate containing the Cedar parser and evaluator
-* [cedar-policy-validator](./cedar-policy-validator) : Internal crate containing the Cedar validator 
+* [cedar-policy-validator](./cedar-policy-validator) : Internal crate containing the Cedar validator
 * [cedar-policy-formatter](./cedar-policy-formatter) : Internal crate containing an auto-formatter for Cedar policies
 * [cedar-integration-tests](./cedar-integration-tests) : Crate containing integration tests
 
@@ -96,7 +96,7 @@ Generated documentation for the latest version of the Rust crates can be accesse
 
 ## Building
 
-To build, simply run `cargo build`.
+To build, simply run `cargo build` (or `cargo build --release`).
 
 ## Security
 
@@ -109,4 +109,3 @@ We welcome contributions from the community. Please either file an issue, or see
 ## License
 
 This project is licensed under the Apache-2.0 License.
-
