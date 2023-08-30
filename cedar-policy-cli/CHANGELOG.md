@@ -9,6 +9,14 @@
 - Duplicate policy ids in `@id` annotations cause the CLI to exit gracefully
   instead of panicking.
 
+## 2.3.3
+
+## 2.3.2
+
+## 2.3.1
+
+## 2.3.0
+
 ## 2.2.0
 
 ### Changed
