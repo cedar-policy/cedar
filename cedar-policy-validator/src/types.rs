@@ -788,11 +788,6 @@ impl EntityLUB {
         self.lub_elements.iter()
     }
 
-    // Get the number of entity types in this set.
-    pub(crate) fn len(&self) -> usize {
-        self.lub_elements.len()
-    }
-
     fn to_type_json(&self) -> serde_json::value::Map<String, serde_json::value::Value> {
         let mut ordered_lub_elems = self.lub_elements.iter().collect::<Vec<_>>();
         // We want the display order of elements of the set to be consistent.
