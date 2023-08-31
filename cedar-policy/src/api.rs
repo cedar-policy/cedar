@@ -2878,14 +2878,14 @@ mod entity_uid_tests {
     #[test]
     fn entity_uid_with_escape() {
         // EntityId contains some things that look like escapes
-        let entity_id = EntityId::from_str(r#"bobby\'s sister:\nVeronica"#)
+        let entity_id = EntityId::from_str(r"bobby\'s sister:\nVeronica")
             .expect("failed at constructing EntityId");
         let entity_type_name = EntityTypeName::from_str("Hockey::Master")
             .expect("failed at constructing EntityTypeName");
         let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
         // these are passed through (no escape interpretation):
         //   the EntityId has the literal backslash characters in it
-        assert_eq!(euid.id().as_ref(), r#"bobby\'s sister:\nVeronica"#);
+        assert_eq!(euid.id().as_ref(), r"bobby\'s sister:\nVeronica");
         assert_eq!(euid.type_name().to_string(), "Hockey::Master");
         assert_eq!(euid.type_name().basename(), "Master");
         assert_eq!(euid.type_name().namespace(), "Hockey");
@@ -3670,14 +3670,20 @@ mod schema_based_parsing_tests {
             Some(Ok(EvalResult::Record(_)))
         ));
         {
-            let Some(Ok(EvalResult::Set(set))) = parsed.attr("hr_contacts") else { panic!("expected hr_contacts attr to exist and be a Set") };
+            let Some(Ok(EvalResult::Set(set))) = parsed.attr("hr_contacts") else {
+                panic!("expected hr_contacts attr to exist and be a Set")
+            };
             let contact = set.iter().next().expect("should be at least one contact");
             assert!(matches!(contact, EvalResult::Record(_)));
         };
         {
-            let Some(Ok(EvalResult::Record(rec))) = parsed.attr("json_blob") else { panic!("expected json_blob attr to exist and be a Record") };
+            let Some(Ok(EvalResult::Record(rec))) = parsed.attr("json_blob") else {
+                panic!("expected json_blob attr to exist and be a Record")
+            };
             let inner3 = rec.get("inner3").expect("expected inner3 attr to exist");
-            let EvalResult::Record(rec) = inner3 else { panic!("expected inner3 to be a Record") };
+            let EvalResult::Record(rec) = inner3 else {
+                panic!("expected inner3 to be a Record")
+            };
             let innerinner = rec
                 .get("innerinner")
                 .expect("expected innerinner attr to exist");
@@ -3706,14 +3712,20 @@ mod schema_based_parsing_tests {
             ))))
         );
         {
-            let Some(Ok(EvalResult::Set(set))) = parsed.attr("hr_contacts") else { panic!("expected hr_contacts attr to exist and be a Set") };
+            let Some(Ok(EvalResult::Set(set))) = parsed.attr("hr_contacts") else {
+                panic!("expected hr_contacts attr to exist and be a Set")
+            };
             let contact = set.iter().next().expect("should be at least one contact");
             assert!(matches!(contact, EvalResult::EntityUid(_)));
         };
         {
-            let Some(Ok(EvalResult::Record(rec))) = parsed.attr("json_blob") else { panic!("expected json_blob attr to exist and be a Record") };
+            let Some(Ok(EvalResult::Record(rec))) = parsed.attr("json_blob") else {
+                panic!("expected json_blob attr to exist and be a Record")
+            };
             let inner3 = rec.get("inner3").expect("expected inner3 attr to exist");
-            let EvalResult::Record(rec) = inner3 else { panic!("expected inner3 to be a Record") };
+            let EvalResult::Record(rec) = inner3 else {
+                panic!("expected inner3 to be a Record")
+            };
             let innerinner = rec
                 .get("innerinner")
                 .expect("expected innerinner attr to exist");

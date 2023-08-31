@@ -448,7 +448,7 @@ impl<'a> Typechecker<'a> {
         env_checks
     }
 
-    fn unlinked_request_envs<'b>(&'b self) -> impl Iterator<Item = RequestEnv> + 'b {
+    fn unlinked_request_envs(&self) -> impl Iterator<Item = RequestEnv> + '_ {
         // Gather all of the actions declared in the schema.
         let all_actions = self
             .schema
@@ -896,7 +896,9 @@ impl<'a> Typechecker<'a> {
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
         let ExprKind::BinaryApp { op, arg1, arg2 } = bin_expr.expr_kind() else {
-            panic!("`strict_transform_binary` called with an expression kind other than `BinaryApp`");
+            panic!(
+                "`strict_transform_binary` called with an expression kind other than `BinaryApp`"
+            );
         };
 
         // Binary operators `==`, `contains`, `containsAll`, and `containsAny`
@@ -1183,13 +1185,13 @@ impl<'a> Typechecker<'a> {
                     request_env
                         .principal_slot
                         .clone()
-                        .map(|ety| Type::possibly_unspecified_entity_reference(ety))
+                        .map(Type::possibly_unspecified_entity_reference)
                         .unwrap_or(Type::any_entity_reference())
                 } else if slotid.is_resource() {
                     request_env
                         .resource_slot
                         .clone()
-                        .map(|ety| Type::possibly_unspecified_entity_reference(ety))
+                        .map(Type::possibly_unspecified_entity_reference)
                         .unwrap_or(Type::any_entity_reference())
                 } else {
                     Type::any_entity_reference()
@@ -2363,7 +2365,7 @@ impl<'a> Typechecker<'a> {
         K: Clone + PartialEq,
     {
         if let Some(lhs_entity) = self.schema.get_entity_eq(var, lhs) {
-            let rhs_descendants = self.schema.get_entities_in_set(var, rhs.into_iter());
+            let rhs_descendants = self.schema.get_entities_in_set(var, rhs);
             Typechecker::entity_in_descendants(
                 &lhs_entity,
                 rhs_descendants,

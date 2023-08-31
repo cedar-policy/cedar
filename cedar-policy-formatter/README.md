@@ -20,11 +20,8 @@ cedar format -l 40 my-policies.cedar
 ## Usage
 
 ### Build
-Building the policy formatter is straightforward using the following command.
 
-```shell
-cargo build
-```
+To build, simply run `cargo build` (or `cargo build --release`).
 
 ### Run
 The formatter is invoked via [Cedar CLI](../cedar-policy-cli)'s `format` subcommand. Its options can be found using the following command.

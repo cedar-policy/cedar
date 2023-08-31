@@ -70,7 +70,7 @@ impl EntityUIDEntry {
     /// Get the UID of the entry, or `None` if it is unknown (partial evaluation)
     pub fn uid(&self) -> Option<&EntityUID> {
         match self {
-            Self::Concrete(euid) => Some(&euid),
+            Self::Concrete(euid) => Some(euid),
             Self::Unknown => None,
         }
     }

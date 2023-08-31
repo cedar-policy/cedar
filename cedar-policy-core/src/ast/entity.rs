@@ -259,7 +259,7 @@ impl Entity {
     }
 
     /// Iterate over this entity's attributes
-    pub fn attrs<'s>(&'s self) -> impl Iterator<Item = (&'s str, BorrowedRestrictedExpr<'s>)> {
+    pub fn attrs(&self) -> impl Iterator<Item = (&str, BorrowedRestrictedExpr<'_>)> {
         self.attrs
             .iter()
             .map(|(k, v)| (k.as_str(), v.as_borrowed()))

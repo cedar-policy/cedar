@@ -280,24 +280,20 @@ impl Doc for ASTNode<Option<Add>> {
         Some(
             extended
                 .iter()
-                .fold(
-                    Some((initial.to_doc(context)?, initial)),
-                    |pair, (op, e)| {
-                        let pair = pair?;
-                        Some((
-                            pair.0
-                                .append(RcDoc::space())
-                                .append(add_comment(
-                                    op.to_doc(context)?,
-                                    get_comment_after_end(pair.1.info.0.end, &mut context.tokens)?,
-                                    RcDoc::nil(),
-                                ))
-                                .append(RcDoc::line())
-                                .append(e.to_doc(context)),
-                            e,
-                        ))
-                    },
-                )?
+                .try_fold((initial.to_doc(context)?, initial), |pair, (op, e)| {
+                    Some((
+                        pair.0
+                            .append(RcDoc::space())
+                            .append(add_comment(
+                                op.to_doc(context)?,
+                                get_comment_after_end(pair.1.info.0.end, &mut context.tokens)?,
+                                RcDoc::nil(),
+                            ))
+                            .append(RcDoc::line())
+                            .append(e.to_doc(context)),
+                        e,
+                    ))
+                })?
                 .0
                 .group(),
         )
@@ -320,24 +316,20 @@ impl Doc for ASTNode<Option<Mult>> {
         Some(
             extended
                 .iter()
-                .fold(
-                    Some((initial.to_doc(context)?, initial)),
-                    |pair, (op, e)| {
-                        let pair = pair?;
-                        Some((
-                            pair.0
-                                .append(RcDoc::space())
-                                .append(add_comment(
-                                    op.to_doc(context)?,
-                                    get_comment_after_end(pair.1.info.0.end, &mut context.tokens)?,
-                                    RcDoc::nil(),
-                                ))
-                                .append(RcDoc::line())
-                                .append(e.to_doc(context)),
-                            e,
-                        ))
-                    },
-                )?
+                .try_fold((initial.to_doc(context)?, initial), |pair, (op, e)| {
+                    Some((
+                        pair.0
+                            .append(RcDoc::space())
+                            .append(add_comment(
+                                op.to_doc(context)?,
+                                get_comment_after_end(pair.1.info.0.end, &mut context.tokens)?,
+                                RcDoc::nil(),
+                            ))
+                            .append(RcDoc::line())
+                            .append(e.to_doc(context)),
+                        e,
+                    ))
+                })?
                 .0
                 .group(),
         )
@@ -432,21 +424,18 @@ impl Doc for ASTNode<Option<Name>> {
             Some(
                 path.get(1..)?
                     .iter()
-                    .fold(
-                        Some((path.get(0)?.to_doc(context)?, path.get(0)?)),
-                        |pair, p| {
-                            let (d, e) = pair?;
-                            Some((
-                                d.append(add_comment(
-                                    RcDoc::as_string("::"),
-                                    get_comment_after_end(e.info.0.end, &mut context.tokens)?,
-                                    RcDoc::nil(),
-                                ))
-                                .append(p.to_doc(context)?),
-                                p,
+                    .try_fold((path.get(0)?.to_doc(context)?, path.get(0)?), |pair, p| {
+                        let (d, e) = pair;
+                        Some((
+                            d.append(add_comment(
+                                RcDoc::as_string("::"),
+                                get_comment_after_end(e.info.0.end, &mut context.tokens)?,
+                                RcDoc::nil(),
                             ))
-                        },
-                    )?
+                            .append(p.to_doc(context)?),
+                            p,
+                        ))
+                    })?
                     .0
                     .append(add_comment(
                         RcDoc::as_string("::"),
@@ -536,22 +525,19 @@ impl Doc for ASTNode<Option<Primary>> {
                 } else {
                     el.get(1..)?
                         .iter()
-                        .fold(
-                            Some((el.get(0)?.to_doc(context)?, el.get(0)?)),
-                            |pair, v| {
-                                let (d, e) = pair?;
-                                Some((
-                                    d.append(add_comment(
-                                        RcDoc::as_string(","),
-                                        get_comment_after_end(e.info.0.end, &mut context.tokens)?,
-                                        RcDoc::nil(),
-                                    ))
-                                    .append(RcDoc::line())
-                                    .append(v.to_doc(context)),
-                                    v,
+                        .try_fold((el.get(0)?.to_doc(context)?, el.get(0)?), |pair, v| {
+                            let (d, e) = pair;
+                            Some((
+                                d.append(add_comment(
+                                    RcDoc::as_string(","),
+                                    get_comment_after_end(e.info.0.end, &mut context.tokens)?,
+                                    RcDoc::nil(),
                                 ))
-                            },
-                        )?
+                                .append(RcDoc::line())
+                                .append(v.to_doc(context)),
+                                v,
+                            ))
+                        })?
                         .0
                 },
                 add_comment(
@@ -571,22 +557,19 @@ impl Doc for ASTNode<Option<Primary>> {
                 } else {
                     ri.get(1..)?
                         .iter()
-                        .fold(
-                            Some((ri.get(0)?.to_doc(context)?, ri.get(0)?)),
-                            |pair, v| {
-                                let (d, e) = pair?;
-                                Some((
-                                    d.append(add_comment(
-                                        RcDoc::as_string(","),
-                                        get_comment_after_end(e.info.0.end, &mut context.tokens)?,
-                                        RcDoc::nil(),
-                                    ))
-                                    .append(RcDoc::line())
-                                    .append(v.to_doc(context)),
-                                    v,
+                        .try_fold((ri.get(0)?.to_doc(context)?, ri.get(0)?), |pair, v| {
+                            let (d, e) = pair;
+                            Some((
+                                d.append(add_comment(
+                                    RcDoc::as_string(","),
+                                    get_comment_after_end(e.info.0.end, &mut context.tokens)?,
+                                    RcDoc::nil(),
                                 ))
-                            },
-                        )?
+                                .append(RcDoc::line())
+                                .append(v.to_doc(context)),
+                                v,
+                            ))
+                        })?
                         .0
                 },
                 add_comment(
@@ -629,10 +612,10 @@ impl Doc for ASTNode<Option<MemAccess>> {
                 } else {
                     args.get(1..)?
                         .iter()
-                        .fold(
-                            Some((args.get(0)?.to_doc(context)?, args.get(0)?)),
+                        .try_fold(
+                            (args.get(0)?.to_doc(context)?, args.get(0)?),
                             |pair, arg| {
-                                let (d, e) = pair?;
+                                let (d, e) = pair;
                                 Some((
                                     d.append(add_comment(
                                         RcDoc::as_string(","),

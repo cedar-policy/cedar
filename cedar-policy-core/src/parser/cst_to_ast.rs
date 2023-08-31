@@ -2809,7 +2809,7 @@ mod tests {
         .expect("failed convert");
         match expr.expr_kind() {
             ast::ExprKind::Like { pattern, .. } => {
-                assert_eq!(pattern.to_string(), r#"string\\with\\backslashes"#);
+                assert_eq!(pattern.to_string(), r"string\\with\\backslashes");
             }
             _ => panic!("should be a like expr"),
         }
@@ -2824,7 +2824,7 @@ mod tests {
         .expect("failed convert");
         match expr.expr_kind() {
             ast::ExprKind::Like { pattern, .. } => {
-                assert_eq!(pattern.to_string(), r#"string\*with\*backslashes"#);
+                assert_eq!(pattern.to_string(), r"string\*with\*backslashes");
             }
             _ => panic!("should be a like expr"),
         }
@@ -2869,7 +2869,7 @@ mod tests {
             ast::ExprKind::Like { pattern, .. } => {
                 assert_eq!(
                     pattern.to_string(),
-                    r#"string\\\*with\\\*backslashes\\\*and\\\*stars"#
+                    r"string\\\*with\\\*backslashes\\\*and\\\*stars"
                 );
             }
             _ => panic!("should be a like expr"),
@@ -3277,7 +3277,7 @@ mod tests {
         // invalid escape `\p`
         test_invalid("\\\\aa\\p", 1);
         // invalid escape `\a` and empty unicode escape
-        test_invalid(r#"\aaa\u{}"#, 2);
+        test_invalid(r"\aaa\u{}", 2);
     }
 
     fn expect_action_error(test: &str, euid_strs: Vec<&str>) {

@@ -317,13 +317,10 @@ mod tests {
 
     #[test]
     fn test_strs_atrs() {
-        let r = Expr::record(
-            [
-                ("a1".into(), Expr::val(true)),
-                ("a2".into(), Expr::val(false)),
-            ]
-            .into_iter(),
-        );
+        let r = Expr::record([
+            ("a1".into(), Expr::val(true)),
+            ("a2".into(), Expr::val(false)),
+        ]);
         let e = Expr::ite(
             Expr::get_attr(
                 Expr::val(EntityUID::from_str("another::\"euid\"").unwrap()),
