@@ -351,7 +351,8 @@ pub(crate) enum AttributeAccess {
     /// targeting an EntityLUB.
     EntityLUB(EntityLUB, Vec<SmolStr>),
     /// The attribute access is some sequence of attributes accesses eventually
-    /// targeting the context variable.
+    /// targeting the context variable. The context being accessed is identified
+    /// by the `EntityUID` for the associated action.
     Context(EntityUID, Vec<SmolStr>),
     /// Other cases where we do not attempt to give more information about the
     /// access. This includes any access on the `AnyEntity` type and on record
