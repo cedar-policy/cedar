@@ -11,21 +11,19 @@ use crate::{
 
 /// Cedar policy slicer
 #[derive(Debug, Clone)]
-pub struct Slicer<'s> {
-    /// Entities in a request: (principal, resource)
-    //request_entities: (EntityUID, EntityUID),
-    store: &'s Entities,
+pub struct Slicer<'s, 'e> {
+    store: &'e Entities,
     policy_set: &'s PolicySet,
-    indexed: HashMap<(EntityUID, EntityUID), HashSet<PolicyID>>,
+    indexed: HashMap<(EntityUID, EntityUID), HashSet<&'s PolicyID>>,
 }
 
-impl<'s> Slicer<'s> {
+impl<'s, 'e> Slicer<'s, 'e> {
     fn any() -> EntityUID {
         EntityUID::unspecified_from_eid(Eid::new(""))
     }
     /// Construct a slicer
-    pub fn new(policy_set: &'s PolicySet, store: &'s Entities) -> Self {
-        let mut indexed: HashMap<(EntityUID, EntityUID), HashSet<PolicyID>> = HashMap::new();
+    pub fn new(policy_set: &'s PolicySet, store: &'e Entities) -> Self {
+        let mut indexed: HashMap<(EntityUID, EntityUID), HashSet<&'s PolicyID>> = HashMap::new();
         for policy in policy_set.policies() {
             let key = match (
                 policy.principal_constraint().constraint.iter_euids().next(),
@@ -39,12 +37,9 @@ impl<'s> Slicer<'s> {
                 (None, None) => (Self::any(), Self::any()),
             };
             if let Some(set) = indexed.get_mut(&key) {
-                set.insert(policy.id().clone());
+                set.insert(policy.id());
             } else {
-                indexed.insert(
-                    key,
-                    HashSet::from_iter(std::iter::once(policy.id().clone())),
-                );
+                indexed.insert(key, HashSet::from_iter(std::iter::once(policy.id())));
             }
         }
         Self {
