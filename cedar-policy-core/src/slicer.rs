@@ -1,7 +1,11 @@
 //! Cedar policy slicer
 
+use std::collections::{HashMap, HashSet};
+
+use itertools::Itertools;
+
 use crate::{
-    ast::{EntityUID, EntityUIDEntry, Policy, PolicySet, Request},
+    ast::{Eid, EntityUID, EntityUIDEntry, PolicyID, PolicySet, Request},
     entities::{Dereference, Entities},
 };
 
@@ -9,63 +13,83 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct Slicer<'s> {
     /// Entities in a request: (principal, resource)
-    request_entities: (EntityUID, EntityUID),
+    //request_entities: (EntityUID, EntityUID),
     store: &'s Entities,
+    policy_set: &'s PolicySet,
+    indexed: HashMap<(EntityUID, EntityUID), HashSet<PolicyID>>,
 }
 
 impl<'s> Slicer<'s> {
+    fn any() -> EntityUID {
+        EntityUID::unspecified_from_eid(Eid::new(""))
+    }
     /// Construct a slicer
-    pub fn new(request: &Request, store: &'s Entities) -> Self {
-        let request_entities = match (request.principal(), request.resource()) {
-            (EntityUIDEntry::Concrete(principal), EntityUIDEntry::Concrete(resource)) => {
-                (principal.as_ref().clone(), resource.as_ref().clone())
+    pub fn new(policy_set: &'s PolicySet, store: &'s Entities) -> Self {
+        let mut indexed: HashMap<(EntityUID, EntityUID), HashSet<PolicyID>> = HashMap::new();
+        for policy in policy_set.policies() {
+            let key = match (
+                policy.principal_constraint().constraint.iter_euids().next(),
+                policy.resource_constraint().constraint.iter_euids().next(),
+            ) {
+                (Some(head_principal), Some(head_resource)) => {
+                    (head_principal.clone(), head_resource.clone())
+                }
+                (Some(head_principal), None) => (head_principal.clone(), Self::any()),
+                (None, Some(head_resource)) => (Self::any(), head_resource.clone()),
+                (None, None) => (Self::any(), Self::any()),
+            };
+            if let Some(set) = indexed.get_mut(&key) {
+                set.insert(policy.id().clone());
+            } else {
+                indexed.insert(
+                    key,
+                    HashSet::from_iter(std::iter::once(policy.id().clone())),
+                );
             }
-            _ => unreachable!("partial evaluation is not enabled!"),
-        };
-        Self {
-            request_entities,
-            store,
         }
+        Self {
+            policy_set,
+            store,
+            indexed,
+        }
+    }
+
+    fn make_keys(
+        &self,
+        principal: &EntityUID,
+        resource: &EntityUID,
+    ) -> impl Iterator<Item = (EntityUID, EntityUID)> {
+        let make_iter = |uid: &EntityUID| {
+            std::iter::once(uid.clone())
+                .chain(std::iter::once(Self::any()))
+                .chain(match self.store.entity(uid) {
+                    Dereference::Data(e) => e.ancestors().map(|uid| uid.clone()).collect_vec(),
+                    Dereference::Residual(_) => unreachable!("partial evaluation is not enabled!"),
+                    Dereference::NoSuchEntity => vec![],
+                })
+        };
+        make_iter(principal).cartesian_product(make_iter(resource))
     }
 
     /// Get a slice of the policy set
-    pub fn get_slice(&self, policy_set: &PolicySet) -> PolicySet {
+    pub fn get_slice(&self, request: &Request) -> PolicySet {
+        let (req_principal, req_resource) = match (request.principal(), request.resource()) {
+            (EntityUIDEntry::Concrete(principal), EntityUIDEntry::Concrete(resource)) => {
+                (principal.as_ref(), resource.as_ref())
+            }
+            _ => unreachable!("partial evaluation is not enabled!"),
+        };
+        let keys = self.make_keys(req_principal, req_resource);
         let mut slice = PolicySet::new();
-        for policy in policy_set.policies() {
-            if self.should_keep(policy) {
-                slice
-                    .add(policy.clone())
-                    .expect("add policy should succeed");
+        for key in keys {
+            if let Some(set) = self.indexed.get(&key) {
+                for id in set {
+                    slice
+                        .add(self.policy_set.get(id).expect("id should exist").clone())
+                        .expect("should not fail");
+                }
             }
         }
         slice
-    }
-
-    fn entity_in_entity(&self, child: &EntityUID, ancestor: &EntityUID) -> bool {
-        child == ancestor
-            || match self.store.entity(child) {
-                Dereference::Data(child_entity) => child_entity.is_descendant_of(ancestor),
-                Dereference::NoSuchEntity => false,
-                _ => unreachable!("partial evaluation is not enabled!"),
-            }
-    }
-
-    fn should_keep(&self, policy: &Policy) -> bool {
-        match (
-            policy.principal_constraint().constraint.iter_euids().next(),
-            policy.resource_constraint().constraint.iter_euids().next(),
-        ) {
-            (Some(head_principal), Some(head_resource)) => {
-                self.entity_in_entity(&self.request_entities.0, head_principal)
-                    && self.entity_in_entity(&self.request_entities.1, head_resource)
-            }
-            (Some(head_principal), None) => {
-                self.entity_in_entity(&self.request_entities.0, head_principal)
-            }
-            (None, Some(head_resource)) => {
-                self.entity_in_entity(&self.request_entities.1, head_resource)
-            }
-            (None, None) => true,
-        }
     }
 }

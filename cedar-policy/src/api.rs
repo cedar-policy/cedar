@@ -2805,8 +2805,8 @@ pub fn get_policy_set_slice(
     entities: &Entities,
     policy_set: &PolicySet,
 ) -> PolicySet {
-    let slicer = Slicer::new(&request.0, &entities.0);
-    PolicySet::from_ast(slicer.get_slice(&policy_set.ast))
+    let slicer = Slicer::new(&policy_set.ast, &entities.0);
+    PolicySet::from_ast(slicer.get_slice(&request.0))
 }
 
 #[cfg(test)]
