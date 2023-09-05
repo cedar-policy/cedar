@@ -43,7 +43,9 @@ use crate::est;
 pub fn parse_policyset(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
     let mut errs = err::ParseErrors::new();
     let cst = text_to_cst::parse_policies(text)?;
-    let Some(ast) = cst.to_policyset(&mut errs) else { return Err(errs); };
+    let Some(ast) = cst.to_policyset(&mut errs) else {
+        return Err(errs);
+    };
     if errs.is_empty() {
         Ok(ast)
     } else {
@@ -58,7 +60,9 @@ pub fn parse_policyset_and_also_return_policy_text(
 ) -> Result<(HashMap<ast::PolicyID, &str>, ast::PolicySet), err::ParseErrors> {
     let mut errs = err::ParseErrors::new();
     let cst = text_to_cst::parse_policies(text)?;
-    let Some(pset) = cst.to_policyset(&mut errs) else { return Err(errs); };
+    let Some(pset) = cst.to_policyset(&mut errs) else {
+        return Err(errs);
+    };
     if errs.is_empty() {
         // PANIC SAFETY Shouldn't be `none` since `parse_policies()` and `to_policyset()` didn't return `Err`
         #[allow(clippy::expect_used)]
@@ -83,7 +87,9 @@ pub fn parse_policyset_to_ests_and_pset(
 ) -> Result<(HashMap<ast::PolicyID, est::Policy>, ast::PolicySet), err::ParseErrors> {
     let mut errs = err::ParseErrors::new();
     let cst = text_to_cst::parse_policies(text)?;
-    let Some(pset) = cst.to_policyset(&mut errs) else { return Err(errs); };
+    let Some(pset) = cst.to_policyset(&mut errs) else {
+        return Err(errs);
+    };
     if errs.is_empty() {
         // PANIC SAFETY Shouldn't be `None` since `parse_policies()` and `to_policyset()` didn't return `Err`
         #[allow(clippy::expect_used)]
@@ -114,7 +120,9 @@ pub fn parse_policy_template(
         None => ast::PolicyID::from_string("policy0"),
     };
     let cst = text_to_cst::parse_policy(text)?;
-    let Some(ast) = cst.to_policy_template(id, &mut errs) else { return Err(errs); };
+    let Some(ast) = cst.to_policy_template(id, &mut errs) else {
+        return Err(errs);
+    };
     if errs.is_empty() {
         Ok(ast)
     } else {
@@ -135,7 +143,9 @@ pub fn parse_policy_template_to_est_and_ast(
         None => ast::PolicyID::from_string("policy0"),
     };
     let cst = text_to_cst::parse_policy(text)?;
-    let (Some(ast), Some(cst_node)) = (cst.to_policy_template(id, &mut errs), cst.node) else { return Err(errs); };
+    let (Some(ast), Some(cst_node)) = (cst.to_policy_template(id, &mut errs), cst.node) else {
+        return Err(errs);
+    };
     if errs.is_empty() {
         let est = cst_node.try_into()?;
         Ok((est, ast))
@@ -154,7 +164,9 @@ pub fn parse_policy(id: Option<String>, text: &str) -> Result<ast::StaticPolicy,
         None => ast::PolicyID::from_string("policy0"),
     };
     let cst = text_to_cst::parse_policy(text)?;
-    let Some(ast) = cst.to_policy(id, &mut errs) else { return Err(errs); };
+    let Some(ast) = cst.to_policy(id, &mut errs) else {
+        return Err(errs);
+    };
     if errs.is_empty() {
         Ok(ast)
     } else {
@@ -175,7 +187,9 @@ pub fn parse_policy_to_est_and_ast(
         None => ast::PolicyID::from_string("policy0"),
     };
     let cst = text_to_cst::parse_policy(text)?;
-    let (Some(ast), Some(cst_node)) = (cst.to_policy(id, &mut errs), cst.node) else { return Err(errs); };
+    let (Some(ast), Some(cst_node)) = (cst.to_policy(id, &mut errs), cst.node) else {
+        return Err(errs);
+    };
     if errs.is_empty() {
         let est = cst_node.try_into()?;
         Ok((est, ast))
@@ -200,7 +214,9 @@ pub fn parse_policy_or_template_to_est(text: &str) -> Result<est::Policy, err::P
 pub(crate) fn parse_expr(ptext: &str) -> Result<ast::Expr, err::ParseErrors> {
     let mut errs = err::ParseErrors::new();
     let cst = text_to_cst::parse_expr(ptext)?;
-    let Some(ast) = cst.to_expr(&mut errs) else { return Err(errs); };
+    let Some(ast) = cst.to_expr(&mut errs) else {
+        return Err(errs);
+    };
     if errs.is_empty() {
         Ok(ast)
     } else {
@@ -224,7 +240,9 @@ pub(crate) fn parse_restrictedexpr(ptext: &str) -> Result<ast::RestrictedExpr, e
 pub(crate) fn parse_euid(euid: &str) -> Result<ast::EntityUID, err::ParseErrors> {
     let mut errs = err::ParseErrors::new();
     let cst = text_to_cst::parse_ref(euid)?;
-    let Some(ast) = cst.to_ref(&mut errs) else { return Err(errs); };
+    let Some(ast) = cst.to_ref(&mut errs) else {
+        return Err(errs);
+    };
     if errs.is_empty() {
         Ok(ast)
     } else {
@@ -239,7 +257,9 @@ pub(crate) fn parse_euid(euid: &str) -> Result<ast::EntityUID, err::ParseErrors>
 pub(crate) fn parse_name(name: &str) -> Result<ast::Name, err::ParseErrors> {
     let mut errs = err::ParseErrors::new();
     let cst = text_to_cst::parse_name(name)?;
-    let Some(ast) = cst.to_name(&mut errs) else { return Err(errs); };
+    let Some(ast) = cst.to_name(&mut errs) else {
+        return Err(errs);
+    };
     if errs.is_empty() {
         Ok(ast)
     } else {
@@ -254,7 +274,9 @@ pub(crate) fn parse_name(name: &str) -> Result<ast::Name, err::ParseErrors> {
 pub(crate) fn parse_literal(val: &str) -> Result<ast::Literal, err::ParseErrors> {
     let mut errs = err::ParseErrors::new();
     let cst = text_to_cst::parse_primary(val)?;
-    let Some(ast) = cst.to_expr(&mut errs) else { return Err(errs); };
+    let Some(ast) = cst.to_expr(&mut errs) else {
+        return Err(errs);
+    };
     if errs.is_empty() {
         match ast.into_expr_kind() {
             ast::ExprKind::Lit(v) => Ok(v),
@@ -279,7 +301,9 @@ pub fn parse_internal_string(val: &str) -> Result<SmolStr, err::ParseErrors> {
     let mut errs = err::ParseErrors::new();
     // we need to add quotes for this to be a valid string literal
     let cst = text_to_cst::parse_primary(&format!(r#""{val}""#))?;
-    let Some(ast) = cst.to_string_literal(&mut errs) else { return Err(errs); };
+    let Some(ast) = cst.to_string_literal(&mut errs) else {
+        return Err(errs);
+    };
     if errs.is_empty() {
         Ok(ast)
     } else {
@@ -294,7 +318,9 @@ pub fn parse_internal_string(val: &str) -> Result<SmolStr, err::ParseErrors> {
 pub(crate) fn parse_ident(id: &str) -> Result<ast::Id, err::ParseErrors> {
     let mut errs = err::ParseErrors::new();
     let cst = text_to_cst::parse_ident(id)?;
-    let Some(ast) = cst.to_valid_ident(&mut errs) else { return Err(errs); };
+    let Some(ast) = cst.to_valid_ident(&mut errs) else {
+        return Err(errs);
+    };
     if errs.is_empty() {
         Ok(ast)
     } else {
