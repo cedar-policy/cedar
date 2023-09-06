@@ -221,8 +221,12 @@ pub enum TypeErrorKind {
     /// The typechecker detected an access to a record or entity attribute
     /// that it could not statically guarantee would be present.
     #[error(
-        "Attribute not found in record or entity: {}{}",
+        "attribute `{}` not found in record or entity{}{}",
         .0.attribute,
+        match &.0.suggestion {
+            Some(suggestion) => format!(", did you mean `{suggestion}`"),
+            None => "".to_string(),
+        },
         if .0.may_exist {
             ". There may be additional attributes that the validator is not able to reason about."
         } else {

@@ -53,10 +53,6 @@ pub enum ParseError {
     /// Error concerning restricted expressions.
     #[error(transparent)]
     RestrictedExpressionError(#[from] RestrictedExpressionError),
-    /// One or more parse errors occurred while performing a task.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    WithContext(#[from] WithContext),
 }
 
 /// Error from the CST parser.
@@ -352,50 +348,5 @@ impl<'a> IntoIterator for &'a mut ParseErrors {
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter_mut()
-    }
-}
-
-/// One or more parse errors occurred while performing a task.
-#[derive(Clone, Debug, Default, Error, PartialEq)]
-#[error("{context}")]
-pub struct WithContext {
-    /// What we were trying to do.
-    pub context: String,
-    /// Error(s) we encountered while doing it.
-    #[source]
-    pub errs: ParseErrors,
-}
-
-impl Diagnostic for WithContext {
-    fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        self.errs.code()
-    }
-
-    fn severity(&self) -> Option<Severity> {
-        self.errs.severity()
-    }
-
-    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        self.errs.help()
-    }
-
-    fn url<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        self.errs.url()
-    }
-
-    fn source_code(&self) -> Option<&dyn SourceCode> {
-        self.errs.source_code()
-    }
-
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        self.errs.labels()
-    }
-
-    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
-        self.errs.related()
-    }
-
-    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
-        self.errs.diagnostic_source()
     }
 }

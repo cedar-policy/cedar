@@ -14,32 +14,58 @@
  * limitations under the License.
  */
 
+use std::fmt::Display;
+
 use super::SchemaType;
 use crate::ast::{
     EntityType, EntityUID, Expr, ExprKind, Name, RestrictedExpr, RestrictedExpressionError,
 };
 use crate::extensions::ExtensionsError;
+use crate::parser::err::ParseErrors;
 use smol_str::SmolStr;
 use thiserror::Error;
+
+/// Escape kind
+#[derive(Debug)]
+pub enum EscapeKind {
+    /// Escape `__expr`
+    /// Note that `__expr` is deprecated and once it is
+    /// removed, this variant will also be removed
+    Expr,
+    /// Escape `__entity`
+    Entity,
+    /// Escape `__extn`
+    Extension,
+}
+
+impl Display for EscapeKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Entity => write!(f, "__entity"),
+            Self::Expr => write!(f, "__expr"),
+            Self::Extension => write!(f, "__extn"),
+        }
+    }
+}
 
 /// Errors thrown during deserialization from JSON
 #[derive(Debug, Error)]
 pub enum JsonDeserializationError {
-    /// Error thrown by `serde_json`
+    /// Error thrown by the `serde_json` crate
     #[error("{0}")]
     Serde(#[from] serde_json::Error),
-    /// Contents of an `__expr` escape failed to parse as a Cedar expression.
-    ///
-    /// `__expr` is deprecated (starting with the 1.2 release), and once it is
-    /// removed, this error will also be removed.
-    #[error(transparent)]
-    ExprParseError(crate::parser::err::ParseError),
-    /// Contents of an `__entity` escape failed to parse as an entity reference
-    #[error(transparent)]
-    EntityParseError(crate::parser::err::ParseError),
-    /// Function name in an `__extn` escape failed to parse as an extension function name
-    #[error(transparent)]
-    ExtnParseError(crate::parser::err::ParseError),
+    /// Contents of an escape failed to parse.
+    /// Note that escape `__expr` is deprecated and once it is
+    /// removed, `EscapeKind::Expr` will also be removed
+    #[error("failed to parse escape `{kind}`: {value}, errors: {errs}")]
+    ParseEscape {
+        /// Escape kind
+        kind: EscapeKind,
+        /// Escape value at fault
+        value: String,
+        /// Parse errors
+        errs: ParseErrors,
+    },
     /// Restricted expression error
     #[error(transparent)]
     RestrictedExpressionError(#[from] RestrictedExpressionError),
@@ -47,7 +73,7 @@ pub enum JsonDeserializationError {
     #[error(transparent)]
     ExtensionsError(#[from] ExtensionsError),
     /// A field that needs to be a literal entity reference, was some other JSON value
-    #[error("{ctx}, expected a literal entity reference, but got {got}")]
+    #[error("{ctx}, expected a literal entity reference, but got: {got}")]
     ExpectedLiteralEntityRef {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -55,7 +81,7 @@ pub enum JsonDeserializationError {
         got: Box<Expr>,
     },
     /// A field that needs to be an extension value, was some other JSON value
-    #[error("{ctx}, expected an extension value, but got {got}")]
+    #[error("{ctx}, expected an extension value, but got: {got}")]
     ExpectedExtnValue {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -63,14 +89,14 @@ pub enum JsonDeserializationError {
         got: Box<Expr>,
     },
     /// Contexts need to be records, but we got some other JSON value
-    #[error("Expected Context to be a record, but got {got}")]
+    #[error("expected `context` to be a record, but got `{got}`")]
     ExpectedContextToBeRecord {
         /// Expression we got instead
         got: Box<RestrictedExpr>,
     },
     /// Parents of actions should be actions, but this action has a non-action parent
-    #[error("{uid} is an action, so it should not have a parent {parent}, which is not an action")]
-    ActionParentIsNonAction {
+    #[error("action `{uid}` has a non-action parent `{parent}`")]
+    ActionParentIsNotAction {
         /// Action entity that had the invalid parent
         uid: EntityUID,
         /// Parent that is invalid
@@ -78,8 +104,8 @@ pub enum JsonDeserializationError {
     },
     /// Schema-based parsing needed an implicit extension constructor, but no suitable
     /// constructor was found
-    #[error("{ctx}, extension constructor for {arg_type} -> {return_type} not found")]
-    ImpliedConstructorNotFound {
+    #[error("{ctx}, missing extension constructor for {arg_type} -> {return_type}")]
+    MissingImpliedConstructor {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
         /// return type of the constructor we were looking for
@@ -88,8 +114,8 @@ pub enum JsonDeserializationError {
         arg_type: Box<SchemaType>,
     },
     /// During schema-based parsing, encountered an entity of a type which is
-    /// not declared in the schema. (This error is only used for non-Action entity types.)
-    #[error("{uid} has type {} which is not declared in the schema{}",
+    /// not declared in the schema. Note that this error is only used for non-Action entity types.
+    #[error("entity `{uid}` has type `{}` which is not declared in the schema{}",
         &.uid.entity_type(),
         match .suggested_types.as_slice() {
             [] => String::new(),
@@ -105,21 +131,21 @@ pub enum JsonDeserializationError {
     },
     /// During schema-based parsing, encountered an action which was not
     /// declared in the schema
-    #[error("Found entity data for {uid}, but it was not declared as an action in the schema")]
+    #[error("found action entity `{uid}`, but it was not declared as an action in the schema")]
     UndeclaredAction {
         /// Action which was not declared in the schema
         uid: EntityUID,
     },
     /// During schema-based parsing, encountered an action whose definition
     /// doesn't precisely match the schema's declaration of that action
-    #[error("Definition of {uid} does not match the schema's declaration of that action")]
+    #[error("definition of action `{uid}` does not match its schema declaration")]
     ActionDeclarationMismatch {
         /// Action whose definition mismatched between entity data and schema
         uid: EntityUID,
     },
     /// During schema-based parsing, encountered this attribute on this entity, but that
     /// attribute shouldn't exist on entities of this type
-    #[error("Attribute {:?} on {uid} shouldn't exist according to the schema", &.attr)]
+    #[error("attribute {:?} on `{uid}` shouldn't exist according to the schema", &.attr)]
     UnexpectedEntityAttr {
         /// Entity that had the unexpected attribute
         uid: EntityUID,
@@ -135,9 +161,9 @@ pub enum JsonDeserializationError {
         /// Name of the (Record) attribute which was unexpected
         record_attr: SmolStr,
     },
-    /// During schema-based parsing, didn't encounter this attribute of a
-    /// record, but that attribute should have existed
-    #[error("Expected {uid} to have an attribute {attr:?}, but it didn't")]
+    /// During schema-based parsing, didn't encounter this attribute of an
+    /// entity, but that attribute should have existed
+    #[error("expected entity `{uid}` to have an attribute {attr:?}, but it doesn't")]
     MissingRequiredEntityAttr {
         /// Entity that is missing a required attribute
         uid: EntityUID,
@@ -146,7 +172,7 @@ pub enum JsonDeserializationError {
     },
     /// During schema-based parsing, didn't encounter this attribute of a
     /// record, but that attribute should have existed
-    #[error("{ctx}, expected the record to have an attribute {record_attr:?}, but it didn't")]
+    #[error("{ctx}, expected the record to have an attribute {record_attr:?}, but it doesn't")]
     MissingRequiredRecordAttr {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -178,7 +204,7 @@ pub enum JsonDeserializationError {
     /// During schema-based parsing, found a parent of a type that's not allowed
     /// for that entity
     #[error(
-        "{ctx}, {uid} is not allowed to have a parent of type {parent_ty} according to the schema"
+        "{ctx}, `{uid}` is not allowed to have a parent of type `{parent_ty}` according to the schema"
     )]
     InvalidParentType {
         /// Context of this error

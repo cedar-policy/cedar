@@ -958,7 +958,7 @@ mod tests {
     #[test]
     fn parse_idempotent() {
         let many_policies =
-            std::fs::read_to_string("src/parser/testfiles/policies.txt").expect("missing file");
+            std::fs::read_to_string("src/parser/testfiles/policies.cedar").expect("missing file");
         let cst1 = parse_policies(&many_policies)
             .expect("parse fail")
             .node

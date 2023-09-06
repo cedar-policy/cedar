@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+// PANIC SAFETY: there's little we can do about Logos.
+#![allow(clippy::indexing_slicing)]
 use itertools::Itertools;
 use logos::{Logos, Span};
 use regex::Regex;
@@ -21,6 +23,8 @@ use smol_str::SmolStr;
 use std::fmt::{self, Display};
 
 pub fn get_comment(text: &str) -> String {
+    // PANIC SAFETY: this regex pattern is valid
+    #[allow(clippy::unwrap_used)]
     let mut comment = Regex::new(r"//[^\n\r]*")
         .unwrap()
         .find_iter(text)
@@ -222,6 +226,8 @@ impl fmt::Display for Token {
             Self::At => write!(f, "@"),
             Self::Colon => write!(f, ":"),
             Self::Comma => write!(f, ","),
+            // PANIC SAFETY: comment should be ignored as specified by the lexer regex
+            #[allow(clippy::unreachable)]
             Self::Comment => unreachable!("comment should be skipped!"),
             Self::Context => write!(f, "context"),
             Self::Dash => write!(f, "-"),
@@ -264,6 +270,8 @@ impl fmt::Display for Token {
             Self::True => write!(f, "true"),
             Self::Unless => write!(f, "unless"),
             Self::When => write!(f, "when"),
+            // PANIC SAFETY: whitespace should be ignored as specified by the lexer regex
+            #[allow(clippy::unreachable)]
             Self::Whitespace => unreachable!("whitespace should be skipped!"),
         }
     }
