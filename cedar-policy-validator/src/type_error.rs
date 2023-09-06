@@ -19,13 +19,16 @@
 use std::{collections::BTreeSet, fmt::Display};
 
 use cedar_policy_core::{
-    ast::{CallStyle, Expr},
+    ast::{CallStyle, EntityUID, Expr, ExprKind, Var},
     parser::SourceInfo,
 };
+
+use crate::types::{EntityLUB, EntityRecordKind, RequestEnv};
 
 use super::types::Type;
 
 use itertools::Itertools;
+use smol_str::SmolStr;
 use thiserror::Error;
 
 /// The structure for type errors. A type errors knows the expression that
@@ -108,7 +111,7 @@ impl TypeError {
 
     pub(crate) fn unsafe_attribute_access(
         on_expr: Expr,
-        attribute: String,
+        attribute_access: AttributeAccess,
         suggestion: Option<String>,
         may_exist: bool,
     ) -> Self {
@@ -116,19 +119,22 @@ impl TypeError {
             on_expr: Some(on_expr),
             source_location: None,
             kind: TypeErrorKind::UnsafeAttributeAccess(UnsafeAttributeAccess {
-                attribute,
+                attribute_access,
                 suggestion,
                 may_exist,
             }),
         }
     }
 
-    pub(crate) fn unsafe_optional_attribute_access(on_expr: Expr, optional: String) -> Self {
+    pub(crate) fn unsafe_optional_attribute_access(
+        on_expr: Expr,
+        attribute_access: AttributeAccess,
+    ) -> Self {
         Self {
             on_expr: Some(on_expr),
             source_location: None,
             kind: TypeErrorKind::UnsafeOptionalAttributeAccess(UnsafeOptionalAttributeAccess {
-                optional,
+                attribute_access,
             }),
         }
     }
@@ -221,8 +227,8 @@ pub enum TypeErrorKind {
     /// The typechecker detected an access to a record or entity attribute
     /// that it could not statically guarantee would be present.
     #[error(
-        "attribute `{}` not found in record or entity{}{}",
-        .0.attribute,
+        "attribute {} not found{}{}",
+        .0.attribute_access,
         match &.0.suggestion {
             Some(suggestion) => format!(", did you mean `{suggestion}`"),
             None => "".to_string(),
@@ -236,7 +242,7 @@ pub enum TypeErrorKind {
     UnsafeAttributeAccess(UnsafeAttributeAccess),
     /// The typechecker could not conclude that an access to an optional
     /// attribute was safe.
-    #[error("Unable to guarantee safety of access to optional attribute: {}", .0.optional)]
+    #[error("unable to guarantee safety of access to optional attribute {}", .0.attribute_access)]
     UnsafeOptionalAttributeAccess(UnsafeOptionalAttributeAccess),
     /// The typechecker found that a policy condition will always evaluate to false.
     #[error(
@@ -288,7 +294,7 @@ pub struct TypesMustMatch {
 /// Structure containing details about a missing attribute error.
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct UnsafeAttributeAccess {
-    attribute: String,
+    attribute_access: AttributeAccess,
     suggestion: Option<String>,
     /// When this is true, the attribute might still exist, but the validator
     /// cannot guarantee that it will.
@@ -298,7 +304,7 @@ pub struct UnsafeAttributeAccess {
 /// Structure containing details about an unsafe optional attribute error.
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct UnsafeOptionalAttributeAccess {
-    optional: String,
+    attribute_access: AttributeAccess,
 }
 
 /// Structure containing details about an undefined function error.
@@ -331,4 +337,73 @@ pub struct WrongCallStyle {
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct FunctionArgumentValidationError {
     msg: String,
+}
+
+/// Contains more detailed information about an attribute access when it occurs
+/// on an entity type expression or on the `context` variable. Track a `Vec` of
+/// attributes rather than a single attribute so that on `principal.foo.bar` can
+/// report that the record attribute `foo` of an entity type (e.g., `User`)
+/// needs attributes `bar` instead of giving up when the immediate target of the
+/// attribute access is not a entity.
+#[derive(Debug, Hash, Eq, PartialEq)]
+pub(crate) enum AttributeAccess {
+    /// The attribute access is some sequence of attributes accesses eventually
+    /// targeting an EntityLUB.
+    EntityLUB(EntityLUB, Vec<SmolStr>),
+    /// The attribute access is some sequence of attributes accesses eventually
+    /// targeting the context variable. The context being accessed is identified
+    /// by the `EntityUID` for the associated action.
+    Context(EntityUID, Vec<SmolStr>),
+    /// Other cases where we do not attempt to give more information about the
+    /// access. This includes any access on the `AnyEntity` type and on record
+    /// types other than the `context` variable.
+    Other(Vec<SmolStr>),
+}
+
+impl AttributeAccess {
+    pub(crate) fn from_expr(
+        req_env: &RequestEnv,
+        mut expr: &Expr<Option<Type>>,
+    ) -> AttributeAccess {
+        let mut attrs: Vec<SmolStr> = Vec::new();
+        loop {
+            if let Some(Type::EntityOrRecord(EntityRecordKind::Entity(lub))) = expr.data() {
+                return AttributeAccess::EntityLUB(lub.clone(), attrs);
+            } else if let ExprKind::Var(Var::Context) = expr.expr_kind() {
+                return AttributeAccess::Context(req_env.action.clone(), attrs);
+            } else if let ExprKind::GetAttr {
+                expr: sub_expr,
+                attr,
+            } = expr.expr_kind()
+            {
+                expr = sub_expr;
+                attrs.push(attr.clone());
+            } else {
+                return AttributeAccess::Other(attrs);
+            }
+        }
+    }
+}
+
+impl Display for AttributeAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AttributeAccess::EntityLUB(lub, attrs) => write!(
+                f,
+                "`{}` for entity type{}",
+                attrs.iter().rev().join("."),
+                match lub.get_single_entity() {
+                    Some(single) => format!(" {}", single),
+                    _ => format!("s {}", lub.iter().join(", ")),
+                },
+            ),
+            AttributeAccess::Context(action, attrs) => write!(
+                f,
+                "`{}` in context for {}",
+                attrs.iter().rev().join("."),
+                action
+            ),
+            AttributeAccess::Other(attrs) => write!(f, "`{}`", attrs.iter().rev().join(".")),
+        }
+    }
 }

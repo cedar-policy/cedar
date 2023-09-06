@@ -83,6 +83,8 @@ validator will return an error for a policy that can never fire.
 - Renamed variants in `cedar_policy::SchemaError`
 - The `Diagnostics::errors()` function now returns an iterator over `AuthorizationError`s.
 - The `Response::new()` constructor now expects a `Vec<AuthorizationError>` as its third argument.
+- Improved validation error messages for access to undeclared attributes and
+  unsafe access to optional attributes to report the target of the access (fix #175).
 
 ## 2.3.3
 
