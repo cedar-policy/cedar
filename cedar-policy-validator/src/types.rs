@@ -695,7 +695,7 @@ pub struct EntityLUB {
 impl EntityLUB {
     /// Create a least upper bound of a single entity type. This is the same as
     /// just that entity type.
-    fn single_entity(entity_type_name: Name) -> Self {
+    pub(crate) fn single_entity(entity_type_name: Name) -> Self {
         Self {
             lub_elements: [entity_type_name].into_iter().collect(),
         }
@@ -766,7 +766,7 @@ impl EntityLUB {
     /// Generate the least upper bound of this EntityLUB and another. This
     /// returns an EntityLUB for the union of the entity types in both argument
     /// LUBs. The attributes of the LUB are not computed.
-    fn least_upper_bound(&self, other: &EntityLUB) -> EntityLUB {
+    pub(crate) fn least_upper_bound(&self, other: &EntityLUB) -> EntityLUB {
         EntityLUB {
             lub_elements: self
                 .lub_elements

@@ -23,8 +23,12 @@ use cedar_policy_core::{
     ast::{BinaryOp, EntityUID, Expr, StaticPolicy, Var},
     parser::parse_policy,
 };
+use smol_str::SmolStr;
 
-use crate::{type_error::TypeError, NamespaceDefinition, NamespaceDefinitionWithActionAttributes};
+use crate::{
+    type_error::TypeError, types::EntityLUB, AttributeAccess, NamespaceDefinition,
+    NamespaceDefinitionWithActionAttributes,
+};
 
 use super::test_utils::{assert_policy_typecheck_fails, assert_policy_typechecks};
 
@@ -309,12 +313,15 @@ fn guarded_has_true_short_circuits() {
 }
 
 fn assert_name_access_fails(policy: StaticPolicy) {
-    let optional_attr = "name".to_string();
+    let optional_attr: SmolStr = "name".into();
     assert_policy_typecheck_fails_optional_schema(
         policy,
         vec![TypeError::unsafe_optional_attribute_access(
-            Expr::get_attr(Expr::var(Var::Principal), optional_attr.clone().into()),
-            optional_attr,
+            Expr::get_attr(Expr::var(Var::Principal), optional_attr.clone()),
+            AttributeAccess::EntityLUB(
+                EntityLUB::single_entity("User".parse().unwrap()),
+                vec![optional_attr],
+            ),
         )],
     );
 }
@@ -579,7 +586,10 @@ fn record_optional_attrs() {
                 Expr::get_attr(Expr::var(Var::Principal), "record".into()),
                 "name".into(),
             ),
-            "name".to_string(),
+            AttributeAccess::EntityLUB(
+                EntityLUB::single_entity("User".parse().unwrap()),
+                vec!["name".into(), "record".into()],
+            ),
         )],
     );
 
@@ -593,7 +603,10 @@ fn record_optional_attrs() {
         failing_policy2,
         vec![TypeError::unsafe_optional_attribute_access(
             Expr::get_attr(Expr::var(Var::Principal), "name".into()),
-            "name".to_string(),
+            AttributeAccess::EntityLUB(
+                EntityLUB::single_entity("User".parse().unwrap()),
+                vec!["name".into()],
+            ),
         )],
     );
 }
@@ -753,7 +766,7 @@ fn action_attrs_failing() {
         failing_policy,
         vec![TypeError::unsafe_attribute_access(
             Expr::get_attr(Expr::var(Var::Action), "canUndo".into()),
-            "canUndo".to_string(),
+            AttributeAccess::Other(vec!["canUndo".into()]),
             Some("isReadOnly".to_string()),
             false,
         )],
