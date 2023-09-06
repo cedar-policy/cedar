@@ -49,7 +49,13 @@ use super::NamespaceDefinition;
 /// types. All action entities are required to use a single `Action` entity
 /// type. However, the action entity type may be namespaced, so an action entity
 /// may have a fully qualified entity type `My::Namespace::Action`.
+/// This string must be parsable by as an entity type name.
 pub(crate) static ACTION_ENTITY_TYPE: &str = "Action";
+
+#[test]
+fn action_entity_type_parses() {
+    Id::from_normalized_str(ACTION_ENTITY_TYPE).unwrap();
+}
 
 /// Return true when an entity type is an action entity type. This compares the
 /// base name for the type, so this will return true for any entity type named
@@ -401,6 +407,8 @@ impl ValidatorNamespaceDef {
             // handling an error here would mean adding a new error variant to
             // `SchemaError` in the public API, but we didn't make that enum
             // `non_exhaustive`, so any new variants are a breaking change.
+            // PANIC SAFETY: see above
+            #[allow(clippy::expect_used)]
             let e = v.into_expr().expect("`Self::jsonval_to_type_helper` will always return `Err` for a `JSONValue` that might make `into_expr` return `Err`");
             attr_values.insert(k.clone(), e);
         }
@@ -630,6 +638,8 @@ impl ValidatorNamespaceDef {
             Self::parse_possibly_qualified_name_with_default_namespace(action_ty, namespace)
                 .map_err(SchemaError::EntityTypeParseError)?
         } else {
+            // PANIC SAFETY: The constant ACTION_ENTITY_TYPE is valid entity type.
+            #[allow(clippy::expect_used)]
             let id = Id::from_normalized_str(ACTION_ENTITY_TYPE).expect(
                 "Expected that the constant ACTION_ENTITY_TYPE would be a valid entity type.",
             );
@@ -1179,13 +1189,19 @@ impl ValidatorSchema {
         action: &EntityUID,
     ) -> Option<impl cedar_policy_core::entities::ContextSchema> {
         self.get_action_id(action).map(|action_id| {
-            crate::types::Type::record_with_attributes(
+            // The invariant on `ContextSchema` requires that the inner type is
+            // representable as a schema type. Here we build a closed record
+            // type, which are representable as long as their values are
+            // representable. The values are representable because they are
+            // taken from the context of a `ValidatorActionId` which was
+            // constructed directly from a schema.
+            ContextSchema(crate::types::Type::record_with_attributes(
                 action_id
                     .context
                     .iter()
                     .map(|(k, v)| (k.clone(), v.clone())),
                 OpenTag::ClosedAttributes,
-            )
+            ))
         })
     }
 
@@ -1321,6 +1337,11 @@ impl cedar_policy_core::entities::EntityTypeDescription for EntityTypeDescriptio
 
     fn attr_type(&self, attr: &str) -> Option<cedar_policy_core::entities::SchemaType> {
         let attr_type: &crate::types::Type = &self.validator_type.attr(attr)?.attr_type;
+        // This converts a type from a schema into the representation of schema
+        // types used by core. `attr_type` is taken from a `ValidatorEntityType`
+        // which was constructed from a schema.
+        // PANIC SAFETY: see above
+        #[allow(clippy::expect_used)]
         let core_schema_type: cedar_policy_core::entities::SchemaType = attr_type
             .clone()
             .try_into()
@@ -1344,10 +1365,18 @@ impl cedar_policy_core::entities::EntityTypeDescription for EntityTypeDescriptio
     }
 }
 
+/// Struct which carries enough information that it can impl Core's
+/// `ContextSchema` INVARIANT: The `Type` stored in this struct must be
+/// representable as a `SchemaType` to avoid panicking in `context_type`.
+struct ContextSchema(crate::types::Type);
+
 /// A `Type` contains all the information we need for a Core `ContextSchema`.
-impl cedar_policy_core::entities::ContextSchema for crate::types::Type {
+impl cedar_policy_core::entities::ContextSchema for ContextSchema {
     fn context_type(&self) -> cedar_policy_core::entities::SchemaType {
-        self.clone()
+        // PANIC SAFETY: By `ContextSchema` invariant, `self.0` is representable as a schema type.
+        #[allow(clippy::expect_used)]
+        self.0
+            .clone()
             .try_into()
             .expect("failed to convert validator type into Core SchemaType")
     }

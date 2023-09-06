@@ -174,7 +174,7 @@ impl Entities {
         self.0.iter().map(Entity::ref_cast)
     }
 
-    /// Create an `Entities` object with the given entities
+    /// Create an `Entities` object with the given entities.
     /// It will error if the entities cannot be read or if the entities hierarchy is cyclic
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
@@ -429,7 +429,7 @@ pub struct Response {
     diagnostics: Diagnostics,
 }
 
-/// Authorization response returned from `is_authorized_partial`
+/// Authorization response returned from `is_authorized_partial`.
 /// It can either be a full concrete response, or a residual response.
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, PartialEq, Clone)]
@@ -1229,18 +1229,22 @@ impl FromStr for PolicySet {
 
     /// Create a policy set from multiple statements.
     ///
-    /// Policy ids will default to "policy*" with numbers from 0
+    /// Policy ids will default to "policy*" with numbers from 0.
     /// If you load more policies, do not use the default id, or there will be conflicts.
     ///
     /// See [`Policy`] for more.
     fn from_str(policies: &str) -> Result<Self, Self::Err> {
         let (texts, pset) = parser::parse_policyset_and_also_return_policy_text(policies)?;
+        // PANIC SAFETY: By the invariant on `parse_policyset_and_also_return_policy_text(policies)`, every `PolicyId` in `pset.policies()` occurs as a key in `text`.
+        #[allow(clippy::expect_used)]
         let policies = pset.policies().map(|p|
             (
                 PolicyId(p.id().clone()),
                 Policy { lossless: LosslessPolicy::policy_or_template_text(*texts.get(p.id()).expect("internal invariant violation: policy id exists in asts but not texts")), ast: p.clone() }
             )
         ).collect();
+        // PANIC SAFETY: By the same invariant, every `PolicyId` in `pset.templates()` also occurs as a key in `text`.
+        #[allow(clippy::expect_used)]
         let templates = pset.templates().map(|t|
             (
                 PolicyId(t.id().clone()),
@@ -1361,17 +1365,16 @@ impl PolicySet {
             .into_iter()
             .map(|(key, value)| (key.into(), value.0))
             .collect();
-        self.ast
+        let linked_ast = self
+            .ast
             .link(
                 template_id.0.clone(),
                 new_id.0.clone(),
                 unwrapped_vals.clone(),
             )
             .map_err(PolicySetError::LinkingError)?;
-        let linked_ast = self
-            .ast
-            .get(&new_id.0)
-            .expect("ast.link() didn't fail above, so this shouldn't fail");
+        // PANIC SAFETY: `lossless.link()` will not fail after `ast.link()` succeeds
+        #[allow(clippy::expect_used)]
         let linked_lossless = self
             .templates
             .get(&template_id)
@@ -1626,7 +1629,7 @@ pub enum TemplatePrincipalConstraint {
     /// Must be In the given EntityUid.
     /// If [`None`], then it is a template slot.
     In(Option<EntityUid>),
-    /// Must be equal to the given EntityUid
+    /// Must be equal to the given EntityUid.
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
 }
@@ -1671,7 +1674,7 @@ pub enum TemplateResourceConstraint {
     /// Must be In the given EntityUid.
     /// If [`None`], then it is a template slot.
     In(Option<EntityUid>),
-    /// Must be equal to the given EntityUid
+    /// Must be equal to the given EntityUid.
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
 }
@@ -1822,6 +1825,12 @@ impl Policy {
         }
     }
 
+    /// To avoid panicking, this function may only be called when `slot` is the
+    /// SlotId corresponding to the scope constraint from which the entity
+    /// reference `r` was extracted. I.e., If `r` is taken from the principal
+    /// scope constraint, `slot` must be `?principal`. This ensures that the
+    /// SlotId exists in the policy (and therefore the slot environment map)
+    /// whenever the EntityReference `r` is the Slot variant.
     fn convert_entity_reference<'a>(
         &'a self,
         r: &'a ast::EntityReference,
@@ -1829,7 +1838,8 @@ impl Policy {
     ) -> &'a EntityUid {
         match r {
             ast::EntityReference::EUID(euid) => EntityUid::ref_cast(euid),
-            // This `unwrap` here is safe due the invariant (values total map) on policies.
+            // PANIC SAFETY: This `unwrap` here is safe due the invariant (values total map) on policies.
+            #[allow(clippy::unwrap_used)]
             ast::EntityReference::Slot => EntityUid::ref_cast(self.ast.env().get(&slot).unwrap()),
         }
     }
@@ -2546,7 +2556,7 @@ impl std::fmt::Display for EvalResult {
     }
 }
 
-/// Evaluate
+/// Evaluates an expression.
 /// If evaluation results in an error (e.g., attempting to access a non-existent Entity or Record,
 /// passing the wrong number of arguments to a function etc.), that error is returned as a String
 pub fn eval_expression(
