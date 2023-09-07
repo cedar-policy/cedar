@@ -26,8 +26,8 @@ use serde_json::json;
 use smol_str::SmolStr;
 
 use crate::{
-    type_error::TypeError, types::Type, AttributesOrContext, EntityType, NamespaceDefinition,
-    ValidationMode,
+    type_error::TypeError, types::Type, AttributeAccess, AttributesOrContext, EntityType,
+    NamespaceDefinition, ValidationMode,
 };
 
 use super::test_utils::{
@@ -619,7 +619,7 @@ fn record_get_attr_incompatible() {
         None,
         vec![TypeError::unsafe_attribute_access(
             Expr::get_attr(if_expr, attr.clone()),
-            attr.to_string(),
+            AttributeAccess::Other(vec![attr]),
             None,
             true,
         )],
@@ -669,7 +669,7 @@ fn record_get_attr_does_not_exist() {
         Expr::get_attr(Expr::record([]), attr.clone()),
         vec![TypeError::unsafe_attribute_access(
             Expr::get_attr(Expr::record([]), attr.clone()),
-            attr.to_string(),
+            AttributeAccess::Other(vec![attr]),
             None,
             false,
         )],
@@ -688,7 +688,7 @@ fn record_get_attr_lub_does_not_exist() {
         Expr::get_attr(if_expr.clone(), attr.clone()),
         vec![TypeError::unsafe_attribute_access(
             Expr::get_attr(if_expr, attr.clone()),
-            attr.to_string(),
+            AttributeAccess::Other(vec![attr]),
             None,
             false,
         )],

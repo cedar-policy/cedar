@@ -42,7 +42,7 @@ use crate::{
         is_action_entity_type, ActionHeadVar, HeadVar, PrincipalOrResourceHeadVar, ValidatorSchema,
     },
     types::{AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, RequestEnv, Type},
-    ValidationMode,
+    AttributeAccess, ValidationMode,
 };
 
 use super::type_error::TypeError;
@@ -394,7 +394,7 @@ impl<'a> Typechecker<'a> {
         env_checks
     }
 
-    fn unlinked_request_envs<'b>(&'b self) -> impl Iterator<Item = RequestEnv> + 'b {
+    fn unlinked_request_envs(&self) -> impl Iterator<Item = RequestEnv> + '_ {
         // Gather all of the actions declared in the schema.
         let all_actions = self
             .schema
@@ -580,13 +580,13 @@ impl<'a> Typechecker<'a> {
                     request_env
                         .principal_slot
                         .clone()
-                        .map(|ety| Type::possibly_unspecified_entity_reference(ety))
+                        .map(Type::possibly_unspecified_entity_reference)
                         .unwrap_or(Type::any_entity_reference())
                 } else if slotid.is_resource() {
                     request_env
                         .resource_slot
                         .clone()
-                        .map(|ety| Type::possibly_unspecified_entity_reference(ety))
+                        .map(Type::possibly_unspecified_entity_reference)
                         .unwrap_or(Type::any_entity_reference())
                 } else {
                     Type::any_entity_reference()
@@ -963,7 +963,7 @@ impl<'a> Typechecker<'a> {
                                 } else {
                                     type_errors.push(TypeError::unsafe_optional_attribute_access(
                                         e.clone(),
-                                        attr.to_string(),
+                                        AttributeAccess::from_expr(request_env, &annot_expr),
                                     ));
                                     TypecheckAnswer::fail(annot_expr)
                                 }
@@ -974,7 +974,7 @@ impl<'a> Typechecker<'a> {
                                 let suggestion = fuzzy_search(attr, &borrowed);
                                 type_errors.push(TypeError::unsafe_attribute_access(
                                     e.clone(),
-                                    attr.to_string(),
+                                    AttributeAccess::from_expr(request_env, &annot_expr),
                                     suggestion,
                                     Type::may_have_attr(self.schema, typ_actual, attr),
                                 ));
@@ -1887,7 +1887,7 @@ impl<'a> Typechecker<'a> {
         K: Clone + PartialEq,
     {
         if let Some(lhs_entity) = self.schema.get_entity_eq(var, lhs) {
-            let rhs_descendants = self.schema.get_entities_in_set(var, rhs.into_iter());
+            let rhs_descendants = self.schema.get_entities_in_set(var, rhs);
             Typechecker::entity_in_descendants(
                 &lhs_entity,
                 rhs_descendants,

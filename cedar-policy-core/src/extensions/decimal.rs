@@ -102,7 +102,7 @@ impl Decimal {
         // check that the string matches the regex
         // PANIC SAFETY: This regex does parse
         #[allow(clippy::unwrap_used)]
-        let re = Regex::new(r#"^(-?\d+)\.(\d+)$"#).unwrap();
+        let re = Regex::new(r"^(-?\d+)\.(\d+)$").unwrap();
         if !re.is_match(str.as_ref()) {
             return Err(Error::FailedParse(str.as_ref().to_owned()));
         }

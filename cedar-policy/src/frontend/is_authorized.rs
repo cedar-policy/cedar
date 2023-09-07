@@ -297,7 +297,7 @@ impl RecvdSlice {
                 Err(parse_errors) => Err(std::iter::once(
                     "couldn't parse concatenated policies string".to_string(),
                 )
-                .chain(parse_errors.errors_as_strings().into_iter())
+                .chain(parse_errors.errors_as_strings())
                 .collect()),
             },
             PolicySpecification::Map(policies) => {

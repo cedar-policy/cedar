@@ -258,6 +258,13 @@ impl Entity {
         self.ancestors.iter()
     }
 
+    /// Iterate over this entity's attributes
+    pub fn attrs(&self) -> impl Iterator<Item = (&str, BorrowedRestrictedExpr<'_>)> {
+        self.attrs
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_borrowed()))
+    }
+
     /// Create an `Entity` with the given UID, no attributes, and no parents.
     pub fn with_uid(uid: EntityUID) -> Self {
         Self {
@@ -269,7 +276,7 @@ impl Entity {
 
     /// Read-only access the internal `attrs` map of String to RestrictedExpr.
     /// This function is available only inside Core.
-    pub(crate) fn attrs(&self) -> &HashMap<SmolStr, RestrictedExpr> {
+    pub(crate) fn attrs_map(&self) -> &HashMap<SmolStr, RestrictedExpr> {
         &self.attrs
     }
 
