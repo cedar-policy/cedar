@@ -352,14 +352,11 @@ impl<'a> Typechecker<'a> {
         result_checks
     }
 
-    /// Additional entry point for strict typechecking requests. This method takes a slice
+    /// Additional entry point for typechecking requests. This method takes a slice
     /// over policies and typechecks each under every schema-defined request environment.
     ///
     /// The result contains these environments in no particular order, but each list of
     /// policy checks will always match the original order.
-    ///
-    /// This function is currently only used in policy analysis where only the
-    /// strict variant is needed.
     pub fn multi_typecheck_by_request_env(
         &self,
         policy_templates: &[&Template],
@@ -2011,10 +2008,11 @@ impl<'a> Typechecker<'a> {
                     // This check uses `ValidationMode::Permissive` even in
                     // strict typechecking because we use this function and
                     // `expect_type` to require that an operand is a record type
-                    // or an entity type by expecting `AnyEntity` to `{}`. In
-                    // either case, we need to make the check using width
-                    // subtyping to avoid reporting an error every time we see a
-                    // `GetAttr` on a non-empty record.
+                    // or an entity type by calling this function with
+                    // `AnyEntity` or `{}` as the expected type. In either case,
+                    // we need to make the check using width subtyping to avoid
+                    // reporting an error every time we see a `GetAttr` on a
+                    // non-empty record.
                     Type::is_subtype(
                         self.schema,
                         actual_ty,

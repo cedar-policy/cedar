@@ -771,11 +771,11 @@ impl EntityLUB {
             // Use the permissive version of least upper bound here for two
             // reasons. First, when in permissive mode, the attributes least
             // upper bound can never fail. We could call the main lub function
-            // with an unwrap, but this avoid a chance at a panic. Second, when
+            // with an unwrap, but this avoids a chance at a panic. Second, when
             // in strict mode, an entity LUB will only ever have a single
             // element, so that LUB can never fail, and the strict
             // attributes lub is the same as permissive if there is only one
-            // attributes.
+            // attribute.
             Attributes::permissive_least_upper_bound(
                 schema,
                 &acc,
@@ -1172,10 +1172,10 @@ impl EntityRecordKind {
                     // means that the LUB does not exist if either record has as
                     // an attribute that does not exist in the other, so we know
                     // that list of attributes is complete, as is assumed by
-                    // `may_have_attr`. As long as actions have empty attribute
-                    // records, this LUB no-ops, allowing for LUBs between
-                    // actions with the same action entity type even in strict
-                    // validation mode.
+                    // `may_have_attr`. As long as actions have empty an
+                    // attribute records, the LUB no-ops, allowing for LUBs
+                    // between actions with the same action entity type even in
+                    // strict validation mode.
                     Attributes::least_upper_bound(schema, attrs1, attrs2, ValidationMode::Strict)
                         .map(|attrs| ActionEntity {
                             name: action_type1.clone(),
@@ -1255,7 +1255,9 @@ impl EntityRecordKind {
                 // there may be attributes in `rk0` that are not listed in
                 // `rk1`.  When `rk1` is closed, a subtype of `rk1` may not have
                 // any attributes that are not listed in `rk1`, so we apply
-                // depth subtyping only.
+                // depth subtyping only. We apply this same restriction in
+                // strict mode, i.e., strict mode applies depth subtyping but
+                // not width subtyping.
                     && ((open1.is_open() && !mode.is_strict() && attrs0.is_subtype(schema, attrs1, mode))
                         || attrs0.is_subtype_depth_only(schema, attrs1, mode))
             }
