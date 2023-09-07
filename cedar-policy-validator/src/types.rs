@@ -1153,7 +1153,9 @@ impl EntityRecordKind {
                     open_attributes,
                 })
             }
-            //We cannot take upper bounds of action entities because may_have_attr assumes the list of attrs it complete
+            //We cannot, in general, have precise upper bounds between action
+            //entities because `may_have_attr` assumes the list of attrs is
+            //complete.
             (
                 ActionEntity {
                     name: action_type1,
@@ -1165,11 +1167,15 @@ impl EntityRecordKind {
                 },
             ) => {
                 if action_type1 == action_type2 {
-                    // Same record type. Ensure that they have the same
-                    // attributes.  Computing the LUB under strict mode ensures
-                    // the attributes are the same. This will no-op as along as
-                    // attributes don't have any attributes, letting us define
-                    // the lub of two actions with the same type.
+                    // Same action type. Ensure that the actions have the same
+                    // attributes. Computing the LUB under strict mode disables
+                    // means that the LUB does not exist if either record has as
+                    // an attribute that does not exist in the other, so we know
+                    // that list of attributes is complete, as is assumed by
+                    // `may_have_attr`. As long as actions have empty attribute
+                    // records, this LUB no-ops, allowing for LUBs between
+                    // actions with the same action entity type even in strict
+                    // validation mode.
                     Attributes::least_upper_bound(schema, attrs1, attrs2, ValidationMode::Strict)
                         .map(|attrs| ActionEntity {
                             name: action_type1.clone(),
