@@ -4938,6 +4938,5 @@ pub mod test {
             .expect("Failed to parse");
         let r = eval.partial_evaluate(&static_policy.into())
             .expect("Failed to evaluate");
-        println!("{:?}", r);
     }
 }
