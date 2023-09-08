@@ -619,13 +619,13 @@ impl<'q, 'e> Evaluator<'e> {
                     self.partial_interpret(alternative, slots)
                 }
             }
-            PartialValue::Residual(_) => {
+            PartialValue::Residual(guard) => {
                 let (consequent, consequent_errored) = self.run_to_error(consequent, slots);
                 let (alternative, alternative_errored) = self.run_to_error(alternative, slots);
                 // If both branches errored, the expression will always error
                 match (consequent_errored, alternative_errored) {
                     (Some(e), Some(_)) => Err(e),
-                    _ => Ok(Expr::ite(guard.clone(), consequent.into(), alternative.into()).into()),
+                    _ => Ok(Expr::ite(guard, consequent.into(), alternative.into()).into()),
                 }
             }
         }
@@ -4075,6 +4075,48 @@ pub mod test {
                 Expr::val(true)
             ))
         )
+    }
+
+    #[test]
+    fn if_semantics_residual_reduce() {
+        let a = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::get_attr(Expr::var(Var::Context), "condition".into()),
+            Expr::val("value"),
+        );
+        let b = Expr::val("true branch");
+        let c = Expr::val("false branch");
+
+        let e = Expr::ite(a, b.clone(), c.clone());
+
+        let es = Entities::new();
+
+        let exts = Extensions::none();
+        let q = Request::new(
+            EntityUID::with_eid("p"),
+            EntityUID::with_eid("a"),
+            EntityUID::with_eid("r"),
+            Context::from_expr(RestrictedExpr::new_unchecked(Expr::record([(
+                "condition".into(),
+                Expr::unknown("unknown_condition"),
+            )]))),
+        );
+        let eval = Evaluator::new(&q, &es, &exts).unwrap();
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        assert_eq!(
+            r,
+            PartialValue::Residual(Expr::ite(
+                Expr::binary_app(
+                    BinaryOp::Eq,
+                    Expr::unknown("unknown_condition".to_string()),
+                    Expr::val("value"),
+                ),
+                b,
+                c
+            ))
+        );
     }
 
     #[test]
