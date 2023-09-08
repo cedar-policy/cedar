@@ -265,7 +265,7 @@ impl<'a> From<BorrowedRestrictedExpr<'a>> for &'a Expr {
 }
 
 impl<'a> AsRef<Expr> for BorrowedRestrictedExpr<'a> {
-    fn as_ref(&self) -> &Expr {
+    fn as_ref(&self) -> &'a Expr {
         self.0
     }
 }
@@ -279,8 +279,8 @@ impl RestrictedExpr {
 
 impl<'a> Deref for BorrowedRestrictedExpr<'a> {
     type Target = Expr;
-    fn deref(&self) -> &Expr {
-        self.as_ref()
+    fn deref(&self) -> &'a Expr {
+        self.0
     }
 }
 
