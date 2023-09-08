@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [Experimental] Fixes a bug around partially-evaluating conditionals.
+
 ### Added
 
 - Added an option to eagerly evaluate entity attributes and re-use across calls to `is_authorized`
