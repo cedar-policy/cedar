@@ -19,7 +19,7 @@
 use std::{collections::BTreeSet, fmt::Display};
 
 use cedar_policy_core::{
-    ast::{CallStyle, EntityUID, Expr, ExprKind, Var},
+    ast::{CallStyle, EntityUID, Expr, ExprKind, Name, Var},
     parser::SourceInfo,
 };
 
@@ -91,19 +91,6 @@ impl TypeError {
             on_expr: Some(on_expr),
             source_location: None,
             kind: TypeErrorKind::IncompatibleTypes(IncompatibleTypes {
-                types: types.into_iter().collect::<BTreeSet<_>>(),
-            }),
-        }
-    }
-
-    pub(crate) fn types_must_match<T>(
-        on_expr: Expr<T>,
-        types: impl IntoIterator<Item = Type>,
-    ) -> Self {
-        Self {
-            on_expr: None,
-            source_location: on_expr.into_source_info(),
-            kind: TypeErrorKind::TypesMustMatch(TypesMustMatch {
                 types: types.into_iter().collect::<BTreeSet<_>>(),
             }),
         }
@@ -196,6 +183,18 @@ impl TypeError {
             kind: TypeErrorKind::NonLitExtConstructor,
         }
     }
+
+    pub(crate) fn hierarchy_not_respected<T>(
+        on_expr: Expr<T>,
+        in_lhs: Option<Name>,
+        in_rhs: Option<Name>,
+    ) -> Self {
+        Self {
+            on_expr: None,
+            source_location: on_expr.into_source_info(),
+            kind: TypeErrorKind::HierarchyNotRespected(HierarchyNotRespected { in_lhs, in_rhs }),
+        }
+    }
 }
 
 impl Display for TypeError {
@@ -264,12 +263,19 @@ pub enum TypeErrorKind {
     /// Error returned by custom extension function argument validation
     #[error("Error during extension function argument validation: {}", .0.msg)]
     FunctionArgumentValidationError(FunctionArgumentValidationError),
-    #[error("Types of operands in this expression are not equal: [{}]", .0.types.iter().join(","))]
-    TypesMustMatch(TypesMustMatch),
     #[error("empty set literals are forbidden in policies")]
     EmptySetForbidden,
     #[error("extension constructors may not be called with non-literal expressions")]
     NonLitExtConstructor,
+    /// To pass strict validation a policy cannot contain an `in` expression
+    /// where the entity type on the left might not be able to be a member of
+    /// the entity type on the right.
+    #[error("operands to `in` do not respect the entity hierarchy{}",
+        match (&.0.in_lhs, &.0.in_rhs) {
+            (Some(in_lhs), Some(in_rhs)) => format!(". `{}` is not a descendant of `{}`", in_lhs, in_rhs),
+            _ => "".to_string(),
+        })]
+    HierarchyNotRespected(HierarchyNotRespected),
 }
 
 /// Structure containing details about an unexpected type error.
@@ -282,12 +288,6 @@ pub struct UnexpectedType {
 /// Structure containing details about an incompatible type error.
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct IncompatibleTypes {
-    types: BTreeSet<Type>,
-}
-
-/// Structure containing details about types must match error.
-#[derive(Debug, Hash, Eq, PartialEq)]
-pub struct TypesMustMatch {
     pub(crate) types: BTreeSet<Type>,
 }
 
@@ -337,6 +337,13 @@ pub struct WrongCallStyle {
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct FunctionArgumentValidationError {
     msg: String,
+}
+
+/// Structure containing details about a hierarchy not respected error
+#[derive(Debug, Hash, Eq, PartialEq)]
+pub struct HierarchyNotRespected {
+    in_lhs: Option<Name>,
+    in_rhs: Option<Name>,
 }
 
 /// Contains more detailed information about an attribute access when it occurs

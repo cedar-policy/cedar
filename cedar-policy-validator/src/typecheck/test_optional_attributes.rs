@@ -640,7 +640,8 @@ fn action_attrs_passing() {
                         "resourceTypes": ["User"]
                     },
                     "attributes": {
-                        "isReadOnly": true
+                        "isReadOnly": true,
+                        "canUndo": false
                     }
                 },
                 "edit": {

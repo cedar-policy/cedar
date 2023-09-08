@@ -41,9 +41,7 @@ use crate::{
     schema::{
         is_action_entity_type, ActionHeadVar, HeadVar, PrincipalOrResourceHeadVar, ValidatorSchema,
     },
-    types::{
-        AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, Primitive, RequestEnv, Type,
-    },
+    types::{AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, RequestEnv, Type},
     AttributeAccess, ValidationMode,
 };
 
@@ -116,14 +114,6 @@ impl<'a> TypecheckAnswer<'a> {
         }
         .and_then(|e| e.data().as_ref())
             == Some(ty)
-    }
-
-    pub fn typed_expr(&self) -> Option<&Expr<Option<Type>>> {
-        match self {
-            TypecheckAnswer::TypecheckSuccess { expr_type, .. } => Some(expr_type),
-            TypecheckAnswer::TypecheckFail { expr_recovery_type } => Some(expr_recovery_type),
-            TypecheckAnswer::RecursionLimit => None,
-        }
     }
 
     pub fn into_typed_expr(self) -> Option<Expr<Option<Type>>> {
@@ -277,11 +267,7 @@ impl<'a> Typechecker<'a> {
     /// added to the output list. Otherwise, the function returns false and the
     /// output list is populated with any errors encountered while typechecking.
     pub fn typecheck_policy(&self, t: &Template, type_errors: &mut HashSet<TypeError>) -> bool {
-        let typecheck_answers = if self.mode.is_strict() {
-            self.typecheck_by_request_env_strict(t)
-        } else {
-            self.typecheck_by_request_env(t)
-        };
+        let typecheck_answers = self.typecheck_by_request_env(t);
 
         // consolidate the results from each query environment
         let (all_false, all_succ) = typecheck_answers.into_iter().fold(
@@ -339,36 +325,6 @@ impl<'a> Typechecker<'a> {
         })
     }
 
-    /// A strict variant of `typecheck_by_request_env` which is used by cedar policy
-    /// analysis.
-    pub fn typecheck_by_request_env_strict<'b>(
-        &'b self,
-        t: &'b Template,
-    ) -> Vec<(RequestEnv, PolicyCheck)> {
-        self.apply_typecheck_fn_by_request_env(t, move |request, expr| {
-            let mut type_errors = Vec::new();
-            let ty =
-                self.typecheck_strict(request, expr, Type::primitive_boolean(), &mut type_errors);
-
-            // Strict types don't include the True and False boolean singletons,
-            // so we can't check for for type False. The strict transformation
-            // includes a rewriting from any boolean singleton type expression
-            // to the corresponding boolean literal, so we instead look for the
-            // literal `false`.
-            match ty.typed_expr() {
-                Some(typed_expr) => {
-                    let is_false = typed_expr.eq_shape(&Expr::val(false));
-                    match (is_false, ty.typechecked()) {
-                        (false, false) => PolicyCheck::Fail(type_errors),
-                        (false, true) => PolicyCheck::Success(typed_expr.clone()),
-                        (true, _) => PolicyCheck::Irrelevant(type_errors),
-                    }
-                }
-                None => PolicyCheck::Fail(type_errors),
-            }
-        })
-    }
-
     /// Utility abstracting the common logic for strict and regular typechecking
     /// by request environment.
     fn apply_typecheck_fn_by_request_env<'b, F, C>(
@@ -396,15 +352,12 @@ impl<'a> Typechecker<'a> {
         result_checks
     }
 
-    /// Additional entry point for strict typechecking requests. This method takes a slice
+    /// Additional entry point for typechecking requests. This method takes a slice
     /// over policies and typechecks each under every schema-defined request environment.
     ///
     /// The result contains these environments in no particular order, but each list of
     /// policy checks will always match the original order.
-    ///
-    /// This function is currently only used in policy analysis where only the
-    /// strict variant is needed.
-    pub fn multi_typecheck_by_request_env_strict(
+    pub fn multi_typecheck_by_request_env(
         &self,
         policy_templates: &[&Template],
     ) -> Vec<(RequestEnv, Vec<PolicyCheck>)> {
@@ -412,34 +365,24 @@ impl<'a> Typechecker<'a> {
         for request in self.unlinked_request_envs() {
             let mut policy_checks = Vec::new();
             for t in policy_templates.iter() {
+                let condition_expr = t.condition();
                 for linked_env in self.link_request_env(request.clone(), t) {
                     let mut type_errors = Vec::new();
-                    let policy_condition = &t.condition();
-                    let ty = self.typecheck_strict(
+                    let empty_prior_eff = EffectSet::new();
+                    let ty = self.expect_type(
                         &linked_env,
-                        policy_condition,
+                        &empty_prior_eff,
+                        &condition_expr,
                         Type::primitive_boolean(),
                         &mut type_errors,
                     );
 
-                    // Again, look for the literal `false` instead of the type
-                    // false.
-                    match ty.typed_expr() {
-                        Some(typed_expr) => {
-                            let is_false = typed_expr.eq_shape(&Expr::val(false));
-                            match (is_false, ty.typechecked()) {
-                                (false, false) => {
-                                    policy_checks.push(PolicyCheck::Fail(type_errors))
-                                }
-                                (false, true) => {
-                                    policy_checks.push(PolicyCheck::Success(typed_expr.clone()));
-                                }
-                                (true, _) => {
-                                    policy_checks.push(PolicyCheck::Irrelevant(type_errors))
-                                }
-                            }
-                        }
-                        None => policy_checks.push(PolicyCheck::Fail(type_errors)),
+                    let is_false = ty.contains_type(&Type::singleton_boolean(false));
+                    match (is_false, ty.typechecked(), ty.into_typed_expr()) {
+                        (false, true, None) => policy_checks.push(PolicyCheck::Fail(type_errors)),
+                        (false, true, Some(e)) => policy_checks.push(PolicyCheck::Success(e)),
+                        (false, false, _) => policy_checks.push(PolicyCheck::Fail(type_errors)),
+                        (true, _, _) => policy_checks.push(PolicyCheck::Irrelevant(type_errors)),
                     }
                 }
             }
@@ -548,557 +491,6 @@ impl<'a> Typechecker<'a> {
             // If the template does not contain this slot, then we don't need to
             // consider its instantiations..
             Box::new(std::iter::once(None))
-        }
-    }
-
-    fn typecheck_strict<'b>(
-        &self,
-        request_env: &RequestEnv,
-        e: &'b Expr,
-        expected_type: Type,
-        type_errors: &mut Vec<TypeError>,
-    ) -> TypecheckAnswer<'b> {
-        let empty_prior_eff = EffectSet::new();
-        let tc_ans = self.expect_type(request_env, &empty_prior_eff, e, expected_type, type_errors);
-
-        tc_ans.then_typecheck(|annot_expr, _| self.strict_transform(&annot_expr, type_errors))
-    }
-
-    fn check_all_types_compat_acts(elems_types: &HashSet<&Option<Type>>) -> bool {
-        let mut action_entity_namespace: Option<String> = None;
-        return elems_types.iter().all(|ot| match ot {
-            None => false,
-            Some(t) => match t {
-                Type::EntityOrRecord(EntityRecordKind::ActionEntity { .. }) => true,
-                Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => {
-                    match lub.get_single_entity() {
-                        Some(n) => {
-                            if is_action_entity_type(n) {
-                                match &action_entity_namespace {
-                                    Some(ns) => n.namespace().eq(&ns.clone()),
-                                    None => {
-                                        action_entity_namespace = Some(n.namespace());
-                                        true
-                                    }
-                                }
-                            } else {
-                                false
-                            }
-                        }
-                        None => false,
-                    }
-                }
-                _ => false,
-            },
-        });
-    }
-
-    fn strict_transform<'b>(
-        &self,
-        e: &Expr<Option<Type>>,
-        type_errors: &mut Vec<TypeError>,
-    ) -> TypecheckAnswer<'b> {
-        #[cfg(not(target_arch = "wasm32"))]
-        if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
-            return TypecheckAnswer::RecursionLimit;
-        }
-        match e.data() {
-            // If the validator could conclude that an expression is always true
-            // or always false (encoded as the singleton boolean types
-            // `Type::True` and `Type::False`), then we return a constant
-            // `true` or `false` expression. The type of the constant expression
-            // is `Boolean` in either case because strictly typed expressions
-            // may not use the singleton boolean types.
-            Some(Type::True) => TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(Type::primitive_boolean())).val(true),
-            ),
-            Some(Type::False) => TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(Type::primitive_boolean())).val(false),
-            ),
-            _ => match e.expr_kind() {
-                // These are leaves of the AST, so no further work is done.
-                ExprKind::Lit(_)
-                | ExprKind::Var(_)
-                | ExprKind::Slot(_)
-                | ExprKind::Unknown { .. } => TypecheckAnswer::success(e.clone()),
-
-                ExprKind::If {
-                    test_expr,
-                    then_expr,
-                    else_expr,
-                } => {
-                    match test_expr.data() {
-                        // When the guard of an `if` expression always evaluates to
-                        // the same constant boolean value, we can eliminate one of
-                        // the branches without applying the strict transformation
-                        // to it because it will never be evaluated. The guard is
-                        // also eliminated.
-                        Some(Type::True) => self.strict_transform(then_expr, type_errors),
-                        Some(Type::False) => self.strict_transform(else_expr, type_errors),
-
-                        // The guard is not `True` or `False`. Assuming that `e`
-                        // passed the validator, we know it's `Boolean`, so either
-                        // the `then` or `else` branches may be evaluated. Strict
-                        // validation requires that their strict types are
-                        // equivalent.
-                        _ => {
-                            let test_ans = self.strict_transform(test_expr, type_errors);
-                            let then_ans = self.strict_transform(then_expr, type_errors);
-                            let else_ans = self.strict_transform(else_expr, type_errors);
-                            then_ans.then_typecheck(|then_strict, _| {
-                                else_ans.then_typecheck(|else_strict, _| {
-                                    test_ans.then_typecheck(|test_strict, _| {
-                                        let strict_expr = ExprBuilder::with_data(e.data().clone())
-                                            .ite(
-                                                test_strict,
-                                                then_strict.clone(),
-                                                else_strict.clone(),
-                                            );
-                                        // If either branch was not assigned a type,
-                                        // we do not conclude that they have different
-                                        // types.  Note that we have already raised a
-                                        // type error whenever a type is `None`, so there
-                                        // are no soundness issues.
-                                        match (then_strict.data(), else_strict.data()) {
-                                            (Some(ty_then), Some(ty_else))
-                                                if !Self::unify_strict_types(ty_then, ty_else) =>
-                                            {
-                                                // Only generate a new type error when the
-                                                // types have a LUB. If the don't have a
-                                                // lub, the first typechecking pass already
-                                                // reported an error.
-                                                let has_lub = Type::least_upper_bound(
-                                                    self.schema,
-                                                    ty_then,
-                                                    ty_else,
-                                                )
-                                                .is_some();
-                                                if has_lub {
-                                                    type_errors.push(TypeError::types_must_match(
-                                                        e.clone(),
-                                                        [ty_then.clone(), ty_else.clone()],
-                                                    ));
-                                                }
-                                                TypecheckAnswer::fail(strict_expr)
-                                            }
-
-                                            _ => TypecheckAnswer::success(strict_expr),
-                                        }
-                                    })
-                                })
-                            })
-                        }
-                    }
-                }
-
-                ExprKind::BinaryApp { .. } => self.strict_transform_binary(e, type_errors),
-
-                // The elements of a set must share a single type. We
-                // additionally require that they cannot be empty. This is not a
-                // hard requirement for strict validation, but the current
-                // validator can't assign a type to empty set literals, which is
-                // required by the analyzer.
-                ExprKind::Set(elems) => {
-                    let elems_strict_answers = elems
-                        .iter()
-                        .map(|e| self.strict_transform(e, type_errors))
-                        .collect::<Vec<_>>();
-                    TypecheckAnswer::sequence_all_then_typecheck(
-                        elems_strict_answers,
-                        |elems_strict_unwrapped| {
-                            let elems_strict_exprs: Vec<_> =
-                                elems_strict_unwrapped.into_iter().map(|(e, _)| e).collect();
-                            let strict_expr = ExprBuilder::with_data(e.data().clone())
-                                .set(elems_strict_exprs.clone());
-
-                            let elems_types = elems_strict_exprs
-                                .iter()
-                                .map(|e| e.data())
-                                .collect::<HashSet<_>>();
-
-                            let all_contained_types_are_compatable_actions =
-                                Self::check_all_types_compat_acts(&elems_types);
-
-                            // Check that the type of all elements of the set
-                            // can unify. This ensures that the all have the
-                            // same type up to the limited subtyping allowed
-                            // between True/False/Boolean.
-                            let mut elems_types_iter = elems_types.iter();
-                            let representative_type =
-                                elems_types_iter.next().and_then(|t| t.as_ref());
-                            let types_unify = representative_type
-                                .map(|representative_type| {
-                                    elems_types_iter
-                                        .filter_map(|ty| ty.as_ref())
-                                        .all(|ty| Self::unify_strict_types(representative_type, ty))
-                                })
-                                .unwrap_or(true);
-
-                            let contains_one_type =
-                                types_unify || all_contained_types_are_compatable_actions;
-                            let is_non_empty = elems.len() != 0;
-
-                            if !contains_one_type {
-                                type_errors.push(TypeError::types_must_match(
-                                    e.clone(),
-                                    elems_types.into_iter().flatten().cloned(),
-                                ));
-                            }
-                            if !is_non_empty {
-                                type_errors.push(TypeError::empty_set_forbidden(e.clone()));
-                            }
-
-                            if contains_one_type && is_non_empty {
-                                TypecheckAnswer::success(strict_expr)
-                            } else {
-                                TypecheckAnswer::fail(strict_expr)
-                            }
-                        },
-                    )
-                }
-
-                // Extension type constructor functions requiring string
-                // parsing should only be callable with literals. The functions
-                // have a `check_arguments` function defined which is used by
-                // the standard validator to ensure that the string can be
-                // parsed.  The standard validator, however, allows calling
-                // these functions with non-literal expression that might not
-                // parse, so we have a
-                ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                    let args_strict_answers = args
-                        .iter()
-                        .map(|e| self.strict_transform(e, type_errors))
-                        .collect::<Vec<_>>();
-
-                    TypecheckAnswer::sequence_all_then_typecheck(
-                        args_strict_answers,
-                        |args_strict_unwrapped| {
-                            let strict_expr = ExprBuilder::with_data(e.data().clone())
-                                .call_extension_fn(
-                                    fn_name.clone(),
-                                    args_strict_unwrapped.into_iter().map(|a| a.0).collect(),
-                                );
-                            let fn_has_arg_check = match self.lookup_extension_function(fn_name) {
-                                Ok(f) => f.has_argument_check(),
-                                // The function is not defined or is defined
-                                // multiple times. An error was already raised by
-                                // the standard typechecker.
-                                Err(_) => false,
-                            };
-                            let args_args_lit = args
-                                .iter()
-                                .all(|e| matches!(e.expr_kind(), ExprKind::Lit(_)));
-                            if !fn_has_arg_check || args_args_lit {
-                                TypecheckAnswer::success(strict_expr)
-                            } else {
-                                type_errors.push(TypeError::non_lit_ext_constructor(e.clone()));
-                                TypecheckAnswer::fail(strict_expr)
-                            }
-                        },
-                    )
-                }
-
-                // All other expressions are also processed recursively. Any
-                // expressions that can have types `Type` and `False` are
-                // handled by the constant boolean expression rules. This
-                // applies to, for example, `And` and `Or` expressions which can
-                // short circuit to `true` or `false`.
-                ExprKind::And { left, right } => {
-                    let left_strict = self.strict_transform(left, type_errors);
-                    left_strict.then_typecheck(|left_strict, _| {
-                        let right_strict = self.strict_transform(right, type_errors);
-                        right_strict.then_typecheck(|right_strict, _| {
-                            TypecheckAnswer::success(
-                                ExprBuilder::with_data(e.data().clone())
-                                    .and(left_strict, right_strict),
-                            )
-                        })
-                    })
-                }
-                ExprKind::Or { left, right } => {
-                    let left_strict = self.strict_transform(left, type_errors);
-                    left_strict.then_typecheck(|left_strict, _| {
-                        let right_strict = self.strict_transform(right, type_errors);
-                        right_strict.then_typecheck(|right_strict, _| {
-                            TypecheckAnswer::success(
-                                ExprBuilder::with_data(e.data().clone())
-                                    .or(left_strict, right_strict),
-                            )
-                        })
-                    })
-                }
-
-                ExprKind::UnaryApp { op, arg } => self
-                    .strict_transform(arg, type_errors)
-                    .then_typecheck(|strict_arg, _| {
-                        TypecheckAnswer::success(
-                            ExprBuilder::with_data(e.data().clone()).unary_app(*op, strict_arg),
-                        )
-                    }),
-                ExprKind::MulByConst { arg, constant } => self
-                    .strict_transform(arg, type_errors)
-                    .then_typecheck(|strict_arg, _| {
-                        TypecheckAnswer::success(
-                            ExprBuilder::with_data(e.data().clone()).mul(strict_arg, *constant),
-                        )
-                    }),
-
-                ExprKind::GetAttr { expr, attr } => self
-                    .strict_transform(expr, type_errors)
-                    .then_typecheck(|strict_expr, _| {
-                        TypecheckAnswer::success(
-                            ExprBuilder::with_data(e.data().clone())
-                                .get_attr(strict_expr, attr.clone()),
-                        )
-                    }),
-                ExprKind::HasAttr { expr, attr } => self
-                    .strict_transform(expr, type_errors)
-                    .then_typecheck(|strict_expr, _| {
-                        TypecheckAnswer::success(
-                            ExprBuilder::with_data(e.data().clone())
-                                .has_attr(strict_expr, attr.clone()),
-                        )
-                    }),
-                ExprKind::Like { expr, pattern } => self
-                    .strict_transform(expr, type_errors)
-                    .then_typecheck(|strict_expr, _| {
-                        TypecheckAnswer::success(
-                            ExprBuilder::with_data(e.data().clone())
-                                .like(strict_expr, pattern.iter().cloned()),
-                        )
-                    }),
-                ExprKind::Record { pairs } => {
-                    let (attr_names, strict_attr_exprs): (Vec<_>, Vec<_>) = pairs
-                        .iter()
-                        .map(|(a, e)| (a.clone(), self.strict_transform(e, type_errors)))
-                        .unzip();
-
-                    TypecheckAnswer::sequence_all_then_typecheck(
-                        strict_attr_exprs,
-                        |strict_attr_exprs| {
-                            TypecheckAnswer::success(
-                                ExprBuilder::with_data(e.data().clone()).record(
-                                    attr_names
-                                        .into_iter()
-                                        .zip(strict_attr_exprs.into_iter().map(|(e, _)| e)),
-                                ),
-                            )
-                        },
-                    )
-                }
-            },
-        }
-    }
-
-    fn strict_transform_binary<'b>(
-        &self,
-        bin_expr: &Expr<Option<Type>>,
-        type_errors: &mut Vec<TypeError>,
-    ) -> TypecheckAnswer<'b> {
-        let ExprKind::BinaryApp { op, arg1, arg2 } = bin_expr.expr_kind() else {
-            panic!(
-                "`strict_transform_binary` called with an expression kind other than `BinaryApp`"
-            );
-        };
-
-        // Binary operators `==`, `contains`, `containsAll`, and `containsAny`
-        // are restricted to operating on operands of the same type (or sets of
-        // that type as appropriate).
-        let arg1_strict = self.strict_transform(arg1, type_errors);
-        let arg2_strict = self.strict_transform(arg2, type_errors);
-        arg1_strict.then_typecheck(|arg1_strict, _| {
-            arg2_strict.then_typecheck(|arg2_strict, _| {
-                // If either operand was not assigned a type, then we should not
-                // conclude that they have different types, as this raises
-                // spurious errors. Note that we have already raised a type
-                // error whenever a type is `None`, so there are no soundness
-                // issues.
-                match (arg1_strict.data(), arg2_strict.data()) {
-                    (None, _) | (_, None) => TypecheckAnswer::success(
-                        ExprBuilder::with_data(bin_expr.data().clone()).binary_app(
-                            *op,
-                            arg1_strict,
-                            arg2_strict,
-                        ),
-                    ),
-                    (Some(ty1), Some(ty2)) => {
-                        let operand_types_match = match (op, arg1_strict.data(), arg2_strict.data())
-                        {
-                            (BinaryOp::Eq, Some(ty1), Some(ty2)) => {
-                                Self::unify_strict_types(ty1, ty2)
-                            }
-                            // Assume that LHS is a set. This is checked by the
-                            // standard typechecker.
-                            (
-                                BinaryOp::Contains,
-                                Some(Type::Set {
-                                    // This pattern causes us to assume that the set is not the empty set.
-                                    // The empty set was already rejected by the strict validator, but it
-                                    // can still show up here because we continue typechecking after
-                                    // failure. It's fine to fall through to the catch-all case at the
-                                    // bottom where no additional error will be raised.
-                                    element_type: Some(elem_ty),
-                                }),
-                                Some(ty2),
-                            ) => Self::unify_strict_types(elem_ty.as_ref(), ty2),
-                            // Both args must be sets, but this is checked by
-                            // the typechecker. Their elements must then be the
-                            // same type, but, they're both sets, so we can just
-                            // check for equality directly.
-                            (
-                                BinaryOp::ContainsAll | BinaryOp::ContainsAny,
-                                Some(ty1),
-                                Some(ty2),
-                            ) => Self::unify_strict_types(ty1, ty2),
-                            (BinaryOp::In, Some(ty1), Some(ty2)) => {
-                                let ty2 = match ty2 {
-                                    // If `element_type` is None then the second operand to `in` was an empty
-                                    // set. An error was raised for this already, so it can fall through to
-                                    // the catch-all at the next `match`.
-                                    Type::Set { element_type } => {
-                                        element_type.as_ref().map(|t| t.as_ref())
-                                    }
-                                    _ => Some(ty2),
-                                };
-                                match (ty1, ty2) {
-                                    (
-                                        Type::EntityOrRecord(EntityRecordKind::Entity(lub1)),
-                                        Some(Type::EntityOrRecord(EntityRecordKind::Entity(lub2))),
-                                    ) => {
-                                        match (lub1.get_single_entity(), lub2.get_single_entity()) {
-                                            (Some(entity_type_name1), Some(entity_type_name2)) => {
-                                                let entity_type2 =
-                                                    self.schema.get_entity_type(entity_type_name2);
-
-                                                // Strict validation does not permit an `in` between unrelated
-                                                // entity types.
-                                                let is_same_entity_type =
-                                                    entity_type_name1 == entity_type_name2;
-                                                let is_descendant = match entity_type2 {
-                                                    Some(entity2) => entity2
-                                                        .descendants
-                                                        .contains(entity_type_name1),
-                                                    // The entity type does not exist. Even though an error
-                                                    // was raised for an unknown entity type, it still makes
-                                                    // sense to raise an error noting that strict validation
-                                                    // would fail even if the entity type was declared.
-                                                    None => false,
-                                                };
-                                                is_same_entity_type || is_descendant
-                                            }
-                                            // One of the operands has a non-singleton entity LUB type. This
-                                            // implies that it did not strictly typecheck.
-                                            _ => true,
-                                        }
-                                    }
-                                    // AnyEntity cannot appear on either side of the `in`. This would effect
-                                    // slots and unspecified entities, but an `in` with unspecified entities
-                                    // is always `False` after standard typechecking, and we explicitly permit
-                                    // slots below.
-                                    (
-                                        Type::EntityOrRecord(
-                                            EntityRecordKind::AnyEntity
-                                            | EntityRecordKind::Entity(_),
-                                        ),
-                                        Some(Type::EntityOrRecord(
-                                            EntityRecordKind::AnyEntity
-                                            | EntityRecordKind::Entity(_)
-                                            | EntityRecordKind::ActionEntity { .. },
-                                        )),
-                                    ) => false,
-                                    // `in` is applied to a type that was either not an entity/set-of-entity or
-                                    // was an empty set. The typechecker already raised an error for this, so
-                                    // it doesn't make sense to also complain that the types don't match.
-                                    _ => true,
-                                }
-                            }
-                            // No extra checking is required for the remaining binary operators.
-                            _ => true,
-                        };
-
-                        // Arg2 has type `AnyEntity` when it is a template slot.
-                        // This would normally fail the strict check, but we
-                        // want to let slots through so that templates are not
-                        // always rejected by the strict validator. For every
-                        // instantiation of the slots in a template, either that
-                        // instantiation passes strict validation or we can
-                        // conclude the instantiation evaluates to `false`.
-                        let arg2_is_slot = matches!(arg2.expr_kind(), ExprKind::Slot(_));
-
-                        if arg2_is_slot || operand_types_match {
-                            TypecheckAnswer::success(
-                                ExprBuilder::with_data(bin_expr.data().clone()).binary_app(
-                                    *op,
-                                    arg1_strict,
-                                    arg2_strict,
-                                ),
-                            )
-                        } else {
-                            type_errors.push(TypeError::types_must_match(
-                                bin_expr.clone(),
-                                [ty1.clone(), ty2.clone()],
-                            ));
-                            TypecheckAnswer::fail(
-                                ExprBuilder::with_data(bin_expr.data().clone()).binary_app(
-                                    *op,
-                                    arg1_strict,
-                                    arg2_strict,
-                                ),
-                            )
-                        }
-                    }
-                }
-            })
-        })
-    }
-
-    pub(crate) fn unify_strict_types(actual: &Type, expected: &Type) -> bool {
-        match (actual, expected) {
-            (
-                Type::True
-                | Type::False
-                | Type::Primitive {
-                    primitive_type: Primitive::Bool,
-                },
-                Type::True
-                | Type::False
-                | Type::Primitive {
-                    primitive_type: Primitive::Bool,
-                },
-            ) => true,
-            (
-                Type::Set {
-                    element_type: Some(ety1),
-                },
-                Type::Set {
-                    element_type: Some(ety2),
-                },
-            ) => Self::unify_strict_types(ety1, ety2),
-            (
-                Type::EntityOrRecord(EntityRecordKind::Record {
-                    attrs: attrs1,
-                    open_attributes: open1,
-                }),
-                Type::EntityOrRecord(EntityRecordKind::Record {
-                    attrs: attrs2,
-                    open_attributes: open2,
-                }),
-            ) => {
-                let keys1 = attrs1.attrs.keys().collect::<HashSet<_>>();
-                let keys2 = attrs2.attrs.keys().collect::<HashSet<_>>();
-                open1 == open2
-                    && keys1 == keys2
-                    && attrs1.iter().all(|(k, attr1)| {
-                        // PANIC SAFETY: The attribute keys sets are equal. `k` is a key in `attr1`, so it must be a key in `attrs2`.
-                        #[allow(clippy::expect_used)]
-                        let attr2 = attrs2
-                            .get_attr(k)
-                            .expect("Guarded by `keys1` == `keys2`, and `k` is a key in `keys1`.");
-                        attr2.is_required == attr1.is_required
-                            && Self::unify_strict_types(&attr1.attr_type, &attr2.attr_type)
-                    })
-            }
-            _ => actual == expected,
         }
     }
 
@@ -1266,33 +658,14 @@ impl<'a> Typechecker<'a> {
                             then_expr,
                             type_errors,
                         );
-                        // We have to build a type annotated `else` branch for
-                        // strict typechecking, but we want to throw away the
-                        // errors. This could instead  ignore the `else` if we
-                        // update our Dafny formalism to verify that this is
-                        // correct.
-                        let mut errs_else = Vec::new();
-                        let ans_else =
-                            self.typecheck(request_env, prior_eff, else_expr, &mut errs_else);
 
                         ans_then.then_typecheck(|typ_then, eff_then| {
-                            match ans_else.into_typed_expr() {
-                                Some(ety) => {
-                                    TypecheckAnswer::success_with_effect(
-                                        ExprBuilder::with_data(typ_then.data().clone())
-                                            .with_same_source_info(e)
-                                            .ite(typ_test, typ_then, ety),
-                                        // The output effect of the whole `if` expression also
-                                        // needs to contain the effect of the condition.
-                                        eff_then.union(&eff_test),
-                                    )
-                                }
-                                // We might have hit the recursion limit only on
-                                // the `else` branch. Unfortunate since that
-                                // shouldn't effect typechecking, but we still
-                                // need to exit to avoid a crash.
-                                None => TypecheckAnswer::RecursionLimit,
-                            }
+                            TypecheckAnswer::success_with_effect(
+                                typ_then,
+                                // The output effect of the whole `if` expression also
+                                // needs to contain the effect of the condition.
+                                eff_then.union(&eff_test),
+                            )
                         })
                     } else if typ_test.data() == &Some(Type::singleton_boolean(false)) {
                         // The `else` branch cannot use the `test` effect since
@@ -1302,27 +675,8 @@ impl<'a> Typechecker<'a> {
                         let ans_else =
                             self.typecheck(request_env, prior_eff, else_expr, type_errors);
 
-                        // Annotating types but ignoring errors in the `then` branch.
-                        let mut errs_then = Vec::new();
-                        let ans_then = self.typecheck(
-                            request_env,
-                            &prior_eff.union(&eff_test),
-                            then_expr,
-                            &mut errs_then,
-                        );
-
                         ans_else.then_typecheck(|typ_else, eff_else| {
-                            match ans_then.into_typed_expr() {
-                                Some(ety) => TypecheckAnswer::success_with_effect(
-                                    ExprBuilder::with_data(typ_else.data().clone())
-                                        .with_same_source_info(e)
-                                        .ite(typ_test, ety, typ_else),
-                                    eff_else,
-                                ),
-                                // We might have hit the recursion limit only on
-                                // the `then` branch.
-                                None => TypecheckAnswer::RecursionLimit,
-                            }
+                            TypecheckAnswer::success_with_effect(typ_else, eff_else)
                         })
                     } else {
                         // When we don't short circuit, the `then` and `else`
@@ -1772,6 +1126,14 @@ impl<'a> Typechecker<'a> {
                         type_errors,
                     );
                     match elem_lub {
+                        _ if self.mode.is_strict() && exprs.is_empty() => {
+                            type_errors.push(TypeError::empty_set_forbidden(e.clone()));
+                            TypecheckAnswer::fail(
+                                ExprBuilder::new()
+                                    .with_same_source_info(e)
+                                    .set(elem_expr_types),
+                            )
+                        }
                         Some(elem_lub) => TypecheckAnswer::success(
                             ExprBuilder::with_data(Some(Type::set(elem_lub)))
                                 .with_same_source_info(e)
@@ -1862,20 +1224,34 @@ impl<'a> Typechecker<'a> {
             BinaryOp::Eq => {
                 let lhs_ty = self.typecheck(request_env, prior_eff, arg1, type_errors);
                 let rhs_ty = self.typecheck(request_env, prior_eff, arg2, type_errors);
-
                 lhs_ty.then_typecheck(|lhs_ty, _| {
                     rhs_ty.then_typecheck(|rhs_ty, _| {
-                        TypecheckAnswer::success(
-                            ExprBuilder::with_data(Some(self.type_of_equality(
-                                request_env,
-                                arg1,
-                                lhs_ty.data().clone(),
-                                arg2,
-                                rhs_ty.data().clone(),
-                            )))
-                            .with_same_source_info(bin_expr)
-                            .binary_app(*op, lhs_ty, rhs_ty),
-                        )
+                        let type_of_eq = self.type_of_equality(
+                            request_env,
+                            arg1,
+                            lhs_ty.data().clone(),
+                            arg2,
+                            rhs_ty.data().clone(),
+                        );
+
+                        if self.mode.is_strict() {
+                            let annotated_eq = ExprBuilder::with_data(Some(type_of_eq))
+                                .with_same_source_info(bin_expr)
+                                .binary_app(*op, lhs_ty.clone(), rhs_ty.clone());
+                            self.enforce_strict_equality(
+                                bin_expr,
+                                annotated_eq,
+                                lhs_ty.data(),
+                                rhs_ty.data(),
+                                type_errors,
+                            )
+                        } else {
+                            TypecheckAnswer::success(
+                                ExprBuilder::with_data(Some(type_of_eq))
+                                    .with_same_source_info(bin_expr)
+                                    .binary_app(*op, lhs_ty, rhs_ty),
+                            )
+                        }
                     })
                 })
             }
@@ -1943,11 +1319,34 @@ impl<'a> Typechecker<'a> {
                         // The second argument may be any type. We do not care if the element type cannot be in the set.
                         self.typecheck(request_env, prior_eff, arg2, type_errors)
                             .then_typecheck(|expr_ty_arg2, _| {
-                                TypecheckAnswer::success(
-                                    ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                        .with_same_source_info(bin_expr)
-                                        .binary_app(*op, expr_ty_arg1, expr_ty_arg2),
-                                )
+                                if self.mode.is_strict() {
+                                    let annotated_expr =
+                                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                            .with_same_source_info(bin_expr)
+                                            .binary_app(
+                                                *op,
+                                                expr_ty_arg1.clone(),
+                                                expr_ty_arg2.clone(),
+                                            );
+                                    self.enforce_strict_equality(
+                                        bin_expr,
+                                        annotated_expr,
+                                        &match expr_ty_arg1.data() {
+                                            Some(Type::Set {
+                                                element_type: Some(ty),
+                                            }) => Some(*ty.clone()),
+                                            _ => None,
+                                        },
+                                        expr_ty_arg2.data(),
+                                        type_errors,
+                                    )
+                                } else {
+                                    TypecheckAnswer::success(
+                                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                            .with_same_source_info(bin_expr)
+                                            .binary_app(*op, expr_ty_arg1, expr_ty_arg2),
+                                    )
+                                }
                             })
                     })
             }
@@ -1958,14 +1357,67 @@ impl<'a> Typechecker<'a> {
                     .then_typecheck(|expr_ty_arg1, _| {
                         self.expect_type(request_env, prior_eff, arg2, Type::any_set(), type_errors)
                             .then_typecheck(|expr_ty_arg2, _| {
-                                TypecheckAnswer::success(
-                                    ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                        .with_same_source_info(bin_expr)
-                                        .binary_app(*op, expr_ty_arg1, expr_ty_arg2),
-                                )
+                                if self.mode.is_strict() {
+                                    let annotated_expr =
+                                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                            .with_same_source_info(bin_expr)
+                                            .binary_app(
+                                                *op,
+                                                expr_ty_arg1.clone(),
+                                                expr_ty_arg2.clone(),
+                                            );
+                                    self.enforce_strict_equality(
+                                        bin_expr,
+                                        annotated_expr,
+                                        expr_ty_arg1.data(),
+                                        expr_ty_arg2.data(),
+                                        type_errors,
+                                    )
+                                } else {
+                                    TypecheckAnswer::success(
+                                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                            .with_same_source_info(bin_expr)
+                                            .binary_app(*op, expr_ty_arg1, expr_ty_arg2),
+                                    )
+                                }
                             })
                     })
             }
+        }
+    }
+
+    fn enforce_strict_equality<'b>(
+        &self,
+        unannotated_expr: &'b Expr,
+        annotated_expr: Expr<Option<Type>>,
+        lhs_ty: &Option<Type>,
+        rhs_ty: &Option<Type>,
+        type_errors: &mut Vec<TypeError>,
+    ) -> TypecheckAnswer<'b> {
+        match annotated_expr.data() {
+            Some(Type::False) => {
+                TypecheckAnswer::success(ExprBuilder::with_data(Some(Type::False)).val(false))
+            }
+            Some(Type::True) => {
+                TypecheckAnswer::success(ExprBuilder::with_data(Some(Type::True)).val(true))
+            }
+            _ => match (lhs_ty, rhs_ty) {
+                (Some(lhs_ty), Some(rhs_ty))
+                    if Type::least_upper_bound(self.schema, &lhs_ty, &rhs_ty, self.mode)
+                        .is_none() =>
+                {
+                    type_errors.push(TypeError::incompatible_types(
+                        unannotated_expr.clone(),
+                        [lhs_ty.clone(), rhs_ty.clone()],
+                    ));
+                    TypecheckAnswer::fail(annotated_expr)
+                }
+                // Either we had `Some` type for lhs and rhs and these types
+                // were compatible, or we failed to a compute a type for either
+                // lhs or rhs, meaning we already failed typechecking for that
+                // expression.
+                _ => TypecheckAnswer::success(annotated_expr),
+            },
         }
     }
 
@@ -2092,6 +1544,8 @@ impl<'a> Typechecker<'a> {
 
         ty_lhs.then_typecheck(|lhs_expr, _lhs_effects| {
             ty_rhs.then_typecheck(|rhs_expr, _rhs_effects| {
+                let lhs_ty = lhs_expr.data().clone();
+                let rhs_ty = rhs_expr.data().clone();
                 let left_is_unspecified = Typechecker::is_unspecified_entity(request_env, lhs);
                 let right_is_specified = match rhs_expr.data() {
                     Some(Type::Set { element_type }) => element_type.as_ref().map(|t| t.as_ref()),
@@ -2188,8 +1642,73 @@ impl<'a> Typechecker<'a> {
                         ),
                     }
                 }
+                .then_typecheck(|type_of_in, _| {
+                    if !self.mode.is_strict() {
+                        TypecheckAnswer::success(type_of_in)
+                    } else if matches!(type_of_in.data(), Some(Type::False)) {
+                        TypecheckAnswer::success(
+                            ExprBuilder::with_data(Some(Type::False)).val(false),
+                        )
+                    } else if matches!(type_of_in.data(), Some(Type::True)) {
+                        TypecheckAnswer::success(ExprBuilder::with_data(Some(Type::True)).val(true))
+                    } else {
+                        match (lhs_ty, rhs_ty) {
+                            (Some(lhs_ty), Some(rhs_ty)) => {
+                                match (
+                                    Self::get_as_single_entity_type(lhs_ty),
+                                    Self::get_as_single_entity_type(rhs_ty),
+                                ) {
+                                    (Some(lhs_name), Some(rhs_name)) => {
+                                        let lhs_ty_in_rhs_ty = self
+                                            .schema
+                                            .get_entity_type(&rhs_name)
+                                            .map(|ety| ety.descendants.contains(&lhs_name))
+                                            .unwrap_or(false);
+                                        if lhs_name == rhs_name || lhs_ty_in_rhs_ty {
+                                            TypecheckAnswer::success(type_of_in)
+                                        } else {
+                                            // We could actually just return `Type::False`, but this is incurs a larger Dafny proof update.
+                                            type_errors.push(TypeError::hierarchy_not_respected(
+                                                in_expr.clone(),
+                                                Some(lhs_name),
+                                                Some(rhs_name),
+                                            ));
+                                            TypecheckAnswer::fail(type_of_in)
+                                        }
+                                    }
+                                    _ => {
+                                        type_errors.push(TypeError::hierarchy_not_respected(
+                                            in_expr.clone(),
+                                            None,
+                                            None,
+                                        ));
+                                        TypecheckAnswer::fail(type_of_in)
+                                    }
+                                }
+                            }
+                            // An argument type is `None`, so one the arguments must have failed to typecheck already.
+                            // There's no other interesting error to report in this case.
+                            _ => TypecheckAnswer::fail(type_of_in),
+                        }
+                    }
+                })
             })
         })
+    }
+
+    fn get_as_single_entity_type(ty: Type) -> Option<Name> {
+        match ty {
+            Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => lub.into_single_entity(),
+            Type::EntityOrRecord(EntityRecordKind::ActionEntity { name, .. }) => Some(name),
+            Type::Set {
+                element_type: Some(element_type),
+            } => match *element_type {
+                Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => lub.into_single_entity(),
+                Type::EntityOrRecord(EntityRecordKind::ActionEntity { name, .. }) => Some(name),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 
     // Given an expression, if that expression is a literal or the `action` head
@@ -2485,10 +2004,22 @@ impl<'a> Typechecker<'a> {
         let actual = self.typecheck(request_env, prior_eff, expr, type_errors);
         actual.then_typecheck(|mut typ_actual, eff_actual| match typ_actual.data() {
             Some(actual_ty) => {
-                if !expected
-                    .iter()
-                    .any(|expected_ty| Type::is_subtype(self.schema, actual_ty, expected_ty))
-                {
+                if !expected.iter().any(|expected_ty| {
+                    // This check uses `ValidationMode::Permissive` even in
+                    // strict typechecking because we use this function and
+                    // `expect_type` to require that an operand is a record type
+                    // or an entity type by calling this function with
+                    // `AnyEntity` or `{}` as the expected type. In either case,
+                    // we need to make the check using width subtyping to avoid
+                    // reporting an error every time we see a `GetAttr` on a
+                    // non-empty record.
+                    Type::is_subtype(
+                        self.schema,
+                        actual_ty,
+                        expected_ty,
+                        ValidationMode::Permissive,
+                    )
+                }) {
                     type_errors.push(TypeError::expected_one_of_types(
                         expr.clone(),
                         expected.to_vec(),
@@ -2544,7 +2075,8 @@ impl<'a> Typechecker<'a> {
             // defined.
             .collect::<Option<Vec<_>>>()
             .and_then(|typechecked_types| {
-                let lub = Type::reduce_to_least_upper_bound(self.schema, &typechecked_types);
+                let lub =
+                    Type::reduce_to_least_upper_bound(self.schema, &typechecked_types, self.mode);
                 if lub.is_none() {
                     // A type error is generated if we could not find a least
                     // upper bound for the types. The computed least upper bound
@@ -2640,6 +2172,17 @@ impl<'a> Typechecker<'a> {
                     type_errors.push(TypeError::arg_validation_error(ext_expr.clone(), msg));
                     failed = true;
                 }
+
+                if self.mode.is_strict()
+                    && efunc.has_argument_check()
+                    && !args
+                        .iter()
+                        .all(|e| matches!(e.expr_kind(), ExprKind::Lit(_)))
+                {
+                    type_errors.push(TypeError::non_lit_ext_constructor(ext_expr.clone()));
+                    failed = true;
+                }
+
                 if failed {
                     match typed_arg_exprs(type_errors) {
                         Some(exprs) => TypecheckAnswer::fail(

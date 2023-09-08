@@ -37,6 +37,7 @@
 - The `Response::new()` constructor now expects a `Vec<AuthorizationError>` as its third argument.
 - Improved validation error messages for access to undeclared attributes and
   unsafe access to optional attributes to report the target of the access (fix #175).
+- Implements RFC #19, making validation slightly more strict, but more explainable.
 
 ## 2.3.3
 

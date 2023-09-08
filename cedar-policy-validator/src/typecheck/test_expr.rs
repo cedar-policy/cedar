@@ -27,12 +27,13 @@ use smol_str::SmolStr;
 
 use crate::{
     type_error::TypeError, types::Type, AttributeAccess, AttributesOrContext, EntityType,
-    NamespaceDefinition,
+    NamespaceDefinition, ValidationMode,
 };
 
 use super::test_utils::{
     assert_typecheck_fails_empty_schema, assert_typecheck_fails_empty_schema_without_type,
-    assert_typechecks, assert_typechecks_empty_schema,
+    assert_typecheck_fails_for_mode, assert_typechecks, assert_typechecks_empty_schema,
+    assert_typechecks_empty_schema_permissive, assert_typechecks_for_mode, empty_schema_file,
 };
 
 #[test]
@@ -59,7 +60,7 @@ fn slot_in_typechecks() {
         shape: AttributesOrContext::default(),
     };
     let schema = NamespaceDefinition::new([("typename".into(), etype)], []);
-    assert_typechecks(
+    assert_typechecks_for_mode(
         schema.clone(),
         Expr::binary_app(
             BinaryOp::In,
@@ -67,8 +68,9 @@ fn slot_in_typechecks() {
             Expr::slot(SlotId::principal()),
         ),
         Type::primitive_boolean(),
+        ValidationMode::Permissive,
     );
-    assert_typechecks(
+    assert_typechecks_for_mode(
         schema,
         Expr::binary_app(
             BinaryOp::In,
@@ -76,6 +78,7 @@ fn slot_in_typechecks() {
             Expr::slot(SlotId::resource()),
         ),
         Type::primitive_boolean(),
+        ValidationMode::Permissive,
     );
 }
 
@@ -85,8 +88,12 @@ fn slot_equals_typechecks() {
         member_of_types: vec![],
         shape: AttributesOrContext::default(),
     };
+    // These don't typecheck in strict mode because the test_util expression
+    // typechecker doesn't have access to a schema, so it can't instantiate
+    // the template slots with appropriate types. Similar policies that pass
+    // strict typechecking are in the test_policy file.
     let schema = NamespaceDefinition::new([("typename".into(), etype)], []);
-    assert_typechecks(
+    assert_typechecks_for_mode(
         schema.clone(),
         Expr::binary_app(
             BinaryOp::Eq,
@@ -94,8 +101,9 @@ fn slot_equals_typechecks() {
             Expr::slot(SlotId::principal()),
         ),
         Type::primitive_boolean(),
+        ValidationMode::Permissive,
     );
-    assert_typechecks(
+    assert_typechecks_for_mode(
         schema,
         Expr::binary_app(
             BinaryOp::Eq,
@@ -103,6 +111,7 @@ fn slot_equals_typechecks() {
             Expr::slot(SlotId::resource()),
         ),
         Type::primitive_boolean(),
+        ValidationMode::Permissive,
     );
 }
 
@@ -416,7 +425,7 @@ fn set_eq_is_not_false() {
     }"#,
     )
     .expect("Expected that schema would parse");
-    assert_typechecks(
+    assert_typechecks_for_mode(
         schema,
         Expr::is_eq(
             Expr::get_attr(
@@ -435,6 +444,7 @@ fn set_eq_is_not_false() {
             ),
         ),
         Type::primitive_boolean(),
+        ValidationMode::Permissive,
     );
 }
 
@@ -515,7 +525,7 @@ fn record_has_typechecks() {
 }
 
 #[test]
-fn record_lub_has_typechecks() {
+fn record_lub_has_typechecks_strict() {
     assert_typechecks_empty_schema(
         Expr::from_str("(if 1 > 0 then {a: 1} else {a: 2}) has a").unwrap(),
         Type::singleton_boolean(true),
@@ -525,26 +535,6 @@ fn record_lub_has_typechecks() {
         Type::singleton_boolean(false),
     );
     assert_typechecks_empty_schema(
-        Expr::from_str("(if 1 > 0 then {a: 1} else {a: 2, b: 3}) has a").unwrap(),
-        Type::singleton_boolean(true),
-    );
-    assert_typechecks_empty_schema(
-        Expr::from_str("(if 1 > 0 then {a: 1, b: 2} else {a: 1, c: 2}) has a").unwrap(),
-        Type::singleton_boolean(true),
-    );
-    assert_typechecks_empty_schema(
-        Expr::from_str("(if 1 > 0 then {a: 1} else {}) has a").unwrap(),
-        Type::primitive_boolean(),
-    );
-    assert_typechecks_empty_schema(
-        Expr::from_str("(if 1 > 0 then {a: 1, b: 2} else {a: 1, c: 2}) has b").unwrap(),
-        Type::primitive_boolean(),
-    );
-    assert_typechecks_empty_schema(
-        Expr::from_str("(if 1 > 0 then (if 1 > 0 then {a: 1} else {}) else {}) has a").unwrap(),
-        Type::primitive_boolean(),
-    );
-    assert_typechecks_empty_schema(
         Expr::from_str("(if 1 > 0 then {a: true} else {a: false}) has b").unwrap(),
         Type::singleton_boolean(false),
     );
@@ -552,17 +542,41 @@ fn record_lub_has_typechecks() {
         Expr::from_str("(if 1 > 0 then {a: true} else {a: false}) has a").unwrap(),
         Type::singleton_boolean(true),
     );
+}
+
+#[test]
+fn record_lub_has_typechecks_permissive() {
+    assert_typechecks_empty_schema_permissive(
+        Expr::from_str("(if 1 > 0 then {a: 1} else {a: 2, b: 3}) has a").unwrap(),
+        Type::singleton_boolean(true),
+    );
+    assert_typechecks_empty_schema_permissive(
+        Expr::from_str("(if 1 > 0 then {a: 1, b: 2} else {a: 1, c: 2}) has a").unwrap(),
+        Type::singleton_boolean(true),
+    );
+    assert_typechecks_empty_schema_permissive(
+        Expr::from_str("(if 1 > 0 then {a: 1} else {}) has a").unwrap(),
+        Type::primitive_boolean(),
+    );
+    assert_typechecks_empty_schema_permissive(
+        Expr::from_str("(if 1 > 0 then {a: 1, b: 2} else {a: 1, c: 2}) has b").unwrap(),
+        Type::primitive_boolean(),
+    );
+    assert_typechecks_empty_schema_permissive(
+        Expr::from_str("(if 1 > 0 then (if 1 > 0 then {a: 1} else {}) else {}) has a").unwrap(),
+        Type::primitive_boolean(),
+    );
 
     // These cases are imprecise.
-    assert_typechecks_empty_schema(
+    assert_typechecks_empty_schema_permissive(
         Expr::from_str("(if 1 > 0 then {a: 1} else {}) has c").unwrap(),
         Type::primitive_boolean(),
     );
-    assert_typechecks_empty_schema(
+    assert_typechecks_empty_schema_permissive(
         Expr::from_str("(if 1 > 0 then {a: 1} else {b: 2}) has c").unwrap(),
         Type::primitive_boolean(),
     );
-    assert_typechecks_empty_schema(
+    assert_typechecks_empty_schema_permissive(
         Expr::from_str("(if 1 > 0 then {a: 1} else {a : false}) has a").unwrap(),
         Type::primitive_boolean(),
     );
@@ -598,14 +612,18 @@ fn record_get_attr_incompatible() {
         Expr::record([(attr.clone(), Expr::val(true))]),
         Expr::record([(attr.clone(), Expr::val(1))]),
     );
-    assert_typecheck_fails_empty_schema_without_type(
+
+    assert_typecheck_fails_for_mode(
+        empty_schema_file(),
         Expr::get_attr(if_expr.clone(), attr.clone()),
+        None,
         vec![TypeError::unsafe_attribute_access(
             Expr::get_attr(if_expr, attr.clone()),
             AttributeAccess::Other(vec![attr]),
             None,
             true,
         )],
+        crate::ValidationMode::Permissive,
     );
 }
 
@@ -678,19 +696,38 @@ fn record_get_attr_lub_does_not_exist() {
 }
 
 #[test]
-fn in_typechecks() {
-    assert_typechecks_empty_schema(
+fn in_typechecks_permissive() {
+    assert_typechecks_empty_schema_permissive(
         Expr::is_in(Expr::var(Var::Principal), Expr::var(Var::Resource)),
         Type::primitive_boolean(),
     );
 }
 
 #[test]
-fn in_set_typechecks() {
+fn in_typechecks() {
     assert_typechecks_empty_schema(
+        Expr::is_in(Expr::var(Var::Principal), Expr::var(Var::Principal)),
+        Type::primitive_boolean(),
+    );
+}
+
+#[test]
+fn in_set_typechecks_permissive() {
+    assert_typechecks_empty_schema_permissive(
         Expr::is_in(
             Expr::var(Var::Principal),
             Expr::set([Expr::var(Var::Resource)]),
+        ),
+        Type::primitive_boolean(),
+    );
+}
+
+#[test]
+fn in_set_typechecks_strict() {
+    assert_typechecks_empty_schema(
+        Expr::is_in(
+            Expr::var(Var::Principal),
+            Expr::set([Expr::var(Var::Principal)]),
         ),
         Type::primitive_boolean(),
     );
