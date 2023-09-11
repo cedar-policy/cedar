@@ -412,8 +412,8 @@ impl Doc for ASTNode<Option<RecInit>> {
             key_doc
                 .append(RcDoc::line_())
                 .append(add_comment(
-                    RcDoc::text(":"),
-                    Comment::default(),
+                    RcDoc::as_string(":"),
+                    get_comment_after_end(e.0.info.0.end, &mut context.tokens)?,
                     RcDoc::nil(),
                 ))
                 .append(value_doc),
