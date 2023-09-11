@@ -1,0 +1,33 @@
+name: Nightly build
+on:
+  schedule:
+    - cron: '0 0 * * *'
+
+env: 
+  CARGO_TERM_COLOR: always
+jobs:
+  build_and_test:
+    name: Rust project - latest
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+    steps:
+      - uses: actions/checkout@v3
+      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - run: cargo fmt --all --check
+      - run: RUSTFLAGS="-D warnings -F unsafe-code" cargo build --verbose --features "experimental"
+      - run: RUSTFLAGS="-D warnings -F unsafe-code" cargo build --verbose
+      - run: cargo test --verbose --features "experimental"
+      - run: cargo test --verbose
+      - run: cargo doc --all-features
+      - run: cargo clippy
+      - run: ./panic_safety.sh
+      - run: cargo test --verbose -- --ignored
+      - run: cargo bench --no-run
+      - run: cd cedar-policy ; cargo test --no-default-features --verbose
+      - run: cd cedar-policy-cli ; cargo test --no-default-features --verbose
+      - run: cd cedar-policy-core ; cargo test --no-default-features --verbose
+      - run: cd cedar-policy-formatter ; cargo test --no-default-features --verbose
+      - run: cd cedar-policy-validator ; cargo test --no-default-features --verbose

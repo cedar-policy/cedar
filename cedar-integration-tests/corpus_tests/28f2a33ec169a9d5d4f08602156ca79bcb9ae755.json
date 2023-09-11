@@ -13,7 +13,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got long"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got long"
       ]
     },
     {
@@ -35,7 +35,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got long"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got long"
       ]
     },
     {
@@ -47,7 +47,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got long"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got long"
       ]
     },
     {
@@ -59,7 +59,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got long"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got long"
       ]
     },
     {
@@ -71,7 +71,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got long"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got long"
       ]
     },
     {
@@ -83,7 +83,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got long"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got long"
       ]
     },
     {
@@ -95,7 +95,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy policy0, encountered the following error: type error: expected bool, got long"
+        "error occurred while evaluating policy `policy0`: type error: expected bool, got long"
       ]
     }
   ]

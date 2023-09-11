@@ -25,8 +25,8 @@ use serde::{Deserialize, Serialize};
 // and it's difficult to parse them into Dafny characters.
 // Instead we serialize the unicode values of Rust characters and leverage
 // Dafny's type conversion to retrieve the characters.
-#[cfg_attr(not(fuzzing), derive(Serialize))]
-#[cfg_attr(fuzzing, derive(arbitrary::Arbitrary))]
+#[cfg_attr(not(feature = "arbitrary"), derive(Serialize))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum PatternElem {
     /// A character literal
     Char(char),
@@ -34,7 +34,7 @@ pub enum PatternElem {
     Wildcard,
 }
 
-#[cfg(fuzzing)]
+#[cfg(feature = "arbitrary")]
 impl Serialize for PatternElem {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -221,7 +221,7 @@ pub mod test {
 
         // Patterns that do not match "*"
         assert!(!string_map("\u{0000}").wildcard_match("*"));
-        assert!(!string_map(r#"\u{0000}"#).wildcard_match("*"));
+        assert!(!string_map(r"\u{0000}").wildcard_match("*"));
     }
 
     #[test]

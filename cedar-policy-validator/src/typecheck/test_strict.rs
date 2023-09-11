@@ -19,16 +19,13 @@
 // GRCOV_STOP_COVERAGE
 
 use serde_json::json;
+use std::str::FromStr;
 
-use cedar_policy_core::{
-    ast::{EntityType, EntityUID, Expr},
-    parser::{self, parse_expr},
-};
+use cedar_policy_core::ast::{EntityType, EntityUID, Expr};
 
 use crate::{
-    typecheck::Typechecker,
-    types::{Attributes, RequestEnv, Type},
-    SchemaFragment, TypeErrorKind, TypesMustMatch,
+    types::{Attributes, EffectSet, RequestEnv, Type},
+    IncompatibleTypes, SchemaFragment, TypeErrorKind, ValidationMode,
 };
 
 use super::test_utils::with_typechecker_from_schema;
@@ -40,9 +37,11 @@ fn assert_typechecks_strict(
     e_strict: Expr,
     expected_type: Type,
 ) {
-    with_typechecker_from_schema(schema, |typechecker| {
+    with_typechecker_from_schema(schema, |mut typechecker| {
+        typechecker.mode = ValidationMode::Strict;
         let mut errs = Vec::new();
-        let answer = typechecker.typecheck_strict(env, &e, expected_type, &mut errs);
+        let answer = typechecker.expect_type(env, &EffectSet::new(), &e, expected_type, &mut errs);
+
         assert_eq!(errs, vec![], "Expression should not contain any errors.");
         match answer {
             crate::typecheck::TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
@@ -66,9 +65,10 @@ fn assert_strict_type_error(
     expected_type: Type,
     expected_error: TypeErrorKind,
 ) {
-    with_typechecker_from_schema(schema, |typechecker| {
+    with_typechecker_from_schema(schema, |mut typechecker| {
+        typechecker.mode = ValidationMode::Strict;
         let mut errs = Vec::new();
-        let answer = typechecker.typecheck_strict(env, &e, expected_type, &mut errs);
+        let answer = typechecker.expect_type(env, &EffectSet::new(), &e, expected_type, &mut errs);
 
         assert_eq!(
             errs.into_iter().map(|e| e.kind).collect::<Vec<_>>(),
@@ -103,7 +103,7 @@ fn assert_types_must_match(
         e,
         e_strict,
         expected_type,
-        TypeErrorKind::TypesMustMatch(TypesMustMatch {
+        TypeErrorKind::IncompatibleTypes(IncompatibleTypes {
             types: unequal_types.into_iter().collect(),
         }),
     )
@@ -146,6 +146,8 @@ where
             action: &EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
             resource: &EntityType::Concrete("Photo".parse().unwrap()),
             context: &Attributes::with_attributes(None),
+            principal_slot: None,
+            resource_slot: None,
         },
     )
 }
@@ -153,11 +155,13 @@ where
 #[test]
 fn strict_typecheck_catches_regular_type_error() {
     with_simple_schema_and_request(|s, q| {
-        with_typechecker_from_schema(s, |typechecker| {
+        with_typechecker_from_schema(s, |mut typechecker| {
             let mut errs = Vec::new();
-            typechecker.typecheck_strict(
+            typechecker.mode = ValidationMode::Strict;
+            typechecker.expect_type(
                 &q,
-                &parse_expr("1 + false").unwrap(),
+                &EffectSet::new(),
+                &Expr::from_str("1 + false").unwrap(),
                 Type::long_any(),
                 &mut errs,
             );
@@ -177,8 +181,8 @@ fn false_eq_rewrites_to_false() {
         assert_typechecks_strict(
             s,
             &q,
-            parser::parse_expr(r#"principal == Photo::"image.jpg""#).unwrap(),
-            parser::parse_expr(r#"false"#).unwrap(),
+            Expr::from_str(r#"principal == Photo::"image.jpg""#).unwrap(),
+            Expr::from_str(r#"false"#).unwrap(),
             Type::primitive_boolean(),
         )
     })
@@ -190,8 +194,8 @@ fn true_eq_rewrites_to_true() {
         assert_typechecks_strict(
             s,
             &q,
-            parser::parse_expr(r#"action == Action::"view_photo""#).unwrap(),
-            parser::parse_expr(r#"true"#).unwrap(),
+            Expr::from_str(r#"action == Action::"view_photo""#).unwrap(),
+            Expr::from_str(r#"true"#).unwrap(),
             Type::primitive_boolean(),
         )
     })
@@ -203,23 +207,21 @@ fn bool_eq_types_match() {
         assert_typechecks_strict(
             s,
             &q,
-            parser::parse_expr(r#"1 == 1"#).unwrap(),
-            parser::parse_expr(r#"1 == 1"#).unwrap(),
+            Expr::from_str(r#"1 == 1"#).unwrap(),
+            Expr::from_str(r#"1 == 1"#).unwrap(),
             Type::primitive_boolean(),
         )
     })
 }
 
-// Test that Typechecker::adjust_strict_type adjusts Long types nested inside
-// Record types.
 #[test]
 fn bool_eq_attr_types_match() {
     with_simple_schema_and_request(|s, q| {
         assert_typechecks_strict(
             s,
             &q,
-            parser::parse_expr(r#"{a: 1} == {a: 2}"#).unwrap(),
-            parser::parse_expr(r#"{a: 1} == {a: 2}"#).unwrap(),
+            Expr::from_str(r#"{a: 1} == {a: 2}"#).unwrap(),
+            Expr::from_str(r#"{a: 1} == {a: 2}"#).unwrap(),
             Type::primitive_boolean(),
         )
     })
@@ -231,13 +233,10 @@ fn eq_strict_types_mismatch() {
         assert_types_must_match(
             s,
             &q,
-            parser::parse_expr(r#"1 == "foo""#).unwrap(),
-            parser::parse_expr(r#"1 == "foo""#).unwrap(),
+            Expr::from_str(r#"1 == "foo""#).unwrap(),
+            Expr::from_str(r#"1 == "foo""#).unwrap(),
             Type::primitive_boolean(),
-            [
-                Type::primitive_string(),
-                Typechecker::long_type_for_strict_validation(),
-            ],
+            [Type::primitive_string(), Type::singleton_long(1)],
         )
     })
 }
@@ -248,13 +247,10 @@ fn contains_strict_types_mismatch() {
         assert_types_must_match(
             s,
             &q,
-            parser::parse_expr(r#"[1].contains("test")"#).unwrap(),
-            parser::parse_expr(r#"[1].contains("test")"#).unwrap(),
+            Expr::from_str(r#"[1].contains("test")"#).unwrap(),
+            Expr::from_str(r#"[1].contains("test")"#).unwrap(),
             Type::primitive_boolean(),
-            [
-                Type::set(Typechecker::long_type_for_strict_validation()),
-                Type::primitive_string(),
-            ],
+            [Type::singleton_long(1), Type::primitive_string()],
         )
     })
 }
@@ -265,12 +261,12 @@ fn contains_any_strict_types_mismatch() {
         assert_types_must_match(
             s,
             &q,
-            parser::parse_expr(r#"[principal].containsAny([1])"#).unwrap(),
-            parser::parse_expr(r#"[principal].containsAny([1])"#).unwrap(),
+            Expr::from_str(r#"[principal].containsAny([1])"#).unwrap(),
+            Expr::from_str(r#"[principal].containsAny([1])"#).unwrap(),
             Type::primitive_boolean(),
             [
                 Type::set(Type::named_entity_reference_from_str("User")),
-                Type::set(Typechecker::long_type_for_strict_validation()),
+                Type::set(Type::singleton_long(1)),
             ],
         )
     })
@@ -282,12 +278,12 @@ fn contains_all_strict_types_mismatch() {
         assert_types_must_match(
             s,
             &q,
-            parser::parse_expr(r#"[principal].containsAll([1])"#).unwrap(),
-            parser::parse_expr(r#"[principal].containsAll([1])"#).unwrap(),
+            Expr::from_str(r#"[principal].containsAll([1])"#).unwrap(),
+            Expr::from_str(r#"[principal].containsAll([1])"#).unwrap(),
             Type::primitive_boolean(),
             [
                 Type::set(Type::named_entity_reference_from_str("User")),
-                Type::set(Typechecker::long_type_for_strict_validation()),
+                Type::set(Type::singleton_long(1)),
             ],
         )
     })
@@ -299,8 +295,8 @@ fn if_false_else_only() {
         assert_typechecks_strict(
             s,
             &q,
-            parser::parse_expr(r#"if resource == User::"alice" then 1 else "foo""#).unwrap(),
-            parser::parse_expr(r#""foo""#).unwrap(),
+            Expr::from_str(r#"if resource == User::"alice" then 1 else "foo""#).unwrap(),
+            Expr::from_str(r#""foo""#).unwrap(),
             Type::primitive_string(),
         )
     })
@@ -312,13 +308,9 @@ fn if_true_then_only() {
         assert_typechecks_strict(
             s,
             &q,
-            parser::parse_expr(r#"if action == Action::"view_photo" then 1 else "foo""#).unwrap(),
-            parser::parse_expr(r#"1"#).unwrap(),
-            // REVIEW: Does it make sense that the `expected_type` here is
-            // checked against the type determined by the _normal_ type checker
-            // before adjustments for strict validation (which would give
-            // `long_any`)?
-            Type::long_top(),
+            Expr::from_str(r#"if action == Action::"view_photo" then 1 else "foo""#).unwrap(),
+            Expr::from_str(r#"1"#).unwrap(),
+            Type::singleton_long(1),
         )
     })
 }
@@ -329,9 +321,9 @@ fn if_bool_keeps_both() {
         assert_typechecks_strict(
             s,
             &q,
-            parser::parse_expr(r#"if principal == User::"alice" then 1 else 2"#).unwrap(),
-            parser::parse_expr(r#"if principal == User::"alice" then 1 else 2"#).unwrap(),
-            Type::long_top(),
+            Expr::from_str(r#"if principal == User::"alice" then 1 else 2"#).unwrap(),
+            Expr::from_str(r#"if principal == User::"alice" then 1 else 2"#).unwrap(),
+            Type::long_bounded(1, 2),
         )
     })
 }
@@ -342,11 +334,11 @@ fn if_bool_strict_type_mismatch() {
         assert_types_must_match(
             s,
             &q,
-            parser::parse_expr(
+            Expr::from_str(
                 r#"if principal == User::"alice" then User::"alice" else Photo::"pie.jpg""#,
             )
             .unwrap(),
-            parser::parse_expr(
+            Expr::from_str(
                 r#"if principal == User::"alice" then User::"alice" else Photo::"pie.jpg""#,
             )
             .unwrap(),
@@ -365,8 +357,8 @@ fn set_strict_types_mismatch() {
         assert_types_must_match(
             s,
             &q,
-            parser::parse_expr(r#"[User::"alice", Photo::"foo.jpg"]"#).unwrap(),
-            parser::parse_expr(r#"[User::"alice", Photo::"foo.jpg"]"#).unwrap(),
+            Expr::from_str(r#"[User::"alice", Photo::"foo.jpg"]"#).unwrap(),
+            Expr::from_str(r#"[User::"alice", Photo::"foo.jpg"]"#).unwrap(),
             Type::set(Type::entity_lub(["User", "Photo"])),
             [
                 Type::named_entity_reference_from_str("User"),
@@ -382,33 +374,35 @@ fn empty_set_literal() {
         assert_strict_type_error(
             s,
             &q,
-            parser::parse_expr(r#"[]"#).unwrap(),
-            parser::parse_expr(r#"[]"#).unwrap(),
+            Expr::from_str(r#"[]"#).unwrap(),
+            Expr::from_str(r#"[]"#).unwrap(),
             Type::any_set(),
             TypeErrorKind::EmptySetForbidden,
         )
     })
 }
 
+#[cfg(feature = "ipaddr")]
 #[test]
 fn ext_struct_non_lit() {
     with_simple_schema_and_request(|s, q| {
         assert_strict_type_error(
             s,
             &q,
-            parser::parse_expr(r#"ip(if context has foo then "a" else "b")"#).unwrap(),
-            parser::parse_expr(r#"ip(if context has foo then "a" else "b")"#).unwrap(),
+            Expr::from_str(r#"ip(if 1 > 0 then "a" else "b")"#).unwrap(),
+            Expr::from_str(r#"ip(if 1 > 0 then "a" else "b")"#).unwrap(),
             Type::extension("ipaddr".parse().unwrap()),
             TypeErrorKind::NonLitExtConstructor,
         )
     });
 
+    #[cfg(feature = "decimal")]
     with_simple_schema_and_request(|s, q| {
         assert_strict_type_error(
             s,
             &q,
-            parser::parse_expr(r#"decimal(if context has bar then "0.1" else "1.0")"#).unwrap(),
-            parser::parse_expr(r#"decimal(if context has bar then "0.1" else "1.0")"#).unwrap(),
+            Expr::from_str(r#"decimal(if 1 > 0 then "0.1" else "1.0")"#).unwrap(),
+            Expr::from_str(r#"decimal(if 1 > 0 then "0.1" else "1.0")"#).unwrap(),
             Type::extension("decimal".parse().unwrap()),
             TypeErrorKind::NonLitExtConstructor,
         )
@@ -424,11 +418,11 @@ fn entity_in_lub() {
         assert_types_must_match(
             s,
             &q,
-            parser::parse_expr(
+            Expr::from_str(
                 r#"User::"alice" in (if 1 > 0 then User::"alice" else Photo::"pie.jpg")"#,
             )
             .unwrap(),
-            parser::parse_expr(
+            Expr::from_str(
                 r#"User::"alice" in (if 1 > 0 then User::"alice" else Photo::"pie.jpg")"#,
             )
             .unwrap(),
@@ -451,31 +445,25 @@ fn test_and() {
         assert_typechecks_strict(
             s.clone(),
             &q,
-            parser::parse_expr(r#"1 == 2 && 2 == 3"#).unwrap(),
-            parser::parse_expr(r#"1 == 2 && 2 == 3"#).unwrap(),
+            Expr::from_str(r#"1 == 2 && 2 == 3"#).unwrap(),
+            Expr::from_str(r#"1 == 2 && 2 == 3"#).unwrap(),
             Type::primitive_boolean(),
         );
         assert_types_must_match(
             s.clone(),
             &q,
-            parser::parse_expr(r#"(1 == (2 > 0)) && true"#).unwrap(),
-            parser::parse_expr(r#"(1 == (2 > 0)) && true"#).unwrap(),
+            Expr::from_str(r#"(1 == (2 > 0)) && true"#).unwrap(),
+            Expr::from_str(r#"(1 == (2 > 0)) && true"#).unwrap(),
             Type::primitive_boolean(),
-            [
-                Typechecker::long_type_for_strict_validation(),
-                Type::primitive_boolean(),
-            ],
+            [Type::singleton_long(1), Type::primitive_boolean()],
         );
         assert_types_must_match(
             s,
             &q,
-            parser::parse_expr(r#"true && (1 == (2 > 0))"#).unwrap(),
-            parser::parse_expr(r#"true && (1 == (2 > 0))"#).unwrap(),
+            Expr::from_str(r#"true && (1 == (2 > 0))"#).unwrap(),
+            Expr::from_str(r#"true && (1 == (2 > 0))"#).unwrap(),
             Type::primitive_boolean(),
-            [
-                Typechecker::long_type_for_strict_validation(),
-                Type::primitive_boolean(),
-            ],
+            [Type::singleton_long(1), Type::primitive_boolean()],
         );
     })
 }
@@ -486,31 +474,25 @@ fn test_or() {
         assert_typechecks_strict(
             s.clone(),
             &q,
-            parser::parse_expr(r#"1 == 2 || 2 == 3"#).unwrap(),
-            parser::parse_expr(r#"1 == 2 || 2 == 3"#).unwrap(),
+            Expr::from_str(r#"1 == 2 || 2 == 3"#).unwrap(),
+            Expr::from_str(r#"1 == 2 || 2 == 3"#).unwrap(),
             Type::primitive_boolean(),
         );
         assert_types_must_match(
             s.clone(),
             &q,
-            parser::parse_expr(r#"(1 == (2 > 0)) || false"#).unwrap(),
-            parser::parse_expr(r#"(1 == (2 > 0)) || false"#).unwrap(),
+            Expr::from_str(r#"(1 == (2 > 0)) || false"#).unwrap(),
+            Expr::from_str(r#"(1 == (2 > 0)) || false"#).unwrap(),
             Type::primitive_boolean(),
-            [
-                Type::primitive_boolean(),
-                Typechecker::long_type_for_strict_validation(),
-            ],
+            [Type::primitive_boolean(), Type::singleton_long(1)],
         );
         assert_types_must_match(
             s,
             &q,
-            parser::parse_expr(r#"false || (1 == (2 > 0))"#).unwrap(),
-            parser::parse_expr(r#"false || (1 == (2 > 0))"#).unwrap(),
+            Expr::from_str(r#"false || (1 == (2 > 0))"#).unwrap(),
+            Expr::from_str(r#"false || (1 == (2 > 0))"#).unwrap(),
             Type::primitive_boolean(),
-            [
-                Type::primitive_boolean(),
-                Typechecker::long_type_for_strict_validation(),
-            ],
+            [Type::primitive_boolean(), Type::singleton_long(1)],
         );
     })
 }
@@ -521,20 +503,17 @@ fn test_unary() {
         assert_typechecks_strict(
             s.clone(),
             &q,
-            parser::parse_expr(r#"!(1 == 2)"#).unwrap(),
-            parser::parse_expr(r#"!(1 == 2)"#).unwrap(),
+            Expr::from_str(r#"!(1 == 2)"#).unwrap(),
+            Expr::from_str(r#"!(1 == 2)"#).unwrap(),
             Type::primitive_boolean(),
         );
         assert_types_must_match(
             s,
             &q,
-            parser::parse_expr(r#"!(1 == "foo")"#).unwrap(),
-            parser::parse_expr(r#"!(1 == "foo")"#).unwrap(),
+            Expr::from_str(r#"!(1 == "foo")"#).unwrap(),
+            Expr::from_str(r#"!(1 == "foo")"#).unwrap(),
             Type::primitive_boolean(),
-            [
-                Typechecker::long_type_for_strict_validation(),
-                Type::primitive_string(),
-            ],
+            [Type::singleton_long(1), Type::primitive_string()],
         );
     })
 }
@@ -545,20 +524,17 @@ fn test_mul() {
         assert_typechecks_strict(
             s.clone(),
             &q,
-            parser::parse_expr(r#"2*(if 1 == 2 then 3 else 4)"#).unwrap(),
-            parser::parse_expr(r#"2*(if 1 == 2 then 3 else 4)"#).unwrap(),
-            Type::long_top(),
+            Expr::from_str(r#"2*(if 1 == 2 then 3 else 4)"#).unwrap(),
+            Expr::from_str(r#"2*(if 1 == 2 then 3 else 4)"#).unwrap(),
+            Type::long_bounded(6, 8),
         );
         assert_types_must_match(
             s,
             &q,
-            parser::parse_expr(r#"2*(if 1 == false then 3 else 4)"#).unwrap(),
-            parser::parse_expr(r#"2*(if 1 == false then 3 else 4)"#).unwrap(),
-            Type::long_top(),
-            [
-                Typechecker::long_type_for_strict_validation(),
-                Type::primitive_boolean(),
-            ],
+            Expr::from_str(r#"2*(if 1 == false then 3 else 4)"#).unwrap(),
+            Expr::from_str(r#"2*(if 1 == false then 3 else 4)"#).unwrap(),
+            Type::long_bounded(6, 8),
+            [Type::singleton_long(1), Type::singleton_boolean(false)],
         );
     })
 }
@@ -569,20 +545,17 @@ fn test_like() {
         assert_typechecks_strict(
             s.clone(),
             &q,
-            parser::parse_expr(r#""a" like "a""#).unwrap(),
-            parser::parse_expr(r#""a" like "a""#).unwrap(),
+            Expr::from_str(r#""a" like "a""#).unwrap(),
+            Expr::from_str(r#""a" like "a""#).unwrap(),
             Type::primitive_boolean(),
         );
         assert_types_must_match(
             s,
             &q,
-            parser::parse_expr(r#"(if 1 == false then "foo" else "bar") like "bar""#).unwrap(),
-            parser::parse_expr(r#"(if 1 == false then "foo" else "bar") like "bar""#).unwrap(),
+            Expr::from_str(r#"(if 1 == false then "foo" else "bar") like "bar""#).unwrap(),
+            Expr::from_str(r#"(if 1 == false then "foo" else "bar") like "bar""#).unwrap(),
             Type::primitive_boolean(),
-            [
-                Typechecker::long_type_for_strict_validation(),
-                Type::primitive_boolean(),
-            ],
+            [Type::singleton_long(1), Type::singleton_boolean(false)],
         );
     })
 }
@@ -593,20 +566,17 @@ fn test_get_attr() {
         assert_typechecks_strict(
             s.clone(),
             &q,
-            parser::parse_expr(r#"{name: "foo"}.name"#).unwrap(),
-            parser::parse_expr(r#"{name: "foo"}.name"#).unwrap(),
+            Expr::from_str(r#"{name: "foo"}.name"#).unwrap(),
+            Expr::from_str(r#"{name: "foo"}.name"#).unwrap(),
             Type::primitive_string(),
         );
         assert_types_must_match(
             s,
             &q,
-            parser::parse_expr(r#"{name: 1 == "foo"}.name"#).unwrap(),
-            parser::parse_expr(r#"{name: 1 == "foo"}.name"#).unwrap(),
+            Expr::from_str(r#"{name: 1 == "foo"}.name"#).unwrap(),
+            Expr::from_str(r#"{name: 1 == "foo"}.name"#).unwrap(),
             Type::primitive_boolean(),
-            [
-                Typechecker::long_type_for_strict_validation(),
-                Type::primitive_string(),
-            ],
+            [Type::singleton_long(1), Type::primitive_string()],
         );
     })
 }
@@ -617,19 +587,32 @@ fn test_has_attr() {
         assert_typechecks_strict(
             s.clone(),
             &q,
-            parser::parse_expr(r#"{name: "foo"} has bar"#).unwrap(),
-            parser::parse_expr(r#"{name: "foo"} has bar"#).unwrap(),
+            Expr::from_str(r#"{name: "foo"} has bar"#).unwrap(),
+            Expr::from_str(r#"{name: "foo"} has bar"#).unwrap(),
+            Type::primitive_boolean(),
+        );
+        assert_typechecks_strict(
+            s.clone(),
+            &q,
+            Expr::from_str(r#"{name: "foo"} has name"#).unwrap(),
+            Expr::from_str(r#"{name: "foo"} has name"#).unwrap(),
             Type::primitive_boolean(),
         );
         assert_types_must_match(
             s,
             &q,
-            parser::parse_expr(r#"{name: 1 == "foo"} has bar"#).unwrap(),
-            parser::parse_expr(r#"{name: 1 == "foo"} has bar"#).unwrap(),
+            Expr::from_str(r#"(if 1 == 2 then {name: 1} else {bar: 2}) has bar"#).unwrap(),
+            Expr::from_str(r#"(if 1 == 2 then {name: 1} else {bar: 2}) has bar"#).unwrap(),
             Type::primitive_boolean(),
             [
-                Typechecker::long_type_for_strict_validation(),
-                Type::primitive_string(),
+                Type::closed_record_with_required_attributes([(
+                    "name".into(),
+                    Type::singleton_long(1),
+                )]),
+                Type::closed_record_with_required_attributes([(
+                    "bar".into(),
+                    Type::singleton_long(2),
+                )]),
             ],
         );
     })
@@ -642,17 +625,17 @@ fn test_extension() {
         assert_typechecks_strict(
             s.clone(),
             &q,
-            parser::parse_expr(r#"ip("127.0.0.1")"#).unwrap(),
-            parser::parse_expr(r#"ip("127.0.0.1")"#).unwrap(),
+            Expr::from_str(r#"ip("127.0.0.1")"#).unwrap(),
+            Expr::from_str(r#"ip("127.0.0.1")"#).unwrap(),
             Type::extension("ipaddr".parse().unwrap()),
         );
         assert_types_must_match(
             s,
             &q,
-            parser::parse_expr(r#"ip("192.168.1.0/8").isInRange(if 1 == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
-            parser::parse_expr(r#"ip("192.168.1.0/8").isInRange(if 1 == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
+            Expr::from_str(r#"ip("192.168.1.0/8").isInRange(if 1 == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
+            Expr::from_str(r#"ip("192.168.1.0/8").isInRange(if 1 == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
             Type::primitive_boolean(),
-            [Typechecker::long_type_for_strict_validation(), Type::primitive_boolean()]
+            [Type::singleton_long(1), Type::singleton_boolean(false)]
         );
     })
 }
@@ -663,8 +646,8 @@ fn true_false_equality() {
         assert_typechecks_strict(
             s,
             &q,
-            parser::parse_expr(r#"[false] == [true, true]"#).unwrap(),
-            parser::parse_expr(r#"[false] == [true, true]"#).unwrap(),
+            Expr::from_str(r#"[false] == [true, true]"#).unwrap(),
+            Expr::from_str(r#"[false] == [true, true]"#).unwrap(),
             Type::primitive_boolean(),
         )
     });
@@ -672,8 +655,8 @@ fn true_false_equality() {
         assert_typechecks_strict(
             s,
             &q,
-            parser::parse_expr(r#"[true].contains(false)"#).unwrap(),
-            parser::parse_expr(r#"[true].contains(false)"#).unwrap(),
+            Expr::from_str(r#"[true].contains(false)"#).unwrap(),
+            Expr::from_str(r#"[true].contains(false)"#).unwrap(),
             Type::primitive_boolean(),
         )
     })
@@ -685,8 +668,8 @@ fn true_false_set() {
         assert_typechecks_strict(
             s,
             &q,
-            parser::parse_expr(r#"[true, false]"#).unwrap(),
-            parser::parse_expr(r#"[true, false]"#).unwrap(),
+            Expr::from_str(r#"[true, false]"#).unwrap(),
+            Expr::from_str(r#"[true, false]"#).unwrap(),
             Type::set(Type::primitive_boolean()),
         )
     });
@@ -694,8 +677,8 @@ fn true_false_set() {
         assert_typechecks_strict(
             s,
             &q,
-            parser::parse_expr(r#"[[true], [false]]"#).unwrap(),
-            parser::parse_expr(r#"[[true], [false]]"#).unwrap(),
+            Expr::from_str(r#"[[true], [false]]"#).unwrap(),
+            Expr::from_str(r#"[[true], [false]]"#).unwrap(),
             Type::set(Type::set(Type::primitive_boolean())),
         )
     });
@@ -703,8 +686,8 @@ fn true_false_set() {
         assert_typechecks_strict(
             s,
             &q,
-            parser::parse_expr(r#"[[[true, false], [true, true]], [[false, false]]]"#).unwrap(),
-            parser::parse_expr(r#"[[[true, false], [true, true]], [[false, false]]]"#).unwrap(),
+            Expr::from_str(r#"[[[true, false], [true, true]], [[false, false]]]"#).unwrap(),
+            Expr::from_str(r#"[[[true, false], [true, true]], [[false, false]]]"#).unwrap(),
             Type::set(Type::set(Type::set(Type::primitive_boolean()))),
         )
     })

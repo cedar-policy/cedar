@@ -21,7 +21,9 @@ use super::{
 use crate::ast::{
     BorrowedRestrictedExpr, Eid, EntityUID, Expr, ExprKind, Literal, Name, RestrictedExpr,
 };
-use crate::extensions::{Extensions, ExtensionsError};
+use crate::entities::EscapeKind;
+use crate::extensions::{ExtensionFunctionLookupError, Extensions};
+use crate::FromNormalizedStr;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
@@ -124,11 +126,11 @@ impl From<&EntityUID> for TypeAndId {
 }
 
 impl TryFrom<TypeAndId> for EntityUID {
-    type Error = Vec<crate::parser::err::ParseError>;
+    type Error = crate::parser::err::ParseErrors;
 
     fn try_from(e: TypeAndId) -> Result<EntityUID, Self::Error> {
         Ok(EntityUID::from_components(
-            e.entity_type.parse()?,
+            Name::from_normalized_str(&e.entity_type)?,
             Eid::new(e.id),
         ))
     }
@@ -171,32 +173,24 @@ impl JSONValue {
             Self::ExprEscape { __expr: expr } => {
                 use crate::parser;
                 let expr: Expr = parser::parse_expr(&expr).map_err(|errs| {
-                    JsonDeserializationError::ExprParseError(parser::err::ParseError::WithContext {
-                        context: format!(
-                            "contents of __expr escape {} are not a valid Cedar expression",
-                            expr
-                        ),
+                    JsonDeserializationError::ParseEscape {
+                        kind: EscapeKind::Expr,
+                        value: expr.to_string(),
                         errs,
-                    })
+                    }
                 })?;
                 Ok(RestrictedExpr::new(expr)?)
             }
-            Self::EntityEscape { __entity: entity } => {
-                use crate::parser;
-                Ok(RestrictedExpr::val(
-                    EntityUID::try_from(entity.clone()).map_err(|errs| {
-                        JsonDeserializationError::EntityParseError(
-                            parser::err::ParseError::WithContext {
-                                context: format!(
-                                    "contents of __entity escape {} do not make a valid entity reference",
-                                    serde_json::to_string_pretty(&entity).unwrap_or_else(|_| format!("{:?}", &entity))
-                                ),
-                                errs,
-                            },
-                        )
-                    })?,
-                ))
-            }
+            Self::EntityEscape { __entity: entity } => Ok(RestrictedExpr::val(
+                EntityUID::try_from(entity.clone()).map_err(|errs| {
+                    JsonDeserializationError::ParseEscape {
+                        kind: EscapeKind::Entity,
+                        value: serde_json::to_string_pretty(&entity)
+                            .unwrap_or_else(|_| format!("{:?}", &entity)),
+                        errs,
+                    }
+                })?,
+            )),
             Self::ExtnEscape { __extn: extn } => extn.into_expr(),
         }
     }
@@ -287,16 +281,13 @@ impl JSONValue {
 impl FnAndArg {
     /// Convert this `FnAndArg` into a Cedar "restricted expression" (which will be a call to an extension constructor)
     pub fn into_expr(self) -> Result<RestrictedExpr, JsonDeserializationError> {
-        use crate::parser;
         Ok(RestrictedExpr::call_extension_fn(
-            self.ext_fn.parse().map_err(|errs| {
-                JsonDeserializationError::ExtnParseError(parser::err::ParseError::WithContext {
-                    context: format!(
-                        "in __extn escape, {:?} is not a valid function name",
-                        &self.ext_fn,
-                    ),
+            Name::from_normalized_str(&self.ext_fn).map_err(|errs| {
+                JsonDeserializationError::ParseEscape {
+                    kind: EscapeKind::Extension,
+                    value: self.ext_fn.to_string(),
                     errs,
-                })
+                }
             })?,
             vec![JSONValue::into_expr(*self.arg)?],
         ))
@@ -358,7 +349,7 @@ impl<'e> ValueParser<'e> {
                         .collect::<Result<Vec<RestrictedExpr>, JsonDeserializationError>>()?,
                 )),
                 _ => Err(JsonDeserializationError::TypeMismatch {
-                    ctx: ctx(),
+                    ctx: Box::new(ctx()),
                     expected: Box::new(expected_ty.clone()),
                     actual: {
                         let jvalue: JSONValue = serde_json::from_value(val)?;
@@ -388,7 +379,7 @@ impl<'e> ValueParser<'e> {
                                     }
                                 }
                                 None if expected_attr_ty.is_required() => Some(Err(JsonDeserializationError::MissingRequiredRecordAttr {
-                                    ctx: ctx(),
+                                    ctx: Box::new(ctx()),
                                     record_attr: k.clone(),
                                 })),
                                 None => None,
@@ -399,14 +390,14 @@ impl<'e> ValueParser<'e> {
                     // we still need to verify that we didn't have any unexpected attrs.
                     if let Some((record_attr, _)) = actual_attrs.into_iter().next() {
                         return Err(JsonDeserializationError::UnexpectedRecordAttr {
-                            ctx: ctx2(),
+                            ctx: Box::new(ctx2()),
                             record_attr: record_attr.into(),
                         });
                     }
                     Ok(RestrictedExpr::record(rexpr_pairs))
                 }
                 _ => Err(JsonDeserializationError::TypeMismatch {
-                    ctx: ctx(),
+                    ctx: Box::new(ctx()),
                     expected: Box::new(expected_ty.clone()),
                     actual: {
                         let jvalue: JSONValue = serde_json::from_value(val)?;
@@ -441,7 +432,7 @@ impl<'e> ValueParser<'e> {
                 match expr.expr_kind() {
                     ExprKind::ExtensionFunctionApp { .. } => Ok(expr),
                     _ => Err(JsonDeserializationError::ExpectedExtnValue {
-                        ctx: ctx(),
+                        ctx: Box::new(ctx()),
                         got: Box::new(expr.clone().into()),
                     }),
                 }
@@ -454,14 +445,14 @@ impl<'e> ValueParser<'e> {
                 match expr.expr_kind() {
                     ExprKind::ExtensionFunctionApp { .. } => Ok(expr),
                     _ => Err(JsonDeserializationError::ExpectedExtnValue {
-                        ctx: ctx(),
+                        ctx: Box::new(ctx()),
                         got: Box::new(expr.clone().into()),
                     }),
                 }
             }
             ExtnValueJSON::ImplicitConstructor(val) => {
                 let arg = val.into_expr()?;
-                let argty = self.type_of_rexpr(arg.as_borrowed(), ctx)?;
+                let argty = self.type_of_rexpr(arg.as_borrowed(), ctx.clone())?;
                 let func = self
                     .extensions
                     .lookup_single_arg_constructor(
@@ -470,7 +461,8 @@ impl<'e> ValueParser<'e> {
                         },
                         &argty,
                     )?
-                    .ok_or_else(|| JsonDeserializationError::ImpliedConstructorNotFound {
+                    .ok_or_else(|| JsonDeserializationError::MissingImpliedConstructor {
+                        ctx: Box::new(ctx()),
                         return_type: Box::new(SchemaType::Extension {
                             name: expected_typename,
                         }),
@@ -513,7 +505,7 @@ impl<'e> ValueParser<'e> {
                             None => Ok(SchemaType::Set { element_ty: Box::new(element_ty) }),
                             Some(Ok(conflicting_ty)) =>
                                 Err(JsonDeserializationError::HeterogeneousSet {
-                                    ctx: ctx(),
+                                    ctx: Box::new(ctx()),
                                     ty1: Box::new(element_ty),
                                     ty2: Box::new(conflicting_ty),
                                 }),
@@ -538,7 +530,7 @@ impl<'e> ValueParser<'e> {
             }
             ExprKind::ExtensionFunctionApp { fn_name, .. } => {
                 let efunc = self.extensions.func(fn_name)?;
-                Ok(efunc.return_type().cloned().ok_or_else(|| ExtensionsError::HasNoType {
+                Ok(efunc.return_type().cloned().ok_or_else(|| ExtensionFunctionLookupError::HasNoType {
                     name: efunc.name().clone()
                 })?)
             }
@@ -644,7 +636,7 @@ impl EntityUidJSON {
                         // PANIC SAFETY: Every `String` can be turned into a restricted expression
                         #[allow(clippy::unwrap_used)]
                         JsonDeserializationError::ExpectedLiteralEntityRef {
-                            ctx: ctx(),
+                            ctx: Box::new(ctx()),
                             got: Box::new(JSONValue::String(__expr).into_expr().unwrap().into()),
                         }
                     } else {
@@ -654,7 +646,7 @@ impl EntityUidJSON {
                 match expr.expr_kind() {
                     ExprKind::Lit(Literal::EntityUID(euid)) => Ok((**euid).clone()),
                     _ => Err(JsonDeserializationError::ExpectedLiteralEntityRef {
-                        ctx: ctx(),
+                        ctx: Box::new(ctx()),
                         got: Box::new(expr.clone().into()),
                     }),
                 }
@@ -666,7 +658,7 @@ impl EntityUidJSON {
                 match expr.expr_kind() {
                     ExprKind::Lit(Literal::EntityUID(euid)) => Ok((**euid).clone()),
                     _ => Err(JsonDeserializationError::ExpectedLiteralEntityRef {
-                        ctx: ctx(),
+                        ctx: Box::new(ctx()),
                         got: Box::new(expr.clone().into()),
                     }),
                 }

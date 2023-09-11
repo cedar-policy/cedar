@@ -16,13 +16,169 @@
 
 use crate::ast::*;
 use smol_str::SmolStr;
-use std::sync::Arc;
+use std::{fmt::Display, sync::Arc};
 use thiserror::Error;
 
-/// Error type for various kinds of errors that can be raised by the policy
-/// evaluator.
-#[derive(Debug, PartialEq, Clone, Error)]
-pub enum EvaluationError {
+/// An error generated while evaluating an expression
+#[derive(Debug, PartialEq, Eq, Clone, Error)]
+pub struct EvaluationError {
+    /// The kind of error that occurred
+    error_kind: EvaluationErrorKind,
+    /// Optional advice on how to fix the error
+    advice: Option<String>,
+}
+
+impl Display for EvaluationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(help_msg) = &self.advice {
+            write!(f, "{}. {}", self.error_kind, help_msg)
+        } else {
+            self.error_kind.fmt(f)
+        }
+    }
+}
+
+impl EvaluationError {
+    /// Extract the kind of issue detected during evaluation
+    pub fn error_kind(&self) -> &EvaluationErrorKind {
+        &self.error_kind
+    }
+
+    /// Set the advice field of an error
+    pub fn set_advice(&mut self, advice: String) {
+        self.advice = Some(advice);
+    }
+
+    /// Construct a [`EntityDoesNotExist`] error
+    pub(crate) fn entity_does_not_exist(euid: Arc<EntityUID>) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::EntityDoesNotExist(euid),
+            advice: None,
+        }
+    }
+
+    /// Construct a [`EntityAttrDoesNotExist`] error
+    pub(crate) fn entity_attr_does_not_exist(entity: Arc<EntityUID>, attr: SmolStr) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::EntityAttrDoesNotExist { entity, attr },
+            advice: None,
+        }
+    }
+
+    /// Construct a [`UnspecifiedEntityAccess`] error
+    pub(crate) fn unspecified_entity_access(attr: SmolStr) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::UnspecifiedEntityAccess(attr),
+            advice: None,
+        }
+    }
+
+    /// Construct a [`RecordAttrDoesNotExist`] error
+    pub(crate) fn record_attr_does_not_exist(attr: SmolStr, alternatives: Vec<SmolStr>) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::RecordAttrDoesNotExist(attr, alternatives),
+            advice: None,
+        }
+    }
+
+    /// Construct a [`TypeError`] error
+    pub(crate) fn type_error(expected: Vec<Type>, actual: Type) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::TypeError { expected, actual },
+            advice: None,
+        }
+    }
+
+    /// Construct a [`TypeError`] error with the advice field set
+    pub(crate) fn type_error_with_advice(
+        expected: Vec<Type>,
+        actual: Type,
+        advice: String,
+    ) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::TypeError { expected, actual },
+            advice: Some(advice),
+        }
+    }
+
+    /// Construct a [`WrongNumArguments`] error
+    pub(crate) fn wrong_num_arguments(function_name: Name, expected: usize, actual: usize) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::WrongNumArguments {
+                function_name,
+                expected,
+                actual,
+            },
+            advice: None,
+        }
+    }
+
+    /// Construct a [`UnlinkedSlot`] error
+    pub(crate) fn unlinked_slot(id: SlotId) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::UnlinkedSlot(id),
+            advice: None,
+        }
+    }
+
+    /// Construct a [`FailedExtensionFunctionApplication`] error
+    pub(crate) fn failed_extension_function_application(extension_name: Name, msg: String) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::FailedExtensionFunctionApplication {
+                extension_name,
+                msg,
+            },
+            advice: None,
+        }
+    }
+
+    /// Construct a [`NonValue`] error
+    pub(crate) fn non_value(e: Expr) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::NonValue(e),
+            advice: Some("Consider using the partial evaluation APIs".into()),
+        }
+    }
+
+    /// Construct a [`RecursionLimit`] error
+    pub(crate) fn recursion_limit() -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::RecursionLimit,
+            advice: None,
+        }
+    }
+}
+
+impl From<crate::extensions::ExtensionFunctionLookupError> for EvaluationError {
+    fn from(err: crate::extensions::ExtensionFunctionLookupError) -> Self {
+        Self {
+            error_kind: err.into(),
+            advice: None,
+        }
+    }
+}
+
+impl From<IntegerOverflowError> for EvaluationError {
+    fn from(err: IntegerOverflowError) -> Self {
+        Self {
+            error_kind: err.into(),
+            advice: None,
+        }
+    }
+}
+
+impl From<RestrictedExprError> for EvaluationError {
+    fn from(err: RestrictedExprError) -> Self {
+        Self {
+            error_kind: err.into(),
+            advice: None,
+        }
+    }
+}
+
+/// Enumeration of the possible errors that can occur during evaluation
+#[derive(Debug, PartialEq, Eq, Clone, Error)]
+pub enum EvaluationErrorKind {
     /// Tried to lookup this entity UID, but it didn't exist in the provided
     /// entities
     #[error("entity does not exist: {0}")]
@@ -30,9 +186,9 @@ pub enum EvaluationError {
 
     /// Tried to get this attribute, but the specified entity didn't
     /// have that attribute
-    #[error("{} does not have the required attribute: {}", &.entity, &.attr)]
+    #[error("`{}` does not have the attribute: {}", &.entity, &.attr)]
     EntityAttrDoesNotExist {
-        /// Entity which didn't have the attribute
+        /// Entity that didn't have the attribute
         entity: Arc<EntityUID>,
         /// Name of the attribute it didn't have
         attr: SmolStr,
@@ -42,19 +198,18 @@ pub enum EvaluationError {
     #[error("cannot access attribute of unspecified entity: {0}")]
     UnspecifiedEntityAccess(SmolStr),
 
-    /// Tried to get this attribute of a (non-entity) record, but that record
+    /// Tried to get an attribute of a (non-entity) record, but that record
     /// didn't have that attribute
-    #[error("record does not have the required attribute: {0}")]
-    RecordAttrDoesNotExist(SmolStr),
+    #[error("record does not have the attribute: {0}. Available attributes: {1:?}")]
+    RecordAttrDoesNotExist(SmolStr, Vec<SmolStr>),
 
-    /// Error thown by an operation on `Extensions`
-    /// (not to be confused with `ExtensionError`, which is an error thrown by
-    /// an individual extension function)
+    /// An error occurred when looking up an extension function
     #[error(transparent)]
-    ExtensionsError(#[from] crate::extensions::ExtensionsError),
+    FailedExtensionFunctionLookup(#[from] crate::extensions::ExtensionFunctionLookupError),
 
-    /// Type error, showing the expected type and actual type
-    /// INVARIANT `expected` must be non-empty
+    /// Tried to evaluate an operation on values with incorrect types for that
+    /// operation
+    // INVARIANT `expected` must be non-empty
     #[error("{}", pretty_type_error(expected, actual))]
     TypeError {
         /// Expected (one of) these types
@@ -63,8 +218,8 @@ pub enum EvaluationError {
         actual: Type,
     },
 
-    /// Wrong number of arguments to an extension function
-    #[error("wrong number of arguments to {function_name}: expected {expected}, got {actual}")]
+    /// Wrong number of arguments provided to an extension function
+    #[error("wrong number of arguments provided to extension function {function_name}: expected {expected}, got {actual}")]
     WrongNumArguments {
         /// arguments to this function
         function_name: Name,
@@ -80,27 +235,30 @@ pub enum EvaluationError {
 
     /// Error with the use of "restricted" expressions
     #[error(transparent)]
-    InvalidRestrictedExpression(#[from] RestrictedExpressionError),
+    InvalidRestrictedExpression(#[from] RestrictedExprError),
 
-    /// Thrown when a policy is evaluated with an un-filled slot
-    #[error("Template slot {0} was not instantiated")]
-    TemplateInstantiationError(SlotId),
+    /// Thrown when a policy is evaluated with a slot that is not linked to an
+    /// [`EntityUID`]
+    #[error("template slot `{0}` was not linked")]
+    UnlinkedSlot(SlotId),
 
     /// Evaluation error thrown by an extension function
-    #[error("error from {extension_name} extension: {msg}")]
-    ExtensionError {
+    #[error("error while evaluating {extension_name} extension function: {msg}")]
+    FailedExtensionFunctionApplication {
         /// Name of the extension throwing the error
         extension_name: Name,
         /// Error message from the extension
         msg: String,
     },
 
-    /// Error raised if an expression did not reduce to a value when it was supposed to
-    #[error("The expression evaluated to a residual: {0}")]
+    /// This error is raised if an expression contains unknowns and cannot be
+    /// reduced to a [`Value`]. In order to return partial results, use the
+    /// partial evaluation APIs instead.
+    #[error("the expression contains unknown(s): {0}")]
     NonValue(Expr),
 
     /// Maximum recursion limit reached for expression evaluation
-    #[error("Recursion Limit Reached")]
+    #[error("recursion limit reached")]
     RecursionLimit,
 }
 
@@ -124,9 +282,10 @@ fn pretty_type_error(expected: &[Type], actual: &Type) -> String {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Error)]
 pub enum IntegerOverflowError {
-    #[error("integer overflow while attempting to {} the values {arg1} and {arg2}", match .op { BinaryOp::Add => "add", BinaryOp::Sub => "subtract", _ => "perform an operation on" })]
+    /// Overflow during a binary operation
+    #[error("integer overflow while attempting to {} the values `{arg1}` and `{arg2}`", match .op { BinaryOp::Add => "add", BinaryOp::Sub => "subtract", _ => "perform an operation on" })]
     BinaryOp {
         /// overflow while evaluating this operator
         op: BinaryOp,
@@ -136,7 +295,8 @@ pub enum IntegerOverflowError {
         arg2: Value,
     },
 
-    #[error("integer overflow while attempting to multiply {arg} by {constant}")]
+    /// Overflow during multiplication
+    #[error("integer overflow while attempting to multiply `{arg}` by `{constant}`")]
     Multiplication {
         /// first argument, which wasn't necessarily a constant in the policy
         arg: Value,
@@ -144,8 +304,8 @@ pub enum IntegerOverflowError {
         constant: i64,
     },
 
-    /// Overflow during an integer negation operation
-    #[error("integer overflow while attempting to {} the value {arg}", match .op { UnaryOp::Neg => "negate", _ => "perform an operation on" })]
+    /// Overflow during a unary operation
+    #[error("integer overflow while attempting to {} the value `{arg}`", match .op { UnaryOp::Neg => "negate", _ => "perform an operation on" })]
     UnaryOp {
         /// overflow while evaluating this operator
         op: UnaryOp,

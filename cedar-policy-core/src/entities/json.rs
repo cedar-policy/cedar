@@ -30,6 +30,10 @@ pub use entities::*;
 mod context;
 pub use context::*;
 
+/// the `Schema` trait and related types/traits, used for schema-based parsing.
+mod schema;
+pub use schema::*;
+
 /// Types which schema-based parsing expects for Cedar values.
 mod schema_types;
 pub use schema_types::*;

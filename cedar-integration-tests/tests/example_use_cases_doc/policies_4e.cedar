@@ -3,10 +3,9 @@
 //
 // (slightly adapted from the doc: in our sandbox_b, resources don't have
 // .owner, but they do have .account.owner)
-permit(
-    principal,
-    action == Action::"view",
-    resource
-) when {
-    principal.department == resource.account.owner.department
-};
+permit (
+  principal,
+  action == Action::"view",
+  resource
+)
+when { principal.department == resource.account.owner.department };

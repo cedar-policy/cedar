@@ -19,17 +19,21 @@
 #![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
+use std::str::FromStr;
+
 use cedar_policy_core::ast::{BinaryOp, EntityUID, Expr, PatternElem, SlotId, Var};
 use serde_json::json;
 use smol_str::SmolStr;
 
 use crate::{
-    type_error::TypeError, types::Type, AttributesOrContext, EntityType, NamespaceDefinition,
+    type_error::TypeError, types::Type, AttributeAccess, AttributesOrContext, EntityType,
+    NamespaceDefinition, ValidationMode,
 };
 
 use super::test_utils::{
     assert_typecheck_fails_empty_schema, assert_typecheck_fails_empty_schema_without_type,
-    assert_typechecks, assert_typechecks_empty_schema,
+    assert_typecheck_fails_for_mode, assert_typechecks, assert_typechecks_empty_schema,
+    assert_typechecks_empty_schema_permissive, assert_typechecks_for_mode, empty_schema_file,
 };
 
 #[test]
@@ -56,7 +60,7 @@ fn slot_in_typechecks() {
         shape: AttributesOrContext::default(),
     };
     let schema = NamespaceDefinition::new([("typename".into(), etype)], []);
-    assert_typechecks(
+    assert_typechecks_for_mode(
         schema.clone(),
         Expr::binary_app(
             BinaryOp::In,
@@ -64,8 +68,9 @@ fn slot_in_typechecks() {
             Expr::slot(SlotId::principal()),
         ),
         Type::primitive_boolean(),
+        ValidationMode::Permissive,
     );
-    assert_typechecks(
+    assert_typechecks_for_mode(
         schema,
         Expr::binary_app(
             BinaryOp::In,
@@ -73,6 +78,7 @@ fn slot_in_typechecks() {
             Expr::slot(SlotId::resource()),
         ),
         Type::primitive_boolean(),
+        ValidationMode::Permissive,
     );
 }
 
@@ -82,8 +88,12 @@ fn slot_equals_typechecks() {
         member_of_types: vec![],
         shape: AttributesOrContext::default(),
     };
+    // These don't typecheck in strict mode because the test_util expression
+    // typechecker doesn't have access to a schema, so it can't instantiate
+    // the template slots with appropriate types. Similar policies that pass
+    // strict typechecking are in the test_policy file.
     let schema = NamespaceDefinition::new([("typename".into(), etype)], []);
-    assert_typechecks(
+    assert_typechecks_for_mode(
         schema.clone(),
         Expr::binary_app(
             BinaryOp::Eq,
@@ -91,8 +101,9 @@ fn slot_equals_typechecks() {
             Expr::slot(SlotId::principal()),
         ),
         Type::primitive_boolean(),
+        ValidationMode::Permissive,
     );
-    assert_typechecks(
+    assert_typechecks_for_mode(
         schema,
         Expr::binary_app(
             BinaryOp::Eq,
@@ -100,6 +111,7 @@ fn slot_equals_typechecks() {
             Expr::slot(SlotId::resource()),
         ),
         Type::primitive_boolean(),
+        ValidationMode::Permissive,
     );
 }
 
@@ -139,7 +151,7 @@ fn heterogeneous_set() {
 fn record_typechecks() {
     assert_typechecks_empty_schema(
         Expr::record([("foo".into(), Expr::val(1))]),
-        Type::record_with_required_attributes([("foo".into(), Type::singleton_long(1))]),
+        Type::closed_record_with_required_attributes([("foo".into(), Type::singleton_long(1))]),
     )
 }
 
@@ -413,7 +425,7 @@ fn set_eq_is_not_false() {
     }"#,
     )
     .expect("Expected that schema would parse");
-    assert_typechecks(
+    assert_typechecks_for_mode(
         schema,
         Expr::is_eq(
             Expr::get_attr(
@@ -432,6 +444,7 @@ fn set_eq_is_not_false() {
             ),
         ),
         Type::primitive_boolean(),
+        ValidationMode::Permissive,
     );
 }
 
@@ -499,6 +512,72 @@ fn entity_has_typechecks() {
 fn record_has_typechecks() {
     assert_typechecks_empty_schema(
         Expr::has_attr(Expr::var(Var::Context), "attr".into()),
+        Type::singleton_boolean(false),
+    );
+    assert_typechecks_empty_schema(
+        Expr::has_attr(Expr::record([]), "attr".into()),
+        Type::singleton_boolean(false),
+    );
+    assert_typechecks_empty_schema(
+        Expr::from_str("{a: 1} has a").unwrap(),
+        Type::singleton_boolean(true),
+    );
+}
+
+#[test]
+fn record_lub_has_typechecks_strict() {
+    assert_typechecks_empty_schema(
+        Expr::from_str("(if 1 > 0 then {a: 1} else {a: 2}) has a").unwrap(),
+        Type::singleton_boolean(true),
+    );
+    assert_typechecks_empty_schema(
+        Expr::from_str("(if 1 > 0 then {a: 1} else {a: 2}) has b").unwrap(),
+        Type::singleton_boolean(false),
+    );
+    assert_typechecks_empty_schema(
+        Expr::from_str("(if 1 > 0 then {a: true} else {a: false}) has b").unwrap(),
+        Type::singleton_boolean(false),
+    );
+    assert_typechecks_empty_schema(
+        Expr::from_str("(if 1 > 0 then {a: true} else {a: false}) has a").unwrap(),
+        Type::singleton_boolean(true),
+    );
+}
+
+#[test]
+fn record_lub_has_typechecks_permissive() {
+    assert_typechecks_empty_schema_permissive(
+        Expr::from_str("(if 1 > 0 then {a: 1} else {a: 2, b: 3}) has a").unwrap(),
+        Type::singleton_boolean(true),
+    );
+    assert_typechecks_empty_schema_permissive(
+        Expr::from_str("(if 1 > 0 then {a: 1, b: 2} else {a: 1, c: 2}) has a").unwrap(),
+        Type::singleton_boolean(true),
+    );
+    assert_typechecks_empty_schema_permissive(
+        Expr::from_str("(if 1 > 0 then {a: 1} else {}) has a").unwrap(),
+        Type::primitive_boolean(),
+    );
+    assert_typechecks_empty_schema_permissive(
+        Expr::from_str("(if 1 > 0 then {a: 1, b: 2} else {a: 1, c: 2}) has b").unwrap(),
+        Type::primitive_boolean(),
+    );
+    assert_typechecks_empty_schema_permissive(
+        Expr::from_str("(if 1 > 0 then (if 1 > 0 then {a: 1} else {}) else {}) has a").unwrap(),
+        Type::primitive_boolean(),
+    );
+
+    // These cases are imprecise.
+    assert_typechecks_empty_schema_permissive(
+        Expr::from_str("(if 1 > 0 then {a: 1} else {}) has c").unwrap(),
+        Type::primitive_boolean(),
+    );
+    assert_typechecks_empty_schema_permissive(
+        Expr::from_str("(if 1 > 0 then {a: 1} else {b: 2}) has c").unwrap(),
+        Type::primitive_boolean(),
+    );
+    assert_typechecks_empty_schema_permissive(
+        Expr::from_str("(if 1 > 0 then {a: 1} else {a : false}) has a").unwrap(),
         Type::primitive_boolean(),
     );
 }
@@ -533,13 +612,18 @@ fn record_get_attr_incompatible() {
         Expr::record([(attr.clone(), Expr::val(true))]),
         Expr::record([(attr.clone(), Expr::val(1))]),
     );
-    assert_typecheck_fails_empty_schema_without_type(
+
+    assert_typecheck_fails_for_mode(
+        empty_schema_file(),
         Expr::get_attr(if_expr.clone(), attr.clone()),
-        vec![TypeError::missing_attribute(
+        None,
+        vec![TypeError::unsafe_attribute_access(
             Expr::get_attr(if_expr, attr.clone()),
-            attr.to_string(),
+            AttributeAccess::Other(vec![attr]),
             None,
+            true,
         )],
+        crate::ValidationMode::Permissive,
     );
 }
 
@@ -568,7 +652,10 @@ fn record_get_attr_lub_typecheck_fails() {
         vec![TypeError::incompatible_types(
             if_expr,
             vec![
-                Type::record_with_required_attributes([(attr, Type::singleton_boolean(true))]),
+                Type::closed_record_with_required_attributes([(
+                    attr,
+                    Type::singleton_boolean(true),
+                )]),
                 Type::singleton_long(1),
             ],
         )],
@@ -580,10 +667,11 @@ fn record_get_attr_does_not_exist() {
     let attr: SmolStr = "foo".into();
     assert_typecheck_fails_empty_schema_without_type(
         Expr::get_attr(Expr::record([]), attr.clone()),
-        vec![TypeError::missing_attribute(
+        vec![TypeError::unsafe_attribute_access(
             Expr::get_attr(Expr::record([]), attr.clone()),
-            attr.to_string(),
+            AttributeAccess::Other(vec![attr]),
             None,
+            false,
         )],
     );
 }
@@ -598,28 +686,48 @@ fn record_get_attr_lub_does_not_exist() {
     );
     assert_typecheck_fails_empty_schema_without_type(
         Expr::get_attr(if_expr.clone(), attr.clone()),
-        vec![TypeError::missing_attribute(
+        vec![TypeError::unsafe_attribute_access(
             Expr::get_attr(if_expr, attr.clone()),
-            attr.to_string(),
+            AttributeAccess::Other(vec![attr]),
             None,
+            false,
         )],
     );
 }
 
 #[test]
-fn in_typechecks() {
-    assert_typechecks_empty_schema(
+fn in_typechecks_permissive() {
+    assert_typechecks_empty_schema_permissive(
         Expr::is_in(Expr::var(Var::Principal), Expr::var(Var::Resource)),
         Type::primitive_boolean(),
     );
 }
 
 #[test]
-fn in_set_typechecks() {
+fn in_typechecks() {
     assert_typechecks_empty_schema(
+        Expr::is_in(Expr::var(Var::Principal), Expr::var(Var::Principal)),
+        Type::primitive_boolean(),
+    );
+}
+
+#[test]
+fn in_set_typechecks_permissive() {
+    assert_typechecks_empty_schema_permissive(
         Expr::is_in(
             Expr::var(Var::Principal),
             Expr::set([Expr::var(Var::Resource)]),
+        ),
+        Type::primitive_boolean(),
+    );
+}
+
+#[test]
+fn in_set_typechecks_strict() {
+    assert_typechecks_empty_schema(
+        Expr::is_in(
+            Expr::var(Var::Principal),
+            Expr::set([Expr::var(Var::Principal)]),
         ),
         Type::primitive_boolean(),
     );
@@ -686,7 +794,7 @@ fn contains_typecheck_fails() {
         vec![TypeError::expected_type(
             Expr::record([("foo".into(), Expr::val(1))]),
             Type::any_set(),
-            Type::record_with_attributes([(
+            Type::closed_record_with_attributes([(
                 "foo".into(),
                 AttributeType::new(Type::singleton_long(1), true),
             )]),

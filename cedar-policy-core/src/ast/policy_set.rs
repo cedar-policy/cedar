@@ -87,10 +87,13 @@ impl From<PolicySet> for LiteralPolicySet {
 /// Potential errors when working with `PolicySet`s.
 #[derive(Error, Debug)]
 pub enum PolicySetError {
-    /// There was a `PolicyId` collision in either the set of templates or the set of policies.
-    /// Nothing was added.
-    #[error("collision in policy id")]
-    Occupied,
+    /// There was a duplicate [`PolicyID`] encountered in either the set of
+    /// templates or the set of policies.
+    #[error("duplicate template or policy id: {id}")]
+    Occupied {
+        /// [`PolicyID`] that was duplicate
+        id: PolicyID,
+    },
 }
 
 // The public interface of `PolicySet` is intentionally narrow, to allow us
@@ -116,7 +119,9 @@ impl PolicySet {
             Entry::Vacant(ventry) => Some(ventry),
             Entry::Occupied(oentry) => {
                 if oentry.get() != &t {
-                    return Err(PolicySetError::Occupied);
+                    return Err(PolicySetError::Occupied {
+                        id: oentry.key().clone(),
+                    });
                 }
                 None
             }
@@ -124,8 +129,10 @@ impl PolicySet {
 
         let link_ventry = match self.links.entry(policy.id().clone()) {
             Entry::Vacant(ventry) => Some(ventry),
-            Entry::Occupied(_) => {
-                return Err(PolicySetError::Occupied);
+            Entry::Occupied(oentry) => {
+                return Err(PolicySetError::Occupied {
+                    id: oentry.key().clone(),
+                });
             }
         };
 
@@ -156,7 +163,12 @@ impl PolicySet {
                 links_entry.insert(p);
                 Ok(())
             }
-            _ => Err(PolicySetError::Occupied),
+            (Entry::Occupied(oentry), _) => Err(PolicySetError::Occupied {
+                id: oentry.key().clone(),
+            }),
+            (_, Entry::Occupied(oentry)) => Err(PolicySetError::Occupied {
+                id: oentry.key().clone(),
+            }),
         }
     }
 
@@ -165,15 +177,20 @@ impl PolicySet {
         // TODO: Use `try_insert` when stabilized.
         // https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert
         match self.templates.entry(t.id().clone()) {
-            Entry::Occupied(_) => Err(PolicySetError::Occupied),
-            Entry::Vacant(entry) => {
-                entry.insert(Arc::new(t));
+            Entry::Occupied(oentry) => Err(PolicySetError::Occupied {
+                id: oentry.key().clone(),
+            }),
+            Entry::Vacant(ventry) => {
+                ventry.insert(Arc::new(t));
                 Ok(())
             }
         }
     }
 
-    /// Attempt to create a new template linked policy and add it to the policy set
+    /// Attempt to create a new template linked policy and add it to the policy
+    /// set. Returns a references to the new template linked policy if
+    /// successful.
+    ///
     /// Errors for two reasons
     ///   1) The the passed SlotEnv either does not match the slots in the templates
     ///   2) The passed link Id conflicts with an Id already in the set
@@ -182,10 +199,12 @@ impl PolicySet {
         template_id: PolicyID,
         new_id: PolicyID,
         values: HashMap<SlotId, EntityUID>,
-    ) -> Result<(), LinkingError> {
+    ) -> Result<&Policy, LinkingError> {
         let t = self
             .get_template(&template_id)
-            .ok_or_else(|| LinkingError::NoSuchTemplate(template_id.clone()))?;
+            .ok_or_else(|| LinkingError::NoSuchTemplate {
+                id: template_id.clone(),
+            })?;
         let r = Template::link(t, new_id.clone(), values)?;
 
         // Both maps must not contain the `new_id`
@@ -193,11 +212,13 @@ impl PolicySet {
             self.links.entry(new_id.clone()),
             self.templates.entry(new_id),
         ) {
-            (Entry::Vacant(links_entry), Entry::Vacant(_)) => {
-                links_entry.insert(r);
-                Ok(())
-            }
-            _ => Err(LinkingError::PolicyIdConflict),
+            (Entry::Vacant(links_entry), Entry::Vacant(_)) => Ok(links_entry.insert(r)),
+            (Entry::Occupied(oentry), _) => Err(LinkingError::PolicyIdConflict {
+                id: oentry.key().clone(),
+            }),
+            (_, Entry::Occupied(oentry)) => Err(LinkingError::PolicyIdConflict {
+                id: oentry.key().clone(),
+            }),
         }
     }
 
@@ -300,7 +321,9 @@ mod test {
 
         match r {
             Ok(_) => panic!("Should have failed due to conflict"),
-            Err(LinkingError::PolicyIdConflict) => (),
+            Err(LinkingError::PolicyIdConflict { id }) => {
+                assert_eq!(id, PolicyID::from_string("id"))
+            }
             Err(e) => panic!("Incorrect error: {e}"),
         };
     }
@@ -356,7 +379,7 @@ mod test {
         .expect("Failed to link");
         match pset.add(p2) {
             Ok(_) => panic!("Should have failed due to conflict with existing link id"),
-            Err(PolicySetError::Occupied) => (),
+            Err(PolicySetError::Occupied { id }) => assert_eq!(id, PolicyID::from_string("link")),
         }
 
         let p3 = Template::link(Arc::clone(&template), PolicyID::from_string("link2"), env2)
@@ -387,7 +410,9 @@ mod test {
         .expect("Failed to link");
         match pset.add(p4) {
             Ok(_) => panic!("Should have failed due to conflict on template id"),
-            Err(PolicySetError::Occupied) => (),
+            Err(PolicySetError::Occupied { id }) => {
+                assert_eq!(id, PolicyID::from_string("t"))
+            }
         }
     }
 
@@ -404,7 +429,7 @@ mod test {
         pset.add_static(p1).expect("Failed to add!");
         match pset.add_static(p2) {
             Ok(_) => panic!("Should have failed to due name conflict"),
-            Err(PolicySetError::Occupied) => (),
+            Err(PolicySetError::Occupied { id }) => assert_eq!(id, PolicyID::from_string("id")),
         }
     }
 
@@ -460,7 +485,7 @@ mod test {
             .expect_err("Should fail");
 
         match e {
-            LinkingError::NoSuchTemplate(id) => assert_eq!(tid, id),
+            LinkingError::NoSuchTemplate { id } => assert_eq!(tid, id),
             e => panic!("Wrong error {e}"),
         };
 

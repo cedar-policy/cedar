@@ -15,8 +15,9 @@
  */
 
 use crate::ast::*;
-use crate::parser::err::ParseError;
+use crate::parser::err::ParseErrors;
 use crate::transitive_closure::TCNode;
+use crate::FromNormalizedStr;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -26,12 +27,22 @@ use std::collections::{HashMap, HashSet};
 /// and the second is an unspecified type, which is used (internally) to represent cases
 /// where the input request does not provide a principal, action, and/or resource.
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
-#[cfg_attr(fuzzing, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum EntityType {
     /// Concrete nominal type
     Concrete(Name),
     /// Unspecified
     Unspecified,
+}
+
+impl EntityType {
+    /// Is this an Action entity type
+    pub fn is_action(&self) -> bool {
+        match self {
+            Self::Concrete(name) => name.basename() == &Id::new_unchecked("Action"),
+            Self::Unspecified => false,
+        }
+    }
 }
 
 // Note: the characters '<' and '>' are not allowed in `Name`s, so the display for
@@ -47,7 +58,7 @@ impl std::fmt::Display for EntityType {
 
 /// Unique ID for an entity. These represent entities in the AST.
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
-#[cfg_attr(fuzzing, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct EntityUID {
     /// Typename of the entity
     ty: EntityType,
@@ -93,7 +104,7 @@ impl EntityUID {
     // GRCOV_BEGIN_COVERAGE
 
     /// Create an `EntityUID` with the given (unqualified) typename, and the given string as its EID.
-    pub fn with_eid_and_type(typename: &str, eid: &str) -> Result<Self, Vec<ParseError>> {
+    pub fn with_eid_and_type(typename: &str, eid: &str) -> Result<Self, ParseErrors> {
         Ok(Self {
             ty: EntityType::Concrete(Name::parse_unqualified_name(typename)?),
             eid: Eid(eid.into()),
@@ -131,6 +142,11 @@ impl EntityUID {
     pub fn eid(&self) -> &Eid {
         &self.eid
     }
+
+    /// Does this EntityUID refer to an action entity?
+    pub fn is_action(&self) -> bool {
+        self.entity_type().is_action()
+    }
 }
 
 impl std::fmt::Display for EntityUID {
@@ -141,10 +157,16 @@ impl std::fmt::Display for EntityUID {
 
 // allow `.parse()` on a string to make an `EntityUID`
 impl std::str::FromStr for EntityUID {
-    type Err = Vec<ParseError>;
+    type Err = ParseErrors;
 
-    fn from_str(s: &str) -> Result<Self, Vec<ParseError>> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         crate::parser::parse_euid(s)
+    }
+}
+
+impl FromNormalizedStr for EntityUID {
+    fn describe_self() -> &'static str {
+        "Entity UID"
     }
 }
 
@@ -171,7 +193,7 @@ impl AsRef<str> for Eid {
     }
 }
 
-#[cfg(fuzzing)]
+#[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for Eid {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         let x: String = u.arbitrary()?;
@@ -236,6 +258,13 @@ impl Entity {
         self.ancestors.iter()
     }
 
+    /// Iterate over this entity's attributes
+    pub fn attrs(&self) -> impl Iterator<Item = (&str, BorrowedRestrictedExpr<'_>)> {
+        self.attrs
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_borrowed()))
+    }
+
     /// Create an `Entity` with the given UID, no attributes, and no parents.
     pub fn with_uid(uid: EntityUID) -> Self {
         Self {
@@ -247,8 +276,14 @@ impl Entity {
 
     /// Read-only access the internal `attrs` map of String to RestrictedExpr.
     /// This function is available only inside Core.
-    pub(crate) fn attrs(&self) -> &HashMap<SmolStr, RestrictedExpr> {
+    pub(crate) fn attrs_map(&self) -> &HashMap<SmolStr, RestrictedExpr> {
         &self.attrs
+    }
+
+    /// Read-only access the internal `ancestors` hashset.
+    /// This function is available only inside Core.
+    pub(crate) fn ancestors_set(&self) -> &HashSet<EntityUID> {
+        &self.ancestors
     }
 
     /// Set the given attribute to the given value.

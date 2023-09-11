@@ -27,23 +27,20 @@ use super::{Expr, Literal, PartialValue, Value, Var};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
     /// Principal associated with the request
-    /// None means that variable will result in a residual for partial evaluation.
     pub(crate) principal: EntityUIDEntry,
 
     /// Action associated with the request
-    /// None means that variable will result in a residual for partial evaluation.
     pub(crate) action: EntityUIDEntry,
 
     /// Resource associated with the request
-    /// None means that variable will result in a residual for partial evaluation.
     pub(crate) resource: EntityUIDEntry,
 
-    /// Context associated with the request
-    /// None means that variable will result in a residual for partial evaluation.
+    /// Context associated with the request.
+    /// `None` means that variable will result in a residual for partial evaluation.
     pub(crate) context: Option<Context>,
 }
 
-/// An entry in a  request for a Entity UID.
+/// An entry in a request for a Entity UID.
 /// It may either be a concrete EUID
 /// or an unknown in the case of partial evaluation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +65,14 @@ impl EntityUIDEntry {
     /// Create an entry with a concrete EntityUID
     pub fn concrete(euid: EntityUID) -> Self {
         Self::Concrete(Arc::new(euid))
+    }
+
+    /// Get the UID of the entry, or `None` if it is unknown (partial evaluation)
+    pub fn uid(&self) -> Option<&EntityUID> {
+        match self {
+            Self::Concrete(euid) => Some(euid),
+            Self::Unknown => None,
+        }
     }
 }
 

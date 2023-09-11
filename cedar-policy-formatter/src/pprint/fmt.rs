@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-use anyhow::{anyhow, Context, Result};
+use miette::{miette, Result, WrapErr};
+
 use cedar_policy_core::ast::{PolicySet, Template};
 use cedar_policy_core::parser::parse_policyset;
 use cedar_policy_core::parser::{err::ParseErrors, text_to_cst::parse_policies};
@@ -27,25 +28,26 @@ use super::utils::remove_empty_lines;
 use super::config::{self, Config};
 use super::doc::*;
 
-fn tree_to_pretty<T: Doc>(t: &T, context: &mut config::Context<'_>) -> String {
+fn tree_to_pretty<T: Doc>(t: &T, context: &mut config::Context<'_>) -> Result<String> {
     let mut w = Vec::new();
     let config = context.config;
     let doc = t.to_doc(context);
-    doc.render(config.line_width, &mut w).unwrap();
-    String::from_utf8(w).unwrap()
+    doc.ok_or(miette!("failed to produce doc"))?
+        .render(config.line_width, &mut w)
+        .map_err(|err| miette!(format!("failed to render doc: {err}")))?;
+    String::from_utf8(w)
+        .map_err(|err| miette!(format!("failed to convert rendered doc to string: {err}")))
 }
 
 fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
-    let formatted_ast = parse_policyset(ps)
-        .map_err(ParseErrors)
-        .context("formatter produces invalid policies")?;
+    let formatted_ast = parse_policyset(ps).wrap_err("formatter produces invalid policies")?;
     let (formatted_policies, policies) = (
         formatted_ast.templates().collect::<Vec<&Template>>(),
         ast.templates().collect::<Vec<&Template>>(),
     );
 
     if formatted_policies.len() != policies.len() {
-        return Err(anyhow!("missing formatted policies"));
+        return Err(miette!("missing formatted policies"));
     }
 
     for (f_p, p) in formatted_policies.into_iter().zip(policies.into_iter()) {
@@ -63,34 +65,41 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
                 .non_head_constraints()
                 .eq_shape(p.non_head_constraints()))
         {
-            return Err(anyhow!(format!(
+            return Err(miette!(
                 "policies differ:\nformatted: {}\ninput: {}",
-                f_p, p
-            )));
+                f_p,
+                p
+            ));
         }
     }
     Ok(())
 }
 
 pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
-    let cst = parse_policies(ps)
-        .map_err(ParseErrors)
-        .context("cannot parse input policies to CSTs")?;
-    let mut errs = Vec::new();
+    let cst = parse_policies(ps).wrap_err("cannot parse input policies to CSTs")?;
+    let mut errs = ParseErrors::new();
     let ast = cst
         .to_policyset(&mut errs)
-        .ok_or(ParseErrors(errs))
-        .context("cannot parse input policies to ASTs")?;
-    let tokens = get_token_stream(ps);
-    let end_comment_str = &ps[tokens.last().unwrap().span.end..];
+        .ok_or(errs)
+        .wrap_err("cannot parse input policies to ASTs")?;
+    let tokens = get_token_stream(ps).ok_or(miette!("cannot get token stream"))?;
+    let end_comment_str = ps
+        .get(
+            tokens
+                .last()
+                .ok_or(miette!("token stream is empty"))?
+                .span
+                .end..,
+        )
+        .ok_or(miette!("cannot get ending comment string"))?;
     let mut context = config::Context { config, tokens };
     let mut formatted_policies = cst
         .as_inner()
-        .unwrap()
+        .ok_or(miette!("fail to get input policy CST"))?
         .0
         .iter()
-        .map(|p| remove_empty_lines(tree_to_pretty(p, &mut context).trim()))
-        .collect::<Vec<String>>()
+        .map(|p| Ok(remove_empty_lines(tree_to_pretty(p, &mut context)?.trim())))
+        .collect::<Result<Vec<String>>>()?
         .join("\n\n");
     // handle comment at the end of a policyset
     let (trailing_comment, end_comment) = match end_comment_str.split_once('\n') {
@@ -168,8 +177,8 @@ mod tests {
         };
         let dir_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
         let pairs = vec![
-            ("test.txt", "test_formatted.txt"),
-            ("policies.txt", "policies_formatted.txt"),
+            ("test.cedar", "test_formatted.cedar"),
+            ("policies.cedar", "policies_formatted.cedar"),
         ];
         for (pf, ef) in pairs {
             // editors or cargo run try to append a newline at the end of files

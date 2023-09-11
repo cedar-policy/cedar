@@ -16,10 +16,10 @@
 
 use crate::extension_schema::{ArgumentCheckFn, ExtensionFunctionType, ExtensionSchema};
 use crate::types::{self, Type};
-use cedar_policy_core::ast::{Expr, ExprKind, Literal};
+use cedar_policy_core::ast::{Expr, ExprKind, Literal, RestrictedExpr};
 use cedar_policy_core::evaluator::RestrictedEvaluator;
 use cedar_policy_core::extensions::{decimal, Extensions};
-use cedar_policy_core::parser::parse_restrictedexpr;
+use std::str::FromStr;
 
 /// If any of the panics in this file are triggered, that means that this file has become
 /// out-of-date with the decimal extension definition in CedarCore.
@@ -85,9 +85,11 @@ fn validate_decimal_string(exprs: &[Expr]) -> Result<(), String> {
         Some(arg) if matches!(arg.expr_kind(), ExprKind::Lit(Literal::String(_))) => {
             let exts = Extensions::all_available();
             let evaluator = RestrictedEvaluator::new(&exts);
-            let expr = parse_restrictedexpr(&format!("decimal({arg})")).expect("parsing error");
-            match evaluator.interpret(expr.as_borrowed()) {
-                Ok(_) => Ok(()),
+            match RestrictedExpr::from_str(&format!("decimal({arg})")) {
+                Ok(expr) => match evaluator.interpret(expr.as_borrowed()) {
+                    Ok(_) => Ok(()),
+                    Err(_) => Err(format!("Failed to parse as a decimal value: {arg}")),
+                },
                 Err(_) => Err(format!("Failed to parse as a decimal value: {arg}")),
             }
         }

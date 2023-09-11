@@ -14,7 +14,11 @@
  * limitations under the License.
  */
 
-use crate::{ast::*, extensions::Extensions, parser::SourceInfo};
+use crate::{
+    ast::*,
+    extensions::Extensions,
+    parser::{err::ParseErrors, SourceInfo},
+};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -687,12 +691,12 @@ impl std::fmt::Display for Expr {
                         args[1..].iter().join(", ")
                     )
                 } else {
-                    // a function without a name or a method-style function
-                    // call with with zero arguments can only occur when
-                    // manually constructing an AST,
-                    // and even then, this form will be representable because the entire name and
-                    // all the args can be displayed with proper syntax. However, it will not parse
-                    // because the parser requires the extention name.
+                    // This case can only be reached for a manually constructed AST.
+                    // In order to reach this case, either the function name `fn_name`
+                    // is not in the list of available extension functions, or this
+                    // is a method-style function call with zero arguments. Both of
+                    // these cases can be displayed, but neither will parse. The
+                    // resulting `ParseError` will be `NotAFunction`.
                     write!(f, "{}({})", fn_name, args.iter().join(", "))
                 }
             }
@@ -759,6 +763,14 @@ fn maybe_with_parens(expr: &Expr) -> String {
         ExprKind::Like { .. } => format!("({})", expr),
         ExprKind::Set { .. } => expr.to_string(),
         ExprKind::Record { .. } => expr.to_string(),
+    }
+}
+
+impl std::str::FromStr for Expr {
+    type Err = ParseErrors;
+
+    fn from_str(s: &str) -> Result<Expr, Self::Err> {
+        crate::parser::parse_expr(s)
     }
 }
 
@@ -1367,7 +1379,7 @@ impl<T> Expr<T> {
 
 /// AST variables
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
-#[cfg_attr(fuzzing, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Var {
     /// the Principal of the given request
     #[serde(rename = "principal")]

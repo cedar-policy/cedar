@@ -26,6 +26,8 @@ use std::{
 
 use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprShapeOnly, Name};
 
+use crate::ValidationMode;
+
 use super::schema::{
     is_action_entity_type, ValidatorActionId, ValidatorEntityType, ValidatorSchema,
 };
@@ -33,12 +35,15 @@ use super::schema::{
 /// Contains the four variables bound in the type environment. These together
 /// represent the full type of (principal, action, resource, context)
 /// authorization request.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RequestEnv<'a> {
     pub principal: &'a EntityType,
     pub action: &'a EntityUID,
     pub resource: &'a EntityType,
     pub context: &'a Attributes,
+
+    pub principal_slot: Option<EntityType>,
+    pub resource_slot: Option<EntityType>,
 }
 
 /// The main type structure.
@@ -122,16 +127,6 @@ impl Type {
         Self::long_bounded(val, val)
     }
 
-    // Top type for the "static" (non-gradual) system.
-    pub(crate) fn long_static_top() -> Type {
-        Type::Primitive {
-            primitive_type: Primitive::Long(LongBoundsInfo {
-                can_be_any: false,
-                bounds_opt: Some(LongBounds::top()),
-            }),
-        }
-    }
-
     // The type checker "expects" this when any Long is acceptable.
     pub(crate) fn long_top() -> Type {
         Type::Primitive {
@@ -178,22 +173,28 @@ impl Type {
     }
 
     pub(crate) fn any_record() -> Type {
-        Type::record_with_required_attributes(None)
+        // OpenAttributes <: ClosedAttributes, so this makes `any_record` a
+        // super type of all records.
+        Type::record_with_attributes(None, OpenTag::OpenAttributes)
     }
 
     pub(crate) fn record_with_required_attributes(
         required_attrs: impl IntoIterator<Item = (SmolStr, Type)>,
+        open_attributes: OpenTag,
     ) -> Type {
         Type::EntityOrRecord(EntityRecordKind::Record {
             attrs: Attributes::with_required_attributes(required_attrs),
+            open_attributes,
         })
     }
 
     pub(crate) fn record_with_attributes(
         attrs: impl IntoIterator<Item = (SmolStr, AttributeType)>,
+        open_attributes: OpenTag,
     ) -> Type {
         Type::EntityOrRecord(EntityRecordKind::Record {
             attrs: Attributes::with_attributes(attrs),
+            open_attributes,
         })
     }
 
@@ -240,7 +241,12 @@ impl Type {
     /// `schema` so that the declared attributes for named entity types can be
     /// retrieved. This is used to determine subtyping between a named entity
     /// type and a record type.
-    pub(crate) fn is_subtype(schema: &ValidatorSchema, ty0: &Type, ty1: &Type) -> bool {
+    pub(crate) fn is_subtype(
+        schema: &ValidatorSchema,
+        ty0: &Type,
+        ty1: &Type,
+        mode: ValidationMode,
+    ) -> bool {
         match (ty0, ty1) {
             // Never is a subtype of every type.
             (Type::Never, _) => true,
@@ -266,7 +272,7 @@ impl Type {
                     && match (&lbi1.bounds_opt, &lbi2.bounds_opt) {
                         (None, _) => true,
                         (Some(_), None) => false,
-                        (Some(lb1), Some(lb2)) => LongBounds::includes(&lb2, &lb1),
+                        (Some(lb1), Some(lb2)) => LongBounds::includes(lb2, lb1),
                     }
             }
 
@@ -285,14 +291,14 @@ impl Type {
                     element_type: e_ty1,
                 },
             ) => match (e_ty0, e_ty1) {
-                (Some(e_ty0), Some(e_ty1)) => Type::is_subtype(schema, e_ty0, e_ty1),
+                (Some(e_ty0), Some(e_ty1)) => Type::is_subtype(schema, e_ty0, e_ty1, mode),
                 (Some(_), None) => true,
                 (None, Some(_)) => false,
                 (None, None) => true,
             },
 
             (Type::EntityOrRecord(rk0), Type::EntityOrRecord(rk1)) => {
-                EntityRecordKind::is_subtype(schema, rk0, rk1)
+                EntityRecordKind::is_subtype(schema, rk0, rk1, mode)
             }
 
             // Subtypes between extension types only occurs when the extension
@@ -310,10 +316,11 @@ impl Type {
         schema: &ValidatorSchema,
         ty0: &Type,
         ty1: &Type,
+        mode: ValidationMode,
     ) -> Option<Type> {
         match (ty0, ty1) {
-            _ if Type::is_subtype(schema, ty0, ty1) => Some(ty1.clone()),
-            _ if Type::is_subtype(schema, ty1, ty0) => Some(ty0.clone()),
+            _ if Type::is_subtype(schema, ty0, ty1, mode) => Some(ty1.clone()),
+            _ if Type::is_subtype(schema, ty1, ty0, mode) => Some(ty0.clone()),
 
             (Type::True | Type::False, Type::True | Type::False) => Some(Type::primitive_boolean()),
 
@@ -331,23 +338,33 @@ impl Type {
                         (None, None) => None,
                         (Some(lb1), None) => Some(lb1.clone()),
                         (None, Some(lb2)) => Some(lb2.clone()),
-                        (Some(lb1), Some(lb2)) => Some(LongBounds::union(&lb1, &lb2)),
+                        (Some(lb1), Some(lb2)) => Some(LongBounds::union(lb1, lb2)),
                     },
                 }),
             }),
 
+            // `None` as an element type represents the top type for the set
+            // element, so every other set is a subtype of set<None>, making a
+            // least upper bound containing  set<None> and another set type
+            // equal to set<None>. This case should be impossible due to the
+            // subtype checks in the first two match cases, but we handle it
+            // explicitly as an alternative to panicking if it occurs.
+            (ty_lub @ Type::Set { element_type: None }, Type::Set { .. })
+            | (Type::Set { .. }, ty_lub @ Type::Set { element_type: None }) => Some(ty_lub.clone()),
+
             // The least upper bound of two set types is a set with
             // an element type that is the element type least upper bound.
-            (Type::Set { element_type: te0 }, Type::Set { element_type: te1 }) => {
-                Some(Type::set(Type::least_upper_bound(
-                    schema,
-                    Type::expect_non_top_element_type(te0),
-                    Type::expect_non_top_element_type(te1),
-                )?))
-            }
+            (
+                Type::Set {
+                    element_type: Some(te0),
+                },
+                Type::Set {
+                    element_type: Some(te1),
+                },
+            ) => Some(Type::set(Type::least_upper_bound(schema, te0, te1, mode)?)),
 
             (Type::EntityOrRecord(rk0), Type::EntityOrRecord(rk1)) => Some(Type::EntityOrRecord(
-                EntityRecordKind::least_upper_bound(schema, rk0, rk1)?,
+                EntityRecordKind::least_upper_bound(schema, rk0, rk1, mode)?,
             )),
 
             _ => None,
@@ -379,23 +396,15 @@ impl Type {
         }
     }
 
-    // The top element type (None), should never be used in a least upper bounds
-    // computation. It could be meaningfully defined, but any occurrence is
-    // definitely an error.
-    pub(crate) fn expect_non_top_element_type(ty: &Option<Box<Type>>) -> &Type {
-        ty.as_ref().expect(
-            "Top element type should only be used in subtype comparison or error reporting.",
-        )
-    }
-
     /// Given a list of types, compute the least upper bound of all types in the
     /// list. The least upper bound of an empty list is Never.
     pub(crate) fn reduce_to_least_upper_bound(
         schema: &ValidatorSchema,
         tys: &[Type],
+        mode: ValidationMode,
     ) -> Option<Type> {
-        tys.iter().fold(Some(Type::Never), |lub, next| {
-            lub.and_then(|lub| Type::least_upper_bound(schema, &lub, next))
+        tys.iter().try_fold(Type::Never, |lub, next| {
+            Type::least_upper_bound(schema, &lub, next, mode)
         })
     }
 
@@ -428,12 +437,19 @@ impl Type {
     /// attributes, so we return false.
     pub(crate) fn may_have_attr(schema: &ValidatorSchema, ty: &Type, attr: &str) -> bool {
         match ty {
-            // If the type of the expression is a entity reference type, and the
-            // attribute is not declared to exist in the schema, then we know
-            // the entity may not have the attribute. For an entity least upper
-            // bound resulting from multiple entity types, the type might have
-            // the attribute if any of the constituent entity types have the
-            // attribute in the schema.
+            // Never, being the bottom type, is a subtype of EntityOrRecord, so
+            // it could have any attributes.
+            Type::Never => true,
+            // An EntityOrRecord might have an open attributes record, in which
+            // case it could have any attribute.
+            Type::EntityOrRecord(k) if k.has_open_attributes_record() => true,
+            // In this case and all following `EntityOrRecord` cases, we know it
+            // does not have an open attributes record, so we know that an
+            // attribute may not exist if it is not explicitly listed in the
+            // type. For an entity, we look this up in the schema.  For an
+            // entity least upper bound resulting from multiple entity
+            // types, the type might have the attribute if any of the
+            // constituent entity types have the attribute in the schema.
             Type::EntityOrRecord(EntityRecordKind::Entity(entity_lub)) => {
                 entity_lub.lub_elements.iter().any(|entity| {
                     schema
@@ -445,10 +461,13 @@ impl Type {
             Type::EntityOrRecord(EntityRecordKind::ActionEntity { attrs, .. }) => {
                 attrs.iter().any(|(found_attr, _)| attr.eq(found_attr))
             }
-            // Other record or entity types always might have some attribute
-            // since the type may be the result of a least upper bound which
-            // could have dropped attributes from the type.
-            Type::EntityOrRecord(_) => true,
+            // A record will have an attribute if the attribute is in its
+            // attributes map. Records computed as a LUB may have an open
+            // attributes record, but that is handled by the first match case.
+            Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
+                attrs.get_attr(attr).is_some()
+            }
+            // No other types may have attributes.
             _ => false,
         }
     }
@@ -513,7 +532,10 @@ impl Type {
                     EntityRecordKind::ActionEntity { .. } => Type::json_type("ActionEntity"),
                 };
                 match rk {
-                    EntityRecordKind::Record { attrs } => {
+                    EntityRecordKind::Record {
+                        attrs,
+                        open_attributes,
+                    } => {
                         let attr_json = attrs
                             .iter()
                             .map(|(attr, attr_ty)| {
@@ -526,6 +548,12 @@ impl Type {
                             })
                             .collect::<serde_json::value::Map<_, _>>();
                         record_json.insert("attributes".to_string(), attr_json.into());
+                        if open_attributes.is_open() {
+                            record_json.insert(
+                                "additionalAttributes".to_string(),
+                                open_attributes.is_open().into(),
+                            );
+                        }
                     }
                     EntityRecordKind::ActionEntity { name, attrs } => {
                         let attr_json = attrs
@@ -600,7 +628,9 @@ impl Type {
             CoreSchemaType::EmptySet => matches!(self, Type::Set { .. }), // empty-set matches a set of any element type
             CoreSchemaType::Record { attrs } => match self {
                 Type::EntityOrRecord(kind) => match kind {
-                    EntityRecordKind::Record { attrs: self_attrs } => {
+                    EntityRecordKind::Record {
+                        attrs: self_attrs, ..
+                    } => {
                         attrs.iter().all(|(k, v)| {
                             match self_attrs.get_attr(k) {
                                 Some(ty) => {
@@ -706,9 +736,13 @@ impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
             } else if let Some(LongBounds { min, max }) = bounds_opt {
                 CoreSchemaType::Long { min, max }
             } else {
-                unreachable!(
-                    "LongBoundsInfo should have at least one of can_be_any, bounds_opt set"
-                )
+                // PANIC SAFETY: LongBoundsInfo should have at least one of can_be_any, bounds_opt set
+                #[allow(clippy::unreachable)]
+                {
+                    unreachable!(
+                        "LongBoundsInfo should have at least one of can_be_any, bounds_opt set"
+                    )
+                }
             }),
             Type::Primitive {
                 primitive_type: Primitive::String,
@@ -730,7 +764,7 @@ impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
                     ty: EntityType::Concrete(name),
                 })
             }
-            Type::EntityOrRecord(EntityRecordKind::Record { attrs }) => {
+            Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
                 Ok(CoreSchemaType::Record {
                     attrs: {
                         attrs
@@ -774,7 +808,7 @@ pub struct EntityLUB {
 impl EntityLUB {
     /// Create a least upper bound of a single entity type. This is the same as
     /// just that entity type.
-    fn single_entity(entity_type_name: Name) -> Self {
+    pub(crate) fn single_entity(entity_type_name: Name) -> Self {
         Self {
             lub_elements: [entity_type_name].into_iter().collect(),
         }
@@ -783,6 +817,8 @@ impl EntityLUB {
     /// Check if this LUB is a singleton, and if so, return a reference to its entity type
     pub fn get_single_entity(&self) -> Option<&Name> {
         let mut names = self.lub_elements.iter();
+        // PANIC SAFETY: Invariant on `lub_elements` guarantees the set is non-empty.
+        #[allow(clippy::expect_used)]
         let first = names.next().expect("should have one element by invariant");
         match names.next() {
             Some(_) => None, // there are two or more names
@@ -794,6 +830,8 @@ impl EntityLUB {
     /// owned entity type name
     pub fn into_single_entity(self) -> Option<Name> {
         let mut names = self.lub_elements.into_iter();
+        // PANIC SAFETY: Invariant on `lub_elements` guarantees the set is non-empty.
+        #[allow(clippy::expect_used)]
         let first = names.next().expect("should have one element by invariant");
         match names.next() {
             Some(_) => None, // there are two or more names
@@ -826,20 +864,34 @@ impl EntityLUB {
         // would need a bottom record type that would contain every attribute with a
         // bottom type. We don't have that, so I instead restrict EntityLUB to
         // be a least upper bound of one or more entities.
+        // PANIC SAFETY: Invariant on `lub_elements` guarantees the set is non-empty.
+        #[allow(clippy::expect_used)]
         let arbitrary_first = Attributes::with_attributes(
             lub_element_attributes
                 .next()
                 .expect("Invariant violated: EntityLUB set must be non-empty."),
         );
         lub_element_attributes.fold(arbitrary_first, |acc, elem| {
-            Attributes::least_upper_bound(schema, &acc, &Attributes::with_attributes(elem))
+            // Use the permissive version of least upper bound here for two
+            // reasons. First, when in permissive mode, the attributes least
+            // upper bound can never fail. We could call the main lub function
+            // with an unwrap, but this avoids a chance at a panic. Second, when
+            // in strict mode, an entity LUB will only ever have a single
+            // element, so that LUB can never fail, and the strict
+            // attributes lub is the same as permissive if there is only one
+            // attribute.
+            Attributes::permissive_least_upper_bound(
+                schema,
+                &acc,
+                &Attributes::with_attributes(elem),
+            )
         })
     }
 
     /// Generate the least upper bound of this EntityLUB and another. This
     /// returns an EntityLUB for the union of the entity types in both argument
     /// LUBs. The attributes of the LUB are not computed.
-    fn least_upper_bound(&self, other: &EntityLUB) -> EntityLUB {
+    pub(crate) fn least_upper_bound(&self, other: &EntityLUB) -> EntityLUB {
         EntityLUB {
             lub_elements: self
                 .lub_elements
@@ -875,6 +927,8 @@ impl EntityLUB {
             .collect()
         });
         if self.lub_elements.len() == 1 {
+            // PANIC SAFETY: Invariant on `lub_elements` guarantees the set is non-empty.
+            #[allow(clippy::expect_used)]
             lub_element_objs
                 .next()
                 .expect("Invariant violated: EntityLUB set must be non-empty.")
@@ -936,7 +990,12 @@ impl Attributes {
         self.attrs.get(attr)
     }
 
-    pub(crate) fn is_subtype(&self, schema: &ValidatorSchema, other: &Attributes) -> bool {
+    pub(crate) fn is_subtype(
+        &self,
+        schema: &ValidatorSchema,
+        other: &Attributes,
+        mode: ValidationMode,
+    ) -> bool {
         // For a one record type to subtype another, all the attributes of the
         // second must be present in the first, and each attribute types must
         // subtype the corresponding attribute type. If an attribute in the
@@ -947,24 +1006,88 @@ impl Attributes {
                 .get(k)
                 .map(|self_ty| {
                     (self_ty.is_required || !other_ty.is_required)
-                        && Type::is_subtype(schema, &self_ty.attr_type, &other_ty.attr_type)
+                        && Type::is_subtype(schema, &self_ty.attr_type, &other_ty.attr_type, mode)
                 })
                 .unwrap_or(false)
         })
+    }
+
+    // Determine if the attributes subtype while only allowing for depth
+    // subtyping. This forbids width subtyping, so there may not be attributes
+    // present in the subtype that do not exist in the super type.
+    pub(crate) fn is_subtype_depth_only(
+        &self,
+        schema: &ValidatorSchema,
+        other: &Attributes,
+        mode: ValidationMode,
+    ) -> bool {
+        other.attrs.keys().collect::<HashSet<_>>() == self.attrs.keys().collect::<HashSet<_>>()
+            && self.is_subtype(schema, other, mode)
     }
 
     pub(crate) fn least_upper_bound(
         schema: &ValidatorSchema,
         attrs0: &Attributes,
         attrs1: &Attributes,
-    ) -> Attributes {
-        Attributes::with_attributes(attrs0.attrs.iter().filter_map(move |(attr, ty0)| {
+        mode: ValidationMode,
+    ) -> Option<Attributes> {
+        if mode.is_strict() {
+            Self::strict_least_upper_bound(schema, attrs0, attrs1)
+        } else {
+            Some(Self::permissive_least_upper_bound(schema, attrs0, attrs1))
+        }
+    }
+
+    fn attributes_lub_iter<'a>(
+        schema: &'a ValidatorSchema,
+        attrs0: &'a Attributes,
+        attrs1: &'a Attributes,
+        mode: ValidationMode,
+    ) -> impl Iterator<Item = Option<(SmolStr, AttributeType)>> + 'a {
+        attrs0.attrs.iter().map(move |(attr, ty0)| {
             let ty1 = attrs1.attrs.get(attr)?;
-            Type::least_upper_bound(schema, &ty0.attr_type, &ty1.attr_type).map(|lub| {
+            Type::least_upper_bound(schema, &ty0.attr_type, &ty1.attr_type, mode).map(|lub| {
                 let is_lub_required = ty0.is_required && ty1.is_required;
                 (attr.clone(), AttributeType::new(lub, is_lub_required))
             })
-        }))
+        })
+    }
+
+    pub(crate) fn strict_least_upper_bound(
+        schema: &ValidatorSchema,
+        attrs0: &Attributes,
+        attrs1: &Attributes,
+    ) -> Option<Attributes> {
+        if attrs0.keys().collect::<HashSet<_>>() != attrs1.keys().collect::<HashSet<_>>() {
+            return None;
+        }
+
+        let mut any_err = false;
+        let attrs: Vec<_> =
+            Self::attributes_lub_iter(schema, attrs0, attrs1, ValidationMode::Strict)
+                .filter_map(|e| {
+                    if e.is_none() {
+                        any_err = true;
+                    }
+                    e
+                })
+                .collect();
+
+        if any_err {
+            None
+        } else {
+            Some(Attributes::with_attributes(attrs))
+        }
+    }
+
+    pub(crate) fn permissive_least_upper_bound(
+        schema: &ValidatorSchema,
+        attrs0: &Attributes,
+        attrs1: &Attributes,
+    ) -> Attributes {
+        Attributes::with_attributes(
+            Self::attributes_lub_iter(schema, attrs0, attrs1, ValidationMode::Permissive).flatten(),
+        )
     }
 }
 
@@ -978,6 +1101,27 @@ impl IntoIterator for Attributes {
     }
 }
 
+/// Used to tag record types to indicate if their attributes record is open or
+/// closed.
+#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Copy, Clone, Serialize)]
+pub enum OpenTag {
+    // The attributes are open. A value of this type may have attributes other
+    // than those listed.
+    OpenAttributes,
+    // The attributes are closed. The attributes for a value of this type must
+    // exactly match the attributes listed in the type.
+    ClosedAttributes,
+}
+
+impl OpenTag {
+    pub(crate) fn is_open(self) -> bool {
+        match self {
+            OpenTag::OpenAttributes => true,
+            OpenTag::ClosedAttributes => false,
+        }
+    }
+}
+
 /// Represents whether a type is an entity type, record type, or could be either
 ///
 /// The subtyping lattice for these types is that
@@ -985,7 +1129,14 @@ impl IntoIterator for Attributes {
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
 pub enum EntityRecordKind {
     /// A record type, with these attributes
-    Record { attrs: Attributes },
+    Record {
+        /// The attributes that we know must exist (or may exist in the case of
+        /// optional attributes) for a record with this type along with the
+        /// types the attributes must have if they do exist.
+        attrs: Attributes,
+        /// Encodes whether the attributes for this record are open or closed.
+        open_attributes: OpenTag,
+    },
     /// Any entity type
     AnyEntity,
     /// An entity reference type. An entity reference might be a reference to one
@@ -1014,9 +1165,34 @@ impl EntityRecordKind {
         }
     }
 
+    /// Return `true` if this entity or record may have additional undeclared
+    /// attributes.
+    pub(crate) fn has_open_attributes_record(&self) -> bool {
+        match self {
+            // Records explicitly store this information.
+            EntityRecordKind::Record {
+                open_attributes, ..
+            } => open_attributes.is_open(),
+            // We know Actions never have additional attributes. This is true
+            // because the upper bound for any two action entities is
+            // `AnyEntity`, so if we have an ActionEntity here its attributes
+            // are known precisely.
+            EntityRecordKind::ActionEntity { .. } => false,
+            // The `AnyEntity` type has no declared attributes, but it is a
+            // super type of all other entity types which may have attributes,
+            // so it clearly may have additional attributes.
+            EntityRecordKind::AnyEntity => true,
+            // An entity LUB may not have an open attributes record. The record
+            // type returned by `get_attributes_type` _may_ be open, but even in
+            // that case we can account for all attributes that might exist by
+            // examining the elements of the LUB.
+            EntityRecordKind::Entity(_) => false,
+        }
+    }
+
     pub(crate) fn get_attr(&self, schema: &ValidatorSchema, attr: &str) -> Option<AttributeType> {
         match self {
-            EntityRecordKind::Record { attrs } => attrs.get_attr(attr).cloned(),
+            EntityRecordKind::Record { attrs, .. } => attrs.get_attr(attr).cloned(),
             EntityRecordKind::ActionEntity { attrs, .. } => attrs.get_attr(attr).cloned(),
             EntityRecordKind::AnyEntity => None,
             EntityRecordKind::Entity(lub) => {
@@ -1028,7 +1204,7 @@ impl EntityRecordKind {
     pub fn all_attrs(&self, schema: &ValidatorSchema) -> Vec<SmolStr> {
         // Wish the clone here could be avoided, but `get_attribute_types` returns an owned `Attributes`.
         match self {
-            EntityRecordKind::Record { attrs } => attrs.attrs.keys().cloned().collect(),
+            EntityRecordKind::Record { attrs, .. } => attrs.attrs.keys().cloned().collect(),
             EntityRecordKind::ActionEntity { attrs, .. } => attrs.attrs.keys().cloned().collect(),
             EntityRecordKind::AnyEntity => vec![],
             EntityRecordKind::Entity(lub) => {
@@ -1041,21 +1217,100 @@ impl EntityRecordKind {
         schema: &ValidatorSchema,
         rk0: &EntityRecordKind,
         rk1: &EntityRecordKind,
+        mode: ValidationMode,
     ) -> Option<EntityRecordKind> {
         use EntityRecordKind::*;
         match (rk0, rk1) {
-            (Record { attrs: attrs0 }, Record { attrs: attrs1 }) => Some(Record {
-                attrs: Attributes::least_upper_bound(schema, attrs0, attrs1),
-            }),
-            //We cannot take upper bounds of action entities because may_have_attr assumes the list of attrs it complete
-            (ActionEntity { .. }, ActionEntity { .. }) => Some(AnyEntity),
-            (Entity(lub0), Entity(lub1)) => Some(Entity(lub0.least_upper_bound(lub1))),
+            (
+                Record {
+                    attrs: attrs0,
+                    open_attributes: open0,
+                },
+                Record {
+                    attrs: attrs1,
+                    open_attributes: open1,
+                },
+            ) => {
+                let attrs = Attributes::least_upper_bound(schema, attrs0, attrs1, mode)?;
 
-            (AnyEntity, AnyEntity)
-            | (AnyEntity, Entity(_))
+                // Even though this function will never be called when the
+                // records are in a subtype relation, it is still possible that
+                // the LUB attribute set is the same the attribute key sets for
+                // `rk0` and `rk1`. This occurs when `rk0` and `rk1` have
+                // identical attribute keys sets with all corresponding
+                // attributes having a LUB while at least one pair of
+                // corresponding attributes is not in a subtype relation.
+                // E.g., Given `{a: true}` and `{a: false}`, the LUB is `{a: bool}`,
+                // and we know that `a` is the only attribute for this (closed)
+                // record even though neither is subtype of the other.
+                let open_attributes = if open0.is_open()
+                    || open1.is_open()
+                    || (attrs.keys().collect::<BTreeSet<_>>()
+                        != (attrs0.keys().chain(attrs1.keys()).collect::<BTreeSet<_>>()))
+                {
+                    OpenTag::OpenAttributes
+                } else {
+                    OpenTag::ClosedAttributes
+                };
+                Some(Record {
+                    attrs,
+                    open_attributes,
+                })
+            }
+            //We cannot, in general, have precise upper bounds between action
+            //entities because `may_have_attr` assumes the list of attrs is
+            //complete.
+            (
+                ActionEntity {
+                    name: action_type1,
+                    attrs: attrs1,
+                },
+                ActionEntity {
+                    name: action_type2,
+                    attrs: attrs2,
+                },
+            ) => {
+                if action_type1 == action_type2 {
+                    // Same action type. Ensure that the actions have the same
+                    // attributes. Computing the LUB under strict mode disables
+                    // means that the LUB does not exist if either record has as
+                    // an attribute that does not exist in the other, so we know
+                    // that list of attributes is complete, as is assumed by
+                    // `may_have_attr`. As long as actions have empty an
+                    // attribute records, the LUB no-ops, allowing for LUBs
+                    // between actions with the same action entity type even in
+                    // strict validation mode.
+                    Attributes::least_upper_bound(schema, attrs1, attrs2, ValidationMode::Strict)
+                        .map(|attrs| ActionEntity {
+                            name: action_type1.clone(),
+                            attrs,
+                        })
+                } else if mode.is_strict() {
+                    None
+                } else {
+                    Some(AnyEntity)
+                }
+            }
+            (Entity(lub0), Entity(lub1)) => {
+                if mode.is_strict() && lub0 != lub1 {
+                    None
+                } else {
+                    Some(Entity(lub0.least_upper_bound(lub1)))
+                }
+            }
+
+            (AnyEntity, AnyEntity) => Some(AnyEntity),
+
+            (AnyEntity, Entity(_))
             | (Entity(_), AnyEntity)
             | (AnyEntity, ActionEntity { .. })
-            | (ActionEntity { .. }, AnyEntity) => Some(AnyEntity),
+            | (ActionEntity { .. }, AnyEntity) => {
+                if mode.is_strict() {
+                    None
+                } else {
+                    Some(AnyEntity)
+                }
+            }
 
             // Entity and record types do not have a least upper bound to avoid
             // a non-terminating case.
@@ -1065,7 +1320,13 @@ impl EntityRecordKind {
             //Likewise, we can't mix action entities and records
             (ActionEntity { .. }, Record { .. }) | (Record { .. }, ActionEntity { .. }) => None,
             //Action entities can be mixed with Entities. In this case, the LUB is AnyEntity
-            (ActionEntity { .. }, Entity(_)) | (Entity(_), ActionEntity { .. }) => Some(AnyEntity),
+            (ActionEntity { .. }, Entity(_)) | (Entity(_), ActionEntity { .. }) => {
+                if mode.is_strict() {
+                    None
+                } else {
+                    Some(AnyEntity)
+                }
+            }
         }
     }
 
@@ -1075,15 +1336,46 @@ impl EntityRecordKind {
         schema: &ValidatorSchema,
         rk0: &EntityRecordKind,
         rk1: &EntityRecordKind,
+        mode: ValidationMode,
     ) -> bool {
         use EntityRecordKind::*;
         match (rk0, rk1) {
-            (Record { attrs: attrs0 }, Record { attrs: attrs1 }) => {
-                attrs0.is_subtype(schema, attrs1)
+            (
+                Record {
+                    attrs: attrs0,
+                    open_attributes: open0,
+                },
+                Record {
+                    attrs: attrs1,
+                    open_attributes: open1,
+                },
+            ) => {
+                // Closed attributes subtype open attributes. A record type with
+                // open attributes may contain a value that is not in a record
+                // type with closed attributes, so open attribute record types
+                // can never subtype closed attribute record types.
+                (!open0.is_open() || open1.is_open())
+                // When `rk1` has open attributes, width subtyping applies since
+                // there may be attributes in `rk0` that are not listed in
+                // `rk1`.  When `rk1` is closed, a subtype of `rk1` may not have
+                // any attributes that are not listed in `rk1`, so we apply
+                // depth subtyping only. We apply this same restriction in
+                // strict mode, i.e., strict mode applies depth subtyping but
+                // not width subtyping.
+                    && ((open1.is_open() && !mode.is_strict() && attrs0.is_subtype(schema, attrs1, mode))
+                        || attrs0.is_subtype_depth_only(schema, attrs1, mode))
             }
             (ActionEntity { .. }, ActionEntity { .. }) => false,
-            (Entity(lub0), Entity(lub1)) => lub0.is_subtype(lub1),
-            (Entity(_) | ActionEntity { .. } | AnyEntity, AnyEntity) => true,
+            (Entity(lub0), Entity(lub1)) => {
+                if mode.is_strict() {
+                    lub0 == lub1
+                } else {
+                    lub0.is_subtype(lub1)
+                }
+            }
+
+            (AnyEntity, AnyEntity) => true,
+            (Entity(_) | ActionEntity { .. }, AnyEntity) => !mode.is_strict(),
 
             // Entities cannot subtype records because their LUB is undefined to
             // avoid a non-terminating case.
@@ -1237,11 +1529,38 @@ mod test {
             assert!(!lub.lub_elements.is_empty());
             Type::EntityOrRecord(EntityRecordKind::Entity(lub))
         }
+
+        pub(crate) fn open_record_with_required_attributes(
+            required_attrs: impl IntoIterator<Item = (SmolStr, Type)>,
+        ) -> Type {
+            Type::EntityOrRecord(EntityRecordKind::Record {
+                attrs: Attributes::with_required_attributes(required_attrs),
+                open_attributes: OpenTag::OpenAttributes,
+            })
+        }
+
+        pub(crate) fn closed_record_with_required_attributes(
+            required_attrs: impl IntoIterator<Item = (SmolStr, Type)>,
+        ) -> Type {
+            Type::record_with_required_attributes(required_attrs, OpenTag::ClosedAttributes)
+        }
+
+        pub(crate) fn open_record_with_attributes(
+            attrs: impl IntoIterator<Item = (SmolStr, AttributeType)>,
+        ) -> Type {
+            Self::record_with_attributes(attrs, OpenTag::OpenAttributes)
+        }
+
+        pub(crate) fn closed_record_with_attributes(
+            attrs: impl IntoIterator<Item = (SmolStr, AttributeType)>,
+        ) -> Type {
+            Self::record_with_attributes(attrs, OpenTag::ClosedAttributes)
+        }
     }
 
     fn assert_least_upper_bound(schema: ValidatorSchema, lhs: Type, rhs: Type, lub: Option<Type>) {
         assert_eq!(
-            Type::least_upper_bound(&schema, &lhs, &rhs),
+            Type::least_upper_bound(&schema, &lhs, &rhs, ValidationMode::Permissive),
             lub,
             "assert_least_upper_bound({:?}, {:?}, {:?})",
             lhs,
@@ -1257,7 +1576,7 @@ mod test {
         lub_names: &[&str],
         lub_attrs: &[(&str, Type)],
     ) {
-        let lub = Type::least_upper_bound(&schema, &lhs, &rhs);
+        let lub = Type::least_upper_bound(&schema, &lhs, &rhs, ValidationMode::Permissive);
         match lub {
             Some(Type::EntityOrRecord(EntityRecordKind::Entity(entity_lub))) => {
                 assert_eq!(
@@ -1420,60 +1739,102 @@ mod test {
     }
 
     #[test]
+    fn test_record_undef_lub() {
+        assert_least_upper_bound_empty_schema(
+            Type::open_record_with_attributes(None),
+            Type::primitive_string(),
+            None,
+        );
+
+        assert_least_upper_bound_empty_schema(
+            Type::closed_record_with_attributes(None),
+            Type::primitive_string(),
+            None,
+        );
+
+        assert_least_upper_bound_empty_schema(
+            Type::closed_record_with_attributes(None),
+            Type::set(Type::primitive_boolean()),
+            None,
+        );
+    }
+
+    #[test]
     fn test_record_lub() {
         assert_least_upper_bound_empty_schema(
-            Type::any_record(),
-            Type::any_record(),
-            Some(Type::record_with_attributes(None)),
+            Type::closed_record_with_attributes(None),
+            Type::closed_record_with_attributes(None),
+            Some(Type::closed_record_with_attributes(None)),
+        );
+        assert_least_upper_bound_empty_schema(
+            Type::closed_record_with_attributes(None),
+            Type::open_record_with_attributes(None),
+            Some(Type::open_record_with_attributes(None)),
+        );
+        assert_least_upper_bound_empty_schema(
+            Type::open_record_with_attributes(None),
+            Type::closed_record_with_attributes(None),
+            Some(Type::open_record_with_attributes(None)),
+        );
+        assert_least_upper_bound_empty_schema(
+            Type::open_record_with_attributes(None),
+            Type::open_record_with_attributes(None),
+            Some(Type::open_record_with_attributes(None)),
         );
 
         assert_least_upper_bound_empty_schema(
-            Type::any_record(),
-            Type::any_entity_reference(),
-            None,
-        );
-
-        assert_least_upper_bound_empty_schema(
-            Type::record_with_required_attributes([
+            Type::closed_record_with_required_attributes([
                 ("foo".into(), Type::False),
                 ("bar".into(), Type::primitive_long()),
             ]),
-            Type::any_entity_reference(),
-            None,
-        );
-
-        assert_least_upper_bound_empty_schema(
-            Type::record_with_required_attributes([
-                ("foo".into(), Type::False),
-                ("bar".into(), Type::primitive_long()),
-            ]),
-            Type::record_with_required_attributes([
+            Type::closed_record_with_required_attributes([
                 ("foo".into(), Type::primitive_string()),
                 ("bar".into(), Type::primitive_long()),
             ]),
-            Some(Type::record_with_required_attributes([(
+            Some(Type::open_record_with_required_attributes([(
                 "bar".into(),
                 Type::primitive_long(),
             )])),
         );
 
         assert_least_upper_bound_empty_schema(
-            Type::record_with_required_attributes([
+            Type::closed_record_with_required_attributes([("bar".into(), Type::primitive_long())]),
+            Type::closed_record_with_required_attributes([
+                ("foo".into(), Type::primitive_string()),
+                ("bar".into(), Type::primitive_long()),
+            ]),
+            Some(Type::open_record_with_required_attributes([(
+                "bar".into(),
+                Type::primitive_long(),
+            )])),
+        );
+
+        assert_least_upper_bound_empty_schema(
+            Type::closed_record_with_required_attributes([
                 ("foo".into(), Type::False),
                 ("bar".into(), Type::primitive_long()),
             ]),
-            Type::record_with_required_attributes([
+            Type::closed_record_with_required_attributes([
                 ("foo".into(), Type::True),
                 ("baz".into(), Type::primitive_long()),
             ]),
-            Some(Type::record_with_required_attributes([(
+            Some(Type::open_record_with_required_attributes([(
                 "foo".into(),
                 Type::primitive_boolean(),
             )])),
         );
 
         assert_least_upper_bound_empty_schema(
-            Type::record_with_attributes([
+            Type::closed_record_with_required_attributes([("foo".into(), Type::False)]),
+            Type::closed_record_with_required_attributes([("foo".into(), Type::True)]),
+            Some(Type::closed_record_with_required_attributes([(
+                "foo".into(),
+                Type::primitive_boolean(),
+            )])),
+        );
+
+        assert_least_upper_bound_empty_schema(
+            Type::closed_record_with_attributes([
                 (
                     "foo".into(),
                     AttributeType::new(Type::primitive_long(), false),
@@ -1483,7 +1844,7 @@ mod test {
                     AttributeType::new(Type::primitive_long(), false),
                 ),
             ]),
-            Type::record_with_attributes([
+            Type::closed_record_with_attributes([
                 (
                     "foo".into(),
                     AttributeType::new(Type::primitive_long(), true),
@@ -1493,7 +1854,7 @@ mod test {
                     AttributeType::new(Type::primitive_long(), false),
                 ),
             ]),
-            Some(Type::record_with_attributes([
+            Some(Type::closed_record_with_attributes([
                 (
                     "foo".into(),
                     AttributeType::new(Type::primitive_long(), false),
@@ -1505,12 +1866,10 @@ mod test {
             ])),
         );
 
-        assert_least_upper_bound_empty_schema(Type::any_record(), Type::primitive_string(), None);
-
         assert_least_upper_bound_empty_schema(
-            Type::record_with_attributes(None),
-            Type::primitive_string(),
-            None,
+            Type::closed_record_with_required_attributes([("a".into(), Type::primitive_long())]),
+            Type::closed_record_with_attributes([]),
+            Some(Type::open_record_with_attributes([])),
         );
     }
 
@@ -1690,9 +2049,22 @@ mod test {
 
     #[test]
     fn test_record_entity_lub() {
-        assert_least_upper_bound_attr_schema(
+        assert_least_upper_bound_empty_schema(
             Type::any_entity_reference(),
             Type::any_record(),
+            None,
+        );
+        assert_least_upper_bound_empty_schema(
+            Type::closed_record_with_attributes(None),
+            Type::any_entity_reference(),
+            None,
+        );
+        assert_least_upper_bound_empty_schema(
+            Type::closed_record_with_required_attributes([
+                ("foo".into(), Type::False),
+                ("bar".into(), Type::primitive_long()),
+            ]),
+            Type::any_entity_reference(),
             None,
         );
         assert_least_upper_bound_attr_schema(
@@ -1707,7 +2079,7 @@ mod test {
         );
         assert_least_upper_bound_attr_schema(
             Type::named_entity_reference_from_str("buz"),
-            Type::record_with_required_attributes(vec![
+            Type::closed_record_with_required_attributes(vec![
                 ("a".into(), Type::primitive_long()),
                 ("b".into(), Type::primitive_long()),
                 ("c".into(), Type::named_entity_reference_from_str("bar")),
@@ -1750,7 +2122,7 @@ mod test {
         assert_least_upper_bound(
             schema,
             Type::named_entity_reference_from_str("U"),
-            Type::record_with_required_attributes([(
+            Type::closed_record_with_required_attributes([(
                 "foo".into(),
                 Type::named_entity_reference_from_str("U"),
             )]),
@@ -1828,7 +2200,7 @@ mod test {
         let parsed_schema_type: SchemaType = serde_json::from_str(&json_str)
             .expect("JSON representation should have parsed into a schema type");
         let type_from_schema_type =
-            ValidatorNamespaceDef::try_schema_type_into_validator_type(&[], parsed_schema_type)
+            ValidatorNamespaceDef::try_schema_type_into_validator_type(None, parsed_schema_type)
                 .expect("Schema type should have converted to type.")
                 .resolve_type_defs(&HashMap::new())
                 .unwrap();
@@ -1846,12 +2218,12 @@ mod test {
         assert_json_parses_to_schema_type(Type::named_entity_reference_from_str("Foo"));
         assert_json_parses_to_schema_type(Type::named_entity_reference_from_str("Foo::Bar"));
         assert_json_parses_to_schema_type(Type::named_entity_reference_from_str("Foo::Bar::Baz"));
-        assert_json_parses_to_schema_type(Type::record_with_attributes(None));
-        assert_json_parses_to_schema_type(Type::record_with_attributes([(
+        assert_json_parses_to_schema_type(Type::closed_record_with_attributes(None));
+        assert_json_parses_to_schema_type(Type::closed_record_with_attributes([(
             "a".into(),
             AttributeType::required_attribute(Type::primitive_boolean()),
         )]));
-        assert_json_parses_to_schema_type(Type::record_with_attributes([
+        assert_json_parses_to_schema_type(Type::closed_record_with_attributes([
             (
                 "a".into(),
                 AttributeType::required_attribute(Type::primitive_boolean()),
@@ -1884,6 +2256,7 @@ mod test {
                 &ValidatorSchema::empty(),
                 &Type::named_entity_reference_from_str("Foo"),
                 &Type::named_entity_reference_from_str("Bar"),
+                ValidationMode::Permissive,
             )
             .expect("Expected a least upper bound to exist."),
             r#"{"type":"Union","elements":[{"type":"Entity","name":"Bar"},{"type":"Entity","name":"Foo"}]}"#,

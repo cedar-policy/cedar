@@ -20,14 +20,23 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
+use crate::parser::err::ParseErrors;
+use crate::FromNormalizedStr;
+
 use super::PrincipalOrResource;
-use crate::parser::err::ParseError;
+
+/// Arc::unwrap_or_clone() isn't stabilized as of this writing, but this is its implementation
+//
+// TODO: use `Arc::unwrap_or_clone()` once stable
+pub fn unwrap_or_clone<T: Clone>(arc: Arc<T>) -> T {
+    Arc::try_unwrap(arc).unwrap_or_else(|arc| (*arc).clone())
+}
 
 /// This is the `Name` type used to name types, functions, etc.
 /// The name can include namespaces.
 /// Clone is O(1).
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
-#[cfg_attr(fuzzing, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Name {
     /// Basename
     pub(crate) id: Id,
@@ -37,9 +46,9 @@ pub struct Name {
 
 impl Name {
     /// A full constructor for `Name`
-    pub fn new(id: Id, path: impl IntoIterator<Item = Id>) -> Self {
+    pub fn new(basename: Id, path: impl IntoIterator<Item = Id>) -> Self {
         Self {
-            id,
+            id: basename,
             path: Arc::new(path.into_iter().collect()),
         }
     }
@@ -54,11 +63,19 @@ impl Name {
 
     /// Create a `Name` with no path (no namespaces).
     /// Returns an error if `s` is not a valid identifier.
-    pub fn parse_unqualified_name(s: &str) -> Result<Self, Vec<ParseError>> {
+    pub fn parse_unqualified_name(s: &str) -> Result<Self, ParseErrors> {
         Ok(Self {
             id: s.parse()?,
             path: Arc::new(vec![]),
         })
+    }
+
+    /// Given a type basename and a namespace (as a `Name` itself),
+    /// return a `Name` representing the type's fully qualified name
+    pub fn type_in_namespace(basename: Id, namespace: Name) -> Name {
+        let mut path = unwrap_or_clone(namespace.path);
+        path.push(namespace.id);
+        Name::new(basename, path)
     }
 
     /// Get the basename of the `Name` (ie, with namespaces stripped).
@@ -94,10 +111,16 @@ impl std::fmt::Display for Name {
 
 // allow `.parse()` on a string to make a `Name`
 impl std::str::FromStr for Name {
-    type Err = Vec<ParseError>;
+    type Err = ParseErrors;
 
-    fn from_str(s: &str) -> Result<Self, Vec<ParseError>> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         crate::parser::parse_name(s)
+    }
+}
+
+impl FromNormalizedStr for Name {
+    fn describe_self() -> &'static str {
+        "Name"
     }
 }
 
@@ -166,7 +189,7 @@ impl std::fmt::Display for ValidSlotId {
 }
 
 #[cfg(test)]
-mod test {
+mod vars_test {
     use super::*;
     // Make sure the vars always parse correctly
     #[test]
@@ -226,14 +249,20 @@ impl std::fmt::Display for Id {
 
 // allow `.parse()` on a string to make an `Id`
 impl std::str::FromStr for Id {
-    type Err = Vec<ParseError>;
+    type Err = ParseErrors;
 
-    fn from_str(s: &str) -> Result<Self, Vec<ParseError>> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         crate::parser::parse_ident(s)
     }
 }
 
-#[cfg(fuzzing)]
+impl FromNormalizedStr for Id {
+    fn describe_self() -> &'static str {
+        "Id"
+    }
+}
+
+#[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for Id {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         // identifier syntax:
@@ -272,5 +301,33 @@ impl<'a> arbitrary::Arbitrary<'a> for Id {
             // we use the size hint of a vector of `u8` to get an underestimate of bytes required by the sequence of choices.
             <Vec<u8> as arbitrary::Arbitrary>::size_hint(depth),
         ])
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+
+    #[test]
+    fn normalized_id() {
+        Id::from_normalized_str("foo").expect("should be OK");
+        Id::from_normalized_str("foo::bar").expect_err("shouldn't be OK");
+        Id::from_normalized_str(r#"foo::"bar""#).expect_err("shouldn't be OK");
+        Id::from_normalized_str(" foo").expect_err("shouldn't be OK");
+        Id::from_normalized_str("foo ").expect_err("shouldn't be OK");
+        Id::from_normalized_str("foo\n").expect_err("shouldn't be OK");
+        Id::from_normalized_str("foo//comment").expect_err("shouldn't be OK");
+    }
+
+    #[test]
+    fn normalized_name() {
+        Name::from_normalized_str("foo").expect("should be OK");
+        Name::from_normalized_str("foo::bar").expect("should be OK");
+        Name::from_normalized_str(r#"foo::"bar""#).expect_err("shouldn't be OK");
+        Name::from_normalized_str(" foo").expect_err("shouldn't be OK");
+        Name::from_normalized_str("foo ").expect_err("shouldn't be OK");
+        Name::from_normalized_str("foo\n").expect_err("shouldn't be OK");
+        Name::from_normalized_str("foo//comment").expect_err("shouldn't be OK");
     }
 }

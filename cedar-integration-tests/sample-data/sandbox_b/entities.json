@@ -1,7 +1,8 @@
 [
   {
     "uid": {
-      "__expr": "User::\"alice\""
+      "type": "User",
+      "id": "alice"
     },
     "attrs": {
       "department": "HardwareEngineering",
@@ -9,16 +10,19 @@
     },
     "parents": [
       {
-        "__expr": "UserGroup::\"alice_friends\""
+        "type": "UserGroup",
+        "id": "alice_friends"
       },
       {
-        "__expr": "UserGroup::\"AVTeam\""
+        "type": "UserGroup",
+        "id": "AVTeam"
       }
     ]
   },
   {
     "uid": {
-      "__expr": "User::\"ahmad\""
+      "type": "User",
+      "id": "ahmad"
     },
     "attrs": {
       "department": "HardwareEngineering",
@@ -28,7 +32,8 @@
   },
   {
     "uid": {
-      "__expr": "User::\"stacey\""
+      "type": "User",
+      "id": "stacey"
     },
     "attrs": {
       "department": "Sales",
@@ -36,13 +41,15 @@
     },
     "parents": [
       {
-        "__expr": "UserGroup::\"alice_friends\""
+        "type": "UserGroup",
+        "id": "alice_friends"
       }
     ]
   },
   {
     "uid": {
-      "__expr": "User::\"giuseppe\""
+      "type": "User",
+      "id": "giuseppe"
     },
     "attrs": {
       "department": "CustomerSupport",
@@ -50,85 +57,111 @@
     },
     "parents": [
       {
-        "__expr": "UserGroup::\"AVTeam\""
+        "type": "UserGroup",
+        "id": "AVTeam"
       }
     ]
   },
   {
     "uid": {
-      "__expr": "UserGroup::\"alice_friends\""
+      "type": "UserGroup",
+      "id": "alice_friends"
     },
     "attrs": {},
     "parents": []
   },
   {
     "uid": {
-      "__expr": "Photo::\"prototype_v0.jpg\""
+      "type": "Photo",
+      "id": "prototype_v0.jpg"
     },
     "attrs": {
       "private": false,
-      "account": { "__expr" :  "Account::\"ahmad\"" },
+      "account": {
+        "type" : "Account",
+        "id": "ahmad"
+      },
       "admins": []
     },
     "parents": [
       {
-        "__expr": "Album::\"device_prototypes\""
+        "type": "Album",
+        "id": "device_prototypes"
       }
     ]
   },
   {
     "uid": {
-      "__expr": "Photo::\"vacation.jpg\""
+      "type": "Photo",
+      "id": "vacation.jpg"
     },
     "attrs": {
       "private": false,
-      "account": { "__expr" :  "Account::\"alice\""},
+      "account": { "type":"Account", "id":"alice" },
       "admins": []
     },
     "parents": [
       {
-        "__expr": "Album::\"alice_vacation\""
+        "type": "Album",
+        "id": "alice_vacation"
       }
     ]
   },
   {
     "uid": {
-      "__expr": "Photo::\"alice_w2.jpg\""
+      "type": "Photo",
+      "id": "alice_w2.jpg"
     },
     "attrs": {
       "private": true,
-      "account": { "__expr" :  "Account::\"alice\"" },
+      "account": {
+        "type": "Account",
+        "id": "alice"
+      },
       "admins": []
     },
     "parents": [
       {
-        "__expr": "Account::\"alice\""
+        "type": "Account",
+        "id": "alice"
       }
     ]
   },
   {
     "uid": {
-      "__expr": "Photo::\"sales_projections.jpg\""
-    },
-    "attrs": {
-      "private": false,
-      "account": { "__expr" : "Account::\"stacey\""},
-      "admins": [ { "__expr" : "User::\"giuseppe\"" }]
-    },
-    "parents": [
-      {
-        "__expr": "Account::\"stacey\""
-      }
-    ]
-  },
-  {
-    "uid": {
-      "__expr": "Album::\"device_prototypes\""
+      "type": "Photo",
+      "id": "sales_projections.jpg"
     },
     "attrs": {
       "private": false,
       "account": {
-        "__expr": "Account::\"alice\""
+        "type": "Account",
+        "id": "stacey"
+      },
+      "admins": [
+        {
+          "type": "User",
+          "id": "giuseppe"
+        }
+      ]
+    },
+    "parents": [
+      {
+        "type": "Account",
+        "id": "stacey"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "Album",
+      "id": "device_prototypes"
+    },
+    "attrs": {
+      "private": false,
+      "account": {
+        "type": "Account",
+        "id": "alice"
       },
       "admins": []
     },
@@ -136,63 +169,74 @@
   },
   {
     "uid": {
-      "__expr": "Album::\"alice_vacation\""
+      "type": "Album",
+      "id": "alice_vacation"
     },
     "attrs": {
       "private": false,
       "account": {
-        "__expr": "Account::\"alice\""
+        "type": "Account",
+        "id": "alice"
       },
       "admins": []
     },
     "parents": [
       {
-        "__expr": "Account::\"alice\""
+        "type": "Account",
+        "id": "alice"
       }
     ]
   },
   {
     "uid": {
-      "__expr": "Account::\"alice\""
+      "type": "Account",
+      "id": "alice"
     },
     "attrs": {
       "private": false,
       "owner": {
-        "__expr": "User::\"alice\""
+        "type": "User",
+        "id": "alice"
       },
       "admins": []
     },
     "parents": [
       {
-        "__expr": "AccountGroup::\"GeronimoTeam\""
+        "type": "AccountGroup",
+        "id": "GeronimoTeam"
       }
     ]
   },
   {
     "uid": {
-      "__expr": "Account::\"ahmad\""
+      "type": "Account",
+      "id": "ahmad"
     },
     "attrs": {
       "private": false,
       "owner": {
-        "__expr": "User::\"ahmad\""
+        "type": "User",
+        "id": "ahmad"
       },
       "admins": []
     },
     "parents": [
       {
-        "__expr": "AccountGroup::\"GeronimoTeam\""
+        "type": "AccountGroup",
+        "id": "GeronimoTeam"
       }
     ]
   },
   {
     "uid": {
-      "__expr": "Account::\"stacey\""
+      "type": "Account",
+      "id": "stacey"
     },
     "attrs": {
       "private": false,
       "owner": {
-        "__expr": "User::\"stacey\""
+        "type": "User",
+        "id": "stacey"
       },
       "admins": []
     },
@@ -200,18 +244,21 @@
   },
   {
     "uid": {
-      "__expr": "UserGroup::\"AVTeam\""
+      "type": "UserGroup",
+      "id": "AVTeam"
     },
     "attrs": {},
     "parents": []
   },
   {
     "uid": {
-      "__expr": "AccountGroup::\"GeronimoTeam\""
+      "type": "AccountGroup",
+      "id": "GeronimoTeam"
     },
     "attrs": {
       "owner": {
-        "__expr": "User::\"alice\""
+        "type": "User",
+        "id": "alice"
       }
     },
     "parents": []

@@ -85,9 +85,9 @@ impl<'a> Extensions<'a> {
             .filter_map(|ext| ext.get_func(name))
             .collect();
         match extension_funcs.get(0) {
-            None => Err(ExtensionsError::FuncDoesNotExist { name: name.clone() }),
+            None => Err(ExtensionFunctionLookupError::FuncDoesNotExist { name: name.clone() }),
             Some(first) if extension_funcs.len() == 1 => Ok(first),
-            _ => Err(ExtensionsError::FuncMultiplyDefined {
+            _ => Err(ExtensionFunctionLookupError::FuncMultiplyDefined {
                 name: name.clone(),
                 num_defs: extension_funcs.len(),
             }),
@@ -122,32 +122,34 @@ impl<'a> Extensions<'a> {
         match matches.get(0) {
             None => Ok(None),
             Some(first) if matches.len() == 1 => Ok(Some(first)),
-            _ => Err(ExtensionsError::MultipleConstructorsSameSignature {
-                return_type: Box::new(return_type.clone()),
-                arg_type: Box::new(arg_type.clone()),
-            }),
+            _ => Err(
+                ExtensionFunctionLookupError::MultipleConstructorsSameSignature {
+                    return_type: Box::new(return_type.clone()),
+                    arg_type: Box::new(arg_type.clone()),
+                },
+            ),
         }
     }
 }
 
-/// Errors thrown during operations on `Extensions`.
-#[derive(Debug, PartialEq, Clone, Error)]
-pub enum ExtensionsError {
+/// Errors thrown when looking up an extension function in [`Extensions`].
+#[derive(Debug, PartialEq, Eq, Clone, Error)]
+pub enum ExtensionFunctionLookupError {
     /// Tried to call a function that doesn't exist
-    #[error("function does not exist: {name}")]
+    #[error("extension function does not exist: {name}")]
     FuncDoesNotExist {
         /// Name of the function that doesn't exist
         name: Name,
     },
 
-    #[error("The extension function called has no type: {name}")]
     /// Attempted to typecheck an expression that had no type
+    #[error("extension function has no type: {name}")]
     HasNoType {
         /// Name of the function that returns no type
         name: Name,
     },
 
-    /// Tried to call a function but it was defined multiple times (eg, by
+    /// Tried to call a function but it was defined multiple times (e.g., by
     /// multiple different extensions)
     #[error("function is defined {num_defs} times: {name}")]
     FuncMultiplyDefined {
@@ -171,7 +173,7 @@ pub enum ExtensionsError {
 }
 
 /// Type alias for convenience
-pub type Result<T> = std::result::Result<T, ExtensionsError>;
+pub type Result<T> = std::result::Result<T, ExtensionFunctionLookupError>;
 
 #[cfg(test)]
 pub mod test {

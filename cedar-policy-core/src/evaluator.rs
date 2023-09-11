@@ -17,14 +17,15 @@
 //! This module contains the Cedar evaluator.
 
 use crate::ast::*;
-use crate::entities::{Dereference, Entities};
+use crate::entities::{Dereference, Entities, EntityAttrValues};
 use crate::extensions::Extensions;
+#[cfg(test)]
 use std::collections::HashMap;
 use std::sync::Arc;
 
 mod err;
-pub use err::EvaluationError;
 pub(crate) use err::*;
+pub use err::{EvaluationError, EvaluationErrorKind};
 use itertools::Either;
 use smol_str::SmolStr;
 
@@ -86,7 +87,7 @@ impl<'e> RestrictedEvaluator<'e> {
     pub fn interpret(&self, e: BorrowedRestrictedExpr<'_>) -> Result<Value> {
         match self.partial_interpret(e)? {
             PartialValue::Value(v) => Ok(v),
-            PartialValue::Residual(r) => Err(EvaluationError::NonValue(r)),
+            PartialValue::Residual(r) => Err(EvaluationError::non_value(r)),
         }
     }
 
@@ -134,52 +135,9 @@ impl<'e> RestrictedEvaluator<'e> {
                     Either::Right(residuals) => Ok(Expr::call_extension_fn(fn_name.clone(), residuals.collect()).into()),
                 }
             },
-            // PANIC SAFETY Unreachable via invariant on restricted expressions 
+            // PANIC SAFETY Unreachable via invariant on restricted expressions
             #[allow(clippy::unreachable)]
-            expr =>unreachable!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
-        }
-    }
-}
-
-struct EntityAttrValues<'a> {
-    attrs: HashMap<EntityUID, HashMap<SmolStr, PartialValue>>,
-    entities: &'a Entities,
-}
-
-impl<'a> EntityAttrValues<'a> {
-    pub fn new<'e>(entities: &'a Entities, extensions: &'e Extensions<'e>) -> Result<Self> {
-        let restricted_eval = RestrictedEvaluator::new(extensions);
-        // Eagerly evaluate each attribute expression in the entities.
-        let attrs = entities
-            .iter()
-            .map(|entity| {
-                Ok((
-                    entity.uid(),
-                    entity
-                        .attrs()
-                        .iter()
-                        .map(|(attr, v)| {
-                            Ok((
-                                attr.to_owned(),
-                                restricted_eval.partial_interpret(v.as_borrowed())?,
-                            ))
-                        })
-                        .collect::<Result<HashMap<SmolStr, PartialValue>>>()?,
-                ))
-            })
-            .collect::<Result<HashMap<EntityUID, HashMap<SmolStr, PartialValue>>>>()?;
-        Ok(Self { attrs, entities })
-    }
-
-    pub fn get(&self, uid: &EntityUID) -> Dereference<'_, HashMap<SmolStr, PartialValue>> {
-        match self.entities.entity(uid) {
-            Dereference::NoSuchEntity => Dereference::NoSuchEntity,
-            Dereference::Residual(r) => Dereference::Residual(r),
-            Dereference::Data(_) => self
-                .attrs
-                .get(uid)
-                .map(Dereference::Data)
-                .unwrap_or_else(|| Dereference::NoSuchEntity),
+            expr => unreachable!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
         }
     }
 }
@@ -200,7 +158,7 @@ impl<'q, 'e> Evaluator<'e> {
         extensions: &'e Extensions<'e>,
     ) -> Result<Self> {
         // Eagerly evaluate each attribute expression in the entities.
-        let entity_attr_values = EntityAttrValues::new(entities, extensions)?;
+        let entity_attr_values = entities.get_attr_values()?;
         Ok(Self {
             principal: q.principal().clone(),
             action: q.action().clone(),
@@ -280,7 +238,7 @@ impl<'q, 'e> Evaluator<'e> {
     pub fn interpret(&self, e: &Expr, slots: &SlotEnv) -> Result<Value> {
         match self.partial_interpret(e, slots)? {
             PartialValue::Value(v) => Ok(v),
-            PartialValue::Residual(r) => Err(EvaluationError::NonValue(r)),
+            PartialValue::Residual(r) => Err(EvaluationError::non_value(r)),
         }
     }
 
@@ -296,7 +254,7 @@ impl<'q, 'e> Evaluator<'e> {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
             ExprKind::Slot(id) => slots
                 .get(id)
-                .ok_or_else(|| err::EvaluationError::TemplateInstantiationError(*id))
+                .ok_or_else(|| err::EvaluationError::unlinked_slot(*id))
                 .map(|euid| PartialValue::from(euid.clone())),
             ExprKind::Var(v) => match v {
                 Var::Principal => Ok(self.principal.evaluate(*v)),
@@ -374,9 +332,7 @@ impl<'q, 'e> Evaluator<'e> {
                         let i = arg.get_as_long()?;
                         match i.checked_neg() {
                             Some(v) => Ok(v.into()),
-                            None => Err(EvaluationError::IntegerOverflow(
-                                IntegerOverflowError::UnaryOp { op: *op, arg },
-                            )),
+                            None => Err(IntegerOverflowError::UnaryOp { op: *op, arg }.into()),
                         }
                     }
                 },
@@ -414,23 +370,21 @@ impl<'q, 'e> Evaluator<'e> {
                             BinaryOp::LessEq => Ok((i1 <= i2).into()),
                             BinaryOp::Add => match i1.checked_add(i2) {
                                 Some(sum) => Ok(sum.into()),
-                                None => Err(EvaluationError::IntegerOverflow(
-                                    IntegerOverflowError::BinaryOp {
-                                        op: *op,
-                                        arg1,
-                                        arg2,
-                                    },
-                                )),
+                                None => Err(IntegerOverflowError::BinaryOp {
+                                    op: *op,
+                                    arg1,
+                                    arg2,
+                                }
+                                .into()),
                             },
                             BinaryOp::Sub => match i1.checked_sub(i2) {
                                 Some(diff) => Ok(diff.into()),
-                                None => Err(EvaluationError::IntegerOverflow(
-                                    IntegerOverflowError::BinaryOp {
-                                        op: *op,
-                                        arg1,
-                                        arg2,
-                                    },
-                                )),
+                                None => Err(IntegerOverflowError::BinaryOp {
+                                    op: *op,
+                                    arg1,
+                                    arg2,
+                                }
+                                .into()),
                             },
                             // PANIC SAFETY `op` is checked to be one of the above
                             #[allow(clippy::unreachable)]
@@ -441,7 +395,20 @@ impl<'q, 'e> Evaluator<'e> {
                     }
                     // hierarchy membership operator; see note on `BinaryOp::In`
                     BinaryOp::In => {
-                        let uid1 = arg1.get_as_entity()?;
+                        let uid1 = arg1.get_as_entity().map_err(|mut e|
+                            {
+                                // If arg1 is not an entity and arg2 is a set, then possibly
+                                // the user intended `arg2.contains(arg1)` rather than `arg1 in arg2`.
+                                // If arg2 is a record, then possibly they intended `arg2 has arg1`.
+                                if matches!(e.error_kind(), EvaluationErrorKind::TypeError { .. }) {
+                                    match arg2 {
+                                        Value::Set(_) => e.set_advice("`in` is for checking the entity hierarchy, use `.contains()` to test set membership".into()),
+                                        Value::Record(_) =>  e.set_advice("`in` is for checking the entity hierarchy, use `has` to test if a record has a key".into()),
+                                        _ => {}
+                                    }
+                                };
+                                e
+                            })?;
                         match self.entities.entity(uid1) {
                             Dereference::Residual(r) => Ok(PartialValue::Residual(
                                 Expr::binary_app(BinaryOp::In, r, arg2.into()),
@@ -459,10 +426,7 @@ impl<'q, 'e> Evaluator<'e> {
                         Value::Set(Set { authoritative, .. }) => {
                             Ok((authoritative.contains(&arg2)).into())
                         }
-                        _ => Err(EvaluationError::TypeError {
-                            expected: vec![Type::Set],
-                            actual: arg1.type_of(),
-                        }),
+                        _ => Err(EvaluationError::type_error(vec![Type::Set], arg1.type_of())),
                     },
                     // ContainsAll and ContainsAny, which work on Sets
                     BinaryOp::ContainsAll | BinaryOp::ContainsAny => {
@@ -520,12 +484,11 @@ impl<'q, 'e> Evaluator<'e> {
                     let i1 = arg.get_as_long()?;
                     match i1.checked_mul(*constant) {
                         Some(prod) => Ok(prod.into()),
-                        None => Err(EvaluationError::IntegerOverflow(
-                            IntegerOverflowError::Multiplication {
-                                arg,
-                                constant: *constant,
-                            },
-                        )),
+                        None => Err(IntegerOverflowError::Multiplication {
+                            arg,
+                            constant: *constant,
+                        }
+                        .into()),
                     }
                 }
                 PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::mul(r, *constant))),
@@ -558,13 +521,13 @@ impl<'q, 'e> Evaluator<'e> {
                         Dereference::Data(e) => Ok(e.get(attr).is_some().into()),
                     }
                 }
-                PartialValue::Value(val) => Err(err::EvaluationError::TypeError {
-                    expected: vec![
+                PartialValue::Value(val) => Err(err::EvaluationError::type_error(
+                    vec![
                         Type::Record,
                         Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
                     ],
-                    actual: val.type_of(),
-                }),
+                    val.type_of(),
+                )),
                 PartialValue::Residual(r) => Ok(Expr::has_attr(r, attr.clone()).into()),
             },
             ExprKind::Like { expr, pattern } => {
@@ -619,10 +582,10 @@ impl<'q, 'e> Evaluator<'e> {
                 .map(|val| Ok(val.get_as_entity()?.clone()))
                 .collect::<Result<Vec<EntityUID>>>()?,
             _ => {
-                return Err(EvaluationError::TypeError {
-                    expected: vec![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
-                    actual: arg2.type_of(),
-                })
+                return Err(EvaluationError::type_error(
+                    vec![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
+                    arg2.type_of(),
+                ))
             }
         };
         for uid2 in rhs {
@@ -656,13 +619,13 @@ impl<'q, 'e> Evaluator<'e> {
                     self.partial_interpret(alternative, slots)
                 }
             }
-            PartialValue::Residual(_) => {
+            PartialValue::Residual(guard) => {
                 let (consequent, consequent_errored) = self.run_to_error(consequent, slots);
                 let (alternative, alternative_errored) = self.run_to_error(alternative, slots);
                 // If both branches errored, the expression will always error
                 match (consequent_errored, alternative_errored) {
                     (Some(e), Some(_)) => Err(e),
-                    _ => Ok(Expr::ite(guard.clone(), consequent.into(), alternative.into()).into()),
+                    _ => Ok(Expr::ite(guard, consequent.into(), alternative.into()).into()),
                 }
             }
         }
@@ -685,7 +648,10 @@ impl<'q, 'e> Evaluator<'e> {
                                 .filter_map(|(k, v)| if k == attr { Some(v) } else { None })
                                 .next()
                                 .ok_or_else(|| {
-                                    EvaluationError::RecordAttrDoesNotExist(attr.clone())
+                                    EvaluationError::record_attr_does_not_exist(
+                                        attr.clone(),
+                                        pairs.iter().map(|(f, _)| f.clone()).collect(),
+                                    )
                                 })
                                 .and_then(|e| self.partial_interpret(e, slots))
                         } else if pairs.iter().any(|(k, _v)| k == attr) {
@@ -694,7 +660,10 @@ impl<'q, 'e> Evaluator<'e> {
                                 attr.clone(),
                             )))
                         } else {
-                            Err(EvaluationError::RecordAttrDoesNotExist(attr.clone()))
+                            Err(EvaluationError::record_attr_does_not_exist(
+                                attr.clone(),
+                                pairs.iter().map(|(f, _)| f.clone()).collect(),
+                            ))
                         }
                     }
                     // We got a residual, that is not a record at the top level
@@ -704,24 +673,30 @@ impl<'q, 'e> Evaluator<'e> {
             PartialValue::Value(Value::Record(attrs)) => attrs
                 .as_ref()
                 .get(attr)
-                .ok_or_else(|| EvaluationError::RecordAttrDoesNotExist(attr.clone()))
+                .ok_or_else(|| {
+                    EvaluationError::record_attr_does_not_exist(
+                        attr.clone(),
+                        attrs.iter().map(|(f, _)| f.clone()).collect(),
+                    )
+                })
                 .map(|v| PartialValue::Value(v.clone())),
             PartialValue::Value(Value::Lit(Literal::EntityUID(uid))) => {
                 match self.entity_attr_values.get(uid.as_ref()) {
                     Dereference::NoSuchEntity => Err(match *uid.entity_type() {
                         EntityType::Unspecified => {
-                            EvaluationError::UnspecifiedEntityAccess(attr.clone())
+                            EvaluationError::unspecified_entity_access(attr.clone())
                         }
-                        EntityType::Concrete(_) => EvaluationError::EntityDoesNotExist(uid.clone()),
+                        EntityType::Concrete(_) => {
+                            EvaluationError::entity_does_not_exist(uid.clone())
+                        }
                     }),
                     Dereference::Residual(r) => {
                         Ok(PartialValue::Residual(Expr::get_attr(r, attr.clone())))
                     }
                     Dereference::Data(attrs) => attrs
                         .get(attr)
-                        .ok_or_else(|| EvaluationError::EntityAttrDoesNotExist {
-                            entity: uid,
-                            attr: attr.clone(),
+                        .ok_or_else(|| {
+                            EvaluationError::entity_attr_does_not_exist(uid, attr.clone())
                         })
                         .cloned(),
                 }
@@ -729,13 +704,13 @@ impl<'q, 'e> Evaluator<'e> {
             PartialValue::Value(v) => {
                 // PANIC SAFETY Entity type name is fully static and a valid unqualified `Name`
                 #[allow(clippy::unwrap_used)]
-                Err(EvaluationError::TypeError {
-                    expected: vec![
+                Err(EvaluationError::type_error(
+                    vec![
                         Type::Record,
                         Type::entity_type(Name::parse_unqualified_name("any_entity_type").unwrap()),
                     ],
-                    actual: v.type_of(),
-                })
+                    v.type_of(),
+                ))
             }
         }
     }
@@ -744,7 +719,7 @@ impl<'q, 'e> Evaluator<'e> {
     pub fn interpret_inline_policy(&self, e: &Expr) -> Result<Value> {
         match self.partial_interpret(e, &HashMap::new())? {
             PartialValue::Value(v) => Ok(v),
-            PartialValue::Residual(r) => Err(err::EvaluationError::NonValue(r)),
+            PartialValue::Residual(r) => Err(err::EvaluationError::non_value(r)),
         }
     }
 
@@ -780,10 +755,10 @@ impl Value {
     pub(crate) fn get_as_bool(&self) -> Result<bool> {
         match self {
             Value::Lit(Literal::Bool(b)) => Ok(*b),
-            _ => Err(EvaluationError::TypeError {
-                expected: vec![Type::Bool],
-                actual: self.type_of(),
-            }),
+            _ => Err(EvaluationError::type_error(
+                vec![Type::Bool],
+                self.type_of(),
+            )),
         }
     }
 
@@ -792,10 +767,10 @@ impl Value {
     pub(crate) fn get_as_long(&self) -> Result<i64> {
         match self {
             Value::Lit(Literal::Long(i)) => Ok(*i),
-            _ => Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: self.type_of(),
-            }),
+            _ => Err(EvaluationError::type_error(
+                vec![Type::Long],
+                self.type_of(),
+            )),
         }
     }
 
@@ -804,10 +779,10 @@ impl Value {
     pub(crate) fn get_as_string(&self) -> Result<&SmolStr> {
         match self {
             Value::Lit(Literal::String(s)) => Ok(s),
-            _ => Err(EvaluationError::TypeError {
-                expected: vec![Type::String],
-                actual: self.type_of(),
-            }),
+            _ => Err(EvaluationError::type_error(
+                vec![Type::String],
+                self.type_of(),
+            )),
         }
     }
 
@@ -815,10 +790,7 @@ impl Value {
     pub(crate) fn get_as_set(&self) -> Result<&Set> {
         match self {
             Value::Set(s) => Ok(s),
-            _ => Err(EvaluationError::TypeError {
-                expected: vec![Type::Set],
-                actual: self.type_of(),
-            }),
+            _ => Err(EvaluationError::type_error(vec![Type::Set], self.type_of())),
         }
     }
 
@@ -827,10 +799,10 @@ impl Value {
     pub(crate) fn get_as_entity(&self) -> Result<&EntityUID> {
         match self {
             Value::Lit(Literal::EntityUID(uid)) => Ok(uid.as_ref()),
-            _ => Err(EvaluationError::TypeError {
-                expected: vec![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
-                actual: self.type_of(),
-            }),
+            _ => Err(EvaluationError::type_error(
+                vec![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
+                self.type_of(),
+            )),
         }
     }
 }
@@ -840,7 +812,7 @@ fn stack_size_check() -> Result<()> {
     #[cfg(not(target_arch = "wasm32"))]
     {
         if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
-            return Err(EvaluationError::RecursionLimit);
+            return Err(EvaluationError::recursion_limit());
         }
     }
     Ok(())
@@ -848,7 +820,7 @@ fn stack_size_check() -> Result<()> {
 
 #[cfg(test)]
 pub mod test {
-    use std::str::FromStr;
+    use std::{collections::HashMap, str::FromStr};
 
     use super::*;
 
@@ -857,6 +829,8 @@ pub mod test {
         parser::{self, parse_policyset},
         parser::{parse_expr, parse_policy_template},
     };
+
+    use cool_asserts::assert_matches;
 
     // Many of these tests use this Request
     pub fn basic_request() -> Request {
@@ -943,6 +917,7 @@ pub mod test {
         .expect("Failed to create rich entities")
     }
 
+    #[cfg(feature = "partial-eval")]
     #[test]
     fn partial_entity_stores_in_set() {
         let q = basic_request();
@@ -983,6 +958,7 @@ pub mod test {
         assert!(r == Either::Right(expected_residual) || r == Either::Right(expected_residual2));
     }
 
+    #[cfg(feature = "partial-eval")]
     #[test]
     fn partial_entity_stores_in() {
         let q = basic_request();
@@ -1011,6 +987,7 @@ pub mod test {
         assert_eq!(r, Either::Right(expected_residual));
     }
 
+    #[cfg(feature = "partial-eval")]
     #[test]
     fn partial_entity_stores_hasattr() {
         let q = basic_request();
@@ -1030,6 +1007,7 @@ pub mod test {
         assert_eq!(r, Either::Right(expected_residual));
     }
 
+    #[cfg(feature = "partial-eval")]
     #[test]
     fn partial_entity_stores_getattr() {
         let q = basic_request();
@@ -1174,10 +1152,10 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("entity_with_attrs")),
                 "doesnotexist".into()
             )),
-            Err(EvaluationError::EntityAttrDoesNotExist {
-                entity: Arc::new(EntityUID::with_eid("entity_with_attrs")),
-                attr: "doesnotexist".into()
-            })
+            Err(EvaluationError::entity_attr_does_not_exist(
+                Arc::new(EntityUID::with_eid("entity_with_attrs")),
+                "doesnotexist".into()
+            ))
         );
         // get_attr on an attr which does exist (and has integer type)
         assert_eq!(
@@ -1212,7 +1190,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("doesnotexist")),
                 "foo".into()
             )),
-            Err(EvaluationError::EntityDoesNotExist(Arc::new(
+            Err(EvaluationError::entity_does_not_exist(Arc::new(
                 EntityUID::with_eid("doesnotexist")
             )))
         );
@@ -1230,7 +1208,7 @@ pub mod test {
                 Expr::val(EntityUID::unspecified_from_eid(Eid::new("foo"))),
                 "bar".into()
             )),
-            Err(EvaluationError::UnspecifiedEntityAccess("bar".into()))
+            Err(EvaluationError::unspecified_entity_access("bar".into()))
         );
     }
 
@@ -1275,10 +1253,7 @@ pub mod test {
                 Expr::val(3),
                 Expr::val(8)
             )),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Bool],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Bool], Type::String))
         );
         // if principal then 3 else 8
         assert_eq!(
@@ -1287,12 +1262,12 @@ pub mod test {
                 Expr::val(3),
                 Expr::val(8)
             )),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Bool],
-                actual: Type::Entity {
+            Err(EvaluationError::type_error(
+                vec![Type::Bool],
+                Type::Entity {
                     ty: EntityUID::test_entity_type(),
-                }
-            })
+                },
+            ))
         );
         // if true then "hello" else 2
         assert_eq!(
@@ -1382,7 +1357,10 @@ pub mod test {
                 Expr::val(3),
                 Expr::get_attr(Expr::record(vec![]), "foo".into()),
             )),
-            Err(EvaluationError::RecordAttrDoesNotExist("foo".into()))
+            Err(EvaluationError::record_attr_does_not_exist(
+                "foo".into(),
+                vec![]
+            ))
         );
         // if true then <err> else 3
         assert_eq!(
@@ -1391,7 +1369,10 @@ pub mod test {
                 Expr::get_attr(Expr::record(vec![]), "foo".into()),
                 Expr::val(3),
             )),
-            Err(EvaluationError::RecordAttrDoesNotExist("foo".into()))
+            Err(EvaluationError::record_attr_does_not_exist(
+                "foo".into(),
+                vec![]
+            ))
         );
         // if false then <err> else 3
         assert_eq!(
@@ -1443,30 +1424,30 @@ pub mod test {
                 Expr::set(vec![Expr::val(8)]),
                 "hello".into()
             )),
-            Err(EvaluationError::TypeError {
-                expected: vec![
+            Err(EvaluationError::type_error(
+                vec![
                     Type::Record,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     ),
                 ],
-                actual: Type::Set,
-            })
+                Type::Set,
+            ))
         );
         // indexing into empty set
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(Expr::set(vec![]), "hello".into())),
-            Err(EvaluationError::TypeError {
-                expected: vec![
+            Err(EvaluationError::type_error(
+                vec![
                     Type::Record,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     ),
                 ],
-                actual: Type::Set,
-            })
+                Type::Set,
+            ))
         );
         // set("hello", 2, true, <entity foo>)
         let mixed_set = Expr::set(vec![
@@ -1487,16 +1468,16 @@ pub mod test {
         // set("hello", 2, true, <entity foo>)["hello"]
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(mixed_set, "hello".into())),
-            Err(EvaluationError::TypeError {
-                expected: vec![
+            Err(EvaluationError::type_error(
+                vec![
                     Type::Record,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     ),
                 ],
-                actual: Type::Set
-            })
+                Type::Set,
+            ))
         );
         // set(set(8, 2), set(13, 702), set(3))
         let set_of_sets = Expr::set(vec![
@@ -1521,16 +1502,16 @@ pub mod test {
         // set(set(8, 2), set(13, 702), set(3))["hello"]
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(set_of_sets.clone(), "hello".into())),
-            Err(EvaluationError::TypeError {
-                expected: vec![
+            Err(EvaluationError::type_error(
+                vec![
                     Type::Record,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     ),
                 ],
-                actual: Type::Set
-            })
+                Type::Set,
+            ))
         );
         // set(set(8, 2), set(13, 702), set(3))["ham"]["eggs"]
         assert_eq!(
@@ -1538,16 +1519,16 @@ pub mod test {
                 Expr::get_attr(set_of_sets, "ham".into()),
                 "eggs".into()
             )),
-            Err(EvaluationError::TypeError {
-                expected: vec![
+            Err(EvaluationError::type_error(
+                vec![
                     Type::Record,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     ),
                 ],
-                actual: Type::Set
-            })
+                Type::Set,
+            ))
         );
     }
 
@@ -1580,7 +1561,10 @@ pub mod test {
         // {"ham": 3, "eggs": 7}["what"]
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(ham_and_eggs, "what".into())),
-            Err(EvaluationError::RecordAttrDoesNotExist("what".into()))
+            Err(EvaluationError::record_attr_does_not_exist(
+                "what".into(),
+                vec!["eggs".into(), "ham".into()]
+            ))
         );
 
         // {"ham": 3, "eggs": "why"}["ham"]
@@ -1778,58 +1762,58 @@ pub mod test {
         // indexing into something that's not a record, 1010122["hello"]
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(Expr::val(1010122), "hello".into())),
-            Err(EvaluationError::TypeError {
-                expected: vec![
+            Err(EvaluationError::type_error(
+                vec![
                     Type::Record,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     ),
                 ],
-                actual: Type::Long
-            })
+                Type::Long,
+            ))
         );
         // indexing into something that's not a record, "hello"["eggs"]
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(Expr::val("hello"), "eggs".into())),
-            Err(EvaluationError::TypeError {
-                expected: vec![
+            Err(EvaluationError::type_error(
+                vec![
                     Type::Record,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     ),
                 ],
-                actual: Type::String
-            })
+                Type::String,
+            ))
         );
         // has_attr on something that's not a record, has(1010122.hello)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(Expr::val(1010122), "hello".into())),
-            Err(EvaluationError::TypeError {
-                expected: vec![
+            Err(EvaluationError::type_error(
+                vec![
                     Type::Record,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     ),
                 ],
-                actual: Type::Long
-            })
+                Type::Long,
+            ))
         );
         // has_attr on something that's not a record, has("hello".eggs)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(Expr::val("hello"), "eggs".into())),
-            Err(EvaluationError::TypeError {
-                expected: vec![
+            Err(EvaluationError::type_error(
+                vec![
                     Type::Record,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     ),
                 ],
-                actual: Type::String
-            })
+                Type::String,
+            ))
         );
     }
 
@@ -1852,20 +1836,17 @@ pub mod test {
         // not(8)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::not(Expr::val(8))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Bool],
-                actual: Type::Long
-            })
+            Err(EvaluationError::type_error(vec![Type::Bool], Type::Long))
         );
         // not(action)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::not(Expr::var(Var::Action))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Bool],
-                actual: Type::Entity {
+            Err(EvaluationError::type_error(
+                vec![Type::Bool],
+                Type::Entity {
                     ty: EntityUID::test_entity_type(),
-                }
-            })
+                },
+            ))
         );
         // not(not(true))
         assert_eq!(
@@ -1930,20 +1911,16 @@ pub mod test {
         // overflow
         assert_eq!(
             eval.interpret_inline_policy(&Expr::neg(Expr::val(std::i64::MIN))),
-            Err(EvaluationError::IntegerOverflow(
-                IntegerOverflowError::UnaryOp {
-                    op: UnaryOp::Neg,
-                    arg: Value::from(std::i64::MIN)
-                }
-            )),
+            Err(IntegerOverflowError::UnaryOp {
+                op: UnaryOp::Neg,
+                arg: Value::from(std::i64::MIN)
+            }
+            .into()),
         );
         // neg(false)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::neg(Expr::val(false))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::Bool
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
         );
         // neg([1, 2, 3])
         assert_eq!(
@@ -1952,10 +1929,7 @@ pub mod test {
                 Expr::val(2),
                 Expr::val(3)
             ]))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::Set
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::Set))
         );
     }
 
@@ -2256,154 +2230,97 @@ pub mod test {
         // false < true
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(true))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::Bool
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
         );
         // false < false
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(false))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::Bool
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
         );
         // true <= false
         assert_eq!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val(true), Expr::val(false))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::Bool
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
         );
         // false <= false
         assert_eq!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val(false), Expr::val(false))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::Bool
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
         );
         // false > true
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greater(Expr::val(false), Expr::val(true))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::Bool
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
         );
         // true > true
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greater(Expr::val(true), Expr::val(true))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::Bool
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
         );
         // true >= false
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(true), Expr::val(false))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::Bool
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
         );
         // true >= true
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(true), Expr::val(true))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::Bool
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
         );
         // bc < zzz
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("bc"), Expr::val("zzz"))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // banana < zzz
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("banana"), Expr::val("zzz"))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // "" < zzz
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(""), Expr::val("zzz"))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // a < 1
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("a"), Expr::val("1"))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // a < A
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("a"), Expr::val("A"))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // A < A
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("A"), Expr::val("A"))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // zebra < zebras
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("zebra"), Expr::val("zebras"))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // zebra <= zebras
         assert_eq!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebra"), Expr::val("zebras"))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // zebras <= zebras
         assert_eq!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebras"), Expr::val("zebras"))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // zebras <= Zebras
         assert_eq!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebras"), Expr::val("Zebras"))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // 123 > 78
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greater(Expr::val("123"), Expr::val("78"))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // <space>zebras >= zebras
         assert_eq!(
@@ -2411,66 +2328,42 @@ pub mod test {
                 Expr::val(" zebras"),
                 Expr::val("zebras")
             )),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // "" >= ""
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(""), Expr::val(""))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // "" >= _hi
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(""), Expr::val("_hi"))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // 🦀 >= _hi
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val("🦀"), Expr::val("_hi"))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // 2 < "4"
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(2), Expr::val("4"))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // "4" < 2
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("4"), Expr::val(2))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // false < 1
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(1))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::Bool
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
         );
         // 1 < false
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(1), Expr::val(false))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::Bool
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
         );
         // [1, 2] < [47, 0]
         assert_eq!(
@@ -2478,10 +2371,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(1), Expr::val(2)]),
                 Expr::set(vec![Expr::val(47), Expr::val(0)])
             )),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::Set
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::Set))
         );
     }
 
@@ -2509,21 +2399,17 @@ pub mod test {
         // overflow
         assert_eq!(
             eval.interpret_inline_policy(&Expr::add(Expr::val(std::i64::MAX), Expr::val(1))),
-            Err(EvaluationError::IntegerOverflow(
-                IntegerOverflowError::BinaryOp {
-                    op: BinaryOp::Add,
-                    arg1: Value::from(std::i64::MAX),
-                    arg2: Value::from(1),
-                }
-            ))
+            Err(IntegerOverflowError::BinaryOp {
+                op: BinaryOp::Add,
+                arg1: Value::from(std::i64::MAX),
+                arg2: Value::from(1),
+            }
+            .into())
         );
         // 7 + "3"
         assert_eq!(
             eval.interpret_inline_policy(&Expr::add(Expr::val(7), Expr::val("3"))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // 44 - 31
         assert_eq!(
@@ -2538,21 +2424,17 @@ pub mod test {
         // overflow
         assert_eq!(
             eval.interpret_inline_policy(&Expr::sub(Expr::val(std::i64::MIN + 2), Expr::val(3))),
-            Err(EvaluationError::IntegerOverflow(
-                IntegerOverflowError::BinaryOp {
-                    op: BinaryOp::Sub,
-                    arg1: Value::from(std::i64::MIN + 2),
-                    arg2: Value::from(3),
-                }
-            ))
+            Err(IntegerOverflowError::BinaryOp {
+                op: BinaryOp::Sub,
+                arg1: Value::from(std::i64::MIN + 2),
+                arg2: Value::from(3),
+            }
+            .into())
         );
         // "ham" - "ha"
         assert_eq!(
             eval.interpret_inline_policy(&Expr::sub(Expr::val("ham"), Expr::val("ha"))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // 5 * (-3)
         assert_eq!(
@@ -2567,20 +2449,16 @@ pub mod test {
         // "5" * 0
         assert_eq!(
             eval.interpret_inline_policy(&Expr::mul(Expr::val("5"), 0)),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Long],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
         );
         // overflow
         assert_eq!(
             eval.interpret_inline_policy(&Expr::mul(Expr::val(std::i64::MAX - 1), 3)),
-            Err(EvaluationError::IntegerOverflow(
-                IntegerOverflowError::Multiplication {
-                    arg: Value::from(std::i64::MAX - 1),
-                    constant: 3,
-                }
-            ))
+            Err(IntegerOverflowError::Multiplication {
+                arg: Value::from(std::i64::MAX - 1),
+                constant: 3,
+            }
+            .into())
         );
     }
 
@@ -2729,10 +2607,7 @@ pub mod test {
         // 3 contains 7
         assert_eq!(
             eval.interpret_inline_policy(&Expr::contains(Expr::val(3), Expr::val(7))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Set],
-                actual: Type::Long
-            })
+            Err(EvaluationError::type_error(vec![Type::Set], Type::Long))
         );
         // { ham: "eggs" } contains "ham"
         assert_eq!(
@@ -2740,10 +2615,7 @@ pub mod test {
                 Expr::record(vec![("ham".into(), Expr::val("eggs"))]),
                 Expr::val("ham")
             )),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Set],
-                actual: Type::Record,
-            })
+            Err(EvaluationError::type_error(vec![Type::Set], Type::Record))
         );
         // wrong argument order
         assert_eq!(
@@ -2751,10 +2623,7 @@ pub mod test {
                 Expr::val(3),
                 Expr::set(vec![Expr::val(1), Expr::val(3), Expr::val(7)])
             )),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Set],
-                actual: Type::Long,
-            })
+            Err(EvaluationError::type_error(vec![Type::Set], Type::Long))
         );
     }
 
@@ -2946,13 +2815,13 @@ pub mod test {
                     Expr::val(true),
                 ])
             )),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::entity_type(
+            Err(EvaluationError::type_error(
+                vec![Type::entity_type(
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )],
-                actual: Type::Bool,
-            })
+                Type::Bool,
+            ))
         );
         // A in [A, B] where A and B do not exist
         assert_eq!(
@@ -3001,13 +2870,13 @@ pub mod test {
         // "foo" in "foobar"
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_in(Expr::val("foo"), Expr::val("foobar"))),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::entity_type(
+            Err(EvaluationError::type_error(
+                vec![Type::entity_type(
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )],
-                actual: Type::String
-            })
+                Type::String,
+            ))
         );
         // "spoon" in A (where has(A.spoon))
         assert_eq!(
@@ -3015,13 +2884,13 @@ pub mod test {
                 Expr::val("spoon"),
                 Expr::val(EntityUID::with_eid("entity_with_attrs"))
             )),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::entity_type(
+            Err(EvaluationError::type_error(
+                vec![Type::entity_type(
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )],
-                actual: Type::String
-            })
+                Type::String,
+            ))
         );
         // 3 in [34, -2, 7]
         assert_eq!(
@@ -3029,13 +2898,14 @@ pub mod test {
                 Expr::val(3),
                 Expr::set(vec![Expr::val(34), Expr::val(-2), Expr::val(7)])
             )),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::entity_type(
+            Err(EvaluationError::type_error_with_advice(
+                vec![Type::entity_type(
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )],
-                actual: Type::Long
-            })
+                Type::Long,
+                "`in` is for checking the entity hierarchy, use `.contains()` to test set membership".into(),
+            ))
         );
         // "foo" in { "foo": 2, "bar": true }
         assert_eq!(
@@ -3046,13 +2916,14 @@ pub mod test {
                     ("bar".into(), Expr::val(true)),
                 ])
             )),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::entity_type(
+            Err(EvaluationError::type_error_with_advice(
+                vec![Type::entity_type(
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
                 )],
-                actual: Type::String
-            })
+                Type::String,
+                "`in` is for checking the entity hierarchy, use `has` to test if a record has a key".into(),
+            ))
         );
         // A in { "foo": 2, "bar": true }
         assert_eq!(
@@ -3063,16 +2934,16 @@ pub mod test {
                     ("bar".into(), Expr::val(true)),
                 ])
             )),
-            Err(EvaluationError::TypeError {
-                expected: vec![
+            Err(EvaluationError::type_error(
+                vec![
                     Type::Set,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     )
                 ],
-                actual: Type::Record
-            })
+                Type::Record,
+            ))
         );
     }
 
@@ -3276,10 +3147,7 @@ pub mod test {
         // type error
         assert_eq!(
             eval.interpret_inline_policy(&Expr::like(Expr::val(354), vec![])),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::String],
-                actual: Type::Long
-            })
+            Err(EvaluationError::type_error(vec![Type::String], Type::Long))
         );
         // 'contains' is not allowed on strings
         assert_eq!(
@@ -3287,10 +3155,7 @@ pub mod test {
                 Expr::val("ham and ham"),
                 Expr::val("ham")
             )),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Set],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Set], Type::String))
         );
         // '\0' should not match '*'
         assert_eq!(
@@ -3468,10 +3333,7 @@ pub mod test {
                 Expr::val("ham"),
                 Expr::val("ham and eggs")
             )),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Set],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Set], Type::String))
         );
         // {"2": "ham", "3": "eggs"} containsall {"2": "ham"} ?
         assert_eq!(
@@ -3482,10 +3344,7 @@ pub mod test {
                     ("3".into(), Expr::val("eggs"))
                 ])
             )),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Set],
-                actual: Type::Record
-            })
+            Err(EvaluationError::type_error(vec![Type::Set], Type::Record))
         );
         // test for [1, -22] contains_any of [1, -22, 34]
         assert_eq!(
@@ -3585,10 +3444,7 @@ pub mod test {
                 Expr::val("ham"),
                 Expr::val("ham and eggs")
             )),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Set],
-                actual: Type::String
-            })
+            Err(EvaluationError::type_error(vec![Type::Set], Type::String))
         );
         // test for {"2": "ham"} contains_any of {"2": "ham", "3": "eggs"}
         assert_eq!(
@@ -3599,10 +3455,7 @@ pub mod test {
                     ("3".into(), Expr::val("eggs"))
                 ])
             )),
-            Err(EvaluationError::TypeError {
-                expected: vec![Type::Set],
-                actual: Type::Record
-            })
+            Err(EvaluationError::type_error(vec![Type::Set], Type::Record))
         );
         Ok(())
     }
@@ -3611,7 +3464,7 @@ pub mod test {
     fn eval_and_or() -> Result<()> {
         use crate::parser;
         let request = basic_request();
-        let eparser: EntityJsonParser<'_, '_> =
+        let eparser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
         let exts = Extensions::none();
@@ -3724,7 +3577,7 @@ pub mod test {
     #[test]
     fn template_env_tests() {
         let request = basic_request();
-        let eparser: EntityJsonParser<'_, '_> =
+        let eparser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
         let exts = Extensions::none();
@@ -3734,10 +3587,12 @@ pub mod test {
         let slots = HashMap::new();
         let r = evaluator.partial_interpret(&e, &slots);
         match r {
-            Err(EvaluationError::TemplateInstantiationError(slotid)) => {
-                assert_eq!(slotid, SlotId::principal())
-            }
-            Err(e) => panic!("Got wrong error: {e}"),
+            Err(e) => match e.error_kind() {
+                EvaluationErrorKind::UnlinkedSlot(slotid) => {
+                    assert_eq!(*slotid, SlotId::principal())
+                }
+                _ => panic!("Got wrong error: {e}"),
+            },
             Ok(v) => panic!("Got wrong response: {v}"),
         };
 
@@ -3779,7 +3634,7 @@ pub mod test {
             EntityUID::with_eid("r"),
             Context::empty(),
         );
-        let eparser: EntityJsonParser<'_, '_> =
+        let eparser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
         let exts = Extensions::none();
@@ -3793,6 +3648,16 @@ pub mod test {
             },
             "Should be enforced"
         );
+    }
+
+    fn assert_restricted_expression_error(v: Result<PartialValue>) {
+        match v {
+            Err(e) => assert_matches!(
+                e.error_kind(),
+                EvaluationErrorKind::InvalidRestrictedExpression { .. }
+            ),
+            Ok(v) => panic!("Got wrong response: {v}"),
+        }
     }
 
     #[test]
@@ -3825,73 +3690,64 @@ pub mod test {
                 .and_then(|e| evaluator.partial_interpret(e)),
             Ok(Value::from(EntityUID::with_eid("alice")).into())
         );
-        assert!(matches!(
+        assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::var(Var::Principal))
                 .map_err(Into::into)
                 .and_then(|e| evaluator.partial_interpret(e)),
-            Err(EvaluationError::InvalidRestrictedExpression { .. })
-        ));
-        assert!(matches!(
+        );
+        assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::var(Var::Action))
                 .map_err(Into::into)
                 .and_then(|e| evaluator.partial_interpret(e)),
-            Err(EvaluationError::InvalidRestrictedExpression { .. })
-        ));
-        assert!(matches!(
+        );
+        assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::var(Var::Resource))
                 .map_err(Into::into)
                 .and_then(|e| evaluator.partial_interpret(e)),
-            Err(EvaluationError::InvalidRestrictedExpression { .. })
-        ));
-        assert!(matches!(
+        );
+        assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::var(Var::Context))
                 .map_err(Into::into)
                 .and_then(|e| evaluator.partial_interpret(e)),
-            Err(EvaluationError::InvalidRestrictedExpression { .. })
-        ));
-        assert!(matches!(
-            BorrowedRestrictedExpr::new(&Expr::ite(Expr::val(true), Expr::val(7), Expr::val(12)),)
+        );
+        assert_restricted_expression_error(
+            BorrowedRestrictedExpr::new(&Expr::ite(Expr::val(true), Expr::val(7), Expr::val(12)))
                 .map_err(Into::into)
                 .and_then(|e| evaluator.partial_interpret(e)),
-            Err(EvaluationError::InvalidRestrictedExpression { .. })
-        ));
-        assert!(matches!(
+        );
+        assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::and(Expr::val("bogus"), Expr::val(true)))
                 .map_err(Into::into)
                 .and_then(|e| evaluator.partial_interpret(e)),
-            Err(EvaluationError::InvalidRestrictedExpression { .. })
-        ));
-        assert!(matches!(
+        );
+        assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::or(Expr::val("bogus"), Expr::val(true)))
                 .map_err(Into::into)
                 .and_then(|e| evaluator.partial_interpret(e)),
-            Err(EvaluationError::InvalidRestrictedExpression { .. })
-        ));
-        assert!(matches!(
+        );
+        assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::not(Expr::val(true)))
                 .map_err(Into::into)
                 .and_then(|e| evaluator.partial_interpret(e)),
-            Err(EvaluationError::InvalidRestrictedExpression { .. })
-        ));
-        assert!(matches!(
+        );
+        assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::is_in(
                 Expr::val(EntityUID::with_eid("alice")),
-                Expr::val(EntityUID::with_eid("some_group"))
+                Expr::val(EntityUID::with_eid("some_group")),
             ))
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
-            Err(EvaluationError::InvalidRestrictedExpression { .. })
-        ));
-        assert!(matches!(
+        );
+        assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::is_eq(
                 Expr::val(EntityUID::with_eid("alice")),
-                Expr::val(EntityUID::with_eid("some_group"))
+                Expr::val(EntityUID::with_eid("some_group")),
             ))
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
-            Err(EvaluationError::InvalidRestrictedExpression { .. })
-        ));
-        assert!(matches!(
+        );
+        #[cfg(feature = "ipaddr")]
+        assert_matches!(
             BorrowedRestrictedExpr::new(&Expr::call_extension_fn(
                 "ip".parse().expect("should be a valid Name"),
                 vec![Expr::val("222.222.222.222")]
@@ -3899,46 +3755,43 @@ pub mod test {
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
             Ok(PartialValue::Value(Value::ExtensionValue(_)))
-        ));
-        assert!(matches!(
+        );
+        assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::get_attr(
                 Expr::val(EntityUID::with_eid("alice")),
-                "pancakes".into()
-            ),)
+                "pancakes".into(),
+            ))
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
-            Err(EvaluationError::InvalidRestrictedExpression { .. })
-        ));
-        assert!(matches!(
+        );
+        assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::has_attr(
                 Expr::val(EntityUID::with_eid("alice")),
-                "pancakes".into()
-            ),)
+                "pancakes".into(),
+            ))
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
-            Err(EvaluationError::InvalidRestrictedExpression { .. })
-        ));
-        assert!(matches!(
+        );
+        assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::like(
                 Expr::val("abcdefg12"),
                 vec![
                     PatternElem::Char('a'),
                     PatternElem::Char('b'),
                     PatternElem::Char('c'),
-                    PatternElem::Wildcard
-                ]
-            ),)
+                    PatternElem::Wildcard,
+                ],
+            ))
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
-            Err(EvaluationError::InvalidRestrictedExpression { .. })
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             BorrowedRestrictedExpr::new(&Expr::set([Expr::val("hi"), Expr::val("there")]))
                 .map_err(Into::into)
                 .and_then(|e| evaluator.partial_interpret(e)),
             Ok(PartialValue::Value(Value::Set(_)))
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             BorrowedRestrictedExpr::new(&Expr::record([
                 ("hi".into(), Expr::val(1001)),
                 ("foo".into(), Expr::val("bar"))
@@ -3946,27 +3799,25 @@ pub mod test {
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
             Ok(PartialValue::Value(Value::Record(_)))
-        ));
+        );
 
         // complex expressions -- for instance, violation not at top level
-        assert!(matches!(
+        assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::set([
                 Expr::val("hi"),
-                Expr::and(Expr::val("bogus"), Expr::val(false))
-            ]),)
+                Expr::and(Expr::val("bogus"), Expr::val(false)),
+            ]))
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
-            Err(EvaluationError::InvalidRestrictedExpression { .. })
-        ));
-        assert!(matches!(
+        );
+        assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::call_extension_fn(
                 "ip".parse().expect("should be a valid Name"),
                 vec![Expr::var(Var::Principal)],
-            ),)
+            ))
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
-            Err(EvaluationError::InvalidRestrictedExpression { .. })
-        ));
+        );
     }
 
     #[test]
@@ -4224,6 +4075,48 @@ pub mod test {
                 Expr::val(true)
             ))
         )
+    }
+
+    #[test]
+    fn if_semantics_residual_reduce() {
+        let a = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::get_attr(Expr::var(Var::Context), "condition".into()),
+            Expr::val("value"),
+        );
+        let b = Expr::val("true branch");
+        let c = Expr::val("false branch");
+
+        let e = Expr::ite(a, b.clone(), c.clone());
+
+        let es = Entities::new();
+
+        let exts = Extensions::none();
+        let q = Request::new(
+            EntityUID::with_eid("p"),
+            EntityUID::with_eid("a"),
+            EntityUID::with_eid("r"),
+            Context::from_expr(RestrictedExpr::new_unchecked(Expr::record([(
+                "condition".into(),
+                Expr::unknown("unknown_condition"),
+            )]))),
+        );
+        let eval = Evaluator::new(&q, &es, &exts).unwrap();
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        assert_eq!(
+            r,
+            PartialValue::Residual(Expr::ite(
+                Expr::binary_app(
+                    BinaryOp::Eq,
+                    Expr::unknown("unknown_condition".to_string()),
+                    Expr::val("value"),
+                ),
+                b,
+                c
+            ))
+        );
     }
 
     #[test]
@@ -4863,6 +4756,7 @@ pub mod test {
         assert_eq!(r, PartialValue::Residual(e));
     }
 
+    #[cfg(feature = "ipaddr")]
     #[test]
     fn partial_ext_unfold() {
         let es = Entities::new();

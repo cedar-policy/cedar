@@ -27,7 +27,7 @@ mod utils;
 use crate::ast;
 use crate::entities::EntityUidJSON;
 use crate::parser::cst;
-use crate::parser::err::{ParseError, ParseErrors};
+use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::ASTNode;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -106,7 +106,7 @@ impl Clause {
 impl TryFrom<cst::Policy> for Policy {
     type Error = ParseErrors;
     fn try_from(policy: cst::Policy) -> Result<Policy, ParseErrors> {
-        let mut errs = vec![];
+        let mut errs = ParseErrors::new();
         let effect = policy.effect.to_effect(&mut errs);
         let (principal, action, resource) = policy.extract_head(&mut errs);
         if let (Some(effect), Some(principal), Some(action), Some(resource), true) =
@@ -117,20 +117,27 @@ impl TryFrom<cst::Policy> for Policy {
                 .into_iter()
                 .map(|node| {
                     let (cond, _) = node.into_inner();
-                    let cond =
-                        cond.ok_or_else(|| ParseError::ToAST("policy cond was empty".to_string()))?;
+                    let cond = cond.ok_or_else(|| {
+                        ParseErrors(vec![ParseError::ToAST(ToASTError::EmptyClause(None))])
+                    })?;
                     cond.try_into()
                 })
                 .collect::<Result<Vec<_>, ParseErrors>>()?;
-            let annotations = policy.annotations.into_iter().map(|node| {
-                let mut errs = vec![];
-                let kv = node.to_kv_pair(&mut errs);
-                match (errs.is_empty(), kv) {
-                    (true, Some((k, v))) => Ok((k, v)),
-                    (false, _) => Err(ParseErrors(errs)),
-                    (true, None) => Err(ParseError::ToAST("internal invariant violation: expected there to be an error if data is None here".to_string()).into()),
-                }
-            }).collect::<Result<_, ParseErrors>>()?;
+            let annotations = policy
+                .annotations
+                .into_iter()
+                .map(|node| {
+                    let mut errs = ParseErrors::new();
+                    let kv = node.to_kv_pair(&mut errs);
+                    match (errs.is_empty(), kv) {
+                        (true, Some((k, v))) => Ok((k, v)),
+                        (false, _) => Err(errs),
+                        (true, None) => {
+                            Err(ParseError::ToAST(ToASTError::AnnotationInvariantViolation).into())
+                        }
+                    }
+                })
+                .collect::<Result<_, ParseErrors>>()?;
             Ok(Policy {
                 effect,
                 principal: principal.into(),
@@ -140,7 +147,7 @@ impl TryFrom<cst::Policy> for Policy {
                 annotations,
             })
         } else {
-            Err(ParseErrors(errs))
+            Err(errs)
         }
     }
 }
@@ -148,23 +155,27 @@ impl TryFrom<cst::Policy> for Policy {
 impl TryFrom<cst::Cond> for Clause {
     type Error = ParseErrors;
     fn try_from(cond: cst::Cond) -> Result<Clause, ParseErrors> {
-        let mut errs = vec![];
+        let mut errs = ParseErrors::new();
+        let is_when = cond.cond.to_cond_is_when(&mut errs);
         let expr: Result<Expr, ParseErrors> = match cond.expr {
-            None => Err(ParseError::ToAST("clause should not be empty".to_string()).into()),
-            Some(ASTNode { node, .. }) => match node {
-                Some(e) => e.try_into(),
-                None => Err(ParseError::ToAST("data should not be empty".to_string()).into()),
-            },
+            None => {
+                let ident = is_when.map(|is_when| {
+                    cst::Ident::Ident(if is_when { "when" } else { "unless" }.into())
+                });
+                Err(ParseError::ToAST(ToASTError::EmptyClause(ident)).into())
+            }
+            Some(ASTNode { node: Some(e), .. }) => e.try_into(),
+            Some(ASTNode { node: None, .. }) => {
+                Err(ParseError::ToAST(ToASTError::MissingNodeData).into())
+            }
         };
         let expr = match expr {
             Ok(expr) => Some(expr),
             Err(expr_errs) => {
-                errs.extend(expr_errs.0.into_iter());
+                errs.extend(expr_errs.0);
                 None
             }
         };
-
-        let is_when = cond.cond.to_cond_is_when(&mut errs);
 
         if let (Some(expr), true) = (expr, errs.is_empty()) {
             Ok(match is_when {
@@ -175,7 +186,7 @@ impl TryFrom<cst::Cond> for Clause {
                 Some(false) => Clause::Unless(expr),
             })
         } else {
-            Err(ParseErrors(errs))
+            Err(errs)
         }
     }
 }
@@ -188,7 +199,7 @@ impl Policy {
     pub fn try_into_ast_policy(
         self,
         id: Option<ast::PolicyID>,
-    ) -> Result<ast::Policy, EstToAstError> {
+    ) -> Result<ast::Policy, FromJsonError> {
         let template: ast::Template = self.try_into_ast_template(id)?;
         ast::StaticPolicy::try_from(template)
             .map(Into::into)
@@ -202,7 +213,7 @@ impl Policy {
     pub fn try_into_ast_template(
         self,
         id: Option<ast::PolicyID>,
-    ) -> Result<ast::Template, EstToAstError> {
+    ) -> Result<ast::Template, FromJsonError> {
         let conditions = match self.conditions.len() {
             0 => ast::Expr::val(true),
             _ => {
@@ -229,8 +240,8 @@ impl Policy {
 }
 
 impl TryFrom<Clause> for ast::Expr {
-    type Error = EstToAstError;
-    fn try_from(clause: Clause) -> Result<ast::Expr, EstToAstError> {
+    type Error = FromJsonError;
+    fn try_from(clause: Clause) -> Result<ast::Expr, Self::Error> {
         match clause {
             Clause::When(expr) => expr.try_into(),
             Clause::Unless(expr) => Ok(ast::Expr::not(expr.try_into()?)),
@@ -1463,6 +1474,69 @@ mod test {
     }
 
     #[test]
+    fn nested_records() {
+        let policy = r#"
+            permit(principal, action, resource)
+            when { context.something1.something2.something3 };
+        "#;
+        let cst = parser::text_to_cst::parse_policy(policy)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let expected_json = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All",
+                },
+                "action": {
+                    "op": "All",
+                },
+                "resource": {
+                    "op": "All",
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            ".": {
+                                "left": {
+                                    ".": {
+                                        "left": {
+                                            ".": {
+                                                "left": {
+                                                    "Var": "context"
+                                                },
+                                                "attr": "something1"
+                                            }
+                                        },
+                                        "attr": "something2"
+                                    }
+                                },
+                                "attr": "something3"
+                            }
+                        }
+                    }
+                ]
+            }
+        );
+        assert_eq!(
+            serde_json::to_value(&est).unwrap(),
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&est).unwrap()
+        );
+        let old_est = est.clone();
+        let est = est_roundtrip(est);
+        assert_eq!(&old_est, &est);
+
+        assert_eq!(ast_roundtrip(est.clone()), est);
+        assert_eq!(circular_roundtrip(est.clone()), est);
+    }
+
+    #[test]
     fn neg_less_and_greater() {
         let policy = r#"
             permit(principal, action, resource)
@@ -2466,7 +2540,7 @@ mod test {
         );
         let est: Policy = serde_json::from_value(bad).unwrap();
         let ast: Result<ast::Policy, _> = est.try_into_ast_policy(None);
-        assert_matches!(ast, Err(EstToAstError::MissingOperator));
+        assert_matches!(ast, Err(FromJsonError::MissingOperator));
 
         let bad = json!(
             {
@@ -2528,7 +2602,9 @@ mod test {
         let ast: Result<ast::Policy, _> = est.try_into_ast_policy(None);
         assert_matches!(
             ast,
-            Err(EstToAstError::TemplateToPolicy(ast::ContainsSlot::Named(_)))
+            Err(FromJsonError::TemplateToPolicy(
+                ast::UnexpectedSlotError::Named(_)
+            ))
         );
     }
 }

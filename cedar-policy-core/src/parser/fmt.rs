@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
+use std::fmt::{self, Write};
+
 use super::cst::*;
 use super::node::ASTNode;
-use std::fmt;
 
 /// Helper struct to handle non-existent nodes
 struct View<'a, T>(&'a ASTNode<Option<T>>);
@@ -425,6 +426,41 @@ impl std::fmt::Display for Slot {
         };
         write!(f, "?{src}")
     }
+}
+
+/// Format an iterator as a natural-language string, separating items with
+/// commas and a conjunction (e.g., "and", "or") between the last two items.
+pub(crate) fn join_with_conjunction<T, W: Write>(
+    f: &mut W,
+    conjunction: &str,
+    items: impl IntoIterator<Item = T>,
+    fmt_item: impl Fn(&mut W, T) -> fmt::Result,
+) -> fmt::Result {
+    let mut iter = items.into_iter().peekable();
+
+    if let Some(first_item) = iter.next() {
+        fmt_item(f, first_item)?;
+
+        if let Some(second_item) = iter.next() {
+            match iter.peek() {
+                Some(_) => write!(f, ", "),
+                None => write!(f, " {conjunction} "),
+            }?;
+
+            fmt_item(f, second_item)?;
+
+            while let Some(item) = iter.next() {
+                match iter.peek() {
+                    Some(_) => write!(f, ", "),
+                    None => write!(f, ", {conjunction} "),
+                }?;
+
+                fmt_item(f, item)?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

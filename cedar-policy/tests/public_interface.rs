@@ -16,7 +16,7 @@
 
 use cedar_policy::*;
 
-use std::{collections::HashSet, error::Error, str::FromStr};
+use std::{error::Error, str::FromStr};
 
 #[test]
 fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
@@ -139,7 +139,7 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
     // Check that we got the "Allow" result and it was based on the added policy
     assert_eq!(
         auth.is_authorized(&request2, &policies, &entities),
-        Response::new(Decision::Allow, [alice_view_id].into(), HashSet::new())
+        Response::new(Decision::Allow, [alice_view_id].into(), Vec::new())
     );
 
     // request with Account::"jane" and an unspecified action

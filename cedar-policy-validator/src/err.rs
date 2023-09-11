@@ -18,7 +18,7 @@ use std::collections::HashSet;
 
 use cedar_policy_core::{
     ast::{EntityUID, Name},
-    parser::err::ParseError,
+    parser::err::{ParseError, ParseErrors},
     transitive_closure,
 };
 use itertools::Itertools;
@@ -26,106 +26,93 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum SchemaError {
-    /// Errors loading and parsing schema files
-    #[error("JSON Schema file could not be parsed: {0}")]
-    ParseFileFormat(serde_json::Error),
+    /// Error thrown by the `serde_json` crate during deserialization
+    #[error("failed to parse schema: {0}")]
+    Serde(#[from] serde_json::Error),
     /// Errors occurring while computing or enforcing transitive closure on
-    /// action id hierarchy.
-    #[error("Transitive closure error on action hierarchy: {0}")]
-    ActionTransitiveClosureError(Box<transitive_closure::Err<EntityUID>>),
+    /// action hierarchy.
+    #[error("transitive closure computation/enforcement error on action hierarchy: {0}")]
+    ActionTransitiveClosure(Box<transitive_closure::TcError<EntityUID>>),
     /// Errors occurring while computing or enforcing transitive closure on
     /// entity type hierarchy.
-    #[error("Transitive closure error on entity hierarchy: {0}")]
-    EntityTransitiveClosureError(transitive_closure::Err<Name>),
-    /// Error generated when processing a schema file that uses features which
-    /// are not yet supported by the implementation.
-    #[error("Unsupported feature used in schema: {0}")]
-    UnsupportedSchemaFeature(UnsupportedFeature),
-    /// Undeclared entity type(s) used in an entity type's memberOf field, an
-    /// action's appliesTo fields, or an attribute type in a context or entity
-    /// attributes record. Entity types are reported fully qualified, including
-    /// any implicit or explicit namespaces.
-    #[error("Undeclared entity types: {0:?}")]
+    #[error("transitive closure computation/enforcement error on entity type hierarchy: {0}")]
+    EntityTypeTransitiveClosure(#[from] transitive_closure::TcError<Name>),
+    /// Error generated when processing a schema file that uses unsupported features
+    #[error("unsupported feature used in schema: {0}")]
+    UnsupportedFeature(UnsupportedFeature),
+    /// Undeclared entity type(s) used in the `memberOf` field of an entity
+    /// type, the `appliesTo` fields of an action, or an attribute type in a
+    /// context or entity attribute record. Entity types in the error message
+    /// are fully qualified, including any implicit or explicit namespaces.
+    #[error("undeclared entity type(s): {0:?}")]
     UndeclaredEntityTypes(HashSet<String>),
-    /// Undeclared action(s) used in an action's memberOf field.
-    #[error("Undeclared actions: {0:?}")]
+    /// Undeclared action(s) used in the `memberOf` field of an action.
+    #[error("undeclared action(s): {0:?}")]
     UndeclaredActions(HashSet<String>),
-    /// Undeclared type used in entity or context attributes.
-    #[error("Undeclared common types: {0:?}")]
-    UndeclaredCommonType(HashSet<String>),
+    /// Undeclared common type(s) used in entity or context attributes.
+    #[error("undeclared common type(s): {0:?}")]
+    UndeclaredCommonTypes(HashSet<String>),
     /// Duplicate specifications for an entity type. Argument is the name of
     /// the duplicate entity type.
-    #[error("Duplicate entity type {0}")]
+    #[error("duplicate entity type: {0}")]
     DuplicateEntityType(String),
     /// Duplicate specifications for an action. Argument is the name of the
     /// duplicate action.
-    #[error("Duplicate action {0}")]
+    #[error("duplicate action: {0}")]
     DuplicateAction(String),
     /// Duplicate specification for a reusable type declaration.
-    #[error("Duplicate common type {0}")]
+    #[error("duplicate common type: {0}")]
     DuplicateCommonType(String),
     /// Cycle in the schema's action hierarchy.
-    #[error("Cycle in action hierarchy")]
+    #[error("cycle in action hierarchy")]
     CycleInActionHierarchy,
     /// Parse errors occurring while parsing an entity type.
-    #[error("Parse error in entity type: {}", Self::format_parse_errs(.0))]
-    EntityTypeParseError(Vec<ParseError>),
+    #[error("parse error in entity type: {}", Self::format_parse_errs(.0))]
+    ParseEntityType(ParseErrors),
     /// Parse errors occurring while parsing a namespace identifier.
-    #[error("Parse error in namespace identifier: {}", Self::format_parse_errs(.0))]
-    NamespaceParseError(Vec<ParseError>),
+    #[error("parse error in namespace identifier: {}", Self::format_parse_errs(.0))]
+    ParseNamespace(ParseErrors),
     /// Parse errors occurring while parsing an extension type.
-    #[error("Parse error in extension type: {}", Self::format_parse_errs(.0))]
-    ExtensionTypeParseError(Vec<ParseError>),
+    #[error("parse error in extension type: {}", Self::format_parse_errs(.0))]
+    ParseExtensionType(ParseErrors),
     /// Parse errors occurring while parsing the name of one of reusable
     /// declared types.
-    #[error("Parse error in common type identifier: {}", Self::format_parse_errs(.0))]
-    CommonTypeParseError(Vec<ParseError>),
+    #[error("parse error in common type identifier: {}", Self::format_parse_errs(.0))]
+    ParseCommonType(ParseErrors),
     /// The schema file included an entity type `Action` in the entity type
     /// list. The `Action` entity type is always implicitly declared, and it
     /// cannot currently have attributes or be in any groups, so there is no
     /// purposes in adding an explicit entry.
-    #[error("Entity type `Action` declared in `entityTypes` list")]
+    #[error("entity type `Action` declared in `entityTypes` list")]
     ActionEntityTypeDeclared,
-    /// One or more action entities are declared with `attributes`, but this is
-    /// not currently supported.
-    #[error("Actions declared with `attributes`: [{}]", .0.iter().join(", "))]
-    ActionEntityAttributes(Vec<String>),
-    #[error("An entity shape or action context is declared with a type other than `Record`")]
-    ContextOrShapeNotRecord,
-    /// An Action Entity (transitively) has an attribute that is an empty set
-    #[error("An action entity has an attribute that is an empty set")]
-    ActionEntityAttributeEmptySet,
-    /// An Action Entity (transitively) has an attribute of unsupported type (ExprEscape, EntityEscape or ExtnEscape)
-    #[error("An action entity has attribute with unsupported type: (escaped expression, entity or extension)")]
-    ActionEntityAttributeUnsupportedType,
+    /// `context` or `shape` fields are not records
+    #[error("{0} is declared with a type other than `Record`")]
+    ContextOrShapeNotRecord(ContextOrShape),
+    /// An action entity (transitively) has an attribute that is an empty set.
+    /// The validator cannot assign a type to an empty set.
+    /// This error variant should only be used when `PermitAttributes` is enabled.
+    #[error("action `{0}` has an attribute that is an empty set")]
+    ActionAttributesContainEmptySet(EntityUID),
+    /// An action entity (transitively) has an attribute of unsupported type (`ExprEscape`, `EntityEscape` or `ExtnEscape`).
+    /// This error variant should only be used when `PermitAttributes` is enabled.
+    #[error("action `{0}` has an attribute with unsupported JSON representation: {1}")]
+    UnsupportedActionAttribute(EntityUID, String),
     /// Malformed bounds information on a declaration of type `Long`.
     #[error("Malformed bounds information on a declaration of type `Long`")]
     MalformedLongBounds,
 }
 
-impl From<transitive_closure::Err<EntityUID>> for SchemaError {
-    fn from(e: transitive_closure::Err<EntityUID>) -> Self {
+impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
+    fn from(e: transitive_closure::TcError<EntityUID>) -> Self {
         // we use code in transitive_closure to check for cycles in the action
         // hierarchy, but in case of an error we want to report the more descriptive
         // CycleInActionHierarchy instead of ActionTransitiveClosureError
         match e {
-            transitive_closure::Err::TCEnforcementError { .. } => {
-                SchemaError::ActionTransitiveClosureError(Box::new(e))
+            transitive_closure::TcError::MissingTcEdge { .. } => {
+                SchemaError::ActionTransitiveClosure(Box::new(e))
             }
-            transitive_closure::Err::HasCycle { .. } => SchemaError::CycleInActionHierarchy,
+            transitive_closure::TcError::HasCycle { .. } => SchemaError::CycleInActionHierarchy,
         }
-    }
-}
-
-impl From<serde_json::Error> for SchemaError {
-    fn from(e: serde_json::Error) -> Self {
-        SchemaError::ParseFileFormat(e)
-    }
-}
-
-impl From<transitive_closure::Err<Name>> for SchemaError {
-    fn from(e: transitive_closure::Err<Name>) -> Self {
-        SchemaError::EntityTransitiveClosureError(e)
     }
 }
 
@@ -138,16 +125,40 @@ impl SchemaError {
 }
 
 #[derive(Debug)]
+pub enum ContextOrShape {
+    ActionContext(EntityUID),
+    EntityTypeShape(Name),
+}
+
+impl std::fmt::Display for ContextOrShape {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ContextOrShape::ActionContext(action) => write!(f, "Context for action {}", action),
+            ContextOrShape::EntityTypeShape(entity_type) => {
+                write!(f, "Shape for entity type {}", entity_type)
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum UnsupportedFeature {
     OpenRecordsAndEntities,
+    // Action attributes are allowed if `ActionBehavior` is `PermitAttributes`
+    ActionAttributes(Vec<String>),
 }
 
 impl std::fmt::Display for UnsupportedFeature {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            UnsupportedFeature::OpenRecordsAndEntities => write!(
+            Self::OpenRecordsAndEntities => write!(
                 f,
-                "Records and entities with additional attributes are not yet implemented."
+                "records and entities with additional attributes are not yet implemented"
+            ),
+            Self::ActionAttributes(attrs) => write!(
+                f,
+                "action declared with attributes: [{}]",
+                attrs.iter().join(", ")
             ),
         }
     }

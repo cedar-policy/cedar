@@ -15,6 +15,7 @@
  */
 
 use crate::ast::{EntityUID, StaticallyTyped, Type};
+use crate::parser;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::sync::Arc;
@@ -66,6 +67,14 @@ impl std::fmt::Display for Literal {
             Self::String(s) => write!(f, "\"{}\"", s.escape_debug()),
             Self::EntityUID(uid) => write!(f, "{}", uid),
         }
+    }
+}
+
+impl std::str::FromStr for Literal {
+    type Err = parser::err::ParseErrors;
+
+    fn from_str(s: &str) -> Result<Literal, Self::Err> {
+        parser::parse_literal(s)
     }
 }
 

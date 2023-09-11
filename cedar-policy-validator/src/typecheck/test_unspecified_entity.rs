@@ -22,7 +22,7 @@ use cedar_policy_core::{
     parser::parse_policy,
 };
 
-use crate::{type_error::TypeError, NamespaceDefinition};
+use crate::{type_error::TypeError, AttributeAccess, NamespaceDefinition};
 
 use super::test_utils;
 
@@ -87,10 +87,11 @@ fn spec_principal_unspec_resource() {
     .expect("Policy should parse.");
     assert_policy_typecheck_fails(
         policy,
-        vec![TypeError::missing_attribute(
+        vec![TypeError::unsafe_attribute_access(
             Expr::get_attr(Expr::var(Var::Resource), "name".into()),
-            "name".to_string(),
+            AttributeAccess::Other(vec!["name".into()]),
             None,
+            true,
         )],
     );
 }
@@ -104,10 +105,11 @@ fn spec_resource_unspec_principal() {
     .expect("Policy should parse.");
     assert_policy_typecheck_fails(
         policy,
-        vec![TypeError::missing_attribute(
+        vec![TypeError::unsafe_attribute_access(
             Expr::get_attr(Expr::var(Var::Principal), "name".into()),
-            "name".to_string(),
+            AttributeAccess::Other(vec!["name".into()]),
             None,
+            true,
         )],
     );
 
@@ -128,10 +130,11 @@ fn unspec_resource_unspec_principal() {
     .expect("Policy should parse.");
     assert_policy_typecheck_fails(
         policy,
-        vec![TypeError::missing_attribute(
+        vec![TypeError::unsafe_attribute_access(
             Expr::get_attr(Expr::var(Var::Principal), "name".into()),
-            "name".to_string(),
+            AttributeAccess::Other(vec!["name".into()]),
             None,
+            true,
         )],
     );
 
@@ -142,10 +145,11 @@ fn unspec_resource_unspec_principal() {
     .expect("Policy should parse.");
     assert_policy_typecheck_fails(
         policy,
-        vec![TypeError::missing_attribute(
+        vec![TypeError::unsafe_attribute_access(
             Expr::get_attr(Expr::var(Var::Resource), "name".into()),
-            "name".to_string(),
+            AttributeAccess::Other(vec!["name".into()]),
             None,
+            true,
         )],
     );
 }

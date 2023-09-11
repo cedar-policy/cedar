@@ -15,10 +15,13 @@
  */
 
 use cedar_policy_core::entities::JSONValue;
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{MapAccess, Visitor},
+    Deserialize, Serialize,
+};
 use serde_with::serde_as;
 use smol_str::SmolStr;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::{Result, SchemaError};
 
@@ -74,14 +77,6 @@ impl NamespaceDefinition {
             entity_types: entity_types.into_iter().collect(),
             actions: actions.into_iter().collect(),
         }
-    }
-}
-
-impl std::fmt::Display for NamespaceDefinition {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str(
-            &serde_json::to_string_pretty(&self).expect("failed to serialize NamespaceContents"),
-        )
     }
 }
 
@@ -189,7 +184,7 @@ impl std::fmt::Display for ActionEntityUID {
 
 /// A restricted version of the `Type` enum containing only the types which are
 /// exposed to users.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 // This enum is `untagged` with these variants as a workaround to a serde
 // limitation. It is not possible to have the known variants on one enum, and
 // then, have catch-all variant for any unrecognized tag in the same enum that
@@ -203,15 +198,327 @@ pub enum SchemaType {
     },
 }
 
+impl<'de> Deserialize<'de> for SchemaType {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_any(SchemaTypeVisitor)
+    }
+}
+
+/// The fields for a `SchemaTypes`. Used for implementing deserialization.
+#[derive(Hash, Eq, PartialEq, Deserialize)]
+#[serde(field_identifier, rename_all = "camelCase")]
+enum TypeFields {
+    Type,
+    Element,
+    Attributes,
+    AdditionalAttributes,
+    Name,
+    Min,
+    Max,
+}
+
+// This macro is used to avoid duplicating the fields names when calling
+// `serde::de::Error::unknown_field`. It wants an `&'static [&'static str]`, and
+// AFAIK, the elements of the static slice must be literals.
+macro_rules! type_field_name {
+    (Type) => {
+        "type"
+    };
+    (Element) => {
+        "element"
+    };
+    (Attributes) => {
+        "attributes"
+    };
+    (AdditionalAttributes) => {
+        "additionalAttributes"
+    };
+    (Name) => {
+        "name"
+    };
+    (Min) => {
+        "min"
+    };
+    (Max) => {
+        "max"
+    };
+}
+
+impl TypeFields {
+    fn as_str(&self) -> &'static str {
+        match self {
+            TypeFields::Type => type_field_name!(Type),
+            TypeFields::Element => type_field_name!(Element),
+            TypeFields::Attributes => type_field_name!(Attributes),
+            TypeFields::AdditionalAttributes => type_field_name!(AdditionalAttributes),
+            TypeFields::Name => type_field_name!(Name),
+            TypeFields::Min => type_field_name!(Min),
+            TypeFields::Max => type_field_name!(Max),
+        }
+    }
+}
+
+/// Used during deserialization to deserialize the attributes type map while
+/// reporting an error if there are any duplicate keys in the map. I could not
+/// find a way to do the `serde_with` conversion inline without introducing this
+/// struct.
+#[derive(Deserialize)]
+struct AttributesTypeMap(
+    #[serde(with = "serde_with::rust::maps_duplicate_key_is_error")]
+    BTreeMap<SmolStr, TypeOfAttribute>,
+);
+
+struct SchemaTypeVisitor;
+
+impl<'de> Visitor<'de> for SchemaTypeVisitor {
+    type Value = SchemaType;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("builtin type or reference to type defined in commonTypes")
+    }
+
+    fn visit_map<M>(self, mut map: M) -> std::result::Result<Self::Value, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        use TypeFields::*;
+
+        // We keep field values wrapped in a `Result` initially so that we do
+        // not report errors due the contents of a field when the field is not
+        // expected for a particular type variant. We instead report that the
+        // field so not exist at all, so that the schema author can delete the
+        // field without wasting time fixing errors in the value.
+        let mut type_name: Option<std::result::Result<SmolStr, M::Error>> = None;
+        let mut element: Option<std::result::Result<SchemaType, M::Error>> = None;
+        let mut attributes: Option<std::result::Result<AttributesTypeMap, M::Error>> = None;
+        let mut additional_attributes: Option<std::result::Result<bool, M::Error>> = None;
+        let mut name: Option<std::result::Result<SmolStr, M::Error>> = None;
+        let mut min: Option<std::result::Result<i64, M::Error>> = None;
+        let mut max: Option<std::result::Result<i64, M::Error>> = None;
+
+        // Gather all the fields in the object. Any fields that are not one of
+        // the possible fields for some schema type will have been reported by
+        // serde already.
+        while let Some(key) = map.next_key()? {
+            match key {
+                Type => {
+                    if type_name.is_some() {
+                        return Err(serde::de::Error::duplicate_field(Type.as_str()));
+                    }
+                    type_name = Some(map.next_value());
+                }
+                Element => {
+                    if element.is_some() {
+                        return Err(serde::de::Error::duplicate_field(Element.as_str()));
+                    }
+                    element = Some(map.next_value());
+                }
+                Attributes => {
+                    if attributes.is_some() {
+                        return Err(serde::de::Error::duplicate_field(Attributes.as_str()));
+                    }
+                    attributes = Some(map.next_value());
+                }
+                AdditionalAttributes => {
+                    if additional_attributes.is_some() {
+                        return Err(serde::de::Error::duplicate_field(
+                            AdditionalAttributes.as_str(),
+                        ));
+                    }
+                    additional_attributes = Some(map.next_value());
+                }
+                Name => {
+                    if name.is_some() {
+                        return Err(serde::de::Error::duplicate_field(Name.as_str()));
+                    }
+                    name = Some(map.next_value());
+                }
+                Min => {
+                    if min.is_some() {
+                        return Err(serde::de::Error::duplicate_field(Min.as_str()));
+                    }
+                    min = Some(map.next_value());
+                }
+                Max => {
+                    if max.is_some() {
+                        return Err(serde::de::Error::duplicate_field(Max.as_str()));
+                    }
+                    max = Some(map.next_value());
+                }
+            }
+        }
+
+        Self::build_schema_type::<M>(
+            type_name,
+            element,
+            attributes,
+            additional_attributes,
+            name,
+            min,
+            max,
+        )
+    }
+}
+
+impl SchemaTypeVisitor {
+    /// Construct a schema type given the name of the type and its fields.
+    /// Fields which were not present are `None`. It is an error for a field
+    /// which is not used for a particular type to be `Some` when building that
+    /// type.
+    fn build_schema_type<'de, M>(
+        type_name: Option<std::result::Result<SmolStr, M::Error>>,
+        element: Option<std::result::Result<SchemaType, M::Error>>,
+        attributes: Option<std::result::Result<AttributesTypeMap, M::Error>>,
+        additional_attributes: Option<std::result::Result<bool, M::Error>>,
+        name: Option<std::result::Result<SmolStr, M::Error>>,
+        min: Option<std::result::Result<i64, M::Error>>,
+        max: Option<std::result::Result<i64, M::Error>>,
+    ) -> std::result::Result<SchemaType, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        use TypeFields::*;
+        let present_fields = [
+            (Type, type_name.is_some()),
+            (Element, element.is_some()),
+            (Attributes, attributes.is_some()),
+            (AdditionalAttributes, additional_attributes.is_some()),
+            (Name, name.is_some()),
+        ]
+        .into_iter()
+        .filter(|(_, present)| *present)
+        .map(|(field, _)| field)
+        .collect::<HashSet<_>>();
+        // Used to generate the appropriate serde error if a field is present
+        // when it is not expected.
+        let error_if_fields = |fs: &[TypeFields],
+                               expected: &'static [&'static str]|
+         -> std::result::Result<(), M::Error> {
+            for f in fs {
+                if present_fields.contains(f) {
+                    return Err(serde::de::Error::unknown_field(f.as_str(), expected));
+                }
+            }
+            Ok(())
+        };
+        let error_if_any_fields = || -> std::result::Result<(), M::Error> {
+            error_if_fields(
+                &[Element, Attributes, AdditionalAttributes, Name, Min, Max],
+                &[],
+            )
+        };
+
+        match type_name.transpose()?.as_ref().map(|s| s.as_str()) {
+            Some("String") => {
+                error_if_any_fields()?;
+                Ok(SchemaType::Type(SchemaTypeVariant::String))
+            }
+            Some("Long") => {
+                error_if_fields(
+                    &[Element, Attributes, AdditionalAttributes, Name],
+                    &[type_field_name!(Min), type_field_name!(Max)],
+                )?;
+                match (min, max) {
+                    (Some(min), Some(max)) => Ok(SchemaType::Type(SchemaTypeVariant::Long(
+                        SchemaLongDetails {
+                            bounds_opt: Some(SchemaLongBounds {
+                                min: min?,
+                                max: max?,
+                            }),
+                        },
+                    ))),
+                    (None, None) => Ok(SchemaType::Type(SchemaTypeVariant::Long(
+                        SchemaLongDetails { bounds_opt: None },
+                    ))),
+                    _ => Err(serde::de::Error::custom(SchemaError::MalformedLongBounds)),
+                }
+            }
+            Some("Boolean") => {
+                error_if_any_fields()?;
+                Ok(SchemaType::Type(SchemaTypeVariant::Boolean))
+            }
+            Some("Set") => {
+                error_if_fields(
+                    &[Attributes, AdditionalAttributes, Name, Min, Max],
+                    &[type_field_name!(Element)],
+                )?;
+
+                if let Some(element) = element {
+                    Ok(SchemaType::Type(SchemaTypeVariant::Set {
+                        element: Box::new(element?),
+                    }))
+                } else {
+                    Err(serde::de::Error::missing_field(Element.as_str()))
+                }
+            }
+            Some("Record") => {
+                error_if_fields(
+                    &[Element, Name, Min, Max],
+                    &[
+                        type_field_name!(Attributes),
+                        type_field_name!(AdditionalAttributes),
+                    ],
+                )?;
+
+                if let Some(attributes) = attributes {
+                    let additional_attributes =
+                        additional_attributes.unwrap_or(Ok(additional_attributes_default()));
+                    Ok(SchemaType::Type(SchemaTypeVariant::Record {
+                        attributes: attributes?.0,
+                        additional_attributes: additional_attributes?,
+                    }))
+                } else {
+                    Err(serde::de::Error::missing_field(Attributes.as_str()))
+                }
+            }
+            Some("Entity") => {
+                error_if_fields(
+                    &[Element, Attributes, AdditionalAttributes, Min, Max],
+                    &[type_field_name!(Name)],
+                )?;
+
+                if let Some(name) = name {
+                    Ok(SchemaType::Type(SchemaTypeVariant::Entity { name: name? }))
+                } else {
+                    Err(serde::de::Error::missing_field(Name.as_str()))
+                }
+            }
+            Some("Extension") => {
+                error_if_fields(
+                    &[Element, Attributes, AdditionalAttributes, Min, Max],
+                    &[type_field_name!(Name)],
+                )?;
+
+                if let Some(name) = name {
+                    Ok(SchemaType::Type(SchemaTypeVariant::Extension {
+                        name: name?,
+                    }))
+                } else {
+                    Err(serde::de::Error::missing_field(Name.as_str()))
+                }
+            }
+            Some(type_name) => {
+                error_if_any_fields()?;
+                Ok(SchemaType::TypeDef {
+                    type_name: type_name.into(),
+                })
+            }
+            None => Err(serde::de::Error::missing_field(Type.as_str())),
+        }
+    }
+}
+
 impl From<SchemaTypeVariant> for SchemaType {
     fn from(variant: SchemaTypeVariant) -> Self {
         Self::Type(variant)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(tag = "type")]
-#[serde(deny_unknown_fields)]
 pub enum SchemaTypeVariant {
     String,
     Long(SchemaLongDetails),
@@ -220,10 +527,8 @@ pub enum SchemaTypeVariant {
         element: Box<SchemaType>,
     },
     Record {
-        #[serde(with = "serde_with::rust::maps_duplicate_key_is_error")]
         attributes: BTreeMap<SmolStr, TypeOfAttribute>,
         #[serde(rename = "additionalAttributes")]
-        #[serde(default = "additional_attributes_default")]
         additional_attributes: bool,
     },
     Entity {
@@ -260,15 +565,13 @@ impl SchemaType {
         match self {
             Self::Type(SchemaTypeVariant::Extension { .. }) => Some(true),
             Self::Type(SchemaTypeVariant::Set { element }) => element.is_extension(),
-            Self::Type(SchemaTypeVariant::Record { attributes, .. }) => {
-                attributes
-                    .values()
-                    .fold(Some(false), |a, e| match e.ty.is_extension() {
-                        Some(true) => Some(true),
-                        Some(false) => a,
-                        None => None,
-                    })
-            }
+            Self::Type(SchemaTypeVariant::Record { attributes, .. }) => attributes
+                .values()
+                .try_fold(false, |a, e| match e.ty.is_extension() {
+                    Some(true) => Some(true),
+                    Some(false) => Some(a),
+                    None => None,
+                }),
             Self::Type(_) => Some(false),
             Self::TypeDef { .. } => None,
         }
@@ -356,7 +659,7 @@ impl From<SchemaLongDetails> for SchemaLongDetailsJson {
     }
 }
 
-#[cfg(fuzzing)]
+#[cfg(feature = "arbitrary")]
 pub fn arbitrary_schematypevariant_long<'a>(
     allow_long_any: bool,
     u: &mut arbitrary::Unstructured<'a>,
@@ -376,11 +679,11 @@ pub fn arbitrary_schematypevariant_long<'a>(
 
 // TODO: It looks like this is unused except by arbitrary_schematype_size_hint.
 // Do we really want to continue maintaining it?
-#[cfg(fuzzing)]
+#[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<SchemaType> {
         use cedar_policy_core::ast::Name;
-        use std::collections::HashSet;
+        use std::collections::BTreeSet;
 
         Ok(SchemaType::Type(match u.int_in_range::<u8>(1..=8)? {
             1 => SchemaTypeVariant::String,
@@ -391,7 +694,7 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
             },
             5 => {
                 let attributes = {
-                    let attr_names: HashSet<String> = u.arbitrary()?;
+                    let attr_names: BTreeSet<String> = u.arbitrary()?;
                     attr_names
                         .into_iter()
                         .map(|attr_name| Ok((attr_name.into(), u.arbitrary()?)))
@@ -437,7 +740,7 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
 /// unknown fields for TypeOfAttribute should be passed to SchemaType where
 /// they will be denied (`<https://github.com/serde-rs/serde/issues/1600>`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, PartialOrd, Ord)]
-#[cfg_attr(fuzzing, derive(arbitrary::Arbitrary))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TypeOfAttribute {
     #[serde(flatten)]
     pub ty: SchemaType,
@@ -492,30 +795,6 @@ mod test {
                 additional_attributes: false
             })
         );
-    }
-
-    #[test]
-    fn test_entity_type_parser3() {
-        let src = r#"
-        {
-            "memberOf" : ["UserGroup"],
-            "shape": {
-                "type": "Record",
-                "attributes": {
-                    "name": { "type": "String", "required": false},
-                    "name": { "type": "String", "required": true},
-                    "age": { "type": "Long", "required": false}
-                }
-            }
-        }
-        "#;
-        let et = serde_json::from_str::<EntityType>(src);
-        match et {
-            Ok(_) => panic!("serde_json parsing should have failed"),
-            Err(e) => {
-                assert_eq!(e.classify(), serde_json::error::Category::Data);
-            }
-        }
     }
 
     #[test]
@@ -629,83 +908,259 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "unknown field `requiredddddd`")]
     fn test_schema_file_with_misspelled_required() {
-        let src = r#"
+        let src = serde_json::json!(
         {
             "entityTypes": {
                 "User": {
-                    "memberOf": [ "Group" ],
                     "shape": {
                         "type": "Record",
-                        "additionalAttributess": false,
                         "attributes": {
-                            "name": { "type": "String", "required": true},
-                            "age": { "type": "Long", "required": true},
-                            "favorite": { "type": "Entity", "name": "Photo", "requiredddddd": false}
-                        },
-                        "required": false
+                            "favorite": {
+                                "type": "Entity",
+                                "name": "Photo",
+                                "requiredddddd": false
+                            }
+                        }
                     }
                 }
             },
-            "actions": []
-        }
-        "#;
-        let schema: NamespaceDefinition = serde_json::from_str(src).expect("Expected valid schema");
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
         println!("{:#?}", schema);
     }
 
     #[test]
-    #[should_panic]
-    fn test_schema_file_with_misspelled_attribute() {
-        let src = r#"
+    #[should_panic(expected = "unknown field `nameeeeee`")]
+    fn test_schema_file_with_misspelled_field() {
+        let src = serde_json::json!(
         {
-            "entityTypes": [
+            "entityTypes": {
                 "User": {
-                    "memberOf": [ "Group" ],
                     "shape": {
                         "type": "Record",
-                        "additionalAttributess": false,
                         "attributes": {
-                            "name": { "type": "String", "required": true},
-                            "age": { "type": "Long", "required": true},
-                            "favorite": { "type": "Entity", "nameeeeee": "Photo", "required": false}
-                        },
-                        "required": false
+                            "favorite": {
+                                "type": "Entity",
+                                "nameeeeee": "Photo",
+                            }
+                        }
                     }
                 }
-            ],
-            "actions": []
-        }
-        "#;
-        let schema: NamespaceDefinition = serde_json::from_str(src).expect("Expected valid schema");
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
         println!("{:#?}", schema);
     }
 
     #[test]
-    #[should_panic]
-    fn test_schema_file_with_extra_attribute() {
-        let src = r#"
+    #[should_panic(expected = "unknown field `extra`")]
+    fn test_schema_file_with_extra_field() {
+        let src = serde_json::json!(
         {
-            "entityTypes": [
+            "entityTypes": {
                 "User": {
-                    "memberOf": [ "Group" ],
                     "shape": {
                         "type": "Record",
-                        "additionalAttributess": false,
                         "attributes": {
-                            "name": { "type": "String", "required": true},
-                            "age": { "type": "Long", "required": true},
-                            "favorite": { "type": "Entity", "name": "Photo", "required": false, "extra": "Should not exist"}
-                        },
-                        "required": false
+                            "favorite": {
+                                "type": "Entity",
+                                "name": "Photo",
+                                "extra": "Should not exist"
+                            }
+                        }
                     }
                 }
-            ],
-            "actions": []
-        }
-        "#;
-        let schema: NamespaceDefinition = serde_json::from_str(src).expect("Expected valid schema");
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
         println!("{:#?}", schema);
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown field `memberOfTypes`")]
+    fn test_schema_file_with_misplaced_field() {
+        let src = serde_json::json!(
+        {
+            "entityTypes": {
+                "User": {
+                    "shape": {
+                        "memberOfTypes": [],
+                        "type": "Record",
+                        "attributes": {
+                            "favorite": {
+                                "type": "Entity",
+                                "name": "Photo",
+                            }
+                        }
+                    }
+                }
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
+        println!("{:#?}", schema);
+    }
+
+    #[test]
+    #[should_panic(expected = "missing field `name`")]
+    fn schema_file_with_missing_field() {
+        let src = serde_json::json!(
+        {
+            "entityTypes": {
+                "User": {
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "favorite": {
+                                "type": "Entity",
+                            }
+                        }
+                    }
+                }
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
+        println!("{:#?}", schema);
+    }
+
+    #[test]
+    #[should_panic(expected = "missing field `type`")]
+    fn schema_file_with_missing_type() {
+        let src = serde_json::json!(
+        {
+            "entityTypes": {
+                "User": {
+                    "shape": { }
+                }
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
+        println!("{:#?}", schema);
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown field `attributes`")]
+    fn schema_file_unexpected_malformed_attribute() {
+        let src = serde_json::json!(
+        {
+            "entityTypes": {
+                "User": {
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Long",
+                                "attributes": {
+                                    "b": {"foo": "bar"}
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
+        println!("{:#?}", schema);
+    }
+}
+
+/// Tests in this module check the behavior of schema parsing given duplicate
+/// map keys. The `json!` macro silently drops duplicate keys before they reach
+/// our parser, so these tests must be written with `serde_json::from_str`
+/// instead.
+#[cfg(test)]
+mod test_duplicates_error {
+    use super::*;
+
+    #[test]
+    #[should_panic(expected = "invalid entry: found duplicate key")]
+    fn namespace() {
+        let src = r#"{
+            "Foo": {
+              "entityTypes" : {},
+              "actions": {}
+            },
+            "Foo": {
+              "entityTypes" : {},
+              "actions": {}
+            }
+        }"#;
+        serde_json::from_str::<SchemaFragment>(src).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid entry: found duplicate key")]
+    fn entity_type() {
+        let src = r#"{
+            "Foo": {
+              "entityTypes" : {
+                "Bar": {},
+                "Bar": {},
+              },
+              "actions": {}
+            }
+        }"#;
+        serde_json::from_str::<SchemaFragment>(src).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid entry: found duplicate key")]
+    fn action() {
+        let src = r#"{
+            "Foo": {
+              "entityTypes" : {},
+              "actions": {
+                "Bar": {},
+                "Bar": {}
+              }
+            }
+        }"#;
+        serde_json::from_str::<SchemaFragment>(src).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid entry: found duplicate key")]
+    fn common_types() {
+        let src = r#"{
+            "Foo": {
+              "entityTypes" : {},
+              "actions": { },
+              "commonTypes": {
+                "Bar": {"type": "Long"},
+                "Bar": {"type": "String"}
+              }
+            }
+        }"#;
+        serde_json::from_str::<SchemaFragment>(src).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid entry: found duplicate key")]
+    fn record_type() {
+        let src = r#"{
+            "Foo": {
+              "entityTypes" : {
+                "Bar": {
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "Baz": {"type": "Long"},
+                            "Baz": {"type": "String"}
+                        }
+                    }
+                }
+              },
+              "actions": { }
+            }
+        }"#;
+        serde_json::from_str::<SchemaFragment>(src).unwrap();
     }
 }
