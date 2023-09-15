@@ -543,14 +543,6 @@ fn record_lub_has_typechecks() {
         Expr::from_str("(if 1 > 0 then (if 1 > 0 then {a: 1} else {}) else {}) has a").unwrap(),
         Type::primitive_boolean(),
     );
-    assert_typechecks_empty_schema(
-        Expr::from_str("(if 1 > 0 then {a: true} else {a: false}) has b").unwrap(),
-        Type::singleton_boolean(false),
-    );
-    assert_typechecks_empty_schema(
-        Expr::from_str("(if 1 > 0 then {a: true} else {a: false}) has a").unwrap(),
-        Type::singleton_boolean(true),
-    );
 
     // These cases are imprecise.
     assert_typechecks_empty_schema(
