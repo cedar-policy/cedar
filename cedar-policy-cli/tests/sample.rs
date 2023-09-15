@@ -16,7 +16,8 @@
 
 use std::collections::HashMap;
 
-use cedar_policy::EvalResult;
+use cedar_policy::EntityUid;
+use cedar_policy::Value;
 use cedar_policy::SlotId;
 use cedar_policy_cli::check_parse;
 use cedar_policy_cli::{
@@ -522,7 +523,7 @@ fn run_evaluate_test(
     entities_file: &str,
     expression: &str,
     exit_code: CedarExitCode,
-    expected: EvalResult,
+    expected: Value,
 ) {
     let cmd = EvaluateArgs {
         schema_file: None,
@@ -548,7 +549,7 @@ fn test_evaluate_samples() {
         "sample-data/tiny_sandboxes/sample1/entity.json",
         "principal in UserGroup::\"jane_friends\"",
         CedarExitCode::Failure,
-        EvalResult::Bool(false),
+        false.into(),
     );
 
     run_evaluate_test(
@@ -556,7 +557,7 @@ fn test_evaluate_samples() {
         "sample-data/tiny_sandboxes/sample1/doesnotexist.json",
         "principal in UserGroup::\"jane_friends\"",
         CedarExitCode::Failure,
-        EvalResult::Bool(false),
+        false.into(),
     );
 
     run_evaluate_test(
@@ -564,7 +565,7 @@ fn test_evaluate_samples() {
         "sample-data/tiny_sandboxes/sample1/entity.json",
         "parse error",
         CedarExitCode::Failure,
-        EvalResult::Bool(false),
+        false.into(),
     );
 
     run_evaluate_test(
@@ -572,7 +573,7 @@ fn test_evaluate_samples() {
         "sample-data/tiny_sandboxes/sample1/entity.json",
         "1 + \"type error\"",
         CedarExitCode::Failure,
-        EvalResult::Bool(false),
+        false.into(),
     );
 
     run_evaluate_test(
@@ -580,7 +581,7 @@ fn test_evaluate_samples() {
         "sample-data/tiny_sandboxes/sample1/entity.json",
         "principal in UserGroup::\"jane_friends\"",
         CedarExitCode::Success,
-        EvalResult::Bool(true),
+        true.into(),
     );
 
     run_evaluate_test(
@@ -588,7 +589,7 @@ fn test_evaluate_samples() {
         "sample-data/tiny_sandboxes/sample1/entity.json",
         "[\"a\",true,10].contains(10)",
         CedarExitCode::Success,
-        EvalResult::Bool(true),
+        true.into(),
     );
 
     run_evaluate_test(
@@ -596,17 +597,17 @@ fn test_evaluate_samples() {
         "sample-data/tiny_sandboxes/sample1/entity.json",
         "principal.age >= 17",
         CedarExitCode::Success,
-        EvalResult::Bool(true),
+        true.into(),
     );
 
-    let v = "User::\"bob\"".parse();
+    let v: EntityUid = "User::\"bob\"".parse().unwrap();
 
     run_evaluate_test(
         "sample-data/tiny_sandboxes/sample2/request.json",
         "sample-data/tiny_sandboxes/sample2/entity.json",
         "resource.owner",
         CedarExitCode::Success,
-        EvalResult::EntityUid(v.unwrap()),
+        v.into(),
     );
 
     run_evaluate_test(
@@ -614,7 +615,7 @@ fn test_evaluate_samples() {
         "sample-data/tiny_sandboxes/sample3/entity.json",
         "if 10 > 5 then \"good\" else \"bad\"",
         CedarExitCode::Success,
-        EvalResult::String("good".to_owned()),
+        "good".into(),
     );
 
     run_evaluate_test(
@@ -622,7 +623,7 @@ fn test_evaluate_samples() {
         "sample-data/tiny_sandboxes/sample4/entity.json",
         "resource.owner == User::\"bob\"",
         CedarExitCode::Success,
-        EvalResult::Bool(true),
+        true.into(),
     );
 
     run_evaluate_test(
@@ -630,7 +631,7 @@ fn test_evaluate_samples() {
         "sample-data/tiny_sandboxes/sample5/entity.json",
         "principal.addr.isLoopback()",
         CedarExitCode::Success,
-        EvalResult::Bool(true),
+        true.into(),
     );
 
     run_evaluate_test(
@@ -638,7 +639,7 @@ fn test_evaluate_samples() {
         "sample-data/tiny_sandboxes/sample6/entity.json",
         "principal.account.age >= 17",
         CedarExitCode::Success,
-        EvalResult::Bool(true),
+        true.into(),
     );
 
     run_evaluate_test(
@@ -646,7 +647,7 @@ fn test_evaluate_samples() {
         "sample-data/tiny_sandboxes/sample7/entity.json",
         "context.role.contains(\"admin\")",
         CedarExitCode::Success,
-        EvalResult::Bool(true),
+        true.into(),
     );
 }
 

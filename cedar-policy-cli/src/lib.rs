@@ -421,21 +421,21 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
     }
 }
 
-pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
+pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, Value) {
     println!();
     let schema = match args.schema_file.as_ref().map(read_schema_file) {
         None => None,
         Some(Ok(schema)) => Some(schema),
         Some(Err(e)) => {
             println!("Error: {e:?}");
-            return (CedarExitCode::Failure, EvalResult::Bool(false));
+            return (CedarExitCode::Failure, false.into());
         }
     };
     let request = match args.request.get_request(schema.as_ref()) {
         Ok(q) => q,
         Err(e) => {
             println!("Error: {e:?}");
-            return (CedarExitCode::Failure, EvalResult::Bool(false));
+            return (CedarExitCode::Failure, false.into());
         }
     };
     let expr =
@@ -443,7 +443,7 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
             Ok(expr) => expr,
             Err(e) => {
                 println!("Error: {e:?}");
-                return (CedarExitCode::Failure, EvalResult::Bool(false));
+                return (CedarExitCode::Failure, false.into());
             }
         };
     let entities = match &args.entities_file {
@@ -452,7 +452,7 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
             Ok(entities) => entities,
             Err(e) => {
                 println!("Error: {e:?}");
-                return (CedarExitCode::Failure, EvalResult::Bool(false));
+                return (CedarExitCode::Failure, false.into());
             }
         },
     };
@@ -460,7 +460,7 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
         Ok(entities) => entities,
         Err(e) => {
             println!("Error: {e:?}");
-            return (CedarExitCode::Failure, EvalResult::Bool(false));
+            return (CedarExitCode::Failure, false.into());
         }
     };
     match eval_expression(&request, &entities, &expr)
@@ -469,7 +469,7 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
     {
         Err(e) => {
             println!("Error: {e:?}");
-            return (CedarExitCode::Failure, EvalResult::Bool(false));
+            return (CedarExitCode::Failure, false.into());
         }
         Ok(result) => {
             println!("{result}");
