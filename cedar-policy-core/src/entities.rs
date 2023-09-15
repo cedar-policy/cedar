@@ -102,7 +102,10 @@ impl<T> Entities<T> {
         match self.entities.get(uid) {
             Some(e) => Dereference::Data(e),
             None => match self.mode {
-                Mode::Concrete => Dereference::NoSuchEntity,
+                Mode::Concrete => {
+                    let _ = uid; // when not in partial entity store mode, we do not use the uid
+                    Dereference::NoSuchEntity
+                },
                 #[cfg(feature = "partial-eval")]
                 Mode::Partial => Dereference::Residual(Expr::unknown(format!("{uid}"))),
             },
@@ -349,7 +352,10 @@ pub trait EntityDataSource {
         match t {
             Ok(v) => Ok(Dereference::Data(v)),
             Err(EntityAccessError::UnknownEntity) => match self.partial_mode() {
-                Mode::Concrete => Ok(Dereference::NoSuchEntity),
+                Mode::Concrete => {
+                    let _ = uid; // when not in partial entity store mode, we do not use the uid
+                    Ok(Dereference::NoSuchEntity)
+                },
                 #[cfg(feature = "partial-eval")]
                 Mode::Partial => Ok(Dereference::Residual(Expr::unknown(format!("{uid}")))),
             },
