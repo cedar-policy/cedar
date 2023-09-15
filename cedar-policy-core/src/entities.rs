@@ -105,7 +105,7 @@ impl<T> Entities<T> {
                 Mode::Concrete => {
                     let _ = uid; // when not in partial entity store mode, we do not use the uid
                     Dereference::NoSuchEntity
-                },
+                }
                 #[cfg(feature = "partial-eval")]
                 Mode::Partial => Dereference::Residual(Expr::unknown(format!("{uid}"))),
             },
@@ -355,7 +355,7 @@ pub trait EntityDataSource {
                 Mode::Concrete => {
                     let _ = uid; // when not in partial entity store mode, we do not use the uid
                     Ok(Dereference::NoSuchEntity)
-                },
+                }
                 #[cfg(feature = "partial-eval")]
                 Mode::Partial => Ok(Dereference::Residual(Expr::unknown(format!("{uid}")))),
             },
