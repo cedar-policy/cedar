@@ -291,11 +291,7 @@ impl Entity {
         let expr = self.0.get(attr)?;
         let all_ext = Extensions::all_available();
         let evaluator = RestrictedEvaluator::new(&all_ext);
-        Some(
-            evaluator
-                .interpret(expr.as_borrowed())
-                .map(Value),
-        )
+        Some(evaluator.interpret(expr.as_borrowed()).map(Value))
     }
 
     /// Get the ValueKind of `attr`
@@ -438,15 +434,13 @@ impl<T: WholeEntityDataSource> EntityDataSource for T {
         uid: &EntityUid,
         attr: &str,
     ) -> std::result::Result<PartialValue, EntityAttrAccessError<Self::Error>> {
-        self.get(uid)?.map_or(
-            Err(EntityAttrAccessError::UnknownEntity),
-            |e| {
+        self.get(uid)?
+            .map_or(Err(EntityAttrAccessError::UnknownEntity), |e| {
                 e.as_ref()
                     .attr(attr)
                     .cloned()
                     .ok_or(EntityAttrAccessError::UnknownAttr)
-            },
-        )
+            })
     }
 
     fn entity_in(&self, u1: &EntityUid, u2: &EntityUid) -> std::result::Result<bool, Self::Error> {
@@ -841,7 +835,9 @@ impl<T: EntityDataSource> entities::EntityDataSource for EntityDataSourceWrapper
         uid: &ast::EntityUID,
         attr: &str,
     ) -> Result<CorePartialValue, EntityAttrAccessError<Self::Error>> {
-        self.0.entity_attr(EntityUid::ref_cast(uid), attr).map(|x| x.0)
+        self.0
+            .entity_attr(EntityUid::ref_cast(uid), attr)
+            .map(|x| x.0)
     }
 
     fn entity_in(
@@ -4410,14 +4406,8 @@ mod schema_based_parsing_tests {
         let parsed = parsed
             .get(&EntityUid::from_strs("Employee", "12UA45"))
             .expect("that should be the employee id");
-        assert_eq!(
-            parsed.attr("home_ip"),
-            Some(Ok("222.222.222.101".into()))
-        );
-        assert_eq!(
-            parsed.attr("trust_score"),
-            Some(Ok("5.7".into()))
-        );
+        assert_eq!(parsed.attr("home_ip"), Some(Ok("222.222.222.101".into())));
+        assert_eq!(parsed.attr("trust_score"), Some(Ok("5.7".into())));
         assert!(matches!(
             parsed.attr_kind("manager"),
             Some(Ok(ValueKind::Record(_)))
@@ -4431,7 +4421,10 @@ mod schema_based_parsing_tests {
                 panic!("expected hr_contacts attr to exist and be a Set")
             };
             let contact = set.iter().next().expect("should be at least one contact");
-            assert!(matches!(ValueKind::from(contact.clone()), ValueKind::Record(_)));
+            assert!(matches!(
+                ValueKind::from(contact.clone()),
+                ValueKind::Record(_)
+            ));
         };
         {
             let Some(Ok(ValueKind::Record(rec))) = parsed.attr_kind("json_blob") else {
@@ -4444,7 +4437,10 @@ mod schema_based_parsing_tests {
             let innerinner = rec
                 .get("innerinner")
                 .expect("expected innerinner attr to exist");
-            assert!(matches!(ValueKind::from(innerinner.clone()), ValueKind::Record(_)));
+            assert!(matches!(
+                ValueKind::from(innerinner.clone()),
+                ValueKind::Record(_)
+            ));
         };
         // but with schema-based parsing, we get these other types
         let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
@@ -4454,26 +4450,21 @@ mod schema_based_parsing_tests {
             .get(&EntityUid::from_strs("Employee", "12UA45"))
             .expect("that should be the employee id");
         assert_eq!(parsed.attr("isFullTime"), Some(Ok(true.into())));
-        assert_eq!(
-            parsed.attr("numDirectReports"),
-            Some(Ok(3.into()))
-        );
-        assert_eq!(
-            parsed.attr("department"),
-            Some(Ok("Sales".into()))
-        );
+        assert_eq!(parsed.attr("numDirectReports"), Some(Ok(3.into())));
+        assert_eq!(parsed.attr("department"), Some(Ok("Sales".into())));
         assert_eq!(
             parsed.attr("manager"),
-            Some(Ok(EntityUid::from_strs(
-                "Employee", "34FB87"
-            ).into()))
+            Some(Ok(EntityUid::from_strs("Employee", "34FB87").into()))
         );
         {
             let Some(Ok(ValueKind::Set(set))) = parsed.attr_kind("hr_contacts") else {
                 panic!("expected hr_contacts attr to exist and be a Set")
             };
             let contact = set.iter().next().expect("should be at least one contact");
-            assert!(matches!(ValueKind::from(contact.clone()), ValueKind::EntityUid(_)));
+            assert!(matches!(
+                ValueKind::from(contact.clone()),
+                ValueKind::EntityUid(_)
+            ));
         };
         {
             let Some(Ok(ValueKind::Record(rec))) = parsed.attr_kind("json_blob") else {
@@ -4827,16 +4818,12 @@ mod schema_based_parsing_tests {
             .get(&EntityUid::from_strs("XYZCorp::Employee", "12UA45"))
             .expect("that should be the employee type and id");
         assert_eq!(parsed.attr("isFullTime"), Some(Ok(true.into())));
-        assert_eq!(
-            parsed.attr("department"),
-            Some(Ok("Sales".into()))
-        );
+        assert_eq!(parsed.attr("department"), Some(Ok("Sales".into())));
         assert_eq!(
             parsed.attr("manager"),
-            Some(Ok(EntityUid::from_strs(
-                "XYZCorp::Employee",
-                "34FB87"
-            ).into()))
+            Some(Ok(
+                EntityUid::from_strs("XYZCorp::Employee", "34FB87").into()
+            ))
         );
 
         let entitiesjson = json!(

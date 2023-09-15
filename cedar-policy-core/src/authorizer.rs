@@ -158,7 +158,12 @@ impl Authorizer {
     /// which does not have its attributes evaluated. Thus, it will clone and evaluate
     /// the attributes before evaluation. For performance, prefer calling `eval_attrs`
     /// and then `is_authorized`.
-    pub fn is_authorized_old(&self, q: &Request, pset: &PolicySet, entities: &Entities) -> Response {
+    pub fn is_authorized_old(
+        &self,
+        q: &Request,
+        pset: &PolicySet,
+        entities: &Entities,
+    ) -> Response {
         self.handle_response(pset, self.is_authorized_core_old(q, pset, entities))
     }
 

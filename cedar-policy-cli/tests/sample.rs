@@ -17,8 +17,8 @@
 use std::collections::HashMap;
 
 use cedar_policy::EntityUid;
-use cedar_policy::Value;
 use cedar_policy::SlotId;
+use cedar_policy::Value;
 use cedar_policy_cli::check_parse;
 use cedar_policy_cli::{
     authorize, evaluate, link, validate, Arguments, AuthorizeArgs, CedarExitCode, CheckParseArgs,

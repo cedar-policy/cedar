@@ -288,7 +288,10 @@ pub trait EntityDataSource {
     fn exists_entity(&self, uid: &EntityUID) -> std::result::Result<bool, Self::Error>;
 
     /// Return the data of `exists_entity` as a Result<()> instead of a bool
-    fn try_fetch_entity(&self, uid: &EntityUID) -> std::result::Result<(), EntityAccessError<Self::Error>> {
+    fn try_fetch_entity(
+        &self,
+        uid: &EntityUID,
+    ) -> std::result::Result<(), EntityAccessError<Self::Error>> {
         if self.exists_entity(uid)? {
             Ok(())
         } else {
