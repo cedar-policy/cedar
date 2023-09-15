@@ -116,12 +116,12 @@ pub struct PartialValue(pub(crate) CorePartialValue);
 
 impl Value {
     /// Create a set of values from an iterator of values
-    pub fn set(vals: impl IntoIterator<Item = Value>) -> Self {
+    pub fn set(vals: impl IntoIterator<Item = Self>) -> Self {
         Self(CoreValue::Set(vals.into_iter().map(|v| v.0).collect()))
     }
 
     /// Create a record from an iterator of key-value pairs
-    pub fn record(vals: impl IntoIterator<Item = (String, Value)>) -> Self {
+    pub fn record(vals: impl IntoIterator<Item = (String, Self)>) -> Self {
         Self(CoreValue::Record(Arc::new(
             vals.into_iter()
                 .map(|(k, v)| (SmolStr::from(k), v.0))
@@ -151,19 +151,19 @@ impl From<EntityUid> for Value {
     }
 }
 
-impl<T: Into<Value>> From<Vec<T>> for Value {
+impl<T: Into<Self>> From<Vec<T>> for Value {
     fn from(value: Vec<T>) -> Self {
         Self::set(value.into_iter().map(Into::into))
     }
 }
 
-impl<T: Into<Value>> From<BTreeMap<String, T>> for Value {
+impl<T: Into<Self>> From<BTreeMap<String, T>> for Value {
     fn from(value: BTreeMap<String, T>) -> Self {
         Self::record(value.into_iter().map(|(k, v)| (k, v.into())))
     }
 }
 
-impl<T: Into<Value>> From<HashMap<String, T>> for Value {
+impl<T: Into<Self>> From<HashMap<String, T>> for Value {
     fn from(value: HashMap<String, T>) -> Self {
         Self::record(value.into_iter().map(|(k, v)| (k, v.into())))
     }
@@ -171,7 +171,7 @@ impl<T: Into<Value>> From<HashMap<String, T>> for Value {
 
 impl<T: Into<Value>> From<T> for PartialValue {
     fn from(value: T) -> Self {
-        PartialValue(CorePartialValue::Value(value.into().0))
+        Self(CorePartialValue::Value(value.into().0))
     }
 }
 
@@ -294,7 +294,7 @@ impl Entity {
         Some(evaluator.interpret(expr.as_borrowed()).map(Value))
     }
 
-    /// Get the ValueKind of `attr`
+    /// Get the `ValueKind` of `attr`
     pub fn attr_kind(&self, attr: &str) -> Option<Result<ValueKind, EvaluationError>> {
         self.attr(attr).map(|v| v.map(ValueKind::from))
     }
@@ -390,8 +390,8 @@ pub trait EntityDataSource {
     fn exists_entity(&self, uid: &EntityUid) -> Result<bool, Self::Error>;
 
     /// Get the attribute of an entity given the attribute string
-    /// Should return EntityAttrAccessError::UnknownEntity if the entity is missing
-    /// Should return EntityAttrAccessError::UnknownAttr if the entity exists but the attribute is missing
+    /// Should return `EntityAttrAccessError::UnknownEntity` if the entity is missing
+    /// Should return `EntityAttrAccessError::UnknownAttr` if the entity exists but the attribute is missing
     fn entity_attr(
         &self,
         uid: &EntityUid,
@@ -399,7 +399,7 @@ pub trait EntityDataSource {
     ) -> Result<PartialValue, EntityAttrAccessError<Self::Error>>;
 
     /// Decide if an entity exists and has a given attribute.
-    /// Should return EntityAccessError::UnknownEntity if the entity is missing.
+    /// Should return `EntityAccessError::UnknownEntity` if the entity is missing.
     /// Should return `false` if the entity exists but the attribute is missing,
     /// and true if the attribute is present.
     ///
@@ -560,7 +560,7 @@ impl Entities {
         )?))
     }
 
-    /// Convert this into an EvaledEntities by evaluating all the attributes
+    /// Convert this into an `EvaledEntities` by evaluating all the attributes
     /// of all the entities in this object
     pub fn eval_attrs(self) -> Result<EvaledEntities, EvaluationError> {
         let all_ext = Extensions::all_available();
@@ -3411,8 +3411,8 @@ impl std::fmt::Display for Request {
 }
 
 /// A value that can be matched on and inspected
-/// Use ValueKind::from(value) to convert a Cedar value
-/// to a ValueKind
+/// Use `ValueKind::from` to convert a Cedar value
+/// to a `ValueKind`
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ValueKind {
     /// Boolean value
