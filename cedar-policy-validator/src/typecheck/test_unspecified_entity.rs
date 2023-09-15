@@ -87,11 +87,10 @@ fn spec_principal_unspec_resource() {
     .expect("Policy should parse.");
     assert_policy_typecheck_fails(
         policy,
-        vec![TypeError::unsafe_attribute_access(
+        vec![TypeError::missing_attribute(
             Expr::get_attr(Expr::var(Var::Resource), "name".into()),
             "name".to_string(),
             None,
-            true,
         )],
     );
 }
@@ -105,11 +104,10 @@ fn spec_resource_unspec_principal() {
     .expect("Policy should parse.");
     assert_policy_typecheck_fails(
         policy,
-        vec![TypeError::unsafe_attribute_access(
+        vec![TypeError::missing_attribute(
             Expr::get_attr(Expr::var(Var::Principal), "name".into()),
             "name".to_string(),
             None,
-            true,
         )],
     );
 
@@ -130,11 +128,10 @@ fn unspec_resource_unspec_principal() {
     .expect("Policy should parse.");
     assert_policy_typecheck_fails(
         policy,
-        vec![TypeError::unsafe_attribute_access(
+        vec![TypeError::missing_attribute(
             Expr::get_attr(Expr::var(Var::Principal), "name".into()),
             "name".to_string(),
             None,
-            true,
         )],
     );
 
@@ -145,11 +142,10 @@ fn unspec_resource_unspec_principal() {
     .expect("Policy should parse.");
     assert_policy_typecheck_fails(
         policy,
-        vec![TypeError::unsafe_attribute_access(
+        vec![TypeError::missing_attribute(
             Expr::get_attr(Expr::var(Var::Resource), "name".into()),
             "name".to_string(),
             None,
-            true,
         )],
     );
 }

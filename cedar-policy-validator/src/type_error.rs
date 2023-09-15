@@ -106,19 +106,17 @@ impl TypeError {
         }
     }
 
-    pub(crate) fn unsafe_attribute_access(
+    pub(crate) fn missing_attribute(
         on_expr: Expr,
-        attribute: String,
+        missing: String,
         suggestion: Option<String>,
-        may_exist: bool,
     ) -> Self {
         Self {
             on_expr: Some(on_expr),
             source_location: None,
-            kind: TypeErrorKind::UnsafeAttributeAccess(UnsafeAttributeAccess {
-                attribute,
+            kind: TypeErrorKind::MissingAttribute(MissingAttribute {
+                missing,
                 suggestion,
-                may_exist,
             }),
         }
     }
@@ -221,19 +219,14 @@ pub enum TypeErrorKind {
     /// The typechecker detected an access to a record or entity attribute
     /// that it could not statically guarantee would be present.
     #[error(
-        "attribute `{}` not found in record or entity{}{}",
-        .0.attribute,
+        "attribute `{}` not found in record or entity{}",
+        .0.missing,
         match &.0.suggestion {
             Some(suggestion) => format!(", did you mean `{suggestion}`"),
             None => "".to_string(),
         },
-        if .0.may_exist {
-            ". There may be additional attributes that the validator is not able to reason about."
-        } else {
-            ""
-        }
     )]
-    UnsafeAttributeAccess(UnsafeAttributeAccess),
+    MissingAttribute(MissingAttribute),
     /// The typechecker could not conclude that an access to an optional
     /// attribute was safe.
     #[error("Unable to guarantee safety of access to optional attribute: {}", .0.optional)]
@@ -287,12 +280,9 @@ pub struct TypesMustMatch {
 
 /// Structure containing details about a missing attribute error.
 #[derive(Debug, Hash, Eq, PartialEq)]
-pub struct UnsafeAttributeAccess {
-    attribute: String,
+pub struct MissingAttribute {
+    missing: String,
     suggestion: Option<String>,
-    /// When this is true, the attribute might still exist, but the validator
-    /// cannot guarantee that it will.
-    may_exist: bool,
 }
 
 /// Structure containing details about an unsafe optional attribute error.

@@ -41,9 +41,7 @@ use crate::{
     schema::{
         is_action_entity_type, ActionHeadVar, HeadVar, PrincipalOrResourceHeadVar, ValidatorSchema,
     },
-    types::{
-        AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, Primitive, RequestEnv, Type,
-    },
+    types::{AttributeType, Effect, EffectSet, EntityRecordKind, Primitive, RequestEnv, Type},
     ValidationMode,
 };
 
@@ -983,19 +981,12 @@ impl<'a> Typechecker<'a> {
                 },
             ) => Self::unify_strict_types(ety1, ety2),
             (
-                Type::EntityOrRecord(EntityRecordKind::Record {
-                    attrs: attrs1,
-                    open_attributes: open1,
-                }),
-                Type::EntityOrRecord(EntityRecordKind::Record {
-                    attrs: attrs2,
-                    open_attributes: open2,
-                }),
+                Type::EntityOrRecord(EntityRecordKind::Record { attrs: attrs1 }),
+                Type::EntityOrRecord(EntityRecordKind::Record { attrs: attrs2 }),
             ) => {
                 let keys1 = attrs1.attrs.keys().collect::<HashSet<_>>();
                 let keys2 = attrs2.attrs.keys().collect::<HashSet<_>>();
-                open1 == open2
-                    && keys1 == keys2
+                keys1 == keys2
                     && attrs1.iter().all(|(k, attr1)| {
                         // PANIC SAFETY: The attribute keys sets are equal. `k` is a key in `attr1`, so it must be a key in `attrs2`.
                         #[allow(clippy::expect_used)]
@@ -1076,7 +1067,6 @@ impl<'a> Typechecker<'a> {
             ExprKind::Var(Var::Context) => TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(Type::record_with_attributes(
                     request_env.context.clone(),
-                    OpenTag::ClosedAttributes,
                 )))
                 .with_same_source_info(e)
                 .var(Var::Context),
@@ -1485,7 +1475,7 @@ impl<'a> Typechecker<'a> {
                             attr_ty.clone().map(|attr_ty| attr_ty.attr_type),
                         )
                         .with_same_source_info(e)
-                        .get_attr(typ_expr_actual.clone(), attr.clone());
+                        .get_attr(typ_expr_actual, attr.clone());
                         match attr_ty {
                             Some(ty) => {
                                 // A safe access to an attribute requires either
@@ -1509,11 +1499,10 @@ impl<'a> Typechecker<'a> {
                                 let borrowed =
                                     all_attrs.iter().map(|s| s.as_str()).collect::<Vec<_>>();
                                 let suggestion = fuzzy_search(attr, &borrowed);
-                                type_errors.push(TypeError::unsafe_attribute_access(
+                                type_errors.push(TypeError::missing_attribute(
                                     e.clone(),
                                     attr.to_string(),
                                     suggestion,
-                                    Type::may_have_attr(self.schema, typ_actual, attr),
                                 ));
                                 TypecheckAnswer::fail(annot_expr)
                             }
@@ -1716,10 +1705,7 @@ impl<'a> Typechecker<'a> {
                                     std::iter::zip(record_attrs, record_attr_tys);
                                 TypecheckAnswer::success(
                                     ExprBuilder::with_data(Some(
-                                        Type::record_with_required_attributes(
-                                            record_type_entries,
-                                            OpenTag::ClosedAttributes,
-                                        ),
+                                        Type::record_with_required_attributes(record_type_entries),
                                     ))
                                     .with_same_source_info(e)
                                     .record(t),
