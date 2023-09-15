@@ -21,7 +21,8 @@ use crate::FromNormalizedStr;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::collections::HashSet;
 
 /// We support two types of entities. The first is a nominal type (e.g., User, Action)
 /// and the second is an unspecified type, which is used (internally) to represent cases
@@ -209,7 +210,7 @@ impl std::fmt::Display for Eid {
 
 /// Entity datatype
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Entity {
+pub struct Entity<T = RestrictedExpr> {
     /// UID
     uid: EntityUID,
 
@@ -217,20 +218,30 @@ pub struct Entity {
     ///
     /// In the serialized form of `Entity`, attribute values appear as
     /// `RestrictedExpr`s.
-    attrs: HashMap<SmolStr, RestrictedExpr>,
+    attrs: HashMap<SmolStr, T>,
 
     /// Set of ancestors of this `Entity` (i.e., all direct and transitive
     /// parents), as UIDs
     ancestors: HashSet<EntityUID>,
 }
 
-impl Entity {
+impl<T> Entity<T> {
+    /// Map the attributes using a function `f : T -> U`.
+    pub fn map_attrs<U, E>(self, f: impl Fn(T) -> Result<U, E>) -> Result<Entity<U>, E> {
+        let new_attrs: Result<HashMap<SmolStr, U>, E> = self
+            .attrs
+            .into_iter()
+            .map(|(k, v)| Ok((k, f(v)?)))
+            .collect();
+        Ok(Entity {
+            uid: self.uid,
+            attrs: new_attrs?,
+            ancestors: self.ancestors,
+        })
+    }
+
     /// Create a new `Entity` with this UID, attributes, and ancestors
-    pub fn new(
-        uid: EntityUID,
-        attrs: HashMap<SmolStr, RestrictedExpr>,
-        ancestors: HashSet<EntityUID>,
-    ) -> Self {
+    pub fn new(uid: EntityUID, attrs: HashMap<SmolStr, T>, ancestors: HashSet<EntityUID>) -> Self {
         Entity {
             uid,
             attrs,
@@ -244,7 +255,7 @@ impl Entity {
     }
 
     /// Get the value for the given attribute, or `None` if not present
-    pub fn get(&self, attr: &str) -> Option<&RestrictedExpr> {
+    pub fn get(&self, attr: &str) -> Option<&T> {
         self.attrs.get(attr)
     }
 
@@ -259,10 +270,8 @@ impl Entity {
     }
 
     /// Iterate over this entity's attributes
-    pub fn attrs(&self) -> impl Iterator<Item = (&str, BorrowedRestrictedExpr<'_>)> {
-        self.attrs
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_borrowed()))
+    pub fn attrs(&self) -> impl Iterator<Item = (&str, &T)> {
+        self.attrs.iter().map(|(k, v)| (k.as_str(), v))
     }
 
     /// Create an `Entity` with the given UID, no attributes, and no parents.
@@ -274,9 +283,9 @@ impl Entity {
         }
     }
 
-    /// Read-only access the internal `attrs` map of String to RestrictedExpr.
+    /// Read-only access the internal `attrs` map of String to T.
     /// This function is available only inside Core.
-    pub(crate) fn attrs_map(&self) -> &HashMap<SmolStr, RestrictedExpr> {
+    pub(crate) fn attrs_map(&self) -> &HashMap<SmolStr, T> {
         &self.attrs
     }
 
@@ -289,7 +298,7 @@ impl Entity {
     /// Set the given attribute to the given value.
     // Only used for convenience in some tests and when fuzzing
     #[cfg(any(test, fuzzing))]
-    pub fn set_attr(&mut self, attr: SmolStr, val: RestrictedExpr) {
+    pub fn set_attr(&mut self, attr: SmolStr, val: T) {
         self.attrs.insert(attr, val);
     }
 
@@ -306,13 +315,13 @@ impl Entity {
     }
 }
 
-impl PartialEq for Entity {
+impl<T> PartialEq for Entity<T> {
     fn eq(&self, other: &Self) -> bool {
         self.uid() == other.uid()
     }
 }
 
-impl Eq for Entity {}
+impl<T> Eq for Entity<T> {}
 
 impl StaticallyTyped for Entity {
     fn type_of(&self) -> Type {
@@ -320,7 +329,7 @@ impl StaticallyTyped for Entity {
     }
 }
 
-impl TCNode<EntityUID> for Entity {
+impl<T> TCNode<EntityUID> for Entity<T> {
     fn get_key(&self) -> EntityUID {
         self.uid()
     }

@@ -16,7 +16,7 @@
 
 use crate::ast::*;
 use smol_str::SmolStr;
-use std::{fmt::Display, sync::Arc};
+use std::{error::Error, fmt::Display, sync::Arc};
 use thiserror::Error;
 
 /// An error generated while evaluating an expression
@@ -260,6 +260,35 @@ pub enum EvaluationErrorKind {
     /// Maximum recursion limit reached for expression evaluation
     #[error("recursion limit reached")]
     RecursionLimit,
+
+    /// Misc. error when requesting an entity occurs
+    #[error("external error while requesting entity: {0}")]
+    EntityRequestError(String),
+}
+
+impl EvaluationError {
+    /// Make a new error for when an entity request fails
+    pub fn mk_request<T: Error>(e: T) -> Self {
+        EvaluationError::mk_request_string_error(e.to_string())
+    }
+
+    /// Make a new error for when an entity request fails from a string
+    pub fn mk_request_string_error(e: String) -> Self {
+        Self {
+            error_kind: EvaluationErrorKind::EntityRequestError(e),
+            advice: None,
+        }
+    }
+
+    /// Returns true if this error should cause the entire authorization procedure to deny,
+    /// rather than use the default error handling behavior
+    pub fn is_global_deny_error(&self) -> bool {
+        // An `EntityRequestError` is an external error, unlike an ordinary evaluation error
+        matches!(
+            self.error_kind(),
+            EvaluationErrorKind::EntityRequestError(_)
+        )
+    }
 }
 
 /// helper function for pretty-printing type errors

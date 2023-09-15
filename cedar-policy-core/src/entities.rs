@@ -17,11 +17,10 @@
 //! This module contains the `Entities` type and related functionality.
 
 use crate::ast::*;
-use crate::evaluator::{EvaluationError, RestrictedEvaluator};
-use crate::extensions::Extensions;
 use crate::transitive_closure::{compute_tc, enforce_tc_and_dag};
 use std::borrow::Cow;
 use std::collections::{hash_map, HashMap};
+use std::convert::Infallible;
 use std::fmt::Write;
 
 use serde::{Deserialize, Serialize};
@@ -31,7 +30,6 @@ mod err;
 pub use err::*;
 mod json;
 pub use json::*;
-use smol_str::SmolStr;
 
 /// Represents an entity hierarchy, and allows looking up `Entity` objects by
 /// UID.
@@ -40,8 +38,8 @@ use smol_str::SmolStr;
 /// only used for the Dafny-FFI layer in DRT. All others use (and should use) the
 /// `from_json_*()` and `write_to_json()` methods as necessary.
 #[serde_as]
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
-pub struct Entities {
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Entities<T = RestrictedExpr> {
     /// Serde cannot serialize a HashMap to JSON when the key to the map cannot
     /// be serialized to a JSON string. This is a limitation of the JSON format.
     /// `serde_as` annotation are used to serialize the data as associative
@@ -50,10 +48,8 @@ pub struct Entities {
     /// Important internal invariant: for any `Entities` object that exists, the
     /// the `ancestor` relation is transitively closed.
     #[serde_as(as = "Vec<(_, _)>")]
-    entities: HashMap<EntityUID, Entity>,
-
-    #[serde(skip)]
-    evaluated_entities: Option<EvaluatedEntities>,
+    #[serde(bound(deserialize = "T: Deserialize<'de>", serialize = "T: Serialize"))]
+    entities: HashMap<EntityUID, Entity<T>>,
 
     /// The mode flag determines whether this store functions as a partial store or
     /// as a fully concrete store.
@@ -65,13 +61,28 @@ pub struct Entities {
     mode: Mode,
 }
 
-impl Entities {
+impl<T> Entities<T> {
+    /// Map the attributes of the entities in this store.
+    pub fn map_attrs<U, E>(
+        self,
+        f: impl Fn(Entity<T>) -> std::result::Result<Entity<U>, E>,
+    ) -> std::result::Result<Entities<U>, E> {
+        let result: std::result::Result<HashMap<EntityUID, Entity<U>>, E> = self
+            .entities
+            .into_iter()
+            .map(|(k, entity)| Ok((k, f(entity)?)))
+            .collect();
+        Ok(Entities {
+            entities: result?,
+            mode: self.mode,
+        })
+    }
+
     /// Create a fresh `Entities` with no entities
     pub fn new() -> Self {
         Self {
             entities: HashMap::new(),
             mode: Mode::default(),
-            evaluated_entities: None,
         }
     }
 
@@ -83,12 +94,11 @@ impl Entities {
         Self {
             entities: self.entities,
             mode: Mode::Partial,
-            evaluated_entities: self.evaluated_entities,
         }
     }
 
     /// Get the `Entity` with the given UID, if any
-    pub fn entity(&self, uid: &EntityUID) -> Dereference<'_, Entity> {
+    pub fn entity(&self, uid: &EntityUID) -> Dereference<&Entity<T>> {
         match self.entities.get(uid) {
             Some(e) => Dereference::Data(e),
             None => match self.mode {
@@ -100,7 +110,7 @@ impl Entities {
     }
 
     /// Iterate over the `Entity`s in the `Entities`
-    pub fn iter(&self) -> impl Iterator<Item = &Entity> {
+    pub fn iter(&self) -> impl Iterator<Item = &Entity<T>> {
         self.entities.values()
     }
 
@@ -112,7 +122,7 @@ impl Entities {
     /// responsible for ensuring that TC and DAG hold before calling this method.
     pub fn add_entities(
         mut self,
-        collection: impl IntoIterator<Item = Entity>,
+        collection: impl IntoIterator<Item = Entity<T>>,
         mode: TCComputation,
     ) -> Result<Self> {
         for entity in collection.into_iter() {
@@ -130,7 +140,6 @@ impl Entities {
             }
             TCComputation::ComputeNow => compute_tc(&mut self.entities, true).map_err(Box::new)?,
         };
-        self.evaluated_entities = None;
         Ok(self)
     }
 
@@ -139,7 +148,7 @@ impl Entities {
     /// If you pass `TCComputation::AssumeAlreadyComputed`, then the caller is
     /// responsible for ensuring that TC and DAG hold before calling this method.
     pub fn from_entities(
-        entities: impl IntoIterator<Item = Entity>,
+        entities: impl IntoIterator<Item = Entity<T>>,
         tc_computation: TCComputation,
     ) -> Result<Self> {
         let mut entity_map = entities.into_iter().map(|e| (e.uid(), e)).collect();
@@ -155,10 +164,11 @@ impl Entities {
         Ok(Self {
             entities: entity_map,
             mode: Mode::default(),
-            evaluated_entities: None,
         })
     }
+}
 
+impl Entities {
     /// Convert an `Entities` object into a JSON value suitable for parsing in
     /// via `EntityJsonParser`.
     ///
@@ -256,113 +266,153 @@ impl Entities {
         dot_str.write_str("}\n")?;
         Ok(dot_str)
     }
-
-    /// Attempt to eagerly compute the values of attributes for all entities in the slice.
-    /// This can fail if evaluation of the [`RestrictedExpr`] fails.
-    /// In a future major version, we will likely make this function automatically called via the constructor.
-    pub fn evaluate(self) -> std::result::Result<Self, EvaluationError> {
-        if self.evaluated_entities.is_some() {
-            Ok(self)
-        } else {
-            let r = self.compute_entities_values()?;
-            Ok(Self {
-                entities: self.entities,
-                evaluated_entities: Some(r),
-                mode: self.mode,
-            })
-        }
-    }
-
-    fn compute_entities_values(&self) -> std::result::Result<EvaluatedEntities, EvaluationError> {
-        build_evaluated_entities(self, &Extensions::all_available())
-    }
-
-    /// Extracts the [`EntityAttrValues`] for this entity slice.
-    /// If the entity values have already been computed via [`Self::evaluate`], then that will be re-used.
-    /// Otherwise, the attributes will be evaluated.
-    pub fn get_attr_values(&self) -> std::result::Result<EntityAttrValues<'_>, EvaluationError> {
-        let map = match &self.evaluated_entities {
-            Some(cached) => Cow::Borrowed(cached),
-            None => Cow::Owned(self.compute_entities_values()?),
-        };
-        Ok(EntityAttrValues::new(map, self))
-    }
 }
 
-type EvaluatedEntities = HashMap<EntityUID, HashMap<SmolStr, PartialValue>>;
+impl<T> IntoIterator for Entities<T> {
+    type Item = Entity<T>;
 
-/// Structure of borrowed entity information that is used in the evaluator
-#[derive(Debug)]
-pub struct EntityAttrValues<'a> {
-    /// The evaluated entity attributes. The attributes may either be owner or borrowed.
-    attrs: Cow<'a, EvaluatedEntities>,
-    /// The original entity slice, which contains hierarchy information.
-    entities: &'a Entities,
-}
-
-fn build_evaluated_entities(
-    entities: &Entities,
-    extensions: &'_ Extensions<'_>,
-) -> std::result::Result<EvaluatedEntities, EvaluationError> {
-    let restricted_eval = RestrictedEvaluator::new(extensions);
-    // Eagerly evaluate each attribute expression in the entities.
-    let attrs =
-        entities
-            .iter()
-            .map(|entity| {
-                Ok(
-                        (
-                            entity.uid(),
-                            entity
-                                .attrs_map()
-                                .iter()
-                                .map(|(attr, v)| {
-                                    Ok((
-                                        attr.to_owned(),
-                                        restricted_eval.partial_interpret(v.as_borrowed())?,
-                                    ))
-                                })
-                                .collect::<std::result::Result<
-                                    HashMap<SmolStr, PartialValue>,
-                                    EvaluationError,
-                                >>()?,
-                        ),
-                    )
-            })
-            .collect::<std::result::Result<
-                HashMap<EntityUID, HashMap<SmolStr, PartialValue>>,
-                EvaluationError,
-            >>()?;
-    Ok(attrs)
-}
-
-impl<'a> EntityAttrValues<'a> {
-    /// Construct an [`EntityAttrValues`] with either an owned or borrowed set of evaluated attributes.
-    pub fn new(attrs: Cow<'a, EvaluatedEntities>, entities: &'a Entities) -> Self {
-        Self { attrs, entities }
-    }
-
-    /// Get an entity's attribute map by its EntityUID.
-    pub fn get(&self, uid: &EntityUID) -> Dereference<'_, HashMap<SmolStr, PartialValue>> {
-        match self.entities.entity(uid) {
-            Dereference::NoSuchEntity => Dereference::NoSuchEntity,
-            Dereference::Residual(r) => Dereference::Residual(r),
-            Dereference::Data(_) => self
-                .attrs
-                .get(uid)
-                .map(Dereference::Data)
-                .unwrap_or_else(|| Dereference::NoSuchEntity),
-        }
-    }
-}
-
-impl IntoIterator for Entities {
-    type Item = Entity;
-
-    type IntoIter = hash_map::IntoValues<EntityUID, Entity>;
+    type IntoIter = hash_map::IntoValues<EntityUID, Entity<T>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.entities.into_values()
+    }
+}
+
+/// Something that implements an `EntityDataSource` is something that can act in place of `ParsedEntities`
+/// It allows users to fetch attributes of entities without having to load the entire `ParsedEntity` object
+pub trait EntityDataSource {
+    /// The type of error that can occur when accessing entities
+    type Error: std::error::Error;
+
+    /// Decide if an entity exists or not
+    fn exists_entity(&self, uid: &EntityUID) -> std::result::Result<bool, Self::Error>;
+
+    /// Return the data of `exists_entity` as a Result<()> instead of a bool
+    fn try_fetch_entity(&self, uid: &EntityUID) -> std::result::Result<(), EntityAccessError<Self::Error>> {
+        if self.exists_entity(uid)? {
+            Ok(())
+        } else {
+            Err(EntityAccessError::UnknownEntity)
+        }
+    }
+
+    /// Get the attribute of an entity given the attribute string
+    /// Should return EntityAttrAccessError::UnknownEntity if the entity is missing
+    /// Should return EntityAttrAccessError::UnknownAttr if the entity exists but the attribute is missing
+    fn entity_attr(
+        &self,
+        uid: &EntityUID,
+        attr: &str,
+    ) -> std::result::Result<PartialValue, EntityAttrAccessError<Self::Error>>;
+
+    /// Decide if an entity exists and has a given attribute.
+    /// Should return EntityAccessError::UnknownEntity if the entity is missing.
+    /// Should return `false` if the entity exists but the attribute is missing,
+    /// and true if the attribute is present.
+    ///
+    /// A default implementation is given based on `entity_attr`, but there may be faster implementations
+    /// for some stores.
+    fn entity_has_attr(
+        &self,
+        uid: &EntityUID,
+        attr: &str,
+    ) -> std::result::Result<bool, EntityAccessError<Self::Error>> {
+        self.entity_attr(uid, attr)
+            .map_or_else(|e| e.handle_attr(false), |_| Ok(true))
+    }
+
+    /// Decide if `u1` is in `u2` i.e. if `u2` is an ancestor of `u1`
+    /// Should return false if `u2` does not exist; `u1` is guaranteed to exist in
+    /// the current implementation, but this may change in the future
+    fn entity_in(&self, u1: &EntityUID, u2: &EntityUID) -> std::result::Result<bool, Self::Error>;
+
+    /// Determine if this is a partial store
+    fn partial_mode(&self) -> Mode;
+
+    /// Check whether the entity exists as a `Dereference` based on `mode` and `exists_entity`
+    fn exists_entity_deref(
+        &self,
+        uid: &EntityUID,
+    ) -> std::result::Result<Dereference<()>, Self::Error> {
+        self.handle_access_error(uid, self.try_fetch_entity(uid))
+    }
+
+    /// Internal function to handle an access error given the `uid` based on the `partial_mode()`
+    fn handle_access_error<T>(
+        &self,
+        uid: &EntityUID,
+        t: std::result::Result<T, EntityAccessError<Self::Error>>,
+    ) -> std::result::Result<Dereference<T>, Self::Error> {
+        match t {
+            Ok(v) => Ok(Dereference::Data(v)),
+            Err(EntityAccessError::UnknownEntity) => match self.partial_mode() {
+                Mode::Concrete => Ok(Dereference::NoSuchEntity),
+                #[cfg(feature = "partial-eval")]
+                Mode::Partial => Ok(Dereference::Residual(Expr::unknown(format!("{uid}")))),
+            },
+            Err(EntityAccessError::AccessError(e)) => Err(e),
+        }
+    }
+}
+
+/// A `WholeEntityDataSource` is like an `EntityDataSource` but returns whole entities
+/// given an id rather than returning attributes and deciding ancestry data individually
+trait WholeEntityDataSource {
+    /// Get entity by UID, returns None if no such entity exists.
+    fn get<'e>(&'e self, uid: &EntityUID) -> Option<Cow<'e, Entity<PartialValue>>>;
+
+    /// Determine if this is a partial store
+    fn partial_mode(&self) -> Mode;
+}
+
+/// Any `WholeEntityDataSource` is an `EntityDataSource` in the obvious way
+/// Note: this implementation is rather inefficient if the underlying store is
+/// creating objects (i.e. Cow::Owned) on each invocation of `get`.
+impl<T: WholeEntityDataSource> EntityDataSource for T {
+    type Error = Infallible;
+
+    fn exists_entity(&self, uid: &EntityUID) -> std::result::Result<bool, Self::Error> {
+        Ok(self.get(uid).is_some())
+    }
+
+    fn entity_attr(
+        &self,
+        uid: &EntityUID,
+        attr: &str,
+    ) -> std::result::Result<PartialValue, EntityAttrAccessError<Self::Error>> {
+        match self.get(uid) {
+            Some(e) => e
+                .as_ref()
+                .attrs_map()
+                .get(attr)
+                .cloned()
+                .ok_or(EntityAttrAccessError::UnknownAttr),
+            None => Err(EntityAttrAccessError::UnknownEntity),
+        }
+    }
+
+    // TODO: implement entity_has_attr manually for slightly more efficient implementation
+    // (avoids O(1) clone of partial value)
+
+    fn entity_in(&self, u1: &EntityUID, u2: &EntityUID) -> std::result::Result<bool, Self::Error> {
+        match self.get(u1) {
+            Some(e) => Ok(e.as_ref().is_descendant_of(u2)),
+            None => Ok(false),
+        }
+    }
+
+    fn partial_mode(&self) -> Mode {
+        WholeEntityDataSource::partial_mode(self)
+    }
+}
+
+impl WholeEntityDataSource for Entities<PartialValue> {
+    fn get<'e>(&'e self, uid: &EntityUID) -> Option<Cow<'e, Entity<PartialValue>>> {
+        self.entities.get(uid).map(Cow::Borrowed)
+    }
+
+    fn partial_mode(&self) -> Mode {
+        self.mode
     }
 }
 
@@ -381,16 +431,16 @@ impl std::fmt::Display for Entities {
 
 /// Results from dereferencing values from the Entity Store
 #[derive(Debug, Clone)]
-pub enum Dereference<'a, T> {
+pub enum Dereference<T> {
     /// No entity with the dereferenced EntityUID exists. This is an error.
     NoSuchEntity,
     /// The entity store has returned a residual
     Residual(Expr),
     /// The entity store has returned the requested data.
-    Data(&'a T),
+    Data(T),
 }
 
-impl<'a, T> Dereference<'a, T>
+impl<T> Dereference<T>
 where
     T: std::fmt::Debug,
 {
@@ -403,7 +453,7 @@ where
     /// # Panics
     ///
     /// Panics if the self value is not `Data`.
-    pub fn unwrap(self) -> &'a T {
+    pub fn unwrap(self) -> T {
         match self {
             Self::Data(e) => e,
             e => panic!("unwrap() called on {:?}", e),
@@ -419,7 +469,7 @@ where
     /// # Panics
     ///
     /// Panics if the self value is not `Data`.
-    pub fn expect(self, msg: &str) -> &'a T {
+    pub fn expect(self, msg: &str) -> T {
         match self {
             Self::Data(e) => e,
             e => panic!("expect() called on {:?}, msg: {msg}", e),
@@ -427,16 +477,30 @@ where
     }
 }
 
+/// The mode of an entity store
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Mode {
+pub enum Mode {
+    /// The store is a concrete store, meaning that if an entity does not exist
+    /// the evaluator should throw an error
     Concrete,
     #[cfg(feature = "partial-eval")]
+    /// The store is a partial store, meaning that if an entity does not exist
+    /// the evaluator should return a residual
     Partial,
 }
 
 impl Default for Mode {
     fn default() -> Self {
         Self::Concrete
+    }
+}
+
+impl<T> Default for Entities<T> {
+    fn default() -> Self {
+        Self {
+            entities: Default::default(),
+            mode: Default::default(),
+        }
     }
 }
 
@@ -1229,7 +1293,7 @@ mod entities_tests {
 
     #[test]
     fn empty_entities() {
-        let e = Entities::new();
+        let e: Entities = Entities::new();
         let es = e.iter().collect::<Vec<_>>();
         assert!(es.is_empty(), "This vec should be empty");
     }
@@ -1263,8 +1327,8 @@ mod entities_tests {
         // Hierarchy
         // a -> b -> c
         // This isn't transitively closed, so it should fail
-        let mut e1 = Entity::with_uid(EntityUID::with_eid("a"));
-        let mut e2 = Entity::with_uid(EntityUID::with_eid("b"));
+        let mut e1: Entity = Entity::with_uid(EntityUID::with_eid("a"));
+        let mut e2: Entity = Entity::with_uid(EntityUID::with_eid("b"));
         let e3 = Entity::with_uid(EntityUID::with_eid("c"));
         e1.add_ancestor(EntityUID::with_eid("b"));
         e2.add_ancestor(EntityUID::with_eid("c"));
@@ -1283,9 +1347,9 @@ mod entities_tests {
         // a -> b -> c
         // a -> c
         // This is transitively closed, so it should succeed
-        let mut e1 = Entity::with_uid(EntityUID::with_eid("a"));
-        let mut e2 = Entity::with_uid(EntityUID::with_eid("b"));
-        let e3 = Entity::with_uid(EntityUID::with_eid("c"));
+        let mut e1: Entity = Entity::with_uid(EntityUID::with_eid("a"));
+        let mut e2: Entity = Entity::with_uid(EntityUID::with_eid("b"));
+        let e3: Entity = Entity::with_uid(EntityUID::with_eid("c"));
         e1.add_ancestor(EntityUID::with_eid("b"));
         e1.add_ancestor(EntityUID::with_eid("c"));
         e2.add_ancestor(EntityUID::with_eid("c"));

@@ -25,6 +25,10 @@ pub enum AuthorizationError {
     #[error("error occurred while evaluating entity attributes: {0}")]
     AttributeEvaluationError(EvaluationError),
 
+    /// Failed to eagerly evaluate a context attribute when initializing the `Evaluator`.
+    #[error("error occurred while evaluating context attribute: {0}")]
+    ContextAttributeEvaluationError(EvaluationError),
+
     /// An error occurred when evaluating a policy.
     #[error("error occurred while evaluating policy `{}`: {}", &.id, &.error)]
     PolicyEvaluationError {

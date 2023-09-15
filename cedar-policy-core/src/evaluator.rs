@@ -17,10 +17,8 @@
 //! This module contains the Cedar evaluator.
 
 use crate::ast::*;
-use crate::entities::{Dereference, Entities, EntityAttrValues};
+use crate::entities::{Dereference, Entities, EntityDataSource};
 use crate::extensions::Extensions;
-#[cfg(test)]
-use std::collections::HashMap;
 use std::sync::Arc;
 
 mod err;
@@ -45,7 +43,7 @@ mod names {
 /// Conceptually keeps the evaluation environment as part of its internal state,
 /// because we will be repeatedly invoking the evaluator on every policy in a
 /// Slice.
-pub struct Evaluator<'e> {
+pub struct Evaluator<'e, T: EntityDataSource> {
     /// `Principal` for the current request
     principal: EntityUIDEntry,
     /// `Action` for the current request
@@ -59,13 +57,9 @@ pub struct Evaluator<'e> {
     /// This is a reference, because the `Evaluator` doesn't need ownership of
     /// (or need to modify) the `Entities`. One advantage of this is that you
     /// could create multiple `Evaluator`s without copying the `Entities`.
-    entities: &'e Entities,
+    entities: &'e T,
     /// Extensions which are active for this evaluation
     extensions: &'e Extensions<'e>,
-    /// Entity attribute value cache
-    ///
-    /// We evaluate entity attribute expressions upon the creation of an evaluator.
-    entity_attr_values: EntityAttrValues<'e>,
 }
 
 /// Evaluator for "restricted" expressions. See notes on `RestrictedExpr`.
@@ -142,23 +136,30 @@ impl<'e> RestrictedEvaluator<'e> {
     }
 }
 
-impl<'q, 'e> Evaluator<'e> {
+impl Entity {
+    /// Evaluate the attributes in the entity, using the given evaluator
+    pub fn eval_attrs(self, eval: &RestrictedEvaluator<'_>) -> Result<Entity<PartialValue>> {
+        self.map_attrs(|v| eval.partial_interpret(v.as_borrowed()))
+    }
+}
+
+impl Entities {
+    /// Evaluate all the attributes in the entities, using the given extensions, turning this into an
+    /// `Entities<PartialValue>`.
+    pub fn eval_attrs(self, extensions: &Extensions<'_>) -> Result<Entities<PartialValue>> {
+        let eval = RestrictedEvaluator::new(extensions);
+        self.map_attrs(|v| v.eval_attrs(&eval))
+    }
+}
+
+impl<'q, 'e, T: EntityDataSource> Evaluator<'e, T> {
     /// Create a fresh `Evaluator` for the given `request`, which uses the given
     /// `Entities` to resolve entity references. Use the given `Extension`s when
     /// evaluating the request.
     ///
     /// (An `Entities` is the entity-hierarchy portion of a `Slice`, without the
     /// policies.)
-    ///
-    /// Can throw an error, eg if evaluating attributes in the `context` throws
-    /// an error.
-    pub fn new(
-        q: &'q Request,
-        entities: &'e Entities,
-        extensions: &'e Extensions<'e>,
-    ) -> Result<Self> {
-        // Eagerly evaluate each attribute expression in the entities.
-        let entity_attr_values = entities.get_attr_values()?;
+    pub fn new(q: &'q Request, entities: &'e T, extensions: &'e Extensions<'e>) -> Result<Self> {
         Ok(Self {
             principal: q.principal().clone(),
             action: q.action().clone(),
@@ -177,7 +178,6 @@ impl<'q, 'e> Evaluator<'e> {
             },
             entities,
             extensions,
-            entity_attr_values,
         })
     }
 
@@ -409,12 +409,21 @@ impl<'q, 'e> Evaluator<'e> {
                                 };
                                 e
                             })?;
-                        match self.entities.entity(uid1) {
-                            Dereference::Residual(r) => Ok(PartialValue::Residual(
-                                Expr::binary_app(BinaryOp::In, r, arg2.into()),
-                            )),
-                            Dereference::NoSuchEntity => self.eval_in(uid1, None, arg2),
-                            Dereference::Data(e) => self.eval_in(uid1, Some(e), arg2),
+                        let rhs = self.eval_in_rhs_as_vec(&arg2)?;
+                        if rhs.contains(uid1) {
+                            Ok(true.into())
+                        } else {
+                            match self
+                                .entities
+                                .exists_entity_deref(uid1)
+                                .map_err(EvaluationError::mk_request)?
+                            {
+                                Dereference::Residual(r) => Ok(PartialValue::Residual(
+                                    Expr::binary_app(BinaryOp::In, r, arg2.into()),
+                                )),
+                                Dereference::NoSuchEntity => Ok(false.into()),
+                                Dereference::Data(_) => self.eval_in(uid1, rhs),
+                            }
                         }
                     }
                     // contains, which works on Sets
@@ -513,12 +522,19 @@ impl<'q, 'e> Evaluator<'e> {
             ExprKind::HasAttr { expr, attr } => match self.partial_interpret(expr, slots)? {
                 PartialValue::Value(Value::Record(record)) => Ok(record.get(attr).is_some().into()),
                 PartialValue::Value(Value::Lit(Literal::EntityUID(uid))) => {
-                    match self.entities.entity(&uid) {
+                    match self
+                        .entities
+                        .handle_access_error(
+                            &uid,
+                            self.entities.entity_has_attr(&uid, attr.as_str()),
+                        )
+                        .map_err(EvaluationError::mk_request)?
+                    {
                         Dereference::NoSuchEntity => Ok(false.into()),
                         Dereference::Residual(r) => {
                             Ok(PartialValue::Residual(Expr::has_attr(r, attr.clone())))
                         }
-                        Dereference::Data(e) => Ok(e.get(attr).is_some().into()),
+                        Dereference::Data(b) => Ok(b.into()),
                     }
                 }
                 PartialValue::Value(val) => Err(err::EvaluationError::type_error(
@@ -565,34 +581,30 @@ impl<'q, 'e> Evaluator<'e> {
         }
     }
 
-    fn eval_in(
-        &self,
-        uid1: &EntityUID,
-        entity1: Option<&Entity>,
-        arg2: Value,
-    ) -> Result<PartialValue> {
+    fn eval_in_rhs_as_vec(&self, rhs: &Value) -> Result<Vec<EntityUID>> {
         // `rhs` is a list of all the UIDs for which we need to
         // check if `uid1` is a descendant of
-        let rhs = match arg2 {
-            Value::Lit(Literal::EntityUID(uid)) => vec![(*uid).clone()],
+        match rhs {
+            Value::Lit(Literal::EntityUID(uid)) => Ok(vec![(**uid).clone()]),
             // we assume that iterating the `authoritative` BTreeSet is
             // approximately the same cost as iterating the `fast` HashSet
             Value::Set(Set { authoritative, .. }) => authoritative
                 .iter()
                 .map(|val| Ok(val.get_as_entity()?.clone()))
-                .collect::<Result<Vec<EntityUID>>>()?,
-            _ => {
-                return Err(EvaluationError::type_error(
-                    vec![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
-                    arg2.type_of(),
-                ))
-            }
-        };
+                .collect::<Result<Vec<EntityUID>>>(),
+            _ => Err(EvaluationError::type_error(
+                vec![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
+                rhs.type_of(),
+            )),
+        }
+    }
+
+    fn eval_in(&self, uid1: &EntityUID, rhs: Vec<EntityUID>) -> Result<PartialValue> {
         for uid2 in rhs {
-            if uid1 == &uid2
-                || entity1
-                    .map(|e1| e1.is_descendant_of(&uid2))
-                    .unwrap_or(false)
+            if self
+                .entities
+                .entity_in(uid1, &uid2)
+                .map_err(EvaluationError::mk_request)?
             {
                 return Ok(true.into());
             }
@@ -681,7 +693,17 @@ impl<'q, 'e> Evaluator<'e> {
                 })
                 .map(|v| PartialValue::Value(v.clone())),
             PartialValue::Value(Value::Lit(Literal::EntityUID(uid))) => {
-                match self.entity_attr_values.get(uid.as_ref()) {
+                let attr_value = match self.entities.entity_attr(&uid, attr) {
+                    Ok(v) => Ok(v),
+                    Err(e) => Err(e.handle_attr(()).err().ok_or_else(|| {
+                        EvaluationError::entity_attr_does_not_exist(uid.clone(), attr.clone())
+                    })?),
+                };
+                match self
+                    .entities
+                    .handle_access_error(&uid, attr_value)
+                    .map_err(EvaluationError::mk_request)?
+                {
                     Dereference::NoSuchEntity => Err(match *uid.entity_type() {
                         EntityType::Unspecified => {
                             EvaluationError::unspecified_entity_access(attr.clone())
@@ -693,12 +715,7 @@ impl<'q, 'e> Evaluator<'e> {
                     Dereference::Residual(r) => {
                         Ok(PartialValue::Residual(Expr::get_attr(r, attr.clone())))
                     }
-                    Dereference::Data(attrs) => attrs
-                        .get(attr)
-                        .ok_or_else(|| {
-                            EvaluationError::entity_attr_does_not_exist(uid, attr.clone())
-                        })
-                        .cloned(),
+                    Dereference::Data(v) => Ok(v),
                 }
             }
             PartialValue::Value(v) => {
@@ -717,6 +734,8 @@ impl<'q, 'e> Evaluator<'e> {
 
     #[cfg(test)]
     pub fn interpret_inline_policy(&self, e: &Expr) -> Result<Value> {
+        use std::collections::HashMap;
+
         match self.partial_interpret(e, &HashMap::new())? {
             PartialValue::Value(v) => Ok(v),
             PartialValue::Residual(r) => Err(err::EvaluationError::non_value(r)),
@@ -739,7 +758,7 @@ impl<'q, 'e> Evaluator<'e> {
     // GRCOV_BEGIN_COVERAGE
 }
 
-impl<'e> std::fmt::Debug for Evaluator<'e> {
+impl<'e, T: EntityDataSource> std::fmt::Debug for Evaluator<'e, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -820,7 +839,8 @@ fn stack_size_check() -> Result<()> {
 
 #[cfg(test)]
 pub mod test {
-    use std::{collections::HashMap, str::FromStr};
+    use std::collections::HashMap;
+    use std::str::FromStr;
 
     use super::*;
 
@@ -852,7 +872,7 @@ pub mod test {
     }
 
     // Many of these tests use this basic `Entities`
-    pub fn basic_entities() -> Entities {
+    pub fn basic_entities() -> Entities<PartialValue> {
         Entities::from_entities(
             vec![
                 Entity::with_uid(EntityUID::with_eid("foo")),
@@ -866,7 +886,7 @@ pub mod test {
     }
 
     // This `Entities` has richer Entities
-    pub fn rich_entities() -> Entities {
+    pub fn rich_entities() -> Entities<PartialValue> {
         let entity_no_attrs_no_parents =
             Entity::with_uid(EntityUID::with_eid("entity_no_attrs_no_parents"));
         let mut entity_with_attrs = Entity::with_uid(EntityUID::with_eid("entity_with_attrs"));
@@ -915,6 +935,8 @@ pub mod test {
             TCComputation::ComputeNow,
         )
         .expect("Failed to create rich entities")
+        .eval_attrs(&Extensions::none())
+        .expect("Failed to evaluated attributes")
     }
 
     #[cfg(feature = "partial-eval")]
@@ -2962,7 +2984,7 @@ pub mod test {
         );
         //Alice has parent "Friends" but we don't add "Friends" to the slice
         let mut alice = Entity::with_uid(EntityUID::with_eid("Alice"));
-        let parent = Entity::with_uid(EntityUID::with_eid("Friends"));
+        let parent: Entity<RestrictedExpr> = Entity::with_uid(EntityUID::with_eid("Friends"));
         alice.add_ancestor(parent.uid());
         let entities = Entities::from_entities(vec![alice], TCComputation::AssumeAlreadyComputed)
             .expect("failed to create basic entities");
@@ -3466,7 +3488,11 @@ pub mod test {
         let request = basic_request();
         let eparser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
-        let entities = eparser.from_json_str("[]").expect("empty slice");
+        let entities = eparser
+            .from_json_str("[]")
+            .expect("empty slice")
+            .eval_attrs(&Extensions::none())
+            .expect("empty slice");
         let exts = Extensions::none();
         let evaluator = Evaluator::new(&request, &entities, &exts).expect("empty slice");
 
@@ -3579,7 +3605,11 @@ pub mod test {
         let request = basic_request();
         let eparser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
-        let entities = eparser.from_json_str("[]").expect("empty slice");
+        let entities = eparser
+            .from_json_str("[]")
+            .expect("empty slice")
+            .eval_attrs(&Extensions::none())
+            .expect("empty slice");
         let exts = Extensions::none();
         let evaluator = Evaluator::new(&request, &entities, &exts).expect("empty slice");
         let e = Expr::slot(SlotId::principal());
@@ -3636,7 +3666,11 @@ pub mod test {
         );
         let eparser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
-        let entities = eparser.from_json_str("[]").expect("empty slice");
+        let entities = eparser
+            .from_json_str("[]")
+            .expect("empty slice")
+            .eval_attrs(&Extensions::none())
+            .expect("empty slice");
         let exts = Extensions::none();
         let eval = Evaluator::new(&q, &entities, &exts).expect("Failed to start evaluator");
 

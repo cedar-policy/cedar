@@ -408,7 +408,12 @@ impl EntityJSON {
             uid: EntityUidJSON::ImplicitEntityEscape(TypeAndId::from(entity.uid())),
             attrs: entity
                 .attrs()
-                .map(|(k, expr)| Ok((k.into(), serde_json::to_value(JSONValue::from_expr(expr)?)?)))
+                .map(|(k, expr)| {
+                    Ok((
+                        k.into(),
+                        serde_json::to_value(JSONValue::from_expr(expr.as_borrowed())?)?,
+                    ))
+                })
                 .collect::<Result<_, JsonSerializationError>>()?,
             parents: entity
                 .ancestors()

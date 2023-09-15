@@ -177,7 +177,7 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
 
     // Try an evaluation
     let result = eval_expression(&request2, &entities, &Expression::from_str(r#"10 < 100"#)?)?;
-    assert_eq!(result, EvalResult::Bool(true));
+    assert_eq!(result, true.into());
 
     Ok(())
 }
@@ -216,7 +216,7 @@ fn expression_eval_1() -> Result<(), Box<dyn Error>> {
         &Expression::from_str("if 301 > 10 then 100 else 200")?,
     )?;
 
-    assert_eq!(result, EvalResult::Long(100));
+    assert_eq!(result, 100.into());
 
     Ok(())
 }
@@ -260,7 +260,7 @@ fn expression_eval_attr() -> Result<(), Box<dyn Error>> {
         &entities,
         &Expression::from_str("if principal.age > 18 then 100 else 200")?,
     )?;
-    assert_eq!(result, EvalResult::Long(100));
+    assert_eq!(result, 100.into());
 
     Ok(())
 }
@@ -312,7 +312,7 @@ fn expression_eval_context() -> Result<(), Box<dyn Error>> {
             "if principal.age > 18 && context.location == \"VA\" then 100 else 200",
         )?,
     )?;
-    assert_eq!(result, EvalResult::Long(100));
+    assert_eq!(result, 100.into());
 
     Ok(())
 }

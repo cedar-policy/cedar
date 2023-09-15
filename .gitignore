@@ -1,6 +1,7 @@
 # Don't check in the local metadata file.
 .DS_Store
 .idea
+.vscode/
 
 # Don't check in the Emacs temp files
 *~

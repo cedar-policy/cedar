@@ -36,5 +36,58 @@ pub enum EntitiesError {
     TransitiveClosureError(#[from] Box<transitive_closure::TcError<EntityUID>>),
 }
 
+/// An error which is thrown when an error occurs accessing an entity's attribute
+#[derive(Debug, Error)]
+pub enum EntityAttrAccessError<T: std::error::Error> {
+    /// The entity does not exist
+    UnknownEntity,
+    /// The entity exists but the attribute does not
+    UnknownAttr,
+    /// Some other error occured (e.g. network failed)
+    AccessError(T),
+}
+
+/// Error which is thrown when accessing an entity (e.g. to check the presence of an attribute)
+#[derive(Debug, Error)]
+pub enum EntityAccessError<T: std::error::Error> {
+    /// The entity does not exist
+    UnknownEntity,
+    /// Some other error occured (e.g. network failed)
+    AccessError(T),
+}
+
+impl<T: std::error::Error> EntityAttrAccessError<T> {
+    /// Handle the missing attribute situation by returning Ok(u) if the attribute is missing
+    /// and keeping the error otherwise
+    pub fn handle_attr<U>(self, u: U) -> std::result::Result<U, EntityAccessError<T>> {
+        match self {
+            EntityAttrAccessError::UnknownAttr => Ok(u),
+            EntityAttrAccessError::UnknownEntity => Err(EntityAccessError::UnknownEntity),
+            EntityAttrAccessError::AccessError(t) => Err(EntityAccessError::AccessError(t)),
+        }
+    }
+}
+
+impl<T: std::error::Error> From<EntityAccessError<T>> for EntityAttrAccessError<T> {
+    fn from(value: EntityAccessError<T>) -> Self {
+        match value {
+            EntityAccessError::UnknownEntity => EntityAttrAccessError::UnknownEntity,
+            EntityAccessError::AccessError(t) => EntityAttrAccessError::AccessError(t),
+        }
+    }
+}
+
+impl<T: std::error::Error> From<T> for EntityAccessError<T> {
+    fn from(value: T) -> Self {
+        EntityAccessError::AccessError(value)
+    }
+}
+
+impl<T: std::error::Error> From<T> for EntityAttrAccessError<T> {
+    fn from(value: T) -> Self {
+        EntityAttrAccessError::AccessError(value)
+    }
+}
+
 /// Type alias for convenience
 pub type Result<T> = std::result::Result<T, EntitiesError>;

@@ -194,11 +194,11 @@ mod tests {
     #[test]
     fn basic() {
         // start with A -> B -> C
-        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        let mut a: Entity = Entity::with_uid(EntityUID::with_eid("A"));
         a.add_ancestor(EntityUID::with_eid("B"));
-        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        let mut b: Entity = Entity::with_uid(EntityUID::with_eid("B"));
         b.add_ancestor(EntityUID::with_eid("C"));
-        let c = Entity::with_uid(EntityUID::with_eid("C"));
+        let c: Entity = Entity::with_uid(EntityUID::with_eid("C"));
         let mut entities = HashMap::from([(a.uid(), a), (b.uid(), b), (c.uid(), c)]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
@@ -222,11 +222,11 @@ mod tests {
     fn reversed() {
         // same as basic(), but we put the entities in the map in the reverse
         // order, which shouldn't make a difference
-        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        let mut a: Entity = Entity::with_uid(EntityUID::with_eid("A"));
         a.add_ancestor(EntityUID::with_eid("B"));
-        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        let mut b: Entity = Entity::with_uid(EntityUID::with_eid("B"));
         b.add_ancestor(EntityUID::with_eid("C"));
-        let c = Entity::with_uid(EntityUID::with_eid("C"));
+        let c: Entity = Entity::with_uid(EntityUID::with_eid("C"));
         let mut entities = HashMap::from([(c.uid(), c), (b.uid(), b), (a.uid(), a)]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
@@ -249,15 +249,15 @@ mod tests {
     #[test]
     fn deeper() {
         // start with A -> B -> C -> D -> E
-        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        let mut a: Entity = Entity::with_uid(EntityUID::with_eid("A"));
         a.add_ancestor(EntityUID::with_eid("B"));
-        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        let mut b: Entity = Entity::with_uid(EntityUID::with_eid("B"));
         b.add_ancestor(EntityUID::with_eid("C"));
-        let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut c: Entity = Entity::with_uid(EntityUID::with_eid("C"));
         c.add_ancestor(EntityUID::with_eid("D"));
-        let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+        let mut d: Entity = Entity::with_uid(EntityUID::with_eid("D"));
         d.add_ancestor(EntityUID::with_eid("E"));
-        let e = Entity::with_uid(EntityUID::with_eid("E"));
+        let e: Entity = Entity::with_uid(EntityUID::with_eid("E"));
         let mut entities = HashMap::from([
             (a.uid(), a),
             (b.uid(), b),
@@ -292,15 +292,15 @@ mod tests {
         // in alphabetical order, this test will ensure that everything works
         // even when we aren't processing the entities in hierarchy order.)
         // start with foo -> bar -> baz -> ham -> eggs
-        let mut foo = Entity::with_uid(EntityUID::with_eid("foo"));
+        let mut foo: Entity = Entity::with_uid(EntityUID::with_eid("foo"));
         foo.add_ancestor(EntityUID::with_eid("bar"));
-        let mut bar = Entity::with_uid(EntityUID::with_eid("bar"));
+        let mut bar: Entity = Entity::with_uid(EntityUID::with_eid("bar"));
         bar.add_ancestor(EntityUID::with_eid("baz"));
-        let mut baz = Entity::with_uid(EntityUID::with_eid("baz"));
+        let mut baz: Entity = Entity::with_uid(EntityUID::with_eid("baz"));
         baz.add_ancestor(EntityUID::with_eid("ham"));
-        let mut ham = Entity::with_uid(EntityUID::with_eid("ham"));
+        let mut ham: Entity = Entity::with_uid(EntityUID::with_eid("ham"));
         ham.add_ancestor(EntityUID::with_eid("eggs"));
-        let eggs = Entity::with_uid(EntityUID::with_eid("eggs"));
+        let eggs: Entity = Entity::with_uid(EntityUID::with_eid("eggs"));
         let mut entities = HashMap::from([
             (ham.uid(), ham),
             (bar.uid(), bar),
@@ -336,15 +336,15 @@ mod tests {
         // A
         //   \
         //     D -> E
-        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        let mut a: Entity = Entity::with_uid(EntityUID::with_eid("A"));
         a.add_ancestor(EntityUID::with_eid("B"));
         a.add_ancestor(EntityUID::with_eid("D"));
-        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        let mut b: Entity = Entity::with_uid(EntityUID::with_eid("B"));
         b.add_ancestor(EntityUID::with_eid("C"));
         let c = Entity::with_uid(EntityUID::with_eid("C"));
-        let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+        let mut d: Entity = Entity::with_uid(EntityUID::with_eid("D"));
         d.add_ancestor(EntityUID::with_eid("E"));
-        let e = Entity::with_uid(EntityUID::with_eid("E"));
+        let e: Entity = Entity::with_uid(EntityUID::with_eid("E"));
         let mut entities = HashMap::from([
             (a.uid(), a),
             (b.uid(), b),
@@ -381,22 +381,22 @@ mod tests {
         // A      D -> E -> H
         //   \        /
         //     F -> G
-        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        let mut a: Entity = Entity::with_uid(EntityUID::with_eid("A"));
         a.add_ancestor(EntityUID::with_eid("B"));
         a.add_ancestor(EntityUID::with_eid("F"));
-        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        let mut b: Entity = Entity::with_uid(EntityUID::with_eid("B"));
         b.add_ancestor(EntityUID::with_eid("C"));
         b.add_ancestor(EntityUID::with_eid("D"));
-        let c = Entity::with_uid(EntityUID::with_eid("C"));
-        let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+        let c: Entity = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut d: Entity = Entity::with_uid(EntityUID::with_eid("D"));
         d.add_ancestor(EntityUID::with_eid("E"));
-        let mut e = Entity::with_uid(EntityUID::with_eid("E"));
+        let mut e: Entity = Entity::with_uid(EntityUID::with_eid("E"));
         e.add_ancestor(EntityUID::with_eid("H"));
-        let mut f = Entity::with_uid(EntityUID::with_eid("F"));
+        let mut f: Entity = Entity::with_uid(EntityUID::with_eid("F"));
         f.add_ancestor(EntityUID::with_eid("G"));
-        let mut g = Entity::with_uid(EntityUID::with_eid("G"));
+        let mut g: Entity = Entity::with_uid(EntityUID::with_eid("G"));
         g.add_ancestor(EntityUID::with_eid("E"));
-        let h = Entity::with_uid(EntityUID::with_eid("H"));
+        let h: Entity = Entity::with_uid(EntityUID::with_eid("H"));
         let mut entities = HashMap::from([
             (a.uid(), a),
             (b.uid(), b),
@@ -445,20 +445,20 @@ mod tests {
         // A ---> C
         //   \   /
         //     D --> F
-        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        let mut a: Entity = Entity::with_uid(EntityUID::with_eid("A"));
         a.add_ancestor(EntityUID::with_eid("B"));
         a.add_ancestor(EntityUID::with_eid("C"));
         a.add_ancestor(EntityUID::with_eid("D"));
-        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        let mut b: Entity = Entity::with_uid(EntityUID::with_eid("B"));
         b.add_ancestor(EntityUID::with_eid("C"));
         b.add_ancestor(EntityUID::with_eid("E"));
-        let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut c: Entity = Entity::with_uid(EntityUID::with_eid("C"));
         c.add_ancestor(EntityUID::with_eid("E"));
-        let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+        let mut d: Entity = Entity::with_uid(EntityUID::with_eid("D"));
         d.add_ancestor(EntityUID::with_eid("C"));
         d.add_ancestor(EntityUID::with_eid("F"));
-        let e = Entity::with_uid(EntityUID::with_eid("E"));
-        let f = Entity::with_uid(EntityUID::with_eid("F"));
+        let e: Entity = Entity::with_uid(EntityUID::with_eid("E"));
+        let f: Entity = Entity::with_uid(EntityUID::with_eid("F"));
         let mut entities = HashMap::from([
             (a.uid(), a),
             (b.uid(), b),
@@ -496,19 +496,19 @@ mod tests {
         // A      D -> E -> H
         //   \
         //     F -> G
-        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        let mut a: Entity = Entity::with_uid(EntityUID::with_eid("A"));
         a.add_ancestor(EntityUID::with_eid("F"));
-        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        let mut b: Entity = Entity::with_uid(EntityUID::with_eid("B"));
         b.add_ancestor(EntityUID::with_eid("C"));
-        let c = Entity::with_uid(EntityUID::with_eid("C"));
-        let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+        let c: Entity = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut d: Entity = Entity::with_uid(EntityUID::with_eid("D"));
         d.add_ancestor(EntityUID::with_eid("E"));
-        let mut e = Entity::with_uid(EntityUID::with_eid("E"));
+        let mut e: Entity = Entity::with_uid(EntityUID::with_eid("E"));
         e.add_ancestor(EntityUID::with_eid("H"));
-        let mut f = Entity::with_uid(EntityUID::with_eid("F"));
+        let mut f: Entity = Entity::with_uid(EntityUID::with_eid("F"));
         f.add_ancestor(EntityUID::with_eid("G"));
-        let g = Entity::with_uid(EntityUID::with_eid("G"));
-        let h = Entity::with_uid(EntityUID::with_eid("H"));
+        let g: Entity = Entity::with_uid(EntityUID::with_eid("G"));
+        let h: Entity = Entity::with_uid(EntityUID::with_eid("H"));
         let mut entities = HashMap::from([
             (a.uid(), a),
             (b.uid(), b),
@@ -555,9 +555,9 @@ mod tests {
         // if we encounter it (and definitely not panic, infinitely recurse, etc)
         //
         // A -> B -> B
-        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        let mut a: Entity = Entity::with_uid(EntityUID::with_eid("A"));
         a.add_ancestor(EntityUID::with_eid("B"));
-        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        let mut b: Entity = Entity::with_uid(EntityUID::with_eid("B"));
         b.add_ancestor(EntityUID::with_eid("B"));
         let mut entities = HashMap::from([(a.uid(), a), (b.uid(), b)]);
         // computing TC should succeed without panicking, infinitely recursing, etc
@@ -597,14 +597,14 @@ mod tests {
         //          D
         //        /
         // A -> B -> C -> A
-        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        let mut a: Entity = Entity::with_uid(EntityUID::with_eid("A"));
         a.add_ancestor(EntityUID::with_eid("B"));
-        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        let mut b: Entity = Entity::with_uid(EntityUID::with_eid("B"));
         b.add_ancestor(EntityUID::with_eid("C"));
         b.add_ancestor(EntityUID::with_eid("D"));
-        let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut c: Entity = Entity::with_uid(EntityUID::with_eid("C"));
         c.add_ancestor(EntityUID::with_eid("A"));
-        let d = Entity::with_uid(EntityUID::with_eid("D"));
+        let d: Entity = Entity::with_uid(EntityUID::with_eid("D"));
         let mut entities = HashMap::from([(a.uid(), a), (b.uid(), b), (c.uid(), c), (d.uid(), d)]);
         // computing TC should succeed without panicking, infinitely recursing, etc
         assert!(compute_tc_internal(&mut entities).is_ok());
@@ -653,20 +653,20 @@ mod tests {
         // A      D -> E -> H -> D
         //   \
         //     F -> G
-        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        let mut a: Entity = Entity::with_uid(EntityUID::with_eid("A"));
         a.add_ancestor(EntityUID::with_eid("F"));
-        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        let mut b: Entity = Entity::with_uid(EntityUID::with_eid("B"));
         b.add_ancestor(EntityUID::with_eid("C"));
-        let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut c: Entity = Entity::with_uid(EntityUID::with_eid("C"));
         c.add_ancestor(EntityUID::with_eid("B"));
-        let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+        let mut d: Entity = Entity::with_uid(EntityUID::with_eid("D"));
         d.add_ancestor(EntityUID::with_eid("E"));
-        let mut e = Entity::with_uid(EntityUID::with_eid("E"));
+        let mut e: Entity = Entity::with_uid(EntityUID::with_eid("E"));
         e.add_ancestor(EntityUID::with_eid("H"));
-        let mut f = Entity::with_uid(EntityUID::with_eid("F"));
+        let mut f: Entity = Entity::with_uid(EntityUID::with_eid("F"));
         f.add_ancestor(EntityUID::with_eid("G"));
-        let g = Entity::with_uid(EntityUID::with_eid("G"));
-        let mut h = Entity::with_uid(EntityUID::with_eid("H"));
+        let g: Entity = Entity::with_uid(EntityUID::with_eid("G"));
+        let mut h: Entity = Entity::with_uid(EntityUID::with_eid("H"));
         h.add_ancestor(EntityUID::with_eid("D"));
         let mut entities = HashMap::from([
             (a.uid(), a),
@@ -712,19 +712,19 @@ mod tests {
         //    D ------>F      |
         //    ^               |
         //    |___------------
-        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        let mut a: Entity = Entity::with_uid(EntityUID::with_eid("A"));
         a.add_ancestor(EntityUID::with_eid("B"));
-        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        let mut b: Entity = Entity::with_uid(EntityUID::with_eid("B"));
         b.add_ancestor(EntityUID::with_eid("C"));
-        let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut c: Entity = Entity::with_uid(EntityUID::with_eid("C"));
         c.add_ancestor(EntityUID::with_eid("E"));
-        let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+        let mut d: Entity = Entity::with_uid(EntityUID::with_eid("D"));
         d.add_ancestor(EntityUID::with_eid("A"));
         d.add_ancestor(EntityUID::with_eid("B"));
         d.add_ancestor(EntityUID::with_eid("F"));
-        let mut e = Entity::with_uid(EntityUID::with_eid("E"));
+        let mut e: Entity = Entity::with_uid(EntityUID::with_eid("E"));
         e.add_ancestor(EntityUID::with_eid("D"));
-        let mut f = Entity::with_uid(EntityUID::with_eid("F"));
+        let mut f: Entity = Entity::with_uid(EntityUID::with_eid("F"));
         f.add_ancestor(EntityUID::with_eid("E"));
         let mut entities = HashMap::from([
             (a.uid(), a),
