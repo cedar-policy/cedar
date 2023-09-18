@@ -21,8 +21,8 @@ use cedar_policy_core::ast::{PolicySet, Template};
 use cedar_policy_core::parser::parse_policyset;
 use cedar_policy_core::parser::{err::ParseErrors, text_to_cst::parse_policies};
 
-use crate::Context;
 use crate::token::get_comment;
+use crate::Context;
 
 use super::lexer::get_token_stream;
 use super::utils::remove_empty_lines;

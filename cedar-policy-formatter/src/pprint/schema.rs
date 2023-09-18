@@ -220,7 +220,7 @@ impl Doc for SchemaTypeVariant {
                 additional_attributes: _,
             } => {
                 if attributes.is_empty() {
-                    RcDoc::nil()
+                    RcDoc::text("{}")
                 } else {
                     RcDoc::text("{")
                         .append(RcDoc::line())

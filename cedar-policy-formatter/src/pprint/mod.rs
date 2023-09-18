@@ -20,7 +20,7 @@ mod config;
 pub use config::*;
 mod doc;
 pub mod lexer;
+mod schema;
 pub mod token;
 mod utils;
-mod schema;
 pub use schema::*;

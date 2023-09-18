@@ -25,7 +25,10 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Self { line_width: 80, indent_width: 2 }
+        Self {
+            line_width: 80,
+            indent_width: 2,
+        }
     }
 }
 
