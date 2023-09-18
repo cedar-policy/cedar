@@ -1564,7 +1564,7 @@ pub enum PolicySetError {
         id: PolicyId,
     },
     /// Error when linking a template
-    #[error("Unable to link template: {0}.")]
+    #[error("Unable to link template: {0}")]
     LinkingError(#[from] ast::LinkingError),
     /// Expected a static policy, but a template-linked policy was provided
     #[error("Expected a static policy, but a template-linked policy was provided.")]
