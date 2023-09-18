@@ -1033,75 +1033,75 @@ impl Schema {
 #[derive(Debug, Error)]
 pub enum SchemaError {
     /// Error thrown by the `serde_json` crate during deserialization
-    #[error("failed to parse schema: {0}")]
+    #[error("Failed to parse schema: {0}")]
     Serde(#[from] serde_json::Error),
     /// Errors occurring while computing or enforcing transitive closure on
     /// action hierarchy.
-    #[error("transitive closure computation/enforcement error on action hierarchy: {0}")]
+    #[error("Transitive closure computation/enforcement error on action hierarchy: {0}")]
     ActionTransitiveClosure(String),
     /// Errors occurring while computing or enforcing transitive closure on
     /// entity type hierarchy.
     #[error("transitive closure computation/enforcement error on entity type hierarchy: {0}")]
     EntityTypeTransitiveClosure(String),
     /// Error generated when processing a schema file that uses unsupported features
-    #[error("unsupported feature used in schema: {0}")]
+    #[error("Ensupported feature used in schema: {0}")]
     UnsupportedFeature(String),
     /// Undeclared entity type(s) used in the `memberOf` field of an entity
     /// type, the `appliesTo` fields of an action, or an attribute type in a
     /// context or entity attribute record. Entity types in the error message
     /// are fully qualified, including any implicit or explicit namespaces.
-    #[error("undeclared entity type(s): {0:?}")]
+    #[error("Undeclared entity type(s): {0:?}.")]
     UndeclaredEntityTypes(HashSet<String>),
     /// Undeclared action(s) used in the `memberOf` field of an action.
-    #[error("undeclared action(s): {0:?}")]
+    #[error("Undeclared action(s): {0:?}.")]
     UndeclaredActions(HashSet<String>),
     /// Undeclared common type(s) used in entity or context attributes.
-    #[error("undeclared common type(s): {0:?}")]
+    #[error("Undeclared common type(s): {0:?}.")]
     UndeclaredCommonTypes(HashSet<String>),
     /// Duplicate specifications for an entity type. Argument is the name of
     /// the duplicate entity type.
-    #[error("duplicate entity type: {0}")]
+    #[error("Duplicate entity type '{0}'.")]
     DuplicateEntityType(String),
     /// Duplicate specifications for an action. Argument is the name of the
     /// duplicate action.
-    #[error("duplicate action: {0}")]
+    #[error("Duplicate action '{0}'.")]
     DuplicateAction(String),
     /// Duplicate specification for a reusable type declaration.
-    #[error("duplicate common type: {0}")]
+    #[error("Duplicate common type '{0}'.")]
     DuplicateCommonType(String),
     /// Cycle in the schema's action hierarchy.
-    #[error("cycle in action hierarchy")]
+    #[error("Cycle in action hierarchy.")]
     CycleInActionHierarchy,
     /// Parse errors occurring while parsing an entity type.
-    #[error("parse error in entity type: {0}")]
+    #[error("Error parsing entity type. {0}")]
     ParseEntityType(ParseErrors),
     /// Parse errors occurring while parsing a namespace identifier.
-    #[error("parse error in namespace identifier: {0}")]
+    #[error("Error parsing namespace identifier. {0}")]
     ParseNamespace(ParseErrors),
     /// Parse errors occurring while parsing an extension type.
-    #[error("parse error in extension type: {0}")]
+    #[error("Error parsing extension type. {0}")]
     ParseExtensionType(ParseErrors),
     /// Parse errors occurring while parsing the name of a reusable
     /// declared type.
-    #[error("parse error in common type identifier: {0}")]
+    #[error("Error parsing common type identifier: {0}")]
     ParseCommonType(ParseErrors),
     /// The schema file included an entity type `Action` in the entity type
     /// list. The `Action` entity type is always implicitly declared, and it
     /// cannot currently have attributes or be in any groups, so there is no
     /// purposes in adding an explicit entry.
-    #[error("entity type `Action` declared in `entityTypes` list")]
+    #[error("Entity type 'Action' declared in 'entityTypes' list.")]
     ActionEntityTypeDeclared,
     /// `context` or `shape` fields are not records
-    #[error("`{0}` is not a record")]
+    #[error("'{0}' is not a record.")]
     ContextOrShapeNotRecord(ContextOrShape),
     /// An action entity (transitively) has an attribute that is an empty set.
     /// The validator cannot assign a type to an empty set.
     /// This error variant should only be used when `PermitAttributes` is enabled.
-    #[error("action `{0}` has an attribute that is an empty set")]
+    #[error("Action '{0}' has an attribute that is an empty set.")]
     ActionAttributesContainEmptySet(EntityUid),
     /// An action entity (transitively) has an attribute of unsupported type (`ExprEscape`, `EntityEscape` or `ExtnEscape`).
     /// This error variant should only be used when `PermitAttributes` is enabled.
-    #[error("action `{0}` has an attribute with unsupported JSON representation: {1}")]
+    #[error("Action '{0}' has an attribute with unsupported JSON representation: {1}.")]
     UnsupportedActionAttribute(EntityUid, String),
 }
 
@@ -1260,7 +1260,7 @@ impl<'a> From<cedar_policy_validator::ValidationError<'a>> for ValidationError<'
 
 impl<'a> std::fmt::Display for ValidationError<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Validation error on policy {}", self.location.policy_id)?;
+        write!(f, "Validation error on policy '{}'.", self.location.policy_id)?;
         if let (Some(range_start), Some(range_end)) =
             (self.location().range_start(), self.location().range_end())
         {
@@ -1316,7 +1316,7 @@ pub fn confusable_string_checker<'a>(
 }
 
 #[derive(Debug, Error)]
-#[error("Warning on policy {}: {}", .location.policy_id, .kind)]
+#[error("Warning on policy '{}': {}.", .location.policy_id, .kind)]
 /// Warnings found in Cedar policies
 pub struct ValidationWarning<'a> {
     location: SourceLocation<'a>,
@@ -1558,19 +1558,19 @@ impl std::fmt::Display for EntityUid {
 pub enum PolicySetError {
     /// There was a duplicate [`PolicyId`] encountered in either the set of
     /// templates or the set of policies.
-    #[error("duplicate template or policy id: {id}")]
+    #[error("Duplicate template or policy ID: '{id}'.")]
     AlreadyDefined {
         /// [`PolicyId`] that was duplicate
         id: PolicyId,
     },
     /// Error when linking a template
-    #[error("unable to link template: {0}")]
+    #[error("Unable to link template: {0}.")]
     LinkingError(#[from] ast::LinkingError),
     /// Expected a static policy, but a template-linked policy was provided
-    #[error("expected a static policy, but a template-linked policy was provided")]
+    #[error("Expected a static policy, but a template-linked policy was provided.")]
     ExpectedStatic,
     /// Expected a template, but a static policy was provided.
-    #[error("expected a template, but a static policy was provided")]
+    #[error("Expected a template, but a static policy was provided.")]
     ExpectedTemplate,
 }
 
@@ -2956,7 +2956,7 @@ pub enum ContextJsonError {
     #[error(transparent)]
     JsonDeserialization(#[from] JsonDeserializationError),
     /// The supplied action doesn't exist in the supplied schema
-    #[error("action `{action}` doesn't exist in the supplied schema")]
+    #[error("Action '{action}' does not exist in the supplied schema.")]
     MissingAction {
         /// UID of the action which doesn't exist
         action: EntityUid,
