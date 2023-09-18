@@ -28,7 +28,7 @@ pub enum EntitiesError {
     #[error("Entities deserialization error: {0}.")]
     Deserialization(#[from] crate::entities::JsonDeserializationError),
     /// Error constructing the `[crate::entities::Entities]` as there is a duplicate Entity UID
-    #[error("Duplicate entity entry: {0}.")]
+    #[error("Duplicate entry of entity '{0}'.")]
     Duplicate(EntityUID),
     /// Errors occurring while computing or enforcing transitive closure on the
     /// entity hierarchy.
