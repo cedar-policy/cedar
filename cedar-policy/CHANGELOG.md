@@ -11,6 +11,7 @@
 ### Changed
 - Improved a variety of error messages
 - Some error types now carry more information about the error, with error messages updated appropriately
+- Increased precision for validating records. Previously, `permit(principal, action, resource) when {{"foo": 5} has bar};` would validate. Now it will not, since we know `{"foo": 5} has bar` is `False`, and the validator will return an error for a policy that can never fire.
 
 ## 2.3.3
 
