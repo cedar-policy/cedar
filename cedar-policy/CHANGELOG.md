@@ -6,30 +6,12 @@
 
 - Added an option to eagerly evaluate entity attributes and re-use across calls to `is_authorized`
 - Adds APIs to `Entities` to make it easy to add a collection of entities to an existing `Entities` structure
-- New methods exported for `EntityTypeName`.
-  - `basename` to get the basename (without namespaces).
-  - `namespace_components` to get the namespace as an iterator over its components.
-  - `namespace` to get the namespace as a single string.
 - Support `Request`s with `Unknown` fields for partial evaluation.
 - Export the `cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind}` and
   `cedar_policy_core::authorizer::AuthorizationError` error types.
 
 ### Changed
 
-- Revamped errors in cst-to-ast transformation
-- Added list of attributes that do exist to `RecordAttrDoesNotExist` error message.
-- Removed deprecated `__expr` escapes from integration tests.
-- Improved error messages for some schema type parsing errors
-  - When an entity type shape or action context is declared with type other
-    than `Record`, the error message will indicate the effected entity type or
-    action.
-- Some error types now carry more information about the error, with error
-  messages updated appropriately
-- Update how record types are treated by the validator to support "open" and
-  "closed" record types.  Record types written in schema are now closed. In
-  particular, this applies to the action context, so `context has attr` can now
-  have type False where before it had type Boolean, creating some new
-  short-circuiting opportunities.  The same applies to record literals.
 - Renamed `cedar_policy_core::est::EstToAstError` to `cedar_policy_core::est::FromJsonError`
 - Renamed `cedar_policy_core::entities::JsonDeserializationError::ExtensionsError` to `cedar_policy_core::entities::JsonDeserializationError::FailedExtensionsFunctionLookup`.
 - Renamed variants in `cedar_policy::SchemaError`
@@ -38,6 +20,28 @@
 - Improved validation error messages for access to undeclared attributes and
   unsafe access to optional attributes to report the target of the access (fix #175).
 - Implements RFC #19, making validation slightly more strict, but more explainable.
+
+## 2.4.0
+
+### Added
+- New methods exported for `EntityTypeName`.
+  - `basename` to get the basename (without namespaces).
+  - `namespace_components` to get the namespace as an iterator over its components.
+  - `namespace` to get the namespace as a single string.
+
+### Changed
+- Some error types now carry more information about the error, with error
+messages updated appropriately. For instance, added list of attributes that _do_
+exist to the `RecordAttrDoesNotExist` error message.
+- Improved error messages for some schema type parsing errors.
+  - When an entity type shape or action context is declared with type other than
+  `Record`, the error message will indicated the affected entity type or action.
+- Improved a variety of other error messages
+- Increased precision for validating records.  Previously,
+`permit(principal, action, resource) when {{"foo": 5} has bar};` would validate.
+Now it will not, since we know `{"foo": 5} has bar` is `False`, and the
+validator will return an error for a policy that can never fire.
+- Removed deprecated `__expr` escapes from integration tests.
 
 ## 2.3.3
 
