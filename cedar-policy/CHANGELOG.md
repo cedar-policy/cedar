@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.4.0
+
+### Added
+- New methods exported for `EntityTypeName`.
+  - `basename` to get the basename (without namespaces).
+  - `namespace_components` to get the namespace as an iterator over its components.
+  - `namespace` to get the namespace as a single string.
+
+### Changed
+- Some error types now carry more information about the error, with error
+messages updated appropriately. For instance, added list of attributes that _do_
+exist to the `RecordAttrDoesNotExist` error message.
+- Improved error messages for some schema type parsing errors.
+  - When an entity type shape or action context is declared with type other than
+  `Record`, the error message will indicated the affected entity type or action.
+- Improved a variety of other error messages
+- Increased precision for validating records.  Previously,
+`permit(principal, action, resource) when {{"foo": 5} has bar};` would validate.
+Now it will not, since we know `{"foo": 5} has bar` is `False`, and the
+validator will return an error for a policy that can never fire.
+- Removed deprecated `__expr` escapes from integration tests.
+
 ## 2.3.3
 
 ### Added
