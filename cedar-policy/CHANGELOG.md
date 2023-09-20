@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.4.0
+
+### Added
+- New methods exported for `EntityTypeName`.
+  - `basename` to get the basename (without namespaces).
+  - `namespace_components` to get the namespace as an iterator over its components.
+  - `namespace` to get the namespace as a single string.
+
+### Changed
+- Improved a variety of error messages
+- Some error types now carry more information about the error, with error messages updated appropriately
+
 ## 2.3.3
 
 ### Added
