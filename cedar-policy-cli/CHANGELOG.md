@@ -1,9 +1,11 @@
 # Changelog
 
-## Unreleased
+## 2.4.0
 
 ### Changed
 - Input policies for `check-parse` command can be read from standard input.
+
+### Fixed
 - Duplicate policy ids in `@id` annotations cause the CLI to exit gracefully
   instead of panicking.
 
