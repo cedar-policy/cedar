@@ -296,7 +296,7 @@ impl Entity {
 
     /// Get the `ValueKind` of `attr`
     pub fn attr_kind(&self, attr: &str) -> Option<Result<ValueKind, EvaluationError>> {
-        self.attr(attr).map(|v| v.map(ValueKind::from))
+        self.attr(attr).map(|v| v.map(|x| x.value_kind()))
     }
 
     /// Convert the entity into a `EvaledEntity` by evaluating the attributes and caching the results
@@ -3489,29 +3489,32 @@ impl Record {
     }
 }
 
-impl From<Value> for ValueKind {
-    fn from(v: Value) -> Self {
-        match v.0 {
-            ast::Value::Lit(ast::Literal::Bool(b)) => Self::Bool(b),
-            ast::Value::Lit(ast::Literal::Long(i)) => Self::Long(i),
-            ast::Value::Lit(ast::Literal::String(s)) => Self::String(s.to_string()),
+impl Value {
+    /// Convert the given value into a ValueKind
+    /// This allows you to match on the value
+    pub fn value_kind(&self) -> ValueKind {
+        match &self.0 {
+            ast::Value::Lit(ast::Literal::Bool(b)) => ValueKind::Bool(*b),
+            ast::Value::Lit(ast::Literal::Long(i)) => ValueKind::Long(*i),
+            ast::Value::Lit(ast::Literal::String(s)) => ValueKind::String(s.to_string()),
             ast::Value::Lit(ast::Literal::EntityUID(e)) => {
-                Self::EntityUid(EntityUid(ast::EntityUID::clone(&e)))
+                ValueKind::EntityUid(EntityUid(ast::EntityUID::clone(e.as_ref())))
             }
-            ast::Value::Set(s) => Self::Set(Set(s
+            ast::Value::Set(s) => ValueKind::Set(Set(s
                 .authoritative
                 .iter()
                 .map(|v| Value(v.clone()))
                 .collect())),
-            ast::Value::Record(r) => Self::Record(Record(
+            ast::Value::Record(r) => ValueKind::Record(Record(
                 r.iter()
                     .map(|(k, v)| (k.to_string(), Value(v.clone())))
                     .collect(),
             )),
-            ast::Value::ExtensionValue(v) => Self::ExtensionValue(v.to_string()),
+            ast::Value::ExtensionValue(v) => ValueKind::ExtensionValue(v.to_string()),
         }
     }
 }
+
 
 impl std::fmt::Display for ValueKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -4422,7 +4425,7 @@ mod schema_based_parsing_tests {
             };
             let contact = set.iter().next().expect("should be at least one contact");
             assert!(matches!(
-                ValueKind::from(contact.clone()),
+                contact.value_kind(),
                 ValueKind::Record(_)
             ));
         };
@@ -4431,14 +4434,14 @@ mod schema_based_parsing_tests {
                 panic!("expected json_blob attr to exist and be a Record")
             };
             let inner3 = rec.get("inner3").expect("expected inner3 attr to exist");
-            let ValueKind::Record(rec) = inner3.clone().into() else {
+            let ValueKind::Record(rec) = inner3.value_kind() else {
                 panic!("expected inner3 to be a Record")
             };
             let innerinner = rec
                 .get("innerinner")
                 .expect("expected innerinner attr to exist");
             assert!(matches!(
-                ValueKind::from(innerinner.clone()),
+                innerinner.value_kind(),
                 ValueKind::Record(_)
             ));
         };
@@ -4462,7 +4465,7 @@ mod schema_based_parsing_tests {
             };
             let contact = set.iter().next().expect("should be at least one contact");
             assert!(matches!(
-                ValueKind::from(contact.clone()),
+                contact.value_kind(),
                 ValueKind::EntityUid(_)
             ));
         };
@@ -4471,14 +4474,13 @@ mod schema_based_parsing_tests {
                 panic!("expected json_blob attr to exist and be a Record")
             };
             let inner3 = rec.get("inner3").expect("expected inner3 attr to exist");
-            let ValueKind::Record(rec) = inner3.clone().into() else {
+            let ValueKind::Record(rec) = inner3.value_kind() else {
                 panic!("expected inner3 to be a Record")
             };
             let innerinner = rec
                 .get("innerinner")
-                .expect("expected innerinner attr to exist")
-                .clone();
-            assert!(matches!(innerinner.into(), ValueKind::EntityUid(_)));
+                .expect("expected innerinner attr to exist");
+            assert!(matches!(innerinner.value_kind(), ValueKind::EntityUid(_)));
         };
         assert_eq!(
             parsed.attr_kind("home_ip"),
