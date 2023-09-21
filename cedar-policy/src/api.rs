@@ -3762,12 +3762,11 @@ impl std::fmt::Display for ValueKind {
 /// passing the wrong number of arguments to a function etc.), that error is returned
 pub fn eval_expression(
     request: &Request,
-    entities: &UnevaledEntities,
+    entities: &Entities,
     expr: &Expression,
 ) -> Result<Value, EvaluationError> {
     let all_ext = Extensions::all_available();
-    let entities: entities::Entities<CorePartialValue> = entities.0.clone().eval_attrs(&all_ext)?;
-    let eval = Evaluator::new(&request.0, &entities, &all_ext)?;
+    let eval = Evaluator::new(&request.0, &entities.0, &all_ext)?;
     // Evaluate under the empty slot map, as an expression should not have slots
     eval.interpret(&expr.0, &ast::SlotEnv::new()).map(Value)
 }
