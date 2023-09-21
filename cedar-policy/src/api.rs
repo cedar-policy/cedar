@@ -1541,8 +1541,10 @@ impl FromStr for EntityUid {
     ///
     /// Examples:
     /// ```
-    /// Foo::Bar::"george"
-    /// PhotoFlash::Albums::"VacationPhotos"
+    ///  use cedar_policy::EntityUid;
+    ///  let euid : EntityUid = r#"Foo::Bar::"george""#.parse().unwrap();
+    ///  // Get the type of this euid (`Foo::Bar`)
+    ///  euid.type_name();
     /// ```
     ///
     /// This [`FromStr`] implementation requires the _normalized_ representation of the
