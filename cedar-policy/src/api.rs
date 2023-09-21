@@ -311,8 +311,19 @@ impl UnevaledEntity {
 impl Entity {
     /// Create a new `Entity` with this Uid, attributes, and parents.
     ///
-    /// Attribute values are specified here as partial values
+    /// Attribute values are specified here as restricted expressions
     pub fn new(
+        uid: EntityUid,
+        attrs: HashMap<String, RestrictedExpression>,
+        parents: HashSet<EntityUid>,
+    ) -> Result<Self, EvaluationError> {
+        UnevaledEntity::new(uid, attrs, parents).eval_attrs()
+    }
+
+    /// Create a new `Entity` with this Uid, attributes, and parents.
+    ///
+    /// Attribute values are specified here as partial values
+    pub fn new_with_values(
         uid: EntityUid,
         attrs: HashMap<String, PartialValue>,
         parents: HashSet<EntityUid>,
