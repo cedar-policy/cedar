@@ -40,11 +40,12 @@ pub enum Value {
     ExtensionValue(Arc<ExtensionValueWithArgs>),
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq, Default)]
 /// An error that can be thrown converting an expression to a value
 pub enum NotValue {
     /// General error for non-values
     #[error("Not A Value")]
+    #[default]
     NotValue,
 }
 

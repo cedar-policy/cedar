@@ -310,11 +310,6 @@ impl UnevaledEntity {
         Some(evaluator.interpret(expr.as_borrowed()).map(Value))
     }
 
-    /// Get the `ValueKind` of `attr`
-    pub fn attr_kind(&self, attr: &str) -> Option<Result<ValueKind, EvaluationError>> {
-        self.attr(attr).map(|v| v.map(|x| x.value_kind()))
-    }
-
     /// Convert the entity into a `EvaledEntity` by evaluating the attributes and caching the results
     pub fn eval_attrs(self) -> Result<Entity, EvaluationError> {
         let all_ext = Extensions::all_available();
@@ -4706,28 +4701,34 @@ mod schema_based_parsing_tests {
             assert!(matches!(innerinner.value_kind(), ValueKind::Record(_)));
         };
         // but with schema-based parsing, we get these other types
-        let parsed = UnevaledEntities::from_json_value(entitiesjson, Some(&schema))
+        let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
         assert_eq!(parsed.iter().count(), 1);
         let parsed = parsed
             .get(&EntityUid::from_strs("Employee", "12UA45"))
             .expect("that should be the employee id");
-        assert_eq!(parsed.attr("isFullTime"), Some(Ok(true.into())));
-        assert_eq!(parsed.attr("numDirectReports"), Some(Ok(3.into())));
-        assert_eq!(parsed.attr("department"), Some(Ok("Sales".into())));
+        assert_eq!(parsed.attr("isFullTime"), Some(Ok(&true.into())));
+        assert_eq!(parsed.attr("numDirectReports"), Some(Ok(&3.into())));
+        assert_eq!(parsed.attr("department"), Some(Ok(&"Sales".into())));
         assert_eq!(
             parsed.attr("manager"),
-            Some(Ok(EntityUid::from_strs("Employee", "34FB87").into()))
+            Some(Ok(&EntityUid::from_strs("Employee", "34FB87").into()))
         );
         {
-            let Some(Ok(ValueKind::Set(set))) = parsed.attr_kind("hr_contacts") else {
+            let ValueKind::Set(set) = parsed.attr("hr_contacts")
+                .expect("should have attr")
+                .expect("should be a concrete value")
+                .value_kind() else {
                 panic!("expected hr_contacts attr to exist and be a Set")
             };
             let contact = set.iter().next().expect("should be at least one contact");
             assert!(matches!(contact.value_kind(), ValueKind::EntityUid(_)));
         };
         {
-            let Some(Ok(ValueKind::Record(rec))) = parsed.attr_kind("json_blob") else {
+            let ValueKind::Record(rec) = parsed.attr("json_blob")
+                .expect("should have attr")
+                .expect("should be a concrete value")
+                .value_kind() else {
                 panic!("expected json_blob attr to exist and be a Record")
             };
             let inner3 = rec.get("inner3").expect("expected inner3 attr to exist");
@@ -4740,16 +4741,25 @@ mod schema_based_parsing_tests {
             assert!(matches!(innerinner.value_kind(), ValueKind::EntityUid(_)));
         };
         assert_eq!(
-            parsed.attr_kind("home_ip"),
-            Some(Ok(ValueKind::ExtensionValue("222.222.222.101/32".into())))
+            parsed.attr("home_ip")
+                .expect("should have attr")
+                .expect("should be a concrete value")
+                .value_kind(),
+            ValueKind::ExtensionValue("222.222.222.101/32".into())
         );
         assert_eq!(
-            parsed.attr_kind("work_ip"),
-            Some(Ok(ValueKind::ExtensionValue("2.2.2.0/24".into())))
+            parsed.attr("work_ip")
+                .expect("should have attr")
+                .expect("should be a concrete value")
+                .value_kind(),
+            ValueKind::ExtensionValue("2.2.2.0/24".into())
         );
         assert_eq!(
-            parsed.attr_kind("trust_score"),
-            Some(Ok(ValueKind::ExtensionValue("5.7000".into())))
+            parsed.attr("trust_score")
+                .expect("should have attr")
+                .expect("should be a concrete value")
+                .value_kind(),
+            ValueKind::ExtensionValue("5.7000".into())
         );
 
         // simple type mismatch with expected type
