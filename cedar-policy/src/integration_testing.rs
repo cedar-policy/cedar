@@ -33,7 +33,7 @@
 #![allow(clippy::expect_used)]
 
 use crate::{
-    frontend::is_authorized::InterfaceResponse, Authorizer, Context, Decision, Entities, EntityUid,
+    frontend::is_authorized::InterfaceResponse, Authorizer, Context, Decision, UnevaledEntities, EntityUid,
     Policy, PolicyId, PolicySet, Request, Schema, ValidationMode, Validator,
 };
 use serde::Deserialize;
@@ -229,7 +229,7 @@ pub fn perform_integration_test_from_json_custom(
         .read(true)
         .open(entity_file)
         .unwrap_or_else(|e| panic!("error opening entity file {}: {e}", &test.entities));
-    let entities = Entities::from_json_file(&entities_json, Some(&schema))
+    let entities = UnevaledEntities::from_json_file(&entities_json, Some(&schema))
         .unwrap_or_else(|e| panic!("error parsing entities in {}: {e}", &test.entities));
 
     let validation_result = if let Some(custom_impl) = custom_impl_opt {

@@ -34,6 +34,9 @@ pub enum EntitiesError {
     /// entity hierarchy.
     #[error("transitive closure computation/enforcement error: {0}")]
     TransitiveClosureError(#[from] Box<transitive_closure::TcError<EntityUID>>),
+    /// Errors that occur when evaluating restricted expressions to construct the entity
+    #[error("Attribute evaluation error: {0}")]
+    AttributeEvaluationError(#[from] crate::evaluator::EvaluationError),
 }
 
 /// An error which is thrown when an error occurs accessing an entity's attribute

@@ -22,7 +22,7 @@ use crate::api::EntityId;
 use crate::api::EntityTypeName;
 use crate::PolicyId;
 use crate::{
-    Authorizer, Context, Decision, Entities, EntityUid, ParseErrors, Policy, PolicySet, Request,
+    Authorizer, Context, Decision, UnevaledEntities, EntityUid, ParseErrors, Policy, PolicySet, Request,
     Response, Schema, SlotId, Template,
 };
 use serde::{Deserialize, Serialize};
@@ -152,7 +152,7 @@ struct AuthorizationCall {
 }
 
 impl AuthorizationCall {
-    fn get_components(self) -> Result<(Request, PolicySet, Entities), Vec<String>> {
+    fn get_components(self) -> Result<(Request, PolicySet, UnevaledEntities), Vec<String>> {
         let schema = self
             .schema
             .map(Schema::from_json_value)
@@ -230,7 +230,7 @@ struct RecvdSlice {
 
 impl RecvdSlice {
     #[allow(clippy::too_many_lines)]
-    fn try_into(self, schema: Option<&Schema>) -> Result<(PolicySet, Entities), Vec<String>> {
+    fn try_into(self, schema: Option<&Schema>) -> Result<(PolicySet, UnevaledEntities), Vec<String>> {
         fn parse_instantiation(v: &Link) -> Result<(SlotId, EntityUid), Vec<String>> {
             let slot = match v.slot.as_str() {
                 "?principal" => SlotId::principal(),
@@ -308,20 +308,20 @@ impl RecvdSlice {
         let mut errs = Vec::new();
 
         let (mut policies, entities) =
-            match (Entities::from_json_value(entities, schema), policy_set) {
+            match (UnevaledEntities::from_json_value(entities, schema), policy_set) {
                 (Ok(entities), Ok(policies)) => (policies, entities),
                 (Ok(_), Err(policy_parse_errors)) => {
                     errs.extend(policy_parse_errors);
-                    (PolicySet::new(), Entities::empty())
+                    (PolicySet::new(), UnevaledEntities::empty())
                 }
                 (Err(e), Ok(_)) => {
                     errs.push(e.to_string());
-                    (PolicySet::new(), Entities::empty())
+                    (PolicySet::new(), UnevaledEntities::empty())
                 }
                 (Err(e), Err(policy_parse_errors)) => {
                     errs.push(e.to_string());
                     errs.extend(policy_parse_errors);
-                    (PolicySet::new(), Entities::empty())
+                    (PolicySet::new(), UnevaledEntities::empty())
                 }
             };
 

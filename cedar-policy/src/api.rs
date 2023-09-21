@@ -193,15 +193,15 @@ impl std::fmt::Display for PartialValue {
 /// TODO: rename to `UnevaluatedEntity`
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, RefCast)]
-pub struct Entity(ast::Entity);
+pub struct UnevaledEntity(ast::Entity);
 
 /// Entity datatype with attributes evaluated
 /// TODO: rename to `Entity`
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, RefCast)]
-pub struct EvaledEntity(ast::Entity<CorePartialValue>);
+pub struct Entity(ast::Entity<CorePartialValue>);
 
-impl Entity {
+impl UnevaledEntity {
     /// Create a new `Entity` with this Uid, attributes, and parents.
     ///
     /// Attribute values are specified here as "restricted expressions".
@@ -300,15 +300,15 @@ impl Entity {
     }
 
     /// Convert the entity into a `EvaledEntity` by evaluating the attributes and caching the results
-    pub fn eval_attrs(self) -> Result<EvaledEntity, EvaluationError> {
+    pub fn eval_attrs(self) -> Result<Entity, EvaluationError> {
         let all_ext = Extensions::all_available();
         let evaluator = RestrictedEvaluator::new(&all_ext);
         let parsed = self.0.eval_attrs(&evaluator)?;
-        Ok(EvaledEntity(parsed))
+        Ok(Entity(parsed))
     }
 }
 
-impl EvaledEntity {
+impl Entity {
     /// Create a new `Entity` with this Uid, attributes, and parents.
     ///
     /// Attribute values are specified here as partial values
@@ -349,7 +349,7 @@ impl EvaledEntity {
     }
 }
 
-impl std::fmt::Display for Entity {
+impl std::fmt::Display for UnevaledEntity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -359,13 +359,13 @@ impl std::fmt::Display for Entity {
 /// Uid.
 #[repr(transparent)]
 #[derive(Debug, Clone, Default, PartialEq, Eq, RefCast)]
-pub struct Entities(pub(crate) entities::Entities);
+pub struct UnevaledEntities(pub(crate) entities::Entities);
 
 /// Represents an entity hierarchy, and allows looking up `Entity` objects by
 /// Uid.
 #[repr(transparent)]
 #[derive(Debug, Clone, Default, RefCast)]
-pub struct EvaledEntities(pub(crate) entities::Entities<CorePartialValue>);
+pub struct Entities(pub(crate) entities::Entities<CorePartialValue>);
 
 pub use entities::EntitiesError;
 
@@ -375,7 +375,7 @@ pub trait WholeEntityDataSource {
     type Error: std::error::Error;
 
     /// Get the `Entity` with the given Uid, if any
-    fn get<'e>(&'e self, uid: &EntityUid) -> Result<Option<Cow<'e, EvaledEntity>>, Self::Error>;
+    fn get<'e>(&'e self, uid: &EntityUid) -> Result<Option<Cow<'e, Entity>>, Self::Error>;
 
     /// Whether the database is partial
     fn partial_mode(&self) -> Mode;
@@ -453,7 +453,7 @@ impl<T: WholeEntityDataSource> EntityDataSource for T {
     }
 }
 
-impl Entities {
+impl UnevaledEntities {
     /// Create a fresh `Entities` with no entities
     /// ```
     /// use cedar_policy::Entities;
@@ -464,10 +464,10 @@ impl Entities {
     }
 
     /// Get the `Entity` with the given Uid, if any
-    pub fn get(&self, uid: &EntityUid) -> Option<&Entity> {
+    pub fn get(&self, uid: &EntityUid) -> Option<&UnevaledEntity> {
         match self.0.entity(&uid.0) {
             Dereference::Residual(_) | Dereference::NoSuchEntity => None,
-            Dereference::Data(e) => Some(Entity::ref_cast(e)),
+            Dereference::Data(e) => Some(UnevaledEntity::ref_cast(e)),
         }
     }
 
@@ -481,27 +481,27 @@ impl Entities {
     }
 
     /// Iterate over the `Entity`'s in the `Entities`
-    pub fn iter(&self) -> impl Iterator<Item = &Entity> {
-        self.0.iter().map(Entity::ref_cast)
+    pub fn iter(&self) -> impl Iterator<Item = &UnevaledEntity> {
+        self.0.iter().map(UnevaledEntity::ref_cast)
     }
 
     /// Create an `Entities` object with the given entities.
     /// It will error if the entities cannot be read or if the entities hierarchy is cyclic
     pub fn from_entities(
-        entities: impl IntoIterator<Item = Entity>,
+        entities: impl IntoIterator<Item = UnevaledEntity>,
     ) -> Result<Self, entities::EntitiesError> {
         entities::Entities::from_entities(
             entities.into_iter().map(|e| e.0),
             entities::TCComputation::ComputeNow,
         )
-        .map(Entities)
+        .map(UnevaledEntities)
     }
 
     /// Add all of the [`Entity`]s in the collection to this [`Entities`] structure, re-computing the transitive closure
     /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
     pub fn add_entities(
         self,
-        entities: impl IntoIterator<Item = Entity>,
+        entities: impl IntoIterator<Item = UnevaledEntity>,
     ) -> Result<Self, EntitiesError> {
         Ok(Self(self.0.add_entities(
             entities.into_iter().map(|e| e.0),
@@ -560,12 +560,12 @@ impl Entities {
         )?))
     }
 
-    /// Convert this into an `EvaledEntities` by evaluating all the attributes
+    /// Convert this into an `Entities` by evaluating all the attributes
     /// of all the entities in this object
-    pub fn eval_attrs(self) -> Result<EvaledEntities, EvaluationError> {
+    pub fn eval_attrs(self) -> Result<Entities, EvaluationError> {
         let all_ext = Extensions::all_available();
         let parsed = self.0.eval_attrs(&all_ext)?;
-        Ok(EvaledEntities(parsed))
+        Ok(Entities(parsed))
     }
 
     /// Parse an entities JSON file (in [`std::io::Read`] form) and add them into this [`Entities`] structure, re-computing the transitive closure
@@ -638,7 +638,7 @@ impl Entities {
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
-        eparser.from_json_str(json).map(Entities)
+        eparser.from_json_str(json).map(UnevaledEntities)
     }
 
     /// Parse an entities JSON file (in `serde_json::Value` form) into an
@@ -679,7 +679,7 @@ impl Entities {
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
-        eparser.from_json_value(json).map(Entities)
+        eparser.from_json_value(json).map(UnevaledEntities)
     }
 
     /// Parse an entities JSON file (in `std::io::Read` form) into an `Entities`
@@ -697,7 +697,7 @@ impl Entities {
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
-        eparser.from_json_file(json).map(Entities)
+        eparser.from_json_file(json).map(UnevaledEntities)
     }
 
     /// Is entity `a` an ancestor of entity `b`?
@@ -737,10 +737,10 @@ impl Entities {
     }
 }
 
-impl WholeEntityDataSource for EvaledEntities {
+impl WholeEntityDataSource for Entities {
     type Error = Infallible;
 
-    fn get<'e>(&'e self, uid: &EntityUid) -> Result<Option<Cow<'e, EvaledEntity>>, Infallible> {
+    fn get<'e>(&'e self, uid: &EntityUid) -> Result<Option<Cow<'e, Entity>>, Infallible> {
         // TODO: this will create (and immediately destroy)
         // an unused residual expression in partial mode; rework to avoid this
         Ok(self.get(uid).map(Cow::Borrowed))
@@ -751,17 +751,17 @@ impl WholeEntityDataSource for EvaledEntities {
     }
 }
 
-impl EvaledEntities {
-    /// Create a fresh `EvaledEntities` with no entities
+impl Entities {
+    /// Create a fresh `Entities` object with no entities
     pub fn empty() -> Self {
         Self(entities::Entities::new())
     }
 
     /// Get the `Entity` with the given Uid, if any
-    pub fn get(&self, uid: &EntityUid) -> Option<&EvaledEntity> {
+    pub fn get(&self, uid: &EntityUid) -> Option<&Entity> {
         match self.0.entity(&uid.0) {
             Dereference::Residual(_) | Dereference::NoSuchEntity => None,
-            Dereference::Data(e) => Some(EvaledEntity::ref_cast(e)),
+            Dereference::Data(e) => Some(Entity::ref_cast(e)),
         }
     }
 
@@ -775,20 +775,20 @@ impl EvaledEntities {
     }
 
     /// Iterate over the `Entity`'s in the `Entities`
-    pub fn iter(&self) -> impl Iterator<Item = &EvaledEntity> {
-        self.0.iter().map(EvaledEntity::ref_cast)
+    pub fn iter(&self) -> impl Iterator<Item = &Entity> {
+        self.0.iter().map(Entity::ref_cast)
     }
 
     /// Create an `Entities` object with the given entities
     /// It will error if the entities cannot be read or if the entities hierarchy is cyclic
     pub fn from_entities(
-        entities: impl IntoIterator<Item = EvaledEntity>,
+        entities: impl IntoIterator<Item = Entity>,
     ) -> Result<Self, entities::EntitiesError> {
         entities::Entities::from_entities(
             entities.into_iter().map(|e| e.0),
             entities::TCComputation::ComputeNow,
         )
-        .map(EvaledEntities)
+        .map(Entities)
     }
 
     /// Is entity `a` an ancestor of entity `b`?
@@ -968,7 +968,7 @@ impl Authorizer {
     /// let r = authorizer.is_authorized(&request, &policy, &entities);
     /// println!("{:?}", r);
     /// ```
-    pub fn is_authorized(&self, r: &Request, p: &PolicySet, e: &Entities) -> Response {
+    pub fn is_authorized(&self, r: &Request, p: &PolicySet, e: &UnevaledEntities) -> Response {
         self.0.is_authorized_old(&r.0, &p.ast, &e.0).into()
     }
 
@@ -1033,7 +1033,7 @@ impl Authorizer {
         &self,
         query: &Request,
         policy_set: &PolicySet,
-        entities: &Entities,
+        entities: &UnevaledEntities,
     ) -> PartialResponse {
         let response = self
             .0
@@ -1442,8 +1442,8 @@ impl Schema {
 
     /// Extract from the schema an `Entities` containing the action entities
     /// declared in the schema.
-    pub fn action_entities(&self) -> Result<Entities, entities::EntitiesError> {
-        Ok(Entities(self.0.action_entities()?))
+    pub fn action_entities(&self) -> Result<UnevaledEntities, entities::EntitiesError> {
+        Ok(UnevaledEntities(self.0.action_entities()?))
     }
 }
 
@@ -3555,7 +3555,7 @@ impl std::fmt::Display for ValueKind {
 /// passing the wrong number of arguments to a function etc.), that error is returned
 pub fn eval_expression(
     request: &Request,
-    entities: &Entities,
+    entities: &UnevaledEntities,
     expr: &Expression,
 ) -> Result<Value, EvaluationError> {
     let all_ext = Extensions::all_available();
@@ -4295,18 +4295,18 @@ mod ancestors_tests {
         let a_euid: EntityUid = EntityUid::from_strs("test", "A");
         let b_euid: EntityUid = EntityUid::from_strs("test", "b");
         let c_euid: EntityUid = EntityUid::from_strs("test", "C");
-        let a = Entity::new(a_euid.clone(), HashMap::new(), HashSet::new());
-        let b = Entity::new(
+        let a = UnevaledEntity::new(a_euid.clone(), HashMap::new(), HashSet::new());
+        let b = UnevaledEntity::new(
             b_euid.clone(),
             HashMap::new(),
             std::iter::once(a_euid.clone()).collect(),
         );
-        let c = Entity::new(
+        let c = UnevaledEntity::new(
             c_euid.clone(),
             HashMap::new(),
             std::iter::once(b_euid.clone()).collect(),
         );
-        let es = Entities::from_entities([a, b, c]).unwrap();
+        let es = UnevaledEntities::from_entities([a, b, c]).unwrap();
         let ans = es.ancestors(&c_euid).unwrap().collect::<HashSet<_>>();
         assert_eq!(ans.len(), 2);
         assert!(ans.contains(&b_euid));
@@ -4403,7 +4403,7 @@ mod schema_based_parsing_tests {
         // without schema-based parsing, `home_ip` and `trust_score` are
         // strings, `manager` and `work_ip` are Records, `hr_contacts` contains
         // Records, and `json_blob.inner3.innerinner` is a Record
-        let parsed = Entities::from_json_value(entitiesjson.clone(), None)
+        let parsed = UnevaledEntities::from_json_value(entitiesjson.clone(), None)
             .expect("Should parse without error");
         assert_eq!(parsed.iter().count(), 1);
         let parsed = parsed
@@ -4446,7 +4446,7 @@ mod schema_based_parsing_tests {
             ));
         };
         // but with schema-based parsing, we get these other types
-        let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
+        let parsed = UnevaledEntities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
         assert_eq!(parsed.iter().count(), 1);
         let parsed = parsed
@@ -4523,7 +4523,7 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
-        let err = Entities::from_json_value(entitiesjson, Some(&schema))
+        let err = UnevaledEntities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on numDirectReports");
         assert!(
             err.to_string().contains(r#"in attribute "numDirectReports" on Employee::"12UA45", type mismatch: attribute was expected to have type long, but actually has type string"#),
@@ -4558,7 +4558,7 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
-        let err = Entities::from_json_value(entitiesjson, Some(&schema))
+        let err = UnevaledEntities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on manager");
         assert!(
             err.to_string()
@@ -4591,7 +4591,7 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
-        let err = Entities::from_json_value(entitiesjson, Some(&schema))
+        let err = UnevaledEntities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on hr_contacts");
         assert!(
             err.to_string().contains(r#"in attribute "hr_contacts" on Employee::"12UA45", type mismatch: attribute was expected to have type (set of (entity of type HR)), but actually has type record with attributes: ("#),
@@ -4626,7 +4626,7 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
-        let err = Entities::from_json_value(entitiesjson, Some(&schema))
+        let err = UnevaledEntities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on manager");
         assert!(
             err.to_string().contains(r#"in attribute "manager" on Employee::"12UA45", type mismatch: attribute was expected to have type (entity of type Employee), but actually has type (entity of type HR)"#),
@@ -4662,7 +4662,7 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
-        let err = Entities::from_json_value(entitiesjson, Some(&schema))
+        let err = UnevaledEntities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on home_ip");
         assert!(
             err.to_string().contains(r#"in attribute "home_ip" on Employee::"12UA45", type mismatch: attribute was expected to have type ipaddr, but actually has type decimal"#),
@@ -4696,7 +4696,7 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
-        let err = Entities::from_json_value(entitiesjson, Some(&schema))
+        let err = UnevaledEntities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to missing attribute \"inner2\"");
         assert!(
             err.to_string().contains(r#"in attribute "json_blob" on Employee::"12UA45", expected the record to have an attribute "inner2", but it doesn't"#),
@@ -4731,7 +4731,7 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
-        let err = Entities::from_json_value(entitiesjson, Some(&schema))
+        let err = UnevaledEntities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on attribute \"inner1\"");
         assert!(
             err.to_string().contains(r#"in attribute "json_blob" on Employee::"12UA45", type mismatch: attribute was expected to have type record with attributes: "#),
@@ -4766,7 +4766,7 @@ mod schema_based_parsing_tests {
             ]
         );
 
-        Entities::from_json_value(entitiesjson, Some(&schema))
+        UnevaledEntities::from_json_value(entitiesjson, Some(&schema))
             .expect("this version with explicit __entity and __extn escapes should also pass");
     }
 
@@ -4813,7 +4813,7 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
-        let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
+        let parsed = UnevaledEntities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
         assert_eq!(parsed.iter().count(), 1);
         let parsed = parsed
@@ -4841,7 +4841,7 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
-        let err = Entities::from_json_value(entitiesjson, Some(&schema))
+        let err = UnevaledEntities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to manager being wrong entity type (missing namespace)");
         assert!(
             err.to_string().contains(r#"in attribute "manager" on XYZCorp::Employee::"12UA45", type mismatch: attribute was expected to have type (entity of type XYZCorp::Employee), but actually has type (entity of type Employee)"#),
@@ -4890,7 +4890,7 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
-        let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
+        let parsed = UnevaledEntities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
         assert_eq!(parsed.iter().count(), 1);
 
@@ -4907,7 +4907,7 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
-        let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
+        let parsed = UnevaledEntities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
         assert_eq!(parsed.iter().count(), 1);
     }
@@ -4957,7 +4957,7 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
-        let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
+        let parsed = UnevaledEntities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
         assert_eq!(parsed.iter().count(), 1);
 
@@ -4975,7 +4975,7 @@ mod schema_based_parsing_tests {
                 }
             ]
         );
-        let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
+        let parsed = UnevaledEntities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
         assert_eq!(parsed.iter().count(), 1);
     }
@@ -5222,24 +5222,24 @@ mod schema_based_parsing_tests {
 
         assert_eq!(
             action_entities,
-            Entities::from_entities([
-                Entity::new(a_euid.clone(), HashMap::new(), HashSet::new()),
-                Entity::new(
+            UnevaledEntities::from_entities([
+                UnevaledEntity::new(a_euid.clone(), HashMap::new(), HashSet::new()),
+                UnevaledEntity::new(
                     b_euid.clone(),
                     HashMap::new(),
                     HashSet::from([a_euid.clone()])
                 ),
-                Entity::new(
+                UnevaledEntity::new(
                     c_euid.clone(),
                     HashMap::new(),
                     HashSet::from([a_euid.clone()])
                 ),
-                Entity::new(
+                UnevaledEntity::new(
                     d_euid.clone(),
                     HashMap::new(),
                     HashSet::from([a_euid.clone(), b_euid.clone(), c_euid.clone()])
                 ),
-                Entity::new(
+                UnevaledEntity::new(
                     e_euid,
                     HashMap::new(),
                     HashSet::from([a_euid, b_euid, c_euid, d_euid])

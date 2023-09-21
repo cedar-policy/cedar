@@ -17,7 +17,7 @@
 use std::str::FromStr;
 
 use cedar_policy::{
-    Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid, Policy, PolicySet, Request,
+    Authorizer, Context, UnevaledEntities, EntityId, EntityTypeName, EntityUid, Policy, PolicySet, Request,
     RestrictedExpression,
 };
 
@@ -88,7 +88,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     ]
     "#;
 
-    let entities = Entities::from_json_str(entity_json, None).unwrap();
+    let entities = UnevaledEntities::from_json_str(entity_json, None).unwrap();
 
     // Set up request entity refs
     let principal = EntityUid::from_type_name_and_id(

@@ -86,7 +86,7 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
         }
     ]
     "#;
-    let entities = Entities::from_json_str(entity_json, None)?;
+    let entities = UnevaledEntities::from_json_str(entity_json, None)?;
 
     // Set up request entity refs
     let principal = EntityUid::from_type_name_and_id(
@@ -185,7 +185,7 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
 #[test]
 fn expression_eval_1() -> Result<(), Box<dyn Error>> {
     let entity_json = r#"[ ]"#;
-    let entities = Entities::from_json_str(entity_json, None)?;
+    let entities = UnevaledEntities::from_json_str(entity_json, None)?;
 
     // Set up request entity refs
     let principal = EntityUid::from_type_name_and_id(
@@ -230,7 +230,7 @@ fn expression_eval_attr() -> Result<(), Box<dyn Error>> {
         "parents": []
         }
     ]"#;
-    let entities = Entities::from_json_str(entity_json, None)?;
+    let entities = UnevaledEntities::from_json_str(entity_json, None)?;
 
     // Set up request entity refs
     let principal = EntityUid::from_type_name_and_id(
@@ -274,7 +274,7 @@ fn expression_eval_context() -> Result<(), Box<dyn Error>> {
         "parents": []
         }
     ]"#;
-    let entities = Entities::from_json_str(entity_json, None)?;
+    let entities = UnevaledEntities::from_json_str(entity_json, None)?;
 
     // Set up request entity refs
     let principal = EntityUid::from_type_name_and_id(
