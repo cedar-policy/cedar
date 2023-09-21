@@ -2199,17 +2199,32 @@ impl EntityUid {
     }
 }
 
-// This FromStr implementation requires the _normalized_ representation of the
-// UID. See https://github.com/cedar-policy/rfcs/pull/9/.
 impl FromStr for EntityUid {
     type Err = ParseErrors;
 
-    /// This is deprecated (starting with Cedar 1.2); use
-    /// `EntityUid::from_type_name_and_id()` or `EntityUid::from_json()`
-    /// instead.
-    //
-    // You can't actually `#[deprecated]` a trait implementation or trait
-    // method.
+    /// Parse an [`EntityUid`].
+    ///
+    /// An [`EntityUid`] consists of an [`EntityTypeName`] followed by a quoted [`EntityId`].
+    /// The two are joined by a `::`.
+    /// For the formal grammar, see <https://docs.cedarpolicy.com/policies/syntax-grammar.html#entity>
+    ///
+    /// Examples:
+    /// ```
+    ///  use cedar_policy::EntityUid;
+    ///  let euid: EntityUid = r#"Foo::Bar::"george""#.parse().unwrap();
+    ///  // Get the type of this euid (`Foo::Bar`)
+    ///  euid.type_name();
+    ///  // Or the id
+    ///  euid.id();
+    /// ```
+    ///
+    /// This [`FromStr`] implementation requires the _normalized_ representation of the
+    /// UID. See <https://github.com/cedar-policy/rfcs/pull/9/>.
+    ///
+    /// A note on safety:
+    ///
+    /// __DO NOT__ create [`EntityUid`]'s via string concatenation.
+    /// If you have separate components of an [`EntityUid`], use [`EntityUid::from_type_name_and_id`]
     fn from_str(uid_str: &str) -> Result<Self, Self::Err> {
         ast::EntityUID::from_normalized_str(uid_str).map(EntityUid)
     }
