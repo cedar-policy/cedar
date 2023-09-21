@@ -1542,7 +1542,7 @@ impl FromStr for EntityUid {
     /// Examples:
     /// ```
     ///  use cedar_policy::EntityUid;
-    ///  let euid : EntityUid = r#"Foo::Bar::"george""#.parse().unwrap();
+    ///  let euid: EntityUid = r#"Foo::Bar::"george""#.parse().unwrap();
     ///  // Get the type of this euid (`Foo::Bar`)
     ///  euid.type_name();
     /// ```
