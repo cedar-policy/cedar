@@ -4680,7 +4680,8 @@ mod schema_based_parsing_tests {
             ValueKind::Record(_)
         ));
         {
-            let ValueKind::Set(set) = parsed.attr("hr_contacts")
+            let ValueKind::Set(set) = parsed
+                .attr("hr_contacts")
                 .expect("should have attr")
                 .expect("should be a concrete value")
                 .value_kind() else {
@@ -4690,7 +4691,8 @@ mod schema_based_parsing_tests {
             assert!(matches!(contact.value_kind(), ValueKind::Record(_)));
         };
         {
-            let ValueKind::Record(rec) = parsed.attr("json_blob")
+            let ValueKind::Record(rec) = parsed
+                .attr("json_blob")
                 .expect("should have attr")
                 .expect("should be a concrete value")
                 .value_kind() else {
@@ -4720,7 +4722,8 @@ mod schema_based_parsing_tests {
             Some(Ok(&EntityUid::from_strs("Employee", "34FB87").into()))
         );
         {
-            let ValueKind::Set(set) = parsed.attr("hr_contacts")
+            let ValueKind::Set(set) = parsed
+                .attr("hr_contacts")
                 .expect("should have attr")
                 .expect("should be a concrete value")
                 .value_kind() else {
@@ -4730,7 +4733,8 @@ mod schema_based_parsing_tests {
             assert!(matches!(contact.value_kind(), ValueKind::EntityUid(_)));
         };
         {
-            let ValueKind::Record(rec) = parsed.attr("json_blob")
+            let ValueKind::Record(rec) = parsed
+                .attr("json_blob")
                 .expect("should have attr")
                 .expect("should be a concrete value")
                 .value_kind() else {
