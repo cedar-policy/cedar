@@ -195,7 +195,9 @@ impl PartialValue {
 
     /// Get the partial value as a value
     pub fn try_as_value(&self) -> Result<&Value, NotValue> {
-        self.as_value_or_expression().left().ok_or(NotValue::NotValue)
+        self.as_value_or_expression()
+            .left()
+            .ok_or(NotValue::NotValue)
     }
 }
 
@@ -4656,7 +4658,10 @@ mod schema_based_parsing_tests {
         let parsed = parsed
             .get(&EntityUid::from_strs("Employee", "12UA45"))
             .expect("that should be the employee id");
-        assert_eq!(parsed.attr_partial("home_ip"), Some(&"222.222.222.101".into()));
+        assert_eq!(
+            parsed.attr_partial("home_ip"),
+            Some(&"222.222.222.101".into())
+        );
         assert_eq!(parsed.attr_partial("trust_score"), Some(&"5.7".into()));
         assert!(matches!(
             parsed
@@ -4741,21 +4746,24 @@ mod schema_based_parsing_tests {
             assert!(matches!(innerinner.value_kind(), ValueKind::EntityUid(_)));
         };
         assert_eq!(
-            parsed.attr("home_ip")
+            parsed
+                .attr("home_ip")
                 .expect("should have attr")
                 .expect("should be a concrete value")
                 .value_kind(),
             ValueKind::ExtensionValue("222.222.222.101/32".into())
         );
         assert_eq!(
-            parsed.attr("work_ip")
+            parsed
+                .attr("work_ip")
                 .expect("should have attr")
                 .expect("should be a concrete value")
                 .value_kind(),
             ValueKind::ExtensionValue("2.2.2.0/24".into())
         );
         assert_eq!(
-            parsed.attr("trust_score")
+            parsed
+                .attr("trust_score")
                 .expect("should have attr")
                 .expect("should be a concrete value")
                 .value_kind(),
