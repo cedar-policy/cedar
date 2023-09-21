@@ -4684,7 +4684,8 @@ mod schema_based_parsing_tests {
                 .attr("hr_contacts")
                 .expect("should have attr")
                 .expect("should be a concrete value")
-                .value_kind() else {
+                .value_kind()
+            else {
                 panic!("expected hr_contacts attr to be a Set")
             };
             let contact = set.iter().next().expect("should be at least one contact");
@@ -4695,7 +4696,8 @@ mod schema_based_parsing_tests {
                 .attr("json_blob")
                 .expect("should have attr")
                 .expect("should be a concrete value")
-                .value_kind() else {
+                .value_kind()
+            else {
                 panic!("expected json_blob attr to be a Record")
             };
             let inner3 = rec.get("inner3").expect("expected inner3 attr to exist");
@@ -4726,7 +4728,8 @@ mod schema_based_parsing_tests {
                 .attr("hr_contacts")
                 .expect("should have attr")
                 .expect("should be a concrete value")
-                .value_kind() else {
+                .value_kind()
+            else {
                 panic!("expected hr_contacts attr to exist and be a Set")
             };
             let contact = set.iter().next().expect("should be at least one contact");
@@ -4737,7 +4740,8 @@ mod schema_based_parsing_tests {
                 .attr("json_blob")
                 .expect("should have attr")
                 .expect("should be a concrete value")
-                .value_kind() else {
+                .value_kind()
+            else {
                 panic!("expected json_blob attr to exist and be a Record")
             };
             let inner3 = rec.get("inner3").expect("expected inner3 attr to exist");
