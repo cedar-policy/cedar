@@ -48,6 +48,7 @@ use cedar_policy_core::FromNormalizedStr;
 pub use cedar_policy_validator::{
     TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
 };
+use itertools::Either;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -110,7 +111,7 @@ impl std::fmt::Display for Value {
 
 /// A Cedar partial value
 /// This is the result of partial evaluation of an expression
-#[derive(Debug, Clone, RefCast)]
+#[derive(Debug, Clone, PartialEq, Eq, RefCast)]
 #[repr(transparent)]
 pub struct PartialValue(pub(crate) CorePartialValue);
 
@@ -180,6 +181,21 @@ impl TryFrom<PartialValue> for Value {
 
     fn try_from(value: PartialValue) -> Result<Self, Self::Error> {
         value.0.try_into().map(Value)
+    }
+}
+
+impl PartialValue {
+    /// Get the partial value as a value or as a residual expression
+    pub fn as_value_or_expression(&self) -> Either<&Value, &Expression> {
+        match &self.0 {
+            CorePartialValue::Value(v) => Either::Left(Value::ref_cast(v)),
+            CorePartialValue::Residual(e) => Either::Right(Expression::ref_cast(e)),
+        }
+    }
+
+    /// Get the partial value as a value
+    pub fn try_as_value(&self) -> Option<&Value> {
+        self.as_value_or_expression().left()
     }
 }
 
@@ -802,7 +818,6 @@ impl Entities {
         .map(Entities)
     }
 
-
     /// Add all of the [`Entity`]s in the collection to this [`Entities`] structure, re-computing the transitive closure
     /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
     pub fn add_entities(
@@ -945,7 +960,8 @@ impl Entities {
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
-        eparser.from_json_str(json)
+        eparser
+            .from_json_str(json)
             .and_then(|e| Ok(Entities(e.eval_attrs(&Extensions::all_available())?)))
     }
 
@@ -987,7 +1003,8 @@ impl Entities {
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
-        eparser.from_json_value(json)
+        eparser
+            .from_json_value(json)
             .and_then(|e| Ok(Entities(e.eval_attrs(&Extensions::all_available())?)))
     }
 
@@ -1006,7 +1023,8 @@ impl Entities {
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
-        eparser.from_json_file(json)
+        eparser
+            .from_json_file(json)
             .and_then(|e| Ok(Entities(e.eval_attrs(&Extensions::all_available())?)))
     }
 
@@ -1187,7 +1205,12 @@ impl Authorizer {
     /// let r = authorizer.is_authorized(&request, &policy, &entities);
     /// println!("{:?}", r);
     /// ```
-    pub fn is_authorized_unevaled(&self, r: &Request, p: &PolicySet, e: &UnevaledEntities) -> Response {
+    pub fn is_authorized_unevaled(
+        &self,
+        r: &Request,
+        p: &PolicySet,
+        e: &UnevaledEntities,
+    ) -> Response {
         self.0.is_authorized_old(&r.0, &p.ast, &e.0).into()
     }
 
@@ -3740,7 +3763,6 @@ impl Value {
     }
 }
 
-
 impl std::fmt::Display for ValueKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -4519,18 +4541,18 @@ mod ancestors_tests {
         let a_euid: EntityUid = EntityUid::from_strs("test", "A");
         let b_euid: EntityUid = EntityUid::from_strs("test", "b");
         let c_euid: EntityUid = EntityUid::from_strs("test", "C");
-        let a = UnevaledEntity::new(a_euid.clone(), HashMap::new(), HashSet::new());
-        let b = UnevaledEntity::new(
+        let a = Entity::new_with_values(a_euid.clone(), HashMap::new(), HashSet::new());
+        let b = Entity::new_with_values(
             b_euid.clone(),
             HashMap::new(),
             std::iter::once(a_euid.clone()).collect(),
         );
-        let c = UnevaledEntity::new(
+        let c = Entity::new_with_values(
             c_euid.clone(),
             HashMap::new(),
             std::iter::once(b_euid.clone()).collect(),
         );
-        let es = UnevaledEntities::from_entities([a, b, c]).unwrap();
+        let es = Entities::from_entities([a, b, c]).unwrap();
         let ans = es.ancestors(&c_euid).unwrap().collect::<HashSet<_>>();
         assert_eq!(ans.len(), 2);
         assert!(ans.contains(&b_euid));
@@ -4627,35 +4649,50 @@ mod schema_based_parsing_tests {
         // without schema-based parsing, `home_ip` and `trust_score` are
         // strings, `manager` and `work_ip` are Records, `hr_contacts` contains
         // Records, and `json_blob.inner3.innerinner` is a Record
-        let parsed = UnevaledEntities::from_json_value(entitiesjson.clone(), None)
+        let parsed = Entities::from_json_value(entitiesjson.clone(), None)
             .expect("Should parse without error");
         assert_eq!(parsed.iter().count(), 1);
         let parsed = parsed
             .get(&EntityUid::from_strs("Employee", "12UA45"))
             .expect("that should be the employee id");
-        assert_eq!(parsed.attr("home_ip"), Some(Ok("222.222.222.101".into())));
-        assert_eq!(parsed.attr("trust_score"), Some(Ok("5.7".into())));
+        assert_eq!(parsed.attr("home_ip"), Some(&"222.222.222.101".into()));
+        assert_eq!(parsed.attr("trust_score"), Some(&"5.7".into()));
         assert!(matches!(
-            parsed.attr_kind("manager"),
-            Some(Ok(ValueKind::Record(_)))
+            parsed
+                .attr("manager")
+                .expect("should have attr")
+                .try_as_value()
+                .expect("should be a concrete value")
+                .value_kind(),
+            ValueKind::Record(_)
         ));
         assert!(matches!(
-            parsed.attr_kind("work_ip"),
-            Some(Ok(ValueKind::Record(_)))
+            parsed
+                .attr("work_ip")
+                .expect("should have attr")
+                .try_as_value()
+                .expect("should be a concrete value")
+                .value_kind(),
+            ValueKind::Record(_)
         ));
         {
-            let Some(Ok(ValueKind::Set(set))) = parsed.attr_kind("hr_contacts") else {
-                panic!("expected hr_contacts attr to exist and be a Set")
+            let ValueKind::Set(set) = parsed.attr("hr_contacts")
+                .expect("should have attr")
+                .try_as_value()
+                .expect("should be a concrete value")
+                .value_kind() else {
+                panic!("expected hr_contacts attr to be a Set")
             };
             let contact = set.iter().next().expect("should be at least one contact");
-            assert!(matches!(
-                contact.value_kind(),
-                ValueKind::Record(_)
-            ));
+            assert!(matches!(contact.value_kind(), ValueKind::Record(_)));
         };
         {
-            let Some(Ok(ValueKind::Record(rec))) = parsed.attr_kind("json_blob") else {
-                panic!("expected json_blob attr to exist and be a Record")
+            let ValueKind::Record(rec) = parsed.attr("json_blob")
+                .expect("should have attr")
+                .try_as_value()
+                .expect("should be a concrete value")
+                .value_kind() else {
+                panic!("expected json_blob attr to be a Record")
             };
             let inner3 = rec.get("inner3").expect("expected inner3 attr to exist");
             let ValueKind::Record(rec) = inner3.value_kind() else {
@@ -4664,10 +4701,7 @@ mod schema_based_parsing_tests {
             let innerinner = rec
                 .get("innerinner")
                 .expect("expected innerinner attr to exist");
-            assert!(matches!(
-                innerinner.value_kind(),
-                ValueKind::Record(_)
-            ));
+            assert!(matches!(innerinner.value_kind(), ValueKind::Record(_)));
         };
         // but with schema-based parsing, we get these other types
         let parsed = UnevaledEntities::from_json_value(entitiesjson, Some(&schema))
@@ -4688,10 +4722,7 @@ mod schema_based_parsing_tests {
                 panic!("expected hr_contacts attr to exist and be a Set")
             };
             let contact = set.iter().next().expect("should be at least one contact");
-            assert!(matches!(
-                contact.value_kind(),
-                ValueKind::EntityUid(_)
-            ));
+            assert!(matches!(contact.value_kind(), ValueKind::EntityUid(_)));
         };
         {
             let Some(Ok(ValueKind::Record(rec))) = parsed.attr_kind("json_blob") else {
