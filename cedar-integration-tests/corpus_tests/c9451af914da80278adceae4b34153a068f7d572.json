@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "FwwwQwww::A::a::\"\"",
-      "action": "FwwwQwww::A::Action::\"action\"",
-      "resource": "FwwwQwww::A::a::\"\"",
+      "principal": {
+        "type": "FwwwQwww::A::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "FwwwQwww::A::a",
+        "id": ""
+      },
+      "action": {
+        "type": "FwwwQwww::A::Action",
+        "id": "action"
+      },
       "context": {
         "AY00000000": "",
         "DlcYqrwwww": ""
@@ -21,9 +30,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "FwwwQwww::A::a::\"\"",
-      "action": "FwwwQwww::A::Action::\"action\"",
-      "resource": "FwwwQwww::A::a::\"\"",
+      "principal": {
+        "type": "FwwwQwww::A::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "FwwwQwww::A::a",
+        "id": ""
+      },
+      "action": {
+        "type": "FwwwQwww::A::Action",
+        "id": "action"
+      },
       "context": {
         "AY00000000": "",
         "DlcYqrwwww": ""
@@ -36,9 +54,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "FwwwQwww::A::a::\"\"",
-      "action": "FwwwQwww::A::Action::\"action\"",
-      "resource": "FwwwQwww::A::a::\"\"",
+      "principal": {
+        "type": "FwwwQwww::A::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "FwwwQwww::A::a",
+        "id": ""
+      },
+      "action": {
+        "type": "FwwwQwww::A::Action",
+        "id": "action"
+      },
       "context": {
         "AY00000000": "",
         "DlcYqrwwww": ""
@@ -51,9 +78,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "FwwwQwww::A::a::\"\"",
-      "action": "FwwwQwww::A::Action::\"action\"",
-      "resource": "FwwwQwww::A::a::\"\"",
+      "principal": {
+        "type": "FwwwQwww::A::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "FwwwQwww::A::a",
+        "id": ""
+      },
+      "action": {
+        "type": "FwwwQwww::A::Action",
+        "id": "action"
+      },
       "context": {
         "AY00000000": "",
         "DlcYqrwwww": ""
@@ -66,9 +102,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "FwwwQwww::A::a::\"\"",
-      "action": "FwwwQwww::A::Action::\"action\"",
-      "resource": "FwwwQwww::A::a::\"\"",
+      "principal": {
+        "type": "FwwwQwww::A::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "FwwwQwww::A::a",
+        "id": ""
+      },
+      "action": {
+        "type": "FwwwQwww::A::Action",
+        "id": "action"
+      },
       "context": {
         "AY00000000": "",
         "DlcYqrwwww": ""
@@ -81,9 +126,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "FwwwQwww::A::a::\"\"",
-      "action": "FwwwQwww::A::Action::\"action\"",
-      "resource": "FwwwQwww::A::a::\"\"",
+      "principal": {
+        "type": "FwwwQwww::A::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "FwwwQwww::A::a",
+        "id": ""
+      },
+      "action": {
+        "type": "FwwwQwww::A::Action",
+        "id": "action"
+      },
       "context": {
         "AY00000000": "",
         "DlcYqrwwww": ""
@@ -96,9 +150,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "FwwwQwww::A::a::\"\"",
-      "action": "FwwwQwww::A::Action::\"action\"",
-      "resource": "FwwwQwww::A::a::\"\"",
+      "principal": {
+        "type": "FwwwQwww::A::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "FwwwQwww::A::a",
+        "id": ""
+      },
+      "action": {
+        "type": "FwwwQwww::A::Action",
+        "id": "action"
+      },
       "context": {
         "AY00000000": "",
         "DlcYqrwwww": ""
@@ -111,9 +174,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "FwwwQwww::A::a::\"\"",
-      "action": "FwwwQwww::A::Action::\"action\"",
-      "resource": "FwwwQwww::A::a::\"\"",
+      "principal": {
+        "type": "FwwwQwww::A::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "FwwwQwww::A::a",
+        "id": ""
+      },
+      "action": {
+        "type": "FwwwQwww::A::Action",
+        "id": "action"
+      },
       "context": {
         "AY00000000": "",
         "DlcYqrwwww": ""

@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "_AmdWmXb0g::Cga::a::\"j\\0\"",
-      "action": "_AmdWmXb0g::Cga::Action::\"action\"",
-      "resource": "_AmdWmXb0g::Cga::a::\"j\\0\"",
+      "principal": {
+        "type": "_AmdWmXb0g::Cga::a",
+        "id": "j\u0000"
+      },
+      "resource": {
+        "type": "_AmdWmXb0g::Cga::a",
+        "id": "j\u0000"
+      },
+      "action": {
+        "type": "_AmdWmXb0g::Cga::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -18,9 +27,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "_AmdWmXb0g::Cga::a::\"j\\0\"",
-      "action": "_AmdWmXb0g::Cga::Action::\"action\"",
-      "resource": "_AmdWmXb0g::Cga::a::\"j\\0\"",
+      "principal": {
+        "type": "_AmdWmXb0g::Cga::a",
+        "id": "j\u0000"
+      },
+      "resource": {
+        "type": "_AmdWmXb0g::Cga::a",
+        "id": "j\u0000"
+      },
+      "action": {
+        "type": "_AmdWmXb0g::Cga::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -30,9 +48,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "_AmdWmXb0g::Cga::a::\"j\\0\"",
-      "action": "_AmdWmXb0g::Cga::Action::\"action\"",
-      "resource": "_AmdWmXb0g::Cga::a::\"j\\0\"",
+      "principal": {
+        "type": "_AmdWmXb0g::Cga::a",
+        "id": "j\u0000"
+      },
+      "resource": {
+        "type": "_AmdWmXb0g::Cga::a",
+        "id": "j\u0000"
+      },
+      "action": {
+        "type": "_AmdWmXb0g::Cga::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -42,9 +69,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "_AmdWmXb0g::Cga::a::\"j\\0\"",
-      "action": "_AmdWmXb0g::Cga::Action::\"action\"",
-      "resource": "_AmdWmXb0g::Cga::a::\"j\\0\"",
+      "principal": {
+        "type": "_AmdWmXb0g::Cga::a",
+        "id": "j\u0000"
+      },
+      "resource": {
+        "type": "_AmdWmXb0g::Cga::a",
+        "id": "j\u0000"
+      },
+      "action": {
+        "type": "_AmdWmXb0g::Cga::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -54,9 +90,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "_AmdWmXb0g::Cga::a::\"j\\0\"",
-      "action": "_AmdWmXb0g::Cga::Action::\"action\"",
-      "resource": "_AmdWmXb0g::Cga::a::\"j\\0\"",
+      "principal": {
+        "type": "_AmdWmXb0g::Cga::a",
+        "id": "j\u0000"
+      },
+      "resource": {
+        "type": "_AmdWmXb0g::Cga::a",
+        "id": "j\u0000"
+      },
+      "action": {
+        "type": "_AmdWmXb0g::Cga::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -66,9 +111,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "_AmdWmXb0g::Cga::a::\"j\\0\"",
-      "action": "_AmdWmXb0g::Cga::Action::\"action\"",
-      "resource": "_AmdWmXb0g::Cga::a::\"j\\0\"",
+      "principal": {
+        "type": "_AmdWmXb0g::Cga::a",
+        "id": "j\u0000"
+      },
+      "resource": {
+        "type": "_AmdWmXb0g::Cga::a",
+        "id": "j\u0000"
+      },
+      "action": {
+        "type": "_AmdWmXb0g::Cga::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -78,9 +132,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "_AmdWmXb0g::Cga::a::\"j\\0\"",
-      "action": "_AmdWmXb0g::Cga::Action::\"action\"",
-      "resource": "_AmdWmXb0g::Cga::a::\"j\\0\"",
+      "principal": {
+        "type": "_AmdWmXb0g::Cga::a",
+        "id": "j\u0000"
+      },
+      "resource": {
+        "type": "_AmdWmXb0g::Cga::a",
+        "id": "j\u0000"
+      },
+      "action": {
+        "type": "_AmdWmXb0g::Cga::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -90,9 +153,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "_AmdWmXb0g::Cga::a::\"j\\0\"",
-      "action": "_AmdWmXb0g::Cga::Action::\"action\"",
-      "resource": "_AmdWmXb0g::Cga::a::\"j\\0\"",
+      "principal": {
+        "type": "_AmdWmXb0g::Cga::a",
+        "id": "j\u0000"
+      },
+      "resource": {
+        "type": "_AmdWmXb0g::Cga::a",
+        "id": "j\u0000"
+      },
+      "action": {
+        "type": "_AmdWmXb0g::Cga::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [

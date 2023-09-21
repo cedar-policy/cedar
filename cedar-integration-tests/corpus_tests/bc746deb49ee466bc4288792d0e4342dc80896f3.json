@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "l6y2Uuwwwwww::a::\"\"",
-      "action": "l6y2Uuwwwwww::Action::\"action\"",
-      "resource": "l6y2Uuwwwwww::a::\"\"",
+      "principal": {
+        "type": "l6y2Uuwwwwww::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l6y2Uuwwwwww::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l6y2Uuwwwwww::Action",
+        "id": "action"
+      },
       "context": {
         "wwQ2wmmmmmm": false
       },
@@ -20,9 +29,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "l6y2Uuwwwwww::a::\"\"",
-      "action": "l6y2Uuwwwwww::Action::\"action\"",
-      "resource": "l6y2Uuwwwwww::a::\"\"",
+      "principal": {
+        "type": "l6y2Uuwwwwww::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l6y2Uuwwwwww::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l6y2Uuwwwwww::Action",
+        "id": "action"
+      },
       "context": {
         "wwQ2wmmmmmm": false
       },
@@ -34,9 +52,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "l6y2Uuwwwwww::a::\"\"",
-      "action": "l6y2Uuwwwwww::Action::\"action\"",
-      "resource": "l6y2Uuwwwwww::a::\"\"",
+      "principal": {
+        "type": "l6y2Uuwwwwww::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l6y2Uuwwwwww::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l6y2Uuwwwwww::Action",
+        "id": "action"
+      },
       "context": {
         "wwQ2wmmmmmm": false
       },
@@ -48,9 +75,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "l6y2Uuwwwwww::a::\"\"",
-      "action": "l6y2Uuwwwwww::Action::\"action\"",
-      "resource": "l6y2Uuwwwwww::a::\"\"",
+      "principal": {
+        "type": "l6y2Uuwwwwww::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l6y2Uuwwwwww::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l6y2Uuwwwwww::Action",
+        "id": "action"
+      },
       "context": {
         "wwQ2wmmmmmm": false
       },
@@ -62,9 +98,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "l6y2Uuwwwwww::a::\"\"",
-      "action": "l6y2Uuwwwwww::Action::\"action\"",
-      "resource": "l6y2Uuwwwwww::a::\"\"",
+      "principal": {
+        "type": "l6y2Uuwwwwww::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l6y2Uuwwwwww::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l6y2Uuwwwwww::Action",
+        "id": "action"
+      },
       "context": {
         "wwQ2wmmmmmm": false
       },
@@ -76,9 +121,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "l6y2Uuwwwwww::a::\"\"",
-      "action": "l6y2Uuwwwwww::Action::\"action\"",
-      "resource": "l6y2Uuwwwwww::a::\"\"",
+      "principal": {
+        "type": "l6y2Uuwwwwww::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l6y2Uuwwwwww::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l6y2Uuwwwwww::Action",
+        "id": "action"
+      },
       "context": {
         "wwQ2wmmmmmm": false
       },
@@ -90,9 +144,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "l6y2Uuwwwwww::a::\"\"",
-      "action": "l6y2Uuwwwwww::Action::\"action\"",
-      "resource": "l6y2Uuwwwwww::a::\"\"",
+      "principal": {
+        "type": "l6y2Uuwwwwww::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l6y2Uuwwwwww::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l6y2Uuwwwwww::Action",
+        "id": "action"
+      },
       "context": {
         "wwQ2wmmmmmm": false
       },
@@ -104,9 +167,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "l6y2Uuwwwwww::a::\"\"",
-      "action": "l6y2Uuwwwwww::Action::\"action\"",
-      "resource": "l6y2Uuwwwwww::a::\"\"",
+      "principal": {
+        "type": "l6y2Uuwwwwww::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l6y2Uuwwwwww::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l6y2Uuwwwwww::Action",
+        "id": "action"
+      },
       "context": {
         "wwQ2wmmmmmm": false
       },

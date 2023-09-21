@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "l6yyUI306666::a::\"\"",
-      "action": "l6yyUI306666::Action::\"action\"",
-      "resource": "l6yyUI306666::a::\"\"",
+      "principal": {
+        "type": "l6yyUI306666::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l6yyUI306666::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l6yyUI306666::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -18,9 +27,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "l6yyUI306666::a::\"\"",
-      "action": "l6yyUI306666::Action::\"action\"",
-      "resource": "l6yyUI306666::a::\"\"",
+      "principal": {
+        "type": "l6yyUI306666::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l6yyUI306666::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l6yyUI306666::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -30,9 +48,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "l6yyUI306666::a::\"\"",
-      "action": "l6yyUI306666::Action::\"action\"",
-      "resource": "l6yyUI306666::a::\"\"",
+      "principal": {
+        "type": "l6yyUI306666::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l6yyUI306666::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l6yyUI306666::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -42,9 +69,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "l6yyUI306666::a::\"\"",
-      "action": "l6yyUI306666::Action::\"action\"",
-      "resource": "l6yyUI306666::a::\"\"",
+      "principal": {
+        "type": "l6yyUI306666::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l6yyUI306666::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l6yyUI306666::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -54,9 +90,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "l6yyUI306666::a::\"\"",
-      "action": "l6yyUI306666::Action::\"action\"",
-      "resource": "l6yyUI306666::a::\"\"",
+      "principal": {
+        "type": "l6yyUI306666::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l6yyUI306666::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l6yyUI306666::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -66,9 +111,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "l6yyUI306666::a::\"\"",
-      "action": "l6yyUI306666::Action::\"action\"",
-      "resource": "l6yyUI306666::a::\"\"",
+      "principal": {
+        "type": "l6yyUI306666::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l6yyUI306666::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l6yyUI306666::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -78,9 +132,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "l6yyUI306666::a::\"\"",
-      "action": "l6yyUI306666::Action::\"action\"",
-      "resource": "l6yyUI306666::a::\"\"",
+      "principal": {
+        "type": "l6yyUI306666::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l6yyUI306666::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l6yyUI306666::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -90,9 +153,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "l6yyUI306666::a::\"\"",
-      "action": "l6yyUI306666::Action::\"action\"",
-      "resource": "l6yyUI306666::a::\"\"",
+      "principal": {
+        "type": "l6yyUI306666::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l6yyUI306666::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l6yyUI306666::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [

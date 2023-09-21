@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "a::\"\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\0\\0\\u{6}\\0\\0\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\0\\0\\u{6}\\0\\0\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0000\u0000\u0006\u0000\u0000\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0000\u0000\u0006\u0000\u0000\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -18,9 +27,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "a::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\0\\0\\u{6}\\0\\0\\0\"",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": "\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0000\u0000\u0006\u0000\u0000\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -28,9 +46,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "a::\"\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\0\\0\\u{6}\\0\\0\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\0\\0\\u{6}\\0\\0\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0000\u0000\u0006\u0000\u0000\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0000\u0000\u0006\u0000\u0000\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -40,9 +67,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "a::\"\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\0\\0\\u{6}\\0\\0\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\0\\0\\u{6}\\0\\0\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0000\u0000\u0006\u0000\u0000\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0000\u0000\u0006\u0000\u0000\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -52,9 +88,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "a::\"\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\0\\0\\u{6}\\0\\0\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\0\\0\\u{6}\\0\\0\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0000\u0000\u0006\u0000\u0000\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0000\u0000\u0006\u0000\u0000\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -64,9 +109,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "a::\"\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\0\\0\\u{6}\\0\\0\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\0\\0\\u{6}\\0\\0\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0000\u0000\u0006\u0000\u0000\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0000\u0000\u0006\u0000\u0000\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -76,9 +130,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "a::\"\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\0\\0\\u{6}\\0\\0\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\0\\0\\u{6}\\0\\0\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0000\u0000\u0006\u0000\u0000\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0000\u0000\u0006\u0000\u0000\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -88,9 +151,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "a::\"\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\0\\0\\u{6}\\0\\0\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\u{6}\\0\\0\\u{6}\\0\\0\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0000\u0000\u0006\u0000\u0000\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0006\u0000\u0000\u0006\u0000\u0000\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [

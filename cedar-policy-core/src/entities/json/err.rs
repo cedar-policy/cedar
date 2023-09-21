@@ -22,6 +22,7 @@ use crate::ast::{
 };
 use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
+use either::Either;
 use smol_str::SmolStr;
 use thiserror::Error;
 
@@ -78,7 +79,7 @@ pub enum JsonDeserializationError {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
         /// the expression we got instead
-        got: Box<Expr>,
+        got: Box<Either<serde_json::Value, Expr>>,
     },
     /// A field that needs to be an extension value, was some other JSON value
     #[error("{ctx}, expected an extension value, but got `{got}`")]
@@ -86,7 +87,7 @@ pub enum JsonDeserializationError {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
         /// the expression we got instead
-        got: Box<Expr>,
+        got: Box<Either<serde_json::Value, Expr>>,
     },
     /// Contexts need to be records, but we got some other JSON value
     #[error("expected `context` to be a record, but got `{got}`")]

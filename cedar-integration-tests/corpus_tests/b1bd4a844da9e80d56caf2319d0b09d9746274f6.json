@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "cP::v::a::\"\"",
-      "action": "cP::v::Action::\"\"",
-      "resource": "cP::v::a::\"\"",
+      "principal": {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "cP::v::Action",
+        "id": ""
+      },
       "context": {
         "qx": {
           "__entity": {
@@ -26,9 +35,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "cP::v::a::\"\"",
-      "action": "cP::v::Action::\"\"",
-      "resource": "cP::v::a::\"\"",
+      "principal": {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "cP::v::Action",
+        "id": ""
+      },
       "context": {
         "qx": {
           "__entity": {
@@ -46,9 +64,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "cP::v::a::\"\"",
-      "action": "cP::v::Action::\"\"",
-      "resource": "cP::v::a::\"\"",
+      "principal": {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "cP::v::Action",
+        "id": ""
+      },
       "context": {
         "qx": {
           "__entity": {
@@ -66,9 +93,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "cP::v::a::\"\"",
-      "action": "cP::v::Action::\"\"",
-      "resource": "cP::v::a::\"\"",
+      "principal": {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "cP::v::Action",
+        "id": ""
+      },
       "context": {
         "qx": {
           "__entity": {
@@ -86,9 +122,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "cP::v::a::\"\"",
-      "action": "cP::v::Action::\"\"",
-      "resource": "cP::v::a::\"\"",
+      "principal": {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "cP::v::Action",
+        "id": ""
+      },
       "context": {
         "qx": {
           "__entity": {
@@ -106,9 +151,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "cP::v::a::\"\"",
-      "action": "cP::v::Action::\"\"",
-      "resource": "cP::v::a::\"\"",
+      "principal": {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "cP::v::Action",
+        "id": ""
+      },
       "context": {
         "qx": {
           "__entity": {
@@ -126,9 +180,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "cP::v::a::\"\"",
-      "action": "cP::v::Action::\"\"",
-      "resource": "cP::v::a::\"\"",
+      "principal": {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "cP::v::Action",
+        "id": ""
+      },
       "context": {
         "qx": {
           "__entity": {
@@ -146,9 +209,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "cP::v::a::\"\"",
-      "action": "cP::v::Action::\"\"",
-      "resource": "cP::v::a::\"\"",
+      "principal": {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "cP::v::Action",
+        "id": ""
+      },
       "context": {
         "qx": {
           "__entity": {

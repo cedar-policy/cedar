@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "GXjxxjjjj::a::\"\"",
-      "action": "GXjxxjjjj::Action::\"\"",
-      "resource": "GXjxxjjjj::a::\"\"",
+      "principal": {
+        "type": "GXjxxjjjj::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "GXjxxjjjj::a",
+        "id": ""
+      },
+      "action": {
+        "type": "GXjxxjjjj::Action",
+        "id": ""
+      },
       "context": {
         "Gxxjjjjej": "",
         "Wjj00000000000": ""
@@ -21,9 +30,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "GXjxxjjjj::a::\"\"",
-      "action": "GXjxxjjjj::Action::\"\"",
-      "resource": "GXjxxjjjj::a::\"\"",
+      "principal": {
+        "type": "GXjxxjjjj::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "GXjxxjjjj::a",
+        "id": ""
+      },
+      "action": {
+        "type": "GXjxxjjjj::Action",
+        "id": ""
+      },
       "context": {
         "Gxxjjjjej": "",
         "Wjj00000000000": ""
@@ -36,9 +54,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "GXjxxjjjj::a::\"\"",
-      "action": "GXjxxjjjj::Action::\"\"",
-      "resource": "GXjxxjjjj::a::\"\"",
+      "principal": {
+        "type": "GXjxxjjjj::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "GXjxxjjjj::a",
+        "id": ""
+      },
+      "action": {
+        "type": "GXjxxjjjj::Action",
+        "id": ""
+      },
       "context": {
         "Gxxjjjjej": "",
         "Wjj00000000000": ""
@@ -51,9 +78,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "GXjxxjjjj::a::\"\"",
-      "action": "GXjxxjjjj::Action::\"\"",
-      "resource": "GXjxxjjjj::a::\"\"",
+      "principal": {
+        "type": "GXjxxjjjj::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "GXjxxjjjj::a",
+        "id": ""
+      },
+      "action": {
+        "type": "GXjxxjjjj::Action",
+        "id": ""
+      },
       "context": {
         "Gxxjjjjej": "",
         "Wjj00000000000": ""
@@ -66,9 +102,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "GXjxxjjjj::a::\"\"",
-      "action": "GXjxxjjjj::Action::\"\"",
-      "resource": "GXjxxjjjj::a::\"\"",
+      "principal": {
+        "type": "GXjxxjjjj::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "GXjxxjjjj::a",
+        "id": ""
+      },
+      "action": {
+        "type": "GXjxxjjjj::Action",
+        "id": ""
+      },
       "context": {
         "Gxxjjjjej": "",
         "Wjj00000000000": ""
@@ -81,9 +126,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "GXjxxjjjj::a::\"\"",
-      "action": "GXjxxjjjj::Action::\"\"",
-      "resource": "GXjxxjjjj::a::\"\"",
+      "principal": {
+        "type": "GXjxxjjjj::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "GXjxxjjjj::a",
+        "id": ""
+      },
+      "action": {
+        "type": "GXjxxjjjj::Action",
+        "id": ""
+      },
       "context": {
         "Gxxjjjjej": "",
         "Wjj00000000000": ""
@@ -96,9 +150,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "GXjxxjjjj::a::\"\"",
-      "action": "GXjxxjjjj::Action::\"\"",
-      "resource": "GXjxxjjjj::a::\"\"",
+      "principal": {
+        "type": "GXjxxjjjj::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "GXjxxjjjj::a",
+        "id": ""
+      },
+      "action": {
+        "type": "GXjxxjjjj::Action",
+        "id": ""
+      },
       "context": {
         "Gxxjjjjej": "",
         "Wjj00000000000": ""
@@ -111,9 +174,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "GXjxxjjjj::a::\"\"",
-      "action": "GXjxxjjjj::Action::\"\"",
-      "resource": "GXjxxjjjj::a::\"\"",
+      "principal": {
+        "type": "GXjxxjjjj::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "GXjxxjjjj::a",
+        "id": ""
+      },
+      "action": {
+        "type": "GXjxxjjjj::Action",
+        "id": ""
+      },
       "context": {
         "Gxxjjjjej": "",
         "Wjj00000000000": ""

@@ -54,37 +54,88 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
     // Entities must be added together because of some post-processing
     let entity_json = r#"
     [
-        {
-            "uid": { "__expr" :  "User::\"alice\""},
-            "attrs": {},
-            "parents": [ { "__expr" :"UserGroup::\"jane_friends\"" }]
-        },
-        {
-            "uid":  { "__expr" :"UserGroup::\"jane_friends\"" },
-            "attrs": {},
-            "parents": []
-        },
-        {
-            "uid":  { "__expr" :"Action::\"view\"" },
-            "attrs": {},
-            "parents": []
-        },
-        {
-            "uid":  { "__expr" :"Photo::\"VacationPhoto94.jpg\"" },
-            "attrs": {},
-            "parents": [ { "__expr" :"Album::\"jane_vacation\"" }]
-        },
-        {
-            "uid":  { "__expr" :"Album::\"jane_vacation\"" },
-            "attrs": {},
-            "parents": [ { "__expr" :"Account::\"jane\"" }]
-        },
-        {
-            "uid":  { "__expr" :"Account::\"jane\""},
-            "attrs": {},
-            "parents": []
-        }
-    ]
+ {
+  "uid": {
+   "__entity": {
+    "type": "User",
+    "id": "alice"
+   }
+  },
+  "attrs": {},
+  "parents": [
+   {
+    "__entity": {
+     "type": "UserGroup",
+     "id": "jane_friends"
+    }
+   }
+  ]
+ },
+ {
+  "uid": {
+   "__entity": {
+    "type": "UserGroup",
+    "id": "jane_friends"
+   }
+  },
+  "attrs": {},
+  "parents": []
+ },
+ {
+  "uid": {
+   "__entity": {
+    "type": "Action",
+    "id": "view"
+   }
+  },
+  "attrs": {},
+  "parents": []
+ },
+ {
+  "uid": {
+   "__entity": {
+    "type": "Photo",
+    "id": "VacationPhoto94.jpg"
+   }
+  },
+  "attrs": {},
+  "parents": [
+   {
+    "__entity": {
+     "type": "Album",
+     "id": "jane_vacation"
+    }
+   }
+  ]
+ },
+ {
+  "uid": {
+   "__entity": {
+    "type": "Album",
+    "id": "jane_vacation"
+   }
+  },
+  "attrs": {},
+  "parents": [
+   {
+    "__entity": {
+     "type": "Account",
+     "id": "jane"
+    }
+   }
+  ]
+ },
+ {
+  "uid": {
+   "__entity": {
+    "type": "Account",
+    "id": "jane"
+   }
+  },
+  "attrs": {},
+  "parents": []
+ }
+]
     "#;
     let entities = Entities::from_json_str(entity_json, None)?;
 
@@ -226,7 +277,7 @@ fn expression_eval_1() -> Result<(), Box<dyn Error>> {
 fn expression_eval_attr() -> Result<(), Box<dyn Error>> {
     let entity_json = r#"[
         {
-        "uid": { "__expr" :  "User::\"alice\"" },
+        "uid": { "__entity" :  { "type" : "User", "id" : "alice" } },
         "attrs": {"age":19},
         "parents": []
         }
@@ -270,7 +321,7 @@ fn expression_eval_attr() -> Result<(), Box<dyn Error>> {
 fn expression_eval_context() -> Result<(), Box<dyn Error>> {
     let entity_json = r#"[
         {
-        "uid": { "__expr" :  "User::\"alice\"" },
+        "uid": { "__entity" : { "type" : "User", "id" : "alice" }},
         "attrs": {"age":19},
         "parents": []
         }
