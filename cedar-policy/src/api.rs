@@ -98,7 +98,7 @@ impl From<SlotId> for ast::SlotId {
 /// Represents a boolean, integer, string, entity uid, set of values, record, or extension function
 /// Supports O(1) cloning
 ///
-/// To match on this or examine the value contained, use the `ValueKind::from` method
+/// To match on this or examine the value contained, use the `value_kind` method
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, RefCast)]
 #[repr(transparent)]
 pub struct Value(pub(crate) CoreValue);
@@ -194,8 +194,8 @@ impl PartialValue {
     }
 
     /// Get the partial value as a value
-    pub fn try_as_value(&self) -> Option<&Value> {
-        self.as_value_or_expression().left()
+    pub fn try_as_value(&self) -> Result<&Value, NotValue> {
+        self.as_value_or_expression().left().ok_or(NotValue::NotValue)
     }
 }
 
@@ -258,12 +258,12 @@ impl UnevaledEntity {
 
     /// Create a new `Entity` with this Uid, no attributes, and no parents.
     /// ```
-    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// use cedar_policy::{UnevaledEntity, EntityId, EntityTypeName, EntityUid};
     /// # use std::str::FromStr;
     /// let eid = EntityId::from_str("alice").unwrap();
     /// let type_name = EntityTypeName::from_str("User").unwrap();
     /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
-    /// let alice = Entity::with_uid(euid);
+    /// let alice = UnevaledEntity::with_uid(euid);
     /// # assert_eq!(alice.attr("age"), None);
     /// ```
     pub fn with_uid(uid: EntityUid) -> Self {
@@ -288,7 +288,7 @@ impl UnevaledEntity {
     ///
     /// This can also return Some(Err) if the attribute had an illegal value.
     /// ```
-    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid,
+    /// use cedar_policy::{UnevaledEntity, EntityId, EntityTypeName, EntityUid,
     ///     RestrictedExpression};
     /// use std::collections::{HashMap, HashSet};
     /// use std::str::FromStr;
@@ -299,7 +299,7 @@ impl UnevaledEntity {
     ///     ("age".to_string(), RestrictedExpression::from_str("21").unwrap()),
     ///     ("department".to_string(), RestrictedExpression::from_str("\"CS\"").unwrap()),
     /// ]);
-    /// let entity = Entity::new(euid, attrs, HashSet::new());
+    /// let entity = UnevaledEntity::new(euid, attrs, HashSet::new());
     /// assert_eq!(entity.attr("age").unwrap(), Ok(21.into()));
     /// assert_eq!(entity.attr("department").unwrap(), Ok("CS".into()));
     ///```
@@ -366,9 +366,15 @@ impl Entity {
         EntityUid(self.0.uid())
     }
 
-    /// Get the value for the given attribute, or `None` if not present.
-    pub fn attr(&self, attr: &str) -> Option<&PartialValue> {
+    /// Get the partial value for the given attribute, or `None` if not present.
+    pub fn attr_partial(&self, attr: &str) -> Option<&PartialValue> {
         self.0.get(attr).map(PartialValue::ref_cast)
+    }
+
+    /// Get the value for the given attribute, `None` if not present, and an error
+    /// if a value is present but is a residual expression rather than concrete
+    pub fn attr(&self, attr: &str) -> Option<Result<&Value, NotValue>> {
+        self.attr_partial(attr).map(|v| v.try_as_value())
     }
 
     fn is_descendant_of(&self, u2: &EntityUid) -> bool {
@@ -464,7 +470,7 @@ impl<T: WholeEntityDataSource> EntityDataSource for T {
         self.get(uid)?
             .map_or(Err(EntityAttrAccessError::UnknownEntity), |e| {
                 e.as_ref()
-                    .attr(attr)
+                    .attr_partial(attr)
                     .cloned()
                     .ok_or(EntityAttrAccessError::UnknownAttr)
             })
@@ -652,8 +658,8 @@ impl UnevaledEntities {
     /// let type_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
     /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
     /// let entity = entities.get(&euid).unwrap();
-    /// assert_eq!(entity.attr("age").unwrap(), Ok(19.into()));
-    /// let ip = entity.attr_kind("ip_addr").unwrap().unwrap();
+    /// assert_eq!(entity.attr("age").unwrap().unwrap(), &19.into());
+    /// let ip = entity.attr("ip_addr").unwrap().unwrap().value_kind();
     /// assert_eq!(ip, ValueKind::ExtensionValue("10.0.1.101/32".to_string()));
     /// ```
     pub fn from_json_str(
@@ -947,8 +953,8 @@ impl Entities {
     /// let type_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
     /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
     /// let entity = entities.get(&euid).unwrap();
-    /// assert_eq!(entity.attr("age").unwrap(), Ok(19.into()));
-    /// let ip = entity.attr_kind("ip_addr").unwrap().unwrap();
+    /// assert_eq!(entity.attr("age").unwrap().unwrap(), &19.into());
+    /// let ip = entity.attr("ip_addr").unwrap().unwrap().value_kind();
     /// assert_eq!(ip, ValueKind::ExtensionValue("10.0.1.101/32".to_string()));
     /// ```
     pub fn from_json_str(
@@ -4655,13 +4661,12 @@ mod schema_based_parsing_tests {
         let parsed = parsed
             .get(&EntityUid::from_strs("Employee", "12UA45"))
             .expect("that should be the employee id");
-        assert_eq!(parsed.attr("home_ip"), Some(&"222.222.222.101".into()));
-        assert_eq!(parsed.attr("trust_score"), Some(&"5.7".into()));
+        assert_eq!(parsed.attr_partial("home_ip"), Some(&"222.222.222.101".into()));
+        assert_eq!(parsed.attr_partial("trust_score"), Some(&"5.7".into()));
         assert!(matches!(
             parsed
                 .attr("manager")
                 .expect("should have attr")
-                .try_as_value()
                 .expect("should be a concrete value")
                 .value_kind(),
             ValueKind::Record(_)
@@ -4670,7 +4675,6 @@ mod schema_based_parsing_tests {
             parsed
                 .attr("work_ip")
                 .expect("should have attr")
-                .try_as_value()
                 .expect("should be a concrete value")
                 .value_kind(),
             ValueKind::Record(_)
@@ -4678,7 +4682,6 @@ mod schema_based_parsing_tests {
         {
             let ValueKind::Set(set) = parsed.attr("hr_contacts")
                 .expect("should have attr")
-                .try_as_value()
                 .expect("should be a concrete value")
                 .value_kind() else {
                 panic!("expected hr_contacts attr to be a Set")
@@ -4689,7 +4692,6 @@ mod schema_based_parsing_tests {
         {
             let ValueKind::Record(rec) = parsed.attr("json_blob")
                 .expect("should have attr")
-                .try_as_value()
                 .expect("should be a concrete value")
                 .value_kind() else {
                 panic!("expected json_blob attr to be a Record")
