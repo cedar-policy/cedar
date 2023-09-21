@@ -1649,7 +1649,14 @@ impl Schema {
 
     /// Extract from the schema an `Entities` containing the action entities
     /// declared in the schema.
-    pub fn action_entities(&self) -> Result<UnevaledEntities, entities::EntitiesError> {
+    pub fn action_entities(&self) -> Result<Entities, entities::EntitiesError> {
+        let extns = Extensions::all_available();
+        Ok(Entities(self.0.action_entities()?.eval_attrs(&extns)?))
+    }
+
+    /// Extract from the schema an `Entities` containing the action entities
+    /// declared in the schema.
+    pub fn action_entities_unevaled(&self) -> Result<UnevaledEntities, entities::EntitiesError> {
         Ok(UnevaledEntities(self.0.action_entities()?))
     }
 }
@@ -5418,7 +5425,7 @@ mod schema_based_parsing_tests {
         .unwrap();
 
         let schema = Schema::from_schema_fragments([fragment]).unwrap();
-        let action_entities = schema.action_entities().unwrap();
+        let action_entities = schema.action_entities_unevaled().unwrap();
 
         let a_euid = EntityUid::from_strs("Action", "A");
         let b_euid = EntityUid::from_strs("Action", "B");
