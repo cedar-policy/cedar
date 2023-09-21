@@ -1535,8 +1535,8 @@ impl FromStr for EntityUid {
 
     /// Parse an [`EntityUid`].
     ///
-    /// An [`EntityUid`] consists of a sequence of [`EntityTypeName`]s joined by `::`,
-    /// followed by a quoted [`EntityId`].
+    /// An [`EntityUid`] consists of an [`EntityTypeName`] followed by a quoted [`EntityId`].
+    /// The two are joined by a `::`.
     /// For the formal grammar, see <https://docs.cedarpolicy.com/policies/syntax-grammar.html#entity>
     ///
     /// Examples:
@@ -1545,6 +1545,8 @@ impl FromStr for EntityUid {
     ///  let euid: EntityUid = r#"Foo::Bar::"george""#.parse().unwrap();
     ///  // Get the type of this euid (`Foo::Bar`)
     ///  euid.type_name();
+    ///  // Or the id
+    ///  euid.id();
     /// ```
     ///
     /// This [`FromStr`] implementation requires the _normalized_ representation of the
