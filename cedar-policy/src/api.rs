@@ -965,7 +965,7 @@ impl Entities {
         );
         eparser
             .from_json_str(json)
-            .and_then(|e| Ok(Entities(e.eval_attrs(&Extensions::all_available())?)))
+            .and_then(|e| Ok(Self(e.eval_attrs(&Extensions::all_available())?)))
     }
 
     /// Parse an entities JSON file (in `serde_json::Value` form) into an
@@ -3756,7 +3756,7 @@ impl Record {
 }
 
 impl Value {
-    /// Convert the given value into a ValueKind
+    /// Convert the given value into a `ValueKind`
     /// This allows you to match on the value
     pub fn value_kind(&self) -> ValueKind {
         match &self.0 {
@@ -3769,11 +3769,11 @@ impl Value {
             ast::Value::Set(s) => ValueKind::Set(Set(s
                 .authoritative
                 .iter()
-                .map(|v| Value(v.clone()))
+                .map(|v| Self(v.clone()))
                 .collect())),
             ast::Value::Record(r) => ValueKind::Record(Record(
                 r.iter()
-                    .map(|(k, v)| (k.to_string(), Value(v.clone())))
+                    .map(|(k, v)| (k.to_string(), Self(v.clone())))
                     .collect(),
             )),
             ast::Value::ExtensionValue(v) => ValueKind::ExtensionValue(v.to_string()),
