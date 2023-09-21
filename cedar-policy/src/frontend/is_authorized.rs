@@ -40,7 +40,7 @@ fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
         Ok((request, policies, entities)) => {
             AUTHORIZER.with(|authorizer| AuthorizationAnswer::Success {
                 response: authorizer
-                    .is_authorized(&request, &policies, &entities)
+                    .is_authorized_unevaled(&request, &policies, &entities)
                     .into(),
             })
         }

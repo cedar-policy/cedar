@@ -123,7 +123,7 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
 
     // Check that we got the "Deny" result
     assert_eq!(
-        auth.is_authorized(&request, &policies, &entities)
+        auth.is_authorized_unevaled(&request, &policies, &entities)
             .decision(),
         Decision::Deny
     );
@@ -138,7 +138,7 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
 
     // Check that we got the "Allow" result and it was based on the added policy
     assert_eq!(
-        auth.is_authorized(&request2, &policies, &entities),
+        auth.is_authorized_unevaled(&request2, &policies, &entities),
         Response::new(Decision::Allow, [alice_view_id].into(), Vec::new())
     );
 
@@ -156,7 +156,7 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
 
     // Check that we got an "Allow" result
     assert_eq!(
-        auth.is_authorized(&request3, &policies, &entities)
+        auth.is_authorized_unevaled(&request3, &policies, &entities)
             .decision(),
         Decision::Allow
     );
@@ -164,13 +164,13 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
     // Requesting with an unspecified principal or resource will return Deny (but not fail)
     let request4 = Request::new(None, Some(action.clone()), Some(resource), Context::empty());
     assert_eq!(
-        auth.is_authorized(&request4, &policies, &entities)
+        auth.is_authorized_unevaled(&request4, &policies, &entities)
             .decision(),
         Decision::Deny
     );
     let request5 = Request::new(Some(principal), Some(action), None, Context::empty());
     assert_eq!(
-        auth.is_authorized(&request5, &policies, &entities)
+        auth.is_authorized_unevaled(&request5, &policies, &entities)
             .decision(),
         Decision::Deny
     );

@@ -302,7 +302,7 @@ pub fn perform_integration_test_from_json_custom(
             custom_impl.is_authorized(&request.0, &policies.ast, &entities.0)
         } else {
             Authorizer::new()
-                .is_authorized(&request, &policies, &entities)
+                .is_authorized_unevaled(&request, &policies, &entities)
                 .into()
         };
 

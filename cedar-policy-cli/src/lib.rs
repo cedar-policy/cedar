@@ -892,7 +892,7 @@ fn execute_request(
         Ok(request) if errs.is_empty() => {
             let authorizer = Authorizer::new();
             let auth_start = Instant::now();
-            let ans = authorizer.is_authorized(&request, &policies, &entities);
+            let ans = authorizer.is_authorized_unevaled(&request, &policies, &entities);
             let auth_dur = auth_start.elapsed();
             if compute_duration {
                 println!(

@@ -135,7 +135,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     c.bench_function("is_authorized", |b| {
         b.iter(|| {
-            auth.is_authorized(
+            auth.is_authorized_unevaled(
                 black_box(&request_a),
                 black_box(&multiple_policies),
                 black_box(&entities),

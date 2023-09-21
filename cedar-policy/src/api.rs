@@ -791,6 +791,214 @@ impl Entities {
         .map(Entities)
     }
 
+
+    /// Add all of the [`Entity`]s in the collection to this [`Entities`] structure, re-computing the transitive closure
+    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    pub fn add_entities(
+        self,
+        entities: impl IntoIterator<Item = Entity>,
+    ) -> Result<Self, EntitiesError> {
+        Ok(Self(self.0.add_entities(
+            entities.into_iter().map(|e| e.0),
+            entities::TCComputation::ComputeNow,
+        )?))
+    }
+
+    /// Parse an entities JSON file (in [&str] form) and add them into this [`Entities`] structure, re-computing the transitive closure
+    ///
+    /// If a `schema` is provided, this will inform the parsing: for instance, it
+    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
+    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    pub fn add_entities_from_json_str(
+        self,
+        json: &str,
+        schema: Option<&Schema>,
+    ) -> Result<Self, EntitiesError> {
+        let eparser = entities::EntityJsonParser::new(
+            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            Extensions::all_available(),
+            entities::TCComputation::ComputeNow,
+        );
+        let exts = Extensions::all_available();
+        let eval = RestrictedEvaluator::new(&exts);
+        let new_entities = eparser
+            .iter_from_json_str(json)?
+            .map(|e| Ok(e?.eval_attrs(&eval)?))
+            .collect::<Result<Vec<_>, EntitiesError>>()?;
+        Ok(Self(self.0.add_entities(
+            new_entities,
+            entities::TCComputation::ComputeNow,
+        )?))
+    }
+
+    /// Parse an entities JSON file (in [`serde_json::Value`] form) and add them into this [`Entities`] structure, re-computing the transitive closure
+    ///
+    /// If a `schema` is provided, this will inform the parsing: for instance, it
+    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
+    /// if attributes have the wrong types (e.g., string instead of integer).
+    ///
+    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    pub fn add_entities_from_json_value(
+        self,
+        json: serde_json::Value,
+        schema: Option<&Schema>,
+    ) -> Result<Self, EntitiesError> {
+        let eparser = entities::EntityJsonParser::new(
+            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            Extensions::all_available(),
+            entities::TCComputation::ComputeNow,
+        );
+        let exts = Extensions::all_available();
+        let eval = RestrictedEvaluator::new(&exts);
+        let new_entities = eparser
+            .iter_from_json_value(json)?
+            .map(|e| Ok(e?.eval_attrs(&eval)?))
+            .collect::<Result<Vec<_>, EntitiesError>>()?;
+        Ok(Self(self.0.add_entities(
+            new_entities,
+            entities::TCComputation::ComputeNow,
+        )?))
+    }
+
+    /// Parse an entities JSON file (in [`std::io::Read`] form) and add them into this [`Entities`] structure, re-computing the transitive closure
+    ///
+    /// If a `schema` is provided, this will inform the parsing: for instance, it
+    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
+    /// if attributes have the wrong types (e.g., string instead of integer).
+    ///
+    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    pub fn add_entities_from_json_file(
+        self,
+        json: impl std::io::Read,
+        schema: Option<&Schema>,
+    ) -> Result<Self, EntitiesError> {
+        let eparser = entities::EntityJsonParser::new(
+            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            Extensions::all_available(),
+            entities::TCComputation::ComputeNow,
+        );
+        let exts = Extensions::all_available();
+        let eval = RestrictedEvaluator::new(&exts);
+        let new_entities = eparser
+            .iter_from_json_file(json)?
+            .map(|e| Ok(e?.eval_attrs(&eval)?))
+            .collect::<Result<Vec<_>, EntitiesError>>()?;
+        Ok(Self(self.0.add_entities(
+            new_entities,
+            entities::TCComputation::ComputeNow,
+        )?))
+    }
+
+    /// Parse an entities JSON file (in `&str` form) into an `Entities` object
+    ///
+    /// If a `schema` is provided, this will inform the parsing: for instance, it
+    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
+    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// ```
+    /// use std::collections::HashMap;
+    /// use std::str::FromStr;
+    /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request, PolicySet, ValueKind};
+    /// let data =r#"
+    /// [
+    /// {
+    ///   "uid": {"type":"User","id":"alice"},
+    ///   "attrs": {
+    ///     "age":19,
+    ///     "ip_addr":{"__extn":{"fn":"ip", "arg":"10.0.1.101"}}
+    ///   },
+    ///   "parents": [{"type":"Group","id":"admin"}]
+    /// },
+    /// {
+    ///   "uid": {"type":"Groupd","id":"admin"},
+    ///   "attrs": {},
+    ///   "parents": []
+    /// }
+    /// ]
+    /// "#;
+    /// let entities = Entities::from_json_str(data, None).unwrap();
+    /// let eid = EntityId::from_str("alice").unwrap();
+    /// let type_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
+    /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
+    /// let entity = entities.get(&euid).unwrap();
+    /// assert_eq!(entity.attr("age").unwrap(), Ok(19.into()));
+    /// let ip = entity.attr_kind("ip_addr").unwrap().unwrap();
+    /// assert_eq!(ip, ValueKind::ExtensionValue("10.0.1.101/32".to_string()));
+    /// ```
+    pub fn from_json_str(
+        json: &str,
+        schema: Option<&Schema>,
+    ) -> Result<Self, entities::EntitiesError> {
+        let eparser = entities::EntityJsonParser::new(
+            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            Extensions::all_available(),
+            entities::TCComputation::ComputeNow,
+        );
+        eparser.from_json_str(json)
+            .and_then(|e| Ok(Entities(e.eval_attrs(&Extensions::all_available())?)))
+    }
+
+    /// Parse an entities JSON file (in `serde_json::Value` form) into an
+    /// `Entities` object
+    ///
+    /// If a `schema` is provided, this will inform the parsing: for instance, it
+    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
+    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// ```
+    /// use std::collections::HashMap;
+    /// use std::str::FromStr;
+    /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request, PolicySet};
+    /// let data =serde_json::json!(
+    /// [
+    /// {
+    ///   "uid": {"type":"User","id":"alice"},
+    ///   "attrs": {
+    ///     "age":19,
+    ///     "ip_addr":{"__extn":{"fn":"ip", "arg":"10.0.1.101"}}
+    ///   },
+    ///   "parents": [{"type":"Group","id":"admin"}]
+    /// },
+    /// {
+    ///   "uid": {"type":"Groupd","id":"admin"},
+    ///   "attrs": {},
+    ///   "parents": []
+    /// }
+    /// ]
+    /// );
+    /// let entities = Entities::from_json_value(data, None).unwrap();
+    /// ```
+    pub fn from_json_value(
+        json: serde_json::Value,
+        schema: Option<&Schema>,
+    ) -> Result<Self, entities::EntitiesError> {
+        let eparser = entities::EntityJsonParser::new(
+            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            Extensions::all_available(),
+            entities::TCComputation::ComputeNow,
+        );
+        eparser.from_json_value(json)
+            .and_then(|e| Ok(Entities(e.eval_attrs(&Extensions::all_available())?)))
+    }
+
+    /// Parse an entities JSON file (in `std::io::Read` form) into an `Entities`
+    /// object
+    ///
+    /// If a `schema` is provided, this will inform the parsing: for instance, it
+    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
+    /// if attributes have the wrong types (e.g., string instead of integer).
+    pub fn from_json_file(
+        json: impl std::io::Read,
+        schema: Option<&Schema>,
+    ) -> Result<Self, entities::EntitiesError> {
+        let eparser = entities::EntityJsonParser::new(
+            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            Extensions::all_available(),
+            entities::TCComputation::ComputeNow,
+        );
+        eparser.from_json_file(json)
+            .and_then(|e| Ok(Entities(e.eval_attrs(&Extensions::all_available())?)))
+    }
+
     /// Is entity `a` an ancestor of entity `b`?
     /// Same semantics as `b in a` in the Cedar language
     pub fn is_ancestor_of(&self, a: &EntityUid, b: &EntityUid) -> bool {
@@ -968,7 +1176,7 @@ impl Authorizer {
     /// let r = authorizer.is_authorized(&request, &policy, &entities);
     /// println!("{:?}", r);
     /// ```
-    pub fn is_authorized(&self, r: &Request, p: &PolicySet, e: &UnevaledEntities) -> Response {
+    pub fn is_authorized_unevaled(&self, r: &Request, p: &PolicySet, e: &UnevaledEntities) -> Response {
         self.0.is_authorized_old(&r.0, &p.ast, &e.0).into()
     }
 
@@ -990,7 +1198,7 @@ impl Authorizer {
     ///
     /// TODO: Add doctest
     #[cfg(feature = "partial-eval")]
-    pub fn is_authorized_generic<T: EntityDataSource>(
+    pub fn is_authorized_partial<T: EntityDataSource>(
         &self,
         r: &Request,
         p: &PolicySet,
@@ -1012,8 +1220,7 @@ impl Authorizer {
     /// rather than an `Entities` object
     ///
     /// TODO: Add doctest
-    #[cfg(feature = "partial-eval")]
-    pub fn is_authorized_partial_generic<T: EntityDataSource>(
+    pub fn is_authorized<T: EntityDataSource>(
         &self,
         r: &Request,
         p: &PolicySet,
@@ -1029,7 +1236,7 @@ impl Authorizer {
     /// If the Authorizer can reach a response, it will return that response.
     /// Otherwise, it will return a list of residual policies that still need to be evaluated.
     #[cfg(feature = "partial-eval")]
-    pub fn is_authorized_partial(
+    pub fn is_authorized_partial_unevaled(
         &self,
         query: &Request,
         policy_set: &PolicySet,
