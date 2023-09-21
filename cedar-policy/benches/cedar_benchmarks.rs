@@ -17,7 +17,7 @@
 use std::str::FromStr;
 
 use cedar_policy::{
-    Authorizer, Context, UnevaledEntities, EntityId, EntityTypeName, EntityUid, Policy, PolicySet, Request,
+    Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid, Policy, PolicySet, Request,
     RestrictedExpression,
 };
 
@@ -88,7 +88,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     ]
     "#;
 
-    let entities = UnevaledEntities::from_json_str(entity_json, None).unwrap();
+    let entities = Entities::from_json_str(entity_json, None).unwrap();
 
     // Set up request entity refs
     let principal = EntityUid::from_type_name_and_id(
@@ -135,7 +135,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     c.bench_function("is_authorized", |b| {
         b.iter(|| {
-            auth.is_authorized_unevaled(
+            auth.is_authorized(
                 black_box(&request_a),
                 black_box(&multiple_policies),
                 black_box(&entities),

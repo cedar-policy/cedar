@@ -447,7 +447,7 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, Value) {
             }
         };
     let entities = match &args.entities_file {
-        None => UnevaledEntities::empty(),
+        None => Entities::empty(),
         Some(file) => match load_entities(file, schema.as_ref()) {
             Ok(entities) => entities,
             Err(e) => {
@@ -702,12 +702,12 @@ pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {
 }
 
 /// Load an `Entities` object from the given JSON filename and optional schema.
-fn load_entities(entities_filename: impl AsRef<Path>, schema: Option<&Schema>) -> Result<UnevaledEntities> {
+fn load_entities(entities_filename: impl AsRef<Path>, schema: Option<&Schema>) -> Result<Entities> {
     match std::fs::OpenOptions::new()
         .read(true)
         .open(entities_filename.as_ref())
     {
-        Ok(f) => UnevaledEntities::from_json_file(f, schema)
+        Ok(f) => Entities::from_json_file(f, schema)
             .into_diagnostic()
             .wrap_err_with(|| {
                 format!(
@@ -830,10 +830,10 @@ fn read_schema_file(filename: impl AsRef<Path> + std::marker::Copy) -> Result<Sc
         })
 }
 
-fn load_actions_from_schema(entities: UnevaledEntities, schema: &Option<Schema>) -> Result<UnevaledEntities> {
+fn load_actions_from_schema(entities: Entities, schema: &Option<Schema>) -> Result<Entities> {
     match schema {
         Some(schema) => match schema.action_entities() {
-            Ok(action_entities) => UnevaledEntities::from_entities(
+            Ok(action_entities) => Entities::from_entities(
                 entities
                     .iter()
                     .cloned()
@@ -878,21 +878,21 @@ fn execute_request(
         Ok(entities) => entities,
         Err(e) => {
             errs.push(e);
-            UnevaledEntities::empty()
+            Entities::empty()
         }
     };
     let entities = match load_actions_from_schema(entities, &schema) {
         Ok(entities) => entities,
         Err(e) => {
             errs.push(e);
-            UnevaledEntities::empty()
+            Entities::empty()
         }
     };
     match request.get_request(schema.as_ref()) {
         Ok(request) if errs.is_empty() => {
             let authorizer = Authorizer::new();
             let auth_start = Instant::now();
-            let ans = authorizer.is_authorized_unevaled(&request, &policies, &entities);
+            let ans = authorizer.is_authorized(&request, &policies, &entities);
             let auth_dur = auth_start.elapsed();
             if compute_duration {
                 println!(

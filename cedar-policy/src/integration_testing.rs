@@ -33,9 +33,10 @@
 #![allow(clippy::expect_used)]
 
 use crate::{
-    frontend::is_authorized::InterfaceResponse, Authorizer, Context, Decision, UnevaledEntities, EntityUid,
+    frontend::is_authorized::InterfaceResponse, Authorizer, Context, Decision, Entities, EntityUid,
     Policy, PolicyId, PolicySet, Request, Schema, ValidationMode, Validator,
 };
+use cedar_policy_core::ast::PartialValue;
 use serde::Deserialize;
 use std::{
     env,
@@ -147,7 +148,7 @@ pub trait CustomCedarImpl {
         &self,
         q: &cedar_policy_core::ast::Request,
         p: &cedar_policy_core::ast::PolicySet,
-        e: &cedar_policy_core::entities::Entities,
+        e: &cedar_policy_core::entities::Entities<PartialValue>,
     ) -> InterfaceResponse;
 
     /// Custom validator entry point.
@@ -229,7 +230,7 @@ pub fn perform_integration_test_from_json_custom(
         .read(true)
         .open(entity_file)
         .unwrap_or_else(|e| panic!("error opening entity file {}: {e}", &test.entities));
-    let entities = UnevaledEntities::from_json_file(&entities_json, Some(&schema))
+    let entities = Entities::from_json_file(&entities_json, Some(&schema))
         .unwrap_or_else(|e| panic!("error parsing entities in {}: {e}", &test.entities));
 
     let validation_result = if let Some(custom_impl) = custom_impl_opt {
@@ -302,7 +303,7 @@ pub fn perform_integration_test_from_json_custom(
             custom_impl.is_authorized(&request.0, &policies.ast, &entities.0)
         } else {
             Authorizer::new()
-                .is_authorized_unevaled(&request, &policies, &entities)
+                .is_authorized(&request, &policies, &entities)
                 .into()
         };
 
