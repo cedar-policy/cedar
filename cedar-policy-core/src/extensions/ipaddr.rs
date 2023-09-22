@@ -340,6 +340,14 @@ mod tests {
         }
     }
 
+    /// This helper function returns an `Expr` that calls `ip()` with the given single argument
+    fn ip(arg: impl Into<Literal>) -> Expr {
+        Expr::call_extension_fn(
+            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
+            vec![Expr::val(arg)],
+        )
+    }
+
     /// this test just ensures that the right functions are marked constructors
     #[test]
     fn constructors() {
@@ -397,91 +405,61 @@ mod tests {
         );
 
         // test that an ipv4 address parses from string and isIpv4 but not isIpv6
-        let ipv4_addr_from_string = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("127.0.0.1")],
-        );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isIpv4").expect("should be a valid identifier"),
-                vec![ipv4_addr_from_string.clone()]
+                vec![ip("127.0.0.1")]
             )),
             Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isIpv6").expect("should be a valid identifier"),
-                vec![ipv4_addr_from_string]
+                vec![ip("127.0.0.1")]
             )),
             Ok(Value::from(false))
         );
 
         // test that an ipv6 address parses from string and isIpv6 but not isIpv4
-        let ipv6_addr_from_string = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("::1")],
-        );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isIpv4").expect("should be a valid identifier"),
-                vec![ipv6_addr_from_string.clone()]
+                vec![ip("::1")]
             )),
             Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isIpv6").expect("should be a valid identifier"),
-                vec![ipv6_addr_from_string]
+                vec![ip("::1")]
             )),
             Ok(Value::from(true))
         );
 
         // test that parsing hexadecimal IPv4 embeded in IPv6 address parses from string and isIpv6 but not isIpv4
-        let ipv6_addr_from_string = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("::ffff:ff00:1")],
-        );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isIpv4").expect("should be a valid identifier"),
-                vec![ipv6_addr_from_string.clone()]
+                vec![ip("::ffff:ff00:1")]
             )),
             Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isIpv6").expect("should be a valid identifier"),
-                vec![ipv6_addr_from_string]
+                vec![ip("::ffff:ff00:1")]
             )),
             Ok(Value::from(true))
         );
 
         // test for parse errors when parsing from string
-        assert_ipaddr_err(eval.interpret_inline_policy(&Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("380.0.0.1")],
-        )));
-        assert_ipaddr_err(eval.interpret_inline_policy(&Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("?")],
-        )));
-        assert_ipaddr_err(eval.interpret_inline_policy(&Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("ab.ab.ab.ab")],
-        )));
-        assert_ipaddr_err(eval.interpret_inline_policy(&Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("foo::1")],
-        )));
+        assert_ipaddr_err(eval.interpret_inline_policy(&ip("380.0.0.1")));
+        assert_ipaddr_err(eval.interpret_inline_policy(&ip("?")));
+        assert_ipaddr_err(eval.interpret_inline_policy(&ip("ab.ab.ab.ab")));
+        assert_ipaddr_err(eval.interpret_inline_policy(&ip("foo::1")));
         //Test parsing IPv4 embedded in IPv6 is an error
-        assert_ipaddr_err(eval.interpret_inline_policy(&Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("::ffff:127.0.0.1")],
-        )));
-        assert_ipaddr_err(eval.interpret_inline_policy(&Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("::127.0.0.1")],
-        )));
+        assert_ipaddr_err(eval.interpret_inline_policy(&ip("::ffff:127.0.0.1")));
+        assert_ipaddr_err(eval.interpret_inline_policy(&ip("::127.0.0.1")));
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
@@ -500,16 +478,7 @@ mod tests {
 
         // test that < on ipaddr values is an error
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::less(
-                Expr::call_extension_fn(
-                    Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-                    vec![Expr::val("127.0.0.1")],
-                ),
-                Expr::call_extension_fn(
-                    Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-                    vec![Expr::val("10.0.0.10")],
-                )
-            )),
+            eval.interpret_inline_policy(&Expr::less(ip("127.0.0.1"), ip("10.0.0.10"))),
             Err(evaluator::EvaluationError::type_error(
                 vec![Type::Long],
                 Type::Extension {
@@ -544,58 +513,41 @@ mod tests {
         let eval = Evaluator::new(&request, &entities, &exts).unwrap();
 
         // test that an ipv4 range parses from string and isIpv4 but not isIpv6
-        let ipv4_range_from_string = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("127.0.0.1/24")],
-        );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isIpv4").expect("should be a valid identifier"),
-                vec![ipv4_range_from_string.clone()]
+                vec![ip("127.0.0.1/24")]
             )),
             Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isIpv6").expect("should be a valid identifier"),
-                vec![ipv4_range_from_string]
+                vec![ip("127.0.0.1/24")]
             )),
             Ok(Value::from(false))
         );
 
         // test that an ipv6 range parses from string and isIpv6 but not isIpv4
-        let ipv6_range_from_string = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("ffee::/64")],
-        );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isIpv4").expect("should be a valid identifier"),
-                vec![ipv6_range_from_string.clone()]
+                vec![ip("ffee::/64")]
             )),
             Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isIpv6").expect("should be a valid identifier"),
-                vec![ipv6_range_from_string]
+                vec![ip("ffee::/64")]
             )),
             Ok(Value::from(true))
         );
 
         // test for parse errors related to subnets specifically
-        assert_ipaddr_err(eval.interpret_inline_policy(&Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("127.0.0.1/8/24")],
-        )));
-        assert_ipaddr_err(eval.interpret_inline_policy(&Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("fee::/64::1")],
-        )));
-        assert_ipaddr_err(eval.interpret_inline_policy(&Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("172.0.0.1/64")],
-        )));
+        assert_ipaddr_err(eval.interpret_inline_policy(&ip("127.0.0.1/8/24")));
+        assert_ipaddr_err(eval.interpret_inline_policy(&ip("fee::/64::1")));
+        assert_ipaddr_err(eval.interpret_inline_policy(&ip("172.0.0.1/64")));
     }
 
     #[test]
@@ -675,16 +627,7 @@ mod tests {
         );
         // these ranges are actually the same
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(
-                Expr::call_extension_fn(
-                    Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-                    vec![Expr::val("192.168.0.1/24")]
-                ),
-                Expr::call_extension_fn(
-                    Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-                    vec![Expr::val("192.168.0.8/24")]
-                ),
-            )),
+            eval.interpret_inline_policy(&Expr::is_eq(ip("192.168.0.1/24"), ip("192.168.0.8/24"))),
             Ok(Value::from(true))
         );
     }
