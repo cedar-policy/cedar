@@ -558,71 +558,38 @@ mod tests {
         let entities = basic_entities();
         let eval = Evaluator::new(&request, &entities, &exts).unwrap();
 
-        let ipv4_addr_a = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("127.0.0.1")],
-        );
-        let ipv4_addr_b = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("127.0.0.1")],
-        );
-        let ipv4_addr_c = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("192.168.0.1")],
-        );
-        let ipv4_addr_d = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("8.8.8.8")],
-        );
-        let ipv6_addr = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("::1")],
-        );
-        let ipv4_range_a = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("192.168.0.1/24")],
-        );
-        let ipv4_range_b = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("8.8.8.8/8")],
-        );
-
         // basic equality tests
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(ipv4_addr_a.clone(), ipv4_addr_a.clone())),
+            eval.interpret_inline_policy(&Expr::is_eq(ip("127.0.0.1"), ip("127.0.0.1"))),
             Ok(Value::from(true))
         );
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(ipv4_addr_a.clone(), ipv4_addr_b)),
-            Ok(Value::from(true))
-        );
-        assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(ipv4_addr_c, ipv4_addr_d)),
+            eval.interpret_inline_policy(&Expr::is_eq(ip("192.168.0.1"), ip("8.8.8.8"))),
             Ok(Value::from(false))
         );
 
         // weirder equality tests: ipv4 address vs ipv6 address, ip address vs string, ip address vs int
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(ipv4_addr_a.clone(), ipv6_addr.clone())),
+            eval.interpret_inline_policy(&Expr::is_eq(ip("127.0.0.1"), ip("::1"))),
             Ok(Value::from(false))
         );
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(ipv4_addr_a.clone(), Expr::val("127.0.0.1"))),
+            eval.interpret_inline_policy(&Expr::is_eq(ip("127.0.0.1"), Expr::val("127.0.0.1"))),
             Ok(Value::from(false))
         );
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(ipv6_addr, Expr::val(1))),
+            eval.interpret_inline_policy(&Expr::is_eq(ip("::1"), Expr::val(1))),
             Ok(Value::from(false))
         );
 
         // ip address vs range
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(ipv4_addr_a, ipv4_range_a.clone())),
+            eval.interpret_inline_policy(&Expr::is_eq(ip("127.0.0.1"), ip("192.168.0.1/24"))),
             Ok(Value::from(false))
         );
         // range vs range
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(ipv4_range_a, ipv4_range_b)),
+            eval.interpret_inline_policy(&Expr::is_eq(ip("192.168.0.1/24"), ip("8.8.8.8/8"))),
             Ok(Value::from(false))
         );
         // these ranges are actually the same
@@ -643,110 +610,77 @@ mod tests {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isLoopback").expect("should be a valid identifier"),
-                vec![Expr::call_extension_fn(
-                    Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-                    vec![Expr::val("127.0.0.2")]
-                )]
+                vec![ip("127.0.0.2")]
             )),
             Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isLoopback").expect("should be a valid identifier"),
-                vec![Expr::call_extension_fn(
-                    Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-                    vec![Expr::val("::1")]
-                )]
+                vec![ip("::1")]
             )),
             Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isLoopback").expect("should be a valid identifier"),
-                vec![Expr::call_extension_fn(
-                    Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-                    vec![Expr::val("::2")]
-                )]
+                vec![ip("::2")]
             )),
             Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isMulticast").expect("should be a valid identifier"),
-                vec![Expr::call_extension_fn(
-                    Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-                    vec![Expr::val("228.228.228.0")]
-                )]
+                vec![ip("228.228.228.0")]
             )),
             Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isMulticast").expect("should be a valid identifier"),
-                vec![Expr::call_extension_fn(
-                    Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-                    vec![Expr::val("224.0.0.0/3")]
-                )]
+                vec![ip("224.0.0.0/3")]
             )),
             Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isMulticast").expect("should be a valid identifier"),
-                vec![Expr::call_extension_fn(
-                    Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-                    vec![Expr::val("224.0.0.0/5")]
-                )]
+                vec![ip("224.0.0.0/5")]
             )),
             Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isMulticast").expect("should be a valid identifier"),
-                vec![Expr::call_extension_fn(
-                    Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-                    vec![Expr::val("ff00::/7")]
-                )]
+                vec![ip("ff00::/7")]
             )),
             Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isMulticast").expect("should be a valid identifier"),
-                vec![Expr::call_extension_fn(
-                    Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-                    vec![Expr::val("ff00::/9")]
-                )]
+                vec![ip("ff00::/9")]
             )),
             Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isMulticast").expect("should be a valid identifier"),
-                vec![Expr::call_extension_fn(
-                    Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-                    vec![Expr::val("127.0.0.1")]
-                )]
+                vec![ip("127.0.0.1")]
             )),
             Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isMulticast").expect("should be a valid identifier"),
-                vec![Expr::call_extension_fn(
-                    Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-                    vec![Expr::val("127.0.0.1")]
-                )]
+                vec![ip("127.0.0.1/1")]
             )),
             Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isMulticast").expect("should be a valid identifier"),
-                vec![Expr::call_extension_fn(
-                    Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-                    vec![Expr::val("ff00::2")]
-                )]
+                vec![ip("ff00::2")]
             )),
             Ok(Value::from(true))
         );
@@ -760,158 +694,104 @@ mod tests {
         let entities = basic_entities();
         let eval = Evaluator::new(&request, &entities, &exts).unwrap();
 
-        let ipv4_range_a = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("192.168.0.1/24")],
-        );
-        let ipv4_range_b = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("192.168.0.1/28")],
-        );
-        let ipv4_addr_a = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("192.168.0.1")],
-        );
-        let ipv4_addr_b = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("192.168.0.10")],
-        );
-        let ipv4_addr_c = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("192.168.0.75")],
-        );
-
-        // test that addr_a is in range_a
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
-                vec![ipv4_addr_a.clone(), ipv4_range_a.clone()]
+                vec![ip("192.168.0.1/24"), ip("192.168.0.1/24")]
             )),
             Ok(Value::from(true))
         );
-        // test that addr_a is in range_b
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
-                vec![ipv4_addr_a.clone(), ipv4_range_b.clone()]
+                vec![ip("192.168.0.1"), ip("192.168.0.1/28")]
             )),
             Ok(Value::from(true))
         );
-        // test that addr_b is in range_a
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
-                vec![ipv4_addr_b.clone(), ipv4_range_a.clone()]
+                vec![ip("192.168.0.10"), ip("192.168.0.1/24")]
             )),
             Ok(Value::from(true))
         );
-        // test that addr_b is in range_b
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
-                vec![ipv4_addr_b, ipv4_range_b.clone()]
+                vec![ip("192.168.0.10"), ip("192.168.0.1/28")]
             )),
             Ok(Value::from(true))
         );
-        // test that addr_c is in range_a
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
-                vec![ipv4_addr_c.clone(), ipv4_range_a]
+                vec![ip("192.168.0.75"), ip("192.168.0.1/24")]
             )),
             Ok(Value::from(true))
         );
-        // test that addr_c is not in range_b
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
-                vec![ipv4_addr_c, ipv4_range_b]
+                vec![ip("192.168.0.75"), ip("192.168.0.1/28")]
             )),
             Ok(Value::from(false))
         );
-        // test that addr_a is in addr_a (addr_a is implicitly a /32 range here)
+        // single address is implicitly a /32 range here
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
-                vec![ipv4_addr_a.clone(), ipv4_addr_a.clone()]
+                vec![ip("192.168.0.1"), ip("192.168.0.1")]
             )),
             Ok(Value::from(true))
         );
 
-        let ipv6_range_a = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("1:2:3:4::/48")],
-        );
-        let ipv6_range_b = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("1:2:3:4::/52")],
-        );
-        let ipv6_addr_a = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("1:2:3:4::")],
-        );
-        let ipv6_addr_b = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("1:2:3:6::")],
-        );
-        let ipv6_addr_c = Expr::call_extension_fn(
-            Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-            vec![Expr::val("1:2:3:ffff::")],
-        );
-
-        // test that addr_a is in range_a
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
-                vec![ipv6_addr_a.clone(), ipv6_range_a.clone()]
+                vec![ip("1:2:3:4::"), ip("1:2:3:4::/48")]
             )),
             Ok(Value::from(true))
         );
-        // test that addr_a is in range_b
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
-                vec![ipv6_addr_a.clone(), ipv6_range_b.clone()]
+                vec![ip("1:2:3:4::"), ip("1:2:3:4::/52")]
             )),
             Ok(Value::from(true))
         );
-        // test that addr_b is in range_a
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
-                vec![ipv6_addr_b.clone(), ipv6_range_a.clone()]
+                vec![ip("1:2:3:6::"), ip("1:2:3:4::/48")]
             )),
             Ok(Value::from(true))
         );
-        // test that addr_b is in range_b
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
-                vec![ipv6_addr_b, ipv6_range_b.clone()]
+                vec![ip("1:2:3:6::"), ip("1:2:3:4::/52")]
             )),
             Ok(Value::from(true))
         );
-        // test that addr_c is in range_a
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
-                vec![ipv6_addr_c.clone(), ipv6_range_a.clone()]
+                vec![ip("1:2:3:ffff::"), ip("1:2:3:4::/48")]
             )),
             Ok(Value::from(true))
         );
-        // test that addr_c is not in range_b
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
-                vec![ipv6_addr_c, ipv6_range_b]
+                vec![ip("1:2:3:ffff::"), ip("1:2:3:4::/52")]
             )),
             Ok(Value::from(false))
         );
-        // test that addr_a is in addr_a (addr_a is implicitly a /128 range here)
+        // single address is implicitly a /128 range here
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
-                vec![ipv6_addr_a.clone(), ipv6_addr_a]
+                vec![ip("1:2:3:4::"), ip("1:2:3:4::")]
             )),
             Ok(Value::from(true))
         );
@@ -920,7 +800,7 @@ mod tests {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
-                vec![ipv4_addr_a, ipv6_range_a]
+                vec![ip("192.168.0.1"), ip("1:2:3:4::/48")]
             )),
             Ok(Value::from(false))
         );
