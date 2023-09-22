@@ -22,7 +22,6 @@ use crate::ast::{
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
-use std::str::FromStr;
 use std::sync::Arc;
 
 // PANIC SAFETY All the names are valid names
@@ -46,9 +45,11 @@ const ADVICE_MSG: &str = "Maybe you forgot to apply the `ip` constructor?";
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 struct IPAddr {
-    /// the actual address, represented internally as an `IpNet`.
-    /// A single address is represented as an `IpNet` containing only one address.
-    addr: ipnet::IpNet,
+    /// the actual address, without subnet
+    addr: std::net::IpAddr,
+    /// Subnet -- the part after the `/` in CIDR.
+    /// A single address will have `32` here (in the IPv4 case) or `128` (in the IPv6 case).
+    subnet: u8,
 }
 
 impl IPAddr {
@@ -61,34 +62,25 @@ impl IPAddr {
     /// value.
     ///
     /// This accepts both IPv4 and IPv6 addresses, in their standard text
-    /// formats. It also accepts both single addresses (like "10.1.1.0") and
-    /// subnets (like "10.1.1.0/24").
-    /// It does not accept IPv4 addresses embedded in IPv6 (e.g., "::ffff:192.168.0.1")
+    /// formats. It also accepts both single addresses (like `"10.1.1.0"`) and
+    /// subnets (like `"10.1.1.0/24"`).
+    /// It does not accept IPv4 addresses embedded in IPv6 (e.g., `"::ffff:192.168.0.1"`)
     /// These addresses can be written as hexadecimal IPv6. Comparisons between any IPv4 address
-    ///  and any IPv6 address (including an IPv4 address embedded in IPv6) is false (e.g., isLoopback("::ffff:ff00:1") == false)
+    ///  and any IPv6 address (including an IPv4 address embedded in IPv6) is false (e.g.,
+    ///  `isLoopback("::ffff:ff00:1")` is `false`)
     fn from_str(str: impl AsRef<str>) -> Result<Self, String> {
-        //Return Err if string is IPv4 embedded in IPv6 format
-        str_contains_colons_and_dots(str.as_ref())?;
-
-        let addr = match std::net::IpAddr::from_str(str.as_ref()) {
-            Ok(singleaddr) => ipnet::IpNet::from(singleaddr),
-            Err(e1) => match parse_ipnet(str.as_ref()) {
-                Ok(net) => net.trunc(),
-                Err(e2) => return Err(format!(
-                    "error parsing IP address from string. Failed to parse as single address: `{}`. Failed to parse as subnet: `{}`", e1, e2)),
-            }
-        };
-        Ok(Self { addr })
+        // Delegate to `FromStr` implementation
+        str.as_ref().parse()
     }
 
     /// Return true if this is an IPv4 address
     fn is_ipv4(&self) -> bool {
-        self.addr.addr().is_ipv4()
+        self.addr.is_ipv4()
     }
 
     /// Return true if this is an IPv6 address
     fn is_ipv6(&self) -> bool {
-        self.addr.addr().is_ipv6()
+        self.addr.is_ipv6()
     }
 
     /// Return true if this is a loopback address
@@ -97,21 +89,80 @@ impl IPAddr {
         // Unlike the implementation of `is_multicast`, we don't need to test prefix
         // The reason for IpV6 is obvious: There's only one loopback address
         // The reason for IpV4 is that provided the truncated ip address is a loopback address, its prefix cannot be less than 8 because otherwise its more significant byte cannot be 127
-        self.addr.addr().is_loopback()
+        self.addr.is_loopback()
     }
 
     /// Return true if this is a multicast address
     fn is_multicast(&self) -> bool {
         // Multicast addresses are "224.0.0.0/4" for IpV4 and "ff00::/8" for IpV6
-        // If an IpNet's addresses are multicast addresses, calling `is_in_range()` over it and its associated net above should evaluate to true
-        // The implementation uses the property that if `ip1/prefix1` is in range `ip2/prefix2`, then `ip1` is in `ip2/prefix2` and `prefix1 >= prefix2`
-        self.addr.addr().is_multicast()
-            && self.addr.prefix_len() >= if self.is_ipv4() { 4 } else { 8 }
+        // If an ip range's addresses are multicast addresses, calling
+        // `is_in_range()` over it and its associated net above should evaluate
+        // to true
+        // The implementation uses the property that if `ip1/prefix1` is in range
+        // `ip2/prefix2`, then `ip1` is in `ip2/prefix2` and `prefix1 >= prefix2`
+        self.addr.is_multicast() && self.subnet >= if self.is_ipv4() { 4 } else { 8 }
     }
 
     /// Return true if this is contained in the given `IPAddr`
     fn is_in_range(&self, other: &Self) -> bool {
-        other.addr.contains(&self.addr)
+        match (&self.addr, &other.addr) {
+            (std::net::IpAddr::V4(self_v4), std::net::IpAddr::V4(other_v4)) => {
+                let netmask = |subnet: u8| u32::MAX.checked_shl(32 - subnet as u32).unwrap_or(0);
+                let hostmask = |subnet: u8| u32::MAX.checked_shr(subnet as u32).unwrap_or(0);
+
+                let self_network = u32::from(*self_v4) & netmask(self.subnet);
+                let other_network = u32::from(*other_v4) & netmask(other.subnet);
+                let self_broadcast = u32::from(*self_v4) | hostmask(self.subnet);
+                let other_broadcast = u32::from(*other_v4) | hostmask(other.subnet);
+                other_network <= self_network && self_broadcast <= other_broadcast
+            }
+            (std::net::IpAddr::V6(self_v6), std::net::IpAddr::V6(other_v6)) => {
+                let netmask = |subnet: u8| u128::MAX.checked_shl(128 - subnet as u32).unwrap_or(0);
+                let hostmask = |subnet: u8| u128::MAX.checked_shr(subnet as u32).unwrap_or(0);
+
+                let self_network = u128::from(*self_v6) & netmask(self.subnet);
+                let other_network = u128::from(*other_v6) & netmask(other.subnet);
+                let self_broadcast = u128::from(*self_v6) | hostmask(self.subnet);
+                let other_broadcast = u128::from(*other_v6) | hostmask(other.subnet);
+                other_network <= self_network && self_broadcast <= other_broadcast
+            }
+            (_, _) => false,
+        }
+    }
+}
+
+impl std::str::FromStr for IPAddr {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Return Err if string is IPv4 embedded in IPv6 format
+        str_contains_colons_and_dots(s)?;
+
+        match std::net::IpAddr::from_str(s) {
+            Ok(singleaddr) => Ok(Self {
+                addr: singleaddr,
+                subnet: if singleaddr.is_ipv4() { 32 } else { 128 },
+            }),
+            Err(e1) => match s.split_once('/') {
+                Some((addr, subnet)) => {
+                    // `addr` (the part before the slash) should be a valid IP address,
+                    // while `subnet` should be a valid u8 representing the subnet
+                    let addr: std::net::IpAddr = addr.parse().map_err(|e| {
+                        format!("error parsing IP address from the string `{addr}`: {e}")
+                    })?;
+                    let subnet: u8 = subnet.parse().map_err(|e| {
+                        format!("error parsing subnet from the string `{subnet}`: {e}")
+                    })?;
+                    if addr.is_ipv4() && subnet > 32 {
+                        Err(format!("invalid IPv4 subnet: {subnet}"))
+                    } else if addr.is_ipv6() && subnet > 128 {
+                        Err(format!("invalid IPv6 subnet: {subnet}"))
+                    } else {
+                        Ok(Self { addr, subnet })
+                    }
+                }
+                None => Err(format!("invalid IP address: {e1}")),
+            },
+        }
     }
 }
 
@@ -145,22 +196,6 @@ fn contains_at_least_two(s: &str, c: char) -> bool {
             idx.is_some()
         }
         None => false,
-    }
-}
-
-/// Parse an IP net representation
-/// We split the input string by a slash
-/// The first part should be a valid IP address, which along what comes after (including the slash) is further parsed by `ipnet`'s `IpNet` parser
-/// This design choice is to avoid the incosistencies between `ipnet`'s and `std::net`'s treatment of IP address representations
-fn parse_ipnet(s: &str) -> Result<ipnet::IpNet, String> {
-    match s.split_once('/') {
-        Some((addr, prefix)) => match std::net::IpAddr::from_str(addr) {
-            Ok(addr) => {
-                ipnet::IpNet::from_str(&format!("{}/{}", addr, prefix)).map_err(|e| e.to_string())
-            }
-            Err(e) => Err(e.to_string()),
-        },
-        None => Err("invalid IP address syntax".to_owned()),
     }
 }
 
@@ -320,6 +355,7 @@ mod tests {
     use crate::evaluator::Evaluator;
     use crate::extensions::Extensions;
     use crate::parser::parse_expr;
+    use cool_asserts::assert_matches;
 
     /// This helper function asserts that a `Result` is actually an
     /// `Err::ExtensionErr` with our extension name
@@ -546,10 +582,17 @@ mod tests {
             Ok(Value::from(true))
         );
 
+        // test the extremes of valid values for subnet
+        assert_matches!(eval.interpret_inline_policy(&ip("127.0.0.1/0")), Ok(_));
+        assert_matches!(eval.interpret_inline_policy(&ip("127.0.0.1/32")), Ok(_));
+        assert_matches!(eval.interpret_inline_policy(&ip("ffee::/0")), Ok(_));
+        assert_matches!(eval.interpret_inline_policy(&ip("ffee::/128")), Ok(_));
+
         // test for parse errors related to subnets specifically
         assert_ipaddr_err(eval.interpret_inline_policy(&ip("127.0.0.1/8/24")));
         assert_ipaddr_err(eval.interpret_inline_policy(&ip("fee::/64::1")));
         assert_ipaddr_err(eval.interpret_inline_policy(&ip("172.0.0.1/64")));
+        assert_ipaddr_err(eval.interpret_inline_policy(&ip("ffee::/132")));
     }
 
     #[test]
@@ -593,11 +636,6 @@ mod tests {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_eq(ip("192.168.0.1/24"), ip("8.8.8.8/8"))),
             Ok(Value::from(false))
-        );
-        // these ranges are actually the same
-        assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(ip("192.168.0.1/24"), ip("192.168.0.8/24"))),
-            Ok(Value::from(true))
         );
     }
 
@@ -806,6 +844,185 @@ mod tests {
             )),
             Ok(Value::from(false))
         );
+    }
+
+    #[test]
+    fn more_ip_semantics() {
+        let ext_array = [extension()];
+        let exts = Extensions::specific_extensions(&ext_array);
+        let request = basic_request();
+        let entities = basic_entities();
+        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::is_eq(ip("10.0.0.0"), ip("10.0.0.0"))),
+            Ok(Value::from(true))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::is_eq(ip("10.0.0.0"), ip("10.0.0.1"))),
+            Ok(Value::from(false))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::is_eq(ip("10.0.0.0/32"), ip("10.0.0.0"))),
+            Ok(Value::from(true))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::is_eq(ip("10.0.0.0/24"), ip("10.0.0.0"))),
+            Ok(Value::from(false))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::is_eq(ip("10.0.0.0/32"), ip("10.0.0.0/32"))),
+            Ok(Value::from(true))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::is_eq(ip("10.0.0.0/24"), ip("10.0.0.0/32"))),
+            Ok(Value::from(false))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::is_eq(ip("10.0.0.0/24"), ip("10.0.0.1/24"))),
+            Ok(Value::from(false))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::is_eq(ip("10.0.0.1/24"), ip("10.0.0.1/29"))),
+            Ok(Value::from(false))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.0"), ip("10.0.0.0/24")]
+            )),
+            Ok(Value::from(true))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.0"), ip("10.0.0.0/32")]
+            )),
+            Ok(Value::from(true))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.0"), ip("10.0.0.1/24")]
+            )),
+            Ok(Value::from(true))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.0"), ip("10.0.0.1/32")]
+            )),
+            Ok(Value::from(false))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.1"), ip("10.0.0.0/24")]
+            )),
+            Ok(Value::from(true))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.1"), ip("10.0.0.1/24")]
+            )),
+            Ok(Value::from(true))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.0/24"), ip("10.0.0.0/32")]
+            )),
+            Ok(Value::from(false))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.0/32"), ip("10.0.0.0/24")]
+            )),
+            Ok(Value::from(true))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.1/24"), ip("10.0.0.0/24")]
+            )),
+            Ok(Value::from(true))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.1/24"), ip("10.0.0.1/24")]
+            )),
+            Ok(Value::from(true))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.0/24"), ip("10.0.0.1/24")]
+            )),
+            Ok(Value::from(true))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.0/24"), ip("10.0.0.0/29")]
+            )),
+            Ok(Value::from(false))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.0/29"), ip("10.0.0.0/24")]
+            )),
+            Ok(Value::from(true))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.0/24"), ip("10.0.0.1/29")]
+            )),
+            Ok(Value::from(false))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.0/29"), ip("10.0.0.1/24")]
+            )),
+            Ok(Value::from(true))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.1/24"), ip("10.0.0.0/29")]
+            )),
+            Ok(Value::from(false))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.1/29"), ip("10.0.0.0/24")]
+            )),
+            Ok(Value::from(true))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.0/32"), ip("10.0.0.0/32")]
+            )),
+            Ok(Value::from(true))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("10.0.0.0/32"), ip("10.0.0.0")]
+            )),
+            Ok(Value::from(true))
+        );
+        assert_ipaddr_err(eval.interpret_inline_policy(&Expr::call_extension_fn(
+            Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+            vec![ip("10.0.0.0/33"), ip("10.0.0.0/32")],
+        )));
     }
 
     #[test]
