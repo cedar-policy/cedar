@@ -827,7 +827,7 @@ pub mod test {
     use super::*;
 
     use crate::{
-        entities::{EntityJsonParser, TCComputation},
+        entities::{EntityJsonParser, NoEntitiesSchema, TCComputation},
         parser::{self, parse_policyset},
         parser::{parse_expr, parse_policy_template},
     };
@@ -862,6 +862,7 @@ pub mod test {
                 Entity::with_uid(EntityUID::with_eid("test_action")),
                 Entity::with_uid(EntityUID::with_eid("test_resource")),
             ],
+            None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
         )
         .expect("failed to create basic entities")
@@ -914,6 +915,7 @@ pub mod test {
                 sibling,
                 unrelated,
             ],
+            None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
         )
         .expect("Failed to create rich entities")
@@ -2997,8 +2999,12 @@ pub mod test {
         let mut alice = Entity::with_uid(EntityUID::with_eid("Alice"));
         let parent = Entity::with_uid(EntityUID::with_eid("Friends"));
         alice.add_ancestor(parent.uid());
-        let entities = Entities::from_entities(vec![alice], TCComputation::AssumeAlreadyComputed)
-            .expect("failed to create basic entities");
+        let entities = Entities::from_entities(
+            vec![alice],
+            None::<&NoEntitiesSchema>,
+            TCComputation::AssumeAlreadyComputed,
+        )
+        .expect("failed to create basic entities");
         let exts = Extensions::none();
         let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
         assert_eq!(

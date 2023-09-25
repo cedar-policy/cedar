@@ -141,13 +141,27 @@ impl Entities {
 
     /// Create an `Entities` object with the given entities.
     ///
+    /// If `schema` is present, then action entities from that schema will also
+    /// be added to the `Entities`.
+    /// TODO: validate the entities against the schema
+    ///
     /// If you pass `TCComputation::AssumeAlreadyComputed`, then the caller is
     /// responsible for ensuring that TC and DAG hold before calling this method.
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
+        schema: Option<&impl Schema>,
         tc_computation: TCComputation,
     ) -> Result<Self> {
-        let mut entity_map = entities.into_iter().map(|e| (e.uid(), e)).collect();
+        let mut entity_map: HashMap<EntityUID, Entity> =
+            entities.into_iter().map(|e| (e.uid(), e)).collect();
+        if let Some(schema) = schema {
+            entity_map.extend(
+                schema
+                    .action_entities()
+                    .into_iter()
+                    .map(|e| (e.uid(), unwrap_or_clone(e))),
+            );
+        }
         match tc_computation {
             TCComputation::AssumeAlreadyComputed => {}
             TCComputation::EnforceAlreadyComputed => {
@@ -1064,8 +1078,12 @@ mod json_parsing_tests {
         );
 
         let (e0, e1, e2, e3) = test_entities();
-        let entities = Entities::from_entities([e0, e1, e2, e3], TCComputation::ComputeNow)
-            .expect("Failed to construct entities");
+        let entities = Entities::from_entities(
+            [e0, e1, e2, e3],
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+        )
+        .expect("Failed to construct entities");
         assert_eq!(
             entities,
             roundtrip(&entities).expect("should roundtrip without errors")
@@ -1122,6 +1140,7 @@ mod json_parsing_tests {
                 Entity::with_uid(EntityUID::with_eid("parent1")),
                 Entity::with_uid(EntityUID::with_eid("parent2")),
             ],
+            None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
         )
         .expect("Failed to construct entities");
@@ -1152,6 +1171,7 @@ mod json_parsing_tests {
                 Entity::with_uid(EntityUID::with_eid("parent1")),
                 Entity::with_uid(EntityUID::with_eid("parent2")),
             ],
+            None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
         )
         .expect("Failed to construct entities");
@@ -1217,7 +1237,7 @@ mod entities_tests {
     fn test_iter() {
         let (e0, e1, e2, e3) = test_entities();
         let v = vec![e0.clone(), e1.clone(), e2.clone(), e3.clone()];
-        let es = Entities::from_entities(v, TCComputation::ComputeNow)
+        let es = Entities::from_entities(v, None::<&NoEntitiesSchema>, TCComputation::ComputeNow)
             .expect("Failed to construct entities");
         let es_v = es.iter().collect::<Vec<_>>();
         assert!(es_v.len() == 4, "All entities should be in the vec");
@@ -1238,7 +1258,11 @@ mod entities_tests {
         e1.add_ancestor(EntityUID::with_eid("b"));
         e2.add_ancestor(EntityUID::with_eid("c"));
 
-        let es = Entities::from_entities(vec![e1, e2, e3], TCComputation::EnforceAlreadyComputed);
+        let es = Entities::from_entities(
+            vec![e1, e2, e3],
+            None::<&NoEntitiesSchema>,
+            TCComputation::EnforceAlreadyComputed,
+        );
         match es {
             Ok(_) => panic!("Was not transitively closed!"),
             Err(EntitiesError::TransitiveClosureError(_)) => (),
@@ -1259,8 +1283,12 @@ mod entities_tests {
         e1.add_ancestor(EntityUID::with_eid("c"));
         e2.add_ancestor(EntityUID::with_eid("c"));
 
-        Entities::from_entities(vec![e1, e2, e3], TCComputation::EnforceAlreadyComputed)
-            .expect("Should have succeeded");
+        Entities::from_entities(
+            vec![e1, e2, e3],
+            None::<&NoEntitiesSchema>,
+            TCComputation::EnforceAlreadyComputed,
+        )
+        .expect("Should have succeeded");
     }
 }
 

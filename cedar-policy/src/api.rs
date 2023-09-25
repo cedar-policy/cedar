@@ -244,12 +244,23 @@ impl Entities {
     }
 
     /// Create an `Entities` object with the given entities.
-    /// It will error if the entities cannot be read or if the entities hierarchy is cyclic
+    ///
+    /// If `schema` is present, then action entities from that schema will also
+    /// be added to the `Entities`.
+    /// (In this version of Cedar, the entities in `entities` are not actually
+    /// validated against the `schema`.)
+    ///
+    /// Returns an error if the entities cannot be read or if the entities
+    /// hierarchy is cyclic.
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
+        schema: Option<&Schema>,
     ) -> Result<Self, entities::EntitiesError> {
         entities::Entities::from_entities(
             entities.into_iter().map(|e| e.0),
+            schema
+                .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
+                .as_ref(),
             entities::TCComputation::ComputeNow,
         )
         .map(Entities)
@@ -272,6 +283,7 @@ impl Entities {
     /// If a `schema` is provided, this will inform the parsing: for instance, it
     /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
     /// if attributes have the wrong types (e.g., string instead of integer).
+    ///
     /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
     pub fn add_entities_from_json_str(
         self,
@@ -340,9 +352,21 @@ impl Entities {
 
     /// Parse an entities JSON file (in `&str` form) into an `Entities` object
     ///
-    /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// `schema` represents a source of `Action` entities, which will be added
+    /// to the entities parsed from JSON.
+    /// (If any `Action` entities are present in the JSON, and a `schema` is
+    /// also provided, those entities' definitions must match exactly or an
+    /// error is returned.)
+    ///
+    /// If a `schema` is present, this will also inform the parsing: for
+    /// instance, it will allow `__entity` and `__extn` escapes to be implicit.
+    ///
+    /// Finally, if a `schema` is present, this function will ensure
+    /// that the produced entities fully conform to the `schema` -- for
+    /// instance, it will error if attributes have the wrong types (e.g., string
+    /// instead of integer), or if required attributes are missing or
+    /// superfluous attributes are provided.
+    ///
     /// ```
     /// use std::collections::HashMap;
     /// use std::str::FromStr;
@@ -388,9 +412,21 @@ impl Entities {
     /// Parse an entities JSON file (in `serde_json::Value` form) into an
     /// `Entities` object
     ///
-    /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// `schema` represents a source of `Action` entities, which will be added
+    /// to the entities parsed from JSON.
+    /// (If any `Action` entities are present in the JSON, and a `schema` is
+    /// also provided, those entities' definitions must match exactly or an
+    /// error is returned.)
+    ///
+    /// If a `schema` is present, this will also inform the parsing: for
+    /// instance, it will allow `__entity` and `__extn` escapes to be implicit.
+    ///
+    /// Finally, if a `schema` is present, this function will ensure
+    /// that the produced entities fully conform to the `schema` -- for
+    /// instance, it will error if attributes have the wrong types (e.g., string
+    /// instead of integer), or if required attributes are missing or
+    /// superfluous attributes are provided.
+    ///
     /// ```
     /// use std::collections::HashMap;
     /// use std::str::FromStr;
@@ -429,9 +465,20 @@ impl Entities {
     /// Parse an entities JSON file (in `std::io::Read` form) into an `Entities`
     /// object
     ///
-    /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// `schema` represents a source of `Action` entities, which will be added
+    /// to the entities parsed from JSON.
+    /// (If any `Action` entities are present in the JSON, and a `schema` is
+    /// also provided, those entities' definitions must match exactly or an
+    /// error is returned.)
+    ///
+    /// If a `schema` is present, this will also inform the parsing: for
+    /// instance, it will allow `__entity` and `__extn` escapes to be implicit.
+    ///
+    /// Finally, if a `schema` is present, this function will ensure
+    /// that the produced entities fully conform to the `schema` -- for
+    /// instance, it will error if attributes have the wrong types (e.g., string
+    /// instead of integer), or if required attributes are missing or
+    /// superfluous attributes are provided.
     pub fn from_json_file(
         json: impl std::io::Read,
         schema: Option<&Schema>,
@@ -4501,7 +4548,7 @@ mod ancestors_tests {
             HashMap::new(),
             std::iter::once(b_euid.clone()).collect(),
         );
-        let es = Entities::from_entities([a, b, c]).unwrap();
+        let es = Entities::from_entities([a, b, c], None).unwrap();
         let ans = es.ancestors(&c_euid).unwrap().collect::<HashSet<_>>();
         assert_eq!(ans.len(), 2);
         assert!(ans.contains(&b_euid));
@@ -5432,29 +5479,32 @@ mod schema_based_parsing_tests {
 
         assert_eq!(
             action_entities,
-            Entities::from_entities([
-                Entity::new(a_euid.clone(), HashMap::new(), HashSet::new()),
-                Entity::new(
-                    b_euid.clone(),
-                    HashMap::new(),
-                    HashSet::from([a_euid.clone()])
-                ),
-                Entity::new(
-                    c_euid.clone(),
-                    HashMap::new(),
-                    HashSet::from([a_euid.clone()])
-                ),
-                Entity::new(
-                    d_euid.clone(),
-                    HashMap::new(),
-                    HashSet::from([a_euid.clone(), b_euid.clone(), c_euid.clone()])
-                ),
-                Entity::new(
-                    e_euid,
-                    HashMap::new(),
-                    HashSet::from([a_euid, b_euid, c_euid, d_euid])
-                ),
-            ])
+            Entities::from_entities(
+                [
+                    Entity::new(a_euid.clone(), HashMap::new(), HashSet::new()),
+                    Entity::new(
+                        b_euid.clone(),
+                        HashMap::new(),
+                        HashSet::from([a_euid.clone()])
+                    ),
+                    Entity::new(
+                        c_euid.clone(),
+                        HashMap::new(),
+                        HashSet::from([a_euid.clone()])
+                    ),
+                    Entity::new(
+                        d_euid.clone(),
+                        HashMap::new(),
+                        HashSet::from([a_euid.clone(), b_euid.clone(), c_euid.clone()])
+                    ),
+                    Entity::new(
+                        e_euid,
+                        HashMap::new(),
+                        HashSet::from([a_euid, b_euid, c_euid, d_euid])
+                    ),
+                ],
+                Some(&schema)
+            )
             .unwrap()
         );
     }

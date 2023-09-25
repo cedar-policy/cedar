@@ -206,14 +206,11 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
         &self,
         ejsons: impl IntoIterator<Item = EntityJSON>,
     ) -> Result<Entities, EntitiesError> {
-        let mut entities: Vec<Entity> = ejsons
+        let entities: Vec<Entity> = ejsons
             .into_iter()
             .map(|ejson| self.parse_ejson(ejson))
             .collect::<Result<_, _>>()?;
-        if let Some(schema) = &self.schema {
-            entities.extend(schema.action_entities().into_iter().map(unwrap_or_clone));
-        }
-        Entities::from_entities(entities, self.tc_computation)
+        Entities::from_entities(entities, self.schema.as_ref(), self.tc_computation)
     }
 
     /// internal function that parses an `EntityJSON` into an `Entity`

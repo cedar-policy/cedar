@@ -463,13 +463,6 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
             }
         },
     };
-    let entities = match load_actions_from_schema(entities, &schema) {
-        Ok(entities) => entities,
-        Err(e) => {
-            println!("Error: {e:?}");
-            return (CedarExitCode::Failure, EvalResult::Bool(false));
-        }
-    };
     match eval_expression(&request, &entities, &expr)
         .into_diagnostic()
         .wrap_err("failed to evaluate the expression")
@@ -935,25 +928,6 @@ fn read_schema_file(filename: impl AsRef<Path> + std::marker::Copy) -> Result<Sc
         })
 }
 
-fn load_actions_from_schema(entities: Entities, schema: &Option<Schema>) -> Result<Entities> {
-    match schema {
-        Some(schema) => match schema.action_entities() {
-            Ok(action_entities) => Entities::from_entities(
-                entities
-                    .iter()
-                    .cloned()
-                    .chain(action_entities.iter().cloned()),
-            )
-            .into_diagnostic()
-            .wrap_err("failed to merge action entities with entity file"),
-            Err(e) => Err(e)
-                .into_diagnostic()
-                .wrap_err("failed to construct action entities"),
-        },
-        None => Ok(entities),
-    }
-}
-
 /// This uses the Cedar API to call the authorization engine.
 fn execute_request(
     request: &RequestArgs,
@@ -980,13 +954,6 @@ fn execute_request(
         }
     };
     let entities = match load_entities(entities_filename, schema.as_ref()) {
-        Ok(entities) => entities,
-        Err(e) => {
-            errs.push(e);
-            Entities::empty()
-        }
-    };
-    let entities = match load_actions_from_schema(entities, &schema) {
         Ok(entities) => entities,
         Err(e) => {
             errs.push(e);
