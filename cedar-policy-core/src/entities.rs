@@ -481,25 +481,19 @@ mod json_parsing_tests {
         let new = serde_json::json!([
             {"uid":{"__expr":"Test::\"george\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"george\"", "Test::\"janet\""]}]);
 
-        let stream = parser
-            .iter_from_json_value(new)
-            .unwrap()
-            .collect::<Result<Vec<_>>>()
-            .unwrap();
-        let es = simple_entities(&parser);
-        let es = es
-            .add_entities(stream, TCComputation::EnforceAlreadyComputed)
-            .err()
-            .unwrap();
+        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let err = simple_entities(&parser)
+            .add_entities(addl_entities, TCComputation::EnforceAlreadyComputed);
         // Despite this being a cycle, alice doesn't have the appropriate edges to form the cycle, so we get this error
         let expected = TcError::MissingTcEdge {
             child: r#"Test::"janet""#.parse().unwrap(),
             parent: r#"Test::"george""#.parse().unwrap(),
             grandparent: r#"Test::"janet""#.parse().unwrap(),
         };
-        match es {
-            EntitiesError::TransitiveClosureError(e) => assert_eq!(&expected, e.as_ref()),
-            e => panic!("Wrong error: {e}"),
+        match err {
+            Err(EntitiesError::TransitiveClosureError(e)) => assert_eq!(&expected, e.as_ref()),
+            Err(e) => panic!("Wrong error: {e}"),
+            Ok(_) => panic!("expected an error here due to TC not computed properly"),
         }
     }
 
@@ -510,24 +504,18 @@ mod json_parsing_tests {
         let new = serde_json::json!([
             {"uid":{"__expr":"Test::\"george\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"henry\""]}]);
 
-        let stream = parser
-            .iter_from_json_value(new)
-            .unwrap()
-            .collect::<Result<Vec<_>>>()
-            .unwrap();
-        let es = simple_entities(&parser);
-        let es = es
-            .add_entities(stream, TCComputation::EnforceAlreadyComputed)
-            .err()
-            .unwrap();
+        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let err = simple_entities(&parser)
+            .add_entities(addl_entities, TCComputation::EnforceAlreadyComputed);
         let expected = TcError::MissingTcEdge {
             child: r#"Test::"janet""#.parse().unwrap(),
             parent: r#"Test::"george""#.parse().unwrap(),
             grandparent: r#"Test::"henry""#.parse().unwrap(),
         };
-        match es {
-            EntitiesError::TransitiveClosureError(e) => assert_eq!(&expected, e.as_ref()),
-            e => panic!("Wrong error: {e}"),
+        match err {
+            Err(EntitiesError::TransitiveClosureError(e)) => assert_eq!(&expected, e.as_ref()),
+            Err(e) => panic!("Wrong error: {e}"),
+            Ok(_) => panic!("expected an error here due to TC not computed properly"),
         }
     }
 
@@ -538,24 +526,18 @@ mod json_parsing_tests {
         let new = serde_json::json!([
             {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"alice\""]}]);
 
-        let stream = parser
-            .iter_from_json_value(new)
-            .unwrap()
-            .collect::<Result<Vec<_>>>()
-            .unwrap();
-        let es = simple_entities(&parser);
-        let es = es
-            .add_entities(stream, TCComputation::EnforceAlreadyComputed)
-            .err()
-            .unwrap();
+        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let err = simple_entities(&parser)
+            .add_entities(addl_entities, TCComputation::EnforceAlreadyComputed);
         let expected = TcError::MissingTcEdge {
             child: r#"Test::"jeff""#.parse().unwrap(),
             parent: r#"Test::"alice""#.parse().unwrap(),
             grandparent: r#"Test::"bob""#.parse().unwrap(),
         };
-        match es {
-            EntitiesError::TransitiveClosureError(e) => assert_eq!(&expected, e.as_ref()),
-            e => panic!("Wrong error: {e}"),
+        match err {
+            Err(EntitiesError::TransitiveClosureError(e)) => assert_eq!(&expected, e.as_ref()),
+            Err(e) => panic!("Wrong error: {e}"),
+            Ok(_) => panic!("expected an error here due to TC not computed properly"),
         }
     }
 
@@ -566,14 +548,9 @@ mod json_parsing_tests {
         let new = serde_json::json!([
             {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"alice\"", "Test::\"bob\""]}]);
 
-        let stream = parser
-            .iter_from_json_value(new)
-            .unwrap()
-            .collect::<Result<Vec<_>>>()
-            .unwrap();
-        let es = simple_entities(&parser);
-        let es = es
-            .add_entities(stream, TCComputation::EnforceAlreadyComputed)
+        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let es = simple_entities(&parser)
+            .add_entities(addl_entities, TCComputation::EnforceAlreadyComputed)
             .unwrap();
         let euid = r#"Test::"jeff""#.parse().unwrap();
         let jeff = es.entity(&euid).unwrap();
@@ -590,13 +567,10 @@ mod json_parsing_tests {
         let new = serde_json::json!([
             {"uid":{"__expr":"Test::\"george\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"henry\""] }]);
 
-        let stream = parser
-            .iter_from_json_value(new)
-            .unwrap()
-            .collect::<Result<Vec<_>>>()
+        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let es = simple_entities(&parser)
+            .add_entities(addl_entities, TCComputation::ComputeNow)
             .unwrap();
-        let es = simple_entities(&parser);
-        let es = es.add_entities(stream, TCComputation::ComputeNow).unwrap();
         let euid = r#"Test::"george""#.parse().unwrap();
         let jeff = es.entity(&euid).unwrap();
         assert!(jeff.is_descendant_of(&r#"Test::"henry""#.parse().unwrap()));
@@ -612,13 +586,10 @@ mod json_parsing_tests {
         let new = serde_json::json!([
             {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"alice\""]}]);
 
-        let stream = parser
-            .iter_from_json_value(new)
-            .unwrap()
-            .collect::<Result<Vec<_>>>()
+        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let es = simple_entities(&parser)
+            .add_entities(addl_entities, TCComputation::ComputeNow)
             .unwrap();
-        let es = simple_entities(&parser);
-        let es = es.add_entities(stream, TCComputation::ComputeNow).unwrap();
         let euid = r#"Test::"jeff""#.parse().unwrap();
         let jeff = es.entity(&euid).unwrap();
         assert!(jeff.is_descendant_of(&r#"Test::"alice""#.parse().unwrap()));
@@ -633,13 +604,10 @@ mod json_parsing_tests {
         let new = serde_json::json!([
             {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"susan\""]}]);
 
-        let stream = parser
-            .iter_from_json_value(new)
-            .unwrap()
-            .collect::<Result<Vec<_>>>()
+        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let es = simple_entities(&parser)
+            .add_entities(addl_entities, TCComputation::ComputeNow)
             .unwrap();
-        let es = simple_entities(&parser);
-        let es = es.add_entities(stream, TCComputation::ComputeNow).unwrap();
         let euid = r#"Test::"jeff""#.parse().unwrap();
         let jeff = es.entity(&euid).unwrap();
         let rexpr = jeff.get("foo").unwrap();
@@ -657,14 +625,9 @@ mod json_parsing_tests {
             {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : {}, "parents" : []},
             {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : {}, "parents" : []}]);
 
-        let stream = parser
-            .iter_from_json_value(new)
-            .unwrap()
-            .collect::<Result<Vec<_>>>()
-            .unwrap();
-        let es = simple_entities(&parser);
-        let err = es
-            .add_entities(stream, TCComputation::ComputeNow)
+        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let err = simple_entities(&parser)
+            .add_entities(addl_entities, TCComputation::ComputeNow)
             .err()
             .unwrap();
         let expected = r#"Test::"jeff""#.parse().unwrap();
@@ -680,20 +643,13 @@ mod json_parsing_tests {
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new =
             serde_json::json!([{"uid":{"__expr":"Test::\"alice\""}, "attrs" : {}, "parents" : []}]);
-        let stream = parser
-            .iter_from_json_value(new)
-            .unwrap()
-            .collect::<Result<Vec<_>>>()
-            .unwrap();
-        let es = simple_entities(&parser);
-        let err = es
-            .add_entities(stream, TCComputation::ComputeNow)
-            .err()
-            .unwrap();
+        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let err = simple_entities(&parser).add_entities(addl_entities, TCComputation::ComputeNow);
         let expected = r#"Test::"alice""#.parse().unwrap();
         match err {
-            EntitiesError::Duplicate(e) => assert_eq!(e, expected),
-            e => panic!("Wrong error: {e}"),
+            Err(EntitiesError::Duplicate(e)) => assert_eq!(e, expected),
+            Err(e) => panic!("Wrong error: {e}"),
+            Ok(_) => panic!("expected an error here due to TC not computed properly"),
         }
     }
 
@@ -1323,6 +1279,7 @@ mod schema_based_parsing_tests {
     struct MockSchema;
     impl Schema for MockSchema {
         type EntityTypeDescription = MockEmployeeDescription;
+        type ActionEntityIterator = std::iter::Empty<Arc<Entity>>;
         fn entity_type(&self, entity_type: &EntityType) -> Option<MockEmployeeDescription> {
             match entity_type.to_string().as_str() {
                 "Employee" => Some(MockEmployeeDescription),
@@ -1359,6 +1316,9 @@ mod schema_based_parsing_tests {
                 ))),
                 _ => Box::new(std::iter::empty()),
             }
+        }
+        fn action_entities(&self) -> Self::ActionEntityIterator {
+            std::iter::empty()
         }
     }
 
@@ -2490,6 +2450,7 @@ mod schema_based_parsing_tests {
         struct MockSchema;
         impl Schema for MockSchema {
             type EntityTypeDescription = MockEmployeeDescription;
+            type ActionEntityIterator = std::iter::Empty<Arc<Entity>>;
             fn entity_type(&self, entity_type: &EntityType) -> Option<MockEmployeeDescription> {
                 if &entity_type.to_string() == "XYZCorp::Employee" {
                     Some(MockEmployeeDescription)
@@ -2510,6 +2471,9 @@ mod schema_based_parsing_tests {
                     ))),
                     _ => Box::new(std::iter::empty()),
                 }
+            }
+            fn action_entities(&self) -> Self::ActionEntityIterator {
+                std::iter::empty()
             }
         }
 

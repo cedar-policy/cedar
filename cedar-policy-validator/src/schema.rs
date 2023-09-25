@@ -1277,6 +1277,7 @@ impl<'a> CoreSchema<'a> {
 
 impl<'a> cedar_policy_core::entities::Schema for CoreSchema<'a> {
     type EntityTypeDescription = EntityTypeDescription;
+    type ActionEntityIterator = Vec<Arc<Entity>>;
 
     fn entity_type(
         &self,
@@ -1305,6 +1306,10 @@ impl<'a> cedar_policy_core::entities::Schema for CoreSchema<'a> {
                 None
             }
         }))
+    }
+
+    fn action_entities(&self) -> Self::ActionEntityIterator {
+        self.actions.values().map(Arc::clone).collect()
     }
 }
 

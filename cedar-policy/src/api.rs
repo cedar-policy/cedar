@@ -283,9 +283,7 @@ impl Entities {
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
-        let new_entities = eparser
-            .iter_from_json_str(json)?
-            .collect::<Result<Vec<_>, _>>()?;
+        let new_entities = eparser.iter_from_json_str(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
             entities::TCComputation::ComputeNow,
@@ -309,9 +307,7 @@ impl Entities {
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
-        let new_entities = eparser
-            .iter_from_json_value(json)?
-            .collect::<Result<Vec<_>, _>>()?;
+        let new_entities = eparser.iter_from_json_value(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
             entities::TCComputation::ComputeNow,
@@ -335,9 +331,7 @@ impl Entities {
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
-        let new_entities = eparser
-            .iter_from_json_file(json)?
-            .collect::<Result<Vec<_>, _>>()?;
+        let new_entities = eparser.iter_from_json_file(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
             entities::TCComputation::ComputeNow,
@@ -4651,7 +4645,8 @@ mod schema_based_parsing_tests {
         // but with schema-based parsing, we get these other types
         let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
-        assert_eq!(parsed.iter().count(), 1);
+        assert_eq!(parsed.iter().count(), 2); // Employee::"12UA45" and the one action
+        assert_eq!(parsed.iter().filter(|e| e.0.uid().is_action()).count(), 1);
         let parsed = parsed
             .get(&EntityUid::from_strs("Employee", "12UA45"))
             .expect("that should be the employee id");
@@ -5023,7 +5018,8 @@ mod schema_based_parsing_tests {
         );
         let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
-        assert_eq!(parsed.iter().count(), 1);
+        assert_eq!(parsed.iter().count(), 2); // XYZCorp::Employee::"12UA45" and one action
+        assert_eq!(parsed.iter().filter(|e| e.0.uid().is_action()).count(), 1);
         let parsed = parsed
             .get(&EntityUid::from_strs("XYZCorp::Employee", "12UA45"))
             .expect("that should be the employee type and id");
@@ -5104,7 +5100,8 @@ mod schema_based_parsing_tests {
         );
         let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
-        assert_eq!(parsed.iter().count(), 1);
+        assert_eq!(parsed.iter().count(), 2); // Employee::"12UA45" and one action
+        assert_eq!(parsed.iter().filter(|e| e.0.uid().is_action()).count(), 1);
 
         // "department" shouldn't be required
         let entitiesjson = json!(
@@ -5121,7 +5118,8 @@ mod schema_based_parsing_tests {
         );
         let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
-        assert_eq!(parsed.iter().count(), 1);
+        assert_eq!(parsed.iter().count(), 2); // Employee::"12UA45" and the one action
+        assert_eq!(parsed.iter().filter(|e| e.0.uid().is_action()).count(), 1);
     }
 
     /// Test that involves open entities

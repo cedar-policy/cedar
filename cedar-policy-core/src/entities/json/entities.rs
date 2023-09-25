@@ -20,7 +20,7 @@ use super::{
     ValueParser,
 };
 use crate::ast::{Entity, EntityType, EntityUID, RestrictedExpr};
-use crate::entities::{Entities, EntitiesError, TCComputation};
+use crate::entities::{unwrap_or_clone, Entities, EntitiesError, TCComputation};
 use crate::extensions::Extensions;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -44,12 +44,20 @@ pub struct EntityJSON {
 /// Struct used to parse entities from JSON.
 #[derive(Debug, Clone)]
 pub struct EntityJsonParser<'e, S: Schema = NoEntitiesSchema> {
-    /// If a `schema` is present, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit.
-    /// It will also ensure that the produced `Entities` fully conforms to the
-    /// `schema` -- for instance, it will error if attributes have the wrong
-    /// types (e.g., string instead of integer), or if required attributes are
-    /// missing or superfluous attributes are provided.
+    /// `schema` represents a source of `Action` entities, which will be added
+    /// to the entities parsed from JSON.
+    /// (If any `Action` entities are present in the JSON, and a `schema` is
+    /// also provided, those entities' definitions must match exactly or an
+    /// error is returned.)
+    ///
+    /// If a `schema` is present, this will also inform the parsing: for
+    /// instance, it will allow `__entity` and `__extn` escapes to be implicit.
+    ///
+    /// Finally, if a `schema` is present, the `EntityJsonParser` will ensure
+    /// that the produced entities fully conform to the `schema` -- for
+    /// instance, it will error if attributes have the wrong types (e.g., string
+    /// instead of integer), or if required attributes are missing or
+    /// superfluous attributes are provided.
     schema: Option<S>,
 
     /// Extensions which are active for the JSON parsing.
@@ -75,12 +83,20 @@ enum EntitySchemaInfo<E: EntityTypeDescription> {
 impl<'e, S: Schema> EntityJsonParser<'e, S> {
     /// Create a new `EntityJsonParser`.
     ///
-    /// If a `schema` is present, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit.
-    /// It will also ensure that the produced `Entities` fully conforms to the
-    /// `schema` -- for instance, it will error if attributes have the wrong
-    /// types (e.g., string instead of integer), or if required attributes are
-    /// missing or superfluous attributes are provided.
+    /// `schema` represents a source of `Action` entities, which will be added
+    /// to the entities parsed from JSON.
+    /// (If any `Action` entities are present in the JSON, and a `schema` is
+    /// also provided, those entities' definitions must match exactly or an
+    /// error is returned.)
+    ///
+    /// If a `schema` is present, this will also inform the parsing: for
+    /// instance, it will allow `__entity` and `__extn` escapes to be implicit.
+    ///
+    /// Finally, if a `schema` is present, the `EntityJsonParser` will ensure
+    /// that the produced entities fully conform to the `schema` -- for
+    /// instance, it will error if attributes have the wrong types (e.g., string
+    /// instead of integer), or if required attributes are missing or
+    /// superfluous attributes are provided.
     ///
     /// If you pass `TCComputation::AssumeAlreadyComputed`, then the caller is
     /// responsible for ensuring that TC holds before calling this method.
@@ -96,72 +112,107 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
         }
     }
 
-    /// Parse an entities JSON file (in [`&str`] form) into an [`Entities`] object
+    /// Parse an entities JSON file (in [`&str`] form) into an [`Entities`] object.
+    ///
+    /// If the `EntityJsonParser` has a `schema`, this also adds `Action`
+    /// entities declared in the `schema`.
     pub fn from_json_str(&self, json: &str) -> Result<Entities, EntitiesError> {
         let ejsons: Vec<EntityJSON> =
             serde_json::from_str(json).map_err(JsonDeserializationError::from)?;
         self.parse_ejsons(ejsons)
     }
 
-    /// Parse an entities JSON file (in [`serde_json::Value`] form) into an [`Entities`] object
+    /// Parse an entities JSON file (in [`serde_json::Value`] form) into an [`Entities`] object.
+    ///
+    /// If the `EntityJsonParser` has a `schema`, this also adds `Action`
+    /// entities declared in the `schema`.
     pub fn from_json_value(&self, json: serde_json::Value) -> Result<Entities, EntitiesError> {
         let ejsons: Vec<EntityJSON> =
             serde_json::from_value(json).map_err(JsonDeserializationError::from)?;
         self.parse_ejsons(ejsons)
     }
 
-    /// Parse an entities JSON file (in [`std::io::Read`] form) into an [`Entities`] object
+    /// Parse an entities JSON file (in [`std::io::Read`] form) into an [`Entities`] object.
+    ///
+    /// If the `EntityJsonParser` has a `schema`, this also adds `Action`
+    /// entities declared in the `schema`.
     pub fn from_json_file(&self, json: impl std::io::Read) -> Result<Entities, EntitiesError> {
         let ejsons: Vec<EntityJSON> =
             serde_json::from_reader(json).map_err(JsonDeserializationError::from)?;
         self.parse_ejsons(ejsons)
     }
 
-    /// Parse an entities JSON file (in [`&str`] form) into an iterator over [`Entity`]s
+    /// Parse an entities JSON file (in [`&str`] form) into an iterator over [`Entity`]s.
+    ///
+    /// If the `EntityJsonParser` has a `schema`, this also adds `Action`
+    /// entities declared in the `schema`.
     pub fn iter_from_json_str(
         &self,
         json: &str,
-    ) -> Result<impl Iterator<Item = Result<Entity, EntitiesError>> + '_, EntitiesError> {
+    ) -> Result<impl Iterator<Item = Entity> + '_, EntitiesError> {
         let ejsons: Vec<EntityJSON> =
             serde_json::from_str(json).map_err(JsonDeserializationError::from)?;
-        Ok(ejsons
-            .into_iter()
-            .map(|ejson| self.parse_ejson(ejson).map_err(EntitiesError::from)))
+        self.iter_ejson_to_iter_entity(ejsons)
     }
 
-    /// Parse an entities JSON file (in [`serde_json::Value`] form) into an iterator over [`Entity`]s
+    /// Parse an entities JSON file (in [`serde_json::Value`] form) into an iterator over [`Entity`]s.
+    ///
+    /// If the `EntityJsonParser` has a `schema`, this also adds `Action`
+    /// entities declared in the `schema`.
     pub fn iter_from_json_value(
         &self,
         json: serde_json::Value,
-    ) -> Result<impl Iterator<Item = Result<Entity, EntitiesError>> + '_, EntitiesError> {
+    ) -> Result<impl Iterator<Item = Entity> + '_, EntitiesError> {
         let ejsons: Vec<EntityJSON> =
             serde_json::from_value(json).map_err(JsonDeserializationError::from)?;
-        Ok(ejsons
-            .into_iter()
-            .map(|ejson| self.parse_ejson(ejson).map_err(EntitiesError::from)))
+        self.iter_ejson_to_iter_entity(ejsons)
     }
 
-    /// Parse an entities JSON file (in [`std::io::Read`] form) into an iterator over  [`Entity`]s
+    /// Parse an entities JSON file (in [`std::io::Read`] form) into an iterator over [`Entity`]s.
+    ///
+    /// If the `EntityJsonParser` has a `schema`, this also adds `Action`
+    /// entities declared in the `schema`.
     pub fn iter_from_json_file(
         &self,
         json: impl std::io::Read,
-    ) -> Result<impl Iterator<Item = Result<Entity, EntitiesError>> + '_, EntitiesError> {
+    ) -> Result<impl Iterator<Item = Entity> + '_, EntitiesError> {
         let ejsons: Vec<EntityJSON> =
             serde_json::from_reader(json).map_err(JsonDeserializationError::from)?;
-        Ok(ejsons
-            .into_iter()
-            .map(|ejson| self.parse_ejson(ejson).map_err(EntitiesError::from)))
+        self.iter_ejson_to_iter_entity(ejsons)
     }
 
-    /// internal function that creates an [`Entities`] from a stream of [`EntityJSON`]
+    /// internal function that converts an iterator over [`EntityJSON`] into an
+    /// iterator over [`Entity`] and also adds any `Action` entities declared in
+    /// `self.schema`.
+    fn iter_ejson_to_iter_entity(
+        &self,
+        ejsons: impl IntoIterator<Item = EntityJSON>,
+    ) -> Result<impl Iterator<Item = Entity> + '_, EntitiesError> {
+        let mut entities: Vec<Entity> = ejsons
+            .into_iter()
+            .map(|ejson| self.parse_ejson(ejson).map_err(EntitiesError::from))
+            .collect::<Result<_, _>>()?;
+        if let Some(schema) = &self.schema {
+            entities.extend(schema.action_entities().into_iter().map(unwrap_or_clone));
+        }
+        Ok(entities.into_iter())
+    }
+
+    /// internal function that creates an [`Entities`] from a stream of [`EntityJSON`].
+    ///
+    /// If the `EntityJsonParser` has a `schema`, this also adds `Action`
+    /// entities declared in the `schema`.
     fn parse_ejsons(
         &self,
         ejsons: impl IntoIterator<Item = EntityJSON>,
     ) -> Result<Entities, EntitiesError> {
-        let entities = ejsons
+        let mut entities: Vec<Entity> = ejsons
             .into_iter()
             .map(|ejson| self.parse_ejson(ejson))
-            .collect::<Result<Vec<Entity>, _>>()?;
+            .collect::<Result<_, _>>()?;
+        if let Some(schema) = &self.schema {
+            entities.extend(schema.action_entities().into_iter().map(unwrap_or_clone));
+        }
         Entities::from_entities(entities, self.tc_computation)
     }
 
