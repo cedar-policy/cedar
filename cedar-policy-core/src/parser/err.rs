@@ -23,7 +23,7 @@ use std::ops::{Deref, DerefMut};
 use either::Either;
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
-use miette::{Diagnostic, LabeledSpan, Severity, SourceCode};
+use miette::{Diagnostic, LabeledSpan, Severity, SourceCode, SourceSpan};
 use smol_str::SmolStr;
 use thiserror::Error;
 
@@ -62,6 +62,22 @@ pub enum ParseError {
     /// Errors concerning parsing literals on their own
     #[error(transparent)]
     ParseLiteral(#[from] ParseLiteralError),
+}
+
+impl ParseError {
+    /// Extract a primary source span locating the error, if one is available.
+    pub fn primary_source_span(&self) -> Option<SourceSpan> {
+        match self {
+            ParseError::ToCST(to_cst_err) => Some(to_cst_err.primary_source_span()),
+            ParseError::RestrictedExpr(restricted_expr_err) => match restricted_expr_err {
+                RestrictedExprError::InvalidRestrictedExpression { .. } => None,
+                RestrictedExprError::Parse(ParseErrors(parse_errs)) => {
+                    parse_errs.first().and_then(ParseError::primary_source_span)
+                }
+            },
+            ParseError::ToAST(_) | ParseError::ParseLiteral(_) => None,
+        }
+    }
 }
 
 /// Errors in the top-level parse literal entrypoint
@@ -358,6 +374,23 @@ pub struct ToCSTError {
 }
 
 impl ToCSTError {
+    /// Extract a primary source span locating the error.
+    pub fn primary_source_span(&self) -> SourceSpan {
+        match &self.err {
+            OwnedRawParseError::InvalidToken { location } => *location..*location,
+            OwnedRawParseError::UnrecognizedEof { location, .. } => *location..*location,
+            OwnedRawParseError::UnrecognizedToken {
+                token: (token_start, _, token_end),
+                ..
+            } => *token_start..*token_end,
+            OwnedRawParseError::ExtraToken {
+                token: (token_start, _, token_end),
+            } => *token_start..*token_end,
+            OwnedRawParseError::User { error } => error.info.0.clone(),
+        }
+        .into()
+    }
+
     pub(crate) fn from_raw_parse_err(err: RawParseError<'_>) -> Self {
         Self {
             err: err.map_token(|token| token.to_string()),
@@ -393,21 +426,19 @@ impl Diagnostic for ToCSTError {
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        let primary_source_span = self.primary_source_span();
         let labeled_span = match &self.err {
-            OwnedRawParseError::InvalidToken { location } => {
-                LabeledSpan::underline(*location..*location)
+            OwnedRawParseError::InvalidToken { .. } => LabeledSpan::underline(primary_source_span),
+            OwnedRawParseError::UnrecognizedEof { expected, .. } => {
+                LabeledSpan::new_with_span(expected_to_string(expected), primary_source_span)
             }
-            OwnedRawParseError::UnrecognizedEof { location, expected } => {
-                LabeledSpan::new_with_span(expected_to_string(expected), *location..*location)
+            OwnedRawParseError::UnrecognizedToken { expected, .. } => {
+                LabeledSpan::new_with_span(expected_to_string(expected), primary_source_span)
             }
-            OwnedRawParseError::UnrecognizedToken {
-                token: (token_start, _, token_end),
-                expected,
-            } => LabeledSpan::new_with_span(expected_to_string(expected), *token_start..*token_end),
             OwnedRawParseError::ExtraToken {
                 token: (token_start, _, token_end),
             } => LabeledSpan::underline(*token_start..*token_end),
-            OwnedRawParseError::User { error } => LabeledSpan::underline(error.info.0.clone()),
+            OwnedRawParseError::User { .. } => LabeledSpan::underline(primary_source_span),
         };
         Some(Box::new(iter::once(labeled_span)))
     }

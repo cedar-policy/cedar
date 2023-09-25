@@ -9,6 +9,7 @@
 - Support `Request`s with `Unknown` fields for partial evaluation.
 - Export the `cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind}` and
   `cedar_policy_core::authorizer::AuthorizationError` error types.
+- Added an API to `ParseError` to quickly get the primary source span
 
 ### Changed
 
