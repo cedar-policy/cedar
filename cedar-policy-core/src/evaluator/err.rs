@@ -181,7 +181,7 @@ impl From<RestrictedExprError> for EvaluationError {
 pub enum EvaluationErrorKind {
     /// Tried to lookup this entity UID, but it didn't exist in the provided
     /// entities
-    #[error("entity does not exist: `{0}`")]
+    #[error("entity `{0}` does not exist")]
     EntityDoesNotExist(Arc<EntityUID>),
 
     /// Tried to get this attribute, but the specified entity didn't
@@ -195,7 +195,7 @@ pub enum EvaluationErrorKind {
     },
 
     /// Tried to access an attribute of an unspecified entity
-    #[error("cannot access attribute of unspecified entity: `{0}`")]
+    #[error("cannot access attribute `{0}` of unspecified entity")]
     UnspecifiedEntityAccess(SmolStr),
 
     /// Tried to get an attribute of a (non-entity) record, but that record

@@ -104,7 +104,7 @@ pub enum JsonDeserializationError {
     },
     /// Schema-based parsing needed an implicit extension constructor, but no suitable
     /// constructor was found
-    #[error("{ctx}, missing extension constructor for type {arg_type} -> {return_type}")]
+    #[error("{ctx}, missing extension constructor for {arg_type} -> {return_type}")]
     MissingImpliedConstructor {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,

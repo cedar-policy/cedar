@@ -198,7 +198,7 @@ pub enum ToASTError {
     },
     /// Returned when a policy contains ambiguous ordering of operators.
     /// This can be resolved by using parenthesis to make order explicit
-    #[error("relational operators (>, ==, in, etc.) must be used with parentheses to make ordering explicit")]
+    #[error("multiple relational operators (>, ==, in, etc.) must be used with parentheses to make ordering explicit")]
     AmbiguousOperators,
     /// Returned when a policy uses the division operator (`/`), which is not supported
     #[error("division is not supported")]

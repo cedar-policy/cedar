@@ -31,7 +31,7 @@ pub enum FromJsonError {
     TemplateToPolicy(#[from] ast::UnexpectedSlotError),
     /// Slot name was not valid for the position it was used in. (Currently, principal slots must
     /// be named `?principal`, and resource slots must be named `?resource`.)
-    #[error("invalid slot name or slot used in wrong position. Principal slots must be named `?principal`, and resource slots must be named `?resource`")]
+    #[error("invalid slot name or slot used in wrong position. Principal slots must be named `?principal` and resource slots must be named `?resource`")]
     InvalidSlotName,
     /// EST contained a template slot for `action`. This is not currently allowed
     #[error("slots are not allowed for actions")]
