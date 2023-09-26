@@ -37,7 +37,7 @@ pub enum TcError<K: Debug + Display> {
         grandparent: K,
     },
     /// Error raised when enforce_dag finds that the graph is not a DAG
-    #[error("input graph has a cycle. Vertex {} has a loop.", .vertex_with_loop)]
+    #[error("input graph has a cycle containing vertex `{}`", .vertex_with_loop)]
     HasCycle {
         /// Because DAG enforcement can only be called after compute_tc/enforce_tc, a cycle will manifest as a vertex with a loop
         vertex_with_loop: K,

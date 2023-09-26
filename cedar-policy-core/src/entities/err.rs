@@ -22,13 +22,13 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum EntitiesError {
     /// Error occurring in serialization of entities
-    #[error("entities serialization error: {0}")]
+    #[error("error during entity serialization: {0}")]
     Serialization(#[from] crate::entities::JsonSerializationError),
     /// Error occurring in deserialization of entities
-    #[error("entities deserialization error: {0}")]
+    #[error("error during entity deserialization: {0}")]
     Deserialization(#[from] crate::entities::JsonDeserializationError),
     /// Error constructing the `[crate::entities::Entities]` as there is a duplicate Entity UID
-    #[error("Duplicate entity entry: {0}")]
+    #[error("duplicate entity entry `{0}`")]
     Duplicate(EntityUID),
     /// Errors occurring while computing or enforcing transitive closure on the
     /// entity hierarchy.

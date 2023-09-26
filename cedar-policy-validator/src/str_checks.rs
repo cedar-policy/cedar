@@ -56,10 +56,10 @@ impl std::fmt::Display for ValidationWarning<'_> {
 #[derive(Debug, Clone, PartialEq, Error, Eq)]
 pub enum ValidationWarningKind {
     /// A string contains mixed scripts. Different scripts can contain visually similar characters which may be confused for each other.
-    #[error("string \"{0}\" contains mixed scripts")]
+    #[error("string `\"{0}\"` contains mixed scripts")]
     MixedScriptString(String),
     /// A string contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
-    #[error("string \"{0}\" contains BIDI control characters")]
+    #[error("string `\"{0}\"` contains BIDI control characters")]
     BidiCharsInString(String),
     /// An id contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
     #[error("identifier `{0}` contains BIDI control characters")]

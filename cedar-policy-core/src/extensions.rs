@@ -136,14 +136,14 @@ impl<'a> Extensions<'a> {
 #[derive(Debug, PartialEq, Eq, Clone, Error)]
 pub enum ExtensionFunctionLookupError {
     /// Tried to call a function that doesn't exist
-    #[error("extension function does not exist: {name}")]
+    #[error("extension function `{name}` does not exist")]
     FuncDoesNotExist {
         /// Name of the function that doesn't exist
         name: Name,
     },
 
     /// Attempted to typecheck an expression that had no type
-    #[error("extension function has no type: {name}")]
+    #[error("extension function `{name}` has no type")]
     HasNoType {
         /// Name of the function that returns no type
         name: Name,
@@ -151,7 +151,7 @@ pub enum ExtensionFunctionLookupError {
 
     /// Tried to call a function but it was defined multiple times (e.g., by
     /// multiple different extensions)
-    #[error("function is defined {num_defs} times: {name}")]
+    #[error("extension function `{name}` is defined {num_defs} times")]
     FuncMultiplyDefined {
         /// Name of the function that is multiply defined
         name: Name,
@@ -162,7 +162,7 @@ pub enum ExtensionFunctionLookupError {
     /// Two extension constructors (in the same or different extensions) had
     /// exactly the same type signature.  This is currently not allowed.
     #[error(
-        "multiple extension constructors with the same type signature {arg_type} -> {return_type}"
+        "multiple extension constructors have the same type signature {arg_type} -> {return_type}"
     )]
     MultipleConstructorsSameSignature {
         /// return type of the shared constructor signature

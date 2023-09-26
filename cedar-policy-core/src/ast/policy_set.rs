@@ -89,7 +89,7 @@ impl From<PolicySet> for LiteralPolicySet {
 pub enum PolicySetError {
     /// There was a duplicate [`PolicyID`] encountered in either the set of
     /// templates or the set of policies.
-    #[error("duplicate template or policy id: {id}")]
+    #[error("duplicate template or policy id `{id}`")]
     Occupied {
         /// [`PolicyID`] that was duplicate
         id: PolicyID,

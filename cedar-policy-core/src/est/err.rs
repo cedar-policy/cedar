@@ -31,10 +31,10 @@ pub enum FromJsonError {
     TemplateToPolicy(#[from] ast::UnexpectedSlotError),
     /// Slot name was not valid for the position it was used in. (Currently, principal slots must
     /// be named `?principal`, and resource slots must be named `?resource`.)
-    #[error("invalid slot name, or used in wrong position")]
+    #[error("invalid slot name or slot used in wrong position. Principal slots must be named `?principal`, and resource slots must be named `?resource`")]
     InvalidSlotName,
     /// EST contained a template slot for `action`. This is not currently allowed
-    #[error("specified a slot for action")]
+    #[error("slots are not allowed for actions")]
     ActionSlot,
     /// EST contained the empty JSON object `{}` where a key (operator) was expected
     #[error("missing operator, found empty object")]
@@ -64,7 +64,7 @@ pub enum FromJsonError {
 #[derive(Debug, PartialEq, Error)]
 pub enum InstantiationError {
     /// Template contains this slot, but a value wasn't provided for it
-    #[error("failed to instantiate template: no value provided for {slot}")]
+    #[error("failed to instantiate template: no value provided for `{slot}`")]
     MissedSlot {
         /// Slot which didn't have a value provided for it
         slot: ast::SlotId,
