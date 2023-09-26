@@ -145,7 +145,7 @@ pub enum JsonDeserializationError {
     },
     /// During schema-based parsing, encountered this attribute on this entity, but that
     /// attribute shouldn't exist on entities of this type
-    #[error("attribute `{:?}` on `{uid}` should not exist according to the schema", &.attr)]
+    #[error("attribute `{attr}` on `{uid}` should not exist according to the schema")]
     UnexpectedEntityAttr {
         /// Entity that had the unexpected attribute
         uid: EntityUID,
@@ -154,7 +154,7 @@ pub enum JsonDeserializationError {
     },
     /// During schema-based parsing, encountered this attribute on a record, but
     /// that attribute shouldn't exist on that record
-    #[error("{ctx}, record attribute `{record_attr:?}` should not exist according to the schema")]
+    #[error("{ctx}, record attribute `{record_attr}` should not exist according to the schema")]
     UnexpectedRecordAttr {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -163,7 +163,7 @@ pub enum JsonDeserializationError {
     },
     /// During schema-based parsing, didn't encounter this attribute of an
     /// entity, but that attribute should have existed
-    #[error("expected entity `{uid}` to have an attribute `{attr:?}`, but it does not")]
+    #[error("expected entity `{uid}` to have an attribute `{attr}`, but it does not")]
     MissingRequiredEntityAttr {
         /// Entity that is missing a required attribute
         uid: EntityUID,
@@ -172,7 +172,7 @@ pub enum JsonDeserializationError {
     },
     /// During schema-based parsing, didn't encounter this attribute of a
     /// record, but that attribute should have existed
-    #[error("{ctx}, expected the record to have an attribute `{record_attr:?}`, but it does not")]
+    #[error("{ctx}, expected the record to have an attribute `{record_attr}`, but it does not")]
     MissingRequiredRecordAttr {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -278,8 +278,8 @@ pub enum JsonDeserializationErrorContext {
 impl std::fmt::Display for JsonDeserializationErrorContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::EntityAttribute { uid, attr } => write!(f, "in attribute {attr:?} on {uid}"),
-            Self::EntityParents { uid } => write!(f, "in parents field of {uid}"),
+            Self::EntityAttribute { uid, attr } => write!(f, "in attribute `{attr}` on `{uid}`"),
+            Self::EntityParents { uid } => write!(f, "in parents field of `{uid}`"),
             Self::EntityUid => write!(f, "in uid field of <unknown entity>"),
             Self::Context => write!(f, "while parsing context"),
         }
