@@ -154,7 +154,7 @@ pub enum ToASTError {
     )]
     InvalidScopeEqualityRHS,
     /// Returned when an Entity UID used as an action does not have the type `Action`
-    #[error("expected an entity uid with the type `Action`. Got: `{0}`. Action entities must have type `Action`")]
+    #[error("expected an entity uid with the type `Action` but got `{0}`. Action entities must have type `Action`")]
     InvalidActionType(crate::ast::EntityUID),
     /// Returned when a condition clause is empty
     #[error("{}condition clause cannot be empty", match .0 { Some(ident) => format!("`{}` ", ident), None => "".to_string() })]
@@ -186,7 +186,7 @@ pub enum ToASTError {
     #[error("`{0}` is a method, not a function. Use a method-style call: `e.{0}(..)`")]
     FunctionCallOnMethod(crate::ast::Id),
     /// Returned when the right hand side of a `like` expression is not a constant pattern literal
-    #[error("right hand side of a `like` expression must be a pattern literal. Got: `{0}`")]
+    #[error("right hand side of a `like` expression must be a pattern literal, but got `{0}`")]
     InvalidPattern(String),
     /// Returned when an unexpected node is in the policy scope clause
     #[error("expected a {expected}, found a `{got}` statement")]
