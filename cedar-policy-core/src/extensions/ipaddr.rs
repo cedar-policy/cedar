@@ -75,7 +75,7 @@ impl IPAddr {
             Err(e1) => match parse_ipnet(str.as_ref()) {
                 Ok(net) => net.trunc(),
                 Err(e2) => return Err(format!(
-                    "error parsing IP address from string. Failed to parse as single address: {}. Failed to parse as subnet: `{}`", e1, e2)),
+                    "error parsing IP address from string. Failed to parse as single address: `{}`. Failed to parse as subnet: `{}`", e1, e2)),
             }
         };
         Ok(Self { addr })

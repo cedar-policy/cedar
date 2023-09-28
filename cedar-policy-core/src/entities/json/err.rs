@@ -119,7 +119,7 @@ pub enum JsonDeserializationError {
         &.uid.entity_type(),
         match .suggested_types.as_slice() {
             [] => String::new(),
-            [ty] => format!(". Did you mean {ty}?"),
+            [ty] => format!(". Did you mean `{ty}`?"),
             tys => format!(". Did you mean one of {:?}?", tys.iter().map(ToString::to_string).collect::<Vec<String>>())
         }
     )]

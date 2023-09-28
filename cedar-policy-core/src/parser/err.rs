@@ -147,10 +147,10 @@ pub enum ToASTError {
     /// Returned when a policy scope clauses uses an operator beyond `==` or `in`.
     #[error("policy scope constraints must either `==` or `in`. Found `{0}`")]
     InvalidConstraintOperator(cst::RelOp),
-    /// Returned when the right hand side of `==` in a policy scope clause is not a single Entity UID or template slot.
+    /// Returned when the right hand side of `==` in a policy scope clause is not a single Entity UID or a template slot.
     /// This is valid in Cedar conditions, but not in the Scope
     #[error(
-        "the right hand side of equality in the policy scope must be a single entity uid or template slot"
+        "the right hand side of equality in the policy scope must be a single entity uid or a template slot"
     )]
     InvalidScopeEqualityRHS,
     /// Returned when an Entity UID used as an action does not have the type `Action`
@@ -253,7 +253,7 @@ pub enum ToASTError {
     #[error("a path is not valid in this context")]
     InvalidPath,
     /// Returned when a string needs to be fully normalized
-    #[error("`{kind}` needs to be normalized (e.g., whitespace removed): `{src}` The normalized form is `{normalized_src}`")]
+    #[error("`{kind}` needs to be normalized (e.g., whitespace removed): `{src}`. The normalized form is `{normalized_src}`")]
     NonNormalizedString {
         /// The kind of string we are expecting
         kind: &'static str,

@@ -1769,7 +1769,7 @@ mod schema_based_parsing_tests {
             .from_json_value(entitiesjson)
             .expect_err("should fail due to type mismatch on hr_contacts");
         assert!(
-            err.to_string().contains(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type (set of (entity of type HR)), but actually has type record"#),
+            err.to_string().contains(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type (set of (entity of type `HR`)), but actually has type record"#),
             "actual error message was {}",
             err
         );
@@ -1815,7 +1815,7 @@ mod schema_based_parsing_tests {
             .from_json_value(entitiesjson)
             .expect_err("should fail due to type mismatch on manager");
         assert!(
-            err.to_string().contains(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type (entity of type Employee), but actually has type (entity of type HR)"#),
+            err.to_string().contains(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type (entity of type `Employee`), but actually has type (entity of type `HR`)"#),
             "actual error message was {}",
             err
         );
@@ -2598,7 +2598,7 @@ mod schema_based_parsing_tests {
             .from_json_value(entitiesjson)
             .expect_err("should fail due to manager being wrong entity type (missing namespace)");
         assert!(
-            err.to_string().contains(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: attribute was expected to have type (entity of type XYZCorp::Employee), but actually has type (entity of type Employee)"#),
+            err.to_string().contains(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: attribute was expected to have type (entity of type `XYZCorp::Employee`), but actually has type (entity of type `Employee`)"#),
             "actual error message was {}",
             err
         );
@@ -2621,7 +2621,7 @@ mod schema_based_parsing_tests {
             .from_json_value(entitiesjson)
             .expect_err("should fail due to employee being wrong entity type (missing namespace)");
         assert!(
-            err.to_string().contains(r#"`Employee::"12UA45"` has type `Employee` which is not declared in the schema. Did you mean XYZCorp::Employee?"#),
+            err.to_string().contains(r#"`Employee::"12UA45"` has type `Employee` which is not declared in the schema. Did you mean `XYZCorp::Employee`?"#),
             "actual error message was {}",
             err
         );

@@ -88,9 +88,9 @@ fn validate_decimal_string(exprs: &[Expr]) -> Result<(), String> {
             match RestrictedExpr::from_str(&format!("decimal({arg})")) {
                 Ok(expr) => match evaluator.interpret(expr.as_borrowed()) {
                     Ok(_) => Ok(()),
-                    Err(_) => Err(format!("Failed to parse as a decimal value: {arg}")),
+                    Err(_) => Err(format!("Failed to parse as a decimal value: `{arg}`")),
                 },
-                Err(_) => Err(format!("Failed to parse as a decimal value: {arg}")),
+                Err(_) => Err(format!("Failed to parse as a decimal value: `{arg}`")),
             }
         }
         _ => Ok(()),

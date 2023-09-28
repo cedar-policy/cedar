@@ -47,8 +47,8 @@ impl std::fmt::Display for ValidationWarning<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "warning: {} in policy with id {}",
-            self.kind, self.location
+            "validation warning on policy `{}`: {}",
+            self.location, self.kind
         )
     }
 }
@@ -189,7 +189,7 @@ mod test {
         );
         assert_eq!(
             format!("{warning}"),
-            "warning: identifier `say_һello` contains mixed scripts in policy with id test"
+            "validation warning on policy `test`: identifier `say_һello` contains mixed scripts"
         );
         assert_eq!(location, &PolicyID::from_string("test"));
         assert_eq!(warning.clone().to_kind_and_location(), (location, kind));
@@ -232,7 +232,7 @@ mod test {
         );
         assert_eq!(
             format!("{warning}"),
-            "warning: string `\"*_һello\"` contains mixed scripts in policy with id test"
+            "validation warning on policy `test`: string `\"*_һello\"` contains mixed scripts"
         );
         assert_eq!(location, &PolicyID::from_string("test"));
         assert_eq!(warning.clone().to_kind_and_location(), (location, kind));
@@ -259,7 +259,7 @@ mod test {
             kind,
             ValidationWarningKind::BidiCharsInString(r#"user‮ ⁦&& principal.is_admin⁩ ⁦"#.to_string())
         );
-        assert_eq!(format!("{warning}"), "warning: string `\"user‮ ⁦&& principal.is_admin⁩ ⁦\"` contains BIDI control characters in policy with id test");
+        assert_eq!(format!("{warning}"), "validation warning on policy `test`: string `\"user‮ ⁦&& principal.is_admin⁩ ⁦\"` contains BIDI control characters");
         assert_eq!(location, &PolicyID::from_string("test"));
         assert_eq!(warning.clone().to_kind_and_location(), (location, kind));
     }
