@@ -94,6 +94,23 @@ impl Entity {
     ///
     /// Attribute values are specified here as "restricted expressions".
     /// See docs on `RestrictedExpression`
+    /// ```
+    /// # use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid, RestrictedExpression};
+    /// # use std::collections::{HashMap, HashSet};
+    /// # use std::str::FromStr;
+    /// let eid = EntityId::from_str("alice").unwrap();
+    /// let type_name = EntityTypeName::from_str("User").unwrap();
+    /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
+    /// let attrs = HashMap::from([
+    ///     ("age".to_string(), RestrictedExpression::from_str("21").unwrap()),
+    ///     ("department".to_string(), RestrictedExpression::from_str("\"CS\"").unwrap()),
+    /// ]);
+    /// let parent_eid = EntityId::from_str("admin").unwrap();
+    /// let parent_type_name = EntityTypeName::from_str("Group").unwrap();
+    /// let parent_euid = EntityUid::from_type_name_and_id(parent_type_name, parent_eid);
+    /// let parents = HashSet::from([parent_euid]);
+    /// let entity = Entity::new(euid, attrs, parents);
+    ///```
     pub fn new(
         uid: EntityUid,
         attrs: HashMap<String, RestrictedExpression>,
@@ -112,11 +129,29 @@ impl Entity {
     }
 
     /// Create a new `Entity` with this Uid, no attributes, and no parents.
+    /// ```
+    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// # use std::str::FromStr;
+    /// let eid = EntityId::from_str("alice").unwrap();
+    /// let type_name = EntityTypeName::from_str("User").unwrap();
+    /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
+    /// let alice = Entity::with_uid(euid);
+    /// # assert_eq!(alice.attr("age"), None);
+    /// ```
     pub fn with_uid(uid: EntityUid) -> Self {
         Self(ast::Entity::with_uid(uid.0))
     }
 
     /// Get the Uid of this entity
+    /// ```
+    /// # use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// # use std::str::FromStr;
+    /// # let eid = EntityId::from_str("alice").unwrap();
+    /// let type_name = EntityTypeName::from_str("User").unwrap();
+    /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
+    /// let alice = Entity::with_uid(euid.clone());
+    /// assert_eq!(alice.uid(), euid);
+    /// ```
     pub fn uid(&self) -> EntityUid {
         EntityUid(self.0.uid())
     }
@@ -124,6 +159,22 @@ impl Entity {
     /// Get the value for the given attribute, or `None` if not present.
     ///
     /// This can also return Some(Err) if the attribute had an illegal value.
+    /// ```
+    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid, EvalResult,
+    ///     RestrictedExpression};
+    /// use std::collections::{HashMap, HashSet};
+    /// use std::str::FromStr;
+    /// let eid = EntityId::from_str("alice").unwrap();
+    /// let type_name = EntityTypeName::from_str("User").unwrap();
+    /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
+    /// let attrs = HashMap::from([
+    ///     ("age".to_string(), RestrictedExpression::from_str("21").unwrap()),
+    ///     ("department".to_string(), RestrictedExpression::from_str("\"CS\"").unwrap()),
+    /// ]);
+    /// let entity = Entity::new(euid, attrs, HashSet::new());
+    /// assert_eq!(entity.attr("age").unwrap(), Ok(EvalResult::Long(21)));
+    /// assert_eq!(entity.attr("department").unwrap(), Ok(EvalResult::String("CS".to_string())));
+    ///```
     pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, EvaluationError>> {
         let expr = self.0.get(attr)?;
         let all_ext = Extensions::all_available();
@@ -152,6 +203,10 @@ pub use entities::EntitiesError;
 
 impl Entities {
     /// Create a fresh `Entities` with no entities
+    /// ```
+    /// use cedar_policy::Entities;
+    /// let entities = Entities::empty();
+    /// ```
     pub fn empty() -> Self {
         Self(entities::Entities::new())
     }
@@ -291,6 +346,36 @@ impl Entities {
     /// If a `schema` is provided, this will inform the parsing: for instance, it
     /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
     /// if attributes have the wrong types (e.g., string instead of integer).
+    /// ```
+    /// use std::collections::HashMap;
+    /// use std::str::FromStr;
+    /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, EvalResult, Request,PolicySet};
+    /// let data =r#"
+    /// [
+    /// {
+    ///   "uid": {"type":"User","id":"alice"},
+    ///   "attrs": {
+    ///     "age":19,
+    ///     "ip_addr":{"__extn":{"fn":"ip", "arg":"10.0.1.101"}}
+    ///   },
+    ///   "parents": [{"type":"Group","id":"admin"}]
+    /// },
+    /// {
+    ///   "uid": {"type":"Groupd","id":"admin"},
+    ///   "attrs": {},
+    ///   "parents": []
+    /// }
+    /// ]
+    /// "#;
+    /// let entities = Entities::from_json_str(data, None).unwrap();
+    /// let eid = EntityId::from_str("alice").unwrap();
+    /// let type_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
+    /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
+    /// let entity = entities.get(&euid).unwrap();
+    /// assert_eq!(entity.attr("age").unwrap(), Ok(EvalResult::Long(19)));
+    /// let ip = entity.attr("ip_addr").unwrap().unwrap();
+    /// assert_eq!(ip, EvalResult::ExtensionValue("10.0.1.101/32".to_string()));
+    /// ```
     pub fn from_json_str(
         json: &str,
         schema: Option<&Schema>,
@@ -309,6 +394,29 @@ impl Entities {
     /// If a `schema` is provided, this will inform the parsing: for instance, it
     /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
     /// if attributes have the wrong types (e.g., string instead of integer).
+    /// ```
+    /// use std::collections::HashMap;
+    /// use std::str::FromStr;
+    /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, EvalResult, Request,PolicySet};
+    /// let data =serde_json::json!(
+    /// [
+    /// {
+    ///   "uid": {"type":"User","id":"alice"},
+    ///   "attrs": {
+    ///     "age":19,
+    ///     "ip_addr":{"__extn":{"fn":"ip", "arg":"10.0.1.101"}}
+    ///   },
+    ///   "parents": [{"type":"Group","id":"admin"}]
+    /// },
+    /// {
+    ///   "uid": {"type":"Groupd","id":"admin"},
+    ///   "attrs": {},
+    ///   "parents": []
+    /// }
+    /// ]
+    /// );
+    /// let entities = Entities::from_json_value(data, None).unwrap();
+    /// ```
     pub fn from_json_value(
         json: serde_json::Value,
         schema: Option<&Schema>,
@@ -390,7 +498,6 @@ impl Default for Authorizer {
 impl Authorizer {
     /// Create a new `Authorizer`
     /// ```
-
     /// # use cedar_policy::{Authorizer, Context, Entities, EntityId, EntityTypeName,
     /// # EntityUid, Request,PolicySet};
     /// # use std::str::FromStr;
@@ -572,11 +679,118 @@ impl From<authorizer::Diagnostics> for Diagnostics {
 
 impl Diagnostics {
     /// Get the policies that contributed to the decision
+    /// ```
+    /// # use cedar_policy::{Authorizer, Context, Decision, Entities, EntityId, EntityTypeName,
+    /// # EntityUid, Request,PolicySet};
+    /// # use std::str::FromStr;
+    /// # // create a request
+    /// # let p_eid = EntityId::from_str("alice").unwrap();
+    /// # let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
+    /// # let p = EntityUid::from_type_name_and_id(p_name, p_eid);
+    /// #
+    /// # let a_eid = EntityId::from_str("view").unwrap();
+    /// # let a_name: EntityTypeName = EntityTypeName::from_str("Action").unwrap();
+    /// # let a = EntityUid::from_type_name_and_id(a_name, a_eid);
+    /// #
+    /// # let r_eid = EntityId::from_str("trip").unwrap();
+    /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
+    /// # let r = EntityUid::from_type_name_and_id(r_name, r_eid);
+    /// #
+    /// # let c = Context::empty();
+    /// #
+    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), c);
+    /// #
+    /// # // create a policy
+    /// # let s = r#"permit(
+    /// #     principal == User::"alice",
+    /// #     action == Action::"view",
+    /// #     resource == Album::"trip"
+    /// #   )when{
+    /// #     principal.ip_addr.isIpv4()
+    /// #   };
+    /// # "#;
+    /// # let policy = PolicySet::from_str(s).expect("policy error");
+    /// # // create entities
+    /// # let e = r#"[
+    /// #     {
+    /// #         "uid": {"type":"User","id":"alice"},
+    /// #         "attrs": {
+    /// #             "age":19,
+    /// #             "ip_addr":{"__extn":{"fn":"ip", "arg":"10.0.1.101"}}
+    /// #         },
+    /// #         "parents": []
+    /// #     }
+    /// # ]"#;
+    /// # let entities = Entities::from_json_str(e, None).expect("entity error");
+    /// let authorizer = Authorizer::new();
+    /// let response = authorizer.is_authorized(&request, &policy, &entities);
+    /// match response.decision() {
+    ///     Decision::Allow => println!("ALLOW"),
+    ///     Decision::Deny => println!("DENY"),
+    /// }
+    /// println!("note: this decision was due to the following policies:");
+    /// for reason in response.diagnostics().reason() {
+    ///     println!("{}", reason);
+    /// }
+    /// ```
     pub fn reason(&self) -> impl Iterator<Item = &PolicyId> {
         self.reason.iter()
     }
 
     /// Get the errors
+    /// ```
+    /// # use cedar_policy::{Authorizer, Context, Decision, Entities, EntityId, EntityTypeName,
+    /// # EntityUid, Request,PolicySet};
+    /// # use std::str::FromStr;
+    /// # // create a request
+    /// # let p_eid = EntityId::from_str("alice").unwrap();
+    /// # let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
+    /// # let p = EntityUid::from_type_name_and_id(p_name, p_eid);
+    /// #
+    /// # let a_eid = EntityId::from_str("view").unwrap();
+    /// # let a_name: EntityTypeName = EntityTypeName::from_str("Action").unwrap();
+    /// # let a = EntityUid::from_type_name_and_id(a_name, a_eid);
+    /// #
+    /// # let r_eid = EntityId::from_str("trip").unwrap();
+    /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
+    /// # let r = EntityUid::from_type_name_and_id(r_name, r_eid);
+    /// #
+    /// # let c = Context::empty();
+    /// #
+    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), c);
+    /// #
+    /// # // create a policy
+    /// # let s = r#"permit(
+    /// #     principal == User::"alice",
+    /// #     action == Action::"view",
+    /// #     resource == Album::"trip"
+    /// #   )when{
+    /// #     principal.ip_addr.isIpv4()
+    /// #   };
+    /// # "#;
+    /// # let policy = PolicySet::from_str(s).expect("policy error");
+    /// # // create entities
+    /// # let e = r#"[
+    /// #     {
+    /// #         "uid": {"type":"User","id":"alice"},
+    /// #         "attrs": {
+    /// #             "age":19,
+    /// #             "ip_addr":{"__extn":{"fn":"ip", "arg":"10.0.1.101"}}
+    /// #         },
+    /// #         "parents": []
+    /// #     }
+    /// # ]"#;
+    /// # let entities = Entities::from_json_str(e, None).expect("entity error");
+    /// let authorizer = Authorizer::new();
+    /// let response = authorizer.is_authorized(&request, &policy, &entities);
+    /// match response.decision() {
+    ///     Decision::Allow => println!("ALLOW"),
+    ///     Decision::Deny => println!("DENY"),
+    /// }
+    /// for err in response.diagnostics().errors() {
+    ///     println!("{}", err);
+    /// }
+    /// ```
     pub fn errors(&self) -> impl Iterator<Item = &AuthorizationError> + '_ {
         self.errors.iter()
     }
@@ -1170,21 +1384,38 @@ pub struct EntityTypeName(ast::Name);
 
 impl EntityTypeName {
     /// Get the basename of the `EntityTypeName` (ie, with namespaces stripped).
+    /// ```
+    /// use cedar_policy::EntityTypeName;
+    /// use std::str::FromStr;
+    /// let type_name = EntityTypeName::from_str("MySpace::User").unwrap();
+    /// assert_eq!(type_name.basename(), "User");
+    /// ```
     pub fn basename(&self) -> &str {
         self.0.basename().as_ref()
     }
 
     /// Get the namespace of the `EntityTypeName`, as components
+    /// ```
+    /// use cedar_policy::EntityTypeName;
+    /// use std::str::FromStr;
+    /// let type_name = EntityTypeName::from_str("Namespace::MySpace::User").unwrap();
+    /// let mut components = type_name.namespace_components();
+    /// assert_eq!(components.next(), Some("Namespace"));
+    /// assert_eq!(components.next(), Some("MySpace"));
+    /// assert_eq!(components.next(), None);
+    /// ```
     pub fn namespace_components(&self) -> impl Iterator<Item = &str> {
         self.0.namespace_components().map(AsRef::as_ref)
     }
 
     /// Get the full namespace of the `EntityTypeName`, as a single string.
-    ///
-    /// Examples:
-    /// - `foo::bar` --> the namespace is `"foo"`
-    /// - `bar` --> the namespace is `""`
-    /// - `foo::bar::baz` --> the namespace is `"foo::bar"`
+    /// ```
+    /// use cedar_policy::EntityTypeName;
+    /// use std::str::FromStr;
+    /// let type_name = EntityTypeName::from_str("Namespace::MySpace::User").unwrap();
+    /// let components = type_name.namespace();
+    /// assert_eq!(components,"Namespace::MySpace");
+    /// ```
     pub fn namespace(&self) -> String {
         self.0.namespace()
     }
@@ -1233,6 +1464,13 @@ pub struct EntityUid(ast::EntityUID);
 
 impl EntityUid {
     /// Returns the portion of the Euid that represents namespace and entity type
+    /// ```
+    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// use std::str::FromStr;
+    /// let json_data = serde_json::json!({ "__entity": { "type": "User", "id": "alice" } });
+    /// let euid = EntityUid::from_json(json_data).unwrap();
+    /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
+    /// ```
     pub fn type_name(&self) -> &EntityTypeName {
         match self.0.entity_type() {
             ast::EntityType::Unspecified => panic!("Impossible to have an unspecified entity"),
@@ -1241,21 +1479,41 @@ impl EntityUid {
     }
 
     /// Returns the id portion of the Euid
+    /// ```
+    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// use std::str::FromStr;
+    /// let json_data = serde_json::json!({ "__entity": { "type": "User", "id": "alice" } });
+    /// let euid = EntityUid::from_json(json_data).unwrap();
+    /// assert_eq!(euid.id(), &EntityId::from_str("alice").unwrap());
+    /// ```
     pub fn id(&self) -> &EntityId {
         EntityId::ref_cast(self.0.eid())
     }
 
     /// Creates `EntityUid` from `EntityTypeName` and `EntityId`
+    ///```
+    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// use std::str::FromStr;
+    /// let eid = EntityId::from_str("alice").unwrap();
+    /// let type_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
+    /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
+    /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
+    /// assert_eq!(euid.id(), &EntityId::from_str("alice").unwrap());
+    ///
+    /// ```
     pub fn from_type_name_and_id(name: EntityTypeName, id: EntityId) -> Self {
         Self(ast::EntityUID::from_components(name.0, id.0))
     }
 
     /// Creates `EntityUid` from a JSON value, which should have
     /// either the implicit or explicit `__entity` form.
-    ///
-    /// Examples:
-    /// * `{ "__entity": { "type": "User", "id": "123abc" } }`
-    /// * `{ "type": "User", "id": "123abc" }`
+    /// ```
+    /// # use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// # use std::str::FromStr;
+    /// let json_data = serde_json::json!({ "__entity": { "type": "User", "id": "123abc" } });
+    /// let euid = EntityUid::from_json(json_data).unwrap();
+    /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
+    /// ```
     pub fn from_json(json: serde_json::Value) -> Result<Self, impl std::error::Error> {
         let parsed: entities::EntityUidJSON = serde_json::from_value(json)?;
         Ok::<Self, entities::JsonDeserializationError>(Self(
@@ -1273,17 +1531,32 @@ impl EntityUid {
     }
 }
 
-// This FromStr implementation requires the _normalized_ representation of the
-// UID. See https://github.com/cedar-policy/rfcs/pull/9/.
 impl FromStr for EntityUid {
     type Err = ParseErrors;
 
-    /// This is deprecated (starting with Cedar 1.2); use
-    /// `EntityUid::from_type_name_and_id()` or `EntityUid::from_json()`
-    /// instead.
-    //
-    // You can't actually `#[deprecated]` a trait implementation or trait
-    // method.
+    /// Parse an [`EntityUid`].
+    ///
+    /// An [`EntityUid`] consists of an [`EntityTypeName`] followed by a quoted [`EntityId`].
+    /// The two are joined by a `::`.
+    /// For the formal grammar, see <https://docs.cedarpolicy.com/policies/syntax-grammar.html#entity>
+    ///
+    /// Examples:
+    /// ```
+    ///  use cedar_policy::EntityUid;
+    ///  let euid: EntityUid = r#"Foo::Bar::"george""#.parse().unwrap();
+    ///  // Get the type of this euid (`Foo::Bar`)
+    ///  euid.type_name();
+    ///  // Or the id
+    ///  euid.id();
+    /// ```
+    ///
+    /// This [`FromStr`] implementation requires the _normalized_ representation of the
+    /// UID. See <https://github.com/cedar-policy/rfcs/pull/9/>.
+    ///
+    /// A note on safety:
+    ///
+    /// __DO NOT__ create [`EntityUid`]'s via string concatenation.
+    /// If you have separate components of an [`EntityUid`], use [`EntityUid::from_type_name_and_id`]
     fn from_str(uid_str: &str) -> Result<Self, Self::Err> {
         ast::EntityUID::from_normalized_str(uid_str).map(EntityUid)
     }
@@ -2578,6 +2851,49 @@ impl Context {
     /// if attributes have the wrong types (e.g., string instead of integer).
     /// Since different Actions have different schemas for `Context`, you also
     /// must specify the `Action` for schema-based parsing.
+    /// ```
+    /// use cedar_policy::{Context, RestrictedExpression, Schema};
+    /// use std::collections::HashMap;
+    /// use std::str::FromStr;
+    /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request,PolicySet};
+    /// let data = serde_json::json!(
+    /// {
+    ///     "sub": "1234"
+    /// });
+    /// let schema_data =r#"
+    ///     {
+    ///       "": {
+    ///         "entityTypes": {},
+    ///           "actions": {
+    ///             "view": {
+    ///                "appliesTo": {
+    ///                  "principalTypes": [],
+    ///                   "resourceTypes": [],
+    ///                   "context": {
+    ///                     "type": "Record",
+    ///                     "attributes": {
+    ///                       "sub": { "type": "Long" }
+    ///                     }
+    ///                   }
+    ///                 }
+    ///               }
+    ///           }
+    ///       }
+    ///     }"#;
+    /// # // create a request
+    /// # let p_eid = EntityId::from_str("alice").unwrap();
+    /// # let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
+    /// # let principal = EntityUid::from_type_name_and_id(p_name, p_eid);
+    /// let a_eid = EntityId::from_str("view").unwrap();
+    /// let a_name: EntityTypeName = EntityTypeName::from_str("Action").unwrap();
+    /// let action = EntityUid::from_type_name_and_id(a_name, a_eid);
+    /// # let r_eid = EntityId::from_str("trip").unwrap();
+    /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
+    /// # let resource = EntityUid::from_type_name_and_id(r_name, r_eid);
+    /// let schema = Schema::from_str(schema_data).unwrap();
+    /// let context = Context::from_json_value(data, Some((&schema, &action))).unwrap();
+    /// let request: Request = Request::new(Some(principal), Some(action), Some(resource), context);
+    /// ```
     pub fn from_json_value(
         json: serde_json::Value,
         schema: Option<(&Schema, &EntityUid)>,
@@ -2601,6 +2917,27 @@ impl Context {
     /// if attributes have the wrong types (e.g., string instead of integer).
     /// Since different Actions have different schemas for `Context`, you also
     /// must specify the `Action` for schema-based parsing.
+    /// ```no_run
+    /// # use cedar_policy::{Context, RestrictedExpression};
+    /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request,PolicySet};
+    /// # use std::collections::HashMap;
+    /// # use std::str::FromStr;
+    /// # use std::fs::File;
+    /// let mut json = File::open("json_file.txt").expect("failed");
+    /// let context = Context::from_json_file(&json, None).unwrap();
+    /// # // create a request
+    /// # let p_eid = EntityId::from_str("alice").unwrap();
+    /// # let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
+    /// # let p = EntityUid::from_type_name_and_id(p_name, p_eid);
+    /// #
+    /// # let a_eid = EntityId::from_str("view").unwrap();
+    /// # let a_name: EntityTypeName = EntityTypeName::from_str("Action").unwrap();
+    /// # let a = EntityUid::from_type_name_and_id(a_name, a_eid);
+    /// # let r_eid = EntityId::from_str("trip").unwrap();
+    /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
+    /// # let r = EntityUid::from_type_name_and_id(r_name, r_eid);
+    /// let request: Request = Request::new(Some(p), Some(a), Some(r), context);
+    /// ```
     pub fn from_json_file(
         json: impl std::io::Read,
         schema: Option<(&Schema, &EntityUid)>,
