@@ -1009,7 +1009,7 @@ mod json_parsing_tests {
     }
 
     #[cfg(feature = "ipaddr")]
-    /// this one uses `__expr`, `__entity`, and `__extn` escapes, in various positions
+    /// this one uses `__entity`, and `__extn` escapes, in various positions
     #[test]
     fn more_escapes() {
         let json = serde_json::json!(
@@ -1093,7 +1093,7 @@ mod json_parsing_tests {
 
     #[test]
     fn implicit_and_explicit_escapes() {
-        // this one tests the implicit and explicit forms of `__expr` and `__entity` escapes
+        // this one tests the implicit and explicit forms of `__entity` escapes
         // for the `uid` and `parents` fields
         let json = serde_json::json!(
             [

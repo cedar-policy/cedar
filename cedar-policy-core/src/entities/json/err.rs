@@ -29,10 +29,6 @@ use thiserror::Error;
 /// Escape kind
 #[derive(Debug)]
 pub enum EscapeKind {
-    /// Escape `__expr`
-    /// Note that `__expr` is deprecated and once it is
-    /// removed, this variant will also be removed
-    Expr,
     /// Escape `__entity`
     Entity,
     /// Escape `__extn`
@@ -43,7 +39,6 @@ impl Display for EscapeKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Entity => write!(f, "__entity"),
-            Self::Expr => write!(f, "__expr"),
             Self::Extension => write!(f, "__extn"),
         }
     }
@@ -56,9 +51,7 @@ pub enum JsonDeserializationError {
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
     /// Contents of an escape failed to parse.
-    /// Note that escape `__expr` is deprecated and once it is
-    /// removed, `EscapeKind::Expr` will also be removed
-    #[error("failed to parse escape `{kind}` with value `{value}`: {errs}")]
+    #[error("failed to parse escape `{kind}`: {value}, errors: {errs}")]
     ParseEscape {
         /// Escape kind
         kind: EscapeKind,

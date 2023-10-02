@@ -35,7 +35,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 /// Many Cedar values have a natural one-to-one mapping to and from JSON values.
 /// Cedar values of some types, like entity references or extension values,
 /// cannot easily be represented in JSON and thus are represented using the
-/// `__expr`, `__entity`, or `__extn` escapes.
+/// `__entity`, or `__extn` escapes.
 ///
 /// For example, this is the JSON format for attribute values expected by
 /// `EntityJsonParser`, when schema-based parsing is not used.
@@ -45,8 +45,7 @@ pub enum CedarValueJson {
     /// Special JSON object with single reserved "__entity" key:
     /// the following item should be a JSON object of the form
     /// `{ "type": "xxx", "id": "yyy" }`.
-    /// Some escape (this or `__expr`, which is deprecated) is necessary for
-    /// entity references.
+    /// Some escape is necessary for entity references.
     //
     // listed before `Record` so that it takes priority: otherwise, the escape
     // would be interpreted as a Record with a key "__entity". see docs on
@@ -58,8 +57,7 @@ pub enum CedarValueJson {
     /// Special JSON object with single reserved "__extn" key:
     /// the following item should be a JSON object of the form
     /// `{ "fn": "xxx", "arg": "yyy" }`.
-    /// Some escape (this or `__expr`, which is deprecated) is necessary for
-    /// extension values.
+    /// Some escape is necessary for extension values.
     //
     // listed before `Record` so that it takes priority: otherwise, the escape
     // would be interpreted as a Record with a key "__extn". see docs on
