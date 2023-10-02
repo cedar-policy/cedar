@@ -895,21 +895,36 @@ mod json_parsing_tests {
         let json = serde_json::json!(
             [
             {
-                "uid": { "__expr": "test_entity_type::\"alice\"" },
+                "uid" : {
+                    "type" : "test_entity_type",
+                    "id" : "alice"
+                },
                 "attrs": {},
                 "parents": [
-                { "__expr": "test_entity_type::\"jane\"" }
+                {
+                    "type" : "test_entity_type",
+                    "id" : "jane"
+                }
                 ]
             },
             {
-                "uid": { "__expr": "test_entity_type::\"jane\"" },
+                "uid" : {
+                    "type" : "test_entity_type",
+                    "id" : "jane"
+                },
                 "attrs": {},
                 "parents": [
-                { "__expr": "test_entity_type::\"bob\"" }
+                {
+                    "type" : "test_entity_type",
+                    "id" : "bob",
+                }
                 ]
             },
             {
-                "uid": { "__expr": "test_entity_type::\"bob\"" },
+                "uid" : {
+                    "type" : "test_entity_type",
+                    "id" : "bob"
+                },
                 "attrs": {},
                 "parents": []
             }
