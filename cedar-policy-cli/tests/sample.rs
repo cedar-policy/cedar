@@ -102,6 +102,8 @@ fn run_link_test(
     assert_eq!(output, expected);
 }
 
+#[allow(clippy::expect_used)]
+#[allow(clippy::unwrap_used)]
 fn run_format_test(policies_file: &str) {
     let format_cmd = assert_cmd::Command::cargo_bin("cedar")
         .expect("bin exists")

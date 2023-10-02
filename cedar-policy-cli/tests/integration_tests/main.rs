@@ -29,6 +29,7 @@ mod ip;
 mod multi;
 
 use cedar_policy::Decision;
+use cedar_policy::EntityUid;
 use cedar_policy::PolicySet;
 use serde::Deserialize;
 use std::env;
@@ -61,13 +62,13 @@ struct JsonRequest {
     desc: String,
     /// Principal for the request
     #[serde(default)]
-    principal: Option<String>,
+    principal: Option<serde_json::Value>,
     /// Action for the request
     #[serde(default)]
-    action: Option<String>,
+    action: Option<serde_json::Value>,
     /// Resource for the request
     #[serde(default)]
-    resource: Option<String>,
+    resource: Option<serde_json::Value>,
     /// Context for the request
     context: serde_json::Value,
     /// Expected decision for the request
@@ -78,9 +79,14 @@ struct JsonRequest {
     errors: Vec<String>,
 }
 
+fn value_to_euid_string(v: serde_json::Value) -> Option<String> {
+    EntityUid::from_json(v).ok().map(|euid| euid.to_string())
+}
+
 /// For relative paths, return the absolute path, assuming that the path
 /// is relative to the root of the CedarIntegrationTests repo.
 /// For absolute paths, return them unchanged.
+#[allow(clippy::expect_used)]
 fn resolve_integration_test_path(path: impl AsRef<Path>) -> PathBuf {
     if path.as_ref().is_relative() {
         let manifest_dir = env::var("CARGO_MANIFEST_DIR")
@@ -101,6 +107,8 @@ fn resolve_integration_test_path(path: impl AsRef<Path>) -> PathBuf {
 /// Relative paths are assumed to be relative to the root of the
 /// cedar-integration-tests folder.
 /// Absolute paths are handled without modification.
+#[allow(clippy::unwrap_used)]
+#[allow(clippy::expect_used)]
 fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
     let jsonfile = resolve_integration_test_path(jsonfile);
     let jsonstr = std::fs::read_to_string(&jsonfile)
@@ -165,15 +173,15 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
         let mut entity_args = Vec::new();
         if let Some(s) = json_request.principal {
             entity_args.push("--principal".to_string());
-            entity_args.push(s);
+            entity_args.push(value_to_euid_string(s).unwrap());
         }
         if let Some(s) = json_request.resource {
             entity_args.push("--resource".to_string());
-            entity_args.push(s);
+            entity_args.push(value_to_euid_string(s).unwrap());
         }
         if let Some(s) = json_request.action {
             entity_args.push("--action".to_string());
-            entity_args.push(s);
+            entity_args.push(value_to_euid_string(s).unwrap());
         }
 
         let authorize_cmd = assert_cmd::Command::cargo_bin("cedar")
