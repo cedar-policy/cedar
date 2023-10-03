@@ -81,7 +81,7 @@ impl std::fmt::Display for Type {
             Self::Record => write!(f, "record"),
             Self::Entity { ty } => match ty {
                 EntityType::Unspecified => write!(f, "(entity of unspecified type)"),
-                EntityType::Concrete(name) => write!(f, "(entity of type {})", name),
+                EntityType::Concrete(name) => write!(f, "(entity of type `{}`)", name),
             },
             Self::Extension { name } => write!(f, "{}", name),
         }

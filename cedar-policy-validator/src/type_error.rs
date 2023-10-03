@@ -221,7 +221,7 @@ impl std::error::Error for TypeError {}
 pub enum TypeErrorKind {
     /// The typechecker expected to see a subtype of one of the types in
     /// `expected`, but saw `actual`.
-    #[error("Unexpected type. Expected {} but saw {}",
+    #[error("unexpected type: expected {} but saw {}",
         match .0.expected.iter().next() {
             Some(single) if .0.expected.len() == 1 => format!("{}", single),
             _ => .0.expected.iter().join(", or ")
@@ -230,19 +230,20 @@ pub enum TypeErrorKind {
     )]
     UnexpectedType(UnexpectedType),
     /// The typechecker could not compute a least upper bound for `types`.
-    #[error("Unable to find upper bound for types: [{}]", .0.types.iter().join(","))]
+    #[error("unable to find upper bound for types: [{}]", .0.types.iter().join(","))]
     IncompatibleTypes(IncompatibleTypes),
     /// The typechecker detected an access to a record or entity attribute
     /// that it could not statically guarantee would be present.
     #[error(
-        "attribute {} not found{}{}",
+        "attribute {} not found{}{}{}",
         .0.attribute_access,
         match &.0.suggestion {
-            Some(suggestion) => format!(", did you mean `{suggestion}`"),
+            Some(suggestion) => format!(", did you mean `{suggestion}`?"),
             None => "".to_string(),
         },
+        if .0.suggestion.is_none() && .0.may_exist { "." } else { "" },
         if .0.may_exist {
-            ". There may be additional attributes that the validator is not able to reason about."
+            " There may be additional attributes that the validator is not able to reason about"
         } else {
             ""
         }
@@ -254,23 +255,23 @@ pub enum TypeErrorKind {
     UnsafeOptionalAttributeAccess(UnsafeOptionalAttributeAccess),
     /// The typechecker found that a policy condition will always evaluate to false.
     #[error(
-        "Policy is impossible. The policy expression evaluates to false for all valid requests"
+        "policy is impossible. The policy expression evaluates to false for all valid requests"
     )]
     ImpossiblePolicy,
     /// Undefined extension function.
-    #[error("Undefined extension function: {}", .0.name)]
+    #[error("undefined extension function: {}", .0.name)]
     UndefinedFunction(UndefinedFunction),
     /// Multiply defined extension function.
-    #[error("Extension function defined multiple times: {}", .0.name)]
+    #[error("extension function defined multiple times: {}", .0.name)]
     MultiplyDefinedFunction(MultiplyDefinedFunction),
     /// Incorrect number of arguments in an extension function application.
-    #[error("Wrong number of arguments in extension function application. Expected {}, got {}", .0.expected, .0.actual)]
+    #[error("wrong number of arguments in extension function application. Expected {}, got {}", .0.expected, .0.actual)]
     WrongNumberArguments(WrongNumberArguments),
     /// Incorrect call style in an extension function application.
-    #[error("Wrong call style in extension function application. Expected {}, got {}", .0.expected, .0.actual)]
+    #[error("wrong call style in extension function application. Expected {}, got {}", .0.expected, .0.actual)]
     WrongCallStyle(WrongCallStyle),
     /// Error returned by custom extension function argument validation
-    #[error("Error during extension function argument validation: {}", .0.msg)]
+    #[error("error during extension function argument validation: {}", .0.msg)]
     FunctionArgumentValidationError(FunctionArgumentValidationError),
     #[error("empty set literals are forbidden in policies")]
     EmptySetForbidden,

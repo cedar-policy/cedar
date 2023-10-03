@@ -778,7 +778,7 @@ impl std::str::FromStr for Expr {
 #[derive(Debug, Clone, Error)]
 pub enum SubstitutionError {
     /// The supplied value did not match the type annotation on the unknown.
-    #[error("Expected a value of type {expected}, got a value of type {actual}")]
+    #[error("expected a value of type {expected}, got a value of type {actual}")]
     TypeError {
         /// The expected type, ie: the type the unknown was annotated with
         expected: Type,

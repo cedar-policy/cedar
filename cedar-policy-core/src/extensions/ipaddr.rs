@@ -75,7 +75,7 @@ impl IPAddr {
             Err(e1) => match parse_ipnet(str.as_ref()) {
                 Ok(net) => net.trunc(),
                 Err(e2) => return Err(format!(
-                    "error parsing IP address from string:\n  failed to parse as single address: {}\n  failed to parse as subnet: {}", e1, e2)),
+                    "error parsing IP address from string. Failed to parse as single address: `{}`. Failed to parse as subnet: `{}`", e1, e2)),
             }
         };
         Ok(Self { addr })
@@ -173,7 +173,7 @@ fn parse_ipnet(s: &str) -> Result<ipnet::IpNet, String> {
 fn str_contains_colons_and_dots(s: &str) -> Result<(), String> {
     if contains_at_least_two(s, ':') && contains_at_least_two(s, '.') {
         return Err(format!(
-            "error parsing IP address from string: We don't accept IPv4 embedded in IPv6 (e.g., ::ffff:127.0.0.1). Found: {}", &s.to_string()));
+            "error parsing IP address from string: We do not accept IPv4 embedded in IPv6 (e.g., ::ffff:127.0.0.1). Found: `{}`", &s.to_string()));
     }
     Ok(())
 }

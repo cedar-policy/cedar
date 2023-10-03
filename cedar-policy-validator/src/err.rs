@@ -54,14 +54,14 @@ pub enum SchemaError {
     UndeclaredCommonTypes(HashSet<String>),
     /// Duplicate specifications for an entity type. Argument is the name of
     /// the duplicate entity type.
-    #[error("duplicate entity type: {0}")]
+    #[error("duplicate entity type `{0}`")]
     DuplicateEntityType(String),
     /// Duplicate specifications for an action. Argument is the name of the
     /// duplicate action.
-    #[error("duplicate action: {0}")]
+    #[error("duplicate action `{0}`")]
     DuplicateAction(String),
     /// Duplicate specification for a reusable type declaration.
-    #[error("duplicate common type: {0}")]
+    #[error("duplicate common type `{0}`")]
     DuplicateCommonType(String),
     /// Cycle in the schema's action hierarchy.
     #[error("cycle in action hierarchy")]

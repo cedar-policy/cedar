@@ -57,7 +57,7 @@ fn ip_extension_typecheck_fails() {
         Type::extension(ipaddr_name.clone()),
         vec![TypeError::arg_validation_error(
             expr,
-            "Failed to parse as IP address: \"foo\"".into(),
+            "Failed to parse as IP address: `\"foo\"`".into(),
         )],
     );
     let expr = Expr::from_str("ip(\"127.0.0.1\").isIpv4(3)").expect("parsing should succeed");
@@ -120,7 +120,7 @@ fn decimal_extension_typecheck_fails() {
         Type::extension(decimal_name.clone()),
         vec![TypeError::arg_validation_error(
             expr,
-            "Failed to parse as a decimal value: \"foo\"".into(),
+            "Failed to parse as a decimal value: `\"foo\"`".into(),
         )],
     );
     let expr = Expr::from_str("decimal(\"1.23\").lessThan(3, 4)").expect("parsing should succeed");

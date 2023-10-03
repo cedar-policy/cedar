@@ -357,7 +357,7 @@ fn parse_policy_set_from_individual_policies(
                 }
             },
             Err(pes) => errs.extend(
-                std::iter::once(format!("couldn't parse policy with id {id}"))
+                std::iter::once(format!("couldn't parse policy with id `{id}`"))
                     .chain(pes.errors_as_strings().into_iter()),
             ),
         }
@@ -373,7 +373,7 @@ fn parse_policy_set_from_individual_policies(
                     }
                 },
                 Err(pes) => errs.extend(
-                    std::iter::once(format!("couldn't parse policy with id {id}"))
+                    std::iter::once(format!("couldn't parse policy with id `{id}`"))
                         .chain(pes.errors_as_strings().into_iter()),
                 ),
             }

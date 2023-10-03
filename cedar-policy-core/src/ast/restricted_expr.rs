@@ -329,7 +329,7 @@ pub enum RestrictedExprError {
     /// argument is a string description of the feature that is not allowed.
     /// The `expr` argument is the expression that uses the disallowed feature.
     /// Note that it is potentially a sub-expression of a larger expression.
-    #[error("not allowed to use {feature} in a restricted expression: {expr}")]
+    #[error("not allowed to use {feature} in a restricted expression: `{expr}`")]
     InvalidRestrictedExpression {
         /// what disallowed feature appeared in the expression
         feature: SmolStr,

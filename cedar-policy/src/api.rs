@@ -1060,14 +1060,14 @@ pub enum SchemaError {
     UndeclaredCommonTypes(HashSet<String>),
     /// Duplicate specifications for an entity type. Argument is the name of
     /// the duplicate entity type.
-    #[error("duplicate entity type: {0}")]
+    #[error("duplicate entity type `{0}`")]
     DuplicateEntityType(String),
     /// Duplicate specifications for an action. Argument is the name of the
     /// duplicate action.
-    #[error("duplicate action: {0}")]
+    #[error("duplicate action `{0}`")]
     DuplicateAction(String),
     /// Duplicate specification for a reusable type declaration.
-    #[error("duplicate common type: {0}")]
+    #[error("duplicate common type `{0}`")]
     DuplicateCommonType(String),
     /// Cycle in the schema's action hierarchy.
     #[error("cycle in action hierarchy")]
@@ -1092,7 +1092,7 @@ pub enum SchemaError {
     #[error("entity type `Action` declared in `entityTypes` list")]
     ActionEntityTypeDeclared,
     /// `context` or `shape` fields are not records
-    #[error("`{0}` is not a record")]
+    #[error("{0} is declared with a type other than `Record`")]
     ContextOrShapeNotRecord(ContextOrShape),
     /// An action entity (transitively) has an attribute that is an empty set.
     /// The validator cannot assign a type to an empty set.
@@ -1264,7 +1264,11 @@ impl<'a> From<cedar_policy_validator::ValidationError<'a>> for ValidationError<'
 
 impl<'a> std::fmt::Display for ValidationError<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Validation error on policy {}", self.location.policy_id)?;
+        write!(
+            f,
+            "validation error on policy `{}`",
+            self.location.policy_id
+        )?;
         if let (Some(range_start), Some(range_end)) =
             (self.location().range_start(), self.location().range_end())
         {
@@ -1320,7 +1324,7 @@ pub fn confusable_string_checker<'a>(
 }
 
 #[derive(Debug, Error)]
-#[error("Warning on policy {}: {}", .location.policy_id, .kind)]
+#[error("validation warning on policy `{}`: {}", .location.policy_id, .kind)]
 /// Warnings found in Cedar policies
 pub struct ValidationWarning<'a> {
     location: SourceLocation<'a>,
@@ -1577,7 +1581,7 @@ impl std::fmt::Display for EntityUid {
 pub enum PolicySetError {
     /// There was a duplicate [`PolicyId`] encountered in either the set of
     /// templates or the set of policies.
-    #[error("duplicate template or policy id: {id}")]
+    #[error("duplicate template or policy id `{id}`")]
     AlreadyDefined {
         /// [`PolicyId`] that was duplicate
         id: PolicyId,
@@ -2975,7 +2979,7 @@ pub enum ContextJsonError {
     #[error(transparent)]
     JsonDeserialization(#[from] JsonDeserializationError),
     /// The supplied action doesn't exist in the supplied schema
-    #[error("action `{action}` doesn't exist in the supplied schema")]
+    #[error("action `{action}` does not exist in the supplied schema")]
     MissingAction {
         /// UID of the action which doesn't exist
         action: EntityUid,
@@ -4105,7 +4109,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on numDirectReports");
         assert!(
-            err.to_string().contains(r#"in attribute "numDirectReports" on Employee::"12UA45", type mismatch: attribute was expected to have type long, but actually has type string"#),
+            err.to_string().contains(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type long, but actually has type string"#),
             "actual error message was {err}"
         );
 
@@ -4141,7 +4145,7 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to type mismatch on manager");
         assert!(
             err.to_string()
-                .contains(r#"in attribute "manager" on Employee::"12UA45", expected a literal entity reference, but got: "34FB87""#),
+                .contains(r#"in attribute `manager` on `Employee::"12UA45"`, expected a literal entity reference, but got `"34FB87"`"#),
             "actual error message was {err}"
         );
 
@@ -4173,7 +4177,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on hr_contacts");
         assert!(
-            err.to_string().contains(r#"in attribute "hr_contacts" on Employee::"12UA45", type mismatch: attribute was expected to have type (set of (entity of type HR)), but actually has type record with attributes: ("#),
+            err.to_string().contains(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type (set of (entity of type `HR`)), but actually has type record with attributes: ("#),
             "actual error message was {err}"
         );
 
@@ -4208,7 +4212,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on manager");
         assert!(
-            err.to_string().contains(r#"in attribute "manager" on Employee::"12UA45", type mismatch: attribute was expected to have type (entity of type Employee), but actually has type (entity of type HR)"#),
+            err.to_string().contains(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type (entity of type `Employee`), but actually has type (entity of type `HR`)"#),
             "actual error message was {err}"
         );
 
@@ -4244,7 +4248,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on home_ip");
         assert!(
-            err.to_string().contains(r#"in attribute "home_ip" on Employee::"12UA45", type mismatch: attribute was expected to have type ipaddr, but actually has type decimal"#),
+            err.to_string().contains(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type ipaddr, but actually has type decimal"#),
             "actual error message was {err}"
         );
 
@@ -4278,7 +4282,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to missing attribute \"inner2\"");
         assert!(
-            err.to_string().contains(r#"in attribute "json_blob" on Employee::"12UA45", expected the record to have an attribute "inner2", but it doesn't"#),
+            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, expected the record to have an attribute `inner2`, but it does not"#),
             "actual error message was {err}"
         );
 
@@ -4313,7 +4317,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on attribute \"inner1\"");
         assert!(
-            err.to_string().contains(r#"in attribute "json_blob" on Employee::"12UA45", type mismatch: attribute was expected to have type record with attributes: "#),
+            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type record with attributes: "#),
             "actual error message was {err}"
         );
 
@@ -4427,7 +4431,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to manager being wrong entity type (missing namespace)");
         assert!(
-            err.to_string().contains(r#"in attribute "manager" on XYZCorp::Employee::"12UA45", type mismatch: attribute was expected to have type (entity of type XYZCorp::Employee), but actually has type (entity of type Employee)"#),
+            err.to_string().contains(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: attribute was expected to have type (entity of type `XYZCorp::Employee`), but actually has type (entity of type `Employee`)"#),
             "actual error message was {err}"
         );
     }

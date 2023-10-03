@@ -21,6 +21,7 @@
 - Improved validation error messages for access to undeclared attributes and
   unsafe access to optional attributes to report the target of the access (fix #175).
 - Implements RFC #19, making validation slightly more strict, but more explainable.
+- Improved formatting for error messages.
 
 ## 2.4.0
 
