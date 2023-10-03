@@ -181,12 +181,12 @@ impl From<RestrictedExprError> for EvaluationError {
 pub enum EvaluationErrorKind {
     /// Tried to lookup this entity UID, but it didn't exist in the provided
     /// entities
-    #[error("entity does not exist: {0}")]
+    #[error("entity `{0}` does not exist")]
     EntityDoesNotExist(Arc<EntityUID>),
 
     /// Tried to get this attribute, but the specified entity didn't
     /// have that attribute
-    #[error("`{}` does not have the attribute: {}", &.entity, &.attr)]
+    #[error("`{}` does not have the attribute `{}`", &.entity, &.attr)]
     EntityAttrDoesNotExist {
         /// Entity that didn't have the attribute
         entity: Arc<EntityUID>,
@@ -195,12 +195,12 @@ pub enum EvaluationErrorKind {
     },
 
     /// Tried to access an attribute of an unspecified entity
-    #[error("cannot access attribute of unspecified entity: {0}")]
+    #[error("cannot access attribute `{0}` of unspecified entity")]
     UnspecifiedEntityAccess(SmolStr),
 
     /// Tried to get an attribute of a (non-entity) record, but that record
     /// didn't have that attribute
-    #[error("record does not have the attribute: {0}. Available attributes: {1:?}")]
+    #[error("record does not have the attribute `{0}`. Available attributes: {1:?}")]
     RecordAttrDoesNotExist(SmolStr, Vec<SmolStr>),
 
     /// An error occurred when looking up an extension function
@@ -219,7 +219,7 @@ pub enum EvaluationErrorKind {
     },
 
     /// Wrong number of arguments provided to an extension function
-    #[error("wrong number of arguments provided to extension function {function_name}: expected {expected}, got {actual}")]
+    #[error("wrong number of arguments provided to extension function `{function_name}`: expected {expected}, got {actual}")]
     WrongNumArguments {
         /// arguments to this function
         function_name: Name,
@@ -243,7 +243,7 @@ pub enum EvaluationErrorKind {
     UnlinkedSlot(SlotId),
 
     /// Evaluation error thrown by an extension function
-    #[error("error while evaluating {extension_name} extension function: {msg}")]
+    #[error("error while evaluating `{extension_name}` extension function: {msg}")]
     FailedExtensionFunctionApplication {
         /// Name of the extension throwing the error
         extension_name: Name,
@@ -254,7 +254,7 @@ pub enum EvaluationErrorKind {
     /// This error is raised if an expression contains unknowns and cannot be
     /// reduced to a [`Value`]. In order to return partial results, use the
     /// partial evaluation APIs instead.
-    #[error("the expression contains unknown(s): {0}")]
+    #[error("the expression contains unknown(s): `{0}`")]
     NonValue(Expr),
 
     /// Maximum recursion limit reached for expression evaluation
