@@ -1722,6 +1722,14 @@ impl PolicySet {
     }
 
     /// Add a `Template` to the `PolicySet`
+    pub fn remove(&mut self, policy_id: PolicyId) -> Result<(), PolicySetError> {
+        match self.policies.remove(&policy_id) {
+            Some(_) => Ok(()),
+            None => Err(PolicySetError::RemovePolicyError(policy_id)),
+        }
+    }
+
+    /// Add a `Template` to the `PolicySet`
     pub fn add_template(&mut self, template: Template) -> Result<(), PolicySetError> {
         let id = PolicyId(template.ast.id().clone());
         self.ast.add_template(template.ast.clone())?;
@@ -3782,6 +3790,9 @@ mod policy_set_tests {
 
         pset.remove_template(PolicyId::from_str("t").unwrap())
             .expect("Failed to remove policy template");
+
+        pset.remove(PolicyId::from_str("id").unwrap())
+            .expect("Failed to remove static policy");
     }
 
     #[test]
