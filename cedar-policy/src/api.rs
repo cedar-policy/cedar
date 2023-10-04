@@ -1721,7 +1721,7 @@ impl PolicySet {
         }
     }
 
-    /// Add a `Template` to the `PolicySet`
+    /// Remove a static `Policy` from the `PolicySet`
     pub fn remove(&mut self, policy_id: PolicyId) -> Result<(), PolicySetError> {
         match self.policies.remove(&policy_id) {
             Some(_) => Ok(()),
@@ -1737,7 +1737,7 @@ impl PolicySet {
         Ok(())
     }
 
-    /// Add a `Template` to the `PolicySet`
+    /// Remove a `Template` from the `PolicySet`
     pub fn remove_template(&mut self, template_id: PolicyId) -> Result<(), PolicySetError> {
         match self.templates.remove(&template_id) {
             Some(_) => Ok(()),
