@@ -33,12 +33,15 @@ use super::schema::{
 /// Contains the four variables bound in the type environment. These together
 /// represent the full type of (principal, action, resource, context)
 /// authorization request.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RequestEnv<'a> {
     pub principal: &'a EntityType,
     pub action: &'a EntityUID,
     pub resource: &'a EntityType,
     pub context: &'a Attributes,
+
+    pub principal_slot: Option<EntityType>,
+    pub resource_slot: Option<EntityType>,
 }
 
 /// The main type structure.
@@ -692,7 +695,7 @@ pub struct EntityLUB {
 impl EntityLUB {
     /// Create a least upper bound of a single entity type. This is the same as
     /// just that entity type.
-    fn single_entity(entity_type_name: Name) -> Self {
+    pub(crate) fn single_entity(entity_type_name: Name) -> Self {
         Self {
             lub_elements: [entity_type_name].into_iter().collect(),
         }
@@ -763,7 +766,7 @@ impl EntityLUB {
     /// Generate the least upper bound of this EntityLUB and another. This
     /// returns an EntityLUB for the union of the entity types in both argument
     /// LUBs. The attributes of the LUB are not computed.
-    fn least_upper_bound(&self, other: &EntityLUB) -> EntityLUB {
+    pub(crate) fn least_upper_bound(&self, other: &EntityLUB) -> EntityLUB {
         EntityLUB {
             lub_elements: self
                 .lub_elements
