@@ -1606,6 +1606,9 @@ pub enum PolicySetError {
     /// Expected a template, but a static policy was provided.
     #[error("expected a template, but a static policy was provided")]
     ExpectedTemplate,
+    /// Error when removing a policy
+    #[error("unable to unlink policy template: {0}")]
+    UnlinkingError(PolicyId),
 }
 
 impl From<ast::PolicySetError> for PolicySetError {
@@ -1849,6 +1852,14 @@ impl PolicySet {
             entity_uids.extend(ids);
         }
         entity_uids
+    }
+
+    /// Unlink a dynamic policy from the policy set
+    pub fn unlink(&mut self, policy_id: PolicyId) -> Result<(), PolicySetError> {
+        match self.policies.remove(&policy_id) {
+            Some(_) => Ok(()),
+            None => Err(PolicySetError::UnlinkingError(policy_id)),
+        }
     }
 
     /// Create a `PolicySet` from its AST representation only. The EST will
@@ -3847,6 +3858,33 @@ mod policy_set_tests {
 
         let entity_uids = pset.unknown_entities();
         entity_uids.contains(&"test_entity_type::\"unknown\"".parse().unwrap());
+    }
+
+    #[test]
+    fn unlink_linked_policy() {
+        let template = Template::parse(
+            Some("template".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Template Parse Failure");
+        let mut pset = PolicySet::new();
+        pset.add_template(template).unwrap();
+
+        let linked_policy_id = PolicyId::from_str("linked").unwrap();
+        pset.link(
+            PolicyId::from_str("template").unwrap(),
+            linked_policy_id.clone(),
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
+        )
+        .unwrap();
+
+        let result = pset.unlink(linked_policy_id.clone());
+        assert_matches!(result, Ok(()));
+        let result = pset.unlink(linked_policy_id.clone());
+        assert_matches!(
+            result,
+            Err(PolicySetError::UnlinkingError(linked_policy_id))
+        );
     }
 }
 
