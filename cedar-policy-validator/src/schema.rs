@@ -678,7 +678,7 @@ impl ValidatorNamespaceDef {
             SchemaType::Type(SchemaTypeVariant::String) => Ok(Type::primitive_string().into()),
             SchemaType::Type(SchemaTypeVariant::Long(SchemaLongDetails { bounds_opt })) => {
                 match bounds_opt {
-                    None => Ok(Type::long_any().into()),
+                    None => Ok(Type::long_max_bounds().into()),
                     Some(SchemaLongBounds { min, max }) => {
                         if min <= max {
                             Ok(Type::long_bounded(min, max).into())

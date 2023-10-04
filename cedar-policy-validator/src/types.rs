@@ -101,7 +101,7 @@ impl Type {
     // migrate the whole codebase before we can build it. TODO: Migrate all
     // callers to different APIs.
     pub(crate) fn primitive_long() -> Type {
-        Self::long_any()
+        Self::long_max_bounds()
     }
 
     pub(crate) fn long_any() -> Type {
@@ -109,6 +109,15 @@ impl Type {
             primitive_type: Primitive::Long(LongBoundsInfo {
                 can_be_any: true,
                 bounds_opt: None,
+            }),
+        }
+    }
+
+    pub(crate) fn long_max_bounds() -> Type {
+        Type::Primitive {
+            primitive_type: Primitive::Long(LongBoundsInfo {
+                can_be_any: false,
+                bounds_opt: Some(LongBounds::top())
             }),
         }
     }
