@@ -1227,7 +1227,7 @@ mod json_parsing_tests {
         match err {
             EntitiesError::Deserialization(err) => assert!(
                 err.to_string().contains(
-                    r#"expected a literal entity reference, but got `{"type":"foo","spam":"eggs"}`"#
+                    r#"expected a literal entity reference, but got `{"spam":"eggs","type":"foo"}`"#
                 ),
                 "Actual error message was: {}",
                 err

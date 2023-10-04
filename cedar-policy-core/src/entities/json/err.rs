@@ -23,6 +23,7 @@ use crate::ast::{
 use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
 use either::Either;
+use itertools::Itertools;
 use smol_str::SmolStr;
 use thiserror::Error;
 
@@ -67,7 +68,7 @@ pub enum JsonDeserializationError {
     #[error(transparent)]
     FailedExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
     /// A field that needs to be a literal entity reference, was some other JSON value
-    #[error("{ctx}, expected a literal entity reference, but got `{got}`")]
+    #[error("{ctx}, expected a literal entity reference, but got `{}`", display_json_value(.got.as_ref()))]
     ExpectedLiteralEntityRef {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -291,5 +292,28 @@ impl std::fmt::Display for JsonDeserializationErrorContext {
             Self::Context => write!(f, "while parsing context"),
             Self::Policy { id } => write!(f, "while parsing JSON policy `{id}`"),
         }
+    }
+}
+
+fn display_json_value(v: &Either<serde_json::Value, Expr>) -> String {
+    match v {
+        Either::Left(json) => display_value(json),
+        Either::Right(e) => e.to_string(),
+    }
+}
+
+fn display_value(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::Array(contents) => {
+            format!("[{}]", contents.iter().map(display_value).join(", "))
+        }
+        serde_json::Value::Object(map) => {
+            let mut v: Vec<_> = map.iter().collect();
+            // We sort the keys here so that our error messages are consistent and defined
+            v.sort_by_key(|p| p.0);
+            let display_kv = |kv: &(&String, &serde_json::Value)| format!("\"{}\":{}", kv.0, kv.1);
+            format!("{{{}}}", v.iter().map(display_kv).join(","))
+        }
+        other => other.to_string(),
     }
 }
