@@ -117,7 +117,7 @@ impl Type {
         Type::Primitive {
             primitive_type: Primitive::Long(LongBoundsInfo {
                 can_be_any: false,
-                bounds_opt: Some(LongBounds::top())
+                bounds_opt: Some(LongBounds::top()),
             }),
         }
     }
