@@ -1607,6 +1607,12 @@ pub enum PolicySetError {
     #[error("expected a template, but a static policy was provided")]
     ExpectedTemplate,
     /// Error when removing a policy
+    #[error("unable to remove static policy: {0}")]
+    RemovePolicyError(PolicyId),
+    /// Error when removing a template
+    #[error("unable to remove policy template: {0}")]
+    RemoveTemplateError(PolicyId),
+    /// Error when unlinking a template
     #[error("unable to unlink policy template: {0}")]
     UnlinkingError(PolicyId),
 }
@@ -1721,6 +1727,14 @@ impl PolicySet {
         self.ast.add_template(template.ast.clone())?;
         self.templates.insert(id, template);
         Ok(())
+    }
+
+    /// Add a `Template` to the `PolicySet`
+    pub fn remove_template(&mut self, template_id: PolicyId) -> Result<(), PolicySetError> {
+        match self.templates.remove(&template_id) {
+            Some(_) => Ok(()),
+            None => Err(PolicySetError::RemoveTemplateError(template_id)),
+        }
     }
 
     /// Iterate over all the `Policy`s in the `PolicySet`.
@@ -3741,6 +3755,33 @@ mod policy_set_tests {
             env3,
         )
         .expect("should succeed with unique ids");
+    }
+
+    #[test]
+    fn policyset_remove() {
+        let mut pset = PolicySet::new();
+        let static_policy = Policy::parse(Some("id".into()), "permit(principal,action,resource);")
+            .expect("Failed to parse");
+        pset.add(static_policy).expect("Failed to add");
+
+        let template = Template::parse(
+            Some("t".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Failed to parse");
+        pset.add_template(template).expect("Failed to add");
+
+        let env1: HashMap<SlotId, EntityUid> =
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test1"))).collect();
+        pset.link(
+            PolicyId::from_str("t").unwrap(),
+            PolicyId::from_str("link").unwrap(),
+            env1,
+        )
+        .expect("Failed to link");
+
+        pset.remove_template(PolicyId::from_str("t").unwrap())
+            .expect("Failed to remove policy template");
     }
 
     #[test]
