@@ -35,6 +35,9 @@ thread_local!(
 );
 
 /// Construct and ask the authorizer the request.
+///
+/// The authorizer uses the `stacker` crate to manage stack size and tries to use a sane default.
+/// If the default is not right for you, you can try wrapping calls to `is_authorized` in `stacker::grow`.
 fn is_authorized(call: AuthorizationCall) -> Response {
     match call.get_components() {
         Ok((request, policies, entities)) => {
@@ -48,6 +51,9 @@ fn is_authorized(call: AuthorizationCall) -> Response {
 /// the `RecvdSlice`, you can either pass a `Map<String, String>` where the values are all single policies,
 /// or a single String which is a concatenation of multiple policies. If you choose the latter,
 /// policy id's will be auto-generated for you in the format `policyX` where X is a Whole Number (zero or a positive int)
+///
+/// The authorizer uses the `stacker` crate to manage stack size and tries to use a sane default.
+/// If the default is not right for you, you can try wrapping calls to `is_authorized` in `stacker::grow`.
 pub fn json_is_authorized(input: &str) -> InterfaceResult {
     serde_json::from_str::<AuthorizationCall>(input).map_or_else(
         |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
