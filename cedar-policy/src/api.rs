@@ -2713,43 +2713,40 @@ impl Request {
     }
 
     /// Get the principal component of the request. Returns `None` if the principal is
-    /// "unspecified" (i.e., constructed by passing `None` into the constructor) or 
+    /// "unspecified" (i.e., constructed by passing `None` into the constructor) or
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn principal(&self) -> Option<&EntityUid> {
         match self.0.principal() {
-            ast::EntityUIDEntry::Concrete(euid) => 
-                match euid.entity_type() {
-                    ast::EntityType::Concrete(_) => Some(EntityUid::ref_cast(euid.as_ref())),
-                    ast::EntityType::Unspecified => None,
-                }
+            ast::EntityUIDEntry::Concrete(euid) => match euid.entity_type() {
+                ast::EntityType::Concrete(_) => Some(EntityUid::ref_cast(euid.as_ref())),
+                ast::EntityType::Unspecified => None,
+            },
             ast::EntityUIDEntry::Unknown => None,
         }
     }
 
     /// Get the action component of the request. Returns `None` if the action is
-    /// "unspecified" (i.e., constructed by passing `None` into the constructor) or 
+    /// "unspecified" (i.e., constructed by passing `None` into the constructor) or
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn action(&self) -> Option<&EntityUid> {
         match self.0.action() {
-            ast::EntityUIDEntry::Concrete(euid) => 
-                match euid.entity_type() {
-                    ast::EntityType::Concrete(_) => Some(EntityUid::ref_cast(euid.as_ref())),
-                    ast::EntityType::Unspecified => None,
-                }
+            ast::EntityUIDEntry::Concrete(euid) => match euid.entity_type() {
+                ast::EntityType::Concrete(_) => Some(EntityUid::ref_cast(euid.as_ref())),
+                ast::EntityType::Unspecified => None,
+            },
             ast::EntityUIDEntry::Unknown => None,
         }
     }
 
     /// Get the resource component of the request. Returns `None` if the resource is
-    /// "unspecified" (i.e., constructed by passing `None` into the constructor) or 
+    /// "unspecified" (i.e., constructed by passing `None` into the constructor) or
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn resource(&self) -> Option<&EntityUid> {
         match self.0.resource() {
-            ast::EntityUIDEntry::Concrete(euid) => 
-                match euid.entity_type() {
-                    ast::EntityType::Concrete(_) => Some(EntityUid::ref_cast(euid.as_ref())),
-                    ast::EntityType::Unspecified => None,
-                }
+            ast::EntityUIDEntry::Concrete(euid) => match euid.entity_type() {
+                ast::EntityType::Concrete(_) => Some(EntityUid::ref_cast(euid.as_ref())),
+                ast::EntityType::Unspecified => None,
+            },
             ast::EntityUIDEntry::Unknown => None,
         }
     }
