@@ -387,6 +387,8 @@ fn parse_policy_set_from_individual_policies(
     }
 }
 
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
     use super::*;
