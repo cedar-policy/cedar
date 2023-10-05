@@ -68,7 +68,9 @@ fn scenario_4a() {
 // note: 4b currently omitted because it requires date/timestamp functionality
 
 /// currently failing, as the validator does not support action attributes
-#[should_panic]
+#[should_panic(
+    expected = "error occurred while evaluating policy `policy0`: entity `Action::\\\"view\\\"` does not exist"
+)]
 #[test]
 fn scenario_4c() {
     perform_integration_test_from_json(folder().join("4c.json"));

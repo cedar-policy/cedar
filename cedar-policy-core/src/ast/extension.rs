@@ -408,7 +408,7 @@ impl Eq for ExtensionValueWithArgs {}
 
 impl PartialOrd for ExtensionValueWithArgs {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.value.partial_cmp(&other.value)
+        Some(self.cmp(other))
     }
 }
 

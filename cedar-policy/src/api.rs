@@ -496,6 +496,10 @@ impl Default for Authorizer {
 
 impl Authorizer {
     /// Create a new `Authorizer`
+    ///
+    /// The authorizer uses the `stacker` crate to manage stack size and tries to use a sane default.
+    /// If the default is not right for you, you can try wrapping the authorizer or individual calls
+    /// to `is_authorized` in `stacker::grow`.
     /// ```
     /// # use cedar_policy::{Authorizer, Context, Entities, EntityId, EntityTypeName,
     /// # EntityUid, Request,PolicySet};
