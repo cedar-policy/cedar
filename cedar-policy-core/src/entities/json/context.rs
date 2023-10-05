@@ -80,6 +80,8 @@ impl<'e, 's, S: ContextSchema> ContextJsonParser<'e, 's, S> {
         let rexpr = vparser.val_into_rexpr(json, expected_ty.as_ref(), || {
             JsonDeserializationErrorContext::Context
         })?;
+        // INVARIANT `Context:from_exprs` requires that `rexpr` is a `Record`.
+        // This is checked by the `match` expression
         match rexpr.expr_kind() {
             ExprKind::Record { .. } => Ok(Context::from_expr(rexpr)),
             _ => Err(JsonDeserializationError::ExpectedContextToBeRecord {

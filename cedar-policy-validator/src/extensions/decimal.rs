@@ -21,9 +21,13 @@ use cedar_policy_core::evaluator::RestrictedEvaluator;
 use cedar_policy_core::extensions::{decimal, Extensions};
 use std::str::FromStr;
 
+/// Note on panic safety
+/// This module depends on the cedar parser only constructings ASTs with valid extension calls
 /// If any of the panics in this file are triggered, that means that this file has become
 /// out-of-date with the decimal extension definition in CedarCore.
 
+// PANIC SAFETY see note on panic safety above
+#[allow(clippy::panic)]
 fn get_argument_types(fname: &str, decimal_ty: &Type) -> Vec<types::Type> {
     match fname {
         "decimal" => vec![Type::primitive_string()],
@@ -34,6 +38,8 @@ fn get_argument_types(fname: &str, decimal_ty: &Type) -> Vec<types::Type> {
     }
 }
 
+// PANIC SAFETY see note on panic safety above
+#[allow(clippy::panic)]
 fn get_return_type(fname: &str, decimal_ty: &Type) -> Type {
     match fname {
         "decimal" => decimal_ty.clone(),
@@ -44,6 +50,8 @@ fn get_return_type(fname: &str, decimal_ty: &Type) -> Type {
     }
 }
 
+// PANIC SAFETY see note on panic safety above
+#[allow(clippy::panic)]
 fn get_argument_check(fname: &str) -> Option<ArgumentCheckFn> {
     match fname {
         "decimal" => Some(Box::new(validate_decimal_string)),

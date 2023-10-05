@@ -25,6 +25,8 @@ lalrpop_mod!(
     #[allow(clippy::indexing_slicing)]
     //PANIC SAFETY: lalrpop uses unreachable, and we are trusting lalrpop to generate correct code
     #[allow(clippy::unreachable)]
+    //PANIC SAFETY: lalrpop uses panic, and we are trusting lalrpop to generate correct code
+    #[allow(clippy::panic)]
     pub grammar,
     "/src/parser/grammar.rs"
 );

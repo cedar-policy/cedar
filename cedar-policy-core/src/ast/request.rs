@@ -153,6 +153,7 @@ impl std::fmt::Display for Request {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Context {
     /// an `Expr::Record` that qualifies as a "restricted expression"
+    // INVARIANT: `context` must be a `Record`
     #[serde(flatten)]
     context: RestrictedExpr,
 }
@@ -164,6 +165,7 @@ impl Context {
     }
 
     /// Create a `Context` from a `RestrictedExpr`, which must be a `Record`
+    /// INVARIANT: `from_expr` must only be called with an `expr` that is a `Record`
     pub fn from_expr(expr: RestrictedExpr) -> Self {
         debug_assert!(matches!(expr.expr_kind(), ExprKind::Record { .. }));
         Self { context: expr }
@@ -171,6 +173,7 @@ impl Context {
 
     /// Create a `Context` from a map of key to `RestrictedExpr`, or a Vec of
     /// `(key, RestrictedExpr)` pairs, or any other iterator of `(key, RestrictedExpr)` pairs
+    // INVARIANT: always constructs a record
     pub fn from_pairs(pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>) -> Self {
         Self {
             context: RestrictedExpr::record(pairs),
@@ -184,6 +187,7 @@ impl Context {
     ///
     /// For schema-based parsing, use `ContextJsonParser`.
     pub fn from_json_str(json: &str) -> Result<Self, JsonDeserializationError> {
+        // INVARIANT `.from_json_str` always produces an expression of variant `Record`
         ContextJsonParser::new(None::<&NullContextSchema>, Extensions::all_available())
             .from_json_str(json)
     }
@@ -195,6 +199,7 @@ impl Context {
     ///
     /// For schema-based parsing, use `ContextJsonParser`.
     pub fn from_json_value(json: serde_json::Value) -> Result<Self, JsonDeserializationError> {
+        // INVARIANT `.from_json_value` always produces an expression of variant `Record`
         ContextJsonParser::new(None::<&NullContextSchema>, Extensions::all_available())
             .from_json_value(json)
     }
@@ -206,12 +211,15 @@ impl Context {
     ///
     /// For schema-based parsing, use `ContextJsonParser`.
     pub fn from_json_file(json: impl std::io::Read) -> Result<Self, JsonDeserializationError> {
+        // INVARIANT `.from_json_file` always produces an expression of variant `Record`
         ContextJsonParser::new(None::<&NullContextSchema>, Extensions::all_available())
             .from_json_file(json)
     }
 
     /// Iterate over the (key, value) pairs in the `Context`
     pub fn iter(&self) -> impl Iterator<Item = (&str, BorrowedRestrictedExpr<'_>)> {
+        // PANIC SAFETY invariant on `self.context` ensures that it is a Record
+        #[allow(clippy::panic)]
         match self.context.as_ref().expr_kind() {
             ExprKind::Record { pairs } => pairs
                 .iter()
@@ -236,5 +244,16 @@ impl std::default::Default for Context {
 impl std::fmt::Display for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.context)
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    #[test]
+    fn test_json_from_str_non_record() {
+        let src = "1";
+        let context = super::Context::from_json_str(src);
+        let _vec: Vec<_> = context.iter().collect();
     }
 }
