@@ -296,9 +296,7 @@ impl Eq for Set {}
 // HashSet doesn't implement PartialOrd
 impl PartialOrd<Set> for Set {
     fn partial_cmp(&self, other: &Set) -> Option<std::cmp::Ordering> {
-        self.authoritative
-            .as_ref()
-            .partial_cmp(other.authoritative.as_ref())
+        Some(self.cmp(other))
     }
 }
 
