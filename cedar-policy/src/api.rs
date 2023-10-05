@@ -3904,6 +3904,127 @@ mod schema_based_parsing_tests {
     use cool_asserts::assert_matches;
     use serde_json::json;
 
+    #[test]
+    fn long_in_bounds() {
+        let schema = Schema::from_json_value(json!(
+        {"": {
+            "entityTypes": {
+                "Employee": {
+                    "memberOfTypes": [],
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "num": { "type": "Long", "min": 3, "max": 4 }
+                        },
+                    }
+                },
+            },
+            "actions": { "view": { } }
+        }}
+        ))
+        .expect("should be a valid schema");
+
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": { "num": 3 },
+                    "parents": []
+                }
+            ]
+        );
+        let entities = Entities::from_json_value(entitiesjson, Some(&schema)).unwrap();
+        let entity = entities
+            .get(&EntityUid::from_strs("Employee", "12UA45"))
+            .unwrap();
+        assert_eq!(entity.attr("num"), Some(Ok(EvalResult::Long(3))));
+    }
+
+    #[test]
+    fn long_out_of_bounds() {
+        let schema = Schema::from_json_value(json!(
+        {"": {
+            "entityTypes": {
+                "Employee": {
+                    "memberOfTypes": [],
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "num": { "type": "Long", "min": 3, "max": 4 }
+                        },
+                    }
+                },
+            },
+            "actions": { "view": { } }
+        }}
+        ))
+        .expect("should be a valid schema");
+
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": { "num": 10 },
+                    "parents": []
+                }
+            ]
+        );
+        let err = Entities::from_json_value(entitiesjson, Some(&schema))
+            .expect_err("should fail due to long out of bounds");
+        assert!(
+            err.to_string().contains(r#"in attribute `num` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type long between 3 and 4 inclusive, but actually has type long between 10 and 10"#),
+            "actual error message was {err}"
+        );
+    }
+
+    #[test]
+    fn set_of_longs() {
+        let schema = Schema::from_json_value(json!(
+        {"": {
+            "entityTypes": {
+                "Employee": {
+                    "memberOfTypes": [],
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "nums": { "type": "Set", "element": { "type": "Long" } },
+                        },
+                    }
+                },
+            },
+            "actions": { "view": { } }
+        }}
+        ))
+        .expect("should be a valid schema");
+
+        // We should be able to parse a set of longs. There was previously a bug
+        // where the set of rejected as heterogenous because the type Long with
+        // bounds [1, 1] is not compatible with Long with bounds [2, 2].
+        // Compatibility is defined as the existence of a value having both
+        // types.
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": { "nums": [1, 2, 3] },
+                    "parents": []
+                }
+            ]
+        );
+        let entities = Entities::from_json_value(entitiesjson, Some(&schema)).unwrap();
+        let entity = entities
+            .get(&EntityUid::from_strs("Employee", "12UA45"))
+            .unwrap();
+        assert_eq!(
+            entity.attr("nums"),
+            Some(Ok(EvalResult::Set(Set(BTreeSet::from([
+                EvalResult::Long(1),
+                EvalResult::Long(2),
+                EvalResult::Long(3)
+            ])))))
+        );
+    }
+
     /// Simple test that exercises a variety of attribute types.
     #[test]
     #[allow(clippy::too_many_lines)]

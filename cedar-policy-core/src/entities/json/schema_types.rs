@@ -16,7 +16,7 @@
 
 use crate::ast::{EntityType, Name, Type};
 use smol_str::SmolStr;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Possible types that schema-based parsing can expect for Cedar values.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -89,6 +89,71 @@ impl SchemaType {
                 name1 == name2
             }
             _ => false,
+        }
+    }
+
+    pub(crate) fn least_upper_bound(&self, other: &SchemaType) -> Option<SchemaType> {
+        use SchemaType::*;
+        match (self, other) {
+            (Bool, Bool) => Some(Bool),
+            (String, String) => Some(String),
+            (
+                Long {
+                    min: min1,
+                    max: max1,
+                },
+                Long {
+                    min: min2,
+                    max: max2,
+                },
+            ) => Some(Long {
+                min: std::cmp::min(*min1, *min2),
+                max: std::cmp::max(*max1, *max2),
+            }),
+            (
+                Set {
+                    element_ty: element_ty1,
+                },
+                Set {
+                    element_ty: element_ty2,
+                },
+            ) => Some(Set {
+                element_ty: Box::new(element_ty1.least_upper_bound(&element_ty2)?),
+            }),
+            (s @ Set { .. }, EmptySet) | (EmptySet, s @ Set { .. }) => Some(s.clone()),
+            (EmptySet, EmptySet) => Some(EmptySet),
+            (Record { attrs: attrs1 }, Record { attrs: attrs2 }) => {
+                let keys: HashSet<_> = attrs1.keys().chain(attrs2.keys()).collect();
+                let attrs = keys
+                    .iter()
+                    .map(|k| -> Option<(SmolStr, AttributeType)> {
+                        match (attrs1.get(*k), attrs2.get(*k)) {
+                            (Some(v0), Some(v1)) => {
+                                let ty = v0.schema_type().least_upper_bound(v1.schema_type())?;
+                                Some((
+                                    (*k).clone(),
+                                    if v0.is_required() && v1.is_required() {
+                                        AttributeType::required(ty)
+                                    } else {
+                                        AttributeType::optional(ty)
+                                    },
+                                ))
+                            }
+                            (None, Some(v)) | (Some(v), None) => Some((
+                                (*k).clone(),
+                                AttributeType::optional(v.schema_type().clone()),
+                            )),
+                            (None, None) => None,
+                        }
+                    })
+                    .collect::<Option<HashMap<_, _>>>()?;
+                Some(Record { attrs })
+            }
+            (Entity { ty: ty1 }, Entity { ty: ty2 }) if ty1 == ty2 => Some(self.clone()),
+            (Extension { name: name1 }, Extension { name: name2 }) if name1 == name2 => {
+                Some(self.clone())
+            }
+            _ => None,
         }
     }
 

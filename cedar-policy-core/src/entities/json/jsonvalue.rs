@@ -499,18 +499,16 @@ impl<'e> ValueParser<'e> {
                     None => Ok(SchemaType::EmptySet),
                     Some(Err(e)) => Err(e),
                     Some(Ok(element_ty)) => {
-                        let matches_element_ty = |ty: &Result<SchemaType, JsonDeserializationError>| matches!(ty, Ok(ty) if ty.is_consistent_with(&element_ty));
-                        let conflicting_ty = element_types.find(|ty| !matches_element_ty(ty));
-                        match conflicting_ty {
-                            None => Ok(SchemaType::Set { element_ty: Box::new(element_ty) }),
-                            Some(Ok(conflicting_ty)) =>
-                                Err(JsonDeserializationError::HeterogeneousSet {
+                        let ty = element_types.fold(Ok(element_ty), |elem_ty, ty| {
+                            let ty = ty?;
+                            let elem_ty = elem_ty?;
+                            elem_ty.least_upper_bound(&ty).ok_or(JsonDeserializationError::HeterogeneousSet {
                                     ctx: Box::new(ctx()),
-                                    ty1: Box::new(element_ty),
-                                    ty2: Box::new(conflicting_ty),
-                                }),
-                            Some(Err(e)) => Err(e),
-                        }
+                                    ty1: Box::new(elem_ty),
+                                    ty2: Box::new(ty),
+                                })
+                        })?;
+                        Ok(SchemaType::Set { element_ty: Box::new(ty) })
                     }
                 }
             }
