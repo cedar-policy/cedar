@@ -114,14 +114,14 @@ impl Authorizer {
                     ErrorHandling::Deny => Response::new(
                         Decision::Deny,
                         idset
-                            .chain(partial.diagnostics.reason.into_iter())
+                            .chain(partial.diagnostics.reason)
                             .collect(),
                         errors,
                     ),
                     ErrorHandling::Forbid => Response::new(
                         Decision::Deny,
                         idset
-                            .chain(partial.diagnostics.reason.into_iter())
+                            .chain(partial.diagnostics.reason)
                             .collect(),
                         errors,
                     ),
@@ -149,7 +149,7 @@ impl Authorizer {
                             Response::new(
                                 Decision::Deny,
                                 idset
-                                    .chain(partial.diagnostics.reason.into_iter())
+                                    .chain(partial.diagnostics.reason)
                                     .collect(),
                                 errors,
                             )
