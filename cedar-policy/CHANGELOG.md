@@ -11,6 +11,7 @@
   `cedar_policy_core::authorizer::AuthorizationError` error types.
 - Added an API to `ParseError` to quickly get the primary source span
 - Added an API, `unknown_entities`, to `PolicySet` to collect unknown entity UIDs from `PartialResponse`.
+- Added APIs `remove`, `remove_template` and `unlink` to remove policies from the `PolicySet`
 
 ### Changed
 
