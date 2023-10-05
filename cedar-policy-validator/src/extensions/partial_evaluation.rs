@@ -13,15 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+//! Note on panic safety
+//! This module depends on the cedar parser only constructings ASTs with valid extension calls
+//! If any of the panics in this file are triggered, that means that this file has become
+//! out-of-date with the decimal extension definition in `cedar-policy-core`.
 
 use crate::extension_schema::{ExtensionFunctionType, ExtensionSchema};
 use crate::types::{self, Type};
 use cedar_policy_core::extensions::partial_evaluation;
-
-/// Note on panic safety
-/// This module depends on the cedar parser only constructings ASTs with valid extension calls
-/// If any of the panics in this file are triggered, that means that this file has become
-/// out-of-date with the decimal extension definition in `cedar-policy-core`.
 
 // PANIC SAFETY see note on panic safety above
 #[allow(clippy::panic)]

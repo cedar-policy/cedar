@@ -462,6 +462,8 @@ pub enum TCComputation {
     ComputeNow,
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod json_parsing_tests {
     use super::*;
@@ -1227,6 +1229,8 @@ mod json_parsing_tests {
     }
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod entities_tests {
     use super::*;
@@ -1299,6 +1303,8 @@ mod entities_tests {
     }
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod schema_based_parsing_tests {
     use super::*;

@@ -2220,7 +2220,7 @@ impl Policy {
     /// Get the head constraint on this policy's action
     pub fn action_constraint(&self) -> ActionConstraint {
         // Clone the data from Core to be consistant with the other constraints
-        // Invariant: all of the EntityUids come from a policy, which must have Concrete EntityUids
+        // INVARIANT: all of the EntityUids come from a policy, which must have Concrete EntityUids
         match self.ast.template().action_constraint() {
             ast::ActionConstraint::Any => ActionConstraint::Any,
             ast::ActionConstraint::In(ids) => ActionConstraint::In(

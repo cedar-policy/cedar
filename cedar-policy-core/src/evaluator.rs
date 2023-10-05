@@ -818,6 +818,8 @@ fn stack_size_check() -> Result<()> {
     Ok(())
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 pub mod test {
     use std::{collections::HashMap, str::FromStr};

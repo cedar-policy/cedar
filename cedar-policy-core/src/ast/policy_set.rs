@@ -285,6 +285,8 @@ impl std::fmt::Display for PolicySet {
 }
 
 // PANIC SAFETY tests
+#[allow(clippy::panic)]
+// PANIC SAFETY tests
 #[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {

@@ -253,7 +253,6 @@ mod test {
     #[test]
     fn test_json_from_str_non_record() {
         let src = "1";
-        let context = super::Context::from_json_str(src);
-        let _vec: Vec<_> = context.iter().collect();
+        assert!(super::Context::from_json_str(src).is_err());
     }
 }
