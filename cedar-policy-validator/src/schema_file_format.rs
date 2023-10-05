@@ -15,7 +15,6 @@
  */
 
 use cedar_policy_core::entities::JSONValue;
-use itertools::Itertools;
 use serde::{
     de::{MapAccess, Visitor},
     Deserialize, Serialize,
@@ -82,17 +81,13 @@ impl NamespaceDefinition {
 
     pub fn merge_actions_by_type(&self) -> Vec<(&ActionType, HashSet<SmolStr>)> {
         let mut actions_by_type: Vec<(&ActionType, HashSet<SmolStr>)> = Vec::new();
-        for class in self
-            .actions
-            .iter()
-            .map(|(name, ty)| (name.clone(), ty))
-            .collect_vec()
-            .group_by(|a, b| a.1 == b.1)
-        {
-            actions_by_type.push((
-                class[0].1,
-                HashSet::from_iter(class.iter().map(|(name, _)| name.clone())),
-            ))
+        // Had to use the n^2 algorithm here to compute equivalent classes
+        for (name, ty) in self.actions.iter() {
+            if let Some((_, names)) = actions_by_type.iter_mut().find(|class| class.0 == ty) {
+                names.insert(name.clone());
+            } else {
+                actions_by_type.push((ty, HashSet::from_iter(std::iter::once(name.clone()))))
+            }
         }
         actions_by_type
     }

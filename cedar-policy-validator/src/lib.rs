@@ -16,7 +16,6 @@
 
 //! Validator for Cedar policies
 #![forbid(unsafe_code)]
-#![feature(slice_group_by)]
 
 use std::collections::HashSet;
 
