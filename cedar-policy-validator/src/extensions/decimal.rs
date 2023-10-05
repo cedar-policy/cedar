@@ -22,7 +22,7 @@ use cedar_policy_core::extensions::{decimal, Extensions};
 use std::str::FromStr;
 
 /// Note on panic safety
-/// This module depends on the cedar parser only constructings ASTs with valid extension calls
+/// This module depends on the cedar parser only constructing ASTs with valid extension calls
 /// If any of the panics in this file are triggered, that means that this file has become
 /// out-of-date with the decimal extension definition in CedarCore.
 
