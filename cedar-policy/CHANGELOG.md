@@ -22,6 +22,8 @@
   unsafe access to optional attributes to report the target of the access (fix #175).
 - Implements RFC #19, making validation slightly more strict, but more explainable.
 - Improved formatting for error messages.
+- Update the behavior of `Request::principal()`, `Request::action()`, and `Request::resource()` to
+  return `None` if the entities are unspecified.
 
 ## 2.4.0
 
