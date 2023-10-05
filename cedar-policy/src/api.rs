@@ -3385,6 +3385,18 @@ permit(principal ==  A :: B
             .expect("failed to roundtrip");
         assert_eq!(reparsed.id().as_ref(), r#"b'ob"#);
     }
+
+    #[test]
+    fn accessing_unspecified_entity_returns_none() {
+        let c = Context::empty();
+        let request: Request = Request::new(None, None, None, c);
+        let p = request.principal();
+        let a = request.action();
+        let r = request.resource();
+        assert!(p.is_none());
+        assert!(a.is_none());
+        assert!(r.is_none());
+    }
 }
 
 #[cfg(test)]
@@ -3914,14 +3926,6 @@ mod schema_based_parsing_tests {
     use super::*;
     use cool_asserts::assert_matches;
     use serde_json::json;
-
-    #[test]
-    fn accessing_unspecified_entity_returns_none() {
-        let c = Context::empty();
-        let request: Request = Request::new(None, None, None, c);
-        let p = request.principal();
-        assert!(p.is_none());
-    }
 
     /// Simple test that exercises a variety of attribute types.
     #[test]
