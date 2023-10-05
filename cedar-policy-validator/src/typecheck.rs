@@ -2148,7 +2148,7 @@ impl<'a> Typechecker<'a> {
 
     /// Utility called by the main typecheck method to handle extension function
     /// application.
-    /// INVARIANT `ext_expr` must be a `ExtensionFucntionApp`
+    /// INVARIANT `ext_expr` must be a `ExtensionFunctionApp`
     fn typecheck_extension<'b>(
         &self,
         request_env: &RequestEnv,
