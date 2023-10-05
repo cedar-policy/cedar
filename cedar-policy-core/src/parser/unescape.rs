@@ -50,7 +50,7 @@ pub(crate) fn to_pattern(s: &str) -> Result<Vec<PatternElem>, Vec<UnescapeError>
         Err(EscapeError::InvalidEscape)
         // note that the range argument refers to the *byte* offset into the string.
         // so we can compare the byte slice against the bytes of the ``star'' escape sequence.
-        if &bytes[range.start..range.end] == r#"\*"#.as_bytes()
+        if &bytes[range.start..range.end] == r"\*".as_bytes()
             =>
         {
             unescaped_str.push(PatternElem::Char('*'))
