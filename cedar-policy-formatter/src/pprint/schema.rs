@@ -84,6 +84,7 @@ impl Doc for NamespaceDefinition {
                                     .append(act_ty.applies_to.as_ref().map(|v| v.to_doc(context)))
                                     .nest(context.config.indent_width)
                                     .group()
+                                    .append(RcDoc::text(";"))
                             }),
                             RcDoc::hardline(),
                         )),
@@ -169,22 +170,24 @@ impl Doc for EntityType {
                 if self.member_of_types.is_empty() {
                     RcDoc::nil()
                 } else {
-                    RcDoc::space().append(RcDoc::text("[")).append(
-                        RcDoc::intersperse(
-                            self.member_of_types
-                                .iter()
-                                .map(|ancestor| RcDoc::text(ancestor.to_string())),
-                            RcDoc::text(", "),
+                    RcDoc::space()
+                        .append(RcDoc::text("in "))
+                        .append(RcDoc::text("["))
+                        .append(
+                            RcDoc::intersperse(
+                                self.member_of_types
+                                    .iter()
+                                    .map(|ancestor| RcDoc::text(ancestor.to_string())),
+                                RcDoc::text(", "),
+                            )
+                            .append(RcDoc::text("]")),
                         )
-                        .append(RcDoc::text("]")),
-                    )
                 }
                 .append(if attributes.is_empty() {
                     RcDoc::nil()
                 } else {
-                    RcDoc::space()
+                    RcDoc::space().append(self.shape.0.to_doc(context)?)
                 })
-                .append(self.shape.0.to_doc(context)?)
                 .append(RcDoc::text(";")),
             )
         } else {
