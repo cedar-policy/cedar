@@ -335,7 +335,7 @@ mod tests {
         assert!(policy.is_ok());
     }
 
-    #[test] // we no longer support structs
+    #[test] // we no longer support named structs
     fn member7() {
         let policy = parse_policy(
             r#"
