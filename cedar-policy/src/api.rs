@@ -2579,26 +2579,41 @@ impl Request {
         Self(ast::Request::new(p, a, r, context.0))
     }
 
-    ///Get the principal component of the request
+    /// Get the principal component of the request. Returns `None` if the principal is
+    /// "unspecified" (i.e., constructed by passing `None` into the constructor) or
+    /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn principal(&self) -> Option<&EntityUid> {
         match self.0.principal() {
-            ast::EntityUIDEntry::Concrete(euid) => Some(EntityUid::ref_cast(euid.as_ref())),
+            ast::EntityUIDEntry::Concrete(euid) => match euid.entity_type() {
+                ast::EntityType::Concrete(_) => Some(EntityUid::ref_cast(euid.as_ref())),
+                ast::EntityType::Unspecified => None,
+            },
             ast::EntityUIDEntry::Unknown => None,
         }
     }
 
-    ///Get the action component of the request
+    /// Get the action component of the request. Returns `None` if the action is
+    /// "unspecified" (i.e., constructed by passing `None` into the constructor) or
+    /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn action(&self) -> Option<&EntityUid> {
         match self.0.action() {
-            ast::EntityUIDEntry::Concrete(euid) => Some(EntityUid::ref_cast(euid.as_ref())),
+            ast::EntityUIDEntry::Concrete(euid) => match euid.entity_type() {
+                ast::EntityType::Concrete(_) => Some(EntityUid::ref_cast(euid.as_ref())),
+                ast::EntityType::Unspecified => None,
+            },
             ast::EntityUIDEntry::Unknown => None,
         }
     }
 
-    ///Get the resource component of the request
+    /// Get the resource component of the request. Returns `None` if the resource is
+    /// "unspecified" (i.e., constructed by passing `None` into the constructor) or
+    /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn resource(&self) -> Option<&EntityUid> {
         match self.0.resource() {
-            ast::EntityUIDEntry::Concrete(euid) => Some(EntityUid::ref_cast(euid.as_ref())),
+            ast::EntityUIDEntry::Concrete(euid) => match euid.entity_type() {
+                ast::EntityType::Concrete(_) => Some(EntityUid::ref_cast(euid.as_ref())),
+                ast::EntityType::Unspecified => None,
+            },
             ast::EntityUIDEntry::Unknown => None,
         }
     }
@@ -3238,6 +3253,18 @@ permit(principal ==  A :: B
             .parse()
             .expect("failed to roundtrip");
         assert_eq!(reparsed.id().as_ref(), r#"b'ob"#);
+    }
+
+    #[test]
+    fn accessing_unspecified_entity_returns_none() {
+        let c = Context::empty();
+        let request: Request = Request::new(None, None, None, c);
+        let p = request.principal();
+        let a = request.action();
+        let r = request.resource();
+        assert!(p.is_none());
+        assert!(a.is_none());
+        assert!(r.is_none());
     }
 }
 

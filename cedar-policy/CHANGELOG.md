@@ -8,6 +8,8 @@
 - Improved validation error messages for access to undeclared attributes and unsafe access to optional attributes to report the target of the access (fix #175).
 - `EntityUid`'s impl of `FromStr` is no longer marked as deprecated.
 - Fixed #299, condition of `if` not being partial evaluated.
+- Update the behavior of `Request::principal()`, `Request::action()`, and `Request::resource()` to
+  return `None` if the entities are unspecified (i.e., constructed by passing `None` to `Request::new()`).
 
 ## 2.4.0
 
