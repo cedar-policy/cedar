@@ -155,7 +155,8 @@ impl std::fmt::Display for Request {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Context {
     /// an `Expr::Record` that qualifies as a "restricted expression"
-    // INVARIANT: `context` must be a `Record`
+    /// INVARIANT: This must be of the variant `Record`
+    /// TOOD: This should be refactored if possible to require this runtime invariant
     #[serde(flatten)]
     context: RestrictedExpr,
 }
@@ -168,16 +169,11 @@ impl Context {
         Self::from_pairs([]).expect("empty set of keys cannot contain a duplicate key")
     }
 
-    /// Create a `Context` from a `RestrictedExpr`, which must be a `Record`.
-    /// If it is not a `Record`, then this function returns `Err` (returning
-    /// ownership of the non-record expression), otherwise it returns `Ok` of
-    /// a context for that record.
-    pub fn from_expr(expr: RestrictedExpr) -> Result<Self, RestrictedExpr> {
-        match expr.expr_kind() {
-            // INVARIANT: `context` must be a `Record`, which is guaranteed by the match case.
-            ExprKind::Record { .. } => Ok(Self { context: expr }),
-            _ => Err(expr),
-        }
+    /// Create a `Context` from a `RestrictedExpr`, which must be a `Record`
+    /// INVARIANT: It is only legal to call this function with the `Record` variant
+    pub fn from_expr(expr: RestrictedExpr) -> Self {
+        debug_assert!(matches!(expr.expr_kind(), ExprKind::Record { .. }));
+        Self { context: expr }
     }
 
     /// Create a `Context` from a map of key to `RestrictedExpr`, or a Vec of
@@ -186,6 +182,7 @@ impl Context {
     pub fn from_pairs(
         pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
     ) -> Result<Self, ExprConstructionError> {
+        // INVARIANT this always constructs a record
         Ok(Self {
             context: RestrictedExpr::record(pairs)?,
         })
@@ -228,6 +225,8 @@ impl Context {
     }
 
     /// Iterate over the (key, value) pairs in the `Context`
+    // PANIC SAFETY: This is safe due to the invariant on `self.context`, `self.context` must always be a record
+    #[allow(clippy::panic)]
     pub fn iter(&self) -> impl Iterator<Item = (&str, BorrowedRestrictedExpr<'_>)> {
         // PANIC SAFETY invariant on `self.context` ensures that it is a Record
         #[allow(clippy::panic)]

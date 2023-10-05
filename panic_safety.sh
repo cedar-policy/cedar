@@ -25,7 +25,7 @@ total_panics=0
 failed=0
 
 crates=($(cargo metadata --no-deps --format-version 1 | jq -r '.packages | map(.name) | join(" ")'))
-panic_markers=("panic unwrap_used expect_used fallible_impl_from unreachable indexing_slicing")
+panic_markers=("unwrap_used expect_used fallible_impl_from unreachable indexing_slicing panic")
 
 for crate in ${crates[@]}; do
     crate_panics=0
