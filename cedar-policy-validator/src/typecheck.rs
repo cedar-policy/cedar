@@ -691,6 +691,7 @@ impl<'a> Typechecker<'a> {
                     }
                 }
 
+                // INVARIANT: `e` is a `BinaryApp`
                 ExprKind::BinaryApp { .. } => self.strict_transform_binary(e, type_errors),
 
                 // The elements of a set must share a single type. We
@@ -890,11 +891,14 @@ impl<'a> Typechecker<'a> {
         }
     }
 
+    // INVARIANT: `bin_expr` must be a `BinaryApp`
     fn strict_transform_binary<'b>(
         &self,
         bin_expr: &Expr<Option<Type>>,
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
+        // PANIC SAFETY By invariant on this method
+        #[allow(clippy::panic)]
         let ExprKind::BinaryApp { op, arg1, arg2 } = bin_expr.expr_kind() else {
             panic!(
                 "`strict_transform_binary` called with an expression kind other than `BinaryApp`"
