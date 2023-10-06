@@ -45,7 +45,7 @@ pub enum CedarValueJson {
     /// Special JSON object with single reserved "__entity" key:
     /// the following item should be a JSON object of the form
     /// `{ "type": "xxx", "id": "yyy" }`.
-    /// Some escape is necessary for entity references.
+    /// This escape is necessary for entity references.
     //
     // listed before `Record` so that it takes priority: otherwise, the escape
     // would be interpreted as a Record with a key "__entity". see docs on
