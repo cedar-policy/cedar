@@ -1527,6 +1527,10 @@ pub mod test_generators {
 }
 
 #[cfg(test)]
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::indexing_slicing)]
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 mod test {
     use std::collections::HashSet;
 

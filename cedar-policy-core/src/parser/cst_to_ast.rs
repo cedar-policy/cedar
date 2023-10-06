@@ -2152,6 +2152,8 @@ fn construct_expr_record(kvs: Vec<(SmolStr, ast::Expr)>, l: SourceInfo) -> ast::
     ast::ExprBuilder::new().with_source_info(l).record(kvs)
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod tests {
     use super::*;

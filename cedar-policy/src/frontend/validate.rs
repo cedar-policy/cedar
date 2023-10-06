@@ -141,6 +141,8 @@ enum ValidateAnswer {
     Success { notes: Vec<ValidationNote> },
 }
 
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
     use super::*;

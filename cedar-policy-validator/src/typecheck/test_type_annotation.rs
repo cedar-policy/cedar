@@ -15,7 +15,10 @@
  */
 
 #![cfg(test)]
-
+// PANIC SAFETY unit tests
+#![allow(clippy::panic)]
+// PANIC SAFETY unit tests
+#![allow(clippy::indexing_slicing)]
 use std::collections::HashSet;
 
 use cedar_policy_core::ast::{EntityUID, Expr, ExprBuilder};

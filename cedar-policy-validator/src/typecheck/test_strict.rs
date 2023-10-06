@@ -18,6 +18,10 @@
 #![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
+// PANIC SAFETY unit tests
+#![allow(clippy::panic)]
+// PANIC SAFETY unit tests
+#![allow(clippy::indexing_slicing)]
 use serde_json::json;
 use std::str::FromStr;
 

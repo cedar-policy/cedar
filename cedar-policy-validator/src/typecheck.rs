@@ -1560,15 +1560,19 @@ impl<'a> Typechecker<'a> {
             }
 
             ExprKind::UnaryApp { .. } => {
+                // INVARIANT `e` is a `UnaryApp`, as required
                 self.typecheck_unary(request_env, prior_eff, e, type_errors)
             }
             ExprKind::BinaryApp { .. } => {
+                // INVARIANT `e` is a `BinaryApp`, as required
                 self.typecheck_binary(request_env, prior_eff, e, type_errors)
             }
             ExprKind::MulByConst { .. } => {
+                // INVARIANT `e` is a `MulByConst`, as required
                 self.typecheck_mul(request_env, prior_eff, e, type_errors)
             }
             ExprKind::ExtensionFunctionApp { .. } => {
+                // INVARIANT `e` is a `ExtensionFunctionApp`, as required
                 self.typecheck_extension(request_env, prior_eff, e, type_errors)
             }
 
@@ -1845,6 +1849,7 @@ impl<'a> Typechecker<'a> {
 
     /// A utility called by the main typecheck method to handle binary operator
     /// application.
+    /// INVARIANT `bin_expr` must be a `BinaryApp`
     fn typecheck_binary<'b>(
         &self,
         request_env: &RequestEnv,
@@ -1852,6 +1857,8 @@ impl<'a> Typechecker<'a> {
         bin_expr: &'b Expr,
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
+        // PANIC SAFETY by invariant on method
+        #[allow(clippy::panic)]
         let ExprKind::BinaryApp { op, arg1, arg2 } = bin_expr.expr_kind() else {
             panic!("`typecheck_binary` called with an expression kind other than `BinaryApp`");
         };
@@ -1971,6 +1978,7 @@ impl<'a> Typechecker<'a> {
 
     /// Like `typecheck_binary()`, but for multiplication, which isn't
     /// technically a `BinaryOp`
+    /// INVARIANT `mul_expr` must be a `MulByConst`
     fn typecheck_mul<'b>(
         &self,
         request_env: &RequestEnv,
@@ -1978,6 +1986,8 @@ impl<'a> Typechecker<'a> {
         mul_expr: &'b Expr,
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
+        // PANIC SAFETY by invariant on method
+        #[allow(clippy::panic)]
         let ExprKind::MulByConst { arg, constant } = mul_expr.expr_kind() else {
             panic!("`typecheck_mul` called with an expression kind other than `MulByConst`");
         };
@@ -2410,6 +2420,7 @@ impl<'a> Typechecker<'a> {
 
     /// A utility called by the main typecheck method to handle unary operator
     /// application.
+    /// INVARIANT `unary_expr` must be a UnaryApp
     fn typecheck_unary<'b>(
         &self,
         request_env: &RequestEnv,
@@ -2417,6 +2428,8 @@ impl<'a> Typechecker<'a> {
         unary_expr: &'b Expr,
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
+        // PANIC SAFETY by invariant on method
+        #[allow(clippy::panic)]
         let ExprKind::UnaryApp { op, arg } = unary_expr.expr_kind() else {
             panic!("`typecheck_unary` called with an expression kind other than `UnaryApp`");
         };
@@ -2603,6 +2616,7 @@ impl<'a> Typechecker<'a> {
 
     /// Utility called by the main typecheck method to handle extension function
     /// application.
+    /// INVARIANT `ext_expr` must be a `ExtensionFunctionApp`
     fn typecheck_extension<'b>(
         &self,
         request_env: &RequestEnv,
@@ -2610,6 +2624,8 @@ impl<'a> Typechecker<'a> {
         ext_expr: &'b Expr,
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
+        // PANIC SAFETY by invariant on method
+        #[allow(clippy::panic)]
         let ExprKind::ExtensionFunctionApp { fn_name, args } = ext_expr.expr_kind() else {
             panic!("`typecheck_extension` called with an expression kind other than `ExtensionFunctionApp`");
         };

@@ -176,6 +176,8 @@ pub trait CustomCedarImpl {
 /// # Panics
 /// When integration test data cannot be found
 #[allow(clippy::too_many_lines)]
+// PANIC SAFETY this is testing code
+#[allow(clippy::panic)]
 pub fn perform_integration_test_from_json_custom(
     jsonfile: impl AsRef<Path>,
     custom_impl_opt: Option<&dyn CustomCedarImpl>,

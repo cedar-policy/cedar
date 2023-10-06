@@ -35,6 +35,8 @@ fn folder() -> &'static Path {
     Path::new("corpus_tests")
 }
 
+// PANIC SAFETY: Corpus Tests
+#[allow(clippy::panic)]
 // for now we have a single #[test] that runs all the corpus tests.
 // The disadvantage of this is that only one error message will be displayed,
 // even if many of the corpus tests fail.
