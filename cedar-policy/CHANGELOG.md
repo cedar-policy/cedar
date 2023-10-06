@@ -24,6 +24,10 @@
 - Improved formatting for error messages.
 - Update the behavior of `Request::principal()`, `Request::action()`, and `Request::resource()` to
   return `None` if the entities are unspecified.
+- Changes the semantics of equality for IP ranges. For example,
+  `ip("192.168.0.1/24") == ip("192.168.0.3/24")` was previously `true` and is now
+  `false`. The behavior of equality on single IP addresses is unchanged, and so is
+  the behavior of `.isInRange()`.
 
 ## 2.4.0
 
