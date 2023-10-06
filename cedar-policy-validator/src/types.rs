@@ -1438,30 +1438,43 @@ impl AttributeType {
     }
 }
 
-// REVIEW: Should `LongBoundsInfo` and its parts be `pub`?
-
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
 pub(crate) struct LongBounds {
     // Invariant: min <= max.
-    // REVIEW: Should we assert this somewhere?
-    pub(crate) min: i64,
-    pub(crate) max: i64,
+    min: i64,
+    max: i64,
 }
 
 impl LongBounds {
-    pub(crate) fn top() -> LongBounds {
-        LongBounds {
-            min: i64::MIN,
-            max: i64::MAX,
-        }
+    /// PRECONDITION: min <= max
+    pub(crate) fn new(min: i64, max: i64) -> Self {
+        debug_assert!(
+            min <= max,
+            "Attempted to construct LongBounds with min > max: {} > {}",
+            min,
+            max
+        );
+        // Maintains invariant by preconditon.
+        Self { min, max }
     }
-    pub(crate) fn union(lb1: &LongBounds, lb2: &LongBounds) -> LongBounds {
-        LongBounds {
-            min: i64::min(lb1.min, lb2.min),
-            max: i64::max(lb1.max, lb2.max),
-        }
+
+    pub(crate) fn minimum(&self) -> i64 {
+        self.min
     }
-    pub(crate) fn includes(outer: &LongBounds, inner: &LongBounds) -> bool {
+
+    pub(crate) fn maximum(&self) -> i64 {
+        self.max
+    }
+
+    pub(crate) fn top() -> Self {
+        Self::new(i64::MIN, i64::MAX)
+    }
+
+    pub(crate) fn union(lb1: &Self, lb2: &Self) -> Self {
+        Self::new(i64::min(lb1.min, lb2.min), i64::max(lb1.max, lb2.max))
+    }
+
+    pub(crate) fn includes(outer: &Self, inner: &Self) -> bool {
         outer.min <= inner.min && outer.max >= inner.max
     }
 }

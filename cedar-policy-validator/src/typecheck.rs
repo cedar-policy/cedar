@@ -336,12 +336,16 @@ impl ArithmeticOpBoundsInfo {
         if arg_lbic.can_be_any {
             format!(
                 "{} may be between {} and {} (or may be exempt from overflow checks).",
-                arg_name, arg_lbic.bounds.min, arg_lbic.bounds.max
+                arg_name,
+                arg_lbic.bounds.minimum(),
+                arg_lbic.bounds.maximum()
             )
         } else {
             format!(
                 "{} is between {} and {}.",
-                arg_name, arg_lbic.bounds.min, arg_lbic.bounds.max
+                arg_name,
+                arg_lbic.bounds.minimum(),
+                arg_lbic.bounds.maximum()
             )
         }
     }
@@ -387,10 +391,7 @@ impl OverflowCheck {
                 return_type: Type::Primitive {
                     primitive_type: Primitive::Long(LongBoundsInfo {
                         can_be_any: any_arg_can_be_any,
-                        bounds_opt: Some(LongBounds {
-                            min: new_min_64,
-                            max: new_max_64,
-                        }),
+                        bounds_opt: Some(LongBounds::new(new_min_64, new_max_64)),
                     }),
                 },
                 overflow_detected: false,
@@ -1699,8 +1700,8 @@ impl<'a> Typechecker<'a> {
                     bounds: lb.clone(),
                 },
                 Bounds128 {
-                    min: lb.min.into(),
-                    max: lb.max.into(),
+                    min: lb.minimum().into(),
+                    max: lb.maximum().into(),
                 },
             ))
         } else {
