@@ -594,7 +594,7 @@ pub enum EntityUidJson {
     /// structure
     ImplicitEntityEscape(TypeAndId),
 
-    /// Implicit catch-call case for error handling
+    /// Implicit catch-all case for error handling
     FoundValue(serde_json::Value),
 }
 
