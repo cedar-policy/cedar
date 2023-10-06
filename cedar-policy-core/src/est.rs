@@ -172,7 +172,7 @@ impl TryFrom<cst::Cond> for Clause {
         let expr = match expr {
             Ok(expr) => Some(expr),
             Err(expr_errs) => {
-                errs.extend(expr_errs.0.into_iter());
+                errs.extend(expr_errs.0);
                 None
             }
         };
@@ -289,6 +289,8 @@ impl From<ast::Expr> for Clause {
     }
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
     use super::*;

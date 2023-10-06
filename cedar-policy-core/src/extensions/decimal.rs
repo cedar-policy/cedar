@@ -62,11 +62,11 @@ const ADVICE_MSG: &str = "Maybe you forgot to apply the `decimal` constructor?";
 #[derive(Debug, Error)]
 enum Error {
     /// Error parsing the input string as a decimal value
-    #[error("input string is not a well-formed decimal value: {0}")]
+    #[error("`{0}` is not a well-formed decimal value")]
     FailedParse(String),
 
     /// Too many digits after the decimal point
-    #[error("too many digits after the decimal, we support at most {NUM_DIGITS}: {0}")]
+    #[error("too many digits after the decimal in `{0}`. We support at most {NUM_DIGITS} digits")]
     TooManyDigits(String),
 
     /// Overflow occurred when converting to a decimal value
@@ -102,7 +102,7 @@ impl Decimal {
         // check that the string matches the regex
         // PANIC SAFETY: This regex does parse
         #[allow(clippy::unwrap_used)]
-        let re = Regex::new(r#"^(-?\d+)\.(\d+)$"#).unwrap();
+        let re = Regex::new(r"^(-?\d+)\.(\d+)$").unwrap();
         if !re.is_match(str.as_ref()) {
             return Err(Error::FailedParse(str.as_ref().to_owned()));
         }
@@ -290,6 +290,8 @@ pub fn extension() -> Extension {
 }
 
 #[cfg(test)]
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 mod tests {
     use super::*;
     use crate::ast::{Expr, Type, Value};

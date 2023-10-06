@@ -1364,6 +1364,8 @@ fn ident_to_str_len(i: &Ident) -> usize {
 #[cfg(test)]
 // PANIC SAFETY: this is unit test code
 #[allow(clippy::indexing_slicing)]
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 mod test {
     use super::*;
     #[test]

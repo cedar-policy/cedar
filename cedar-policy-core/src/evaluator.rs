@@ -619,13 +619,13 @@ impl<'q, 'e> Evaluator<'e> {
                     self.partial_interpret(alternative, slots)
                 }
             }
-            PartialValue::Residual(_) => {
+            PartialValue::Residual(guard) => {
                 let (consequent, consequent_errored) = self.run_to_error(consequent, slots);
                 let (alternative, alternative_errored) = self.run_to_error(alternative, slots);
                 // If both branches errored, the expression will always error
                 match (consequent_errored, alternative_errored) {
                     (Some(e), Some(_)) => Err(e),
-                    _ => Ok(Expr::ite(guard.clone(), consequent.into(), alternative.into()).into()),
+                    _ => Ok(Expr::ite(guard, consequent.into(), alternative.into()).into()),
                 }
             }
         }
@@ -818,6 +818,8 @@ fn stack_size_check() -> Result<()> {
     Ok(())
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 pub mod test {
     use std::{collections::HashMap, str::FromStr};
@@ -3864,7 +3866,7 @@ pub mod test {
         let euid: EntityUID = r#"Test::"test""#.parse().unwrap();
         let rexpr = RestrictedExpr::new(context_expr)
             .expect("Context Expression was not a restricted expression");
-        let context = Context::from_expr(rexpr);
+        let context = Context::from_expr(rexpr).unwrap();
         let q = Request::new(euid.clone(), euid.clone(), euid, context);
         let es = Entities::new();
         let exts = Extensions::none();
@@ -3987,7 +3989,8 @@ pub mod test {
         let context = Context::from_expr(RestrictedExpr::new_unchecked(Expr::record([
             ("a".into(), Expr::val(3)),
             ("b".into(), Expr::unknown("b".to_string())),
-        ])));
+        ])))
+        .unwrap();
         let euid: EntityUID = r#"Test::"test""#.parse().unwrap();
         let q = Request::new(euid.clone(), euid.clone(), euid, context);
         let es = Entities::new();
@@ -4026,7 +4029,7 @@ pub mod test {
             Expr::unknown("cell".to_string()),
         )]))
         .expect("should qualify as restricted");
-        let context = Context::from_expr(c_expr);
+        let context = Context::from_expr(c_expr).unwrap();
 
         let q = Request::new(p, a, r, context);
         let exts = Extensions::none();
@@ -4075,6 +4078,49 @@ pub mod test {
                 Expr::val(true)
             ))
         )
+    }
+
+    #[test]
+    fn if_semantics_residual_reduce() {
+        let a = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::get_attr(Expr::var(Var::Context), "condition".into()),
+            Expr::val("value"),
+        );
+        let b = Expr::val("true branch");
+        let c = Expr::val("false branch");
+
+        let e = Expr::ite(a, b.clone(), c.clone());
+
+        let es = Entities::new();
+
+        let exts = Extensions::none();
+        let q = Request::new(
+            EntityUID::with_eid("p"),
+            EntityUID::with_eid("a"),
+            EntityUID::with_eid("r"),
+            Context::from_expr(RestrictedExpr::new_unchecked(Expr::record([(
+                "condition".into(),
+                Expr::unknown("unknown_condition"),
+            )])))
+            .unwrap(),
+        );
+        let eval = Evaluator::new(&q, &es, &exts).unwrap();
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        assert_eq!(
+            r,
+            PartialValue::Residual(Expr::ite(
+                Expr::binary_app(
+                    BinaryOp::Eq,
+                    Expr::unknown("unknown_condition".to_string()),
+                    Expr::val("value"),
+                ),
+                b,
+                c
+            ))
+        );
     }
 
     #[test]

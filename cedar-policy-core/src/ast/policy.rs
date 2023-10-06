@@ -255,14 +255,14 @@ pub enum LinkingError {
     },
 
     /// The attempted instantiation failed as the template did not exist.
-    #[error("failed to find a template with id: {id}")]
+    #[error("failed to find a template with id `{id}`")]
     NoSuchTemplate {
         /// [`PolicyID`] of the template we failed to find
         id: PolicyID,
     },
 
     /// The new instance conflicts with an existing [`PolicyID`].
-    #[error("template-linked policy id conflicts with an existing policy id: {id}")]
+    #[error("template-linked policy id `{id}` conflicts with an existing policy id")]
     PolicyIdConflict {
         /// [`PolicyID`] where the conflict exists
         id: PolicyID,
@@ -288,7 +288,7 @@ fn describe_arity_error(unbound_values: &[SlotId], extra_values: &[SlotId]) -> S
         (0,0) => unreachable!(),
         (_unbound, 0) => format!("the following slots were not provided as arguments: {}", unbound_values.iter().join(",")),
         (0, _extra) => format!("the following slots were provided as arguments, but did not exist in the template: {}", extra_values.iter().join(",")),
-        (_unbound, _extra) => format!("the following slots were not provided as arguments: {}\nthe following slots were provided as arguments, but did not exist in the template: {}", unbound_values.iter().join(","), extra_values.iter().join(","))
+        (_unbound, _extra) => format!("the following slots were not provided as arguments: {}. The following slots were provided as arguments, but did not exist in the template: {}", unbound_values.iter().join(","), extra_values.iter().join(","))
     }
 }
 
@@ -569,11 +569,11 @@ mod hashing_tests {
 /// Errors that can happen during policy reification
 #[derive(Debug, Error)]
 pub enum ReificationError {
-    /// The PolicyID linked to did not exist
-    #[error("The PolicyID linked to does not exist")]
+    /// The [`PolicyID`] linked to did not exist
+    #[error("the id linked to does not exist")]
     NoSuchTemplate(PolicyID),
     /// Error instantiating the policy
-    #[error("{0}")]
+    #[error(transparent)]
     Instantiation(#[from] LinkingError),
 }
 
@@ -1148,7 +1148,7 @@ pub enum UnexpectedSlotError {
     #[error("found a slot where none was expected")]
     Unnamed,
     /// Unexpected Slot with a name
-    #[error("found slot {0} where none was expected")]
+    #[error("found slot `{0}` where none was expected")]
     Named(SlotId),
 }
 
@@ -1535,6 +1535,8 @@ pub mod test_generators {
 #[cfg(test)]
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::indexing_slicing)]
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 mod test {
     use std::collections::HashSet;
 

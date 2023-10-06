@@ -1172,7 +1172,7 @@ impl ValidatorSchema {
             .into_iter()
             .flatten()
             .map(Clone::clone)
-            .chain(var.get_euid_component_if_present(self, euid).into_iter())
+            .chain(var.get_euid_component_if_present(self, euid))
     }
 
     /// Get the validator entities that are in the descendants of any of the
@@ -1696,6 +1696,10 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes {
     }
 }
 
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
+// PANIC SAFETY unit tests
+#[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
     use std::{collections::BTreeMap, str::FromStr};
@@ -2629,7 +2633,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
     fn cross_fragment_duplicate_type() {
         let fragment1: ValidatorSchemaFragment = serde_json::from_value::<SchemaFragment>(json!({
             "A": {
@@ -2655,12 +2658,13 @@ mod test {
         .unwrap()
         .try_into()
         .unwrap();
-        let schema = ValidatorSchema::from_schema_fragments([fragment1, fragment2]).unwrap();
 
-        assert_eq!(
-            schema.entity_types.iter().next().unwrap().1.attributes,
-            Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
-        );
+        let schema = ValidatorSchema::from_schema_fragments([fragment1, fragment2]);
+
+        match schema {
+            Err(SchemaError::DuplicateCommonType(s)) if s.contains("A::MyLong") => (),
+            _ => panic!("should have errored because schema fragments have duplicate types"),
+        };
     }
 
     #[test]

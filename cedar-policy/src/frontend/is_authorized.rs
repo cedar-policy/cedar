@@ -297,7 +297,7 @@ impl RecvdSlice {
                 Err(parse_errors) => Err(std::iter::once(
                     "couldn't parse concatenated policies string".to_string(),
                 )
-                .chain(parse_errors.errors_as_strings().into_iter())
+                .chain(parse_errors.errors_as_strings())
                 .collect()),
             },
             PolicySpecification::Map(policies) => {
@@ -357,7 +357,7 @@ fn parse_policy_set_from_individual_policies(
                 }
             },
             Err(pes) => errs.extend(
-                std::iter::once(format!("couldn't parse policy with id {id}"))
+                std::iter::once(format!("couldn't parse policy with id `{id}`"))
                     .chain(pes.errors_as_strings().into_iter()),
             ),
         }
@@ -373,7 +373,7 @@ fn parse_policy_set_from_individual_policies(
                     }
                 },
                 Err(pes) => errs.extend(
-                    std::iter::once(format!("couldn't parse policy with id {id}"))
+                    std::iter::once(format!("couldn't parse policy with id `{id}`"))
                         .chain(pes.errors_as_strings().into_iter()),
                 ),
             }
@@ -387,6 +387,8 @@ fn parse_policy_set_from_individual_policies(
     }
 }
 
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
     use super::*;

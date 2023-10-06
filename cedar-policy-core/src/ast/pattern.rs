@@ -221,7 +221,7 @@ pub mod test {
 
         // Patterns that do not match "*"
         assert!(!string_map("\u{0000}").wildcard_match("*"));
-        assert!(!string_map(r#"\u{0000}"#).wildcard_match("*"));
+        assert!(!string_map(r"\u{0000}").wildcard_match("*"));
     }
 
     #[test]

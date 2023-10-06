@@ -23,6 +23,8 @@ use cedar_policy::{
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
+// PANIC SAFETY unit tests
+#[allow(clippy::unwrap_used)]
 pub fn criterion_benchmark(c: &mut Criterion) {
     let auth = Authorizer::new();
 

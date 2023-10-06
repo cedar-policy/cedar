@@ -44,7 +44,7 @@ pub enum Value {
 /// An error that can be thrown converting an expression to a value
 pub enum NotValue {
     /// General error for non-values
-    #[error("Not A Value")]
+    #[error("not a value")]
     NotValue,
 }
 
@@ -296,9 +296,7 @@ impl Eq for Set {}
 // HashSet doesn't implement PartialOrd
 impl PartialOrd<Set> for Set {
     fn partial_cmp(&self, other: &Set) -> Option<std::cmp::Ordering> {
-        self.authoritative
-            .as_ref()
-            .partial_cmp(other.authoritative.as_ref())
+        Some(self.cmp(other))
     }
 }
 
@@ -456,6 +454,8 @@ impl Value {
     }
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
     use super::*;

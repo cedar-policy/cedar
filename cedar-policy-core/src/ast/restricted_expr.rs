@@ -265,7 +265,7 @@ impl<'a> From<BorrowedRestrictedExpr<'a>> for &'a Expr {
 }
 
 impl<'a> AsRef<Expr> for BorrowedRestrictedExpr<'a> {
-    fn as_ref(&self) -> &Expr {
+    fn as_ref(&self) -> &'a Expr {
         self.0
     }
 }
@@ -279,8 +279,8 @@ impl RestrictedExpr {
 
 impl<'a> Deref for BorrowedRestrictedExpr<'a> {
     type Target = Expr;
-    fn deref(&self) -> &Expr {
-        self.as_ref()
+    fn deref(&self) -> &'a Expr {
+        self.0
     }
 }
 
@@ -329,7 +329,7 @@ pub enum RestrictedExprError {
     /// argument is a string description of the feature that is not allowed.
     /// The `expr` argument is the expression that uses the disallowed feature.
     /// Note that it is potentially a sub-expression of a larger expression.
-    #[error("not allowed to use {feature} in a restricted expression: {expr}")]
+    #[error("not allowed to use {feature} in a restricted expression: `{expr}`")]
     InvalidRestrictedExpression {
         /// what disallowed feature appeared in the expression
         feature: SmolStr,

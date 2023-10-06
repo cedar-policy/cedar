@@ -403,6 +403,8 @@ where
     /// # Panics
     ///
     /// Panics if the self value is not `Data`.
+    // PANIC SAFETY: This function is intended to panic, and says so in the documentation
+    #[allow(clippy::panic)]
     pub fn unwrap(self) -> &'a T {
         match self {
             Self::Data(e) => e,
@@ -419,6 +421,8 @@ where
     /// # Panics
     ///
     /// Panics if the self value is not `Data`.
+    // PANIC SAFETY: This function is intended to panic, and says so in the documentation
+    #[allow(clippy::panic)]
     pub fn expect(self, msg: &str) -> &'a T {
         match self {
             Self::Data(e) => e,
@@ -458,6 +462,8 @@ pub enum TCComputation {
     ComputeNow,
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod json_parsing_tests {
     use super::*;
@@ -975,7 +981,7 @@ mod json_parsing_tests {
             EntitiesError::Deserialization(err) => {
                 assert!(
                     err.to_string().contains(
-                        r#"in uid field of <unknown entity>, expected a literal entity reference, but got: "hello""#
+                        r#"in uid field of <unknown entity>, expected a literal entity reference, but got `"hello"`"#
                     ),
                     "actual error message was {}",
                     err
@@ -999,7 +1005,7 @@ mod json_parsing_tests {
         match err {
             EntitiesError::Deserialization(err) => assert!(
                 err.to_string()
-                    .contains(r#"expected a literal entity reference, but got: "hello""#),
+                    .contains(r#"expected a literal entity reference, but got `"hello"`"#),
                 "actual error message was {}",
                 err
             ),
@@ -1109,7 +1115,7 @@ mod json_parsing_tests {
             [
                 ("foo".into(), RestrictedExpr::val(false)),
                 ("bar".into(), RestrictedExpr::val(-234)),
-                ("ham".into(), RestrictedExpr::val(r#"a b c * / ? \"#)),
+                ("ham".into(), RestrictedExpr::val(r"a b c * / ? \")),
                 (
                     "123".into(),
                     RestrictedExpr::val(EntityUID::with_eid("mom")),
@@ -1223,6 +1229,8 @@ mod json_parsing_tests {
     }
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod entities_tests {
     use super::*;
@@ -1295,6 +1303,8 @@ mod entities_tests {
     }
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod schema_based_parsing_tests {
     use super::*;
@@ -1496,14 +1506,18 @@ mod schema_based_parsing_tests {
             .expect("hr_contacts attr should exist");
         assert!(matches!(hr_contacts.expr_kind(), &ExprKind::Set(_)));
         let contact = {
-            let ExprKind::Set(set) = hr_contacts.expr_kind() else { panic!("already checked it was Set") };
+            let ExprKind::Set(set) = hr_contacts.expr_kind() else {
+                panic!("already checked it was Set")
+            };
             set.iter().next().expect("should be at least one contact")
         };
         assert!(matches!(contact.expr_kind(), &ExprKind::Record { .. }));
         let json_blob = parsed
             .get("json_blob")
             .expect("json_blob attr should exist");
-        let ExprKind::Record { pairs } = json_blob.expr_kind() else { panic!("expected json_blob to be a Record") };
+        let ExprKind::Record { pairs } = json_blob.expr_kind() else {
+            panic!("expected json_blob to be a Record")
+        };
         let (_, inner1) = pairs
             .iter()
             .find(|(k, _)| k == "inner1")
@@ -1517,7 +1531,9 @@ mod schema_based_parsing_tests {
             .find(|(k, _)| k == "inner3")
             .expect("inner3 attr should exist");
         assert!(matches!(inner3.expr_kind(), &ExprKind::Record { .. }));
-        let ExprKind::Record { pairs: innerpairs } = inner3.expr_kind() else { panic!("already checked it was Record") };
+        let ExprKind::Record { pairs: innerpairs } = inner3.expr_kind() else {
+            panic!("already checked it was Record")
+        };
         let (_, innerinner) = innerpairs
             .iter()
             .find(|(k, _)| k == "innerinner")
@@ -1571,7 +1587,9 @@ mod schema_based_parsing_tests {
             .expect("hr_contacts attr should exist");
         assert!(matches!(hr_contacts.expr_kind(), &ExprKind::Set(_)));
         let contact = {
-            let ExprKind::Set(set) = hr_contacts.expr_kind() else { panic!("already checked it was Set") };
+            let ExprKind::Set(set) = hr_contacts.expr_kind() else {
+                panic!("already checked it was Set")
+            };
             set.iter().next().expect("should be at least one contact")
         };
         assert!(matches!(
@@ -1581,7 +1599,9 @@ mod schema_based_parsing_tests {
         let json_blob = parsed
             .get("json_blob")
             .expect("json_blob attr should exist");
-        let ExprKind::Record { pairs } = json_blob.expr_kind() else { panic!("expected json_blob to be a Record") };
+        let ExprKind::Record { pairs } = json_blob.expr_kind() else {
+            panic!("expected json_blob to be a Record")
+        };
         let (_, inner1) = pairs
             .iter()
             .find(|(k, _)| k == "inner1")
@@ -1595,7 +1615,9 @@ mod schema_based_parsing_tests {
             .find(|(k, _)| k == "inner3")
             .expect("inner3 attr should exist");
         assert!(matches!(inner3.expr_kind(), &ExprKind::Record { .. }));
-        let ExprKind::Record { pairs: innerpairs } = inner3.expr_kind() else { panic!("already checked it was Record") };
+        let ExprKind::Record { pairs: innerpairs } = inner3.expr_kind() else {
+            panic!("already checked it was Record")
+        };
         let (_, innerinner) = innerpairs
             .iter()
             .find(|(k, _)| k == "innerinner")
@@ -1667,7 +1689,7 @@ mod schema_based_parsing_tests {
             .from_json_value(entitiesjson)
             .expect_err("should fail due to type mismatch on numDirectReports");
         assert!(
-            err.to_string().contains(r#"in attribute "numDirectReports" on Employee::"12UA45", type mismatch: attribute was expected to have type long, but actually has type string"#),
+            err.to_string().contains(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type long, but actually has type string"#),
             "actual error message was {}",
             err
         );
@@ -1714,7 +1736,7 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to type mismatch on manager");
         assert!(
             err.to_string()
-                .contains(r#"in attribute "manager" on Employee::"12UA45", expected a literal entity reference, but got: "34FB87""#),
+                .contains(r#"in attribute `manager` on `Employee::"12UA45"`, expected a literal entity reference, but got `"34FB87"`"#),
             "actual error message was {}",
             err
         );
@@ -1757,7 +1779,7 @@ mod schema_based_parsing_tests {
             .from_json_value(entitiesjson)
             .expect_err("should fail due to type mismatch on hr_contacts");
         assert!(
-            err.to_string().contains(r#"in attribute "hr_contacts" on Employee::"12UA45", type mismatch: attribute was expected to have type (set of (entity of type HR)), but actually has type record"#),
+            err.to_string().contains(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type (set of (entity of type `HR`)), but actually has type record"#),
             "actual error message was {}",
             err
         );
@@ -1803,7 +1825,7 @@ mod schema_based_parsing_tests {
             .from_json_value(entitiesjson)
             .expect_err("should fail due to type mismatch on manager");
         assert!(
-            err.to_string().contains(r#"in attribute "manager" on Employee::"12UA45", type mismatch: attribute was expected to have type (entity of type Employee), but actually has type (entity of type HR)"#),
+            err.to_string().contains(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type (entity of type `Employee`), but actually has type (entity of type `HR`)"#),
             "actual error message was {}",
             err
         );
@@ -1850,7 +1872,7 @@ mod schema_based_parsing_tests {
             .from_json_value(entitiesjson)
             .expect_err("should fail due to type mismatch on home_ip");
         assert!(
-            err.to_string().contains(r#"in attribute "home_ip" on Employee::"12UA45", type mismatch: attribute was expected to have type ipaddr, but actually has type decimal"#),
+            err.to_string().contains(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type ipaddr, but actually has type decimal"#),
             "actual error message was {}",
             err
         );
@@ -1895,7 +1917,7 @@ mod schema_based_parsing_tests {
             .from_json_value(entitiesjson)
             .expect_err("should fail due to missing attribute \"inner2\"");
         assert!(
-            err.to_string().contains(r#"in attribute "json_blob" on Employee::"12UA45", expected the record to have an attribute "inner2", but it doesn't"#),
+            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, expected the record to have an attribute `inner2`, but it does not"#),
             "actual error message was {}",
             err
         );
@@ -1941,7 +1963,7 @@ mod schema_based_parsing_tests {
             .from_json_value(entitiesjson)
             .expect_err("should fail due to type mismatch on attribute \"inner1\"");
         assert!(
-            err.to_string().contains(r#"in attribute "json_blob" on Employee::"12UA45", type mismatch: attribute was expected to have type record with attributes: "#),
+            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type record with attributes: "#),
             "actual error message was {}",
             err
         );
@@ -2019,7 +2041,7 @@ mod schema_based_parsing_tests {
             .from_json_value(entitiesjson)
             .expect_err("should fail due to unexpected attribute \"inner4\"");
         assert!(
-            err.to_string().contains(r#"in attribute "json_blob" on Employee::"12UA45", record attribute "inner4" shouldn't exist"#),
+            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, record attribute `inner4` should not exist"#),
             "actual error message was {}",
             err
         );
@@ -2063,7 +2085,7 @@ mod schema_based_parsing_tests {
             .from_json_value(entitiesjson)
             .expect_err("should fail due to missing attribute \"numDirectReports\"");
         assert!(
-            err.to_string().contains(r#"expected entity `Employee::"12UA45"` to have an attribute "numDirectReports", but it doesn't"#),
+            err.to_string().contains(r#"expected entity `Employee::"12UA45"` to have an attribute `numDirectReports`, but it does not"#),
             "actual error message was {}",
             err
         );
@@ -2111,7 +2133,7 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to unexpected attribute \"wat\"");
         assert!(
             err.to_string().contains(
-                r#"attribute "wat" on `Employee::"12UA45"` shouldn't exist according to the schema"#
+                r#"attribute `wat` on `Employee::"12UA45"` should not exist according to the schema"#
             ),
             "actual error message was {}",
             err
@@ -2586,7 +2608,7 @@ mod schema_based_parsing_tests {
             .from_json_value(entitiesjson)
             .expect_err("should fail due to manager being wrong entity type (missing namespace)");
         assert!(
-            err.to_string().contains(r#"in attribute "manager" on XYZCorp::Employee::"12UA45", type mismatch: attribute was expected to have type (entity of type XYZCorp::Employee), but actually has type (entity of type Employee)"#),
+            err.to_string().contains(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: attribute was expected to have type (entity of type `XYZCorp::Employee`), but actually has type (entity of type `Employee`)"#),
             "actual error message was {}",
             err
         );
@@ -2609,7 +2631,7 @@ mod schema_based_parsing_tests {
             .from_json_value(entitiesjson)
             .expect_err("should fail due to employee being wrong entity type (missing namespace)");
         assert!(
-            err.to_string().contains(r#"`Employee::"12UA45"` has type `Employee` which is not declared in the schema; did you mean XYZCorp::Employee?"#),
+            err.to_string().contains(r#"`Employee::"12UA45"` has type `Employee` which is not declared in the schema. Did you mean `XYZCorp::Employee`?"#),
             "actual error message was {}",
             err
         );

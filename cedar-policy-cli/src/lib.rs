@@ -22,7 +22,7 @@
 mod err;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use miette::{miette, NamedSource, Report, Result, WrapErr};
+use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -36,8 +36,6 @@ use std::{
 
 use cedar_policy::*;
 use cedar_policy_formatter::{policies_str_to_pretty, Config};
-
-use crate::err::IntoDiagnostic;
 
 /// Basic Cedar CLI for evaluating authorization queries
 #[derive(Parser)]
@@ -100,6 +98,8 @@ pub enum Commands {
     Format(FormatArgs),
     /// Translate JSON schema to custom schema syntax and vice versa
     TranslateSchema(TranslateSchemaArgs),
+    /// Create a Cedar project
+    New(NewArgs),
 }
 
 #[derive(Args, Debug)]
@@ -299,6 +299,13 @@ pub struct FormatArgs {
     /// Custom indentation width (default: 2).
     #[arg(short, long, value_name = "INT", default_value_t = 2)]
     pub indent_width: isize,
+}
+
+#[derive(Args, Debug)]
+pub struct NewArgs {
+    /// Name of the Cedar project
+    #[arg(short, long, value_name = "DIR")]
+    pub name: String,
 }
 
 /// Wrapper struct
@@ -541,6 +548,104 @@ pub fn translate_schema(args: &TranslateSchemaArgs) -> CedarExitCode {
             eprintln!("Error: {err:?}");
             CedarExitCode::Failure
         }
+    }
+}
+
+fn generate_schema(path: &Path) -> Result<()> {
+    std::fs::write(
+        path,
+        serde_json::to_string_pretty(&serde_json::json!(
+        {
+            "": {
+                "entityTypes": {
+                    "A": {
+                        "memberOfTypes": [
+                            "B"
+                        ]
+                    },
+                    "B": {
+                        "memberOfTypes": []
+                    },
+                    "C": {
+                        "memberOfTypes": []
+                    }
+                },
+                "actions": {
+                    "action": {
+                        "appliesTo": {
+                            "resourceTypes": [
+                                "C"
+                            ],
+                            "principalTypes": [
+                                "A",
+                                "B"
+                            ]
+                        }
+                    }
+                }
+            }
+        }))
+        .into_diagnostic()?,
+    )
+    .into_diagnostic()
+}
+
+fn generate_policy(path: &Path) -> Result<()> {
+    std::fs::write(
+        path,
+        r#"permit (
+  principal in A::"a",
+  action == Action::"action",
+  resource == C::"c"
+) when { true };
+"#,
+    )
+    .into_diagnostic()
+}
+
+fn generate_entities(path: &Path) -> Result<()> {
+    std::fs::write(
+        path,
+        serde_json::to_string_pretty(&serde_json::json!(
+        [
+            {
+                "uid": { "type": "A", "id": "a"} ,
+                "attrs": {},
+                "parents": [{"type": "B", "id": "b"}]
+            },
+            {
+                "uid": { "type": "B", "id": "b"} ,
+                "attrs": {},
+                "parents": []
+            },
+            {
+                "uid": { "type": "C", "id": "c"} ,
+                "attrs": {},
+                "parents": []
+            }
+        ]))
+        .into_diagnostic()?,
+    )
+    .into_diagnostic()
+}
+
+fn new_inner(args: &NewArgs) -> Result<()> {
+    let dir = &std::env::current_dir().into_diagnostic()?.join(&args.name);
+    std::fs::create_dir(dir).into_diagnostic()?;
+    let schema_path = dir.join("schema.cedarschema.json");
+    let policy_path = dir.join("policy.cedar");
+    let entities_path = dir.join("entities.jon");
+    generate_schema(&schema_path)?;
+    generate_policy(&policy_path)?;
+    generate_entities(&entities_path)
+}
+
+pub fn new(args: &NewArgs) -> CedarExitCode {
+    if let Err(err) = new_inner(args) {
+        println!("Error: {err:?}");
+        CedarExitCode::Failure
+    } else {
+        CedarExitCode::Success
     }
 }
 

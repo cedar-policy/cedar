@@ -525,15 +525,13 @@ impl SchemaType {
         match self {
             Self::Type(SchemaTypeVariant::Extension { .. }) => Some(true),
             Self::Type(SchemaTypeVariant::Set { element }) => element.is_extension(),
-            Self::Type(SchemaTypeVariant::Record { attributes, .. }) => {
-                attributes
-                    .values()
-                    .fold(Some(false), |a, e| match e.ty.is_extension() {
-                        Some(true) => Some(true),
-                        Some(false) => a,
-                        None => None,
-                    })
-            }
+            Self::Type(SchemaTypeVariant::Record { attributes, .. }) => attributes
+                .values()
+                .try_fold(false, |a, e| match e.ty.is_extension() {
+                    Some(true) => Some(true),
+                    Some(false) => Some(a),
+                    None => None,
+                }),
             Self::Type(_) => Some(false),
             Self::TypeDef { .. } => None,
         }
@@ -541,6 +539,8 @@ impl SchemaType {
 }
 
 #[cfg(feature = "arbitrary")]
+// PANIC SAFETY property testing code
+#[allow(clippy::panic)]
 impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<SchemaType> {
         use cedar_policy_core::ast::Name;
