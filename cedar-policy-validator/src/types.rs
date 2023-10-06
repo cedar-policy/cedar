@@ -104,6 +104,11 @@ impl Type {
         Self::long_max_bounds()
     }
 
+    /// A Long without bounds information. This type is returned after a type
+    /// error is detected in an arithmetic operation to avoid reporting errors
+    /// for subsequent possible overflows. E.g., we might report an overflow
+    /// error for `<err> + 1` if we assume we know nothing about the bounds of
+    /// the `<err>` expression, but reporting this error is not useful.
     pub(crate) fn long_any() -> Type {
         Type::Primitive {
             primitive_type: Primitive::Long(LongBoundsInfo {
@@ -113,6 +118,9 @@ impl Type {
         }
     }
 
+    /// A Long with the maximum possible bounds. Bounds checking is applied, so
+    /// checking any arithmetic operation checked with this type will cause an
+    /// overflow error.
     pub(crate) fn long_max_bounds() -> Type {
         Type::Primitive {
             primitive_type: Primitive::Long(LongBoundsInfo {
@@ -122,7 +130,8 @@ impl Type {
         }
     }
 
-    // Precondition: min <= max.
+    /// A long with the specified bounds.
+    /// Precondition: min <= max.
     pub(crate) fn long_bounded(min: i64, max: i64) -> Type {
         Type::Primitive {
             primitive_type: Primitive::Long(LongBoundsInfo {
@@ -132,6 +141,7 @@ impl Type {
         }
     }
 
+    /// A long with some known value. Represented a range [val, val].
     pub(crate) fn singleton_long(val: i64) -> Type {
         Self::long_bounded(val, val)
     }

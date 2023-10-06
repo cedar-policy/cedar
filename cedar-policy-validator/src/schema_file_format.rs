@@ -677,8 +677,6 @@ pub fn arbitrary_schematypevariant_long<'a>(
     Ok(SchemaTypeVariant::Long(SchemaLongDetails { bounds_opt }))
 }
 
-// TODO: It looks like this is unused except by arbitrary_schematype_size_hint.
-// Do we really want to continue maintaining it?
 #[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<SchemaType> {
