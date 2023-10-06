@@ -1607,13 +1607,13 @@ pub enum PolicySetError {
     #[error("expected a template, but a static policy was provided")]
     ExpectedTemplate,
     /// Error when removing a policy
-    #[error("unable to remove static policy: {0}")]
+    #[error("unable to remove static policy: {0} because it does not exist")]
     RemovePolicyError(PolicyId),
     /// Error when removing a template
-    #[error("unable to remove policy template: {0}")]
+    #[error("unable to remove policy template: {0} because it does not exist")]
     RemoveTemplateError(PolicyId),
     /// Error when unlinking a template
-    #[error("unable to unlink policy template: {0}")]
+    #[error("unable to unlink policy template: {0} because it does not exist")]
     UnlinkingError(PolicyId),
 }
 
@@ -1737,7 +1737,7 @@ impl PolicySet {
         Ok(())
     }
 
-    /// Remove a `Template` from the `PolicySet`
+    /// Remove a `Template` from the `PolicySet`. All policies linked with this template will
     pub fn remove_template(&mut self, template_id: PolicyId) -> Result<(), PolicySetError> {
         match self.templates.remove(&template_id) {
             Some(_) => Ok(()),
@@ -3930,13 +3930,46 @@ mod policy_set_tests {
         )
         .unwrap();
 
+        let authorizer = Authorizer::new();
+        let request = Request::new(
+            Some(EntityUid::from_strs("Test", "test")),
+            Some(EntityUid::from_strs("Action", "a")),
+            Some(EntityUid::from_strs("Resource", "b")),
+            Context::empty(),
+        );
+
+        let e = r#"[
+            {
+                "uid": {"type":"Test","id":"test"},
+                "attrs": {},
+                "parents": []
+            },
+            {
+                "uid": {"type":"Action","id":"a"},
+                "attrs": {},
+                "parents": []
+            },
+            {
+                "uid": {"type":"Resource","id":"b"},
+                "attrs": {},
+                "parents": []
+            }
+        ]"#;
+        let entities = Entities::from_json_str(e, None).expect("entity error");
+
+        // Allowed
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_matches!(response, Response{decision: Decision::Allow, diagnostics: _});
+
         let result = pset.unlink(linked_policy_id.clone());
         assert_matches!(result, Ok(()));
+
+        //Denied
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_matches!(response, Response{decision: Decision::Allow, diagnostics: _});
+
         let result = pset.unlink(linked_policy_id.clone());
-        assert_matches!(
-            result,
-            Err(PolicySetError::UnlinkingError(linked_policy_id))
-        );
+        assert_matches!(result, Err(PolicySetError::UnlinkingError(_)));
     }
 }
 
