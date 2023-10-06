@@ -522,10 +522,9 @@ impl Type {
             } => {
                 let mut long_json = Type::json_type("Long");
                 if let Some(bounds) = &lbi.bounds_opt {
-                    long_json.insert("min".to_string(), bounds.min.into());
-                    long_json.insert("max".to_string(), bounds.max.into());
-                    if lbi.can_be_any {
-                        long_json.insert("can_be_any".to_string(), true.into());
+                    if bounds.min != i64::MIN || bounds.max != i64::MAX {
+                        long_json.insert("min".to_string(), bounds.min.into());
+                        long_json.insert("max".to_string(), bounds.max.into());
                     }
                 }
                 long_json
@@ -2281,6 +2280,13 @@ mod test {
         assert_displays_as(Type::Never, r#"{"type":"Never"}"#);
         assert_displays_as(Type::True, r#"{"type":"True"}"#);
         assert_displays_as(Type::False, r#"{"type":"False"}"#);
+        assert_displays_as(Type::long_max_bounds(), r#"{"type":"Long"}"#);
+        assert_displays_as(Type::long_any(), r#"{"type":"Long"}"#);
+        assert_displays_as(Type::long_any(), r#"{"type":"Long"}"#);
+        assert_displays_as(
+            Type::long_bounded(10, 20),
+            r#"{"type":"Long","min":10,"max":20}"#,
+        );
         assert_displays_as(Type::any_set(), r#"{"type":"Set"}"#);
         assert_displays_as(Type::any_entity_reference(), r#"{"type":"Entity"}"#);
         assert_displays_as(
