@@ -79,8 +79,8 @@ struct JsonRequest {
     errors: Vec<String>,
 }
 
-fn value_to_euid_string(v: serde_json::Value) -> Option<String> {
-    EntityUid::from_json(v).ok().map(|euid| euid.to_string())
+fn value_to_euid_string(v: serde_json::Value) -> Result<String, impl std::error::Error> {
+    EntityUid::from_json(v).map(|euid| euid.to_string())
 }
 
 /// For relative paths, return the absolute path, assuming that the path
