@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 //! Note on panic safety
-//! This module depends on the cedar parser only constructings ASTs with valid extension calls
 //! If any of the panics in this file are triggered, that means that this file has become
-//! out-of-date with the ipaddr extension definition in `cedar-policy-core`.
+//! out-of-date with the decimal extension definition in CedarCore.
+//! This is tested by the `extension_schema_correctness()` test
 
 use crate::extension_schema::{ArgumentCheckFn, ExtensionFunctionType, ExtensionSchema};
 use crate::types::{self, Type};
@@ -101,5 +101,16 @@ fn validate_ip_string(exprs: &[Expr]) -> Result<(), String> {
             }
         }
         _ => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    // Ensures that `extension_schema()` does not panic
+    #[test]
+    fn extension_schema_correctness() {
+        let _ = extension_schema();
     }
 }
