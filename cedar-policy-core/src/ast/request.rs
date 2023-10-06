@@ -164,11 +164,16 @@ impl Context {
         Self::from_pairs([])
     }
 
-    /// Create a `Context` from a `RestrictedExpr`, which must be a `Record`
-    /// INVARIANT: `from_expr` must only be called with an `expr` that is a `Record`
-    pub fn from_expr(expr: RestrictedExpr) -> Self {
-        debug_assert!(matches!(expr.expr_kind(), ExprKind::Record { .. }));
-        Self { context: expr }
+    /// Create a `Context` from a `RestrictedExpr`, which must be a `Record`.
+    /// If it is not a `Record`, then this function returns `Err` (returning
+    /// ownership of the non-record expression), otherwise it returns `Ok` of
+    /// a context for that record.
+    pub fn from_expr(expr: RestrictedExpr) -> Result<Self, RestrictedExpr> {
+        match expr.expr_kind() {
+            // INVARIANT: `context` must be a `Record`, which is guaranteed by the match case.
+            ExprKind::Record { .. } => Ok(Self { context: expr }),
+            _ => Err(expr),
+        }
     }
 
     /// Create a `Context` from a map of key to `RestrictedExpr`, or a Vec of
