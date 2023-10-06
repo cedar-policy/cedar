@@ -403,6 +403,8 @@ where
     /// # Panics
     ///
     /// Panics if the self value is not `Data`.
+    // PANIC SAFETY: This function is intended to panic, and says so in the documentation
+    #[allow(clippy::panic)]
     pub fn unwrap(self) -> &'a T {
         match self {
             Self::Data(e) => e,
@@ -419,6 +421,8 @@ where
     /// # Panics
     ///
     /// Panics if the self value is not `Data`.
+    // PANIC SAFETY: This function is intended to panic, and says so in the documentation
+    #[allow(clippy::panic)]
     pub fn expect(self, msg: &str) -> &'a T {
         match self {
             Self::Data(e) => e,
@@ -458,6 +462,8 @@ pub enum TCComputation {
     ComputeNow,
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod json_parsing_tests {
     use super::*;
@@ -1223,6 +1229,8 @@ mod json_parsing_tests {
     }
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod entities_tests {
     use super::*;
@@ -1295,6 +1303,8 @@ mod entities_tests {
     }
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod schema_based_parsing_tests {
     use super::*;

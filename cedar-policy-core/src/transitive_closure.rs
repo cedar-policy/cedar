@@ -185,6 +185,8 @@ where
 
 // PANIC SAFETY test cases
 #[allow(clippy::indexing_slicing)]
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod tests {
     use crate::ast::{Entity, EntityUID};
