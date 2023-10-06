@@ -57,7 +57,7 @@ pub enum CedarValueJson {
     /// Special JSON object with single reserved "__extn" key:
     /// the following item should be a JSON object of the form
     /// `{ "fn": "xxx", "arg": "yyy" }`.
-    /// Some escape is necessary for extension values.
+    /// This escape is necessary for extension values.
     //
     // listed before `Record` so that it takes priority: otherwise, the escape
     // would be interpreted as a Record with a key "__extn". see docs on
