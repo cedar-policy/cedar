@@ -64,7 +64,7 @@ impl IPAddr {
     /// This accepts both IPv4 and IPv6 addresses, in their standard text
     /// formats. It also accepts both single addresses (like `"10.1.1.0"`) and
     /// subnets (like `"10.1.1.0/24"`).
-    /// It does not accept IPv4 addresses embedded in IPv6 (e.g., `"::ffff:192.168.0.1"`)
+    /// It does not accept IPv4 addresses embedded in IPv6 (e.g., `"::ffff:192.168.0.1"`).
     /// These addresses can be written as hexadecimal IPv6. Comparisons between any IPv4 address
     ///  and any IPv6 address (including an IPv4 address embedded in IPv6) is false (e.g.,
     ///  `isLoopback("::ffff:ff00:1")` is `false`)
