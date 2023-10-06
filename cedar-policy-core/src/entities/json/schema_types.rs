@@ -250,17 +250,14 @@ impl std::fmt::Display for SchemaType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Bool => write!(f, "bool"),
-            Self::Long { min, max } =>
-            // REVIEW: Wording can probably be improved, and we may want to hide
-            // the bounds when they are the entire range of Long.
-            //
-            // TODO: This leads to ugly and possibly confusing error messages,
-            // e.g., "attribute was expected to have type long between 1 and 8
-            // inclusive, but actually has type long between 9223372036854775799
-            // and 9223372036854775799 inclusive". What's the cleanest way to
-            // make a special case for a nicer error message?
-            {
-                write!(f, "long between {} and {} inclusive", min, max)
+            Self::Long { min, max } => {
+                if *min == i64::MIN && *max == i64::MAX {
+                    write!(f, "unbounded long")
+                } else if min == max {
+                    write!(f, "long equal to {}", min)
+                } else {
+                    write!(f, "long between {} and {} inclusive", min, max)
+                }
             }
             Self::String => write!(f, "string"),
             Self::Set { element_ty } => write!(f, "(set of {})", &element_ty),

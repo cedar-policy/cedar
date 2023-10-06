@@ -3972,7 +3972,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to long out of bounds");
         assert!(
-            err.to_string().contains(r#"in attribute `num` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type long between 3 and 4 inclusive, but actually has type long between 10 and 10"#),
+            err.to_string().contains(r#"in attribute `num` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type long between 3 and 4 inclusive, but actually has type long equal to 10"#),
             "actual error message was {err}"
         );
     }
@@ -4230,7 +4230,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on numDirectReports");
         assert!(
-            err.to_string().contains(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type long between -9223372036854775808 and 9223372036854775807 inclusive, but actually has type string"#),
+            err.to_string().contains(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type unbounded long, but actually has type string"#),
             "actual error message was {err}"
         );
 
