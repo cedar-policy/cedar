@@ -1009,7 +1009,7 @@ mod json_parsing_tests {
     }
 
     #[cfg(feature = "ipaddr")]
-    /// this one uses `__entity`, and `__extn` escapes, in various positions
+    /// this one uses `__entity` and `__extn` escapes, in various positions
     #[test]
     fn more_escapes() {
         let json = serde_json::json!(
