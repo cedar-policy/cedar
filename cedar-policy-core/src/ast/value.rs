@@ -454,6 +454,8 @@ impl Value {
     }
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
     use super::*;

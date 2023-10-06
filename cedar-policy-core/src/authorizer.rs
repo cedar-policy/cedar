@@ -393,6 +393,8 @@ impl std::fmt::Debug for Authorizer {
     }
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
     use std::collections::BTreeMap;

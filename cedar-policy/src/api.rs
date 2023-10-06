@@ -80,6 +80,7 @@ impl From<SlotId> for ast::SlotId {
 }
 
 /// Entity datatype
+// INVARIANT The `EntityUid` of an `Entity` cannot be unspecified
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, RefCast)]
 pub struct Entity(ast::Entity);
@@ -113,6 +114,7 @@ impl Entity {
     ) -> Self {
         // note that we take a "parents" parameter here; we will compute TC when
         // the `Entities` object is created
+        // INVARIANT by invariant on `EntityUid`
         Self(ast::Entity::new(
             uid.0,
             attrs
@@ -134,6 +136,7 @@ impl Entity {
     /// # assert_eq!(alice.attr("age"), None);
     /// ```
     pub fn with_uid(uid: EntityUid) -> Self {
+        // INVARIANT: by invariant on `EntityUid`
         Self(ast::Entity::with_uid(uid.0))
     }
 
@@ -148,6 +151,7 @@ impl Entity {
     /// assert_eq!(alice.uid(), euid);
     /// ```
     pub fn uid(&self) -> EntityUid {
+        // INVARIANT: By invariant on self and `EntityUid`: Our Uid can't be unspecified
         EntityUid(self.0.uid())
     }
 
@@ -366,6 +370,7 @@ impl Entities {
             Dereference::Residual(_) | Dereference::NoSuchEntity => None,
             Dereference::Data(e) => Some(e),
         }?;
+        // Invariant: No way to write down the unspecified EntityUid, so no way to have ancestors that are unspecified
         Some(entity.ancestors().map(EntityUid::ref_cast))
     }
 
@@ -1338,6 +1343,7 @@ impl std::fmt::Display for EntityNamespace {
 }
 
 /// Unique Id for an entity, such as `User::"alice"`
+// INVARIANT: this can never be an `ast::EntityType::Unspecified`
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
 pub struct EntityUid(ast::EntityUID);
@@ -1352,6 +1358,8 @@ impl EntityUid {
     /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
     /// ```
     pub fn type_name(&self) -> &EntityTypeName {
+        // PANIC SAFETY by invariant on struct
+        #[allow(clippy::panic)]
         match self.0.entity_type() {
             ast::EntityType::Unspecified => panic!("Impossible to have an unspecified entity"),
             ast::EntityType::Concrete(name) => EntityTypeName::ref_cast(name),
@@ -1382,6 +1390,7 @@ impl EntityUid {
     ///
     /// ```
     pub fn from_type_name_and_id(name: EntityTypeName, id: EntityId) -> Self {
+        // INVARIANT: `from_components` always constructs a Concrete id
         Self(ast::EntityUID::from_components(name.0, id.0))
     }
 
@@ -1396,6 +1405,7 @@ impl EntityUid {
     /// ```
     pub fn from_json(json: serde_json::Value) -> Result<Self, impl std::error::Error> {
         let parsed: entities::EntityUidJSON = serde_json::from_value(json)?;
+        // INVARIANT: There is no way to write down the unspecified entityuid
         Ok::<Self, entities::JsonDeserializationError>(Self(
             parsed.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
         ))
@@ -1438,6 +1448,7 @@ impl FromStr for EntityUid {
     /// __DO NOT__ create [`EntityUid`]'s via string concatenation.
     /// If you have separate components of an [`EntityUid`], use [`EntityUid::from_type_name_and_id`]
     fn from_str(uid_str: &str) -> Result<Self, Self::Err> {
+        // INVARIANT there is no way to write down the unspecified entity
         ast::EntityUID::from_normalized_str(uid_str).map(EntityUid)
     }
 }
@@ -2076,6 +2087,7 @@ impl Policy {
     /// Get the head constraint on this policy's action
     pub fn action_constraint(&self) -> ActionConstraint {
         // Clone the data from Core to be consistant with the other constraints
+        // INVARIANT: all of the EntityUids come from a policy, which must have Concrete EntityUids
         match self.ast.template().action_constraint() {
             ast::ActionConstraint::Any => ActionConstraint::Any,
             ast::ActionConstraint::In(ids) => ActionConstraint::In(
@@ -2114,6 +2126,7 @@ impl Policy {
         slot: ast::SlotId,
     ) -> &'a EntityUid {
         match r {
+            // INVARIANT: this comes from policy source, so must be concrete
             ast::EntityReference::EUID(euid) => EntityUid::ref_cast(euid),
             // PANIC SAFETY: This `unwrap` here is safe due the invariant (values total map) on policies.
             #[allow(clippy::unwrap_used)]
@@ -2585,6 +2598,7 @@ impl Request {
     pub fn principal(&self) -> Option<&EntityUid> {
         match self.0.principal() {
             ast::EntityUIDEntry::Concrete(euid) => match euid.entity_type() {
+                // INVARIANT: we ensure Concrete-ness here
                 ast::EntityType::Concrete(_) => Some(EntityUid::ref_cast(euid.as_ref())),
                 ast::EntityType::Unspecified => None,
             },
@@ -2598,6 +2612,7 @@ impl Request {
     pub fn action(&self) -> Option<&EntityUid> {
         match self.0.action() {
             ast::EntityUIDEntry::Concrete(euid) => match euid.entity_type() {
+                // INVARIANT: we ensure Concrete-ness here
                 ast::EntityType::Concrete(_) => Some(EntityUid::ref_cast(euid.as_ref())),
                 ast::EntityType::Unspecified => None,
             },
@@ -2611,6 +2626,7 @@ impl Request {
     pub fn resource(&self) -> Option<&EntityUid> {
         match self.0.resource() {
             ast::EntityUIDEntry::Concrete(euid) => match euid.entity_type() {
+                // INVARIANT: we ensure Concrete-ness here
                 ast::EntityType::Concrete(_) => Some(EntityUid::ref_cast(euid.as_ref())),
                 ast::EntityType::Unspecified => None,
             },
@@ -3042,6 +3058,8 @@ mod partial_eval_test {
     }
 }
 
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod entity_uid_tests {
     use super::*;
@@ -3434,6 +3452,8 @@ mod head_constraints_tests {
     }
 }
 
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
 /// Tests in this module are adapted from Core's `policy_set.rs` tests
 #[cfg(test)]
 mod policy_set_tests {
@@ -3786,6 +3806,8 @@ mod ancestors_tests {
 /// the Validator and Core packages working together.
 ///
 /// (Core has similar tests, but using a stubbed implementation of Schema.)
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod schema_based_parsing_tests {
     use std::assert_eq;

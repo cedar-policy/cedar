@@ -19,6 +19,10 @@
 #![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
+// PANIC SAFETY unit tests
+#![allow(clippy::panic)]
+// PANIC SAFETY unit tests
+#![allow(clippy::indexing_slicing)]
 use std::{collections::HashSet, sync::Arc};
 
 use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprShapeOnly, StaticPolicy, Template};

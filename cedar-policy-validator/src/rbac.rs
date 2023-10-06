@@ -422,6 +422,10 @@ impl Validator {
     }
 }
 
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
+// PANIC SAFETY unit tests
+#[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
     use std::collections::{BTreeMap, HashMap, HashSet};

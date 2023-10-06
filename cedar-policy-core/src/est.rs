@@ -278,6 +278,8 @@ impl From<ast::Expr> for Clause {
     }
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
     use super::*;
