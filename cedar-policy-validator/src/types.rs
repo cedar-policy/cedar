@@ -97,13 +97,6 @@ impl Type {
         }
     }
 
-    // Deprecated, for compatibility with existing callers so we don't have to
-    // migrate the whole codebase before we can build it. TODO: Migrate all
-    // callers to different APIs.
-    pub(crate) fn primitive_long() -> Type {
-        Self::long_max_bounds()
-    }
-
     /// A Long without bounds information. This type is returned after a type
     /// error is detected in an arithmetic operation to avoid reporting errors
     /// for subsequent possible overflows. E.g., we might report an overflow
@@ -130,6 +123,16 @@ impl Type {
         }
     }
 
+    // The type checker "expects" this when any Long is acceptable.
+    pub(crate) fn long_top() -> Type {
+        Type::Primitive {
+            primitive_type: Primitive::Long(LongBoundsInfo {
+                can_be_any: true,
+                bounds_opt: Some(LongBounds::top()),
+            }),
+        }
+    }
+
     /// A long with the specified bounds.
     /// Precondition: min <= max.
     pub(crate) fn long_bounded(min: i64, max: i64) -> Type {
@@ -144,16 +147,6 @@ impl Type {
     /// A long with some known value. Represented a range [val, val].
     pub(crate) fn singleton_long(val: i64) -> Type {
         Self::long_bounded(val, val)
-    }
-
-    // The type checker "expects" this when any Long is acceptable.
-    pub(crate) fn long_top() -> Type {
-        Type::Primitive {
-            primitive_type: Primitive::Long(LongBoundsInfo {
-                can_be_any: true,
-                bounds_opt: Some(LongBounds::top()),
-            }),
-        }
     }
 
     pub(crate) fn primitive_string() -> Type {
@@ -1690,15 +1683,15 @@ mod test {
         );
 
         assert_least_upper_bound_empty_schema(
-            Type::primitive_long(),
-            Type::primitive_long(),
-            Some(Type::primitive_long()),
+            Type::long_max_bounds(),
+            Type::long_max_bounds(),
+            Some(Type::long_max_bounds()),
         );
 
         assert_least_upper_bound_empty_schema(Type::False, Type::primitive_string(), None);
-        assert_least_upper_bound_empty_schema(Type::False, Type::primitive_long(), None);
+        assert_least_upper_bound_empty_schema(Type::False, Type::long_max_bounds(), None);
         assert_least_upper_bound_empty_schema(Type::True, Type::primitive_string(), None);
-        assert_least_upper_bound_empty_schema(Type::True, Type::primitive_long(), None);
+        assert_least_upper_bound_empty_schema(Type::True, Type::long_max_bounds(), None);
         assert_least_upper_bound_empty_schema(
             Type::primitive_boolean(),
             Type::primitive_string(),
@@ -1706,12 +1699,12 @@ mod test {
         );
         assert_least_upper_bound_empty_schema(
             Type::primitive_boolean(),
-            Type::primitive_long(),
+            Type::long_max_bounds(),
             None,
         );
         assert_least_upper_bound_empty_schema(
             Type::primitive_string(),
-            Type::primitive_long(),
+            Type::long_max_bounds(),
             None,
         );
     }
@@ -1757,7 +1750,7 @@ mod test {
 
         assert_least_upper_bound_empty_schema(
             Type::set(Type::primitive_boolean()),
-            Type::set(Type::primitive_long()),
+            Type::set(Type::long_max_bounds()),
             None,
         );
         assert_least_upper_bound_empty_schema(
@@ -1814,38 +1807,38 @@ mod test {
         assert_least_upper_bound_empty_schema(
             Type::closed_record_with_required_attributes([
                 ("foo".into(), Type::False),
-                ("bar".into(), Type::primitive_long()),
+                ("bar".into(), Type::long_max_bounds()),
             ]),
             Type::closed_record_with_required_attributes([
                 ("foo".into(), Type::primitive_string()),
-                ("bar".into(), Type::primitive_long()),
+                ("bar".into(), Type::long_max_bounds()),
             ]),
             Some(Type::open_record_with_required_attributes([(
                 "bar".into(),
-                Type::primitive_long(),
+                Type::long_max_bounds(),
             )])),
         );
 
         assert_least_upper_bound_empty_schema(
-            Type::closed_record_with_required_attributes([("bar".into(), Type::primitive_long())]),
+            Type::closed_record_with_required_attributes([("bar".into(), Type::long_max_bounds())]),
             Type::closed_record_with_required_attributes([
                 ("foo".into(), Type::primitive_string()),
-                ("bar".into(), Type::primitive_long()),
+                ("bar".into(), Type::long_max_bounds()),
             ]),
             Some(Type::open_record_with_required_attributes([(
                 "bar".into(),
-                Type::primitive_long(),
+                Type::long_max_bounds(),
             )])),
         );
 
         assert_least_upper_bound_empty_schema(
             Type::closed_record_with_required_attributes([
                 ("foo".into(), Type::False),
-                ("bar".into(), Type::primitive_long()),
+                ("bar".into(), Type::long_max_bounds()),
             ]),
             Type::closed_record_with_required_attributes([
                 ("foo".into(), Type::True),
-                ("baz".into(), Type::primitive_long()),
+                ("baz".into(), Type::long_max_bounds()),
             ]),
             Some(Type::open_record_with_required_attributes([(
                 "foo".into(),
@@ -1866,37 +1859,37 @@ mod test {
             Type::closed_record_with_attributes([
                 (
                     "foo".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::long_max_bounds(), false),
                 ),
                 (
                     "bar".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::long_max_bounds(), false),
                 ),
             ]),
             Type::closed_record_with_attributes([
                 (
                     "foo".into(),
-                    AttributeType::new(Type::primitive_long(), true),
+                    AttributeType::new(Type::long_max_bounds(), true),
                 ),
                 (
                     "bar".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::long_max_bounds(), false),
                 ),
             ]),
             Some(Type::closed_record_with_attributes([
                 (
                     "foo".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::long_max_bounds(), false),
                 ),
                 (
                     "bar".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::long_max_bounds(), false),
                 ),
             ])),
         );
 
         assert_least_upper_bound_empty_schema(
-            Type::closed_record_with_required_attributes([("a".into(), Type::primitive_long())]),
+            Type::closed_record_with_required_attributes([("a".into(), Type::long_max_bounds())]),
             Type::closed_record_with_attributes([]),
             Some(Type::open_record_with_attributes([])),
         );
@@ -2046,7 +2039,7 @@ mod test {
             Type::named_entity_reference_from_str("baz"),
             &["baz"],
             &[
-                ("a", Type::primitive_long()),
+                ("a", Type::long_max_bounds()),
                 ("b", Type::primitive_string()),
                 ("c", Type::named_entity_reference_from_str("foo")),
             ],
@@ -2062,7 +2055,7 @@ mod test {
             Type::named_entity_reference_from_str("buz"),
             &["baz", "buz"],
             &[
-                ("a", Type::primitive_long()),
+                ("a", Type::long_max_bounds()),
                 (
                     "c",
                     Type::EntityOrRecord(EntityRecordKind::Entity(EntityLUB {
@@ -2091,7 +2084,7 @@ mod test {
         assert_least_upper_bound_empty_schema(
             Type::closed_record_with_required_attributes([
                 ("foo".into(), Type::False),
-                ("bar".into(), Type::primitive_long()),
+                ("bar".into(), Type::long_max_bounds()),
             ]),
             Type::any_entity_reference(),
             None,
@@ -2109,8 +2102,8 @@ mod test {
         assert_least_upper_bound_attr_schema(
             Type::named_entity_reference_from_str("buz"),
             Type::closed_record_with_required_attributes(vec![
-                ("a".into(), Type::primitive_long()),
-                ("b".into(), Type::primitive_long()),
+                ("a".into(), Type::long_max_bounds()),
+                ("b".into(), Type::long_max_bounds()),
                 ("c".into(), Type::named_entity_reference_from_str("bar")),
             ]),
             None,
@@ -2239,11 +2232,11 @@ mod test {
     #[test]
     fn json_display_of_schema_type_parses_to_schema_type() {
         assert_json_parses_to_schema_type(Type::primitive_boolean());
-        assert_json_parses_to_schema_type(Type::primitive_long());
+        assert_json_parses_to_schema_type(Type::long_max_bounds());
         assert_json_parses_to_schema_type(Type::primitive_string());
         assert_json_parses_to_schema_type(Type::set(Type::primitive_boolean()));
         assert_json_parses_to_schema_type(Type::set(Type::primitive_string()));
-        assert_json_parses_to_schema_type(Type::set(Type::primitive_long()));
+        assert_json_parses_to_schema_type(Type::set(Type::long_max_bounds()));
         assert_json_parses_to_schema_type(Type::named_entity_reference_from_str("Foo"));
         assert_json_parses_to_schema_type(Type::named_entity_reference_from_str("Foo::Bar"));
         assert_json_parses_to_schema_type(Type::named_entity_reference_from_str("Foo::Bar::Baz"));
@@ -2259,7 +2252,7 @@ mod test {
             ),
             (
                 "b".into(),
-                AttributeType::new(Type::primitive_long(), false),
+                AttributeType::new(Type::long_max_bounds(), false),
             ),
         ]));
     }

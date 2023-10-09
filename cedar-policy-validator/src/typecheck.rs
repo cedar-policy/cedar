@@ -363,13 +363,9 @@ impl OverflowCheck {
         F: FnOnce(LongBoundsInfoChecked) -> ArithmeticOpBoundsInfo,
     {
         if let Some(lbic1) = Self::arith_overflow_check_prepare_arg(expr_ty) {
-            let aobi = f(lbic1);
-            Self::arith_overflow_check_finish(aobi, type_errors, arith_expr)
+            Self::arith_overflow_check_finish(f(lbic1), type_errors, arith_expr)
         } else {
-            Self {
-                return_type: Type::long_any(),
-                overflow_detected: false,
-            }
+            Self::other_type_error()
         }
     }
 
@@ -387,13 +383,18 @@ impl OverflowCheck {
             Self::arith_overflow_check_prepare_arg(&expr_ty1),
             Self::arith_overflow_check_prepare_arg(&expr_ty2),
         ) {
-            let aobi = f(lbic1, lbic2);
-            Self::arith_overflow_check_finish(aobi, type_errors, arith_expr)
+            Self::arith_overflow_check_finish(f(lbic1, lbic2), type_errors, arith_expr)
         } else {
-            Self {
-                return_type: Type::long_any(),
-                overflow_detected: false,
-            }
+            Self::other_type_error()
+        }
+    }
+
+    /// OverflowCheck returned when overflow checking cannot be executed due to
+    /// earlier type errors.
+    fn other_type_error() -> Self {
+        Self {
+            return_type: Type::long_any(),
+            overflow_detected: false,
         }
     }
 
@@ -1539,9 +1540,7 @@ impl<'a> Typechecker<'a> {
                                     ),
                                     // PANIC SAFETY: Outer `match` statement checked that `op` is `Add` or `Sub`.
                                     #[allow(clippy::unreachable)]
-                                    _ => unreachable!(
-                                    "Outer `match` statement checked that `op` is `Add` or `Sub`."
-                               ),
+                                    _ => unreachable!("Outer `match` statement checked that `op` is `Add` or `Sub`."),
                                 };
                                 ArithmeticOpBoundsInfo::BinaryOp {
                                     result_bounds: Bounds128 {

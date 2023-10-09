@@ -345,7 +345,7 @@ impl ValidatorNamespaceDef {
     fn jsonval_to_type_helper(v: &JSONValue, action_id: &EntityUID) -> Result<Type> {
         match v {
             JSONValue::Bool(_) => Ok(Type::primitive_boolean()),
-            JSONValue::Long(_) => Ok(Type::primitive_long()),
+            JSONValue::Long(_) => Ok(Type::long_max_bounds()),
             JSONValue::String(_) => Ok(Type::primitive_string()),
             JSONValue::Record(r) => {
                 let mut required_attrs: HashMap<SmolStr, Type> = HashMap::new();
@@ -2537,7 +2537,7 @@ mod test {
         let schema: ValidatorSchema = fragment.try_into().unwrap();
         assert_eq!(
             schema.entity_types.iter().next().unwrap().1.attributes,
-            Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
+            Attributes::with_required_attributes([("a".into(), Type::long_max_bounds())])
         );
     }
 
@@ -2563,7 +2563,7 @@ mod test {
         let schema: ValidatorSchema = fragment.try_into().unwrap();
         assert_eq!(
             schema.entity_types.iter().next().unwrap().1.attributes,
-            Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
+            Attributes::with_required_attributes([("a".into(), Type::long_max_bounds())])
         );
     }
 
@@ -2595,7 +2595,7 @@ mod test {
         let schema: ValidatorSchema = fragment.try_into().unwrap();
         assert_eq!(
             schema.entity_types.iter().next().unwrap().1.attributes,
-            Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
+            Attributes::with_required_attributes([("a".into(), Type::long_max_bounds())])
         );
     }
 
@@ -2635,7 +2635,7 @@ mod test {
 
         assert_eq!(
             schema.entity_types.iter().next().unwrap().1.attributes,
-            Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
+            Attributes::with_required_attributes([("a".into(), Type::long_max_bounds())])
         );
     }
 
@@ -2670,7 +2670,7 @@ mod test {
 
         assert_eq!(
             schema.entity_types.iter().next().unwrap().1.attributes,
-            Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
+            Attributes::with_required_attributes([("a".into(), Type::long_max_bounds())])
         );
     }
 
