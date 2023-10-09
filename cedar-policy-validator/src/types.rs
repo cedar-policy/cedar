@@ -1453,7 +1453,7 @@ impl LongBounds {
             min,
             max
         );
-        // Maintains invariant by preconditon.
+        // Maintains invariant by precondition.
         Self { min, max }
     }
 
@@ -1491,8 +1491,6 @@ pub enum Primitive {
     /// Primitive boolean type.
     Bool,
     /// Primitive long type.
-    // TODO: Now that `Long` has extra data, should we move it out of
-    // `Primitive`?
     Long(LongBoundsInfo),
     /// Primitive string type.
     String,
