@@ -98,7 +98,7 @@ pub enum SchemaError {
     #[error("action `{0}` has an attribute with unsupported JSON representation: {1}")]
     UnsupportedActionAttribute(EntityUID, String),
     /// Malformed bounds information on a declaration of type `Long`.
-    #[error("Malformed bounds information on a declaration of type `Long`")]
+    #[error("malformed bounds information on a declaration of type `Long`")]
     MalformedLongBounds,
 }
 

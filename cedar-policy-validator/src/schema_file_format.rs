@@ -591,57 +591,29 @@ impl SchemaTypeVariant {
 
 // In the schema file, we want the bounds of a Long attribute to be given as
 // "min" and "max" fields at the same level as `"type": "Long"` with both or
-// neither present (I think; this is subject to UX review). But for the Rust
-// code, it's more convenient to represent the bounds as an optional pair, and
-// for better or for worse, there's a bunch of code that manipulates
-// SchemaTypeVariants once we count the DRT code, so it's worth some amount of
-// trouble to perform the conversion. We do it via `#[serde({try_from,into})]`,
-// which are only supported on structs, so we have to introduce
-// `SchemaLongDetails` rather than putting `bounds_opt` directly in
+// neither present. But for the Rust code, it's more convenient to represent the
+// bounds as an optional pair. We do it via
+// `#[serde({try_from,into})]`, which are only supported on structs, so we have
+// to introduce `SchemaLongDetails` rather than putting `bounds_opt` directly in
 // `SchemaTypeVariant::Long`. `SchemaLongDetails` adds some boilerplate for
 // callers, but it's not as bad as having separate optional `min` and `max`
 // fields.
-//
-// We previously tried putting `#[serde(flatten)]` on `bounds_opt`, but if the
-// schema file specified `min` but not `max` or vice versa, that approach
-// silently set `bounds_opt` to `None` and didn't give us a way to detect the
-// error.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(try_from = "SchemaLongDetailsJson")]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(into = "SchemaLongDetailsJson")]
 pub struct SchemaLongDetails {
     pub bounds_opt: Option<SchemaLongBounds>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct SchemaLongBounds {
     pub min: i64,
     pub max: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 struct SchemaLongDetailsJson {
     min: Option<i64>,
     max: Option<i64>,
-}
-
-impl TryFrom<SchemaLongDetailsJson> for SchemaLongDetails {
-    type Error = SchemaError;
-    fn try_from(value: SchemaLongDetailsJson) -> Result<Self> {
-        match value {
-            SchemaLongDetailsJson {
-                min: None,
-                max: None,
-            } => Ok(SchemaLongDetails { bounds_opt: None }),
-            SchemaLongDetailsJson {
-                min: Some(min),
-                max: Some(max),
-            } => Ok(SchemaLongDetails {
-                bounds_opt: Some(SchemaLongBounds { min, max }),
-            }),
-            _ => Err(SchemaError::MalformedLongBounds),
-        }
-    }
 }
 
 impl From<SchemaLongDetails> for SchemaLongDetailsJson {
