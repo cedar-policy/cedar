@@ -1942,7 +1942,10 @@ impl<'a> Typechecker<'a> {
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
         // PANIC SAFETY maintained by invariant on this function
-        panic!("`typecheck_unary` called with an expression kind other than `UnaryApp`");
+        #[allow(clippy::panic)]
+        let ExprKind::UnaryApp { op, arg } = unary_expr.expr_kind() else {
+            panic!("`typecheck_unary` called with an expression kind other than `UnaryApp`");
+        };
         match op {
             UnaryOp::Not => {
                 let ans_arg = self.expect_type(
