@@ -1114,6 +1114,10 @@ pub enum SchemaError {
     /// This error variant should only be used when `PermitAttributes` is enabled.
     #[error("action `{0}` has an attribute with unsupported JSON representation: {1}")]
     UnsupportedActionAttribute(EntityUid, String),
+    /// Error thrown when the schema contains the `__expr` escape.
+    /// Support for this escape form has been dropped.
+    #[error("schema contained the non-supported `__expr` escape.")]
+    ExprEscapeUsed,
 }
 
 /// Describes in what action context or entity type shape a schema parsing error
@@ -1201,6 +1205,7 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             cedar_policy_validator::SchemaError::UnsupportedActionAttribute(uid, escape_type) => {
                 Self::UnsupportedActionAttribute(EntityUid(uid), escape_type)
             }
+            cedar_policy_validator::SchemaError::ExprEscapeUsed => Self::ExprEscapeUsed,
         }
     }
 }

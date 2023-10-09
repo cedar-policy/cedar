@@ -484,6 +484,8 @@ pub enum TCComputation {
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 #[cfg(test)]
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
 mod json_parsing_tests {
 
     use super::*;
@@ -1008,6 +1010,164 @@ mod json_parsing_tests {
         )
     }
 
+    #[test]
+    fn no_expr_escapes1() {
+        let json = serde_json::json!(
+        [
+        {
+            "uid" : r#"test_entity_type::"Alice""#,
+            "attrs": {
+                "bacon": "eggs",
+                "pancakes": [1, 2, 3],
+                "waffles": { "key": "value" },
+                "toast" : { "__extn" : { "fn" : "decimal", "arg" : "33.47" }},
+                "12345": { "__entity": { "type": "test_entity_type", "id": "bob" } },
+                "a b c": { "__extn": { "fn": "ip", "arg": "222.222.222.0/24" } }
+            },
+            "parents": [
+                { "__entity": { "type" : "test_entity_type", "id" : "bob"} },
+                { "__entity": { "type": "test_entity_type", "id": "catherine" } }
+            ]
+        },
+        ]);
+        let eparser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let error = eparser.from_json_value(json).err().unwrap().to_string();
+        assert!(
+            error.contains("in uid field of <unknown entity>, expected a literal entity reference"),
+            "{}",
+            error
+        );
+    }
+
+    #[test]
+    fn no_expr_escapes2() {
+        let json = serde_json::json!(
+        [
+        {
+            "uid" : {
+                "__expr" :
+                    r#"test_entity_type::"Alice""#
+            },
+            "attrs": {
+                "bacon": "eggs",
+                "pancakes": [1, 2, 3],
+                "waffles": { "key": "value" },
+                "toast" : { "__extn" : { "fn" : "decimal", "arg" : "33.47" }},
+                "12345": { "__entity": { "type": "test_entity_type", "id": "bob" } },
+                "a b c": { "__extn": { "fn": "ip", "arg": "222.222.222.0/24" } }
+            },
+            "parents": [
+                { "__entity": { "type" : "test_entity_type", "id" : "bob"} },
+                { "__entity": { "type": "test_entity_type", "id": "catherine" } }
+            ]
+        }
+        ]);
+        let eparser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let error = eparser.from_json_value(json).err().unwrap().to_string();
+        assert!(
+            error.contains("in uid field of <unknown entity>, expected a literal entity reference"),
+            "{}",
+            error
+        );
+    }
+
+    #[test]
+    fn no_expr_escapes3() {
+        let json = serde_json::json!(
+        [
+        {
+            "uid" : {
+                "type" : "test_entity_type",
+                "id" : "Alice"
+            },
+            "attrs": {
+                "bacon": "eggs",
+                "pancakes": { "__expr" : "[1,2,3]" },
+                "waffles": { "key": "value" },
+                "toast" : { "__extn" : { "fn" : "decimal", "arg" : "33.47" }},
+                "12345": { "__entity": { "type": "test_entity_type", "id": "bob" } },
+                "a b c": { "__extn": { "fn": "ip", "arg": "222.222.222.0/24" } }
+            },
+            "parents": [
+                { "__entity": { "type" : "test_entity_type", "id" : "bob"} },
+                { "__entity": { "type": "test_entity_type", "id": "catherine" } }
+            ]
+        }
+        ]);
+        let eparser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let error = eparser.from_json_value(json).err().unwrap().to_string();
+        assert!(
+            error.contains("`__expr` tag is no longer supported"),
+            "Actual error message was: {}",
+            error
+        );
+    }
+
+    #[test]
+    fn no_expr_escapes4() {
+        let json = serde_json::json!(
+        [
+        {
+            "uid" : {
+                "type" : "test_entity_type",
+                "id" : "Alice"
+            },
+            "attrs": {
+                "bacon": "eggs",
+                "waffles": { "key": "value" },
+                "12345": { "__entity": { "type": "test_entity_type", "id": "bob" } },
+                "a b c": { "__extn": { "fn": "ip", "arg": "222.222.222.0/24" } }
+            },
+            "parents": [
+                { "__expr": { "type" : "test_entity_type", "id" : "bob"} },
+                { "__entity": { "type": "test_entity_type", "id": "catherine" } }
+            ]
+        }
+        ]);
+        let eparser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let error = eparser.from_json_value(json).err().unwrap().to_string();
+        assert!(
+            error.contains(r#"in parents field of `test_entity_type::"Alice"`, expected a literal entity reference"#),
+            "Actual error message was: {}",
+            error
+        );
+    }
+
+    #[test]
+    fn no_expr_escapes5() {
+        let json = serde_json::json!(
+        [
+        {
+            "uid" : {
+                "type" : "test_entity_type",
+                "id" : "Alice"
+            },
+            "attrs": {
+                "bacon": "eggs",
+                "waffles": { "key": "value" },
+                "12345": { "__entity": { "type": "test_entity_type", "id": "bob" } },
+                "a b c": { "__extn": { "fn": "ip", "arg": "222.222.222.0/24" } }
+            },
+            "parents": [
+                "test_entity_type::\"bob\"",
+                { "__entity": { "type": "test_entity_type", "id": "catherine" } }
+            ]
+        }
+        ]);
+        let eparser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let error = eparser.from_json_value(json).err().unwrap().to_string();
+        assert!(
+            error.contains(r#"in parents field of `test_entity_type::"Alice"`, expected a literal entity reference"#),
+            "Actual error message was: {}",
+            error
+        );
+    }
+
     #[cfg(feature = "ipaddr")]
     /// this one uses `__entity` and `__extn` escapes, in various positions
     #[test]
@@ -1493,6 +1653,8 @@ mod json_parsing_tests {
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 #[cfg(test)]
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
 mod entities_tests {
     use super::*;
 
@@ -1567,6 +1729,8 @@ mod entities_tests {
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 #[cfg(test)]
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
 mod schema_based_parsing_tests {
     use super::*;
     use crate::extensions::Extensions;

@@ -42,6 +42,11 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum CedarValueJson {
+    /// `__expr` is deprecated, but still throws an error was present.
+    ExprEscape {
+        /// Contents, will be ignored and an error is thrown are attempting to parse this
+        __expr: SmolStr,
+    },
     /// Special JSON object with single reserved "__entity" key:
     /// the following item should be a JSON object of the form
     /// `{ "type": "xxx", "id": "yyy" }`.
@@ -229,6 +234,9 @@ impl CedarValueJson {
                 })?,
             )),
             Self::ExtnEscape { __extn: extn } => extn.into_expr(ctx),
+            Self::ExprEscape { .. } => Err(JsonDeserializationError::ExprTag(Box::new(
+                JsonDeserializationErrorContext::Context,
+            ))),
         }
     }
 
