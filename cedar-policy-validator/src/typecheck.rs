@@ -248,7 +248,7 @@ pub enum PolicyCheck {
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct LongBoundsInfoChecked {
     can_be_any: bool,
-    bounds: LongBounds,
+    bounds: Bounds128,
 }
 
 /// A bounds structure big enough to hold the result of any single Cedar
@@ -336,16 +336,12 @@ impl ArithmeticOpBoundsInfo {
         if arg_lbic.can_be_any {
             format!(
                 "{} may be between {} and {} (or may be exempt from overflow checks).",
-                arg_name,
-                arg_lbic.bounds.minimum(),
-                arg_lbic.bounds.maximum()
+                arg_name, arg_lbic.bounds.min, arg_lbic.bounds.max,
             )
         } else {
             format!(
                 "{} is between {} and {}.",
-                arg_name,
-                arg_lbic.bounds.minimum(),
-                arg_lbic.bounds.maximum()
+                arg_name, arg_lbic.bounds.min, arg_lbic.bounds.max,
             )
         }
     }
@@ -357,10 +353,76 @@ struct OverflowCheck {
 }
 
 impl OverflowCheck {
-    // NOTE: This function currently has a rather ad-hoc subset of logic that
-    // was convenient to factor out of the overflow checks as they are currently
-    // structured. The code structure will probably have to change as we polish
-    // the overflow analysis.
+    fn overflow_check_unary<'a, F>(
+        expr_ty: &Expr<Option<Type>>,
+        type_errors: &mut Vec<TypeError>,
+        arith_expr: &Expr,
+        f: F,
+    ) -> Self
+    where
+        F: FnOnce(LongBoundsInfoChecked) -> ArithmeticOpBoundsInfo,
+    {
+        if let Some(lbic1) = Self::arith_overflow_check_prepare_arg(expr_ty) {
+            let aobi = f(lbic1);
+            Self::arith_overflow_check_finish(aobi, type_errors, arith_expr)
+        } else {
+            Self {
+                return_type: Type::long_any(),
+                overflow_detected: false,
+            }
+        }
+    }
+
+    fn overflow_check_binary<'a, F>(
+        expr_ty1: &Expr<Option<Type>>,
+        expr_ty2: &Expr<Option<Type>>,
+        type_errors: &mut Vec<TypeError>,
+        arith_expr: &Expr,
+        f: F,
+    ) -> Self
+    where
+        F: FnOnce(LongBoundsInfoChecked, LongBoundsInfoChecked) -> ArithmeticOpBoundsInfo,
+    {
+        if let (Some(lbic1), Some(lbic2)) = (
+            Self::arith_overflow_check_prepare_arg(&expr_ty1),
+            Self::arith_overflow_check_prepare_arg(&expr_ty2),
+        ) {
+            let aobi = f(lbic1, lbic2);
+            Self::arith_overflow_check_finish(aobi, type_errors, arith_expr)
+        } else {
+            Self {
+                return_type: Type::long_any(),
+                overflow_detected: false,
+            }
+        }
+    }
+
+    /// Callers will want both the LongBoundsInfoChecked (to copy into the
+    /// ArithmeticOpBoundsInfo) and the 128-bit bounds (to calculate the result
+    /// bounds without boilerplate code for the 64 to 128 bit conversion).
+    fn arith_overflow_check_prepare_arg(
+        expr_ty: &Expr<Option<Type>>,
+    ) -> Option<LongBoundsInfoChecked> {
+        if let Some(Type::Primitive {
+            primitive_type:
+                Primitive::Long(LongBoundsInfo {
+                    can_be_any: cba,
+                    bounds_opt: Some(lb),
+                }),
+        }) = expr_ty.data()
+        {
+            Some(LongBoundsInfoChecked {
+                can_be_any: *cba,
+                bounds: Bounds128 {
+                    min: lb.minimum().into(),
+                    max: lb.maximum().into(),
+                },
+            })
+        } else {
+            None
+        }
+    }
+
     fn arith_overflow_check_finish(
         aobi: ArithmeticOpBoundsInfo,
         type_errors: &mut Vec<TypeError>,
@@ -1460,27 +1522,27 @@ impl<'a> Typechecker<'a> {
                         type_errors,
                     );
                     ans_arg2.then_typecheck(|expr_ty_arg2, _| {
-                        // Perform a bounds check only if both operands are Long
-                        // (which might not be the case if there was a type
-                        // error) and both operands have bounds info. Otherwise,
-                        // the result is long_any.
-                        let OverflowCheck {
-                            return_type,
-                            overflow_detected,
-                        } = if let (Some((lbic1, b1)), Some((lbic2, b2))) = (
-                            Self::arith_overflow_check_prepare_arg(&expr_ty_arg1),
-                            Self::arith_overflow_check_prepare_arg(&expr_ty_arg2),
-                        ) {
-                            let (new_min, new_max) = match op {
-                                BinaryOp::Add => (b1.min + b2.min, b1.max + b2.max),
-                                BinaryOp::Sub => (b1.min - b2.max, b1.max - b2.min),
-                                // PANIC SAFETY: Outer `match` statement checked that `op` is `Add` or `Sub`.
-                                #[allow(clippy::unreachable)]
-                                _ => unreachable!(
+                        let overflow_check = OverflowCheck::overflow_check_binary(
+                            &expr_ty_arg1,
+                            &expr_ty_arg2,
+                            type_errors,
+                            &bin_expr,
+                            |lbic1, lbic2| {
+                                let (new_min, new_max) = match op {
+                                    BinaryOp::Add => (
+                                        lbic1.bounds.min + lbic2.bounds.min,
+                                        lbic1.bounds.max + lbic2.bounds.max,
+                                    ),
+                                    BinaryOp::Sub => (
+                                        lbic1.bounds.min - lbic2.bounds.max,
+                                        lbic1.bounds.max - lbic2.bounds.min,
+                                    ),
+                                    // PANIC SAFETY: Outer `match` statement checked that `op` is `Add` or `Sub`.
+                                    #[allow(clippy::unreachable)]
+                                    _ => unreachable!(
                                     "Outer `match` statement checked that `op` is `Add` or `Sub`."
-                                ),
-                            };
-                            OverflowCheck::arith_overflow_check_finish(
+                               ),
+                                };
                                 ArithmeticOpBoundsInfo::BinaryOp {
                                     result_bounds: Bounds128 {
                                         min: new_min,
@@ -1489,20 +1551,15 @@ impl<'a> Typechecker<'a> {
                                     op: *op,
                                     arg1_lbic: lbic1,
                                     arg2_lbic: lbic2,
-                                },
-                                type_errors,
-                                bin_expr,
-                            )
-                        } else {
-                            OverflowCheck {
-                                return_type: Type::long_any(),
-                                overflow_detected: false,
-                            }
-                        };
-                        let result_expr_type = ExprBuilder::with_data(Some(return_type))
-                            .with_same_source_info(bin_expr)
-                            .binary_app(*op, expr_ty_arg1, expr_ty_arg2);
-                        if overflow_detected {
+                                }
+                            },
+                        );
+
+                        let result_expr_type =
+                            ExprBuilder::with_data(Some(overflow_check.return_type))
+                                .with_same_source_info(bin_expr)
+                                .binary_app(*op, expr_ty_arg1, expr_ty_arg2);
+                        if overflow_check.overflow_detected {
                             TypecheckAnswer::fail(result_expr_type)
                         } else {
                             TypecheckAnswer::success(result_expr_type)
@@ -1639,19 +1696,16 @@ impl<'a> Typechecker<'a> {
 
         let ans_arg = self.expect_type(request_env, prior_eff, arg, Type::long_top(), type_errors);
         ans_arg.then_typecheck(|arg_expr_ty, _| {
-            let OverflowCheck {
-                return_type,
-                overflow_detected,
-            } = if let Some((lbic1, lb1)) = Self::arith_overflow_check_prepare_arg(&arg_expr_ty) {
-                let constant_128: i128 = (*constant).into();
-                let min_multiplied = constant_128 * lb1.min;
-                let max_multiplied = constant_128 * lb1.max;
-                let (new_min, new_max) = if constant_128 < 0 {
-                    (max_multiplied, min_multiplied)
-                } else {
-                    (min_multiplied, max_multiplied)
-                };
-                OverflowCheck::arith_overflow_check_finish(
+            let overflow_check =
+                OverflowCheck::overflow_check_unary(&arg_expr_ty, type_errors, mul_expr, |lbic1| {
+                    let constant_128: i128 = (*constant).into();
+                    let min_multiplied = constant_128 * lbic1.bounds.min;
+                    let max_multiplied = constant_128 * lbic1.bounds.max;
+                    let (new_min, new_max) = if constant_128 < 0 {
+                        (max_multiplied, min_multiplied)
+                    } else {
+                        (min_multiplied, max_multiplied)
+                    };
                     ArithmeticOpBoundsInfo::Multiplication {
                         result_bounds: Bounds128 {
                             min: new_min,
@@ -1659,54 +1713,18 @@ impl<'a> Typechecker<'a> {
                         },
                         arg_lbic: lbic1,
                         constant: *constant,
-                    },
-                    type_errors,
-                    mul_expr,
-                )
-            } else {
-                OverflowCheck {
-                    return_type: Type::long_any(),
-                    overflow_detected: false,
-                }
-            };
-            let result_expr_type = ExprBuilder::with_data(Some(return_type))
+                    }
+                });
+
+            let result_expr_type = ExprBuilder::with_data(Some(overflow_check.return_type))
                 .with_same_source_info(mul_expr)
                 .mul(arg_expr_ty, *constant);
-            if overflow_detected {
+            if overflow_check.overflow_detected {
                 TypecheckAnswer::fail(result_expr_type)
             } else {
                 TypecheckAnswer::success(result_expr_type)
             }
         })
-    }
-
-    // Callers will want both the LongBoundsInfoChecked (to copy into the
-    // ArithmeticOpBoundsInfo) and the 128-bit bounds (to calculate the result
-    // bounds without boilerplate code for the 64 to 128 bit conversion).
-    fn arith_overflow_check_prepare_arg(
-        expr_ty: &Expr<Option<Type>>,
-    ) -> Option<(LongBoundsInfoChecked, Bounds128)> {
-        if let Some(Type::Primitive {
-            primitive_type:
-                Primitive::Long(LongBoundsInfo {
-                    can_be_any: cba,
-                    bounds_opt: Some(lb),
-                }),
-        }) = expr_ty.data()
-        {
-            Some((
-                LongBoundsInfoChecked {
-                    can_be_any: *cba,
-                    bounds: lb.clone(),
-                },
-                Bounds128 {
-                    min: lb.minimum().into(),
-                    max: lb.maximum().into(),
-                },
-            ))
-        } else {
-            None
-        }
     }
 
     /// Get the type for an `==` expression given the input types.
@@ -2234,35 +2252,27 @@ impl<'a> Typechecker<'a> {
                 let ans_arg =
                     self.expect_type(request_env, prior_eff, arg, Type::long_top(), type_errors);
                 ans_arg.then_typecheck(|typ_expr_arg, _| {
-                    let OverflowCheck {
-                        return_type,
-                        overflow_detected,
-                    } = if let Some((lbic1, b1)) =
-                        Self::arith_overflow_check_prepare_arg(&typ_expr_arg)
-                    {
-                        let result_bounds = Bounds128 {
-                            min: -b1.max,
-                            max: -b1.min,
-                        };
-                        OverflowCheck::arith_overflow_check_finish(
+                    let overflow_check = OverflowCheck::overflow_check_unary(
+                        &typ_expr_arg,
+                        type_errors,
+                        unary_expr,
+                        |lbic1| {
+                            let result_bounds = Bounds128 {
+                                min: -lbic1.bounds.max,
+                                max: -lbic1.bounds.min,
+                            };
                             ArithmeticOpBoundsInfo::UnaryOp {
                                 result_bounds,
                                 op: *op,
                                 arg_lbic: lbic1,
-                            },
-                            type_errors,
-                            unary_expr,
-                        )
-                    } else {
-                        OverflowCheck {
-                            return_type: Type::long_any(),
-                            overflow_detected: false,
-                        }
-                    };
-                    let result_expr_type = ExprBuilder::with_data(Some(return_type))
+                            }
+                        },
+                    );
+
+                    let result_expr_type = ExprBuilder::with_data(Some(overflow_check.return_type))
                         .with_same_source_info(unary_expr)
                         .neg(typ_expr_arg);
-                    if overflow_detected {
+                    if overflow_check.overflow_detected {
                         TypecheckAnswer::fail(result_expr_type)
                     } else {
                         TypecheckAnswer::success(result_expr_type)
