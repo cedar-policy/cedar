@@ -96,6 +96,15 @@ pub enum PolicySetError {
     },
 }
 
+/// Potential errors when working with `PolicySet`s.
+#[derive(Error, Debug)]
+pub enum PolicySetRemovalError {
+    /// There was no [`PolicyID`] encountered in either the set of
+    /// templates or the set of policies.
+    #[error("unable to unlink policy id `{0}` because it does not exist")]
+    UnlinkingError(PolicyID),
+}
+
 // The public interface of `PolicySet` is intentionally narrow, to allow us
 // maximum flexibility to change the underlying implementation in the future
 impl PolicySet {
@@ -219,6 +228,14 @@ impl PolicySet {
             (_, Entry::Occupied(oentry)) => Err(LinkingError::PolicyIdConflict {
                 id: oentry.key().clone(),
             }),
+        }
+    }
+
+    /// Unlink `policy_id`
+    pub fn unlink(&mut self, policy_id: &PolicyID) -> Result<Policy, PolicySetRemovalError> {
+        match self.links.remove(policy_id) {
+            Some(p) => Ok(p),
+            None => Err(PolicySetRemovalError::UnlinkingError(policy_id.clone())),
         }
     }
 

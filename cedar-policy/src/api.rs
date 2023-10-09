@@ -1722,9 +1722,9 @@ impl PolicySet {
     }
 
     /// Remove a static `Policy` from the `PolicySet`
-    pub fn remove(&mut self, policy_id: PolicyId) -> Result<(), PolicySetError> {
+    pub fn remove(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
         match self.policies.remove(&policy_id) {
-            Some(_) => Ok(()),
+            Some(p) => Ok(p),
             None => Err(PolicySetError::RemovePolicyError(policy_id)),
         }
     }
@@ -1737,10 +1737,10 @@ impl PolicySet {
         Ok(())
     }
 
-    /// Remove a `Template` from the `PolicySet`. All policies linked with this template will
-    pub fn remove_template(&mut self, template_id: PolicyId) -> Result<(), PolicySetError> {
+    /// Remove a `Template` from the `PolicySet`. All policies linked with this template will also be removed.
+    pub fn remove_template(&mut self, template_id: PolicyId) -> Result<Template, PolicySetError> {
         match self.templates.remove(&template_id) {
-            Some(_) => Ok(()),
+            Some(t) => Ok(t),
             None => Err(PolicySetError::RemoveTemplateError(template_id)),
         }
     }
@@ -1877,10 +1877,21 @@ impl PolicySet {
     }
 
     /// Unlink a dynamic policy from the policy set
-    pub fn unlink(&mut self, policy_id: PolicyId) -> Result<(), PolicySetError> {
-        match self.policies.remove(&policy_id) {
-            Some(_) => Ok(()),
-            None => Err(PolicySetError::UnlinkingError(policy_id)),
+    pub fn unlink(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
+        let policy = match self.policies.remove(&policy_id) {
+            Some(p) => p,
+            None => return Err(PolicySetError::UnlinkingError(policy_id)),
+        };
+        match self
+            .ast
+            .unlink(&ast::PolicyID::from_string(policy_id.to_string()))
+        {
+            Ok(_) => Ok(policy),
+            Err(_) => {
+                //PANIC SAFETY: We just found the policy in self.policies. If self.policies
+                // and self.ast disagree, authorization cannot be trusted.
+                panic!("Found linked policy in self.policies but not in self.ast")
+            }
         }
     }
 
@@ -3767,10 +3778,60 @@ mod policy_set_tests {
 
     #[test]
     fn policyset_remove() {
+        let authorizer = Authorizer::new();
+        let request = Request::new(
+            Some(EntityUid::from_strs("Test", "test")),
+            Some(EntityUid::from_strs("Action", "a")),
+            Some(EntityUid::from_strs("Resource", "b")),
+            Context::empty(),
+        );
+
+        let e = r#"[
+            {
+                "uid": {"type":"Test","id":"test"},
+                "attrs": {},
+                "parents": []
+            },
+            {
+                "uid": {"type":"Action","id":"a"},
+                "attrs": {},
+                "parents": []
+            },
+            {
+                "uid": {"type":"Resource","id":"b"},
+                "attrs": {},
+                "parents": []
+            }
+        ]"#;
+        let entities = Entities::from_json_str(e, None).expect("entity error");
+
         let mut pset = PolicySet::new();
         let static_policy = Policy::parse(Some("id".into()), "permit(principal,action,resource);")
             .expect("Failed to parse");
         pset.add(static_policy).expect("Failed to add");
+
+        //Allow
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_matches!(
+            response,
+            Response {
+                decision: Decision::Allow,
+                diagnostics: _
+            }
+        );
+
+        pset.remove(PolicyId::from_str("id").unwrap())
+            .expect("Failed to remove static policy");
+
+        //Denied
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_matches!(
+            response,
+            Response {
+                decision: Decision::Deny,
+                diagnostics: _
+            }
+        );
 
         let template = Template::parse(
             Some("t".into()),
@@ -3780,7 +3841,7 @@ mod policy_set_tests {
         pset.add_template(template).expect("Failed to add");
 
         let env1: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test1"))).collect();
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
         pset.link(
             PolicyId::from_str("t").unwrap(),
             PolicyId::from_str("link").unwrap(),
@@ -3790,9 +3851,6 @@ mod policy_set_tests {
 
         pset.remove_template(PolicyId::from_str("t").unwrap())
             .expect("Failed to remove policy template");
-
-        pset.remove(PolicyId::from_str("id").unwrap())
-            .expect("Failed to remove static policy");
     }
 
     #[test]
@@ -3959,14 +4017,26 @@ mod policy_set_tests {
 
         // Allowed
         let response = authorizer.is_authorized(&request, &pset, &entities);
-        assert_matches!(response, Response{decision: Decision::Allow, diagnostics: _});
+        assert_matches!(
+            response,
+            Response {
+                decision: Decision::Allow,
+                diagnostics: _
+            }
+        );
 
         let result = pset.unlink(linked_policy_id.clone());
         assert_matches!(result, Ok(()));
 
         //Denied
         let response = authorizer.is_authorized(&request, &pset, &entities);
-        assert_matches!(response, Response{decision: Decision::Allow, diagnostics: _});
+        assert_matches!(
+            response,
+            Response {
+                decision: Decision::Deny,
+                diagnostics: _
+            }
+        );
 
         let result = pset.unlink(linked_policy_id.clone());
         assert_matches!(result, Err(PolicySetError::UnlinkingError(_)));
