@@ -1609,9 +1609,12 @@ pub enum PolicySetError {
     /// Error when removing a policy
     #[error("unable to remove static policy: {0} because it does not exist")]
     RemovePolicyError(PolicyId),
-    /// Error when removing a template
+    /// Error when removing a template that doesn't exist
     #[error("unable to remove policy template: {0} because it does not exist")]
     RemoveTemplateError(PolicyId),
+    /// Error when removing a template with active links
+    #[error("unable to remove policy template: {0} because it has active links")]
+    RemoveTemplateWithActiveLinksError(PolicyId),
     /// Error when unlinking a template
     #[error("unable to unlink policy template: {0} because it does not exist")]
     UnlinkingError(PolicyId),
@@ -1723,9 +1726,8 @@ impl PolicySet {
 
     /// Remove a static `Policy` from the `PolicySet`
     pub fn remove(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
-        let policy = match self.policies.remove(&policy_id) {
-            Some(p) => p,
-            None => return Err(PolicySetError::RemovePolicyError(policy_id)),
+        let Some(policy) = self.policies.remove(&policy_id) else {
+            return Err(PolicySetError::RemovePolicyError(policy_id));
         };
         match self
             .ast
@@ -1753,16 +1755,21 @@ impl PolicySet {
     /// This involves an expensive scan over all linked policies to see if they are linked to the template
     /// If any policy is linked to the template, this will error
     pub fn remove_template(&mut self, template_id: PolicyId) -> Result<Template, PolicySetError> {
-        let template = match self.templates.remove(&template_id) {
-            Some(t) => t,
-            None => return Err(PolicySetError::RemoveTemplateError(template_id)),
+        let Some(template) = self.templates.remove(&template_id) else {
+            return Err(PolicySetError::RemoveTemplateError(template_id));
         };
         match self
             .ast
             .remove_template(&ast::PolicyID::from_string(template_id.to_string()))
         {
             Ok(_) => Ok(template),
-            Err(_) => {
+            Err(ast::PolicySetTemplateRemovalError::RemoveTemplateWithLinksError(_)) => {
+                self.templates.insert(template_id.clone(), template);
+                Err(PolicySetError::RemoveTemplateWithActiveLinksError(
+                    template_id,
+                ))
+            }
+            Err(ast::PolicySetTemplateRemovalError::RemovePolicyNoTemplateError(_)) => {
                 self.templates.insert(template_id.clone(), template);
                 Err(PolicySetError::RemoveTemplateError(template_id))
             }
@@ -1902,9 +1909,8 @@ impl PolicySet {
 
     /// Unlink a dynamic policy from the policy set
     pub fn unlink(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
-        let policy = match self.policies.remove(&policy_id) {
-            Some(p) => p,
-            None => return Err(PolicySetError::UnlinkingError(policy_id)),
+        let Some(policy) = self.policies.remove(&policy_id) else {
+            return Err(PolicySetError::UnlinkingError(policy_id));
         };
         match self
             .ast
@@ -1912,8 +1918,8 @@ impl PolicySet {
         {
             Ok(_) => Ok(policy),
             Err(_) => {
-                //PANIC SAFETY: We just found the policy in self.policies. If self.policies
-                // and self.ast disagree, authorization cannot be trusted.
+                // If self.policies and self.ast disagree, authorization cannot be trusted.
+                // PANIC SAFETY: We just found the policy in self.policies.
                 panic!("Found linked policy in self.policies but not in self.ast")
             }
         }
@@ -3929,7 +3935,7 @@ mod policy_set_tests {
         //Can't remove template that is still linked
         assert_matches!(
             pset.remove_template(PolicyId::from_str("t").unwrap()),
-            Err(PolicySetError::RemoveTemplateError(_))
+            Err(PolicySetError::RemoveTemplateWithActiveLinksError(_))
         );
 
         //Unlink first, then remove

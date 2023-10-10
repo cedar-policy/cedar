@@ -96,20 +96,40 @@ pub enum PolicySetError {
     },
 }
 
-/// Potential errors when working with `PolicySet`s.
+/// Potential errors when unlinking from a `PolicySet`.
 #[derive(Error, Debug)]
-pub enum PolicySetRemovalError {
+pub enum PolicySetUnlinkError {
     /// There was no [`PolicyID`] linked policy to unlink
     #[error("unable to unlink policy id `{0}` because it does not exist")]
     UnlinkingError(PolicyID),
-    /// There was no [`PolicyID`] static policy in the list of templates.
+}
+
+/// Potential errors when removing templates from a `PolicySet`.
+#[derive(Error, Debug)]
+pub enum PolicySetTemplateRemovalError {
+    /// There was no [`PolicyID`] template in the list of templates.
     #[error(
         "unable to remove static policy id `{0}` from template list because it does not exist"
     )]
     RemovePolicyNoTemplateError(PolicyID),
+    /// There are still active links to template [`PolicyID`].
+    #[error(
+        "unable to remove template id `{0}` from template list because it still has active links"
+    )]
+    RemoveTemplateWithLinksError(PolicyID),
+}
+
+/// Potential errors when removing policies from a `PolicySet`.
+#[derive(Error, Debug)]
+pub enum PolicySetPolicyRemovalError {
     /// There was no link [`PolicyID`] in the list of links.
     #[error("unable to remove static policy id `{0}` from link list because it does not exist")]
     RemovePolicyNoLinkError(PolicyID),
+    /// There was no template [`PolicyID`] in the list of templates.
+    #[error(
+        "unable to remove static policy id `{0}` from template list because it does not exist"
+    )]
+    RemovePolicyNoTemplateError(PolicyID),
 }
 
 // The public interface of `PolicySet` is intentionally narrow, to allow us
@@ -165,13 +185,13 @@ impl PolicySet {
     }
 
     /// Remove a `Policy`` from the `PolicySet`.
-    pub fn remove(&mut self, policy_id: &PolicyID) -> Result<Policy, PolicySetRemovalError> {
+    pub fn remove(&mut self, policy_id: &PolicyID) -> Result<Policy, PolicySetPolicyRemovalError> {
         // Invariant: if `policy_id` is a key in both `self.links` and `self.templates`,
         // then self.templates[policy_id] has exactly one link: self.links[policy_id]
         let policy = match self.links.remove(policy_id) {
             Some(p) => p,
             None => {
-                return Err(PolicySetRemovalError::RemovePolicyNoLinkError(
+                return Err(PolicySetPolicyRemovalError::RemovePolicyNoLinkError(
                     policy_id.clone(),
                 ))
             }
@@ -182,7 +202,7 @@ impl PolicySet {
                 //If we removed the link but failed to remove the template
                 //restore the link and return an error
                 self.links.insert(policy_id.clone(), policy);
-                Err(PolicySetRemovalError::RemovePolicyNoTemplateError(
+                Err(PolicySetPolicyRemovalError::RemovePolicyNoTemplateError(
                     policy_id.clone(),
                 ))
             }
@@ -234,20 +254,20 @@ impl PolicySet {
     pub fn remove_template(
         &mut self,
         policy_id: &PolicyID,
-    ) -> Result<Template, PolicySetRemovalError> {
+    ) -> Result<Template, PolicySetTemplateRemovalError> {
         if self
             .links
             .iter()
             .any(|(_, p)| p.template().id().eq(policy_id))
         {
-            return Err(PolicySetRemovalError::RemovePolicyNoTemplateError(
+            return Err(PolicySetTemplateRemovalError::RemoveTemplateWithLinksError(
                 policy_id.clone(),
             ));
         }
 
         match self.templates.remove(policy_id) {
             Some(t) => Ok((*t).clone()),
-            None => Err(PolicySetRemovalError::RemovePolicyNoTemplateError(
+            None => Err(PolicySetTemplateRemovalError::RemovePolicyNoTemplateError(
                 policy_id.clone(),
             )),
         }
@@ -289,10 +309,10 @@ impl PolicySet {
     }
 
     /// Unlink `policy_id`
-    pub fn unlink(&mut self, policy_id: &PolicyID) -> Result<Policy, PolicySetRemovalError> {
+    pub fn unlink(&mut self, policy_id: &PolicyID) -> Result<Policy, PolicySetUnlinkError> {
         match self.links.remove(policy_id) {
             Some(p) => Ok(p),
-            None => Err(PolicySetRemovalError::UnlinkingError(policy_id.clone())),
+            None => Err(PolicySetUnlinkError::UnlinkingError(policy_id.clone())),
         }
     }
 
