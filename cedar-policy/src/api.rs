@@ -1723,9 +1723,21 @@ impl PolicySet {
 
     /// Remove a static `Policy` from the `PolicySet`
     pub fn remove(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
-        match self.policies.remove(&policy_id) {
-            Some(p) => Ok(p),
-            None => Err(PolicySetError::RemovePolicyError(policy_id)),
+        let policy = match self.policies.remove(&policy_id) {
+            Some(p) => p,
+            None => return Err(PolicySetError::RemovePolicyError(policy_id)),
+        };
+        match self
+            .ast
+            .remove(&ast::PolicyID::from_string(policy_id.to_string()))
+        {
+            Ok(_) => Ok(policy),
+            Err(_e) => {
+                //This should be unreachable.
+                debug_assert!(false);
+                self.policies.insert(policy_id.clone(), policy);
+                Err(PolicySetError::RemovePolicyError(policy_id))
+            }
         }
     }
 

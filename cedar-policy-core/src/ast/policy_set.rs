@@ -99,10 +99,17 @@ pub enum PolicySetError {
 /// Potential errors when working with `PolicySet`s.
 #[derive(Error, Debug)]
 pub enum PolicySetRemovalError {
-    /// There was no [`PolicyID`] encountered in either the set of
-    /// templates or the set of policies.
+    /// There was no [`PolicyID`] linked policy to unlink
     #[error("unable to unlink policy id `{0}` because it does not exist")]
     UnlinkingError(PolicyID),
+    /// There was no [`PolicyID`] static policy in the list of templates.
+    #[error(
+        "unable to remove static policy id `{0}` from template list because it does not exist"
+    )]
+    RemovePolicyNoTemplateError(PolicyID),
+    /// There was no link [`PolicyID`] in the list of links.
+    #[error("unable to remove static policy id `{0}` from link list because it does not exist")]
+    RemovePolicyNoLinkError(PolicyID),
 }
 
 // The public interface of `PolicySet` is intentionally narrow, to allow us
@@ -155,6 +162,31 @@ impl PolicySet {
         }
 
         Ok(())
+    }
+
+    /// Remove a `Policy`` from the `PolicySet`.
+    pub fn remove(&mut self, policy_id: &PolicyID) -> Result<Policy, PolicySetRemovalError> {
+        // Invariant: if `policy_id` is a key in both `self.links` and `self.templates`,
+        // then self.templates[policy_id] has exactly one link: self.links[policy_id]
+        let policy = match self.links.remove(policy_id) {
+            Some(p) => p,
+            None => {
+                return Err(PolicySetRemovalError::RemovePolicyNoLinkError(
+                    policy_id.clone(),
+                ))
+            }
+        };
+        match self.templates.remove(policy_id) {
+            Some(_) => Ok(policy), //links mapped by `PolicyId`, so `policy` is unique
+            None => {
+                //If we removed the link but failed to remove the template
+                //restore the link and return an error
+                self.links.insert(policy_id.clone(), policy);
+                Err(PolicySetRemovalError::RemovePolicyNoTemplateError(
+                    policy_id.clone(),
+                ))
+            }
+        }
     }
 
     /// Add a `StaticPolicy` to the `PolicySet`.
