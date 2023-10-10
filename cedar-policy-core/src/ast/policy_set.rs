@@ -228,6 +228,31 @@ impl PolicySet {
         }
     }
 
+    /// Remove a template from the policy set.
+    /// This involves an expensive scan over all linked policies to see if they are linked to the template
+    /// If any policy is linked to the template, this will error
+    pub fn remove_template(
+        &mut self,
+        policy_id: &PolicyID,
+    ) -> Result<Template, PolicySetRemovalError> {
+        if self
+            .links
+            .iter()
+            .any(|(_, p)| p.template().id().eq(policy_id))
+        {
+            return Err(PolicySetRemovalError::RemovePolicyNoTemplateError(
+                policy_id.clone(),
+            ));
+        }
+
+        match self.templates.remove(policy_id) {
+            Some(t) => Ok((*t).clone()),
+            None => Err(PolicySetRemovalError::RemovePolicyNoTemplateError(
+                policy_id.clone(),
+            )),
+        }
+    }
+
     /// Attempt to create a new template linked policy and add it to the policy
     /// set. Returns a references to the new template linked policy if
     /// successful.
