@@ -94,7 +94,12 @@ impl Entities {
             None => match self.mode {
                 Mode::Concrete => Dereference::NoSuchEntity,
                 #[cfg(feature = "partial-eval")]
-                Mode::Partial => Dereference::Residual(Expr::unknown(format!("{uid}"))),
+                Mode::Partial => Dereference::Residual(Expr::unknown_with_type(
+                    format!("{uid}"),
+                    Some(Type::Entity {
+                        ty: uid.entity_type().clone(),
+                    }),
+                )),
             },
         }
     }

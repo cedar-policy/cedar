@@ -1823,6 +1823,34 @@ impl PolicySet {
         Ok(())
     }
 
+    /// Get all the unknown entities from the policy set
+    #[cfg(feature = "partial-eval")]
+    pub fn unknown_entities(&self) -> HashSet<EntityUid> {
+        let mut entity_uids = HashSet::new();
+        for policy in self.policies.values() {
+            let ids: Vec<EntityUid> = policy
+                .ast
+                .condition()
+                .unknowns()
+                .filter_map(|expr| match expr.expr_kind() {
+                    ast::ExprKind::Unknown {
+                        name,
+                        type_annotation,
+                    } => {
+                        if matches!(type_annotation, Some(ast::Type::Entity { .. })) {
+                            EntityUid::from_str(name.as_str()).ok()
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                })
+                .collect();
+            entity_uids.extend(ids);
+        }
+        entity_uids
+    }
+
     /// Create a `PolicySet` from its AST representation only. The EST will
     /// reflect the AST structure. When possible, don't use this method and
     /// create the ESTs from the policy text or CST instead, as the conversion
@@ -3798,6 +3826,27 @@ mod policy_set_tests {
                 LinkingError::NoSuchTemplate { .. }
             ))
         );
+    }
+
+    #[cfg(feature = "partial-eval")]
+    #[test]
+    fn unknown_entities() {
+        let ast = ast::Policy::from_when_clause(
+            ast::Effect::Permit,
+            ast::Expr::unknown_with_type(
+                "test_entity_type::\"unknown\"",
+                Some(ast::Type::Entity {
+                    ty: ast::EntityType::Concrete("test_entity_type".parse().unwrap()),
+                }),
+            ),
+            ast::PolicyID::from_smolstr("static".into()),
+        );
+        let static_policy = Policy::from_ast(ast);
+        let mut pset = PolicySet::new();
+        pset.add(static_policy).unwrap();
+
+        let entity_uids = pset.unknown_entities();
+        entity_uids.contains(&"test_entity_type::\"unknown\"".parse().unwrap());
     }
 }
 
