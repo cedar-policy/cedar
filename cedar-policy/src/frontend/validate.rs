@@ -38,7 +38,7 @@ fn validate(call: &ValidateCall) -> Result<ValidateAnswer, String> {
                 parse_errors.extend(
                     policy_set_parse_errs
                         .into_iter()
-                        .map(|pe| format!("{pe:?}")),
+                        .map(|pe| format!("{pe}")),
                 );
             }
         },
