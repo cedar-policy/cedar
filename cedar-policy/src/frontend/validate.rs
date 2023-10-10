@@ -38,7 +38,7 @@ fn validate(call: &ValidateCall) -> Result<ValidateAnswer, String> {
                 parse_errors.extend(
                     policy_set_parse_errs
                         .into_iter()
-                        .map(|pe| format!("{pe}")),
+                        .map(|pe| format!("parse error in policy: {pe}")),
                 );
             }
         },
@@ -68,7 +68,7 @@ fn validate(call: &ValidateCall) -> Result<ValidateAnswer, String> {
         .schema
         .clone()
         .try_into()
-        .map_err(|e| format!("couldn't construct schema - {e}"))?;
+        .map_err(|e| format!("could not construct schema: {e}"))?;
     let validator = Validator::new(schema);
 
     let notes: Vec<ValidationNote> = validator
