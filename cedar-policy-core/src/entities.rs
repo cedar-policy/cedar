@@ -27,6 +27,8 @@ use std::fmt::Write;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
+mod conformance;
+pub use conformance::EntitySchemaConformanceError;
 mod err;
 pub use err::*;
 mod json;

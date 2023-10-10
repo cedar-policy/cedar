@@ -20,7 +20,9 @@ use super::{
     ValueParser,
 };
 use crate::ast::{Entity, EntityType, EntityUID, RestrictedExpr};
-use crate::entities::{unwrap_or_clone, Entities, EntitiesError, TCComputation};
+use crate::entities::{
+    unwrap_or_clone, Entities, EntitiesError, EntitySchemaConformanceError, TCComputation,
+};
 use crate::extensions::Extensions;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -267,10 +269,12 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                     if ejson.attrs.contains_key(&required_attr) {
                         // all good
                     } else {
-                        return Err(JsonDeserializationError::MissingRequiredEntityAttr {
-                            uid,
-                            attr: required_attr,
-                        });
+                        return Err(JsonDeserializationError::EntitySchemaConformance(
+                            EntitySchemaConformanceError::MissingRequiredEntityAttr {
+                                uid,
+                                attr: required_attr,
+                            },
+                        ));
                     }
                 }
             }
@@ -296,10 +300,12 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                         // `None` indicates the attribute shouldn't exist -- see
                         // docs on the `attr_type()` trait method
                         None => {
-                            return Err(JsonDeserializationError::UnexpectedEntityAttr {
-                                uid: uid.clone(),
-                                attr: k,
-                            })
+                            return Err(JsonDeserializationError::EntitySchemaConformance(
+                                EntitySchemaConformanceError::UnexpectedEntityAttr {
+                                    uid: uid.clone(),
+                                    attr: k,
+                                },
+                            ))
                         }
                         Some(expected_ty) => (
                             vparser.val_into_rexpr(v, Some(&expected_ty), || {
@@ -326,14 +332,14 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                     if actual_ty.is_consistent_with(&expected_ty) {
                         Ok((k, rexpr))
                     } else {
-                        Err(JsonDeserializationError::TypeMismatch {
-                            ctx: Box::new(JsonDeserializationErrorContext::EntityAttribute {
+                        Err(JsonDeserializationError::EntitySchemaConformance(
+                            EntitySchemaConformanceError::TypeMismatch {
                                 uid: uid.clone(),
                                 attr: k,
-                            }),
-                            expected: Box::new(expected_ty),
-                            actual: Box::new(actual_ty),
-                        })
+                                expected: Box::new(expected_ty),
+                                actual: Box::new(actual_ty),
+                            },
+                        ))
                     }
                 }
                 EntitySchemaInfo::Action(action) => {
@@ -405,13 +411,12 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                     if desc.allowed_parent_types().contains(parent_type) {
                         Ok(())
                     } else {
-                        Err(JsonDeserializationError::InvalidParentType {
-                            ctx: Box::new(JsonDeserializationErrorContext::EntityParents {
+                        Err(JsonDeserializationError::EntitySchemaConformance(
+                            EntitySchemaConformanceError::InvalidParentType {
                                 uid: uid.clone(),
-                            }),
-                            uid: uid.clone(),
-                            parent_ty: Box::new(parent_type.clone()),
-                        })
+                                parent_ty: Box::new(parent_type.clone()),
+                            },
+                        ))
                     }
                 }
             }

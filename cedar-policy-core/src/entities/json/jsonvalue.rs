@@ -21,7 +21,7 @@ use super::{
 use crate::ast::{
     BorrowedRestrictedExpr, Eid, EntityUID, Expr, ExprKind, Literal, Name, RestrictedExpr,
 };
-use crate::entities::EscapeKind;
+use crate::entities::{EntitySchemaConformanceError, EscapeKind};
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use crate::FromNormalizedStr;
 use serde::{Deserialize, Serialize};
@@ -348,14 +348,31 @@ impl<'e> ValueParser<'e> {
                         .map(|element| self.val_into_rexpr(element, Some(element_ty), ctx.clone()))
                         .collect::<Result<Vec<RestrictedExpr>, JsonDeserializationError>>()?,
                 )),
-                _ => Err(JsonDeserializationError::TypeMismatch {
-                    ctx: Box::new(ctx()),
-                    expected: Box::new(expected_ty.clone()),
-                    actual: {
+                _ => {
+                    let expected = Box::new(expected_ty.clone());
+                    let actual = {
                         let jvalue: JSONValue = serde_json::from_value(val)?;
-                        Box::new(self.type_of_rexpr(jvalue.into_expr()?.as_borrowed(), ctx)?)
-                    },
-                }),
+                        Box::new(
+                            self.type_of_rexpr(jvalue.into_expr()?.as_borrowed(), ctx.clone())?,
+                        )
+                    };
+                    match ctx() {
+                        JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
+                            Err(JsonDeserializationError::EntitySchemaConformance(
+                                EntitySchemaConformanceError::TypeMismatch {
+                                    uid,
+                                    attr,
+                                    expected,
+                                    actual,
+                                },
+                            ))
+                        }
+                        JsonDeserializationErrorContext::Context => {
+                            Err(JsonDeserializationError::ContextTypeMismatch { expected, actual })
+                        }
+                        ctx => panic!("type mismatches can only occur in entity attributes or in context, but somehow found one {ctx}"),
+                    }
+                }
             },
             // The expected type is a record type. No special parsing rules
             // apply, but we need to parse the attribute values according to
@@ -396,14 +413,24 @@ impl<'e> ValueParser<'e> {
                     }
                     Ok(RestrictedExpr::record(rexpr_pairs))
                 }
-                _ => Err(JsonDeserializationError::TypeMismatch {
-                    ctx: Box::new(ctx()),
-                    expected: Box::new(expected_ty.clone()),
-                    actual: {
+                _ => {
+                    let expected = Box::new(expected_ty.clone());
+                    let actual = {
                         let jvalue: JSONValue = serde_json::from_value(val)?;
-                        Box::new(self.type_of_rexpr(jvalue.into_expr()?.as_borrowed(), ctx)?)
-                    },
-                }),
+                        Box::new(
+                            self.type_of_rexpr(jvalue.into_expr()?.as_borrowed(), ctx.clone())?,
+                        )
+                    };
+                    match ctx() {
+                        JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
+                            Err(JsonDeserializationError::EntitySchemaConformance(EntitySchemaConformanceError::TypeMismatch { uid, attr, expected, actual }))
+                        }
+                        JsonDeserializationErrorContext::Context => {
+                            Err(JsonDeserializationError::ContextTypeMismatch { expected, actual })
+                        }
+                        ctx => panic!("type mismatches can only occur in entity attributes or in context, but somehow found one {ctx}")
+                    }
+                }
             },
             // The expected type is any other type. No special parsing rules apply,
             // and we treat this exactly as the non-schema-based-parsing case.
@@ -503,12 +530,19 @@ impl<'e> ValueParser<'e> {
                         let conflicting_ty = element_types.find(|ty| !matches_element_ty(ty));
                         match conflicting_ty {
                             None => Ok(SchemaType::Set { element_ty: Box::new(element_ty) }),
-                            Some(Ok(conflicting_ty)) =>
-                                Err(JsonDeserializationError::HeterogeneousSet {
-                                    ctx: Box::new(ctx()),
-                                    ty1: Box::new(element_ty),
-                                    ty2: Box::new(conflicting_ty),
-                                }),
+                            Some(Ok(conflicting_ty)) => {
+                                    let ty1 = Box::new(element_ty);
+                                    let ty2 = Box::new(conflicting_ty);
+                                    match ctx() {
+                                        JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
+                                            Err(JsonDeserializationError::EntitySchemaConformance(EntitySchemaConformanceError::HeterogeneousSet { uid, attr, ty1, ty2 }))
+                                        }
+                                        JsonDeserializationErrorContext::Context => {
+                                            Err(JsonDeserializationError::ContextHeterogeneousSet { ty1, ty2 })
+                                        }
+                                        ctx => panic!("heterogeneous sets can only occur in entity attributes or in context, but somehow found one {ctx}")
+                                    }
+                            }
                             Some(Err(e)) => Err(e),
                         }
                     }

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use super::EntityUID;
+use super::{EntitySchemaConformanceError, EntityUID};
 use crate::transitive_closure;
 use thiserror::Error;
 
