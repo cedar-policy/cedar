@@ -1729,16 +1729,16 @@ impl PolicySet {
         let Some(policy) = self.policies.remove(&policy_id) else {
             return Err(PolicySetError::RemovePolicyError(policy_id));
         };
+        // If self.policies and self.ast disagree, authorization cannot be trusted.
+        // PANIC SAFETY: We just found the policy in self.policies.
+        #[allow(clippy::panic)]
         match self
             .ast
             .remove(&ast::PolicyID::from_string(policy_id.to_string()))
         {
             Ok(_) => Ok(policy),
             Err(_) => {
-                //This should be unreachable.
-                debug_assert!(false);
-                self.policies.insert(policy_id.clone(), policy);
-                Err(PolicySetError::RemovePolicyError(policy_id))
+                panic!("Found static policy in self.policies but not in self.ast");
             }
         }
     }
@@ -1752,12 +1752,14 @@ impl PolicySet {
     }
 
     /// Remove a `Template` from the `PolicySet`.
-    /// This involves an expensive scan over all linked policies to see if they are linked to the template
     /// If any policy is linked to the template, this will error
     pub fn remove_template(&mut self, template_id: PolicyId) -> Result<Template, PolicySetError> {
         let Some(template) = self.templates.remove(&template_id) else {
             return Err(PolicySetError::RemoveTemplateError(template_id));
         };
+        // If self.templates and self.ast disagree, authorization cannot be trusted.
+        // PANIC SAFETY: We just found the policy in self.templates.
+        #[allow(clippy::panic)]
         match self
             .ast
             .remove_template(&ast::PolicyID::from_string(template_id.to_string()))
@@ -1770,9 +1772,23 @@ impl PolicySet {
                 ))
             }
             Err(ast::PolicySetTemplateRemovalError::RemovePolicyNoTemplateError(_)) => {
-                self.templates.insert(template_id.clone(), template);
-                Err(PolicySetError::RemoveTemplateError(template_id))
+                panic!("Found template policy in self.templates but not in self.ast");
             }
+        }
+    }
+
+    /// Get policies linked to a `Template` in the `PolicySet`.
+    /// If any policy is linked to the template, this will error
+    pub fn get_linked_policies(
+        &mut self,
+        template_id: PolicyId,
+    ) -> Result<Vec<PolicyId>, PolicySetError> {
+        match self
+            .ast
+            .get_linked_policies(&ast::PolicyID::from_string(template_id.to_string()))
+        {
+            Ok(v) => Ok(v.iter().map(|id| PolicyId((*id).clone())).collect()),
+            Err(_) => Err(PolicySetError::RemoveTemplateError(template_id)),
         }
     }
 
@@ -1912,14 +1928,15 @@ impl PolicySet {
         let Some(policy) = self.policies.remove(&policy_id) else {
             return Err(PolicySetError::UnlinkingError(policy_id));
         };
+        // If self.policies and self.ast disagree, authorization cannot be trusted.
+        // PANIC SAFETY: We just found the policy in self.policies.
+        #[allow(clippy::panic)]
         match self
             .ast
             .unlink(&ast::PolicyID::from_string(policy_id.to_string()))
         {
             Ok(_) => Ok(policy),
-            Err(_) => {
-                // If self.policies and self.ast disagree, authorization cannot be trusted.
-                // PANIC SAFETY: We just found the policy in self.policies.
+            Err(ast::PolicySetUnlinkError::UnlinkingError(_)) => {
                 panic!("Found linked policy in self.policies but not in self.ast")
             }
         }

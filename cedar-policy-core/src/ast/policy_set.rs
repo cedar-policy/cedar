@@ -20,7 +20,7 @@ use super::{
 };
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::{borrow::Borrow, sync::Arc};
 use thiserror::Error;
 
@@ -39,6 +39,11 @@ pub struct PolicySet {
     ///   (this is managed by `PolicySet::add)
     /// A `Template` may have zero or many links
     links: HashMap<PolicyID, Policy>,
+
+    /// Map from a template `PolicyID`` to the set of `PolicyID`s in `links` that are linked to that template.
+    /// There is a key `t` iff `templates` contains the key `t`. The value of `t` will be a (possibly empty)
+    /// set of every `p` in `links` s.t. `p.template().id() == t`.
+    template_to_links_map: HashMap<PolicyID, HashSet<PolicyID>>,
 }
 
 /// Converts a LiteralPolicySet into a PolicySet, ensuring the invariants are met
@@ -57,7 +62,24 @@ impl TryFrom<LiteralPolicySet> for PolicySet {
             .into_iter()
             .map(|(id, literal)| literal.reify(&templates).map(|linked| (id, linked)))
             .collect::<Result<HashMap<PolicyID, Policy>, ReificationError>>()?;
-        Ok(Self { templates, links })
+
+        let mut template_to_links_map = HashMap::new();
+        for template in &templates {
+            template_to_links_map.insert(template.0.clone(), HashSet::new());
+        }
+        for linked_policy in &links {
+            let template = linked_policy.1.template().id();
+            match template_to_links_map.entry(template.clone()) {
+                Entry::Occupied(t) => t.into_mut().insert(linked_policy.0.clone()),
+                Entry::Vacant(_) => return Err(ReificationError::NoSuchTemplate(template.clone())),
+            };
+        }
+
+        Ok(Self {
+            templates,
+            links,
+            template_to_links_map,
+        })
     }
 }
 
@@ -94,6 +116,14 @@ pub enum PolicySetError {
         /// [`PolicyID`] that was duplicate
         id: PolicyID,
     },
+}
+
+/// Potential errors when working with `PolicySet`s.
+#[derive(Error, Debug)]
+pub enum PolicySetGetLinksError {
+    /// There was no [`PolicyID`] in the set of templates.
+    #[error("No template `{0}`")]
+    MissingTemplate(PolicyID),
 }
 
 /// Potential errors when unlinking from a `PolicySet`.
@@ -140,6 +170,7 @@ impl PolicySet {
         Self {
             templates: HashMap::new(),
             links: HashMap::new(),
+            template_to_links_map: HashMap::new(),
         }
     }
 
@@ -175,7 +206,19 @@ impl PolicySet {
         // if we get here, there will be no errors.  So actually do the
         // insertions.
         if let Some(ventry) = template_ventry {
+            self.template_to_links_map.insert(
+                t.id().clone(),
+                vec![policy.id().clone()]
+                    .into_iter()
+                    .collect::<HashSet<PolicyID>>(),
+            );
             ventry.insert(t);
+        } else {
+            //`template_ventry` is None, so `templates` has `t` and we never use the `HashSet::new()`
+            self.template_to_links_map
+                .entry(t.id().clone())
+                .or_insert_with(|| HashSet::new())
+                .insert(policy.id().clone());
         }
         if let Some(ventry) = link_ventry {
             ventry.insert(policy);
@@ -196,8 +239,12 @@ impl PolicySet {
                 ))
             }
         };
+        //links mapped by `PolicyId`, so `policy` is unique
         match self.templates.remove(policy_id) {
-            Some(_) => Ok(policy), //links mapped by `PolicyId`, so `policy` is unique
+            Some(_) => {
+                self.template_to_links_map.remove(policy_id);
+                Ok(policy)
+            }
             None => {
                 //If we removed the link but failed to remove the template
                 //restore the link and return an error
@@ -220,6 +267,12 @@ impl PolicySet {
             self.links.entry(t.id().clone()),
         ) {
             (Entry::Vacant(templates_entry), Entry::Vacant(links_entry)) => {
+                self.template_to_links_map.insert(
+                    t.id().clone(),
+                    vec![p.id().clone()]
+                        .into_iter()
+                        .collect::<HashSet<PolicyID>>(),
+                );
                 templates_entry.insert(t);
                 links_entry.insert(p);
                 Ok(())
@@ -242,6 +295,8 @@ impl PolicySet {
                 id: oentry.key().clone(),
             }),
             Entry::Vacant(ventry) => {
+                self.template_to_links_map
+                    .insert(t.id().clone(), HashSet::new());
                 ventry.insert(Arc::new(t));
                 Ok(())
             }
@@ -249,27 +304,46 @@ impl PolicySet {
     }
 
     /// Remove a template from the policy set.
-    /// This involves an expensive scan over all linked policies to see if they are linked to the template
     /// If any policy is linked to the template, this will error
     pub fn remove_template(
         &mut self,
         policy_id: &PolicyID,
     ) -> Result<Template, PolicySetTemplateRemovalError> {
-        if self
-            .links
-            .iter()
-            .any(|(_, p)| p.template().id().eq(policy_id))
-        {
-            return Err(PolicySetTemplateRemovalError::RemoveTemplateWithLinksError(
-                policy_id.clone(),
-            ));
-        }
+        match self.template_to_links_map.get(policy_id) {
+            Some(map) => {
+                if !map.is_empty() {
+                    return Err(PolicySetTemplateRemovalError::RemoveTemplateWithLinksError(
+                        policy_id.clone(),
+                    ));
+                }
+            }
+            None => {
+                return Err(PolicySetTemplateRemovalError::RemovePolicyNoTemplateError(
+                    policy_id.clone(),
+                ))
+            }
+        };
 
+        // PANIC SAFETY: every linked policy should have a template
+        #[allow(clippy::panic)]
         match self.templates.remove(policy_id) {
-            Some(t) => Ok((*t).clone()),
-            None => Err(PolicySetTemplateRemovalError::RemovePolicyNoTemplateError(
-                policy_id.clone(),
-            )),
+            Some(t) => {
+                self.template_to_links_map.remove(policy_id);
+                Ok((*t).clone())
+            }
+            None => panic!("Found in template_to_links_map but not in templates"),
+        }
+    }
+
+    /// Get the list of policies linked to `template_id`.
+    /// Returns all p in `links` s.t. `p.template().id() == template_id`
+    pub fn get_linked_policies(
+        &mut self,
+        template_id: &PolicyID,
+    ) -> Result<Vec<&PolicyID>, PolicySetGetLinksError> {
+        match self.template_to_links_map.get(template_id) {
+            Some(s) => Ok(s.iter().collect_vec()),
+            None => Err(PolicySetGetLinksError::MissingTemplate(template_id.clone())),
         }
     }
 
@@ -296,9 +370,16 @@ impl PolicySet {
         // Both maps must not contain the `new_id`
         match (
             self.links.entry(new_id.clone()),
-            self.templates.entry(new_id),
+            self.templates.entry(new_id.clone()),
         ) {
-            (Entry::Vacant(links_entry), Entry::Vacant(_)) => Ok(links_entry.insert(r)),
+            (Entry::Vacant(links_entry), Entry::Vacant(_)) => {
+                //We will never use the HashSet::new() because we just found `t` above
+                self.template_to_links_map
+                    .entry(template_id)
+                    .or_insert_with(|| HashSet::new())
+                    .insert(new_id);
+                Ok(links_entry.insert(r))
+            }
             (Entry::Occupied(oentry), _) => Err(LinkingError::PolicyIdConflict {
                 id: oentry.key().clone(),
             }),
@@ -311,7 +392,17 @@ impl PolicySet {
     /// Unlink `policy_id`
     pub fn unlink(&mut self, policy_id: &PolicyID) -> Result<Policy, PolicySetUnlinkError> {
         match self.links.remove(policy_id) {
-            Some(p) => Ok(p),
+            Some(p) => {
+                // PANIC SAFETY: every linked policy should have a template
+                #[allow(clippy::panic)]
+                match self.template_to_links_map.entry(p.template().id().clone()) {
+                    Entry::Occupied(t) => t.into_mut().remove(policy_id),
+                    Entry::Vacant(_) => {
+                        panic!("No template found for linked policy")
+                    }
+                };
+                Ok(p)
+            }
             None => Err(PolicySetUnlinkError::UnlinkingError(policy_id.clone())),
         }
     }
