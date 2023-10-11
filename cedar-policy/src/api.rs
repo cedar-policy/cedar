@@ -1725,13 +1725,13 @@ impl PolicySet {
     }
 
     /// Remove a static `Policy` from the `PolicySet`
-    pub fn remove(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
+    pub fn remove_static(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
         let Some(policy) = self.policies.remove(&policy_id) else {
             return Err(PolicySetError::PolicyNonexistentError(policy_id));
         };
         match self
             .ast
-            .remove(&ast::PolicyID::from_string(policy_id.to_string()))
+            .remove_static(&ast::PolicyID::from_string(policy_id.to_string()))
         {
             Ok(_) => Ok(policy),
             Err(_) => {
@@ -3867,7 +3867,7 @@ mod policy_set_tests {
             }
         );
 
-        pset.remove(PolicyId::from_str("id").unwrap())
+        pset.remove_static(PolicyId::from_str("id").unwrap())
             .expect("Failed to remove static policy");
 
         //Deny
@@ -3908,7 +3908,7 @@ mod policy_set_tests {
         );
 
         assert_matches!(
-            pset.remove(PolicyId::from_str("t").unwrap()),
+            pset.remove_static(PolicyId::from_str("t").unwrap()),
             Err(PolicySetError::PolicyNonexistentError(_))
         );
 
@@ -3916,7 +3916,7 @@ mod policy_set_tests {
         assert_matches!(result, Ok(_));
 
         assert_matches!(
-            pset.remove(PolicyId::from_str("t").unwrap()),
+            pset.remove_static(PolicyId::from_str("t").unwrap()),
             Err(PolicySetError::PolicyNonexistentError(_))
         );
 
@@ -4296,18 +4296,18 @@ mod policy_set_tests {
         pset.add(static_policy).unwrap();
 
         //Can remove `policy`
-        pset.remove(PolicyId::from_str("policy").unwrap())
+        pset.remove_static(PolicyId::from_str("policy").unwrap())
             .expect("should be able to remove policy");
 
         //Cannot remove "linked"
         assert_matches!(
-            pset.remove(PolicyId::from_str("linked").unwrap()),
+            pset.remove_static(PolicyId::from_str("linked").unwrap()),
             Err(PolicySetError::PolicyNonexistentError(_))
         );
 
         //Cannot remove "template"
         assert_matches!(
-            pset.remove(PolicyId::from_str("template").unwrap()),
+            pset.remove_static(PolicyId::from_str("template").unwrap()),
             Err(PolicySetError::PolicyNonexistentError(_))
         );
 

@@ -227,8 +227,8 @@ impl PolicySet {
         Ok(())
     }
 
-    /// Remove a `Policy`` from the `PolicySet`.
-    pub fn remove(&mut self, policy_id: &PolicyID) -> Result<Policy, PolicySetPolicyRemovalError> {
+    /// Remove a static `Policy`` from the `PolicySet`.
+    pub fn remove_static(&mut self, policy_id: &PolicyID) -> Result<Policy, PolicySetPolicyRemovalError> {
         // Invariant: if `policy_id` is a key in both `self.links` and `self.templates`,
         // then self.templates[policy_id] has exactly one link: self.links[policy_id]
         let policy = match self.links.remove(policy_id) {
