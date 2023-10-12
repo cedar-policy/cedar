@@ -40,7 +40,7 @@ pub struct PolicySet {
     /// A `Template` may have zero or many links
     links: HashMap<PolicyID, Policy>,
 
-    /// Map from a template `PolicyID`` to the set of `PolicyID`s in `links` that are linked to that template.
+    /// Map from a template `PolicyID` to the set of `PolicyID`s in `links` that are linked to that template.
     /// There is a key `t` iff `templates` contains the key `t`. The value of `t` will be a (possibly empty)
     /// set of every `p` in `links` s.t. `p.template().id() == t`.
     template_to_links_map: HashMap<PolicyID, HashSet<PolicyID>>,
