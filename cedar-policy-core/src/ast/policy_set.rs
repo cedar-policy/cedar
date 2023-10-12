@@ -138,9 +138,7 @@ pub enum PolicySetUnlinkError {
 #[derive(Error, Debug)]
 pub enum PolicySetTemplateRemovalError {
     /// There was no [`PolicyID`] template in the list of templates.
-    #[error(
-        "unable to remove static policy id `{0}` from template list because it does not exist"
-    )]
+    #[error("unable to remove template id `{0}` from template list because it does not exist")]
     RemovePolicyNoTemplateError(PolicyID),
     /// There are still active links to template [`PolicyID`].
     #[error(
@@ -343,9 +341,9 @@ impl PolicySet {
     pub fn get_linked_policies(
         &mut self,
         template_id: &PolicyID,
-    ) -> Result<Vec<&PolicyID>, PolicySetGetLinksError> {
+    ) -> Result<impl Iterator<Item = &PolicyID>, PolicySetGetLinksError> {
         match self.template_to_links_map.get(template_id) {
-            Some(s) => Ok(s.iter().collect_vec()),
+            Some(s) => Ok(s.iter()),
             None => Err(PolicySetGetLinksError::MissingTemplate(template_id.clone())),
         }
     }

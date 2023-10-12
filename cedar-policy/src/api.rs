@@ -1787,7 +1787,7 @@ impl PolicySet {
             .ast
             .get_linked_policies(&ast::PolicyID::from_string(template_id.to_string()))
         {
-            Ok(v) => Ok(v.iter().map(|id| PolicyId((*id).clone())).collect()),
+            Ok(v) => Ok(v.map(|id| PolicyId((*id).clone())).collect()),
             Err(_) => Err(PolicySetError::TemplateNonexistentError(template_id)),
         }
     }
