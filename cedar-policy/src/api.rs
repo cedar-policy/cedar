@@ -1923,7 +1923,8 @@ impl PolicySet {
         entity_uids
     }
 
-    /// Unlink a dynamic policy from the policy set
+    /// Unlink a template link from the policy set.
+    /// Returns the policy that was unlinked.
     pub fn unlink(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
         let Some(policy) = self.policies.remove(&policy_id) else {
             return Err(PolicySetError::LinkNonexistentError(policy_id));
