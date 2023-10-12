@@ -67,10 +67,10 @@ impl TryFrom<LiteralPolicySet> for PolicySet {
         for template in &templates {
             template_to_links_map.insert(template.0.clone(), HashSet::new());
         }
-        for linked_policy in &links {
-            let template = linked_policy.1.template().id();
+        for (link_id, link) in &links {
+            let template = link.template().id();
             match template_to_links_map.entry(template.clone()) {
-                Entry::Occupied(t) => t.into_mut().insert(linked_policy.0.clone()),
+                Entry::Occupied(t) => t.into_mut().insert(link_id.clone()),
                 Entry::Vacant(_) => return Err(ReificationError::NoSuchTemplate(template.clone())),
             };
         }
