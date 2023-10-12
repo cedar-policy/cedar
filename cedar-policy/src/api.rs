@@ -1613,7 +1613,7 @@ pub enum PolicySetError {
     #[error("unable to remove policy template `{0}` because it does not exist")]
     TemplateNonexistentError(PolicyId),
     /// Error when removing a template with active links
-    #[error("unable to remove policy template: {0} because it has active links")]
+    #[error("unable to remove policy template `{0}` because it has active links")]
     RemoveTemplateWithActiveLinksError(PolicyId),
     /// Error when unlinking a template
     #[error("unable to unlink policy template: {0} because it does not exist")]
