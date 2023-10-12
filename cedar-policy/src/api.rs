@@ -1610,7 +1610,7 @@ pub enum PolicySetError {
     #[error("unable to remove static policy `{0}` because it does not exist")]
     PolicyNonexistentError(PolicyId),
     /// Error when removing a template that doesn't exist
-    #[error("unable to remove policy template: {0} because it does not exist")]
+    #[error("unable to remove policy template `{0}` because it does not exist")]
     TemplateNonexistentError(PolicyId),
     /// Error when removing a template with active links
     #[error("unable to remove policy template: {0} because it has active links")]
