@@ -42,7 +42,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum CedarValueJson {
-    /// `__expr` is deprecated, but still throws an error was present.
+    /// The `__expr` escape has been removed, but is still reserved in order to throw meaningful errors.
     ExprEscape {
         /// Contents, will be ignored and an error is thrown are attempting to parse this
         __expr: SmolStr,
