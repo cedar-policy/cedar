@@ -217,8 +217,8 @@ pub enum JsonDeserializationError {
         /// Parent type which was invalid
         parent_ty: Box<EntityType>, // boxed to avoid this variant being very large (and thus all JsonDeserializationErrors being large)
     },
-    #[error("{0}, Invalid tag. The `__expr` tag is no longer supported")]
-    /// Raised when a JsonValue contains the no longer support `__expr` tag
+    /// Raised when a JsonValue contains the no longer supported `__expr` escape
+    #[error("{0}, invalid escape. The `__expr` escape is no longer supported")]
     ExprTag(Box<JsonDeserializationErrorContext>),
 }
 
