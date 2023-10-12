@@ -953,9 +953,18 @@ mod test {
     #[test]
     fn test_authorized_fails_on_policy_collision_with_template() {
         let call = r#"{
-            "principal" : "User::\"alice\"",
-            "action" : "Photo::\"view\"",
-            "resource" : "Photo::\"door\"",
+            "principal" : {
+                "type" : "User",
+                "id" : "alice"
+            },
+            "action" : {
+                "type" : "Action",
+                "id" : "view"
+            },
+            "resource" : {
+                "type" : "Photo",
+                "id" : "door"
+            },
             "context" : {},
             "slice" : {
                 "policies" : { "ID0": "permit(principal, action, resource);" },
@@ -974,9 +983,18 @@ mod test {
     #[test]
     fn test_authorized_fails_on_duplicate_instantiations_ids() {
         let call = r#"{
-            "principal" : "User::\"alice\"",
-            "action" : "Photo::\"view\"",
-            "resource" : "Photo::\"door\"",
+            "principal" : {
+                "type" : "User",
+                "id" : "alice"
+            },
+            "action" : {
+                "type" : "Action",
+                "id" : "view"
+            },
+            "resource" : {
+                "type" : "Photo",
+                "id" : "door"
+            },
             "context" : {},
             "slice" : {
                 "policies" : {},
@@ -1016,9 +1034,18 @@ mod test {
     #[test]
     fn test_authorized_fails_on_template_instantiation_collision_with_template() {
         let call = r#"{
-            "principal" : "User::\"alice\"",
-            "action" : "Photo::\"view\"",
-            "resource" : "Photo::\"door\"",
+            "principal" : {
+                "type" : "User",
+                "id" : "alice"
+            },
+            "action" : {
+                "type" : "Action",
+                "id" : "view"
+            },
+            "resource" : {
+                "type" : "Photo",
+                "id" : "door"
+            },
             "context" : {},
             "slice" : {
                 "policies" : {},
@@ -1048,9 +1075,18 @@ mod test {
     #[test]
     fn test_authorized_fails_on_template_instantiation_collision_with_policy() {
         let call = r#"{
-            "principal" : "User::\"alice\"",
-            "action" : "Photo::\"view\"",
-            "resource" : "Photo::\"door\"",
+            "principal" : {
+                "type" : "User",
+                "id" : "alice"
+            },
+            "action" : {
+                "type" : "Action",
+                "id" : "view"
+            },
+            "resource" : {
+                "type" : "Photo",
+                "id" : "door"
+            },
             "context" : {},
             "slice" : {
                 "policies" : { "ID1": "permit(principal, action, resource);" },
