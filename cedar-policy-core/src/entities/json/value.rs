@@ -593,6 +593,12 @@ impl<'e> ValueParser<'e> {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum EntityUidJson {
+    /// Explicit `__expr` syntax.
+    /// This is no longer supported and is only here for generating nice error messages.
+    ExplicitExprEscape {
+        /// Contents are ignored.
+        __expr: String,
+    },
     /// Explicit `__entity` escape; see notes on JSONValue::EntityEscape
     ExplicitEntityEscape {
         /// JSON object containing the entity type and ID
@@ -660,6 +666,9 @@ impl EntityUidJson {
                 ctx: Box::new(ctx()),
                 got: Box::new(Either::Left(v)),
             }),
+            Self::ExplicitExprEscape { __expr } => {
+                Err(JsonDeserializationError::ExprTag(Box::new(ctx())))
+            }
         }
     }
 }

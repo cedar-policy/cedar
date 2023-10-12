@@ -1067,7 +1067,7 @@ mod json_parsing_tests {
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let error = eparser.from_json_value(json).err().unwrap().to_string();
         assert!(
-            error.contains("in uid field of <unknown entity>, expected a literal entity reference"),
+            error.contains("in uid field of <unknown entity>, invalid escape. The `__expr` escape is no longer supported"),
             "{}",
             error
         );
@@ -1100,7 +1100,7 @@ mod json_parsing_tests {
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let error = eparser.from_json_value(json).err().unwrap().to_string();
         assert!(
-            error.contains("`__expr` tag is no longer supported"),
+            error.contains("`__expr` escape is no longer supported"),
             "Actual error message was: {}",
             error
         );
@@ -1122,7 +1122,7 @@ mod json_parsing_tests {
                 "a b c": { "__extn": { "fn": "ip", "arg": "222.222.222.0/24" } }
             },
             "parents": [
-                { "__expr": { "type" : "test_entity_type", "id" : "bob"} },
+                { "__expr": "test_entity_type::\"Alice\"" },
                 { "__entity": { "type": "test_entity_type", "id": "catherine" } }
             ]
         }
@@ -1131,7 +1131,7 @@ mod json_parsing_tests {
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let error = eparser.from_json_value(json).err().unwrap().to_string();
         assert!(
-            error.contains(r#"in parents field of `test_entity_type::"Alice"`, expected a literal entity reference"#),
+            error.contains(r#"in parents field of `test_entity_type::"Alice"`, invalid escape. The `__expr` escape is no longer supported"#),
             "Actual error message was: {}",
             error
         );
