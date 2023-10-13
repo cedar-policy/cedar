@@ -818,6 +818,8 @@ fn stack_size_check() -> Result<()> {
     Ok(())
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 pub mod test {
     use std::{collections::HashMap, str::FromStr};
@@ -945,12 +947,22 @@ pub mod test {
         let r = eval.partial_eval_expr(&e).unwrap();
         let expected_residual = Expr::binary_app(
             BinaryOp::In,
-            Expr::unknown(format!("{missing}")),
+            Expr::unknown_with_type(
+                format!("{missing}"),
+                Some(Type::Entity {
+                    ty: EntityUID::test_entity_type(),
+                }),
+            ),
             Expr::set([Expr::val(parent.clone()), Expr::val(second.clone())]),
         );
         let expected_residual2 = Expr::binary_app(
             BinaryOp::In,
-            Expr::unknown(format!("{missing}")),
+            Expr::unknown_with_type(
+                format!("{missing}"),
+                Some(Type::Entity {
+                    ty: EntityUID::test_entity_type(),
+                }),
+            ),
             Expr::set([Expr::val(second), Expr::val(parent)]),
         );
 
@@ -981,7 +993,12 @@ pub mod test {
         let r = eval.partial_eval_expr(&e).unwrap();
         let expected_residual = Expr::binary_app(
             BinaryOp::In,
-            Expr::unknown(format!("{missing}")),
+            Expr::unknown_with_type(
+                format!("{missing}"),
+                Some(Type::Entity {
+                    ty: EntityUID::test_entity_type(),
+                }),
+            ),
             Expr::val(parent),
         );
         assert_eq!(r, Either::Right(expected_residual));
@@ -1003,7 +1020,15 @@ pub mod test {
 
         let e = Expr::has_attr(Expr::val(missing.clone()), "spoon".into());
         let r = eval.partial_eval_expr(&e).unwrap();
-        let expected_residual = Expr::has_attr(Expr::unknown(format!("{missing}")), "spoon".into());
+        let expected_residual = Expr::has_attr(
+            Expr::unknown_with_type(
+                format!("{missing}"),
+                Some(Type::Entity {
+                    ty: EntityUID::test_entity_type(),
+                }),
+            ),
+            "spoon".into(),
+        );
         assert_eq!(r, Either::Right(expected_residual));
     }
 
@@ -1023,7 +1048,15 @@ pub mod test {
 
         let e = Expr::get_attr(Expr::val(missing.clone()), "spoon".into());
         let r = eval.partial_eval_expr(&e).unwrap();
-        let expected_residual = Expr::get_attr(Expr::unknown(format!("{missing}")), "spoon".into());
+        let expected_residual = Expr::get_attr(
+            Expr::unknown_with_type(
+                format!("{missing}"),
+                Some(Type::Entity {
+                    ty: EntityUID::test_entity_type(),
+                }),
+            ),
+            "spoon".into(),
+        );
         assert_eq!(r, Either::Right(expected_residual));
     }
 
@@ -3864,7 +3897,7 @@ pub mod test {
         let euid: EntityUID = r#"Test::"test""#.parse().unwrap();
         let rexpr = RestrictedExpr::new(context_expr)
             .expect("Context Expression was not a restricted expression");
-        let context = Context::from_expr(rexpr);
+        let context = Context::from_expr(rexpr).unwrap();
         let q = Request::new(euid.clone(), euid.clone(), euid, context);
         let es = Entities::new();
         let exts = Extensions::none();
@@ -3987,7 +4020,8 @@ pub mod test {
         let context = Context::from_expr(RestrictedExpr::new_unchecked(Expr::record([
             ("a".into(), Expr::val(3)),
             ("b".into(), Expr::unknown("b".to_string())),
-        ])));
+        ])))
+        .unwrap();
         let euid: EntityUID = r#"Test::"test""#.parse().unwrap();
         let q = Request::new(euid.clone(), euid.clone(), euid, context);
         let es = Entities::new();
@@ -4026,7 +4060,7 @@ pub mod test {
             Expr::unknown("cell".to_string()),
         )]))
         .expect("should qualify as restricted");
-        let context = Context::from_expr(c_expr);
+        let context = Context::from_expr(c_expr).unwrap();
 
         let q = Request::new(p, a, r, context);
         let exts = Extensions::none();
@@ -4099,7 +4133,8 @@ pub mod test {
             Context::from_expr(RestrictedExpr::new_unchecked(Expr::record([(
                 "condition".into(),
                 Expr::unknown("unknown_condition"),
-            )]))),
+            )])))
+            .unwrap(),
         );
         let eval = Evaluator::new(&q, &es, &exts).unwrap();
 

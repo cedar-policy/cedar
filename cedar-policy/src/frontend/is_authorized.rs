@@ -353,7 +353,7 @@ fn parse_policy_set_from_individual_policies(
             Ok(p) => match policy_set.add(p) {
                 Ok(_) => {}
                 Err(err) => {
-                    errs.push(format!("couldn't add policy to set due to error: {err:?}"));
+                    errs.push(format!("couldn't add policy to set due to error: {err}"));
                 }
             },
             Err(pes) => errs.extend(
@@ -369,7 +369,7 @@ fn parse_policy_set_from_individual_policies(
                 Ok(p) => match policy_set.add_template(p) {
                     Ok(_) => {}
                     Err(err) => {
-                        errs.push(format!("couldn't add policy to set due to error: {err:?}"));
+                        errs.push(format!("couldn't add policy to set due to error: {err}"));
                     }
                 },
                 Err(pes) => errs.extend(
@@ -387,10 +387,12 @@ fn parse_policy_set_from_individual_policies(
     }
 }
 
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::EntityUid;
+    use crate::{frontend::utils::assert_is_failure, EntityUid};
     use std::collections::HashMap;
 
     #[test]
@@ -438,7 +440,11 @@ mod test {
 
     #[test]
     fn test_failure_on_invalid_syntax() {
-        assert_is_failure(&json_is_authorized("iefjieoafiaeosij"));
+        assert_is_failure(
+            &json_is_authorized("iefjieoafiaeosij"),
+            true,
+            "expected value",
+        );
     }
 
     #[test]
@@ -691,6 +697,133 @@ mod test {
         assert_is_authorized(json_is_authorized(call));
     }
 
+    #[test]
+    fn test_authorized_fails_on_policy_collision_with_template() {
+        let call = r#"{
+            "principal" : "User::\"alice\"",
+            "action" : "Photo::\"view\"",
+            "resource" : "Photo::\"door\"",
+            "context" : {},
+            "slice" : {
+                "policies" : { "ID0": "permit(principal, action, resource);" },
+                "entities" : [],
+                "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
+                "template_instantiations" : []
+            }
+        }"#;
+        assert_is_failure(
+            &json_is_authorized(call),
+            false,
+            "couldn't add policy to set due to error: duplicate template or policy id `ID0`",
+        );
+    }
+
+    #[test]
+    fn test_authorized_fails_on_duplicate_instantiations_ids() {
+        let call = r#"{
+            "principal" : "User::\"alice\"",
+            "action" : "Photo::\"view\"",
+            "resource" : "Photo::\"door\"",
+            "context" : {},
+            "slice" : {
+                "policies" : {},
+                "entities" : [],
+                "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
+                "template_instantiations" : [
+                    {
+                        "template_id" : "ID0",
+                        "result_policy_id" : "ID1",
+                        "instantiations" : [
+                            {
+                                "slot": "?principal",
+                                "value": { "ty" : "User", "eid" : "alice" }
+                            }
+                        ]
+                    },
+                    {
+                        "template_id" : "ID0",
+                        "result_policy_id" : "ID1",
+                        "instantiations" : [
+                            {
+                                "slot": "?principal",
+                                "value": { "ty" : "User", "eid" : "alice" }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }"#;
+        assert_is_failure(
+            &json_is_authorized(call),
+            false,
+            "Error instantiating template: unable to link template: template-linked policy id `ID1` conflicts with an existing policy id",
+        );
+    }
+
+    #[test]
+    fn test_authorized_fails_on_template_instantiation_collision_with_template() {
+        let call = r#"{
+            "principal" : "User::\"alice\"",
+            "action" : "Photo::\"view\"",
+            "resource" : "Photo::\"door\"",
+            "context" : {},
+            "slice" : {
+                "policies" : {},
+                "entities" : [],
+                "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
+                "template_instantiations" : [
+                    {
+                        "template_id" : "ID0",
+                        "result_policy_id" : "ID0",
+                        "instantiations" : [
+                            {
+                                "slot": "?principal",
+                                "value": { "ty" : "User", "eid" : "alice" }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }"#;
+        assert_is_failure(
+            &json_is_authorized(call),
+            false,
+            "Error instantiating template: unable to link template: template-linked policy id `ID0` conflicts with an existing policy id",
+        );
+    }
+
+    #[test]
+    fn test_authorized_fails_on_template_instantiation_collision_with_policy() {
+        let call = r#"{
+            "principal" : "User::\"alice\"",
+            "action" : "Photo::\"view\"",
+            "resource" : "Photo::\"door\"",
+            "context" : {},
+            "slice" : {
+                "policies" : { "ID1": "permit(principal, action, resource);" },
+                "entities" : [],
+                "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
+                "template_instantiations" : [
+                    {
+                        "template_id" : "ID0",
+                        "result_policy_id" : "ID1",
+                        "instantiations" : [
+                            {
+                                "slot": "?principal",
+                                "value": { "ty" : "User", "eid" : "alice" }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }"#;
+        assert_is_failure(
+            &json_is_authorized(call),
+            false,
+            "Error instantiating template: unable to link template: template-linked policy id `ID1` conflicts with an existing policy id",
+        );
+    }
+
     fn assert_is_authorized(result: InterfaceResult) {
         match result {
             InterfaceResult::Success { result } => {
@@ -730,15 +863,6 @@ mod test {
             InterfaceResult::Failure { .. } => {
                 panic!("Expected a successful response, not {result:?}");
             }
-        }
-    }
-
-    fn assert_is_failure(result: &InterfaceResult) {
-        match result {
-            InterfaceResult::Success { .. } => {
-                panic!("Expected a failing response, not {result:?}")
-            }
-            InterfaceResult::Failure { .. } => {}
         }
     }
 }

@@ -1707,6 +1707,10 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes {
     }
 }
 
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
+// PANIC SAFETY unit tests
+#[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
     use std::{collections::BTreeMap, str::FromStr};
@@ -2640,7 +2644,6 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
     fn cross_fragment_duplicate_type() {
         let fragment1: ValidatorSchemaFragment = serde_json::from_value::<SchemaFragment>(json!({
             "A": {
@@ -2666,12 +2669,13 @@ mod test {
         .unwrap()
         .try_into()
         .unwrap();
-        let schema = ValidatorSchema::from_schema_fragments([fragment1, fragment2]).unwrap();
 
-        assert_eq!(
-            schema.entity_types.iter().next().unwrap().1.attributes,
-            Attributes::with_required_attributes([("a".into(), Type::long_max_bounds())])
-        );
+        let schema = ValidatorSchema::from_schema_fragments([fragment1, fragment2]);
+
+        match schema {
+            Err(SchemaError::DuplicateCommonType(s)) if s.contains("A::MyLong") => (),
+            _ => panic!("should have errored because schema fragments have duplicate types"),
+        };
     }
 
     #[test]

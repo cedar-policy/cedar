@@ -290,6 +290,8 @@ pub fn extension() -> Extension {
 }
 
 #[cfg(test)]
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 mod tests {
     use super::*;
     use crate::ast::{Expr, Type, Value};

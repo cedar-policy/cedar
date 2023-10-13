@@ -650,6 +650,8 @@ pub fn arbitrary_schematypevariant_long<'a>(
 }
 
 #[cfg(feature = "arbitrary")]
+// PANIC SAFETY property testing code
+#[allow(clippy::panic)]
 impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<SchemaType> {
         use cedar_policy_core::ast::Name;

@@ -6,10 +6,12 @@
 
 - Added an option to eagerly evaluate entity attributes and re-use across calls to `is_authorized`
 - Adds APIs to `Entities` to make it easy to add a collection of entities to an existing `Entities` structure
-- Support `Request`s with `Unknown` fields for partial evaluation.
 - Export the `cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind}` and
   `cedar_policy_core::authorizer::AuthorizationError` error types.
 - Added an API to `ParseError` to quickly get the primary source span
+- Added an API, `unknown_entities`, to `PolicySet` to collect unknown entity UIDs from `PartialResponse`.
+- Added APIs `remove`, `remove_template` and `unlink` to remove policies from the `PolicySet`
+- Added API `get_linked_policies` to get the policies linked to a `Template`
 
 ### Changed
 
@@ -18,10 +20,22 @@
 - Renamed variants in `cedar_policy::SchemaError`
 - The `Diagnostics::errors()` function now returns an iterator over `AuthorizationError`s.
 - The `Response::new()` constructor now expects a `Vec<AuthorizationError>` as its third argument.
-- Improved validation error messages for access to undeclared attributes and
-  unsafe access to optional attributes to report the target of the access (fix #175).
 - Implements RFC #19, making validation slightly more strict, but more explainable.
 - Improved formatting for error messages.
+
+## 2.4.1
+
+### Added
+- New experimental API to construct queries with `Unknown` fields for partial evaluation.
+
+### Changed
+- Improved validation error messages for access to undeclared attributes and
+  unsafe access to optional attributes to report the target of the access (fix #175).
+- `EntityUid`'s impl of `FromStr` is no longer marked as deprecated.
+- Fixed #299, condition of `if` not being partial evaluated.
+- Update the behavior of `Request::principal()`, `Request::action()`, and
+  `Request::resource()` to return `None` if the entities are unspecified (i.e.,
+  constructed by passing `None` to `Request::new()`).
 
 ## 2.4.0
 

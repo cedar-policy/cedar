@@ -393,6 +393,8 @@ impl std::fmt::Debug for Authorizer {
     }
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
     use std::collections::BTreeMap;
@@ -521,7 +523,8 @@ mod test {
         let context = Context::from_expr(RestrictedExpr::record([(
             "test".into(),
             RestrictedExpr::new(Expr::unknown("name")).unwrap(),
-        )]));
+        )]))
+        .unwrap();
         let a = Authorizer::new();
         let q = Request::new(
             EntityUID::with_eid("p"),
