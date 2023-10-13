@@ -262,6 +262,7 @@ impl Entities {
                 .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
                 .as_ref(),
             entities::TCComputation::ComputeNow,
+            Extensions::all_available(),
         )
         .map(Entities)
     }

@@ -17,9 +17,8 @@
 use std::fmt::Display;
 
 use super::{super::EntitySchemaConformanceError, SchemaType};
-use crate::ast::{
-    EntityType, EntityUID, Expr, ExprKind, Name, RestrictedExpr, RestrictedExprError,
-};
+use crate::ast::{EntityUID, Expr, ExprKind, Name, RestrictedExpr, RestrictedExprError};
+use crate::entities::conformance::HeterogeneousSetError;
 use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
 use smol_str::SmolStr;
@@ -113,38 +112,8 @@ pub enum JsonDeserializationError {
         /// argument type of the constructor we were looking for
         arg_type: Box<SchemaType>,
     },
-    /// During schema-based parsing, encountered an entity of a type which is
-    /// not declared in the schema. Note that this error is only used for non-Action entity types.
-    #[error("entity `{uid}` has type `{}` which is not declared in the schema{}",
-        &.uid.entity_type(),
-        match .suggested_types.as_slice() {
-            [] => String::new(),
-            [ty] => format!(". Did you mean `{ty}`?"),
-            tys => format!(". Did you mean one of {:?}?", tys.iter().map(ToString::to_string).collect::<Vec<String>>())
-        }
-    )]
-    UnexpectedEntityType {
-        /// Entity that had the unexpected type
-        uid: EntityUID,
-        /// Suggested similar entity types that actually are declared in the schema (if any)
-        suggested_types: Vec<EntityType>,
-    },
-    /// During schema-based parsing, encountered an action which was not
-    /// declared in the schema
-    #[error("found action entity `{uid}`, but it was not declared as an action in the schema")]
-    UndeclaredAction {
-        /// Action which was not declared in the schema
-        uid: EntityUID,
-    },
-    /// During schema-based parsing, encountered an action whose definition
-    /// doesn't precisely match the schema's declaration of that action
-    #[error("definition of action `{uid}` does not match its schema declaration")]
-    ActionDeclarationMismatch {
-        /// Action whose definition mismatched between entity data and schema
-        uid: EntityUID,
-    },
-    /// During schema-based parsing, encountered a (non-action) entity which
-    /// does not conform to the schema.
+    /// During schema-based parsing, encountered an entity which does not
+    /// conform to the schema.
     ///
     /// This error contains the Entity analogues of the Record error cases
     /// listed below, among other things.
@@ -182,13 +151,13 @@ pub enum JsonDeserializationError {
     },
     /// During schema-based parsing of the Context, found a set whose elements
     /// don't all have the same type.  This doesn't match any possible schema.
-    #[error("while parsing context, found set elements with different types: {ty1} and {ty2}")]
-    ContextHeterogeneousSet {
-        /// First element type which was found
-        ty1: Box<SchemaType>,
-        /// Second element type which was found
-        ty2: Box<SchemaType>,
-    },
+    #[error("while parsing context, {0}")]
+    ContextHeterogeneousSet(HeterogeneousSetError),
+    /// During schema-based parsing of the Context, error looking up an extension function.
+    /// This error can occur when parsing the Context because that may require
+    /// getting information about any extension functions referenced in Context values.
+    #[error("while parsing context, {0}")]
+    ContextExtension(ExtensionFunctionLookupError),
 }
 
 /// Errors thrown during serialization to JSON

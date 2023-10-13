@@ -864,6 +864,7 @@ pub mod test {
             ],
             None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
+            Extensions::none(),
         )
         .expect("failed to create basic entities")
     }
@@ -917,6 +918,7 @@ pub mod test {
             ],
             None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
+            Extensions::all_available(),
         )
         .expect("Failed to create rich entities")
     }
@@ -3003,6 +3005,7 @@ pub mod test {
             vec![alice],
             None::<&NoEntitiesSchema>,
             TCComputation::AssumeAlreadyComputed,
+            Extensions::all_available(),
         )
         .expect("failed to create basic entities");
         let exts = Extensions::none();

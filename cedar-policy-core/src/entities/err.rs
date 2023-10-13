@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use super::{EntitySchemaConformanceError, EntityUID};
+use super::EntityUID;
 use crate::transitive_closure;
 use thiserror::Error;
 
@@ -34,6 +34,9 @@ pub enum EntitiesError {
     /// entity hierarchy.
     #[error("transitive closure computation/enforcement error: {0}")]
     TransitiveClosureError(#[from] Box<transitive_closure::TcError<EntityUID>>),
+    /// Error because an entity doesn't conform to the schema
+    #[error("entity does not conform to the schema: {0}")]
+    InvalidEntity(#[from] crate::entities::EntitySchemaConformanceError),
 }
 
 /// Type alias for convenience

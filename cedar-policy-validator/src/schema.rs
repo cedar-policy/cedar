@@ -26,6 +26,7 @@ use std::sync::Arc;
 use cedar_policy_core::{
     ast::{Eid, Entity, EntityType, EntityUID, Id, Name, RestrictedExpr},
     entities::{Entities, JSONValue, TCComputation},
+    extensions::Extensions,
     parser::err::ParseErrors,
     transitive_closure::{compute_tc, TCNode},
     FromNormalizedStr,
@@ -1248,6 +1249,7 @@ impl ValidatorSchema {
             self.action_entities_iter(),
             None::<&cedar_policy_core::entities::NoEntitiesSchema>, // we don't want to tell `Entities::from_entities()` to add the schema's action entities, that would infinitely recurse
             TCComputation::AssumeAlreadyComputed,
+            Extensions::all_available(),
         )
     }
 }

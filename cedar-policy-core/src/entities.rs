@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 mod conformance;
-pub use conformance::EntitySchemaConformanceError;
+pub use conformance::*;
 mod err;
 pub use err::*;
 mod json;
@@ -115,14 +115,26 @@ impl Entities {
     /// Fails if the passed iterator contains any duplicate entities with this structure,
     /// or if any error is encountered in the transitive closure computation.
     ///
+    /// If `schema` is present, then the added entities will be validated
+    /// against the `schema`, returning an error if they do not conform to the
+    /// schema.
+    /// (This method will not add action entities from the `schema` if they are
+    /// not already present.)
+    ///
     /// If you pass [`TCComputation::AssumeAlreadyComputed`], then the caller is
     /// responsible for ensuring that TC and DAG hold before calling this method.
     pub fn add_entities(
         mut self,
         collection: impl IntoIterator<Item = Entity>,
-        mode: TCComputation,
+        schema: Option<&impl Schema>,
+        tc_computation: TCComputation,
+        extensions: Extensions<'_>,
     ) -> Result<Self> {
+        let checker = schema.map(|schema| EntitySchemaConformanceChecker::new(schema, extensions));
         for entity in collection.into_iter() {
+            if let Some(checker) = checker.as_ref() {
+                checker.validate_entity(&entity)?;
+            }
             match self.entities.entry(entity.uid()) {
                 hash_map::Entry::Occupied(_) => return Err(EntitiesError::Duplicate(entity.uid())),
                 hash_map::Entry::Vacant(vacant_entry) => {
@@ -130,7 +142,7 @@ impl Entities {
                 }
             }
         }
-        match mode {
+        match tc_computation {
             TCComputation::AssumeAlreadyComputed => (),
             TCComputation::EnforceAlreadyComputed => {
                 enforce_tc_and_dag(&self.entities).map_err(Box::new)?
@@ -145,7 +157,8 @@ impl Entities {
     ///
     /// If `schema` is present, then action entities from that schema will also
     /// be added to the `Entities`.
-    /// TODO: validate the entities against the schema
+    /// Also, the entities in `entities` will be validated against the `schema`,
+    /// returning an error if they do not conform to the schema.
     ///
     /// If you pass `TCComputation::AssumeAlreadyComputed`, then the caller is
     /// responsible for ensuring that TC and DAG hold before calling this method.
@@ -153,10 +166,20 @@ impl Entities {
         entities: impl IntoIterator<Item = Entity>,
         schema: Option<&impl Schema>,
         tc_computation: TCComputation,
+        extensions: Extensions<'_>,
     ) -> Result<Self> {
         let mut entity_map: HashMap<EntityUID, Entity> =
             entities.into_iter().map(|e| (e.uid(), e)).collect();
         if let Some(schema) = schema {
+            // validate entities against schema.
+            // we do this before adding the actions, because we trust the
+            // actions were already validated as part of constructing the
+            // `Schema`
+            let checker = EntitySchemaConformanceChecker::new(schema, extensions);
+            for entity in entity_map.values() {
+                checker.validate_entity(entity)?;
+            }
+            // now add the action entities from the schema
             entity_map.extend(
                 schema
                     .action_entities()
@@ -498,8 +521,12 @@ mod json_parsing_tests {
             {"uid":{"__expr":"Test::\"george\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"george\"", "Test::\"janet\""]}]);
 
         let addl_entities = parser.iter_from_json_value(new).unwrap();
-        let err = simple_entities(&parser)
-            .add_entities(addl_entities, TCComputation::EnforceAlreadyComputed);
+        let err = simple_entities(&parser).add_entities(
+            addl_entities,
+            None::<&NoEntitiesSchema>,
+            TCComputation::EnforceAlreadyComputed,
+            Extensions::none(),
+        );
         // Despite this being a cycle, alice doesn't have the appropriate edges to form the cycle, so we get this error
         let expected = TcError::MissingTcEdge {
             child: r#"Test::"janet""#.parse().unwrap(),
@@ -521,8 +548,12 @@ mod json_parsing_tests {
             {"uid":{"__expr":"Test::\"george\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"henry\""]}]);
 
         let addl_entities = parser.iter_from_json_value(new).unwrap();
-        let err = simple_entities(&parser)
-            .add_entities(addl_entities, TCComputation::EnforceAlreadyComputed);
+        let err = simple_entities(&parser).add_entities(
+            addl_entities,
+            None::<&NoEntitiesSchema>,
+            TCComputation::EnforceAlreadyComputed,
+            Extensions::all_available(),
+        );
         let expected = TcError::MissingTcEdge {
             child: r#"Test::"janet""#.parse().unwrap(),
             parent: r#"Test::"george""#.parse().unwrap(),
@@ -543,8 +574,12 @@ mod json_parsing_tests {
             {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"alice\""]}]);
 
         let addl_entities = parser.iter_from_json_value(new).unwrap();
-        let err = simple_entities(&parser)
-            .add_entities(addl_entities, TCComputation::EnforceAlreadyComputed);
+        let err = simple_entities(&parser).add_entities(
+            addl_entities,
+            None::<&NoEntitiesSchema>,
+            TCComputation::EnforceAlreadyComputed,
+            Extensions::all_available(),
+        );
         let expected = TcError::MissingTcEdge {
             child: r#"Test::"jeff""#.parse().unwrap(),
             parent: r#"Test::"alice""#.parse().unwrap(),
@@ -566,7 +601,12 @@ mod json_parsing_tests {
 
         let addl_entities = parser.iter_from_json_value(new).unwrap();
         let es = simple_entities(&parser)
-            .add_entities(addl_entities, TCComputation::EnforceAlreadyComputed)
+            .add_entities(
+                addl_entities,
+                None::<&NoEntitiesSchema>,
+                TCComputation::EnforceAlreadyComputed,
+                Extensions::all_available(),
+            )
             .unwrap();
         let euid = r#"Test::"jeff""#.parse().unwrap();
         let jeff = es.entity(&euid).unwrap();
@@ -585,7 +625,12 @@ mod json_parsing_tests {
 
         let addl_entities = parser.iter_from_json_value(new).unwrap();
         let es = simple_entities(&parser)
-            .add_entities(addl_entities, TCComputation::ComputeNow)
+            .add_entities(
+                addl_entities,
+                None::<&NoEntitiesSchema>,
+                TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )
             .unwrap();
         let euid = r#"Test::"george""#.parse().unwrap();
         let jeff = es.entity(&euid).unwrap();
@@ -604,7 +649,12 @@ mod json_parsing_tests {
 
         let addl_entities = parser.iter_from_json_value(new).unwrap();
         let es = simple_entities(&parser)
-            .add_entities(addl_entities, TCComputation::ComputeNow)
+            .add_entities(
+                addl_entities,
+                None::<&NoEntitiesSchema>,
+                TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )
             .unwrap();
         let euid = r#"Test::"jeff""#.parse().unwrap();
         let jeff = es.entity(&euid).unwrap();
@@ -622,7 +672,12 @@ mod json_parsing_tests {
 
         let addl_entities = parser.iter_from_json_value(new).unwrap();
         let es = simple_entities(&parser)
-            .add_entities(addl_entities, TCComputation::ComputeNow)
+            .add_entities(
+                addl_entities,
+                None::<&NoEntitiesSchema>,
+                TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )
             .unwrap();
         let euid = r#"Test::"jeff""#.parse().unwrap();
         let jeff = es.entity(&euid).unwrap();
@@ -643,7 +698,12 @@ mod json_parsing_tests {
 
         let addl_entities = parser.iter_from_json_value(new).unwrap();
         let err = simple_entities(&parser)
-            .add_entities(addl_entities, TCComputation::ComputeNow)
+            .add_entities(
+                addl_entities,
+                None::<&NoEntitiesSchema>,
+                TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )
             .err()
             .unwrap();
         let expected = r#"Test::"jeff""#.parse().unwrap();
@@ -660,7 +720,12 @@ mod json_parsing_tests {
         let new =
             serde_json::json!([{"uid":{"__expr":"Test::\"alice\""}, "attrs" : {}, "parents" : []}]);
         let addl_entities = parser.iter_from_json_value(new).unwrap();
-        let err = simple_entities(&parser).add_entities(addl_entities, TCComputation::ComputeNow);
+        let err = simple_entities(&parser).add_entities(
+            addl_entities,
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            Extensions::all_available(),
+        );
         let expected = r#"Test::"alice""#.parse().unwrap();
         match err {
             Err(EntitiesError::Duplicate(e)) => assert_eq!(e, expected),
@@ -1084,6 +1149,7 @@ mod json_parsing_tests {
             [e0, e1, e2, e3],
             None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
+            Extensions::none(),
         )
         .expect("Failed to construct entities");
         assert_eq!(
@@ -1144,6 +1210,7 @@ mod json_parsing_tests {
             ],
             None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
+            Extensions::all_available(),
         )
         .expect("Failed to construct entities");
         assert_eq!(
@@ -1175,6 +1242,7 @@ mod json_parsing_tests {
             ],
             None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
+            Extensions::all_available(),
         )
         .expect("Failed to construct entities");
         assert!(matches!(
@@ -1239,8 +1307,13 @@ mod entities_tests {
     fn test_iter() {
         let (e0, e1, e2, e3) = test_entities();
         let v = vec![e0.clone(), e1.clone(), e2.clone(), e3.clone()];
-        let es = Entities::from_entities(v, None::<&NoEntitiesSchema>, TCComputation::ComputeNow)
-            .expect("Failed to construct entities");
+        let es = Entities::from_entities(
+            v,
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            Extensions::all_available(),
+        )
+        .expect("Failed to construct entities");
         let es_v = es.iter().collect::<Vec<_>>();
         assert!(es_v.len() == 4, "All entities should be in the vec");
         assert!(es_v.contains(&&e0));
@@ -1264,6 +1337,7 @@ mod entities_tests {
             vec![e1, e2, e3],
             None::<&NoEntitiesSchema>,
             TCComputation::EnforceAlreadyComputed,
+            Extensions::all_available(),
         );
         match es {
             Ok(_) => panic!("Was not transitively closed!"),
@@ -1289,6 +1363,7 @@ mod entities_tests {
             vec![e1, e2, e3],
             None::<&NoEntitiesSchema>,
             TCComputation::EnforceAlreadyComputed,
+            Extensions::all_available(),
         )
         .expect("Should have succeeded");
     }
@@ -2178,7 +2253,7 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to incorrect parent type");
         assert!(
             err.to_string().contains(
-                r#"`Employee::"12UA45"` is not allowed to have a parent of type `Employee` according to the schema"#
+                r#"`Employee::"12UA45"` is not allowed to have an ancestor of type `Employee` according to the schema"#
             ),
             "actual error message was {}",
             err
