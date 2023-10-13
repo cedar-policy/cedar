@@ -515,7 +515,7 @@ mod json_parsing_tests {
 
     #[test]
     fn enforces_tc_fail_cycle_almost() {
-        let parser: EntityJsonParser<'_> =
+        let parser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new = serde_json::json!([
             {"uid":{"__expr":"Test::\"george\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"george\"", "Test::\"janet\""]}]);
@@ -542,7 +542,7 @@ mod json_parsing_tests {
 
     #[test]
     fn enforces_tc_fail_connecting() {
-        let parser: EntityJsonParser<'_> =
+        let parser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new = serde_json::json!([
             {"uid":{"__expr":"Test::\"george\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"henry\""]}]);
@@ -568,7 +568,7 @@ mod json_parsing_tests {
 
     #[test]
     fn enforces_tc_fail_missing_edge() {
-        let parser: EntityJsonParser<'_> =
+        let parser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new = serde_json::json!([
             {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"alice\""]}]);
@@ -594,7 +594,7 @@ mod json_parsing_tests {
 
     #[test]
     fn enforces_tc_success() {
-        let parser: EntityJsonParser<'_> =
+        let parser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new = serde_json::json!([
             {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"alice\"", "Test::\"bob\""]}]);
@@ -618,7 +618,7 @@ mod json_parsing_tests {
 
     #[test]
     fn adds_extends_tc_connecting() {
-        let parser: EntityJsonParser<'_> =
+        let parser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new = serde_json::json!([
             {"uid":{"__expr":"Test::\"george\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"henry\""] }]);
@@ -642,7 +642,7 @@ mod json_parsing_tests {
 
     #[test]
     fn adds_extends_tc() {
-        let parser: EntityJsonParser<'_> =
+        let parser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new = serde_json::json!([
             {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"alice\""]}]);
@@ -665,7 +665,7 @@ mod json_parsing_tests {
 
     #[test]
     fn adds_works() {
-        let parser: EntityJsonParser<'_> =
+        let parser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new = serde_json::json!([
             {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"susan\""]}]);
@@ -690,7 +690,7 @@ mod json_parsing_tests {
 
     #[test]
     fn add_duplicates_fail2() {
-        let parser: EntityJsonParser<'_> =
+        let parser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new = serde_json::json!([
             {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : {}, "parents" : []},
@@ -715,7 +715,7 @@ mod json_parsing_tests {
 
     #[test]
     fn add_duplicates_fail1() {
-        let parser: EntityJsonParser<'_> =
+        let parser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new =
             serde_json::json!([{"uid":{"__expr":"Test::\"alice\""}, "attrs" : {}, "parents" : []}]);
@@ -734,7 +734,7 @@ mod json_parsing_tests {
         }
     }
 
-    fn simple_entities(parser: &EntityJsonParser<'_>) -> Entities {
+    fn simple_entities(parser: &EntityJsonParser<'_, '_>) -> Entities {
         let json = serde_json::json!(
             [
                 {
@@ -802,7 +802,7 @@ mod json_parsing_tests {
             ]
         );
 
-        let eparser: EntityJsonParser<'_> =
+        let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let es = eparser
             .from_json_value(json)
@@ -845,7 +845,7 @@ mod json_parsing_tests {
             ]
         );
 
-        let eparser: EntityJsonParser<'_> =
+        let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let es = eparser.from_json_value(json).expect("JSON is correct");
 
@@ -899,7 +899,7 @@ mod json_parsing_tests {
             ]
         );
 
-        let eparser: EntityJsonParser<'_> =
+        let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let es = eparser.from_json_value(json).expect("JSON is correct");
 
@@ -978,7 +978,7 @@ mod json_parsing_tests {
             ]
         );
 
-        let eparser: EntityJsonParser<'_> =
+        let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let es = eparser.from_json_value(json).expect("JSON is correct");
 
@@ -1004,7 +1004,7 @@ mod json_parsing_tests {
     #[test]
     fn uid_failures() {
         // various JSON constructs that are invalid in `uid` and `parents` fields
-        let eparser: EntityJsonParser<'_> =
+        let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
 
         let json = serde_json::json!(
@@ -1119,7 +1119,7 @@ mod json_parsing_tests {
     fn roundtrip(entities: &Entities) -> Result<Entities> {
         let mut buf = Vec::new();
         entities.write_to_json(&mut buf)?;
-        let eparser: EntityJsonParser<'_> =
+        let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         eparser.from_json_str(&String::from_utf8(buf).expect("should be valid UTF-8"))
     }
@@ -1265,7 +1265,7 @@ mod json_parsing_tests {
                 }
             ]
         );
-        let eparser: EntityJsonParser<'_> =
+        let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let err = eparser
             .from_json_value(json)
@@ -1546,7 +1546,7 @@ mod schema_based_parsing_tests {
         // without schema-based parsing, `home_ip` and `trust_score` are
         // strings, `manager` and `work_ip` are Records, `hr_contacts` contains
         // Records, and `json_blob.inner3.innerinner` is a Record
-        let eparser: EntityJsonParser<'_> =
+        let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let parsed = eparser
             .from_json_value(entitiesjson.clone())
@@ -1612,7 +1612,7 @@ mod schema_based_parsing_tests {
 
         // but with schema-based parsing, we get these other types
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -1751,7 +1751,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -1797,7 +1797,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -1841,7 +1841,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -1887,7 +1887,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -1934,7 +1934,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -1979,7 +1979,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -2025,7 +2025,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -2103,7 +2103,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -2147,7 +2147,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -2194,7 +2194,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -2244,7 +2244,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -2273,7 +2273,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -2302,7 +2302,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -2335,7 +2335,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -2368,7 +2368,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -2401,7 +2401,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -2432,7 +2432,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -2466,7 +2466,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -2497,7 +2497,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -2531,7 +2531,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
@@ -2626,7 +2626,7 @@ mod schema_based_parsing_tests {
             ]
         );
         let eparser = EntityJsonParser::new(
-            Some(MockSchema),
+            Some(&MockSchema),
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );

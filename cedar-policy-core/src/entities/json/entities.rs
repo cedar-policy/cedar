@@ -46,7 +46,7 @@ pub struct EntityJSON {
 
 /// Struct used to parse entities from JSON.
 #[derive(Debug, Clone)]
-pub struct EntityJsonParser<'e, S: Schema = NoEntitiesSchema> {
+pub struct EntityJsonParser<'e, 's, S: Schema = NoEntitiesSchema> {
     /// `schema` represents a source of `Action` entities, which will be added
     /// to the entities parsed from JSON.
     /// (If any `Action` entities are present in the JSON, and a `schema` is
@@ -61,7 +61,7 @@ pub struct EntityJsonParser<'e, S: Schema = NoEntitiesSchema> {
     /// instance, it will error if attributes have the wrong types (e.g., string
     /// instead of integer), or if required attributes are missing or
     /// superfluous attributes are provided.
-    schema: Option<S>,
+    schema: Option<&'s S>,
 
     /// Extensions which are active for the JSON parsing.
     extensions: Extensions<'e>,
@@ -83,7 +83,7 @@ enum EntitySchemaInfo<E: EntityTypeDescription> {
     NonAction(E),
 }
 
-impl<'e, S: Schema> EntityJsonParser<'e, S> {
+impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
     /// Create a new `EntityJsonParser`.
     ///
     /// `schema` represents a source of `Action` entities, which will be added
@@ -104,7 +104,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
     /// If you pass `TCComputation::AssumeAlreadyComputed`, then the caller is
     /// responsible for ensuring that TC holds before calling this method.
     pub fn new(
-        schema: Option<S>,
+        schema: Option<&'s S>,
         extensions: Extensions<'e>,
         tc_computation: TCComputation,
     ) -> Self {
@@ -216,7 +216,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
             .collect::<Result<_, _>>()?;
         Entities::from_entities(
             entities,
-            self.schema.as_ref(),
+            self.schema,
             self.tc_computation,
             self.extensions,
         )

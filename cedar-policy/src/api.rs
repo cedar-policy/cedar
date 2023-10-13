@@ -245,13 +245,17 @@ impl Entities {
 
     /// Create an `Entities` object with the given entities.
     ///
-    /// If `schema` is present, then action entities from that schema will also
-    /// be added to the `Entities`.
-    /// (In this version of Cedar, the entities in `entities` are not actually
-    /// validated against the `schema`.)
+    /// `schema` represents a source of `Action` entities, which will be added
+    /// to the entities provided.
+    /// (If any `Action` entities are present in the provided entities, and a
+    /// `schema` is also provided, those entities' definitions must match
+    /// exactly or an error is returned.)
     ///
-    /// Returns an error if the entities cannot be read or if the entities
-    /// hierarchy is cyclic.
+    /// If a `schema` is present, this function will also ensure that the
+    /// produced entities fully conform to the `schema` -- for instance, it will
+    /// error if attributes have the wrong types (e.g., string instead of
+    /// integer), or if required attributes are missing or superfluous
+    /// attributes are provided.
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
         schema: Option<&Schema>,
@@ -267,87 +271,132 @@ impl Entities {
         .map(Entities)
     }
 
-    /// Add all of the [`Entity`]s in the collection to this [`Entities`] structure, re-computing the transitive closure
-    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    /// Add all of the [`Entity`]s in the collection to this [`Entities`]
+    /// structure, re-computing the transitive closure.
+    ///
+    /// If a `schema` is provided, this will inform the parsing: for instance, it
+    /// will allow `__entity` and `__extn` escapes to be implicit.
+    /// This method will also ensure that the added entities fully conform to the
+    /// schema -- for instance, it will error if attributes have the wrong types
+    /// (e.g., string instead of integer), or if required attributes are missing
+    /// or superfluous attributes are provided.
+    /// (This method will not add action entities from the `schema` if they are
+    /// not already present.)
+    ///
+    /// Re-computing the transitive closure can be expensive, so it is advised
+    /// to not call this method in a loop.
     pub fn add_entities(
         self,
         entities: impl IntoIterator<Item = Entity>,
+        schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
         Ok(Self(self.0.add_entities(
             entities.into_iter().map(|e| e.0),
+            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)).as_ref(),
             entities::TCComputation::ComputeNow,
+            Extensions::all_available(),
         )?))
     }
 
-    /// Parse an entities JSON file (in [&str] form) and add them into this [`Entities`] structure, re-computing the transitive closure
+    /// Parse an entities JSON file (in [&str] form) and add them into this
+    /// [`Entities`] structure, re-computing the transitive closure
     ///
     /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// will allow `__entity` and `__extn` escapes to be implicit.
+    /// This method will also ensure that the added entities fully conform to the
+    /// schema -- for instance, it will error if attributes have the wrong types
+    /// (e.g., string instead of integer), or if required attributes are missing
+    /// or superfluous attributes are provided.
+    /// (This method will not add action entities from the `schema` if they are
+    /// not already present.)
     ///
-    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    /// Re-computing the transitive closure can be expensive, so it is advised
+    /// to not call this method in a loop.
     pub fn add_entities_from_json_str(
         self,
         json: &str,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            schema.as_ref(),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
         let new_entities = eparser.iter_from_json_str(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
+            schema.as_ref(),
             entities::TCComputation::ComputeNow,
+            Extensions::all_available(),
         )?))
     }
 
-    /// Parse an entities JSON file (in [`serde_json::Value`] form) and add them into this [`Entities`] structure, re-computing the transitive closure
+    /// Parse an entities JSON file (in [`serde_json::Value`] form) and add them
+    /// into this [`Entities`] structure, re-computing the transitive closure
     ///
     /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// will allow `__entity` and `__extn` escapes to be implicit.
+    /// This method will also ensure that the added entities fully conform to the
+    /// schema -- for instance, it will error if attributes have the wrong types
+    /// (e.g., string instead of integer), or if required attributes are missing
+    /// or superfluous attributes are provided.
+    /// (This method will not add action entities from the `schema` if they are
+    /// not already present.)
     ///
-    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    /// Re-computing the transitive closure can be expensive, so it is advised
+    /// to not call this method in a loop.
     pub fn add_entities_from_json_value(
         self,
         json: serde_json::Value,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            schema.as_ref(),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
         let new_entities = eparser.iter_from_json_value(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
+            schema.as_ref(),
             entities::TCComputation::ComputeNow,
+            Extensions::all_available(),
         )?))
     }
 
-    /// Parse an entities JSON file (in [`std::io::Read`] form) and add them into this [`Entities`] structure, re-computing the transitive closure
+    /// Parse an entities JSON file (in [`std::io::Read`] form) and add them
+    /// into this [`Entities`] structure, re-computing the transitive closure
     ///
     /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// will allow `__entity` and `__extn` escapes to be implicit.
+    /// This method will also ensure that the added entities fully conform to the
+    /// schema -- for instance, it will error if attributes have the wrong types
+    /// (e.g., string instead of integer), or if required attributes are missing
+    /// or superfluous attributes are provided.
+    /// (This method will not add action entities from the `schema` if they are
+    /// not already present.)
     ///
-    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    /// Re-computing the transitive closure can be expensive, so it is advised
+    /// to not call this method in a loop.
     pub fn add_entities_from_json_file(
         self,
         json: impl std::io::Read,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            schema.as_ref(),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
         let new_entities = eparser.iter_from_json_file(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
+            schema.as_ref(),
             entities::TCComputation::ComputeNow,
+            Extensions::all_available(),
         )?))
     }
 
@@ -402,8 +451,9 @@ impl Entities {
         json: &str,
         schema: Option<&Schema>,
     ) -> Result<Self, entities::EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            schema.as_ref(),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
@@ -455,8 +505,9 @@ impl Entities {
         json: serde_json::Value,
         schema: Option<&Schema>,
     ) -> Result<Self, entities::EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            schema.as_ref(),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
@@ -484,8 +535,9 @@ impl Entities {
         json: impl std::io::Read,
         schema: Option<&Schema>,
     ) -> Result<Self, entities::EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            schema.as_ref(),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );

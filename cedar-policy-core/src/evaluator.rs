@@ -3506,7 +3506,7 @@ pub mod test {
     fn eval_and_or() -> Result<()> {
         use crate::parser;
         let request = basic_request();
-        let eparser: EntityJsonParser<'_> =
+        let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
         let exts = Extensions::none();
@@ -3619,7 +3619,7 @@ pub mod test {
     #[test]
     fn template_env_tests() {
         let request = basic_request();
-        let eparser: EntityJsonParser<'_> =
+        let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
         let exts = Extensions::none();
@@ -3676,7 +3676,7 @@ pub mod test {
             EntityUID::with_eid("r"),
             Context::empty(),
         );
-        let eparser: EntityJsonParser<'_> =
+        let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
         let exts = Extensions::none();
