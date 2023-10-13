@@ -1780,14 +1780,14 @@ impl PolicySet {
     /// Get policies linked to a `Template` in the `PolicySet`.
     /// If any policy is linked to the template, this will error
     pub fn get_linked_policies(
-        &mut self,
+        &self,
         template_id: PolicyId,
-    ) -> Result<Vec<PolicyId>, PolicySetError> {
+    ) -> Result<impl Iterator<Item = &PolicyId>, PolicySetError> {
         match self
             .ast
             .get_linked_policies(&ast::PolicyID::from_string(template_id.to_string()))
         {
-            Ok(v) => Ok(v.map(|id| PolicyId((*id).clone())).collect()),
+            Ok(v) => Ok(v.map(|id| PolicyId::ref_cast(id))),
             Err(_) => Err(PolicySetError::TemplateNonexistentError(template_id)),
         }
     }
@@ -4185,6 +4185,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
+                .collect::<Vec<_>>()
                 .len(),
             1
         );
@@ -4194,6 +4195,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
+                .collect::<Vec<_>>()
                 .len(),
             0
         );
@@ -4209,6 +4211,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
+                .collect::<Vec<_>>()
                 .len(),
             1
         );
@@ -4221,6 +4224,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
+                .collect::<Vec<_>>()
                 .len(),
             2
         );
@@ -4248,6 +4252,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template2").unwrap())
                 .unwrap()
+                .collect::<Vec<_>>()
                 .len(),
             0
         );
@@ -4256,6 +4261,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
+                .collect::<Vec<_>>()
                 .len(),
             2
         );
@@ -4316,6 +4322,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
+                .collect::<Vec<_>>()
                 .len(),
             2
         );
@@ -4326,6 +4333,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
+                .collect::<Vec<_>>()
                 .len(),
             1
         );
@@ -4348,6 +4356,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
+                .collect::<Vec<_>>()
                 .len(),
             0
         );
@@ -4360,8 +4369,10 @@ mod policy_set_tests {
 
         //can't get count for nonexistent template
         assert_matches!(
-            pset.get_linked_policies(PolicyId::from_str("template").unwrap()),
-            Err(PolicySetError::TemplateNonexistentError(_))
+            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+                .err()
+                .unwrap(),
+            PolicySetError::TemplateNonexistentError(_)
         )
     }
 }

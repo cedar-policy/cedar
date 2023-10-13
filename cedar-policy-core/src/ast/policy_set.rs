@@ -339,7 +339,7 @@ impl PolicySet {
     /// Get the list of policies linked to `template_id`.
     /// Returns all p in `links` s.t. `p.template().id() == template_id`
     pub fn get_linked_policies(
-        &mut self,
+        &self,
         template_id: &PolicyID,
     ) -> Result<impl Iterator<Item = &PolicyID>, PolicySetGetLinksError> {
         match self.template_to_links_map.get(template_id) {
