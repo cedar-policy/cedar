@@ -12,6 +12,7 @@
 - Added an API, `unknown_entities`, to `PolicySet` to collect unknown entity UIDs from `PartialResponse`.
 - Added APIs `remove`, `remove_template` and `unlink` to remove policies from the `PolicySet`
 - Added API `get_linked_policies` to get the policies linked to a `Template`
+- Added `Entity::validate()` to validate an entity against a `Schema`
 
 ### Changed
 
@@ -22,6 +23,10 @@
 - The `Response::new()` constructor now expects a `Vec<AuthorizationError>` as its third argument.
 - Implements RFC #19, making validation slightly more strict, but more explainable.
 - Improved formatting for error messages.
+- `Entities::from_*()` methods now automatically add action entities present in the `schema`
+  to the constructed `Entities`, if a `schema` is provided
+- `Entities::from_*()` methods now validate the entities against the `schema`, if a `schema`
+  is provided
 
 ## 2.4.1
 

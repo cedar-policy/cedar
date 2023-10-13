@@ -26,7 +26,7 @@ use cedar_policy_core::ast;
 use cedar_policy_core::ast::RestrictedExprError;
 use cedar_policy_core::authorizer;
 pub use cedar_policy_core::authorizer::AuthorizationError;
-use cedar_policy_core::entities;
+use cedar_policy_core::entities::{self, EntitySchemaConformanceChecker};
 use cedar_policy_core::entities::JsonDeserializationErrorContext;
 use cedar_policy_core::entities::{ContextSchema, Dereference, JsonDeserializationError};
 use cedar_policy_core::est;
@@ -187,6 +187,15 @@ impl Entity {
                 .interpret(expr.as_borrowed())
                 .map(EvalResult::from),
         )
+    }
+
+    /// Validate this `Entity` against the given `schema`.
+    ///
+    /// If the entity does not conform to the `schema`, an error is returned.
+    pub fn validate(&self, schema: &Schema) -> Result<(), impl std::error::Error> {
+        let schema = cedar_policy_validator::CoreSchema::new(&schema.0);
+        let checker = EntitySchemaConformanceChecker::new(&schema, Extensions::all_available());
+        checker.validate_entity(&self.0)
     }
 }
 
