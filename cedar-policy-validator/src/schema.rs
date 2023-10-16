@@ -3015,4 +3015,79 @@ mod test {
             "ExampleCo::Personnel::Action"
         );
     }
+
+    mod longs {
+        use cool_asserts::assert_matches;
+
+        use super::*;
+
+        #[test]
+        fn long_bounds() {
+            let ty = ValidatorNamespaceDef::try_schema_type_into_validator_type(
+                None,
+                serde_json::from_value(json!(
+                    {
+                        "type": "Long",
+                        "min": 0,
+                        "max": 1,
+                    }
+                ))
+                .unwrap(),
+            )
+            .unwrap()
+            .resolve_type_defs(&HashMap::new())
+            .unwrap();
+            assert_eq!(ty, Type::long_bounded(0, 1));
+        }
+
+        #[test]
+        fn long_swapped_bounds() {
+            let err = ValidatorNamespaceDef::try_schema_type_into_validator_type(
+                None,
+                serde_json::from_value(json!(
+                    {
+                        "type": "Long",
+                        "min": 1,
+                        "max": 0,
+                    }
+                ))
+                .unwrap(),
+            )
+            .unwrap_err();
+            assert_matches!(err, SchemaError::MalformedLongBounds);
+        }
+
+        #[test]
+        #[should_panic(expected = "malformed bounds information")]
+        fn long_min_only() {
+            serde_json::from_value::<SchemaType>(json!(
+                {
+                    "type": "Long",
+                    "min": 1,
+                }
+            )).unwrap();
+        }
+
+        #[test]
+        #[should_panic(expected = "malformed bounds information")]
+        fn long_max_only() {
+            serde_json::from_value::<SchemaType>(json!(
+                {
+                    "type": "Long",
+                    "max": 1,
+                }
+            )).unwrap();
+        }
+
+        #[test]
+        #[should_panic(expected = "unknown field `foo`")]
+        fn long_bogus() {
+            serde_json::from_value::<SchemaType>(json!(
+                {
+                    "type": "Long",
+                    "foo": 1,
+                }
+            )).unwrap();
+        }
+    }
 }
