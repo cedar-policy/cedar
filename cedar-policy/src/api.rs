@@ -1606,6 +1606,18 @@ pub enum PolicySetError {
     /// Expected a template, but a static policy was provided.
     #[error("expected a template, but a static policy was provided")]
     ExpectedTemplate,
+    /// Error when removing a static policy
+    #[error("unable to remove static policy `{0}` because it does not exist")]
+    PolicyNonexistentError(PolicyId),
+    /// Error when removing a template that doesn't exist
+    #[error("unable to remove policy template `{0}` because it does not exist")]
+    TemplateNonexistentError(PolicyId),
+    /// Error when removing a template with active links
+    #[error("unable to remove policy template `{0}` because it has active links")]
+    RemoveTemplateWithActiveLinksError(PolicyId),
+    /// Error when unlinking a template
+    #[error("unable to unlink policy template `{0}` because it does not exist")]
+    LinkNonexistentError(PolicyId),
 }
 
 impl From<ast::PolicySetError> for PolicySetError {
@@ -1712,12 +1724,72 @@ impl PolicySet {
         }
     }
 
+    /// Remove a static `Policy` from the `PolicySet`
+    pub fn remove_static(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
+        let Some(policy) = self.policies.remove(&policy_id) else {
+            return Err(PolicySetError::PolicyNonexistentError(policy_id));
+        };
+        match self
+            .ast
+            .remove_static(&ast::PolicyID::from_string(policy_id.to_string()))
+        {
+            Ok(_) => Ok(policy),
+            Err(_) => {
+                //Only reachable if policy_id is a `link` and thus in `self.ast.links` but not `self.ast.templates`
+                //Restore self.policies
+                self.policies.insert(policy_id.clone(), policy);
+                Err(PolicySetError::PolicyNonexistentError(policy_id.clone()))
+            }
+        }
+    }
+
     /// Add a `Template` to the `PolicySet`
     pub fn add_template(&mut self, template: Template) -> Result<(), PolicySetError> {
         let id = PolicyId(template.ast.id().clone());
         self.ast.add_template(template.ast.clone())?;
         self.templates.insert(id, template);
         Ok(())
+    }
+
+    /// Remove a `Template` from the `PolicySet`.
+    /// If any policy is linked to the template, this will error
+    pub fn remove_template(&mut self, template_id: PolicyId) -> Result<Template, PolicySetError> {
+        let Some(template) = self.templates.remove(&template_id) else {
+            return Err(PolicySetError::TemplateNonexistentError(template_id));
+        };
+        // If self.templates and self.ast disagree, authorization cannot be trusted.
+        // PANIC SAFETY: We just found the policy in self.templates.
+        #[allow(clippy::panic)]
+        match self
+            .ast
+            .remove_template(&ast::PolicyID::from_string(template_id.to_string()))
+        {
+            Ok(_) => Ok(template),
+            Err(ast::PolicySetTemplateRemovalError::RemoveTemplateWithLinksError(_)) => {
+                self.templates.insert(template_id.clone(), template);
+                Err(PolicySetError::RemoveTemplateWithActiveLinksError(
+                    template_id,
+                ))
+            }
+            Err(ast::PolicySetTemplateRemovalError::RemovePolicyNoTemplateError(_)) => {
+                panic!("Found template policy in self.templates but not in self.ast");
+            }
+        }
+    }
+
+    /// Get policies linked to a `Template` in the `PolicySet`.
+    /// If any policy is linked to the template, this will error
+    pub fn get_linked_policies(
+        &self,
+        template_id: PolicyId,
+    ) -> Result<impl Iterator<Item = &PolicyId>, PolicySetError> {
+        match self
+            .ast
+            .get_linked_policies(&ast::PolicyID::from_string(template_id.to_string()))
+        {
+            Ok(v) => Ok(v.map(|id| PolicyId::ref_cast(id))),
+            Err(_) => Err(PolicySetError::TemplateNonexistentError(template_id)),
+        }
     }
 
     /// Iterate over all the `Policy`s in the `PolicySet`.
@@ -1821,6 +1893,54 @@ impl PolicySet {
             },
         );
         Ok(())
+    }
+
+    /// Get all the unknown entities from the policy set
+    #[cfg(feature = "partial-eval")]
+    pub fn unknown_entities(&self) -> HashSet<EntityUid> {
+        let mut entity_uids = HashSet::new();
+        for policy in self.policies.values() {
+            let ids: Vec<EntityUid> = policy
+                .ast
+                .condition()
+                .unknowns()
+                .filter_map(|expr| match expr.expr_kind() {
+                    ast::ExprKind::Unknown {
+                        name,
+                        type_annotation,
+                    } => {
+                        if matches!(type_annotation, Some(ast::Type::Entity { .. })) {
+                            EntityUid::from_str(name.as_str()).ok()
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                })
+                .collect();
+            entity_uids.extend(ids);
+        }
+        entity_uids
+    }
+
+    /// Unlink a template link from the policy set.
+    /// Returns the policy that was unlinked.
+    pub fn unlink(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
+        let Some(policy) = self.policies.remove(&policy_id) else {
+            return Err(PolicySetError::LinkNonexistentError(policy_id));
+        };
+        // If self.policies and self.ast disagree, authorization cannot be trusted.
+        // PANIC SAFETY: We just found the policy in self.policies.
+        #[allow(clippy::panic)]
+        match self
+            .ast
+            .unlink(&ast::PolicyID::from_string(policy_id.to_string()))
+        {
+            Ok(_) => Ok(policy),
+            Err(ast::PolicySetUnlinkError::UnlinkingError(_)) => {
+                panic!("Found linked policy in self.policies but not in self.ast")
+            }
+        }
     }
 
     /// Create a `PolicySet` from its AST representation only. The EST will
@@ -3705,6 +3825,155 @@ mod policy_set_tests {
     }
 
     #[test]
+    fn policyset_remove() {
+        let authorizer = Authorizer::new();
+        let request = Request::new(
+            Some(EntityUid::from_strs("Test", "test")),
+            Some(EntityUid::from_strs("Action", "a")),
+            Some(EntityUid::from_strs("Resource", "b")),
+            Context::empty(),
+        );
+
+        let e = r#"[
+            {
+                "uid": {"type":"Test","id":"test"},
+                "attrs": {},
+                "parents": []
+            },
+            {
+                "uid": {"type":"Action","id":"a"},
+                "attrs": {},
+                "parents": []
+            },
+            {
+                "uid": {"type":"Resource","id":"b"},
+                "attrs": {},
+                "parents": []
+            }
+        ]"#;
+        let entities = Entities::from_json_str(e, None).expect("entity error");
+
+        let mut pset = PolicySet::new();
+        let static_policy = Policy::parse(Some("id".into()), "permit(principal,action,resource);")
+            .expect("Failed to parse");
+        pset.add(static_policy).expect("Failed to add");
+
+        //Allow
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_matches!(
+            response,
+            Response {
+                decision: Decision::Allow,
+                diagnostics: _
+            }
+        );
+
+        pset.remove_static(PolicyId::from_str("id").unwrap())
+            .expect("Failed to remove static policy");
+
+        //Deny
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_matches!(
+            response,
+            Response {
+                decision: Decision::Deny,
+                diagnostics: _
+            }
+        );
+
+        let template = Template::parse(
+            Some("t".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Failed to parse");
+        pset.add_template(template).expect("Failed to add");
+
+        let linked_policy_id = PolicyId::from_str("linked").unwrap();
+        let env1: HashMap<SlotId, EntityUid> =
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
+        pset.link(
+            PolicyId::from_str("t").unwrap(),
+            linked_policy_id.clone(),
+            env1,
+        )
+        .expect("Failed to link");
+
+        //Allow
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_matches!(
+            response,
+            Response {
+                decision: Decision::Allow,
+                diagnostics: _
+            }
+        );
+
+        assert_matches!(
+            pset.remove_static(PolicyId::from_str("t").unwrap()),
+            Err(PolicySetError::PolicyNonexistentError(_))
+        );
+
+        let result = pset.unlink(linked_policy_id.clone());
+        assert_matches!(result, Ok(_));
+
+        assert_matches!(
+            pset.remove_static(PolicyId::from_str("t").unwrap()),
+            Err(PolicySetError::PolicyNonexistentError(_))
+        );
+
+        //Deny
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_matches!(
+            response,
+            Response {
+                decision: Decision::Deny,
+                diagnostics: _
+            }
+        );
+
+        let env1: HashMap<SlotId, EntityUid> =
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
+        pset.link(
+            PolicyId::from_str("t").unwrap(),
+            linked_policy_id.clone(),
+            env1,
+        )
+        .expect("Failed to link");
+
+        //Allow
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_matches!(
+            response,
+            Response {
+                decision: Decision::Allow,
+                diagnostics: _
+            }
+        );
+
+        //Can't remove template that is still linked
+        assert_matches!(
+            pset.remove_template(PolicyId::from_str("t").unwrap()),
+            Err(PolicySetError::RemoveTemplateWithActiveLinksError(_))
+        );
+
+        //Unlink first, then remove
+        let result = pset.unlink(linked_policy_id.clone());
+        assert_matches!(result, Ok(_));
+        pset.remove_template(PolicyId::from_str("t").unwrap())
+            .expect("Failed to remove policy template");
+
+        //Deny
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_matches!(
+            response,
+            Response {
+                decision: Decision::Deny,
+                diagnostics: _
+            }
+        );
+    }
+
+    #[test]
     fn pset_requests() {
         let template = Template::parse(
             Some("template".into()),
@@ -3798,6 +4067,313 @@ mod policy_set_tests {
                 LinkingError::NoSuchTemplate { .. }
             ))
         );
+    }
+
+    #[cfg(feature = "partial-eval")]
+    #[test]
+    fn unknown_entities() {
+        let ast = ast::Policy::from_when_clause(
+            ast::Effect::Permit,
+            ast::Expr::unknown_with_type(
+                "test_entity_type::\"unknown\"",
+                Some(ast::Type::Entity {
+                    ty: ast::EntityType::Concrete("test_entity_type".parse().unwrap()),
+                }),
+            ),
+            ast::PolicyID::from_smolstr("static".into()),
+        );
+        let static_policy = Policy::from_ast(ast);
+        let mut pset = PolicySet::new();
+        pset.add(static_policy).unwrap();
+
+        let entity_uids = pset.unknown_entities();
+        entity_uids.contains(&"test_entity_type::\"unknown\"".parse().unwrap());
+    }
+
+    #[test]
+    fn unlink_linked_policy() {
+        let template = Template::parse(
+            Some("template".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Template Parse Failure");
+        let mut pset = PolicySet::new();
+        pset.add_template(template).unwrap();
+
+        let linked_policy_id = PolicyId::from_str("linked").unwrap();
+        pset.link(
+            PolicyId::from_str("template").unwrap(),
+            linked_policy_id.clone(),
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
+        )
+        .unwrap();
+
+        let authorizer = Authorizer::new();
+        let request = Request::new(
+            Some(EntityUid::from_strs("Test", "test")),
+            Some(EntityUid::from_strs("Action", "a")),
+            Some(EntityUid::from_strs("Resource", "b")),
+            Context::empty(),
+        );
+
+        let e = r#"[
+            {
+                "uid": {"type":"Test","id":"test"},
+                "attrs": {},
+                "parents": []
+            },
+            {
+                "uid": {"type":"Action","id":"a"},
+                "attrs": {},
+                "parents": []
+            },
+            {
+                "uid": {"type":"Resource","id":"b"},
+                "attrs": {},
+                "parents": []
+            }
+        ]"#;
+        let entities = Entities::from_json_str(e, None).expect("entity error");
+
+        // Allow
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_matches!(
+            response,
+            Response {
+                decision: Decision::Allow,
+                diagnostics: _
+            }
+        );
+
+        let result = pset.unlink(linked_policy_id.clone());
+        assert_matches!(result, Ok(_));
+
+        //Deny
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_matches!(
+            response,
+            Response {
+                decision: Decision::Deny,
+                diagnostics: _
+            }
+        );
+
+        let result = pset.unlink(linked_policy_id.clone());
+        assert_matches!(result, Err(PolicySetError::LinkNonexistentError(_)));
+    }
+
+    #[test]
+    fn get_linked_policy() {
+        let mut pset = PolicySet::new();
+
+        let template = Template::parse(
+            Some("template".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Template Parse Failure");
+        pset.add_template(template).unwrap();
+
+        let linked_policy_id = PolicyId::from_str("linked").unwrap();
+        pset.link(
+            PolicyId::from_str("template").unwrap(),
+            linked_policy_id.clone(),
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
+        )
+        .unwrap();
+
+        //add link, count 1
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+                .unwrap()
+                .collect::<Vec<_>>()
+                .len(),
+            1
+        );
+        let result = pset.unlink(linked_policy_id.clone());
+        assert_matches!(result, Ok(_));
+        //remove link, count 0
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+                .unwrap()
+                .collect::<Vec<_>>()
+                .len(),
+            0
+        );
+        let result = pset.unlink(linked_policy_id.clone());
+        assert_matches!(result, Err(PolicySetError::LinkNonexistentError(_)));
+
+        pset.link(
+            PolicyId::from_str("template").unwrap(),
+            linked_policy_id.clone(),
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
+        )
+        .unwrap();
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+                .unwrap()
+                .collect::<Vec<_>>()
+                .len(),
+            1
+        );
+        pset.link(
+            PolicyId::from_str("template").unwrap(),
+            PolicyId::from_str("linked2").unwrap(),
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
+        )
+        .unwrap();
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+                .unwrap()
+                .collect::<Vec<_>>()
+                .len(),
+            2
+        );
+
+        //Can't re-add template
+        let template = Template::parse(
+            Some("template".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Template Parse Failure");
+        assert_matches!(
+            pset.add_template(template),
+            Err(PolicySetError::AlreadyDefined { .. })
+        );
+
+        //Add another template
+        let template = Template::parse(
+            Some("template2".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Template Parse Failure");
+        pset.add_template(template).unwrap();
+
+        //template2 count 0
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::from_str("template2").unwrap())
+                .unwrap()
+                .collect::<Vec<_>>()
+                .len(),
+            0
+        );
+
+        //template count 2
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+                .unwrap()
+                .collect::<Vec<_>>()
+                .len(),
+            2
+        );
+
+        //Can't remove template
+        assert_matches!(
+            pset.remove_template(PolicyId::from_str("template").unwrap()),
+            Err(PolicySetError::RemoveTemplateWithActiveLinksError(_))
+        );
+
+        //Can't add policy named template
+        let illegal_template_policy = Policy::parse(
+            Some("template".into()),
+            "permit(principal, action, resource);",
+        )
+        .expect("Static parse failure");
+        assert_matches!(
+            pset.add(illegal_template_policy),
+            Err(PolicySetError::AlreadyDefined { .. })
+        );
+
+        //Can't add policy named linked
+        let illegal_linked_policy = Policy::parse(
+            Some("linked".into()),
+            "permit(principal, action, resource);",
+        )
+        .expect("Static parse failure");
+        assert_matches!(
+            pset.add(illegal_linked_policy),
+            Err(PolicySetError::AlreadyDefined { .. })
+        );
+
+        //Can add policy named `policy`
+        let static_policy = Policy::parse(
+            Some("policy".into()),
+            "permit(principal, action, resource);",
+        )
+        .expect("Static parse failure");
+        pset.add(static_policy).unwrap();
+
+        //Can remove `policy`
+        pset.remove_static(PolicyId::from_str("policy").unwrap())
+            .expect("should be able to remove policy");
+
+        //Cannot remove "linked"
+        assert_matches!(
+            pset.remove_static(PolicyId::from_str("linked").unwrap()),
+            Err(PolicySetError::PolicyNonexistentError(_))
+        );
+
+        //Cannot remove "template"
+        assert_matches!(
+            pset.remove_static(PolicyId::from_str("template").unwrap()),
+            Err(PolicySetError::PolicyNonexistentError(_))
+        );
+
+        //template count 2
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+                .unwrap()
+                .collect::<Vec<_>>()
+                .len(),
+            2
+        );
+
+        //unlink one policy, template count 1
+        let result = pset.unlink(linked_policy_id.clone());
+        assert_matches!(result, Ok(_));
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+                .unwrap()
+                .collect::<Vec<_>>()
+                .len(),
+            1
+        );
+
+        //remove template2
+        assert_matches!(
+            pset.remove_template(PolicyId::from_str("template2").unwrap()),
+            Ok(_)
+        );
+
+        //can't remove template1
+        assert_matches!(
+            pset.remove_template(PolicyId::from_str("template").unwrap()),
+            Err(PolicySetError::RemoveTemplateWithActiveLinksError(_))
+        );
+
+        //unlink other policy, template count 0
+        let result = pset.unlink(PolicyId::from_str("linked2").unwrap());
+        assert_matches!(result, Ok(_));
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+                .unwrap()
+                .collect::<Vec<_>>()
+                .len(),
+            0
+        );
+
+        //remove template
+        assert_matches!(
+            pset.remove_template(PolicyId::from_str("template").unwrap()),
+            Ok(_)
+        );
+
+        //can't get count for nonexistent template
+        assert_matches!(
+            pset.get_linked_policies(PolicyId::from_str("template").unwrap())
+                .err()
+                .unwrap(),
+            PolicySetError::TemplateNonexistentError(_)
+        )
     }
 }
 

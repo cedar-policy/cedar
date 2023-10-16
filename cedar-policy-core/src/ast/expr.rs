@@ -473,12 +473,9 @@ impl Expr {
     }
 
     /// Get all unknowns in an expression
-    pub fn unknowns(&self) -> impl Iterator<Item = &str> {
+    pub fn unknowns(&self) -> impl Iterator<Item = &Expr> {
         self.subexpressions()
-            .filter_map(|subexpr| match subexpr.expr_kind() {
-                ExprKind::Unknown { name, .. } => Some(name.as_str()),
-                _ => None,
-            })
+            .filter(|subexpr| matches!(subexpr.expr_kind(), ExprKind::Unknown { .. }))
     }
 
     /// Substitute unknowns with values
@@ -1596,9 +1593,9 @@ mod test {
         );
         let unknowns = e.unknowns().collect_vec();
         assert_eq!(unknowns.len(), 3);
-        assert!(unknowns.contains(&"a"));
-        assert!(unknowns.contains(&"b"));
-        assert!(unknowns.contains(&"c"));
+        assert!(unknowns.contains(&&Expr::unknown("a".to_string())));
+        assert!(unknowns.contains(&&Expr::unknown("b".to_string())));
+        assert!(unknowns.contains(&&Expr::unknown("c".to_string())));
     }
 
     #[test]
