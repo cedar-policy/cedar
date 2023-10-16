@@ -26,6 +26,7 @@
   `ip("192.168.0.1/24") == ip("192.168.0.3/24")` was previously `true` and is now
   `false`. The behavior of equality on single IP addresses is unchanged, and so is
   the behavior of `.isInRange()`.
+- Standardized on duplicates being errors instead of last-write-wins for parsers.
 
 ## 2.4.1
 
