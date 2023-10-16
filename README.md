@@ -103,6 +103,24 @@ To build, simply run `cargo build` (or `cargo build --release`).
 We maintain changelogs for our public-facing crates: [cedar-policy](./cedar-policy/CHANGELOG.md) and [cedar-policy-cli](./cedar-policy-cli/CHANGELOG.md).
 For a list of the current and past releases, see [crates.io](https://crates.io/crates/cedar-policy) or [Releases](https://github.com/cedar-policy/cedar/releases).
 
+## Backward Compatibility Considerations
+
+Cedar is written in Rust and you will typically depend on Cedar via Cargo. Cargo makes sane choices for the majority of project, but your needs may differ. If you don't want automatic updates to Cedar replace
+
+```
+[dependencies]
+cedar-policy = "2.3.3"
+```
+
+with
+
+```
+[dependencies]
+cedar-policy = "=2.3.3"
+```
+
+in your `Cargo.toml` file.
+
 ## Security
 
 See [SECURITY](SECURITY.md) for more information.
