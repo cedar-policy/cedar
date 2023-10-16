@@ -18,6 +18,10 @@
 //! package, and shared among multiple interfaces (Rust bindings, Java bindings,
 //! CLI [here], etc).
 
+// PANIC SAFETY tests
+#![allow(clippy::expect_used)]
+// PANIC SAFETY tests
+#![allow(clippy::panic)]
 mod corpus_tests;
 mod decimal;
 mod example_use_cases_doc;
