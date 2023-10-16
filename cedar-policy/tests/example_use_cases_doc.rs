@@ -68,9 +68,7 @@ fn scenario_4a() {
 // note: 4b currently omitted because it requires date/timestamp functionality
 
 /// currently failing, as the validator does not support action attributes
-#[should_panic(
-    expected = "Action::\\\"view\\\"` does not have the attribute `readOnly`"
-)]
+#[should_panic(expected = "Action::\\\"view\\\"` does not have the attribute `readOnly`")]
 #[test]
 fn scenario_4c() {
     perform_integration_test_from_json(folder().join("4c.json"));

@@ -214,12 +214,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
             .into_iter()
             .map(|ejson| self.parse_ejson(ejson))
             .collect::<Result<_, _>>()?;
-        Entities::from_entities(
-            entities,
-            self.schema,
-            self.tc_computation,
-            self.extensions,
-        )
+        Entities::from_entities(entities, self.schema, self.tc_computation, self.extensions)
     }
 
     /// internal function that parses an `EntityJSON` into an `Entity`

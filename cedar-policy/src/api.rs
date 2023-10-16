@@ -26,8 +26,8 @@ use cedar_policy_core::ast;
 use cedar_policy_core::ast::RestrictedExprError;
 use cedar_policy_core::authorizer;
 pub use cedar_policy_core::authorizer::AuthorizationError;
-use cedar_policy_core::entities::{self, EntitySchemaConformanceChecker};
 use cedar_policy_core::entities::JsonDeserializationErrorContext;
+use cedar_policy_core::entities::{self, EntitySchemaConformanceChecker};
 use cedar_policy_core::entities::{ContextSchema, Dereference, JsonDeserializationError};
 use cedar_policy_core::est;
 pub use cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind};
@@ -299,12 +299,16 @@ impl Entities {
         entities: impl IntoIterator<Item = Entity>,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
-        Ok(Self(self.0.add_entities(
-            entities.into_iter().map(|e| e.0),
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)).as_ref(),
-            entities::TCComputation::ComputeNow,
-            Extensions::all_available(),
-        )?))
+        Ok(Self(
+            self.0.add_entities(
+                entities.into_iter().map(|e| e.0),
+                schema
+                    .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
+                    .as_ref(),
+                entities::TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )?,
+        ))
     }
 
     /// Parse an entities JSON file (in [&str] form) and add them into this
@@ -4677,20 +4681,48 @@ mod entity_validate_tests {
             HashMap::from_iter([
                 ("isFullTime".into(), RestrictedExpression::new_bool(false)),
                 ("numDirectReports".into(), RestrictedExpression::new_long(3)),
-                ("department".into(), RestrictedExpression::new_string("Sales".into())),
-                ("manager".into(), RestrictedExpression::from_str(r#"Employee::"456""#).unwrap()),
+                (
+                    "department".into(),
+                    RestrictedExpression::new_string("Sales".into()),
+                ),
+                (
+                    "manager".into(),
+                    RestrictedExpression::from_str(r#"Employee::"456""#).unwrap(),
+                ),
                 ("hr_contacts".into(), RestrictedExpression::new_set([])),
-                ("json_blob".into(), RestrictedExpression::new_record([
-                    ("inner1".into(), RestrictedExpression::new_bool(false)),
-                    ("inner2".into(), RestrictedExpression::new_string("foo".into())),
-                    ("inner3".into(), RestrictedExpression::new_record([
-                        ("innerinner".into(), RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap())
-                    ]))
-                ])),
-                ("home_ip".into(), RestrictedExpression::from_str(r#"ip("10.20.30.40")"#).unwrap()),
-                ("work_ip".into(), RestrictedExpression::from_str(r#"ip("10.50.60.70")"#).unwrap()),
-                ("trust_score".into(), RestrictedExpression::from_str(r#"decimal("36.53")"#).unwrap()),
-                ("tricky".into(), RestrictedExpression::from_str(r#"{ type: "foo", id: "bar" }"#).unwrap()),
+                (
+                    "json_blob".into(),
+                    RestrictedExpression::new_record([
+                        ("inner1".into(), RestrictedExpression::new_bool(false)),
+                        (
+                            "inner2".into(),
+                            RestrictedExpression::new_string("foo".into()),
+                        ),
+                        (
+                            "inner3".into(),
+                            RestrictedExpression::new_record([(
+                                "innerinner".into(),
+                                RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap(),
+                            )]),
+                        ),
+                    ]),
+                ),
+                (
+                    "home_ip".into(),
+                    RestrictedExpression::from_str(r#"ip("10.20.30.40")"#).unwrap(),
+                ),
+                (
+                    "work_ip".into(),
+                    RestrictedExpression::from_str(r#"ip("10.50.60.70")"#).unwrap(),
+                ),
+                (
+                    "trust_score".into(),
+                    RestrictedExpression::from_str(r#"decimal("36.53")"#).unwrap(),
+                ),
+                (
+                    "tricky".into(),
+                    RestrictedExpression::from_str(r#"{ type: "foo", id: "bar" }"#).unwrap(),
+                ),
             ]),
             HashSet::new(),
         );
@@ -4705,20 +4737,48 @@ mod entity_validate_tests {
             HashMap::from_iter([
                 ("isFullTime".into(), RestrictedExpression::new_bool(false)),
                 ("numDirectReports".into(), RestrictedExpression::new_long(3)),
-                ("department".into(), RestrictedExpression::new_string("Sales".into())),
-                ("manager".into(), RestrictedExpression::from_str(r#"Employee::"456""#).unwrap()),
+                (
+                    "department".into(),
+                    RestrictedExpression::new_string("Sales".into()),
+                ),
+                (
+                    "manager".into(),
+                    RestrictedExpression::from_str(r#"Employee::"456""#).unwrap(),
+                ),
                 ("hr_contacts".into(), RestrictedExpression::new_set([])),
-                ("json_blob".into(), RestrictedExpression::new_record([
-                    ("inner1".into(), RestrictedExpression::new_bool(false)),
-                    ("inner2".into(), RestrictedExpression::new_string("foo".into())),
-                    ("inner3".into(), RestrictedExpression::new_record([
-                        ("innerinner".into(), RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap())
-                    ]))
-                ])),
-                ("home_ip".into(), RestrictedExpression::from_str(r#"ip("10.20.30.40")"#).unwrap()),
-                ("work_ip".into(), RestrictedExpression::from_str(r#"ip("10.50.60.70")"#).unwrap()),
-                ("trust_score".into(), RestrictedExpression::from_str(r#"decimal("36.53")"#).unwrap()),
-                ("tricky".into(), RestrictedExpression::from_str(r#"{ type: "foo", id: "bar" }"#).unwrap()),
+                (
+                    "json_blob".into(),
+                    RestrictedExpression::new_record([
+                        ("inner1".into(), RestrictedExpression::new_bool(false)),
+                        (
+                            "inner2".into(),
+                            RestrictedExpression::new_string("foo".into()),
+                        ),
+                        (
+                            "inner3".into(),
+                            RestrictedExpression::new_record([(
+                                "innerinner".into(),
+                                RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap(),
+                            )]),
+                        ),
+                    ]),
+                ),
+                (
+                    "home_ip".into(),
+                    RestrictedExpression::from_str(r#"ip("10.20.30.40")"#).unwrap(),
+                ),
+                (
+                    "work_ip".into(),
+                    RestrictedExpression::from_str(r#"ip("10.50.60.70")"#).unwrap(),
+                ),
+                (
+                    "trust_score".into(),
+                    RestrictedExpression::from_str(r#"decimal("36.53")"#).unwrap(),
+                ),
+                (
+                    "tricky".into(),
+                    RestrictedExpression::from_str(r#"{ type: "foo", id: "bar" }"#).unwrap(),
+                ),
             ]),
             HashSet::from_iter([EntityUid::from_strs("Manager", "jane")]),
         );
@@ -4736,20 +4796,48 @@ mod entity_validate_tests {
             EntityUid::from_strs("Employee", "123"),
             HashMap::from_iter([
                 ("isFullTime".into(), RestrictedExpression::new_bool(false)),
-                ("department".into(), RestrictedExpression::new_string("Sales".into())),
-                ("manager".into(), RestrictedExpression::from_str(r#"Employee::"456""#).unwrap()),
+                (
+                    "department".into(),
+                    RestrictedExpression::new_string("Sales".into()),
+                ),
+                (
+                    "manager".into(),
+                    RestrictedExpression::from_str(r#"Employee::"456""#).unwrap(),
+                ),
                 ("hr_contacts".into(), RestrictedExpression::new_set([])),
-                ("json_blob".into(), RestrictedExpression::new_record([
-                    ("inner1".into(), RestrictedExpression::new_bool(false)),
-                    ("inner2".into(), RestrictedExpression::new_string("foo".into())),
-                    ("inner3".into(), RestrictedExpression::new_record([
-                        ("innerinner".into(), RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap())
-                    ]))
-                ])),
-                ("home_ip".into(), RestrictedExpression::from_str(r#"ip("10.20.30.40")"#).unwrap()),
-                ("work_ip".into(), RestrictedExpression::from_str(r#"ip("10.50.60.70")"#).unwrap()),
-                ("trust_score".into(), RestrictedExpression::from_str(r#"decimal("36.53")"#).unwrap()),
-                ("tricky".into(), RestrictedExpression::from_str(r#"{ type: "foo", id: "bar" }"#).unwrap()),
+                (
+                    "json_blob".into(),
+                    RestrictedExpression::new_record([
+                        ("inner1".into(), RestrictedExpression::new_bool(false)),
+                        (
+                            "inner2".into(),
+                            RestrictedExpression::new_string("foo".into()),
+                        ),
+                        (
+                            "inner3".into(),
+                            RestrictedExpression::new_record([(
+                                "innerinner".into(),
+                                RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap(),
+                            )]),
+                        ),
+                    ]),
+                ),
+                (
+                    "home_ip".into(),
+                    RestrictedExpression::from_str(r#"ip("10.20.30.40")"#).unwrap(),
+                ),
+                (
+                    "work_ip".into(),
+                    RestrictedExpression::from_str(r#"ip("10.50.60.70")"#).unwrap(),
+                ),
+                (
+                    "trust_score".into(),
+                    RestrictedExpression::from_str(r#"decimal("36.53")"#).unwrap(),
+                ),
+                (
+                    "tricky".into(),
+                    RestrictedExpression::from_str(r#"{ type: "foo", id: "bar" }"#).unwrap(),
+                ),
             ]),
             HashSet::new(),
         );
@@ -4769,20 +4857,48 @@ mod entity_validate_tests {
                 ("isFullTime".into(), RestrictedExpression::new_bool(false)),
                 ("extra".into(), RestrictedExpression::new_bool(true)),
                 ("numDirectReports".into(), RestrictedExpression::new_long(3)),
-                ("department".into(), RestrictedExpression::new_string("Sales".into())),
-                ("manager".into(), RestrictedExpression::from_str(r#"Employee::"456""#).unwrap()),
+                (
+                    "department".into(),
+                    RestrictedExpression::new_string("Sales".into()),
+                ),
+                (
+                    "manager".into(),
+                    RestrictedExpression::from_str(r#"Employee::"456""#).unwrap(),
+                ),
                 ("hr_contacts".into(), RestrictedExpression::new_set([])),
-                ("json_blob".into(), RestrictedExpression::new_record([
-                    ("inner1".into(), RestrictedExpression::new_bool(false)),
-                    ("inner2".into(), RestrictedExpression::new_string("foo".into())),
-                    ("inner3".into(), RestrictedExpression::new_record([
-                        ("innerinner".into(), RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap())
-                    ]))
-                ])),
-                ("home_ip".into(), RestrictedExpression::from_str(r#"ip("10.20.30.40")"#).unwrap()),
-                ("work_ip".into(), RestrictedExpression::from_str(r#"ip("10.50.60.70")"#).unwrap()),
-                ("trust_score".into(), RestrictedExpression::from_str(r#"decimal("36.53")"#).unwrap()),
-                ("tricky".into(), RestrictedExpression::from_str(r#"{ type: "foo", id: "bar" }"#).unwrap()),
+                (
+                    "json_blob".into(),
+                    RestrictedExpression::new_record([
+                        ("inner1".into(), RestrictedExpression::new_bool(false)),
+                        (
+                            "inner2".into(),
+                            RestrictedExpression::new_string("foo".into()),
+                        ),
+                        (
+                            "inner3".into(),
+                            RestrictedExpression::new_record([(
+                                "innerinner".into(),
+                                RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap(),
+                            )]),
+                        ),
+                    ]),
+                ),
+                (
+                    "home_ip".into(),
+                    RestrictedExpression::from_str(r#"ip("10.20.30.40")"#).unwrap(),
+                ),
+                (
+                    "work_ip".into(),
+                    RestrictedExpression::from_str(r#"ip("10.50.60.70")"#).unwrap(),
+                ),
+                (
+                    "trust_score".into(),
+                    RestrictedExpression::from_str(r#"decimal("36.53")"#).unwrap(),
+                ),
+                (
+                    "tricky".into(),
+                    RestrictedExpression::from_str(r#"{ type: "foo", id: "bar" }"#).unwrap(),
+                ),
             ]),
             HashSet::new(),
         );
