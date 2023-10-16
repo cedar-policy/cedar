@@ -4618,6 +4618,201 @@ mod ancestors_tests {
     }
 }
 
+/// These tests are for `Entity::validate()`.
+/// Many other validation-related tests are in the separate module focusing on
+/// schema-based parsing.
+#[cfg(test)]
+mod entity_validate_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn schema() -> Schema {
+        Schema::from_json_value(json!(
+        {"": {
+            "entityTypes": {
+                "Employee": {
+                    "memberOfTypes": [],
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "isFullTime": { "type": "Boolean" },
+                            "numDirectReports": { "type": "Long" },
+                            "department": { "type": "String" },
+                            "manager": { "type": "Entity", "name": "Employee" },
+                            "hr_contacts": { "type": "Set", "element": {
+                                "type": "Entity", "name": "HR" } },
+                            "json_blob": { "type": "Record", "attributes": {
+                                "inner1": { "type": "Boolean" },
+                                "inner2": { "type": "String" },
+                                "inner3": { "type": "Record", "attributes": {
+                                    "innerinner": { "type": "Entity", "name": "Employee" }
+                                }}
+                            }},
+                            "home_ip": { "type": "Extension", "name": "ipaddr" },
+                            "work_ip": { "type": "Extension", "name": "ipaddr" },
+                            "trust_score": { "type": "Extension", "name": "decimal" },
+                            "tricky": { "type": "Record", "attributes": {
+                                "type": { "type": "String" },
+                                "id": { "type": "String" }
+                            }}
+                        }
+                    }
+                },
+                "HR": {
+                    "memberOfTypes": []
+                }
+            },
+            "actions": {
+                "view": { }
+            }
+        }}
+        ))
+        .expect("should be a valid schema")
+    }
+
+    #[test]
+    fn valid_entity() {
+        let entity = Entity::new(
+            EntityUid::from_strs("Employee", "123"),
+            HashMap::from_iter([
+                ("isFullTime".into(), RestrictedExpression::new_bool(false)),
+                ("numDirectReports".into(), RestrictedExpression::new_long(3)),
+                ("department".into(), RestrictedExpression::new_string("Sales".into())),
+                ("manager".into(), RestrictedExpression::from_str(r#"Employee::"456""#).unwrap()),
+                ("hr_contacts".into(), RestrictedExpression::new_set([])),
+                ("json_blob".into(), RestrictedExpression::new_record([
+                    ("inner1".into(), RestrictedExpression::new_bool(false)),
+                    ("inner2".into(), RestrictedExpression::new_string("foo".into())),
+                    ("inner3".into(), RestrictedExpression::new_record([
+                        ("innerinner".into(), RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap())
+                    ]))
+                ])),
+                ("home_ip".into(), RestrictedExpression::from_str(r#"ip("10.20.30.40")"#).unwrap()),
+                ("work_ip".into(), RestrictedExpression::from_str(r#"ip("10.50.60.70")"#).unwrap()),
+                ("trust_score".into(), RestrictedExpression::from_str(r#"decimal("36.53")"#).unwrap()),
+                ("tricky".into(), RestrictedExpression::from_str(r#"{ type: "foo", id: "bar" }"#).unwrap()),
+            ]),
+            HashSet::new(),
+        );
+        entity.validate(&schema()).unwrap();
+    }
+
+    #[test]
+    fn invalid_entities() {
+        let schema = schema();
+        let entity = Entity::new(
+            EntityUid::from_strs("Employee", "123"),
+            HashMap::from_iter([
+                ("isFullTime".into(), RestrictedExpression::new_bool(false)),
+                ("numDirectReports".into(), RestrictedExpression::new_long(3)),
+                ("department".into(), RestrictedExpression::new_string("Sales".into())),
+                ("manager".into(), RestrictedExpression::from_str(r#"Employee::"456""#).unwrap()),
+                ("hr_contacts".into(), RestrictedExpression::new_set([])),
+                ("json_blob".into(), RestrictedExpression::new_record([
+                    ("inner1".into(), RestrictedExpression::new_bool(false)),
+                    ("inner2".into(), RestrictedExpression::new_string("foo".into())),
+                    ("inner3".into(), RestrictedExpression::new_record([
+                        ("innerinner".into(), RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap())
+                    ]))
+                ])),
+                ("home_ip".into(), RestrictedExpression::from_str(r#"ip("10.20.30.40")"#).unwrap()),
+                ("work_ip".into(), RestrictedExpression::from_str(r#"ip("10.50.60.70")"#).unwrap()),
+                ("trust_score".into(), RestrictedExpression::from_str(r#"decimal("36.53")"#).unwrap()),
+                ("tricky".into(), RestrictedExpression::from_str(r#"{ type: "foo", id: "bar" }"#).unwrap()),
+            ]),
+            HashSet::from_iter([EntityUid::from_strs("Manager", "jane")]),
+        );
+        match entity.validate(&schema) {
+            Ok(_) => panic!("expected an error due to extraneous parent"),
+            Err(e) => {
+                assert!(
+                    e.to_string().contains(r#"`Employee::"123"` is not allowed to have an ancestor of type `Manager` according to the schema"#),
+                    "actual error message was {e}",
+                )
+            }
+        }
+
+        let entity = Entity::new(
+            EntityUid::from_strs("Employee", "123"),
+            HashMap::from_iter([
+                ("isFullTime".into(), RestrictedExpression::new_bool(false)),
+                ("department".into(), RestrictedExpression::new_string("Sales".into())),
+                ("manager".into(), RestrictedExpression::from_str(r#"Employee::"456""#).unwrap()),
+                ("hr_contacts".into(), RestrictedExpression::new_set([])),
+                ("json_blob".into(), RestrictedExpression::new_record([
+                    ("inner1".into(), RestrictedExpression::new_bool(false)),
+                    ("inner2".into(), RestrictedExpression::new_string("foo".into())),
+                    ("inner3".into(), RestrictedExpression::new_record([
+                        ("innerinner".into(), RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap())
+                    ]))
+                ])),
+                ("home_ip".into(), RestrictedExpression::from_str(r#"ip("10.20.30.40")"#).unwrap()),
+                ("work_ip".into(), RestrictedExpression::from_str(r#"ip("10.50.60.70")"#).unwrap()),
+                ("trust_score".into(), RestrictedExpression::from_str(r#"decimal("36.53")"#).unwrap()),
+                ("tricky".into(), RestrictedExpression::from_str(r#"{ type: "foo", id: "bar" }"#).unwrap()),
+            ]),
+            HashSet::new(),
+        );
+        match entity.validate(&schema) {
+            Ok(_) => panic!("expected an error due to missing attribute `numDirectReports`"),
+            Err(e) => {
+                assert!(
+                    e.to_string().contains(r#"expected entity `Employee::"123"` to have an attribute `numDirectReports`, but it does not"#),
+                    "actual error message was {e}",
+                )
+            }
+        }
+
+        let entity = Entity::new(
+            EntityUid::from_strs("Employee", "123"),
+            HashMap::from_iter([
+                ("isFullTime".into(), RestrictedExpression::new_bool(false)),
+                ("extra".into(), RestrictedExpression::new_bool(true)),
+                ("numDirectReports".into(), RestrictedExpression::new_long(3)),
+                ("department".into(), RestrictedExpression::new_string("Sales".into())),
+                ("manager".into(), RestrictedExpression::from_str(r#"Employee::"456""#).unwrap()),
+                ("hr_contacts".into(), RestrictedExpression::new_set([])),
+                ("json_blob".into(), RestrictedExpression::new_record([
+                    ("inner1".into(), RestrictedExpression::new_bool(false)),
+                    ("inner2".into(), RestrictedExpression::new_string("foo".into())),
+                    ("inner3".into(), RestrictedExpression::new_record([
+                        ("innerinner".into(), RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap())
+                    ]))
+                ])),
+                ("home_ip".into(), RestrictedExpression::from_str(r#"ip("10.20.30.40")"#).unwrap()),
+                ("work_ip".into(), RestrictedExpression::from_str(r#"ip("10.50.60.70")"#).unwrap()),
+                ("trust_score".into(), RestrictedExpression::from_str(r#"decimal("36.53")"#).unwrap()),
+                ("tricky".into(), RestrictedExpression::from_str(r#"{ type: "foo", id: "bar" }"#).unwrap()),
+            ]),
+            HashSet::new(),
+        );
+        match entity.validate(&schema) {
+            Ok(_) => panic!("expected an error due to extraneous attribute"),
+            Err(e) => {
+                assert!(
+                    e.to_string().contains(r#"attribute `extra` on `Employee::"123"` should not exist according to the schema"#),
+                    "actual error message was {e}",
+                )
+            }
+        }
+
+        let entity = Entity::new(
+            EntityUid::from_strs("Manager", "jane"),
+            HashMap::new(),
+            HashSet::new(),
+        );
+        match entity.validate(&schema) {
+            Ok(_) => panic!("expected an error due to unexpected entity type"),
+            Err(e) => {
+                assert!(
+                    e.to_string().contains(r#"entity `Manager::"jane"` has type `Manager` which is not declared in the schema"#),
+                    "actual error message was {e}",
+                )
+            }
+        }
+    }
+}
+
 /// The main unit tests for schema-based parsing live here, as they require both
 /// the Validator and Core packages working together.
 ///
