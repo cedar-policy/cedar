@@ -417,3 +417,41 @@ impl EntityJSON {
         })
     }
 }
+
+#[cfg(test)]
+// PANIC SAFETY unit test code
+#[allow(clippy::panic)]
+mod test {
+    use super::*;
+    #[test]
+    fn reject_duplicates() {
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "User",
+                    "id" : "alice"
+                },
+                "attrs" : {},
+                "parents": []
+            },
+            {
+                "uid" : {
+                    "type" : "User",
+                    "id" : "alice"
+                },
+                "attrs" : {},
+                "parents": []
+            }
+        ]);
+        let eparser: EntityJsonParser<'_, NoEntitiesSchema> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let e = eparser.from_json_value(json).err().unwrap();
+        let bad_euid: EntityUID = r#"User::"alice""#.parse().unwrap();
+        match e {
+            EntitiesError::Duplicate(euid) => {
+                assert_eq!(bad_euid, euid, r#"Returned euid should be User::"alice""#);
+            }
+            e => panic!("Wrong error. Expected `Duplicate`, got: {e:?}"),
+        };
+    }
+}

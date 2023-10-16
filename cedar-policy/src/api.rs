@@ -5460,4 +5460,32 @@ mod schema_based_parsing_tests {
             .unwrap()
         );
     }
+
+    #[test]
+    fn entities_duplicates_fail() {
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "User",
+                    "id" : "alice"
+                },
+                "attrs" : {},
+                "parents": []
+            },
+            {
+                "uid" : {
+                    "type" : "User",
+                    "id" : "alice"
+                },
+                "attrs" : {},
+                "parents": []
+            }
+        ]);
+        let r = Entities::from_json_value(json, None).err().unwrap();
+        let expected_euid: cedar_policy_core::ast::EntityUID = r#"User::"alice""#.parse().unwrap();
+        match r {
+            EntitiesError::Duplicate(euid) => assert_eq!(euid, expected_euid),
+            e => panic!("Wrong error. Expected `Duplicate`, got: {e:?}"),
+        }
+    }
 }

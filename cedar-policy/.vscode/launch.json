@@ -1,0 +1,311 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'cedar-policy'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=cedar-policy"
+                ],
+                "filter": {
+                    "name": "cedar-policy",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'public_interface'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=public_interface",
+                    "--package=cedar-policy"
+                ],
+                "filter": {
+                    "name": "public_interface",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'example_use_cases_doc'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=example_use_cases_doc",
+                    "--package=cedar-policy"
+                ],
+                "filter": {
+                    "name": "example_use_cases_doc",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'decimal'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=decimal",
+                    "--package=cedar-policy"
+                ],
+                "filter": {
+                    "name": "decimal",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'corpus_tests'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=corpus_tests",
+                    "--package=cedar-policy"
+                ],
+                "filter": {
+                    "name": "corpus_tests",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'multi'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=multi",
+                    "--package=cedar-policy"
+                ],
+                "filter": {
+                    "name": "multi",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'ip'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=ip",
+                    "--package=cedar-policy"
+                ],
+                "filter": {
+                    "name": "ip",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug benchmark 'cedar_benchmarks'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bench=cedar_benchmarks",
+                    "--package=cedar-policy"
+                ],
+                "filter": {
+                    "name": "cedar_benchmarks",
+                    "kind": "bench"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'cedar-policy-core'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=cedar-policy-core"
+                ],
+                "filter": {
+                    "name": "cedar-policy-core",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'cedar-policy-validator'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=cedar-policy-validator"
+                ],
+                "filter": {
+                    "name": "cedar-policy-validator",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'cedar-policy-formatter'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=cedar-policy-formatter"
+                ],
+                "filter": {
+                    "name": "cedar-policy-formatter",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'cedar-policy-cli'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=cedar-policy-cli"
+                ],
+                "filter": {
+                    "name": "cedar-policy-cli",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'cedar'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=cedar",
+                    "--package=cedar-policy-cli"
+                ],
+                "filter": {
+                    "name": "cedar",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'cedar'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=cedar",
+                    "--package=cedar-policy-cli"
+                ],
+                "filter": {
+                    "name": "cedar",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'integration_tests'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=integration_tests",
+                    "--package=cedar-policy-cli"
+                ],
+                "filter": {
+                    "name": "integration_tests",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'sample'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=sample",
+                    "--package=cedar-policy-cli"
+                ],
+                "filter": {
+                    "name": "sample",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
