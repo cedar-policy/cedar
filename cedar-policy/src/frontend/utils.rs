@@ -97,7 +97,7 @@ pub(crate) fn assert_is_failure(result: &InterfaceResult, internal: bool, err: &
     assert_matches!(result, InterfaceResult::Failure { is_internal, errors } => {
         assert!(
             errors.iter().exactly_one().unwrap().contains(err),
-            "Expected to see error containing `{}`, but saw {:?}", err, errors);
+            "Expected to see error containing `{err}`, but saw {errors:?}");
         assert_eq!(is_internal, &internal, "Unexpected value for `is_internal`");
     });
 }
