@@ -932,11 +932,7 @@ mod test {
                 "template_instantiations" : [ ]
             }
         }"#;
-        assert_is_failure(
-            &json_is_authorized(call),
-            true,
-            "error parsing call: policy map must have no duplicate IDs",
-        );
+        assert_is_failure(&json_is_authorized(call), true, "no duplicate IDs");
     }
 
     #[test]

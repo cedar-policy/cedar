@@ -448,16 +448,10 @@ mod test {
         ]);
         let eparser: EntityJsonParser<'_, NoEntitiesSchema> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        let e = eparser.from_json_value(json).err().unwrap();
+        let e = eparser.from_json_value(json);
         let bad_euid: EntityUID = r#"User::"alice""#.parse().unwrap();
         assert_matches!(e, Err(EntitiesError::Duplicate(euid)) => {
           assert_eq!(bad_euid, euid, r#"Returned euid should be User::"alice""#);
         });
-        match e {
-            EntitiesError::Duplicate(euid) => {
-                assert_eq!(bad_euid, euid, r#"Returned euid should be User::"alice""#);
-            }
-            e => panic!("Wrong error. Expected `Duplicate`, got: {e:?}"),
-        };
     }
 }

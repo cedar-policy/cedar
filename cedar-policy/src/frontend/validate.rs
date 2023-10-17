@@ -482,10 +482,6 @@ mod test {
         }"#
         .to_string();
         let result = json_validate(&call_json);
-        assert_is_failure(
-            &result,
-            true,
-            "error parsing call: policy map must have no duplicate IDs",
-        );
+        assert_is_failure(&result, true, "no duplicate IDs");
     }
 }
