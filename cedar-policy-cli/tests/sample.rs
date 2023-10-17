@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+// PANIC SAFETY tests
+#![allow(clippy::expect_used)]
+// PANIC SAFETY tests
+#![allow(clippy::unwrap_used)]
 use std::collections::HashMap;
 
 use cedar_policy::EvalResult;
