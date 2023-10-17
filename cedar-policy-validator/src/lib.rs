@@ -316,19 +316,51 @@ mod test {
         )
         .expect("Linking failed!");
         let result = validator.validate(&set, ValidationMode::default());
+        assert!(!result.validation_passed());
+        //println!("{:?}", result.validation_errors().collect::<Vec<_>>());
+        assert_eq!(result.validation_errors().count(), 1);
+        assert_eq!(
+            result.validation_errors().next().unwrap(),
+            &ValidationError::with_policy_id(
+                &ast::PolicyID::from_string("link2"),
+                None,
+                ValidationErrorKind::unrecognized_entity_type(
+                    "some_namespace::Undefined".to_string(),
+                    Some("some_namespace::User".to_string()),
+                ),
+            )
+        );
 
-        let pid = ast::PolicyID::from_string("link2");
-        let resource_err = ValidationError::with_policy_id(
-            &pid,
-            None,
-            ValidationErrorKind::unrecognized_entity_type(
-                "some_namespace::Undefined".to_string(),
-                Some("some_namespace::User".to_string()),
+        // this is also an invalid instantiation (not a valid resource type for any action in the schema)
+        let mut values = HashMap::new();
+        values.insert(
+            ast::SlotId::resource(),
+            ast::EntityUID::from_components(
+                "some_namespace::User".parse().unwrap(),
+                ast::Eid::new("foo"),
             ),
         );
+        set.link(
+            ast::PolicyID::from_string("template"),
+            ast::PolicyID::from_string("link3"),
+            values,
+        )
+        .expect("Linking failed!");
+        let result = validator.validate(&set, ValidationMode::default());
         assert!(!result.validation_passed());
-        println!("{:?}", result.validation_errors().collect::<Vec<_>>());
-        assert!(result.validation_errors().any(|x| x == &resource_err));
+        //println!("{:?}", result.validation_errors().collect::<Vec<_>>());
+        assert_eq!(result.validation_errors().count(), 1);
+        assert_eq!(
+            result.validation_errors().next().unwrap(),
+            &ValidationError::with_policy_id(
+                &ast::PolicyID::from_string("link3"),
+                None,
+                ValidationErrorKind::InvalidActionApplication(InvalidActionApplication {
+                    would_in_fix_principal: false,
+                    would_in_fix_resource: false
+                }),
+            )
+        );
 
         Ok(())
     }
