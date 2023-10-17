@@ -168,7 +168,7 @@ impl std::str::FromStr for IPAddr {
 
 impl std::fmt::Display for IPAddr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.addr)
+        write!(f, "{}/{}", self.addr, self.subnet)
     }
 }
 
@@ -540,6 +540,16 @@ mod tests {
                 ADVICE_MSG.into(),
             ))
         );
+
+        // test the Display impl
+        assert_eq!(
+            eval.interpret_inline_policy(&ip("127.0.0.1")).unwrap().to_string(),
+            "127.0.0.1/32"
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&ip("ffee::11")).unwrap().to_string(),
+            "ffee::11/128"
+        );
     }
 
     #[test]
@@ -593,6 +603,24 @@ mod tests {
         assert_ipaddr_err(eval.interpret_inline_policy(&ip("fee::/64::1")));
         assert_ipaddr_err(eval.interpret_inline_policy(&ip("172.0.0.1/64")));
         assert_ipaddr_err(eval.interpret_inline_policy(&ip("ffee::/132")));
+
+        // test the Display impl
+        assert_eq!(
+            eval.interpret_inline_policy(&ip("127.0.0.1/0")).unwrap().to_string(),
+            "127.0.0.1/0"
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&ip("127.0.0.1/8")).unwrap().to_string(),
+            "127.0.0.1/8"
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&ip("127.0.0.1/32")).unwrap().to_string(),
+            "127.0.0.1/32"
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&ip("ffee::/64")).unwrap().to_string(),
+            "ffee::/64"
+        );
     }
 
     #[test]
