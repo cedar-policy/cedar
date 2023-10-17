@@ -253,7 +253,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 }
             }
         };
-        let vparser = ValueParser::new(self.extensions.clone());
+        let vparser = ValueParser::new(self.extensions);
         let attrs: HashMap<SmolStr, RestrictedExpr> = ejson
             .attrs
             .into_iter()
