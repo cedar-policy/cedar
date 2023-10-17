@@ -76,25 +76,26 @@ impl Validator {
         Self { schema }
     }
 
-    /// Validate all templates in a policy set (which includes static policies) and
-    /// return an iterator of policy notes associated with each policy id.
+    /// Validate all templates, links, and static policies in a policy set.
+    /// Return an iterator of policy notes associated with each policy id.
     pub fn validate<'a>(
         &'a self,
         policies: &'a PolicySet,
         mode: ValidationMode,
     ) -> ValidationResult<'a> {
-        let template_errs = policies
+        let template_and_static_policy_errs = policies
             .all_templates()
             .flat_map(|p| self.validate_policy(p, mode));
-        let instantiation_errs = policies.policies().flat_map(|p| {
+        let link_errs = policies.policies().flat_map(|p| {
             self.validate_slots(p.env())
                 .map(move |note| ValidationError::with_policy_id(p.id(), None, note))
         });
-        ValidationResult::new(template_errs.chain(instantiation_errs))
+        ValidationResult::new(template_and_static_policy_errs.chain(link_errs))
     }
 
-    /// Run all validations against a single policy, gathering all validation
-    /// notes from together in the returned iterator.
+    /// Run all validations against a single static policy or template (note
+    /// that Core `Template` includes static policies as well), gathering all
+    /// validation notes from together in the returned iterator.
     fn validate_policy<'a>(
         &'a self,
         p: &'a Template,
@@ -108,8 +109,10 @@ impl Validator {
     }
 
     /// Construct a Typechecker instance and use it to detect any type errors in
-    /// the argument policy in the context of the schema for this validator. Any
-    /// detected type errors are wrapped and returned as `ValidationErrorKind`s.
+    /// the argument static policy or template (note that Core `Template`
+    /// includes static policies as well) in the context of the schema for this
+    /// validator. Any detected type errors are wrapped and returned as
+    /// `ValidationErrorKind`s.
     fn typecheck_policy<'a>(
         &'a self,
         t: &'a Template,
