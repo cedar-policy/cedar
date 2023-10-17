@@ -543,11 +543,15 @@ mod tests {
 
         // test the Display impl
         assert_eq!(
-            eval.interpret_inline_policy(&ip("127.0.0.1")).unwrap().to_string(),
+            eval.interpret_inline_policy(&ip("127.0.0.1"))
+                .unwrap()
+                .to_string(),
             "127.0.0.1/32"
         );
         assert_eq!(
-            eval.interpret_inline_policy(&ip("ffee::11")).unwrap().to_string(),
+            eval.interpret_inline_policy(&ip("ffee::11"))
+                .unwrap()
+                .to_string(),
             "ffee::11/128"
         );
     }
@@ -606,19 +610,27 @@ mod tests {
 
         // test the Display impl
         assert_eq!(
-            eval.interpret_inline_policy(&ip("127.0.0.1/0")).unwrap().to_string(),
+            eval.interpret_inline_policy(&ip("127.0.0.1/0"))
+                .unwrap()
+                .to_string(),
             "127.0.0.1/0"
         );
         assert_eq!(
-            eval.interpret_inline_policy(&ip("127.0.0.1/8")).unwrap().to_string(),
+            eval.interpret_inline_policy(&ip("127.0.0.1/8"))
+                .unwrap()
+                .to_string(),
             "127.0.0.1/8"
         );
         assert_eq!(
-            eval.interpret_inline_policy(&ip("127.0.0.1/32")).unwrap().to_string(),
+            eval.interpret_inline_policy(&ip("127.0.0.1/32"))
+                .unwrap()
+                .to_string(),
             "127.0.0.1/32"
         );
         assert_eq!(
-            eval.interpret_inline_policy(&ip("ffee::/64")).unwrap().to_string(),
+            eval.interpret_inline_policy(&ip("ffee::/64"))
+                .unwrap()
+                .to_string(),
             "ffee::/64"
         );
     }
