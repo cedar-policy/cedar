@@ -1410,7 +1410,7 @@ impl<'a> Typechecker<'a> {
             }
             _ => match (lhs_ty, rhs_ty) {
                 (Some(lhs_ty), Some(rhs_ty))
-                    if Type::least_upper_bound(self.schema, &lhs_ty, &rhs_ty, self.mode)
+                    if Type::least_upper_bound(self.schema, lhs_ty, rhs_ty, self.mode)
                         .is_none() =>
                 {
                     type_errors.push(TypeError::incompatible_types(
