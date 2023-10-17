@@ -3065,7 +3065,8 @@ mod test {
                     "type": "Long",
                     "min": 1,
                 }
-            )).unwrap();
+            ))
+            .unwrap();
         }
 
         #[test]
@@ -3076,7 +3077,8 @@ mod test {
                     "type": "Long",
                     "max": 1,
                 }
-            )).unwrap();
+            ))
+            .unwrap();
         }
 
         #[test]
@@ -3087,7 +3089,8 @@ mod test {
                     "type": "Long",
                     "foo": 1,
                 }
-            )).unwrap();
+            ))
+            .unwrap();
         }
     }
 }
