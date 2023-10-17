@@ -22,6 +22,10 @@
 - The `Response::new()` constructor now expects a `Vec<AuthorizationError>` as its third argument.
 - Implements RFC #19, making validation slightly more strict, but more explainable.
 - Improved formatting for error messages.
+- Changed the semantics of equality for IP ranges. For example,
+  `ip("192.168.0.1/24") == ip("192.168.0.3/24")` was previously `true` and is now
+  `false`. The behavior of equality on single IP addresses is unchanged, and so is
+  the behavior of `.isInRange()`.
 
 ## 2.4.1
 
