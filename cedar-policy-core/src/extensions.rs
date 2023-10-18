@@ -39,7 +39,7 @@ lazy_static::lazy_static! {
 
 /// Holds data on all the Extensions which are active for a given evaluation.
 ///
-/// Clone is cheap for this type, and in fact we commit to this by marking it Copy
+/// Clone is cheap for this type.
 #[derive(Debug, Clone, Copy)]
 pub struct Extensions<'a> {
     /// the actual extensions
