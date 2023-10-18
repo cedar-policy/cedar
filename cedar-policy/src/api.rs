@@ -289,8 +289,7 @@ impl Entities {
     /// schema -- for instance, it will error if attributes have the wrong types
     /// (e.g., string instead of integer), or if required attributes are missing
     /// or superfluous attributes are provided.
-    /// (This method will not add action entities from the `schema` if they are
-    /// not already present.)
+    /// (This method will not add action entities from the `schema`.)
     ///
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
@@ -320,8 +319,7 @@ impl Entities {
     /// schema -- for instance, it will error if attributes have the wrong types
     /// (e.g., string instead of integer), or if required attributes are missing
     /// or superfluous attributes are provided.
-    /// (This method will not add action entities from the `schema` if they are
-    /// not already present.)
+    /// (This method will not add action entities from the `schema`.)
     ///
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
@@ -354,8 +352,7 @@ impl Entities {
     /// schema -- for instance, it will error if attributes have the wrong types
     /// (e.g., string instead of integer), or if required attributes are missing
     /// or superfluous attributes are provided.
-    /// (This method will not add action entities from the `schema` if they are
-    /// not already present.)
+    /// (This method will not add action entities from the `schema`.)
     ///
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
@@ -388,8 +385,7 @@ impl Entities {
     /// schema -- for instance, it will error if attributes have the wrong types
     /// (e.g., string instead of integer), or if required attributes are missing
     /// or superfluous attributes are provided.
-    /// (This method will not add action entities from the `schema` if they are
-    /// not already present.)
+    /// (This method will not add action entities from the `schema`.)
     ///
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.

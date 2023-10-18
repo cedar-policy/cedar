@@ -118,8 +118,7 @@ impl Entities {
     /// If `schema` is present, then the added entities will be validated
     /// against the `schema`, returning an error if they do not conform to the
     /// schema.
-    /// (This method will not add action entities from the `schema` if they are
-    /// not already present.)
+    /// (This method will not add action entities from the `schema`.)
     ///
     /// If you pass [`TCComputation::AssumeAlreadyComputed`], then the caller is
     /// responsible for ensuring that TC and DAG hold before calling this method.
