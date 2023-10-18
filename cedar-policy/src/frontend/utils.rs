@@ -20,11 +20,15 @@ use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
+#[serde(
+    expecting = "policies as a concatenated string or multiple policies as a hashmap where the policy Id is the key with no duplicate IDs"
+)]
 /// Struct defining the two possible ways to pass a set of policies to `json_is_authorized` and `json_validate`
 pub enum PolicySpecification {
     /// provides multiple policies as a concatenated string
     Concatenated(String),
     /// provides multiple policies as a hashmap where the policyId is the key
+    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     Map(HashMap<String, String>),
 }
 
@@ -93,7 +97,7 @@ pub(crate) fn assert_is_failure(result: &InterfaceResult, internal: bool, err: &
     assert_matches!(result, InterfaceResult::Failure { is_internal, errors } => {
         assert!(
             errors.iter().exactly_one().unwrap().contains(err),
-            "Expected to see error containing `{}`, but saw {:?}", err, errors);
+            "Expected to see error containing `{err}`, but saw {errors:?}");
         assert_eq!(is_internal, &internal, "Unexpected value for `is_internal`");
     });
 }

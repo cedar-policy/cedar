@@ -215,7 +215,7 @@ impl PolicySet {
             //`template_ventry` is None, so `templates` has `t` and we never use the `HashSet::new()`
             self.template_to_links_map
                 .entry(t.id().clone())
-                .or_insert_with(|| HashSet::new())
+                .or_insert_with(HashSet::new)
                 .insert(policy.id().clone());
         }
         if let Some(ventry) = link_ventry {
@@ -377,7 +377,7 @@ impl PolicySet {
                 //We will never use the HashSet::new() because we just found `t` above
                 self.template_to_links_map
                     .entry(template_id)
-                    .or_insert_with(|| HashSet::new())
+                    .or_insert_with(HashSet::new)
                     .insert(new_id);
                 Ok(links_entry.insert(r))
             }
