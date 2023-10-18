@@ -402,10 +402,9 @@ impl EntityJSON {
 // PANIC SAFETY unit test code
 #[allow(clippy::panic)]
 mod test {
-
     use cool_asserts::assert_matches;
-
     use super::*;
+
     #[test]
     fn reject_duplicates() {
         let json = serde_json::json!([
@@ -426,7 +425,7 @@ mod test {
                 "parents": []
             }
         ]);
-        let eparser: EntityJsonParser<'_, NoEntitiesSchema> =
+        let eparser: EntityJsonParser<'_, '_, NoEntitiesSchema> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let e = eparser.from_json_value(json);
         let bad_euid: EntityUID = r#"User::"alice""#.parse().unwrap();
