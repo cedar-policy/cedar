@@ -1218,7 +1218,7 @@ impl ValidatorSchema {
     }
 
     /// Invert the action hierarchy to get the ancestor relation expected for
-    /// the `Entity` datatype instead of descendant as stored by the schema.
+    /// the `Entity` datatype instead of descendants as stored by the schema.
     fn action_entities_iter(&self) -> impl Iterator<Item = cedar_policy_core::ast::Entity> + '_ {
         // We could store the un-inverted `memberOf` relation for each action,
         // but I [john-h-kastner-aws] judge that the current implementation is
