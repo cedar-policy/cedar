@@ -138,7 +138,7 @@ pub enum JsonDeserializationError {
         record_attr: SmolStr,
     },
     /// During schema-based parsing of the Context, found a different type than
-    /// the schema indicated to expect
+    /// the schema indicated
     ///
     /// (type mismatches in entity attributes will be
     /// `EntitySchemaConformanceError`)
