@@ -168,8 +168,7 @@ impl Entities {
         tc_computation: TCComputation,
         extensions: Extensions<'_>,
     ) -> Result<Self> {
-        let mut entity_map: HashMap<EntityUID, Entity> =
-            entities.into_iter().map(|e| (e.uid(), e)).collect();
+        let mut entity_map = create_entity_map(entities.into_iter())?;
         if let Some(schema) = schema {
             // validate entities against schema.
             // we do this before adding the actions, because we trust the
@@ -331,6 +330,20 @@ impl Entities {
         };
         Ok(EntityAttrValues::new(map, self))
     }
+}
+
+/// Create a map from EntityUids to Entities, erroring if there are any duplicates
+fn create_entity_map(es: impl Iterator<Item = Entity>) -> Result<HashMap<EntityUID, Entity>> {
+    let mut map = HashMap::new();
+    for e in es {
+        match map.entry(e.uid()) {
+            hash_map::Entry::Occupied(_) => return Err(EntitiesError::Duplicate(e.uid())),
+            hash_map::Entry::Vacant(v) => {
+                v.insert(e);
+            }
+        };
+    }
+    Ok(map)
 }
 
 type EvaluatedEntities = HashMap<EntityUID, HashMap<SmolStr, PartialValue>>;

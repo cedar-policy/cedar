@@ -1894,7 +1894,7 @@ impl PolicySet {
             .ast
             .get_linked_policies(&ast::PolicyID::from_string(template_id.to_string()))
         {
-            Ok(v) => Ok(v.map(|id| PolicyId::ref_cast(id))),
+            Ok(v) => Ok(v.map(PolicyId::ref_cast)),
             Err(_) => Err(PolicySetError::TemplateNonexistentError(template_id)),
         }
     }
@@ -3595,9 +3595,8 @@ permit(principal ==  A :: B
         // but this should be accepted in an actual policy
         let policy_str = "permit(principal == ".to_string() + euid_str + ", action, resource);";
         let policy = Policy::from_str(&policy_str).expect("Should parse; see RFC 9");
-        let parsed_euid = match policy.principal_constraint() {
-            PrincipalConstraint::Eq(euid) => euid,
-            _ => panic!("Expected an Eq constraint"),
+        let PrincipalConstraint::Eq(parsed_euid) = policy.principal_constraint() else {
+            panic!("Expected an Eq constraint");
         };
         // the escape was interpreted:
         //   the EntityId has both single-quote characters (but no backslash characters)
@@ -3613,9 +3612,8 @@ permit(principal ==  A :: B
         // but this should be accepted in an actual policy
         let policy_str = "permit(principal == ".to_string() + euid_str + ", action, resource);";
         let policy = Policy::from_str(&policy_str).expect("Should parse; see RFC 9");
-        let parsed_euid = match policy.principal_constraint() {
-            PrincipalConstraint::Eq(euid) => euid,
-            _ => panic!("Expected an Eq constraint"),
+        let PrincipalConstraint::Eq(parsed_euid) = policy.principal_constraint() else {
+            panic!("Expected an Eq constraint");
         };
         assert_eq!(parsed_euid.id().as_ref(), "hi");
         assert_eq!(parsed_euid.type_name().to_string(), "A::B::C::D::E"); // expect to have been normalized
@@ -3848,7 +3846,7 @@ mod policy_set_tests {
         match r {
             Ok(_) => panic!("Should have failed due to conflict"),
             Err(PolicySetError::LinkingError(LinkingError::PolicyIdConflict { id })) => {
-                assert_eq!(id, ast::PolicyID::from_string("id"))
+                assert_eq!(id, ast::PolicyID::from_string("id"));
             }
             Err(e) => panic!("Incorrect error: {e}"),
         };
@@ -4064,7 +4062,7 @@ mod policy_set_tests {
         );
 
         //Unlink first, then remove
-        let result = pset.unlink(linked_policy_id.clone());
+        let result = pset.unlink(linked_policy_id);
         assert_matches!(result, Ok(_));
         pset.remove_template(PolicyId::from_str("t").unwrap())
             .expect("Failed to remove policy template");
@@ -4265,7 +4263,7 @@ mod policy_set_tests {
             }
         );
 
-        let result = pset.unlink(linked_policy_id.clone());
+        let result = pset.unlink(linked_policy_id);
         assert_matches!(result, Err(PolicySetError::LinkNonexistentError(_)));
     }
 
@@ -4292,8 +4290,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             1
         );
         let result = pset.unlink(linked_policy_id.clone());
@@ -4302,8 +4299,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             0
         );
         let result = pset.unlink(linked_policy_id.clone());
@@ -4318,8 +4314,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             1
         );
         pset.link(
@@ -4331,8 +4326,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             2
         );
 
@@ -4359,8 +4353,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template2").unwrap())
                 .unwrap()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             0
         );
 
@@ -4368,8 +4361,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             2
         );
 
@@ -4429,19 +4421,17 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             2
         );
 
         //unlink one policy, template count 1
-        let result = pset.unlink(linked_policy_id.clone());
+        let result = pset.unlink(linked_policy_id);
         assert_matches!(result, Ok(_));
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             1
         );
 
@@ -4463,8 +4453,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             0
         );
 
@@ -4480,7 +4469,7 @@ mod policy_set_tests {
                 .err()
                 .unwrap(),
             PolicySetError::TemplateNonexistentError(_)
-        )
+        );
     }
 }
 
@@ -5880,5 +5869,33 @@ mod schema_based_parsing_tests {
             )
             .unwrap()
         );
+    }
+
+    #[test]
+    fn entities_duplicates_fail() {
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "User",
+                    "id" : "alice"
+                },
+                "attrs" : {},
+                "parents": []
+            },
+            {
+                "uid" : {
+                    "type" : "User",
+                    "id" : "alice"
+                },
+                "attrs" : {},
+                "parents": []
+            }
+        ]);
+        let r = Entities::from_json_value(json, None).err().unwrap();
+        let expected_euid: cedar_policy_core::ast::EntityUID = r#"User::"alice""#.parse().unwrap();
+        match r {
+            EntitiesError::Duplicate(euid) => assert_eq!(euid, expected_euid),
+            e => panic!("Wrong error. Expected `Duplicate`, got: {e:?}"),
+        }
     }
 }

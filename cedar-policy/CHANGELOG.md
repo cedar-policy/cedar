@@ -28,6 +28,16 @@
 - `Entities::from_*()` methods now validate the entities against the `schema`, if a `schema`
   is provided.
 - `Entities::from_entities()` and `Entities::add_entities()` now take an optional schema argument.
+- Changed the semantics of equality for IP ranges. For example,
+  `ip("192.168.0.1/24") == ip("192.168.0.3/24")` was previously `true` and is now
+  `false`. The behavior of equality on single IP addresses is unchanged, and so is
+  the behavior of `.isInRange()`.
+- Standardized on duplicates being errors instead of last-write-wins in the following APIs:
+	+ Policy set JSONs
+	+ Template set JSONs
+	+ Template instantiation records
+	+ Entity slice JSONs
+	+ Context JSONs
 
 ## 2.4.1
 

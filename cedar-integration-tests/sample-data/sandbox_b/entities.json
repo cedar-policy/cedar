@@ -262,5 +262,14 @@
       }
     },
     "parents": []
-  }
+  },
+   {
+    "uid": {
+      "type": "Action",
+      "id": "view"
+    },
+    "attrs": {
+    },
+    "parents": []
+   } 
 ]
