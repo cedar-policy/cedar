@@ -19,7 +19,7 @@
 
 use std::collections::HashSet;
 
-use cedar_policy_core::ast::{PolicySet, Template};
+use cedar_policy_core::ast::{Policy, PolicySet, Template};
 
 mod err;
 mod str_checks;
@@ -86,16 +86,16 @@ impl Validator {
         let template_and_static_policy_errs = policies
             .all_templates()
             .flat_map(|p| self.validate_policy(p, mode));
-        let link_errs = policies.policies().flat_map(|p| {
-            self.validate_slots(p.env())
-                .map(move |note| ValidationError::with_policy_id(p.id(), None, note))
-        });
+        let link_errs = policies
+            .policies()
+            .filter_map(|p| self.validate_slots(p))
+            .flatten();
         ValidationResult::new(template_and_static_policy_errs.chain(link_errs))
     }
 
     /// Run all validations against a single static policy or template (note
     /// that Core `Template` includes static policies as well), gathering all
-    /// validation notes from together in the returned iterator.
+    /// validation notes together in the returned iterator.
     fn validate_policy<'a>(
         &'a self,
         p: &'a Template,
@@ -103,9 +103,37 @@ impl Validator {
     ) -> impl Iterator<Item = ValidationError> + 'a {
         self.validate_entity_types(p)
             .chain(self.validate_action_ids(p))
-            .chain(self.validate_action_application(p))
+            .chain(self.validate_action_application(
+                p.principal_constraint(),
+                p.action_constraint(),
+                p.resource_constraint(),
+            ))
             .map(move |note| ValidationError::with_policy_id(p.id(), None, note))
             .chain(self.typecheck_policy(p, mode))
+    }
+
+    /// Run relevant validations against a single template-linked policy,
+    /// gathering all validation notes together in the returned iterator.
+    fn validate_slots<'a>(
+        &'a self,
+        p: &'a Policy,
+    ) -> Option<impl Iterator<Item = ValidationError> + 'a> {
+        // Ignore static policies since they are already handled by `validate_policy`
+        if p.is_static() {
+            return None;
+        }
+        // For template-linked policies `Policy::principal_constraint()` and
+        // `Policy::resource_constraint()` return a copy of the constraint with
+        // the slot filled by the appropriate value.
+        Some(
+            self.validate_entity_types_in_slots(p.env())
+                .chain(self.validate_action_application(
+                    &p.principal_constraint(),
+                    &p.action_constraint(),
+                    &p.resource_constraint(),
+                ))
+                .map(move |note| ValidationError::with_policy_id(p.id(), None, note)),
+        )
     }
 
     /// Construct a Typechecker instance and use it to detect any type errors in
@@ -317,19 +345,23 @@ mod test {
         .expect("Linking failed!");
         let result = validator.validate(&set, ValidationMode::default());
         assert!(!result.validation_passed());
-        //println!("{:?}", result.validation_errors().collect::<Vec<_>>());
-        assert_eq!(result.validation_errors().count(), 1);
-        assert_eq!(
-            result.validation_errors().next().unwrap(),
-            &ValidationError::with_policy_id(
-                &ast::PolicyID::from_string("link2"),
-                None,
-                ValidationErrorKind::unrecognized_entity_type(
-                    "some_namespace::Undefined".to_string(),
-                    Some("some_namespace::User".to_string()),
-                ),
-            )
+        assert_eq!(result.validation_errors().count(), 2);
+        let id = ast::PolicyID::from_string("link2");
+        let undefined_err = ValidationError::with_policy_id(
+            &id,
+            None,
+            ValidationErrorKind::unrecognized_entity_type(
+                "some_namespace::Undefined".to_string(),
+                Some("some_namespace::User".to_string()),
+            ),
         );
+        let invalid_action_err = ValidationError::with_policy_id(
+            &id,
+            None,
+            ValidationErrorKind::invalid_action_application(false, false),
+        );
+        assert!(result.validation_errors().any(|x| x == &undefined_err));
+        assert!(result.validation_errors().any(|x| x == &invalid_action_err));
 
         // this is also an invalid instantiation (not a valid resource type for any action in the schema)
         let mut values = HashMap::new();
@@ -348,19 +380,15 @@ mod test {
         .expect("Linking failed!");
         let result = validator.validate(&set, ValidationMode::default());
         assert!(!result.validation_passed());
-        //println!("{:?}", result.validation_errors().collect::<Vec<_>>());
-        assert_eq!(result.validation_errors().count(), 1);
-        assert_eq!(
-            result.validation_errors().next().unwrap(),
-            &ValidationError::with_policy_id(
-                &ast::PolicyID::from_string("link3"),
-                None,
-                ValidationErrorKind::InvalidActionApplication(InvalidActionApplication {
-                    would_in_fix_principal: false,
-                    would_in_fix_resource: false
-                }),
-            )
+        // `result` contains the two prior error messages plus one new one
+        assert_eq!(result.validation_errors().count(), 3);
+        let id = ast::PolicyID::from_string("link3");
+        let invalid_action_err = ValidationError::with_policy_id(
+            &id,
+            None,
+            ValidationErrorKind::invalid_action_application(false, false),
         );
+        assert!(result.validation_errors().any(|x| x == &invalid_action_err));
 
         Ok(())
     }
