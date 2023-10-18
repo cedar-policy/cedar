@@ -20,7 +20,9 @@ use super::{
 use crate::ast::{
     BorrowedRestrictedExpr, Eid, EntityUID, Expr, ExprKind, Literal, Name, RestrictedExpr,
 };
-use crate::entities::{type_of_rexpr, EntitySchemaConformanceError, EscapeKind, TypeOfRexprError};
+use crate::entities::{
+    type_of_restricted_expr, EntitySchemaConformanceError, EscapeKind, TypeOfRestrictedExprError,
+};
 use crate::extensions::Extensions;
 use crate::FromNormalizedStr;
 use serde::{Deserialize, Serialize};
@@ -352,10 +354,13 @@ impl<'e> ValueParser<'e> {
                     let expected = Box::new(expected_ty.clone());
                     let actual = {
                         let jvalue: JSONValue = serde_json::from_value(val)?;
-                        let ty = type_of_rexpr(jvalue.into_expr()?.as_borrowed(), self.extensions)
-                            .map_err(|e| {
-                                type_of_rexpr_error_to_json_deserialization_error(e, ctx())
-                            })?;
+                        let ty = type_of_restricted_expr(
+                            jvalue.into_expr()?.as_borrowed(),
+                            self.extensions,
+                        )
+                        .map_err(|e| {
+                            type_of_restricted_expr_error_to_json_deserialization_error(e, ctx())
+                        })?;
                         Box::new(ty)
                     };
                     match ctx() {
@@ -419,10 +424,13 @@ impl<'e> ValueParser<'e> {
                     let expected = Box::new(expected_ty.clone());
                     let actual = {
                         let jvalue: JSONValue = serde_json::from_value(val)?;
-                        let ty = type_of_rexpr(jvalue.into_expr()?.as_borrowed(), self.extensions)
-                            .map_err(|e| {
-                                type_of_rexpr_error_to_json_deserialization_error(e, ctx())
-                            })?;
+                        let ty = type_of_restricted_expr(
+                            jvalue.into_expr()?.as_borrowed(),
+                            self.extensions,
+                        )
+                        .map_err(|e| {
+                            type_of_restricted_expr_error_to_json_deserialization_error(e, ctx())
+                        })?;
                         Box::new(ty)
                     };
                     match ctx() {
@@ -483,8 +491,10 @@ impl<'e> ValueParser<'e> {
             }
             ExtnValueJSON::ImplicitConstructor(val) => {
                 let arg = val.into_expr()?;
-                let argty = type_of_rexpr(arg.as_borrowed(), self.extensions)
-                    .map_err(|e| type_of_rexpr_error_to_json_deserialization_error(e, ctx()))?;
+                let argty =
+                    type_of_restricted_expr(arg.as_borrowed(), self.extensions).map_err(|e| {
+                        type_of_restricted_expr_error_to_json_deserialization_error(e, ctx())
+                    })?;
                 let func = self
                     .extensions
                     .lookup_single_arg_constructor(
@@ -509,12 +519,12 @@ impl<'e> ValueParser<'e> {
     }
 }
 
-fn type_of_rexpr_error_to_json_deserialization_error(
-    torerr: TypeOfRexprError,
+fn type_of_restricted_expr_error_to_json_deserialization_error(
+    torerr: TypeOfRestrictedExprError,
     ctx: JsonDeserializationErrorContext,
 ) -> JsonDeserializationError {
     match torerr {
-    TypeOfRexprError::HeterogeneousSet(err) => match ctx {
+    TypeOfRestrictedExprError::HeterogeneousSet(err) => match ctx {
         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
             JsonDeserializationError::EntitySchemaConformance(
                 EntitySchemaConformanceError::HeterogeneousSet { uid, attr, err }
@@ -525,7 +535,7 @@ fn type_of_rexpr_error_to_json_deserialization_error(
         }
         ctx => panic!("heterogenous sets can only occur in entity attributes or in context, but somehow found one {ctx}"),
     }
-    TypeOfRexprError::Extension(err) => match ctx {
+    TypeOfRestrictedExprError::Extension(err) => match ctx {
         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
             JsonDeserializationError::EntitySchemaConformance(
                 EntitySchemaConformanceError::Extension { uid, attr, err }

@@ -21,8 +21,8 @@ use super::{
 };
 use crate::ast::{Entity, EntityType, EntityUID, RestrictedExpr};
 use crate::entities::{
-    type_of_rexpr, unwrap_or_clone, Entities, EntitiesError, EntitySchemaConformanceError,
-    TCComputation, TypeOfRexprError,
+    type_of_restricted_expr, unwrap_or_clone, Entities, EntitiesError,
+    EntitySchemaConformanceError, TCComputation, TypeOfRestrictedExprError,
 };
 use crate::extensions::Extensions;
 use serde::{Deserialize, Serialize};
@@ -309,21 +309,22 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                         }
                         Some(rexpr) => rexpr,
                     };
-                    let expected_ty = type_of_rexpr(expected_rexpr.as_borrowed(), self.extensions)
-                        .map_err(|e| match e {
-                            TypeOfRexprError::HeterogeneousSet(err) => {
-                                JsonDeserializationError::EntitySchemaConformance(
-                                    EntitySchemaConformanceError::HeterogeneousSet {
-                                        uid: uid.clone(),
-                                        attr: k.clone(),
-                                        err,
-                                    },
-                                )
-                            }
-                            TypeOfRexprError::Extension(err) => {
-                                JsonDeserializationError::FailedExtensionFunctionLookup(err)
-                            }
-                        })?;
+                    let expected_ty =
+                        type_of_restricted_expr(expected_rexpr.as_borrowed(), self.extensions)
+                            .map_err(|e| match e {
+                                TypeOfRestrictedExprError::HeterogeneousSet(err) => {
+                                    JsonDeserializationError::EntitySchemaConformance(
+                                        EntitySchemaConformanceError::HeterogeneousSet {
+                                            uid: uid.clone(),
+                                            attr: k.clone(),
+                                            err,
+                                        },
+                                    )
+                                }
+                                TypeOfRestrictedExprError::Extension(err) => {
+                                    JsonDeserializationError::FailedExtensionFunctionLookup(err)
+                                }
+                            })?;
                     let actual_rexpr = vparser.val_into_rexpr(v, Some(&expected_ty), || {
                         JsonDeserializationErrorContext::EntityAttribute {
                             uid: uid.clone(),

@@ -182,7 +182,7 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                     Some(expected_ty) => {
                         // typecheck: ensure that the entity attribute value matches
                         // the expected type
-                        match type_of_rexpr(val, self.extensions) {
+                        match type_of_restricted_expr(val, self.extensions) {
                             Ok(actual_ty) => {
                                 if actual_ty.is_consistent_with(&expected_ty) {
                                     // typecheck passes
@@ -195,14 +195,14 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                                     });
                                 }
                             }
-                            Err(TypeOfRexprError::HeterogeneousSet(err)) => {
+                            Err(TypeOfRestrictedExprError::HeterogeneousSet(err)) => {
                                 return Err(EntitySchemaConformanceError::HeterogeneousSet {
                                     uid: uid.clone(),
                                     attr: attr.into(),
                                     err,
                                 });
                             }
-                            Err(TypeOfRexprError::Extension(err)) => {
+                            Err(TypeOfRestrictedExprError::Extension(err)) => {
                                 return Err(EntitySchemaConformanceError::Extension {
                                     uid: uid.clone(),
                                     attr: attr.into(),
@@ -234,9 +234,9 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
     }
 }
 
-/// Errors thrown by [`type_of_rexpr()`]
+/// Errors thrown by [`type_of_restricted_expr()`]
 #[derive(Debug, Error)]
-pub enum TypeOfRexprError {
+pub enum TypeOfRestrictedExprError {
     /// Encountered a heterogeneous set
     #[error(transparent)]
     HeterogeneousSet(#[from] HeterogeneousSetError),
@@ -250,10 +250,10 @@ pub enum TypeOfRexprError {
 /// This isn't possible for general `Expr`s (without a Request, full schema,
 /// etc), but is possible for restricted expressions, given the information in
 /// `Extensions`.
-pub fn type_of_rexpr(
+pub fn type_of_restricted_expr(
     rexpr: BorrowedRestrictedExpr<'_>,
     extensions: Extensions<'_>,
-) -> Result<SchemaType, TypeOfRexprError> {
+) -> Result<SchemaType, TypeOfRestrictedExprError> {
     match rexpr.expr_kind() {
         ExprKind::Lit(Literal::Bool(_)) => Ok(SchemaType::Bool),
         ExprKind::Lit(Literal::Long(_)) => Ok(SchemaType::Long),
@@ -261,13 +261,13 @@ pub fn type_of_rexpr(
         ExprKind::Lit(Literal::EntityUID(uid)) => Ok(SchemaType::Entity { ty: uid.entity_type().clone() }),
         ExprKind::Set(elements) => {
             let mut element_types = elements.iter().map(|el| {
-                type_of_rexpr(BorrowedRestrictedExpr::new_unchecked(el), extensions) // assuming the invariant holds for the set as a whole, it will also hold for each element
+                type_of_restricted_expr(BorrowedRestrictedExpr::new_unchecked(el), extensions) // assuming the invariant holds for the set as a whole, it will also hold for each element
             });
             match element_types.next() {
                 None => Ok(SchemaType::EmptySet),
                 Some(Err(e)) => Err(e),
                 Some(Ok(element_ty)) => {
-                    let matches_element_ty = |ty: &Result<SchemaType, TypeOfRexprError>| matches!(ty, Ok(ty) if ty.is_consistent_with(&element_ty));
+                    let matches_element_ty = |ty: &Result<SchemaType, TypeOfRestrictedExprError>| matches!(ty, Ok(ty) if ty.is_consistent_with(&element_ty));
                     let conflicting_ty = element_types.find(|ty| !matches_element_ty(ty));
                     match conflicting_ty {
                         None => Ok(SchemaType::Set { element_ty: Box::new(element_ty) }),
@@ -283,7 +283,7 @@ pub fn type_of_rexpr(
         ExprKind::Record { pairs } => {
             Ok(SchemaType::Record { attrs: {
                 pairs.iter().map(|(k, v)| {
-                    let attr_type = type_of_rexpr(
+                    let attr_type = type_of_restricted_expr(
                         BorrowedRestrictedExpr::new_unchecked(v), // assuming the invariant holds for the record as a whole, it will also hold for each attribute value
                         extensions,
                     )?;
@@ -291,7 +291,7 @@ pub fn type_of_rexpr(
                     // but marking it optional is more flexible -- allows the
                     // attribute type to `is_consistent_with()` more types
                     Ok((k.clone(), AttributeType::optional(attr_type)))
-                }).collect::<Result<HashMap<_,_>, TypeOfRexprError>>()?
+                }).collect::<Result<HashMap<_,_>, TypeOfRestrictedExprError>>()?
             }})
         }
         ExprKind::ExtensionFunctionApp { fn_name, .. } => {
