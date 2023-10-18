@@ -779,36 +779,15 @@ mod test {
     #[test]
     fn undefined_entity_type_in_principal_slot() -> Result<()> {
         let p_name = "User";
-        let r_name = "File";
         let schema_file = NamespaceDefinition::new(
-            [
-                (
-                    p_name.into(),
-                    EntityType {
-                        member_of_types: vec![],
-                        shape: AttributesOrContext::default(),
-                    },
-                ),
-                (
-                    r_name.into(),
-                    EntityType {
-                        member_of_types: vec![],
-                        shape: AttributesOrContext::default(),
-                    },
-                ),
-            ],
             [(
-                "view".into(),
-                ActionType {
-                    member_of: None,
-                    attributes: None,
-                    applies_to: Some(ApplySpec {
-                        principal_types: Some(vec![p_name.into()]),
-                        resource_types: Some(vec![r_name.into()]),
-                        context: AttributesOrContext::default(),
-                    }),
+                p_name.into(),
+                EntityType {
+                    member_of_types: vec![],
+                    shape: AttributesOrContext::default(),
                 },
             )],
+            [],
         );
         let schema = schema_file.try_into().expect("Invalid schema");
 
@@ -818,7 +797,6 @@ mod test {
         let env = HashMap::from([(ast::SlotId::principal(), undefined_euid)]);
 
         let validator = Validator::new(schema);
-        //let template: Template = cedar_policy_core::parser::parse_policy_template(None, r#"permit(principal in ?principal, action == Action::"view", resource == File::"profile.jpg");"#).unwrap();
         let notes: Vec<ValidationErrorKind> =
             validator.validate_entity_types_in_slots(&env).collect();
 

@@ -129,7 +129,7 @@ impl Validator {
             self.validate_entity_types_in_slots(p.env())
                 .chain(self.validate_action_application(
                     &p.principal_constraint(),
-                    &p.action_constraint(),
+                    p.action_constraint(),
                     &p.resource_constraint(),
                 ))
                 .map(move |note| ValidationError::with_policy_id(p.id(), None, note)),
