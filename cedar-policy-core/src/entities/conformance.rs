@@ -8,8 +8,7 @@ use thiserror::Error;
 /// Errors raised when entities do not conform to the schema
 #[derive(Debug, Error)]
 pub enum EntitySchemaConformanceError {
-    /// Encountered this attribute on this entity, but that attribute shouldn't
-    /// exist on entities of this type
+    /// Encountered attribute that shouldn't exist on entities of this type
     #[error("attribute `{attr}` on `{uid}` should not exist according to the schema")]
     UnexpectedEntityAttr {
         /// Entity that had the unexpected attribute
@@ -17,9 +16,8 @@ pub enum EntitySchemaConformanceError {
         /// Name of the attribute that was unexpected
         attr: SmolStr,
     },
-    /// Didn't encounter this attribute of an entity, but that attribute should
-    /// have existed
-    #[error("expected entity `{uid}` to have an attribute `{attr}`, but it does not")]
+    /// Didn't encounter attribute that should exist
+    #[error("expected entity `{uid}` to have attribute `{attr}`, but it does not")]
     MissingRequiredEntityAttr {
         /// Entity that is missing a required attribute
         uid: EntityUID,
@@ -27,7 +25,7 @@ pub enum EntitySchemaConformanceError {
         attr: SmolStr,
     },
     /// The given attribute on the given entity had a different type than the
-    /// schema indicated to expect
+    /// schema indicated
     #[error("in attribute `{attr}` on `{uid}`, type mismatch: attribute was expected to have type {expected}, but actually has type {actual}")]
     TypeMismatch {
         /// Entity where the type mismatch occurred
