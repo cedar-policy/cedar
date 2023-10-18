@@ -4830,7 +4830,7 @@ mod entity_validate_tests {
             Ok(_) => panic!("expected an error due to missing attribute `numDirectReports`"),
             Err(e) => {
                 assert!(
-                    e.to_string().contains(r#"expected entity `Employee::"123"` to have an attribute `numDirectReports`, but it does not"#),
+                    e.to_string().contains(r#"expected entity `Employee::"123"` to have attribute `numDirectReports`, but it does not"#),
                     "actual error message was {e}",
                 )
             }

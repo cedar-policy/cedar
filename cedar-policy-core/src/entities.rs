@@ -2167,7 +2167,7 @@ mod schema_based_parsing_tests {
             .from_json_value(entitiesjson)
             .expect_err("should fail due to missing attribute \"numDirectReports\"");
         assert!(
-            err.to_string().contains(r#"expected entity `Employee::"12UA45"` to have an attribute `numDirectReports`, but it does not"#),
+            err.to_string().contains(r#"expected entity `Employee::"12UA45"` to have attribute `numDirectReports`, but it does not"#),
             "actual error message was {}",
             err
         );
