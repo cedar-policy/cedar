@@ -402,8 +402,8 @@ impl EntityJSON {
 // PANIC SAFETY unit test code
 #[allow(clippy::panic)]
 mod test {
-    use cool_asserts::assert_matches;
     use super::*;
+    use cool_asserts::assert_matches;
 
     #[test]
     fn reject_duplicates() {
