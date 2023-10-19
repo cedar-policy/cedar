@@ -32,6 +32,7 @@
 	+ Template instantiation records
 	+ Entity slice JSONs
 	+ Context JSONs
+- `EntityId::FromStr::Error` is now `Infallible` instead of `ParseErrors`
 
 ## 2.4.1
 
