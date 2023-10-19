@@ -32,6 +32,7 @@
 	+ Template instantiation records
 	+ Entity slice JSONs
 	+ Context JSONs
+- Fixed bug (#370) related to how the validator handles template-linked policies 
 
 ## 2.4.1
 
