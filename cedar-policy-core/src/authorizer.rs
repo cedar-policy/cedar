@@ -523,7 +523,8 @@ mod test {
         let context = Context::from_expr(RestrictedExpr::record([(
             "test".into(),
             RestrictedExpr::new(Expr::unknown("name")).unwrap(),
-        )]));
+        )]))
+        .unwrap();
         let a = Authorizer::new();
         let q = Request::new(
             EntityUID::with_eid("p"),

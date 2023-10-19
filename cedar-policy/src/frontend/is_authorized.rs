@@ -289,7 +289,7 @@ fn parse_policy_set_from_individual_policies(
             Ok(p) => match policy_set.add(p) {
                 Ok(_) => {}
                 Err(err) => {
-                    errs.push(format!("couldn't add policy to set due to error: {err:?}"));
+                    errs.push(format!("couldn't add policy to set due to error: {err}"));
                 }
             },
             Err(pes) => errs.extend(
@@ -305,7 +305,7 @@ fn parse_policy_set_from_individual_policies(
                 Ok(p) => match policy_set.add_template(p) {
                     Ok(_) => {}
                     Err(err) => {
-                        errs.push(format!("couldn't add policy to set due to error: {err:?}"));
+                        errs.push(format!("couldn't add policy to set due to error: {err}"));
                     }
                 },
                 Err(pes) => errs.extend(

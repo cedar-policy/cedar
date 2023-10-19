@@ -1,5 +1,7 @@
 # Changelog
 
+## 2.4.2
+
 ## 2.4.1
 
 - Bumped `pretty`, `logos`, and `regex` dependencies

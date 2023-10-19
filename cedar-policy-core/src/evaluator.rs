@@ -4040,7 +4040,7 @@ pub mod test {
         let euid: EntityUID = r#"Test::"test""#.parse().unwrap();
         let rexpr = RestrictedExpr::new(context_expr)
             .expect("Context Expression was not a restricted expression");
-        let context = Context::from_expr(rexpr);
+        let context = Context::from_expr(rexpr).unwrap();
         let q = Request::new(euid.clone(), euid.clone(), euid, context);
         let es = Entities::new();
         let exts = Extensions::none();
@@ -4163,7 +4163,8 @@ pub mod test {
         let context = Context::from_expr(RestrictedExpr::new_unchecked(Expr::record([
             ("a".into(), Expr::val(3)),
             ("b".into(), Expr::unknown("b".to_string())),
-        ])));
+        ])))
+        .unwrap();
         let euid: EntityUID = r#"Test::"test""#.parse().unwrap();
         let q = Request::new(euid.clone(), euid.clone(), euid, context);
         let es = Entities::new();
@@ -4202,7 +4203,7 @@ pub mod test {
             Expr::unknown("cell".to_string()),
         )]))
         .expect("should qualify as restricted");
-        let context = Context::from_expr(c_expr);
+        let context = Context::from_expr(c_expr).unwrap();
 
         let q = Request::new(p, a, r, context);
         let exts = Extensions::none();
@@ -4275,7 +4276,8 @@ pub mod test {
             Context::from_expr(RestrictedExpr::new_unchecked(Expr::record([(
                 "condition".into(),
                 Expr::unknown("unknown_condition"),
-            )]))),
+            )])))
+            .unwrap(),
         );
         let eval = Evaluator::new(&q, &es, &exts).unwrap();
 
