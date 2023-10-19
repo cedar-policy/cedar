@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.2
+
+### Changed
+- Fixed bug (#370) related to how the validator handles template-linked policies 
+
 ## 2.4.1
 ### Added
 - New experimental API to construct queries with `Unknown` fields for partial evaluation.
