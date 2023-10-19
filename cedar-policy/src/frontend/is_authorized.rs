@@ -288,17 +288,16 @@ fn parse_instantiation(v: &Link) -> Result<(SlotId, EntityUid), Vec<String>> {
         }
     };
     let type_name = EntityTypeName::from_str(v.value.ty.as_str());
-    let eid = EntityId::from_str(v.value.eid.as_str());
-    match (type_name, eid) {
-        (Ok(type_name), Ok(eid)) => {
+    let eid = match EntityId::from_str(v.value.eid.as_str()) {
+        Ok(eid) => eid,
+        Err(err) => match err {},
+    };
+    match type_name {
+        Ok(type_name) => {
             let entity_uid = EntityUid::from_type_name_and_id(type_name, eid);
             Ok((slot, entity_uid))
         }
-        (Ok(_), Err(e)) | (Err(e), Ok(_)) => Err(e.errors_as_strings()),
-        (Err(mut e1), Err(mut e2)) => {
-            e1.0.append(&mut e2.0);
-            Err(ParseErrors(e1.0).errors_as_strings())
-        }
+        Err(e) => Err(e.errors_as_strings()),
     }
 }
 

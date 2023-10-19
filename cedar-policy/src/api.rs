@@ -45,6 +45,7 @@ use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::convert::Infallible;
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -1368,7 +1369,7 @@ impl<'a> From<cedar_policy_validator::ValidationWarning<'a>> for ValidationWarni
 pub struct EntityId(ast::Eid);
 
 impl FromStr for EntityId {
-    type Err = ParseErrors;
+    type Err = Infallible;
     fn from_str(eid_str: &str) -> Result<Self, Self::Err> {
         Ok(Self(ast::Eid::new(eid_str)))
     }
