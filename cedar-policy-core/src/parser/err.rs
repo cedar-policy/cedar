@@ -27,8 +27,7 @@ use miette::{Diagnostic, LabeledSpan, Severity, SourceCode, SourceSpan};
 use smol_str::SmolStr;
 use thiserror::Error;
 
-use crate::ast::{self, RestrictedExprError};
-use crate::ast::{PolicyID, Var};
+use crate::ast::{self, InputInteger, PolicyID, RestrictedExprError, Var};
 use crate::parser::unescape::UnescapeError;
 
 use crate::parser::fmt::join_with_conjunction;
@@ -212,7 +211,7 @@ pub enum ToASTError {
     /// Returned when a policy contains an integer literal that is out of range
     #[error(
         "integer literal `{0}` is too large. Maximum allowed integer literal is `{}`",
-        i64::MAX
+        InputInteger::MAX
     )]
     IntegerLiteralTooLarge(u64),
     /// Returned when a unary operator is chained more than 4 times in a row

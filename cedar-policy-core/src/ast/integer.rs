@@ -2,3 +2,5 @@
 // pub type Integer = i64;
 
 pub type Integer = i128;
+
+pub type InputInteger = i64;

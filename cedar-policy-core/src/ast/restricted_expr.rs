@@ -84,7 +84,7 @@ impl RestrictedExpr {
 
     /// Create a `RestrictedExpr` that's just a single `Literal`.
     ///
-    /// Note that you can pass this a `Literal`, an `i64`, a `String`, etc.
+    /// Note that you can pass this a `Literal`, an `Integer`, a `String`, etc.
     pub fn val(v: impl Into<Literal>) -> Self {
         // All literals are valid restricted-exprs
         Self::new_unchecked(Expr::val(v))

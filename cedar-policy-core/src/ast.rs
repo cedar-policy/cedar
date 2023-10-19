@@ -23,7 +23,7 @@ pub use entity::*;
 mod extension;
 pub use extension::*;
 mod integer;
-pub use integer::Integer;
+pub use integer::{InputInteger, Integer};
 mod literal;
 pub use literal::*;
 mod name;

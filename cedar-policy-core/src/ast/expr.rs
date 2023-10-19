@@ -295,7 +295,7 @@ impl<T> Expr<T> {
 impl Expr {
     /// Create an `Expr` that's just a single `Literal`.
     ///
-    /// Note that you can pass this a `Literal`, an `i64`, a `String`, etc.
+    /// Note that you can pass this a `Literal`, an `Integer`, a `String`, etc.
     pub fn val(v: impl Into<Literal>) -> Self {
         ExprBuilder::new().val(v)
     }
@@ -867,7 +867,7 @@ impl<T> ExprBuilder<T> {
 
     /// Create an `Expr` that's just a single `Literal`.
     ///
-    /// Note that you can pass this a `Literal`, an `i64`, a `String`, etc.
+    /// Note that you can pass this a `Literal`, an `Integer`, a `String`, etc.
     pub fn val(self, v: impl Into<Literal>) -> Expr<T> {
         self.with_expr_kind(ExprKind::Lit(v.into()))
     }

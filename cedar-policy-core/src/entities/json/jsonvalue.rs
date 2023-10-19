@@ -19,7 +19,8 @@ use super::{
     JsonSerializationError, SchemaType,
 };
 use crate::ast::{
-    BorrowedRestrictedExpr, Eid, EntityUID, Expr, ExprKind, Integer, Literal, Name, RestrictedExpr,
+    BorrowedRestrictedExpr, Eid, EntityUID, Expr, ExprKind, InputInteger, Integer, Literal, Name,
+    RestrictedExpr,
 };
 use crate::entities::EscapeKind;
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
@@ -29,7 +30,7 @@ use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
 
 /// Type for JSON representation of Integers
-pub type JsonIntegerType = i64;
+pub type JsonIntegerType = InputInteger;
 
 /// The canonical JSON representation of a Cedar value.
 /// Many Cedar values have a natural one-to-one mapping to and from JSON values.

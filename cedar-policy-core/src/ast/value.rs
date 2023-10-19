@@ -359,7 +359,7 @@ impl std::fmt::Display for Value {
 }
 
 /// Create a `Value` directly from a `Vec<Value>`, or `Vec<T> where T: Into<Value>`
-/// (so `Vec<i64>`, `Vec<String>`, etc)
+/// (so `Vec<Integer>`, `Vec<String>`, etc)
 impl<T: Into<Value>> From<Vec<T>> for Value {
     fn from(v: Vec<T>) -> Self {
         Self::set(v.into_iter().map(Into::into))
@@ -401,7 +401,7 @@ impl From<Vec<(SmolStr, Value)>> for Value {
 }
 
 /// Create a `Value` directly from a `Literal`, or from anything that implements
-/// `Into<Literal>` (so `i64`, `&str`, `EntityUID`, etc)
+/// `Into<Literal>` (so `Integer`, `&str`, `EntityUID`, etc)
 impl<T: Into<Literal>> From<T> for Value {
     fn from(lit: T) -> Self {
         Self::Lit(lit.into())
