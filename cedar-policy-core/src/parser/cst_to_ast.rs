@@ -41,7 +41,7 @@ use super::unescape::{to_pattern, to_unescaped_string};
 use super::{cst, err};
 use crate::ast::{
     self, ActionConstraint, CallStyle, EntityReference, EntityType, EntityUID,
-    ExprConstructionError, PatternElem, PolicySetError, PrincipalConstraint,
+    ExprConstructionError, Integer, PatternElem, PolicySetError, PrincipalConstraint,
     PrincipalOrResourceConstraint, ResourceConstraint,
 };
 use crate::est::extract_single_argument;
@@ -1401,7 +1401,7 @@ impl ASTNode<Option<cst::Mult>> {
                         "checked it matched ast::ExprKind::Lit(ast::Literal::Long(_)) above"
                     ),
                 })
-                .collect::<Vec<i64>>();
+                .collect::<Vec<Integer>>();
             if nonconstantints.len() > 1 {
                 // at most one of the operands in `a * b * c * d * ...` can be a nonconstantint
                 errs.push(self.to_ast_err(ToASTErrorKind::NonConstantMultiplication));
@@ -2119,7 +2119,7 @@ impl ASTNode<Option<cst::Literal>> {
         match lit {
             cst::Literal::True => Some(ExprOrSpecial::Expr(construct_expr_bool(true, src), src)),
             cst::Literal::False => Some(ExprOrSpecial::Expr(construct_expr_bool(false, src), src)),
-            cst::Literal::Num(n) => match i64::try_from(*n) {
+            cst::Literal::Num(n) => match Integer::try_from(*n) {
                 Ok(i) => Some(ExprOrSpecial::Expr(construct_expr_num(i, src), src)),
                 Err(_) => {
                     errs.push(self.to_ast_err(ToASTErrorKind::IntegerLiteralTooLarge(*n)));
@@ -2211,7 +2211,7 @@ fn construct_refr(p: ast::Name, n: SmolStr) -> ast::EntityUID {
 fn construct_expr_ref(r: ast::EntityUID, span: miette::SourceSpan) -> ast::Expr {
     ast::ExprBuilder::new().with_source_span(span).val(r)
 }
-fn construct_expr_num(n: i64, span: miette::SourceSpan) -> ast::Expr {
+fn construct_expr_num(n: Integer, span: miette::SourceSpan) -> ast::Expr {
     ast::ExprBuilder::new().with_source_span(span).val(n)
 }
 fn construct_expr_string(s: SmolStr, span: miette::SourceSpan) -> ast::Expr {
@@ -2295,14 +2295,14 @@ fn construct_expr_add(
 /// used for a chain of multiplication only (no division or mod)
 fn construct_expr_mul(
     f: ast::Expr,
-    chained: impl IntoIterator<Item = i64>,
+    chained: impl IntoIterator<Item = Integer>,
     span: miette::SourceSpan,
 ) -> ast::Expr {
     let mut expr = f;
     for next_expr in chained {
         expr = ast::ExprBuilder::new()
             .with_source_span(span)
-            .mul(expr, next_expr)
+            .mul(expr, next_expr as Integer)
     }
     expr
 }
@@ -3842,6 +3842,7 @@ mod tests {
                 "-9223372036854775809",
                 ToASTErrorKind::IntegerLiteralTooLarge(9223372036854775809),
             ),
+            // This test doesn't fail with an internal representation of i128:
             // Contrary to Rust, this expression is not valid because the
             // parser treats it as a negation operation whereas the operand
             // (9223372036854775808) is too large.

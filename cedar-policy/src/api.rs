@@ -24,7 +24,7 @@ pub use ast::Effect;
 pub use authorizer::Decision;
 use cedar_policy_core::ast;
 use cedar_policy_core::ast::{
-    ContextCreationError, ExprConstructionError, RestrictedExprParseError,
+    ContextCreationError, ExprConstructionError, Integer, RestrictedExprParseError,
 }; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
 use cedar_policy_core::authorizer;
 pub use cedar_policy_core::authorizer::AuthorizationError;
@@ -3001,7 +3001,7 @@ impl Expression {
     }
 
     /// Create an expression representing a literal long.
-    pub fn new_long(value: i64) -> Self {
+    pub fn new_long(value: Integer) -> Self {
         Self(ast::Expr::val(value))
     }
 
@@ -3062,7 +3062,7 @@ impl RestrictedExpression {
     }
 
     /// Create an expression representing a literal long.
-    pub fn new_long(value: i64) -> Self {
+    pub fn new_long(value: Integer) -> Self {
         Self(ast::RestrictedExpr::val(value))
     }
 
@@ -3578,7 +3578,7 @@ pub enum EvalResult {
     /// Boolean value
     Bool(bool),
     /// Signed integer value
-    Long(i64),
+    Long(Integer),
     /// String value
     String(String),
     /// Entity Uid

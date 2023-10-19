@@ -16,6 +16,7 @@
 
 use super::utils::unwrap_or_clone;
 use super::FromJsonError;
+use crate::ast::InputInteger;
 use crate::entities::{
     CedarValueJson, EscapeKind, FnAndArg, JsonDeserializationError,
     JsonDeserializationErrorContext, TypeAndId,
@@ -733,7 +734,7 @@ impl From<ast::Expr> for Expr {
             }
             ast::ExprKind::MulByConst { arg, constant } => Expr::mul(
                 unwrap_or_clone(arg).into(),
-                Expr::lit(CedarValueJson::Long(constant)),
+                Expr::lit(CedarValueJson::Long(constant as InputInteger)),
             ),
             ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let args = unwrap_or_clone(args).into_iter().map(Into::into).collect();
@@ -1031,7 +1032,7 @@ impl TryFrom<&ASTNode<Option<cst::Unary>>> for Expr {
             Some(cst::NegOp::Dash(mut num_dashes)) => {
                 let inner = match inner {
                     Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(n)))
-                        if n != std::i64::MIN =>
+                        if n != InputInteger::MIN =>
                     {
                         // collapse the negated literal into a single negative literal.
                         // Important for multiplication-by-constant to allow multiplication by negative constants.
