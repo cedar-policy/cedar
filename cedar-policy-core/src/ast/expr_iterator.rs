@@ -229,7 +229,8 @@ mod test {
         let e = Expr::record(vec![
             ("test".into(), Expr::val(true)),
             ("another".into(), Expr::val(false)),
-        ]);
+        ])
+        .unwrap();
         assert_eq!(
             e.subexpressions().collect::<HashSet<_>>(),
             HashSet::from([&e, &Expr::val(false), &Expr::val(true)])

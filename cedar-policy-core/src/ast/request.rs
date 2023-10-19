@@ -14,14 +14,16 @@
  * limitations under the License.
  */
 
-use crate::ast::{BorrowedRestrictedExpr, EntityUID, ExprKind, RestrictedExpr};
 use crate::entities::{ContextJsonParser, JsonDeserializationError, NullContextSchema};
 use crate::extensions::Extensions;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::sync::Arc;
 
-use super::{Expr, Literal, PartialValue, Value, Var};
+use super::{
+    BorrowedRestrictedExpr, EntityUID, Expr, ExprConstructionError, ExprKind, Literal,
+    PartialValue, RestrictedExpr, Value, Var,
+};
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,7 +163,9 @@ pub struct Context {
 impl Context {
     /// Create an empty `Context`
     pub fn empty() -> Self {
-        Self::from_pairs([])
+        // PANIC SAFETY: empty set of keys cannot contain a duplicate key
+        #[allow(clippy::expect_used)]
+        Self::from_pairs([]).expect("empty set of keys cannot contain a duplicate key")
     }
 
     /// Create a `Context` from a `RestrictedExpr`, which must be a `Record`.
@@ -179,10 +183,12 @@ impl Context {
     /// Create a `Context` from a map of key to `RestrictedExpr`, or a Vec of
     /// `(key, RestrictedExpr)` pairs, or any other iterator of `(key, RestrictedExpr)` pairs
     // INVARIANT: always constructs a record
-    pub fn from_pairs(pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>) -> Self {
-        Self {
-            context: RestrictedExpr::record(pairs),
-        }
+    pub fn from_pairs(
+        pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
+    ) -> Result<Self, ExprConstructionError> {
+        Ok(Self {
+            context: RestrictedExpr::record(pairs)?,
+        })
     }
 
     /// Create a `Context` from a string containing JSON (which must be a JSON

@@ -487,6 +487,7 @@ pub enum TCComputation {
 mod json_parsing_tests {
     use super::*;
     use crate::{extensions::Extensions, transitive_closure::TcError};
+    use cool_asserts::assert_matches;
 
     #[test]
     fn enforces_tc_fail_cycle_almost() {
@@ -892,7 +893,7 @@ mod json_parsing_tests {
         );
         assert_attr_vals_are_shape_equal(
             alice.get("waffles"),
-            &RestrictedExpr::record([("key".into(), RestrictedExpr::val("value"))]),
+            &RestrictedExpr::record([("key".into(), RestrictedExpr::val("value"))]).unwrap(),
         );
         assert_attr_vals_are_shape_equal(
             alice.get("toast"),
@@ -1002,8 +1003,7 @@ mod json_parsing_tests {
                     err.to_string().contains(
                         r#"in uid field of <unknown entity>, expected a literal entity reference, but got `"hello"`"#
                     ),
-                    "actual error message was {}",
-                    err
+                    "actual error message was {err}"
                 )
             }
             _ => panic!("expected deserialization error, got a different error: {err}"),
@@ -1025,8 +1025,7 @@ mod json_parsing_tests {
             EntitiesError::Deserialization(err) => assert!(
                 err.to_string()
                     .contains(r#"expected a literal entity reference, but got `"hello"`"#),
-                "actual error message was {}",
-                err
+                "actual error message was {err}"
             ),
             _ => panic!("expected deserialization error, got a different error: {err}"),
         }
@@ -1155,7 +1154,8 @@ mod json_parsing_tests {
                             "another".into(),
                             RestrictedExpr::val(EntityUID::with_eid("foo")),
                         ),
-                    ]),
+                    ])
+                    .unwrap(),
                 ),
                 (
                     "src_ip".into(),
@@ -1193,7 +1193,7 @@ mod json_parsing_tests {
             [(
                 // record literal that happens to look like an escape
                 "oops".into(),
-                RestrictedExpr::record([("__entity".into(), RestrictedExpr::val("hi"))]),
+                RestrictedExpr::record([("__entity".into(), RestrictedExpr::val("hi"))]).unwrap(),
             )]
             .into_iter()
             .collect(),
@@ -1242,8 +1242,60 @@ mod json_parsing_tests {
             err.to_string().contains(
                 r#"action `XYZ::Action::"view"` has a non-action parent `User::"alice"`"#
             ),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
+        );
+    }
+
+    /// test that non-Action having an Action parent is not an error
+    /// (not sure if this was intentional? but it's the current behavior, and if
+    /// that behavior changes, we want to know)
+    #[test]
+    fn not_bad_action_parent() {
+        let json = serde_json::json!(
+            [
+                {
+                    "uid": { "type": "User", "id": "alice" },
+                    "attrs": {},
+                    "parents": [
+                        { "type": "XYZ::Action", "id": "view" },
+                    ]
+                }
+            ]
+        );
+        let eparser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        assert_matches!(eparser.from_json_value(json), Ok(_));
+    }
+
+    /// test that duplicate keys in a record is an error
+    #[test]
+    fn duplicate_keys() {
+        // this test uses string JSON because it needs to specify JSON containing duplicate
+        // keys, and the `json!` macro would already eliminate the duplicate keys
+        let json = r#"
+            [
+                {
+                    "uid": { "type": "User", "id": "alice "},
+                    "attrs": {
+                        "foo": {
+                            "hello": "goodbye",
+                            "bar": 2,
+                            "spam": "eggs",
+                            "bar": 3
+                        }
+                    },
+                    "parents": []
+                }
+            ]
+        "#;
+        let eparser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let err = eparser
+            .from_json_str(json)
+            .expect_err("should fail due to duplicate key in record");
+        assert!(
+            err.to_string().contains(r#"duplicate key error for `bar`"#),
+            "actual error message was {err}"
         );
     }
 }
@@ -1709,8 +1761,7 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to type mismatch on numDirectReports");
         assert!(
             err.to_string().contains(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type long, but actually has type string"#),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 
@@ -1756,8 +1807,7 @@ mod schema_based_parsing_tests {
         assert!(
             err.to_string()
                 .contains(r#"in attribute `manager` on `Employee::"12UA45"`, expected a literal entity reference, but got `"34FB87"`"#),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 
@@ -1799,8 +1849,7 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to type mismatch on hr_contacts");
         assert!(
             err.to_string().contains(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type (set of (entity of type `HR`)), but actually has type record"#),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 
@@ -1845,8 +1894,7 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to type mismatch on manager");
         assert!(
             err.to_string().contains(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type (entity of type `Employee`), but actually has type (entity of type `HR`)"#),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 
@@ -1892,8 +1940,7 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to type mismatch on home_ip");
         assert!(
             err.to_string().contains(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type ipaddr, but actually has type decimal"#),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 
@@ -1937,8 +1984,7 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to missing attribute \"inner2\"");
         assert!(
             err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, expected the record to have an attribute `inner2`, but it does not"#),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 
@@ -1983,8 +2029,7 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to type mismatch on attribute \"inner1\"");
         assert!(
             err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type record with attributes: "#),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
 
         let entitiesjson = json!(
@@ -2061,8 +2106,7 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to unexpected attribute \"inner4\"");
         assert!(
             err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, record attribute `inner4` should not exist"#),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 
@@ -2105,8 +2149,7 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to missing attribute \"numDirectReports\"");
         assert!(
             err.to_string().contains(r#"expected entity `Employee::"12UA45"` to have an attribute `numDirectReports`, but it does not"#),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 
@@ -2154,8 +2197,7 @@ mod schema_based_parsing_tests {
             err.to_string().contains(
                 r#"attribute `wat` on `Employee::"12UA45"` should not exist according to the schema"#
             ),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 
@@ -2204,8 +2246,7 @@ mod schema_based_parsing_tests {
             err.to_string().contains(
                 r#"`Employee::"12UA45"` is not allowed to have a parent of type `Employee` according to the schema"#
             ),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 
@@ -2233,8 +2274,7 @@ mod schema_based_parsing_tests {
             err.to_string().contains(
                 r#"entity `CEO::"abcdef"` has type `CEO` which is not declared in the schema"#
             ),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 
@@ -2262,8 +2302,7 @@ mod schema_based_parsing_tests {
             err.to_string().contains(
                 r#"found action entity `Action::"update"`, but it was not declared as an action in the schema"#
             ),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 
@@ -2328,8 +2367,7 @@ mod schema_based_parsing_tests {
             err.to_string().contains(
                 r#"definition of action `Action::"view"` does not match its schema declaration"#
             ),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 
@@ -2361,8 +2399,7 @@ mod schema_based_parsing_tests {
             err.to_string().contains(
                 r#"definition of action `Action::"view"` does not match its schema declaration"#
             ),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 
@@ -2392,8 +2429,7 @@ mod schema_based_parsing_tests {
             err.to_string().contains(
                 r#"definition of action `Action::"view"` does not match its schema declaration"#
             ),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 
@@ -2426,8 +2462,7 @@ mod schema_based_parsing_tests {
             err.to_string().contains(
                 r#"definition of action `Action::"view"` does not match its schema declaration"#
             ),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 
@@ -2457,8 +2492,7 @@ mod schema_based_parsing_tests {
             err.to_string().contains(
                 r#"definition of action `Action::"view"` does not match its schema declaration"#
             ),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 
@@ -2491,8 +2525,7 @@ mod schema_based_parsing_tests {
             err.to_string().contains(
                 r#"definition of action `Action::"view"` does not match its schema declaration"#
             ),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 
@@ -2628,8 +2661,7 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to manager being wrong entity type (missing namespace)");
         assert!(
             err.to_string().contains(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: attribute was expected to have type (entity of type `XYZCorp::Employee`), but actually has type (entity of type `Employee`)"#),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
 
         let entitiesjson = json!(
@@ -2651,8 +2683,7 @@ mod schema_based_parsing_tests {
             .expect_err("should fail due to employee being wrong entity type (missing namespace)");
         assert!(
             err.to_string().contains(r#"`Employee::"12UA45"` has type `Employee` which is not declared in the schema. Did you mean `XYZCorp::Employee`?"#),
-            "actual error message was {}",
-            err
+            "actual error message was {err}"
         );
     }
 }

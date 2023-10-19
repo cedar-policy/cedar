@@ -23,7 +23,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{btree_map, BTreeMap, HashMap},
     hash::{Hash, Hasher},
     mem,
     sync::Arc,
@@ -162,13 +162,14 @@ impl From<Value> for Expr {
         match v {
             Value::Lit(l) => Expr::val(l),
             Value::Set(s) => Expr::set(s.iter().map(|v| Expr::from(v.clone()))),
+            // PANIC SAFETY: cannot have duplicate key because the input was already a BTreeMap
+            #[allow(clippy::expect_used)]
             Value::Record(fields) => Expr::record(
-                fields
-                    .as_ref()
-                    .clone()
+                unwrap_or_clone(fields)
                     .into_iter()
                     .map(|(k, v)| (k, Expr::from(v))),
-            ),
+            )
+            .expect("cannot have duplicate key because the input was already a BTreeMap"),
             Value::ExtensionValue(ev) => ev.as_ref().clone().into(),
         }
     }
@@ -408,7 +409,9 @@ impl Expr {
     }
 
     /// Create an `Expr` which evaluates to a Record with the given (key, value) pairs.
-    pub fn record(pairs: impl IntoIterator<Item = (SmolStr, Expr)>) -> Self {
+    pub fn record(
+        pairs: impl IntoIterator<Item = (SmolStr, Expr)>,
+    ) -> Result<Self, ExprConstructionError> {
         ExprBuilder::new().record(pairs)
     }
 
@@ -553,7 +556,10 @@ impl Expr {
                     .iter()
                     .map(|(name, e)| Ok((name.clone(), e.substitute(definitions)?)))
                     .collect::<Result<BTreeMap<_, _>, _>>()?;
-                Ok(Expr::record(map))
+                // PANIC SAFETY: cannot have a duplicate key because the input was already a BTreeMap
+                #[allow(clippy::expect_used)]
+                Ok(Expr::record(map)
+                    .expect("cannot have a duplicate key because the input was already a BTreeMap"))
             }
             ExprKind::MulByConst { arg, constant } => {
                 Ok(Expr::mul(arg.substitute(definitions)?, *constant))
@@ -1043,8 +1049,24 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an `Expr` which evaluates to a Record with the given (key, value) pairs.
-    pub fn record(self, pairs: impl IntoIterator<Item = (SmolStr, Expr<T>)>) -> Expr<T> {
-        self.with_expr_kind(ExprKind::Record(Arc::new(pairs.into_iter().collect())))
+    pub fn record(
+        self,
+        pairs: impl IntoIterator<Item = (SmolStr, Expr<T>)>,
+    ) -> Result<Expr<T>, ExprConstructionError> {
+        let mut map = BTreeMap::new();
+        for (k, v) in pairs {
+            match map.entry(k) {
+                btree_map::Entry::Occupied(oentry) => {
+                    return Err(ExprConstructionError::DuplicateKeyInRecordLiteral {
+                        key: oentry.key().clone(),
+                    });
+                }
+                btree_map::Entry::Vacant(ventry) => {
+                    ventry.insert(v);
+                }
+            }
+        }
+        Ok(self.with_expr_kind(ExprKind::Record(Arc::new(map))))
     }
 
     /// Create an `Expr` which evalutes to a Record with the given key-value mapping.
@@ -1143,6 +1165,17 @@ impl<T: Clone> ExprBuilder<T> {
                 .or(acc, next)
         })
     }
+}
+
+/// Errors when constructing an `Expr`
+#[derive(Debug, PartialEq, Error)]
+pub enum ExprConstructionError {
+    /// A key occurred twice (or more) in a record literal
+    #[error("duplicate key `{key}` in record literal")]
+    DuplicateKeyInRecordLiteral {
+        /// The key which occurred twice (or more) in the record literal
+        key: SmolStr,
+    },
 }
 
 /// A new type wrapper around `Expr` that provides `Eq` and `Hash`
@@ -1704,8 +1737,10 @@ mod test {
                 Expr::set([Expr::val(1)]),
             ),
             (
-                ExprBuilder::with_data(1).record([("foo".into(), temp.clone())]),
-                Expr::record([("foo".into(), Expr::val(1))]),
+                ExprBuilder::with_data(1)
+                    .record([("foo".into(), temp.clone())])
+                    .unwrap(),
+                Expr::record([("foo".into(), Expr::val(1))]).unwrap(),
             ),
             (
                 ExprBuilder::with_data(1)

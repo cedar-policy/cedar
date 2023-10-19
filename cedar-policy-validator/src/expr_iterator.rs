@@ -221,7 +221,7 @@ mod tests {
         let euid_foo =
             EntityUID::with_eid_and_type("test_entity_type", "foo").expect("valid identifier");
         let entity_get_elem = Expr::get_attr(
-            Expr::record(vec![("bar".into(), Expr::val(euid_foo.clone()))]),
+            Expr::record(vec![("bar".into(), Expr::val(euid_foo.clone()))]).unwrap(),
             "bar".into(),
         );
 
@@ -233,7 +233,8 @@ mod tests {
     fn entity_record() {
         let euid_foo =
             EntityUID::with_eid_and_type("test_entity_type", "foo").expect("valid identifier");
-        let entity_record = Expr::record(vec![("bar".into(), Expr::val(euid_foo.clone()))]);
+        let entity_record =
+            Expr::record(vec![("bar".into(), Expr::val(euid_foo.clone()))]).unwrap();
 
         let entities: Vec<EntityUID> = expr_entity_uids(&entity_record).cloned().collect();
         assert_eq!(vec![euid_foo], entities);
@@ -317,7 +318,8 @@ mod tests {
         let r = Expr::record([
             ("a1".into(), Expr::val(true)),
             ("a2".into(), Expr::val(false)),
-        ]);
+        ])
+        .unwrap();
         let e = Expr::ite(
             Expr::get_attr(
                 Expr::val(EntityUID::from_str("another::\"euid\"").unwrap()),
