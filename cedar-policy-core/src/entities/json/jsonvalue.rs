@@ -379,7 +379,11 @@ impl<'e> ValueParser<'e> {
                         JsonDeserializationErrorContext::Context => {
                             Err(JsonDeserializationError::ContextTypeMismatch { expected, actual })
                         }
-                        ctx => panic!("type mismatches can only occur in entity attributes or in context, but somehow found one {ctx}"),
+                        ctx => Err(JsonDeserializationError::OtherTypeMismatch {
+                            ctx: Box::new(ctx),
+                            expected,
+                            actual,
+                        }),
                     }
                 }
             },
@@ -437,12 +441,23 @@ impl<'e> ValueParser<'e> {
                     };
                     match ctx() {
                         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
-                            Err(JsonDeserializationError::EntitySchemaConformance(EntitySchemaConformanceError::TypeMismatch { uid, attr, expected, actual }))
+                            Err(JsonDeserializationError::EntitySchemaConformance(
+                                EntitySchemaConformanceError::TypeMismatch {
+                                    uid,
+                                    attr,
+                                    expected,
+                                    actual,
+                                },
+                            ))
                         }
                         JsonDeserializationErrorContext::Context => {
                             Err(JsonDeserializationError::ContextTypeMismatch { expected, actual })
                         }
-                        ctx => panic!("type mismatches can only occur in entity attributes or in context, but somehow found one {ctx}")
+                        ctx => Err(JsonDeserializationError::OtherTypeMismatch {
+                            ctx: Box::new(ctx),
+                            expected,
+                            actual,
+                        }),
                     }
                 }
             },

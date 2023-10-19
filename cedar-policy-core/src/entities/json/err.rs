@@ -158,6 +158,20 @@ pub enum JsonDeserializationError {
     /// getting information about any extension functions referenced in Context values.
     #[error("while parsing context, {0}")]
     ContextExtension(ExtensionFunctionLookupError),
+    /// Type mismatch somewhere other than entity attributes or context, which
+    /// would result in `Self::EntitySchemaConformance` or
+    /// `Self::ContextTypeMismatch` respectively.
+    /// This should never occur, but is propagated as this error instead of a panic.
+    #[error("{ctx}, type mismatch: expected type {expected}, but actually has type {actual}")]
+    OtherTypeMismatch {
+        /// Context of this error, which will be something other than `EntityAttribute`
+        /// or `Context`
+        ctx: Box<JsonDeserializationErrorContext>,
+        /// Type which was expected
+        expected: Box<SchemaType>,
+        /// Type which was encountered instead
+        actual: Box<SchemaType>,
+    },
 }
 
 /// Errors thrown during serialization to JSON
