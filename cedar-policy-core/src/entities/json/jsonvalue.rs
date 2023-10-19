@@ -550,7 +550,9 @@ fn type_of_restricted_expr_error_to_json_deserialization_error(
         JsonDeserializationErrorContext::Context => {
             JsonDeserializationError::ContextHeterogeneousSet(err)
         }
-        ctx => panic!("heterogenous sets can only occur in entity attributes or in context, but somehow found one {ctx}"),
+        ctx => {
+            JsonDeserializationError::OtherHeterogeneousSet { ctx: Box::new(ctx), err }
+        }
     }
     TypeOfRestrictedExprError::Extension(err) => match ctx {
         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
@@ -561,7 +563,9 @@ fn type_of_restricted_expr_error_to_json_deserialization_error(
         JsonDeserializationErrorContext::Context => {
             JsonDeserializationError::ContextExtension(err)
         }
-        ctx => panic!("failed extension function lookups can only occur in entity attributes or in context, but somehow found one {ctx}"),
+        ctx => {
+            JsonDeserializationError::OtherExtension { ctx: Box::new(ctx), err }
+        }
     }
 }
 }

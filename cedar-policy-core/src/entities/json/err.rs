@@ -115,7 +115,7 @@ pub enum JsonDeserializationError {
     /// During schema-based parsing, encountered an entity which does not
     /// conform to the schema.
     ///
-    /// This error contains the Entity analogues of the Record error cases
+    /// This error contains the Entity analogues of the Context error cases
     /// listed below, among other things.
     #[error(transparent)]
     EntitySchemaConformance(EntitySchemaConformanceError),
@@ -171,6 +171,30 @@ pub enum JsonDeserializationError {
         expected: Box<SchemaType>,
         /// Type which was encountered instead
         actual: Box<SchemaType>,
+    },
+    /// Heterogeneous set found somewhere other than entity attributes or
+    /// context, which would result in `Self::EntitySchemaConformance` or
+    /// `Self::ContextHeterogeneousSet` respectively.
+    /// This should never occur, but is propagated as this error instead of a panic.
+    #[error("{ctx}, {err}")]
+    OtherHeterogeneousSet {
+        /// Context of this error, which will be something other than
+        /// `EntityAttribute` or `Context`
+        ctx: Box<JsonDeserializationErrorContext>,
+        /// Underlying error
+        err: HeterogeneousSetError,
+    },
+    /// Extension function lookup error somewhere other than entity attributes
+    /// or context, which would result in `Self::EntitySchemaConformance` or
+    /// `Self::ContextExtension` respectively.
+    /// This should never occur, but is propagated as this error instead of a panic.
+    #[error("{ctx}, {err}")]
+    OtherExtension {
+        /// Context of this error, which will be something other than
+        /// `EntityAttribute` or `Context`
+        ctx: Box<JsonDeserializationErrorContext>,
+        /// Underlying error
+        err: ExtensionFunctionLookupError,
     },
 }
 
