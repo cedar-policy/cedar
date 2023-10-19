@@ -541,33 +541,35 @@ fn type_of_restricted_expr_error_to_json_deserialization_error(
     ctx: JsonDeserializationErrorContext,
 ) -> JsonDeserializationError {
     match torerr {
-    TypeOfRestrictedExprError::HeterogeneousSet(err) => match ctx {
-        JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
-            JsonDeserializationError::EntitySchemaConformance(
-                EntitySchemaConformanceError::HeterogeneousSet { uid, attr, err }
-            )
-        }
-        JsonDeserializationErrorContext::Context => {
-            JsonDeserializationError::ContextHeterogeneousSet(err)
-        }
-        ctx => {
-            JsonDeserializationError::OtherHeterogeneousSet { ctx: Box::new(ctx), err }
-        }
+        TypeOfRestrictedExprError::HeterogeneousSet(err) => match ctx {
+            JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
+                JsonDeserializationError::EntitySchemaConformance(
+                    EntitySchemaConformanceError::HeterogeneousSet { uid, attr, err },
+                )
+            }
+            JsonDeserializationErrorContext::Context => {
+                JsonDeserializationError::ContextHeterogeneousSet(err)
+            }
+            ctx => JsonDeserializationError::OtherHeterogeneousSet {
+                ctx: Box::new(ctx),
+                err,
+            },
+        },
+        TypeOfRestrictedExprError::Extension(err) => match ctx {
+            JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
+                JsonDeserializationError::EntitySchemaConformance(
+                    EntitySchemaConformanceError::Extension { uid, attr, err },
+                )
+            }
+            JsonDeserializationErrorContext::Context => {
+                JsonDeserializationError::ContextExtension(err)
+            }
+            ctx => JsonDeserializationError::OtherExtension {
+                ctx: Box::new(ctx),
+                err,
+            },
+        },
     }
-    TypeOfRestrictedExprError::Extension(err) => match ctx {
-        JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
-            JsonDeserializationError::EntitySchemaConformance(
-                EntitySchemaConformanceError::Extension { uid, attr, err }
-            )
-        }
-        JsonDeserializationErrorContext::Context => {
-            JsonDeserializationError::ContextExtension(err)
-        }
-        ctx => {
-            JsonDeserializationError::OtherExtension { ctx: Box::new(ctx), err }
-        }
-    }
-}
 }
 
 /// Serde JSON format for Cedar values where we know we're expecting an entity
