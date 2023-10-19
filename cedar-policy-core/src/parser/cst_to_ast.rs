@@ -345,6 +345,7 @@ impl ASTNode<Option<cst::Ident>> {
             | cst::Ident::Then
             | cst::Ident::Else
             | cst::Ident::In
+            | cst::Ident::Is
             | cst::Ident::Has
             | cst::Ident::Like => {
                 errs.push(err::ParseError::ToAST(ToASTError::ReservedIdentifier(
@@ -805,6 +806,24 @@ impl ExprOrSpecial<'_> {
             }
         }
     }
+
+    fn into_name(self, errs: &mut ParseErrors) -> Option<ast::Name> {
+        match self {
+            Self::StrLit(s, _) => {
+                errs.push(ToASTError::InvalidEntityType(s.to_string()).into());
+                None
+            }
+            Self::Var(var, _) => {
+                errs.push(ToASTError::InvalidEntityType(var.to_string()).into());
+                None
+            }
+            Self::Name(name) => Some(name),
+            Self::Expr(e) => {
+                errs.push(ToASTError::InvalidEntityType(e.to_string()).into());
+                None
+            }
+        }
+    }
 }
 
 impl ASTNode<Option<cst::Expr>> {
@@ -1029,6 +1048,10 @@ impl ASTNode<Option<cst::Relation>> {
                 errs.push(ToASTError::wrong_node(T::err_str(), "like").into());
                 None
             }
+            cst::Relation::Is { .. } => {
+                errs.push(ToASTError::wrong_node(T::err_str(), "is").into());
+                None
+            }
         }
     }
 
@@ -1083,6 +1106,20 @@ impl ASTNode<Option<cst::Relation>> {
                 ) {
                     (Some(t), Some(s)) => {
                         Some(ExprOrSpecial::Expr(construct_expr_like(t, s, src.clone())))
+                    }
+                    _ => None,
+                }
+            }
+            cst::Relation::Is {
+                target,
+                entity_type,
+            } => {
+                match (
+                    target.to_expr(errs),
+                    entity_type.to_expr_or_special(errs)?.into_name(errs),
+                ) {
+                    (Some(t), Some(n)) => {
+                        Some(ExprOrSpecial::Expr(construct_expr_is(t, n, src.clone())))
                     }
                     _ => None,
                 }
@@ -2034,6 +2071,9 @@ fn construct_expr_attr(e: ast::Expr, s: SmolStr, l: SourceInfo) -> ast::Expr {
 }
 fn construct_expr_like(e: ast::Expr, s: Vec<PatternElem>, l: SourceInfo) -> ast::Expr {
     ast::ExprBuilder::new().with_source_info(l).like(e, s)
+}
+fn construct_expr_is(e: ast::Expr, n: ast::Name, l: SourceInfo) -> ast::Expr {
+    ast::ExprBuilder::new().with_source_info(l).is(e, n)
 }
 fn construct_ext_func(name: ast::Name, args: Vec<ast::Expr>, l: SourceInfo) -> ast::Expr {
     // INVARIANT (MethodStyleArgs): CallStyle is not MethodStyle, so any args vector is fine

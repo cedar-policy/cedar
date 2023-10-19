@@ -287,6 +287,9 @@ pub enum ToASTError {
     /// Returns when a policy scope has incorrect EntityUIDs/Template Slots
     #[error(transparent)]
     RefCreation(#[from] RefCreationError),
+    /// Returned when the right hand side of an `is` expressions is not an entity type name
+    #[error("right hand side of an `is` expression must be a entity type name, but got `{0}`")]
+    InvalidEntityType(String),
 }
 
 impl ToASTError {
@@ -458,6 +461,7 @@ lazy_static! {
         ("IN", "`in`"),
         ("HAS", "`has`"),
         ("LIKE", "`like`"),
+        ("IS", "`is`"),
         ("THEN", "`then`"),
         ("ELSE", "`else`"),
         ("PRINCIPAL", "`principal`"),

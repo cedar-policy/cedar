@@ -98,6 +98,9 @@ impl<'a, T> Iterator for ExprIterator<'a, T> {
                     self.expression_stack.push(val_expr);
                 }
             }
+            ExprKind::Is { expr, .. } => {
+                self.expression_stack.push(expr);
+            }
         }
         Some(next_expr)
     }

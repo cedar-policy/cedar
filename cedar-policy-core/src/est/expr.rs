@@ -16,16 +16,17 @@
 
 use super::utils::unwrap_or_clone;
 use super::FromJsonError;
-use crate::ast;
 use crate::entities::{EscapeKind, JSONValue, JsonDeserializationError, TypeAndId};
 use crate::parser::cst::{self, Ident};
 use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::unescape;
 use crate::parser::ASTNode;
+use crate::{ast, FromNormalizedStr};
 use either::Either;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 
 /// Serde JSON structure for a Cedar expression in the EST format
@@ -213,6 +214,14 @@ pub enum ExprNoExt {
         left: Arc<Expr>,
         /// Pattern
         pattern: SmolStr,
+    },
+    /// `is`
+    #[serde(rename = "is")]
+    Is {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Pattern
+        entity_type: SmolStr,
     },
     /// Ternary
     #[serde(rename = "if-then-else")]
@@ -427,6 +436,14 @@ impl Expr {
         })
     }
 
+    /// `left is entity_type`
+    pub fn is(left: Expr, entity_type: SmolStr) -> Self {
+        Expr::ExprNoExt(ExprNoExt::Is {
+            left: Arc::new(left),
+            entity_type,
+        })
+    }
+
     /// `if cond_expr then then_expr else else_expr`
     pub fn ite(cond_expr: Expr, then_expr: Expr, else_expr: Expr) -> Self {
         Expr::ExprNoExt(ExprNoExt::If {
@@ -566,6 +583,13 @@ impl TryFrom<Expr> for ast::Expr {
                     Err(errs) => Err(Self::Error::UnescapeError(errs)),
                 }
             }
+            Expr::ExprNoExt(ExprNoExt::Is { left, entity_type }) => {
+                ast::Name::from_normalized_str(entity_type.as_str())
+                    .map_err(Self::Error::InvalidEntityType)
+                    .and_then(|entity_type_name| {
+                        Ok(ast::Expr::is((*left).clone().try_into()?, entity_type_name))
+                    })
+            }
             Expr::ExprNoExt(ExprNoExt::If {
                 cond_expr,
                 then_expr,
@@ -679,6 +703,9 @@ impl From<ast::Expr> for Expr {
             }
             ast::ExprKind::Like { expr, pattern } => {
                 Expr::like(unwrap_or_clone(expr).into(), pattern.to_string().into())
+            }
+            ast::ExprKind::Is { expr, entity_type } => {
+                Expr::is(unwrap_or_clone(expr).into(), entity_type.to_string().into())
             }
             ast::ExprKind::Set(set) => {
                 Expr::set(unwrap_or_clone(set).into_iter().map(Into::into).collect())
@@ -853,6 +880,31 @@ impl TryFrom<cst::Relation> for Expr {
                 ) => {
                     let target_expr = target.try_into()?;
                     let pat_expr: Expr = pattern.try_into()?;
+                    let pat_str = pat_expr.into_string_literal().map_err(|e| {
+                        ParseError::ToAST(ToASTError::InvalidPattern(
+                            serde_json::to_string(&e)
+                                .unwrap_or_else(|_| "<malformed est>".to_string()),
+                        ))
+                    })?;
+                    Ok(Expr::like(target_expr, pat_str))
+                }
+                (_, _) => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
+            },
+            cst::Relation::Is {
+                target,
+                entity_type,
+            } => match (target, entity_type) {
+                (
+                    ASTNode {
+                        node: Some(target), ..
+                    },
+                    ASTNode {
+                        node: Some(entity_type),
+                        ..
+                    },
+                ) => {
+                    let target_expr = target.try_into()?;
+                    let entity_type_expr: Expr = entity_type.try_into()?;
                     let pat_str = pat_expr.into_string_literal().map_err(|e| {
                         ParseError::ToAST(ToASTError::InvalidPattern(
                             serde_json::to_string(&e)
@@ -1358,6 +1410,7 @@ fn ident_to_str_len(i: &Ident) -> usize {
         Ident::Else => 4,
         Ident::Ident(s) => s.len(),
         Ident::Invalid(s) => s.len(),
+        Ident::Is => 2,
     }
 }
 

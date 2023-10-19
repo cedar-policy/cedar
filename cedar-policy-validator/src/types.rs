@@ -809,6 +809,11 @@ impl EntityLUB {
         self.lub_elements.iter()
     }
 
+    // Check if this EntityLUB contains a particular entity type.
+    pub(crate) fn contains_entity_type(&self, ety: &Name) -> bool {
+        self.lub_elements.contains(ety)
+    }
+
     fn to_type_json(&self) -> serde_json::value::Map<String, serde_json::value::Value> {
         let mut ordered_lub_elems = self.lub_elements.iter().collect::<Vec<_>>();
         // We want the display order of elements of the set to be consistent.

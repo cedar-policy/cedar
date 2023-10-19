@@ -539,6 +539,17 @@ impl<'q, 'e> Evaluator<'e> {
                     PartialValue::Residual(r) => Ok(Expr::like(r, pattern.iter().cloned()).into()),
                 }
             }
+            ExprKind::Is { expr, entity_type } => {
+                let v = self.partial_interpret(expr, slots)?;
+                match v {
+                    PartialValue::Value(v) => Ok(match v.get_as_entity()?.entity_type() {
+                        EntityType::Concrete(expr_entity_type) => entity_type == expr_entity_type,
+                        EntityType::Unspecified => false,
+                    }
+                    .into()),
+                    PartialValue::Residual(r) => Ok(Expr::is(r, entity_type.clone()).into()),
+                }
+            }
             ExprKind::Set(items) => {
                 let vals = items
                     .iter()

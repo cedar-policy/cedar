@@ -31,6 +31,7 @@ match {
     "in" => IN,
     "has" => HAS,
     "like" => LIKE,
+    "is" => IS,
     "then" => THEN,
     "else" => ELSE,
 
@@ -123,6 +124,8 @@ CommonIdent: Node<Option<cst::Ident>> = {
         => Node::new(Some(cst::Ident::Has),l,r),
     <l:@L> LIKE <r:@R>
         => Node::new(Some(cst::Ident::Like),l,r),
+    <l:@L> IS <r:@R>
+        => Node::new(Some(cst::Ident::Is),l,r),
     <l:@L> THEN <r:@R>
         => Node::new(Some(cst::Ident::Then),l,r),
     <l:@L> ELSE <r:@R>
@@ -174,7 +177,7 @@ And: Node<Option<cst::And>> = {
     <l:@L> <i:Relation> <e:("&&" <Relation>)*> <r:@R>
         => Node::new(Some(cst::And{initial: i, extended: e}),l,r),
 }
-// Relation := Add {RelOp Add} | Add HAS Add | Add LIKE Add
+// Relation := Add {RelOp Add} | Add HAS Add | Add LIKE Add | Add IS Add
 Relation: Node<Option<cst::Relation>> = {
     <l:@L> <i:Add> <e:(RelOp Add)*> <r:@R>
         => Node::new(Some(cst::Relation::Common{initial: i, extended: e}),l,r),
@@ -194,6 +197,10 @@ Relation: Node<Option<cst::Relation>> = {
     },
     <l:@L> <t:Add> LIKE <p:Add> <r:@R>
         => Node::new(Some(cst::Relation::Like{target: t, pattern: p}),l,r),
+    <l:@L> <t:Add> IS <n:Add> <r:@R>
+        => Node::new(Some(cst::Relation::Is{target: t, entity_type: n}),l,r),
+    <l:@L> <t:Add> IS <n:Add> IN <r:@R>
+        => Node::new(Some(cst::Relation::Is{target: t, entity_type: n}),l,r),
 }
 // RelOp     := '<' | '<=' | '>=' | '>' | '!=' | '==' | 'in'
 RelOp: cst::RelOp = {

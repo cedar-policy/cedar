@@ -105,6 +105,8 @@ pub enum Ident {
     Has,
     /// like
     Like,
+    /// is
+    Is,
     /// if
     If,
     /// then
@@ -186,6 +188,13 @@ pub enum Relation {
         target: Node<Add>,
         /// pattern to match on
         pattern: Node<Add>,
+    },
+    /// Built-in 'is' operation
+    Is {
+        /// element that may be an entity type
+        target: Node<Add>,
+        /// entity type to check for
+        entity_type: Node<Add>,
     },
 }
 

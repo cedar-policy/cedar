@@ -260,6 +260,26 @@ impl Doc for ASTNode<Option<Relation>> {
                     .append(pattern.to_doc(context)?.nest(context.config.indent_width))
                     .group(),
             ),
+            Relation::Is {
+                target,
+                entity_type,
+            } => Some(
+                target
+                    .to_doc(context)?
+                    .append(RcDoc::line())
+                    .append(add_comment(
+                        RcDoc::text("is"),
+                        get_comment_after_end(target.info.0.end, &mut context.tokens)?,
+                        RcDoc::nil(),
+                    ))
+                    .append(RcDoc::line())
+                    .append(
+                        entity_type
+                            .to_doc(context)?
+                            .nest(context.config.indent_width),
+                    )
+                    .group(),
+            ),
         }
     }
 }

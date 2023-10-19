@@ -147,6 +147,14 @@ pub enum ExprKind<T = ()> {
         /// Be careful the backslash in `\*` must not be another escape sequence. For instance, `\\*` matches a backslash plus an arbitrary string.
         pattern: Pattern,
     },
+    /// Entity type membership. Does the first argument have the entity type
+    /// specified by the second argument.
+    Is {
+        /// Expression to test. Must evaluate to an Entity.
+        expr: Arc<Expr<T>>,
+        /// The entity type `Name` used for the type membership test.
+        entity_type: Name,
+    },
     /// Set (whose elements may be arbitrary expressions)
     //
     // This is backed by `Vec` (and not e.g. `HashSet`), because two `Expr`s
@@ -466,6 +474,13 @@ impl Expr {
         ExprBuilder::new().like(expr, pattern)
     }
 
+    /// Create a 'like' expression.
+    ///
+    /// `expr` must evaluate to a String type
+    pub fn is(expr: Expr, entity_type: Name) -> Self {
+        ExprBuilder::new().is(expr, entity_type)
+    }
+
     /// Check if an expression contains any symbolic unknowns
     pub fn is_unknown(&self) -> bool {
         self.subexpressions()
@@ -565,6 +580,9 @@ impl Expr {
             }
             ExprKind::MulByConst { arg, constant } => {
                 Ok(Expr::mul(arg.substitute(definitions)?, *constant))
+            }
+            ExprKind::Is { expr, entity_type } => {
+                Ok(Expr::is(expr.substitute(definitions)?, entity_type.clone()))
             }
         }
     }
@@ -725,6 +743,9 @@ impl std::fmt::Display for Expr {
                     .map(|(k, v)| format!("\"{}\": {}", k.escape_debug(), v))
                     .join(", ")
             ),
+            ExprKind::Is { expr, entity_type } => {
+                write!(f, "{} is {}", maybe_with_parens(expr), entity_type)
+            }
         }
     }
 }
@@ -760,6 +781,7 @@ fn maybe_with_parens(expr: &Expr) -> String {
         ExprKind::Like { .. } => format!("({})", expr),
         ExprKind::Set { .. } => expr.to_string(),
         ExprKind::Record { .. } => expr.to_string(),
+        ExprKind::Is { .. } => format!("({})", expr),
     }
 }
 
@@ -1117,6 +1139,16 @@ impl<T> ExprBuilder<T> {
             pattern: Pattern::new(pattern),
         })
     }
+
+    /// Create an 'is' expression.
+    ///
+    /// `expr` must evaluate to an entity type
+    pub fn is(self, expr: Expr<T>, entity_type: Name) -> Expr<T> {
+        self.with_expr_kind(ExprKind::Is {
+            expr: Arc::new(expr),
+            entity_type,
+        })
+    }
 }
 
 impl<T: Clone> ExprBuilder<T> {
@@ -1285,6 +1317,13 @@ impl<T> Expr<T> {
                 .iter()
                 .zip(pairs1.iter())
                 .all(|((a, e), (a1, e1))| a == a1 && e.eq_shape(e1)),
+            (
+                Is { expr, entity_type },
+                Is {
+                    expr: expr1,
+                    entity_type: entity_type1,
+                },
+            ) => entity_type == entity_type1 && expr.eq_shape(expr1),
             _ => false,
         }
     }
@@ -1369,6 +1408,10 @@ impl<T> Expr<T> {
                     s.hash(state);
                     a.hash_shape(state);
                 });
+            }
+            ExprKind::Is { expr, entity_type } => {
+                expr.hash_shape(state);
+                entity_type.hash(state);
             }
         }
     }

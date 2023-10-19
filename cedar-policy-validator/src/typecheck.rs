@@ -41,7 +41,9 @@ use crate::{
     schema::{
         is_action_entity_type, ActionHeadVar, HeadVar, PrincipalOrResourceHeadVar, ValidatorSchema,
     },
-    types::{AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, RequestEnv, Type},
+    types::{
+        AttributeType, Effect, EffectSet, EntityLUB, EntityRecordKind, OpenTag, RequestEnv, Type,
+    },
     AttributeAccess, ValidationMode,
 };
 
@@ -1105,6 +1107,76 @@ impl<'a> Typechecker<'a> {
                             // pattern vec. Need a different constructor.
                             .like(actual_expr_ty, pattern.iter().cloned()),
                     )
+                })
+            }
+
+            ExprKind::Is { expr, entity_type } => {
+                self.expect_type(
+                    request_env,
+                    prior_eff,
+                    expr,
+                    Type::any_entity_reference(),
+                    type_errors,
+                )
+                .then_typecheck(|expr_ty, _| {
+                    match expr_ty.data() {
+                        Some(Type::EntityOrRecord(EntityRecordKind::Entity(actual_lub))) => {
+                            let type_of_is = if !actual_lub.contains_entity_type(entity_type) {
+                                // The actual EntityLUB does not contain the entity type
+                                // we're testing for, so the `is` will always be `false`
+                                Type::singleton_boolean(false)
+                            } else if actual_lub.get_single_entity() == Some(entity_type) {
+                                // The actual EntityLUB is exactly the entity type we're
+                                // testing for with `is`, so the expression is always `true`
+                                Type::singleton_boolean(true)
+                            } else {
+                                // The actual EntityLUB contains the entity type, so
+                                // the `is` could be `true`, but it may also be `false`
+                                Type::primitive_boolean()
+                            };
+
+                            TypecheckAnswer::success(
+                                ExprBuilder::with_data(Some(type_of_is))
+                                    .with_same_source_info(e)
+                                    .is(expr_ty, entity_type.clone()),
+                            )
+                        }
+                        Some(Type::EntityOrRecord(EntityRecordKind::ActionEntity {
+                            name, ..
+                        })) => {
+                            let type_of_is = if name == entity_type {
+                                // The actual action entity type is exactly the entity type we're
+                                // testing for with `is`, so the expression is always `true`
+                                Type::singleton_boolean(true)
+                            } else {
+                                // The actual action entity type is not the entity type
+                                // we're testing for, so the `is` will always be `false`
+                                Type::singleton_boolean(false)
+                            };
+
+                            TypecheckAnswer::success(
+                                ExprBuilder::with_data(Some(type_of_is))
+                                    .with_same_source_info(e)
+                                    .is(expr_ty, entity_type.clone()),
+                            )
+                        }
+                        // For `AnyEntity` we don't know anything about what
+                        // entity type it could be, so we just return `Bool`.
+                        Some(Type::EntityOrRecord(EntityRecordKind::AnyEntity { .. })) => {
+                            TypecheckAnswer::success(
+                                ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                    .with_same_source_info(e)
+                                    .is(expr_ty, entity_type.clone()),
+                            )
+                        }
+                        // Expression type is not an entity type or is `None`.
+                        // In either case a type error was already reported.
+                        _ => TypecheckAnswer::fail(
+                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                .with_same_source_info(e)
+                                .is(expr_ty, entity_type.clone()),
+                        ),
+                    }
                 })
             }
 

@@ -190,6 +190,12 @@ impl fmt::Display for Relation {
             Relation::Like { target, pattern } => {
                 write!(f, "{} like {}", View(target), View(pattern))?;
             }
+            Relation::Is {
+                target,
+                entity_type,
+            } => {
+                write!(f, "{} is {}", View(target), View(entity_type))?;
+            }
         }
         Ok(())
     }
@@ -390,6 +396,7 @@ impl fmt::Display for Ident {
             Ident::In => write!(f, "in"),
             Ident::Has => write!(f, "has"),
             Ident::Like => write!(f, "like"),
+            Ident::Is => write!(f, "is"),
             Ident::If => write!(f, "if"),
             Ident::Then => write!(f, "then"),
             Ident::Else => write!(f, "else"),
