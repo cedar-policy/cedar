@@ -40,8 +40,8 @@ use super::node::{ASTNode, SourceInfo};
 use super::unescape::{to_pattern, to_unescaped_string};
 use super::{cst, err};
 use crate::ast::{
-    self, ActionConstraint, CallStyle, EntityReference, EntityType, EntityUID, Integer,
-    PatternElem, PolicySetError, PrincipalConstraint, PrincipalOrResourceConstraint,
+    self, ActionConstraint, CallStyle, EntityReference, EntityType, EntityUID, InputInteger,
+    Integer, PatternElem, PolicySetError, PrincipalConstraint, PrincipalOrResourceConstraint,
     ResourceConstraint,
 };
 use itertools::Either;
@@ -1277,9 +1277,12 @@ impl ASTNode<Option<cst::Unary>> {
                 // Given a successful match, the number of negation operations
                 // decreases by one.
                 let (last, rc) = if let Some(cst::Literal::Num(n)) = unary.item.to_lit() {
-                    match n.cmp(&((Integer::MAX as u128 + 1) as u64)) {
+                    match n.cmp(&((InputInteger::MAX as u128 + 1) as u64)) {
                         Ordering::Equal => (
-                            Some(construct_expr_num(Integer::MIN, unary.item.info.clone())),
+                            Some(construct_expr_num(
+                                InputInteger::MIN as Integer,
+                                unary.item.info.clone(),
+                            )),
                             c - 1,
                         ),
                         Ordering::Less => (
