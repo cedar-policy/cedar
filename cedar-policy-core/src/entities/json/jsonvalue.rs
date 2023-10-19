@@ -312,7 +312,7 @@ impl<'e> ValueParser<'e> {
     /// `RestrictedExpr`. Performs schema-based parsing if `expected_ty` is
     /// provided. This does not mean that this function fully validates the
     /// value against `expected_ty` -- it does not.
-    pub fn val_into_rexpr(
+    pub fn val_into_restricted_expr(
         &self,
         val: serde_json::Value,
         expected_ty: Option<&SchemaType>,
@@ -347,7 +347,9 @@ impl<'e> ValueParser<'e> {
                 serde_json::Value::Array(elements) => Ok(RestrictedExpr::set(
                     elements
                         .into_iter()
-                        .map(|element| self.val_into_rexpr(element, Some(element_ty), ctx.clone()))
+                        .map(|element| {
+                            self.val_into_restricted_expr(element, Some(element_ty), ctx.clone())
+                        })
                         .collect::<Result<Vec<RestrictedExpr>, JsonDeserializationError>>()?,
                 )),
                 _ => {
@@ -397,7 +399,7 @@ impl<'e> ValueParser<'e> {
                         .filter_map(move |(k, expected_attr_ty)| {
                             match mut_actual_attrs.remove(k.as_str()) {
                                 Some(actual_attr) => {
-                                    match self.val_into_rexpr(actual_attr, Some(expected_attr_ty.schema_type()), ctx.clone()) {
+                                    match self.val_into_restricted_expr(actual_attr, Some(expected_attr_ty.schema_type()), ctx.clone()) {
                                         Ok(actual_attr) => Some(Ok((k.clone(), actual_attr))),
                                         Err(e) => Some(Err(e)),
                                     }

@@ -260,7 +260,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
             .map(|(k, v)| match &entity_schema_info {
                 EntitySchemaInfo::NoSchema => Ok((
                     k.clone(),
-                    vparser.val_into_rexpr(v, None, || {
+                    vparser.val_into_restricted_expr(v, None, || {
                         JsonDeserializationErrorContext::EntityAttribute {
                             uid: uid.clone(),
                             attr: k.clone(),
@@ -282,7 +282,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                             ))
                         }
                         Some(expected_ty) => {
-                            vparser.val_into_rexpr(v, Some(&expected_ty), || {
+                            vparser.val_into_restricted_expr(v, Some(&expected_ty), || {
                                 JsonDeserializationErrorContext::EntityAttribute {
                                     uid: uid.clone(),
                                     attr: k.clone(),
@@ -325,12 +325,13 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                                     JsonDeserializationError::FailedExtensionFunctionLookup(err)
                                 }
                             })?;
-                    let actual_rexpr = vparser.val_into_rexpr(v, Some(&expected_ty), || {
-                        JsonDeserializationErrorContext::EntityAttribute {
-                            uid: uid.clone(),
-                            attr: k.clone(),
-                        }
-                    })?;
+                    let actual_rexpr =
+                        vparser.val_into_restricted_expr(v, Some(&expected_ty), || {
+                            JsonDeserializationErrorContext::EntityAttribute {
+                                uid: uid.clone(),
+                                attr: k.clone(),
+                            }
+                        })?;
                     if actual_rexpr == *expected_rexpr {
                         Ok((k, actual_rexpr))
                     } else {
