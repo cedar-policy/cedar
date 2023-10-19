@@ -23,7 +23,7 @@
 pub use ast::Effect;
 pub use authorizer::Decision;
 use cedar_policy_core::ast;
-use cedar_policy_core::ast::RestrictedExprError;
+use cedar_policy_core::ast::{Integer, RestrictedExprError};
 use cedar_policy_core::authorizer;
 pub use cedar_policy_core::authorizer::AuthorizationError;
 use cedar_policy_core::entities;
