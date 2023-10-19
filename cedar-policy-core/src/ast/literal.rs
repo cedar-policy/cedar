@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::ast::{EntityUID, StaticallyTyped, Type};
+use crate::ast::{EntityUID, Integer, StaticallyTyped, Type};
 use crate::parser;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -37,7 +37,7 @@ pub enum Literal {
     /// Boolean value
     Bool(bool),
     /// Signed integer value
-    Long(i64),
+    Long(Integer),
     /// String value
     String(SmolStr),
     /// Entity, represented by its UID. To get the actual `Entity`, you have to
@@ -85,9 +85,16 @@ impl From<bool> for Literal {
     }
 }
 
-/// Create a Literal directly from an i64
-impl From<i64> for Literal {
-    fn from(i: i64) -> Self {
+// /// Create a Literal directly from an i64
+// impl From<i64> for Literal {
+//     fn from(i: i64) -> Self {
+//         Self::Long(i as Integer)
+//     }
+// }
+
+/// Create a Literal directly from an Integer
+impl From<Integer> for Literal {
+    fn from(i: Integer) -> Self {
         Self::Long(i)
     }
 }

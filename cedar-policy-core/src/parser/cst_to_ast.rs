@@ -40,8 +40,9 @@ use super::node::{ASTNode, SourceInfo};
 use super::unescape::{to_pattern, to_unescaped_string};
 use super::{cst, err};
 use crate::ast::{
-    self, ActionConstraint, CallStyle, EntityReference, EntityType, EntityUID, PatternElem,
-    PolicySetError, PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint,
+    self, ActionConstraint, CallStyle, EntityReference, EntityType, EntityUID, Integer,
+    PatternElem, PolicySetError, PrincipalConstraint, PrincipalOrResourceConstraint,
+    ResourceConstraint,
 };
 use itertools::Either;
 use smol_str::SmolStr;
@@ -1195,7 +1196,7 @@ impl ASTNode<Option<cst::Mult>> {
                         "checked it matched ast::ExprKind::Lit(ast::Literal::Long(_)) above"
                     ),
                 })
-                .collect::<Vec<i64>>();
+                .collect::<Vec<Integer>>();
             if nonconstantints.len() > 1 {
                 // at most one of the operands in `a * b * c * d * ...` can be a nonconstantint
                 errs.push(ToASTError::NonConstantMultiplication.into());
@@ -1276,13 +1277,16 @@ impl ASTNode<Option<cst::Unary>> {
                 // Given a successful match, the number of negation operations
                 // decreases by one.
                 let (last, rc) = if let Some(cst::Literal::Num(n)) = unary.item.to_lit() {
-                    match n.cmp(&(i64::MAX as u64 + 1)) {
+                    match n.cmp(&((Integer::MAX as u128 + 1) as u64)) {
                         Ordering::Equal => (
-                            Some(construct_expr_num(i64::MIN, unary.item.info.clone())),
+                            Some(construct_expr_num(Integer::MIN, unary.item.info.clone())),
                             c - 1,
                         ),
                         Ordering::Less => (
-                            Some(construct_expr_num(-(*n as i64), unary.item.info.clone())),
+                            Some(construct_expr_num(
+                                -(*n as Integer),
+                                unary.item.info.clone(),
+                            )),
                             c - 1,
                         ),
                         Ordering::Greater => {
@@ -1845,7 +1849,7 @@ impl ASTNode<Option<cst::Literal>> {
             cst::Literal::False => {
                 Some(ExprOrSpecial::Expr(construct_expr_bool(false, src.clone())))
             }
-            cst::Literal::Num(n) => match i64::try_from(*n) {
+            cst::Literal::Num(n) => match Integer::try_from(*n) {
                 Ok(i) => Some(ExprOrSpecial::Expr(construct_expr_num(i, src.clone()))),
                 Err(_) => {
                     errs.push(ToASTError::IntegerLiteralTooLarge(*n).into());
@@ -1937,7 +1941,7 @@ fn construct_refr(p: ast::Name, n: SmolStr) -> ast::EntityUID {
 fn construct_expr_ref(r: ast::EntityUID, l: SourceInfo) -> ast::Expr {
     ast::ExprBuilder::new().with_source_info(l).val(r)
 }
-fn construct_expr_num(n: i64, l: SourceInfo) -> ast::Expr {
+fn construct_expr_num(n: Integer, l: SourceInfo) -> ast::Expr {
     ast::ExprBuilder::new().with_source_info(l).val(n)
 }
 fn construct_expr_string(s: SmolStr, l: SourceInfo) -> ast::Expr {
@@ -2015,14 +2019,14 @@ fn construct_expr_add(
 /// used for a chain of multiplication only (no division or mod)
 fn construct_expr_mul(
     f: ast::Expr,
-    chained: impl IntoIterator<Item = i64>,
+    chained: impl IntoIterator<Item = Integer>,
     l: SourceInfo,
 ) -> ast::Expr {
     let mut expr = f;
     for next_expr in chained {
         expr = ast::ExprBuilder::new()
             .with_source_info(l.clone())
-            .mul(expr, next_expr)
+            .mul(expr, next_expr as Integer)
     }
     expr
 }

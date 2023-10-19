@@ -764,7 +764,7 @@ impl Value {
 
     /// Convert the `Value` to a Long, or throw a type error if it's not a
     /// Long.
-    pub(crate) fn get_as_long(&self) -> Result<i64> {
+    pub(crate) fn get_as_long(&self) -> Result<Integer> {
         match self {
             Value::Lit(Literal::Long(i)) => Ok(*i),
             _ => Err(EvaluationError::type_error(
@@ -1943,10 +1943,10 @@ pub mod test {
         );
         // overflow
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::neg(Expr::val(std::i64::MIN))),
+            eval.interpret_inline_policy(&Expr::neg(Expr::val(Integer::MIN))),
             Err(IntegerOverflowError::UnaryOp {
                 op: UnaryOp::Neg,
-                arg: Value::from(std::i64::MIN)
+                arg: Value::from(Integer::MIN)
             }
             .into()),
         );
@@ -2431,10 +2431,10 @@ pub mod test {
         );
         // overflow
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::add(Expr::val(std::i64::MAX), Expr::val(1))),
+            eval.interpret_inline_policy(&Expr::add(Expr::val(Integer::MAX), Expr::val(1))),
             Err(IntegerOverflowError::BinaryOp {
                 op: BinaryOp::Add,
-                arg1: Value::from(std::i64::MAX),
+                arg1: Value::from(Integer::MAX),
                 arg2: Value::from(1),
             }
             .into())
@@ -2456,10 +2456,10 @@ pub mod test {
         );
         // overflow
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::sub(Expr::val(std::i64::MIN + 2), Expr::val(3))),
+            eval.interpret_inline_policy(&Expr::sub(Expr::val(Integer::MIN + 2), Expr::val(3))),
             Err(IntegerOverflowError::BinaryOp {
                 op: BinaryOp::Sub,
-                arg1: Value::from(std::i64::MIN + 2),
+                arg1: Value::from(Integer::MIN + 2),
                 arg2: Value::from(3),
             }
             .into())
@@ -2486,9 +2486,9 @@ pub mod test {
         );
         // overflow
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::mul(Expr::val(std::i64::MAX - 1), 3)),
+            eval.interpret_inline_policy(&Expr::mul(Expr::val(Integer::MAX - 1), 3)),
             Err(IntegerOverflowError::Multiplication {
-                arg: Value::from(std::i64::MAX - 1),
+                arg: Value::from(Integer::MAX - 1),
                 constant: 3,
             }
             .into())

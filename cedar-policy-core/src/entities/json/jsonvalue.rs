@@ -19,7 +19,7 @@ use super::{
     JsonSerializationError, SchemaType,
 };
 use crate::ast::{
-    BorrowedRestrictedExpr, Eid, EntityUID, Expr, ExprKind, Literal, Name, RestrictedExpr,
+    BorrowedRestrictedExpr, Eid, EntityUID, Expr, ExprKind, Integer, Literal, Name, RestrictedExpr,
 };
 use crate::entities::EscapeKind;
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
@@ -27,6 +27,9 @@ use crate::FromNormalizedStr;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
+
+/// Type for JSON representation of Integers
+pub type JsonIntegerType = i64;
 
 /// The canonical JSON representation of a Cedar value.
 /// Many Cedar values have a natural one-to-one mapping to and from JSON values.
@@ -85,7 +88,7 @@ pub enum JSONValue {
     /// JSON bool => Cedar bool
     Bool(bool),
     /// JSON int => Cedar long (64-bit signed integer)
-    Long(i64),
+    Long(JsonIntegerType),
     /// JSON string => Cedar string
     String(SmolStr),
     /// JSON list => Cedar set; can contain any JSONValues, even
@@ -158,7 +161,7 @@ impl JSONValue {
     pub fn into_expr(self) -> Result<RestrictedExpr, JsonDeserializationError> {
         match self {
             Self::Bool(b) => Ok(RestrictedExpr::val(b)),
-            Self::Long(i) => Ok(RestrictedExpr::val(i)),
+            Self::Long(i) => Ok(RestrictedExpr::val(i as Integer)),
             Self::String(s) => Ok(RestrictedExpr::val(s)),
             Self::Set(vals) => Ok(RestrictedExpr::set(
                 vals.into_iter()
@@ -269,7 +272,7 @@ impl JSONValue {
     pub fn from_lit(lit: Literal) -> Self {
         match lit {
             Literal::Bool(b) => Self::Bool(b),
-            Literal::Long(i) => Self::Long(i),
+            Literal::Long(i) => Self::Long(i as JsonIntegerType),
             Literal::String(s) => Self::String(s),
             Literal::EntityUID(euid) => Self::EntityEscape {
                 __entity: (*euid).clone().into(),

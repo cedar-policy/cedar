@@ -2637,7 +2637,7 @@ impl Expression {
     }
 
     /// Create an expression representing a literal long.
-    pub fn new_long(value: i64) -> Self {
+    pub fn new_long(value: Integer) -> Self {
         Self(ast::Expr::val(value))
     }
 
@@ -2694,7 +2694,7 @@ impl RestrictedExpression {
     }
 
     /// Create an expression representing a literal long.
-    pub fn new_long(value: i64) -> Self {
+    pub fn new_long(value: Integer) -> Self {
         Self(ast::RestrictedExpr::val(value))
     }
 
@@ -3149,7 +3149,7 @@ pub enum EvalResult {
     /// Boolean value
     Bool(bool),
     /// Signed integer value
-    Long(i64),
+    Long(Integer),
     /// String value
     String(String),
     /// Entity Uid

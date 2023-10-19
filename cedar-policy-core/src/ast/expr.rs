@@ -110,7 +110,7 @@ pub enum ExprKind<T = ()> {
         /// evaluate to Long type
         arg: Arc<Expr<T>>,
         /// second argument, which must be an integer constant
-        constant: i64,
+        constant: Integer,
     },
     /// Application of an extension function to n arguments
     /// INVARIANT (MethodStyleArgs):
@@ -383,7 +383,7 @@ impl Expr {
     }
 
     /// Create a 'mul' expression. First argument must evaluate to Long type.
-    pub fn mul(e: Expr, c: i64) -> Self {
+    pub fn mul(e: Expr, c: Integer) -> Self {
         ExprBuilder::new().mul(e, c)
     }
 
@@ -992,7 +992,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create a 'mul' expression. First argument must evaluate to Long type.
-    pub fn mul(self, e: Expr<T>, c: i64) -> Expr<T> {
+    pub fn mul(self, e: Expr<T>, c: Integer) -> Expr<T> {
         self.with_expr_kind(ExprKind::MulByConst {
             arg: Arc::new(e),
             constant: c,

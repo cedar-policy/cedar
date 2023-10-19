@@ -301,7 +301,7 @@ pub enum IntegerOverflowError {
         /// first argument, which wasn't necessarily a constant in the policy
         arg: Value,
         /// second argument, which was a constant in the policy
-        constant: i64,
+        constant: Integer,
     },
 
     /// Overflow during a unary operation

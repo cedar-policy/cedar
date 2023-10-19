@@ -17,7 +17,9 @@
 use super::utils::unwrap_or_clone;
 use super::FromJsonError;
 use crate::ast;
-use crate::entities::{EscapeKind, JSONValue, JsonDeserializationError, TypeAndId};
+use crate::entities::{
+    EscapeKind, JSONValue, JsonDeserializationError, JsonIntegerType, TypeAndId,
+};
 use crate::parser::cst::{self, Ident};
 use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::unescape;
@@ -665,7 +667,7 @@ impl From<ast::Expr> for Expr {
             }
             ast::ExprKind::MulByConst { arg, constant } => Expr::mul(
                 unwrap_or_clone(arg).into(),
-                Expr::lit(JSONValue::Long(constant)),
+                Expr::lit(JSONValue::Long(constant as JsonIntegerType)),
             ),
             ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let args = unwrap_or_clone(args).into_iter().map(Into::into).collect();
@@ -1007,7 +1009,9 @@ impl TryFrom<cst::Unary> for Expr {
             Some(cst::NegOp::Dash(0)) => Ok(inner),
             Some(cst::NegOp::Dash(mut num_dashes)) => {
                 let inner = match inner {
-                    Expr::ExprNoExt(ExprNoExt::Value(JSONValue::Long(n))) if n != std::i64::MIN => {
+                    Expr::ExprNoExt(ExprNoExt::Value(JSONValue::Long(n)))
+                        if n != JsonIntegerType::MIN =>
+                    {
                         // collapse the negated literal into a single negative literal.
                         // Important for multiplication-by-constant to allow multiplication by negative constants.
                         num_dashes -= 1;
