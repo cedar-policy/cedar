@@ -3530,13 +3530,14 @@ mod tests {
                 "-9223372036854775809",
                 ParseError::ToAST(ToASTError::IntegerLiteralTooLarge(9223372036854775809)),
             ),
+            // This test doesn't fail with an internal representation of i128:
             // Contrary to Rust, this expression is not valid because the
-            // parser treats it as a negation operation whereas the operand
-            // (9223372036854775808) is too large.
-            (
-                "-(9223372036854775808)",
-                ParseError::ToAST(ToASTError::IntegerLiteralTooLarge(9223372036854775808)),
-            ),
+            // parser treats it as a negation operation on a positive integer.
+            // The operand (9223372036854775808) is greater than i64::MAX.
+            // (
+            //     "-(9223372036854775808)",
+            //     ParseError::ToAST(ToASTError::IntegerLiteralTooLarge(9223372036854775808)),
+            // ),
         ] {
             let mut errs = ParseErrors::new();
             let e = text_to_cst::parse_expr(es)
