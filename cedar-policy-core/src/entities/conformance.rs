@@ -250,6 +250,16 @@ pub enum TypeOfRestrictedExprError {
 /// This isn't possible for general `Expr`s (without a Request, full schema,
 /// etc), but is possible for restricted expressions, given the information in
 /// `Extensions`.
+///
+/// For records, we can't know whether the attributes in the given record are
+/// required or optional.
+/// This function, when given a record that has keys A, B, and C, will return a
+/// `SchemaType` where A, B, and C are all marked as optional attributes, but no
+/// other attributes are possible.
+/// That is, this assumes that all existing attributes are optional, but that no
+/// other optional attributes are possible.
+/// Compared to marking A, B, and C as required, this allows the returned
+/// `SchemaType` to `is_consistent_with()` more types.
 pub fn type_of_restricted_expr(
     rexpr: BorrowedRestrictedExpr<'_>,
     extensions: Extensions<'_>,
