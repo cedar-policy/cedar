@@ -32,7 +32,9 @@
 	+ Template instantiation records
 	+ Entity slice JSONs
 	+ Context JSONs
+- `<EntityId as FromStr>::Error` is now `Infallible` instead of `ParseErrors`
 - Fixed bug (#370) related to how the validator handles template-linked policies 
+
 
 ## 2.4.1
 
