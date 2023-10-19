@@ -257,8 +257,9 @@ impl Entities {
     /// `schema` represents a source of `Action` entities, which will be added
     /// to the entities provided.
     /// (If any `Action` entities are present in the provided entities, and a
-    /// `schema` is also provided, those entities' definitions must match
-    /// exactly or an error is returned.)
+    /// `schema` is also provided, each `Action` entity in the provided entities
+    /// must exactly match its definition in the schema or an error is
+    /// returned.)
     ///
     /// If a `schema` is present, this function will also ensure that the
     /// produced entities fully conform to the `schema` -- for instance, it will
@@ -414,8 +415,8 @@ impl Entities {
     /// `schema` represents a source of `Action` entities, which will be added
     /// to the entities parsed from JSON.
     /// (If any `Action` entities are present in the JSON, and a `schema` is
-    /// also provided, those entities' definitions must match exactly or an
-    /// error is returned.)
+    /// also provided, each `Action` entity in the JSON must exactly match its
+    /// definition in the schema or an error is returned.)
     ///
     /// If a `schema` is present, this will also inform the parsing: for
     /// instance, it will allow `__entity` and `__extn` escapes to be implicit.
@@ -475,8 +476,8 @@ impl Entities {
     /// `schema` represents a source of `Action` entities, which will be added
     /// to the entities parsed from JSON.
     /// (If any `Action` entities are present in the JSON, and a `schema` is
-    /// also provided, those entities' definitions must match exactly or an
-    /// error is returned.)
+    /// also provided, each `Action` entity in the JSON must exactly match its
+    /// definition in the schema or an error is returned.)
     ///
     /// If a `schema` is present, this will also inform the parsing: for
     /// instance, it will allow `__entity` and `__extn` escapes to be implicit.
@@ -529,8 +530,8 @@ impl Entities {
     /// `schema` represents a source of `Action` entities, which will be added
     /// to the entities parsed from JSON.
     /// (If any `Action` entities are present in the JSON, and a `schema` is
-    /// also provided, those entities' definitions must match exactly or an
-    /// error is returned.)
+    /// also provided, each `Action` entity in the JSON must exactly match its
+    /// definition in the schema or an error is returned.)
     ///
     /// If a `schema` is present, this will also inform the parsing: for
     /// instance, it will allow `__entity` and `__extn` escapes to be implicit.
