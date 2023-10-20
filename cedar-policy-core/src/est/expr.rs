@@ -26,7 +26,6 @@ use either::Either;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::HashMap;
-use std::str::FromStr;
 use std::sync::Arc;
 
 /// Serde JSON structure for a Cedar expression in the EST format
@@ -215,13 +214,15 @@ pub enum ExprNoExt {
         /// Pattern
         pattern: SmolStr,
     },
-    /// `is`
+    /// `<entity> is <entity_type> in <entity_or_entity_set> `
     #[serde(rename = "is")]
     Is {
-        /// Left-hand argument
+        /// Left-hand entity argument
         left: Arc<Expr>,
-        /// Pattern
+        /// Entity type
         entity_type: SmolStr,
+        /// Entity or entity set
+        in_expr: Option<Arc<Expr>>,
     },
     /// Ternary
     #[serde(rename = "if-then-else")]
@@ -441,6 +442,16 @@ impl Expr {
         Expr::ExprNoExt(ExprNoExt::Is {
             left: Arc::new(left),
             entity_type,
+            in_expr: None,
+        })
+    }
+
+    /// `left is entity_type in entity`
+    pub fn is_in(left: Expr, entity_type: SmolStr, entity: Expr) -> Self {
+        Expr::ExprNoExt(ExprNoExt::Is {
+            left: Arc::new(left),
+            entity_type,
+            in_expr: Some(Arc::new(entity)),
         })
     }
 
@@ -583,13 +594,23 @@ impl TryFrom<Expr> for ast::Expr {
                     Err(errs) => Err(Self::Error::UnescapeError(errs)),
                 }
             }
-            Expr::ExprNoExt(ExprNoExt::Is { left, entity_type }) => {
-                ast::Name::from_normalized_str(entity_type.as_str())
-                    .map_err(Self::Error::InvalidEntityType)
-                    .and_then(|entity_type_name| {
-                        Ok(ast::Expr::is((*left).clone().try_into()?, entity_type_name))
-                    })
-            }
+            Expr::ExprNoExt(ExprNoExt::Is {
+                left,
+                entity_type,
+                in_expr,
+            }) => ast::Name::from_normalized_str(entity_type.as_str())
+                .map_err(Self::Error::InvalidEntityType)
+                .and_then(|entity_type_name| {
+                    let left: ast::Expr = (*left).clone().try_into()?;
+                    let is_expr = ast::Expr::is(left.clone(), entity_type_name);
+                    match in_expr {
+                        Some(in_expr) => Ok(ast::Expr::and(
+                            is_expr,
+                            ast::Expr::is_in(left, (*in_expr).clone().try_into()?),
+                        )),
+                        None => Ok(is_expr),
+                    }
+                }),
             Expr::ExprNoExt(ExprNoExt::If {
                 cond_expr,
                 then_expr,
@@ -890,9 +911,10 @@ impl TryFrom<cst::Relation> for Expr {
                 }
                 (_, _) => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
             },
-            cst::Relation::Is {
+            cst::Relation::IsIn {
                 target,
                 entity_type,
+                in_entity,
             } => match (target, entity_type) {
                 (
                     ASTNode {
@@ -903,17 +925,23 @@ impl TryFrom<cst::Relation> for Expr {
                         ..
                     },
                 ) => {
-                    let target_expr = target.try_into()?;
-                    let entity_type_expr: Expr = entity_type.try_into()?;
-                    let pat_str = pat_expr.into_string_literal().map_err(|e| {
-                        ParseError::ToAST(ToASTError::InvalidPattern(
-                            serde_json::to_string(&e)
-                                .unwrap_or_else(|_| "<malformed est>".to_string()),
-                        ))
-                    })?;
-                    Ok(Expr::like(target_expr, pat_str))
+                    let target = target.try_into()?;
+                    match in_entity {
+                        Some(ASTNode {
+                            node: Some(in_entity),
+                            ..
+                        }) => Ok(Expr::is_in(
+                            target,
+                            entity_type.to_string().into(),
+                            in_entity.try_into()?,
+                        )),
+                        None => Ok(Expr::is(target, entity_type.to_string().into())),
+                        Some(ASTNode { node: None, .. }) => {
+                            Err(ParseError::ToAST(ToASTError::MissingNodeData).into())
+                        }
+                    }
                 }
-                (_, _) => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
+                _ => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
             },
         }
     }

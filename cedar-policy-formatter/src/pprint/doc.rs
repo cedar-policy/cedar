@@ -260,26 +260,41 @@ impl Doc for ASTNode<Option<Relation>> {
                     .append(pattern.to_doc(context)?.nest(context.config.indent_width))
                     .group(),
             ),
-            Relation::Is {
+            Relation::IsIn {
                 target,
                 entity_type,
-            } => Some(
-                target
+                in_entity,
+            } => {
+                let doc_is = target
                     .to_doc(context)?
-                    .append(RcDoc::line())
+                    .append(RcDoc::space())
                     .append(add_comment(
                         RcDoc::text("is"),
                         get_comment_after_end(target.info.0.end, &mut context.tokens)?,
                         RcDoc::nil(),
                     ))
-                    .append(RcDoc::line())
+                    .append(RcDoc::space())
                     .append(
                         entity_type
                             .to_doc(context)?
                             .nest(context.config.indent_width),
-                    )
+                    );
+                Some(
+                    match in_entity {
+                        Some(in_entity) => doc_is
+                            .append(RcDoc::line())
+                            .append(add_comment(
+                                RcDoc::text("in"),
+                                get_comment_after_end(entity_type.info.0.end, &mut context.tokens)?,
+                                RcDoc::nil(),
+                            ))
+                            .append(RcDoc::space())
+                            .append(in_entity.to_doc(context)?.nest(context.config.indent_width)),
+                        None => doc_is,
+                    }
                     .group(),
-            ),
+                )
+            }
         }
     }
 }

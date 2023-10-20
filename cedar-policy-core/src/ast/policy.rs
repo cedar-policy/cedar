@@ -1219,6 +1219,8 @@ pub enum PrincipalOrResourceConstraint {
     In(EntityReference),
     /// Equality constraint
     Eq(EntityReference),
+    /// Type constraint, optionally with a hierarchy constraint
+    Is(Name, Option<EntityReference>),
 }
 
 impl PrincipalOrResourceConstraint {
@@ -1259,6 +1261,16 @@ impl PrincipalOrResourceConstraint {
             PrincipalOrResourceConstraint::In(euid) => {
                 Expr::is_in(Expr::var(v.into()), euid.into_expr(v.into()))
             }
+            PrincipalOrResourceConstraint::Is(entity_type, euid) => {
+                let is_expr = Expr::is(Expr::var(v.into()), entity_type.clone());
+                match euid {
+                    Some(euid) => Expr::and(
+                        is_expr,
+                        Expr::is_in(Expr::var(v.into()), euid.into_expr(v.into())),
+                    ),
+                    None => is_expr,
+                }
+            }
         }
     }
 
@@ -1272,6 +1284,12 @@ impl PrincipalOrResourceConstraint {
             }
             PrincipalOrResourceConstraint::Eq(euid) => {
                 format!("{} == {}", v, euid.into_expr(v.into()))
+            }
+            PrincipalOrResourceConstraint::Is(entity_type, Some(euid)) => {
+                format!("{} is {} in {}", v, entity_type, euid.into_expr(v.into()))
+            }
+            PrincipalOrResourceConstraint::Is(entity_type, None) => {
+                format!("{} is {}", v, entity_type)
             }
             PrincipalOrResourceConstraint::Any => format!("{}", v),
         }
@@ -1289,6 +1307,10 @@ impl PrincipalOrResourceConstraint {
                 EntityIterator::One(euid)
             }
             PrincipalOrResourceConstraint::Eq(EntityReference::Slot) => EntityIterator::None,
+            PrincipalOrResourceConstraint::Is(_, Some(EntityReference::EUID(euid))) => {
+                EntityIterator::One(euid)
+            }
+            PrincipalOrResourceConstraint::Is(_, _) => EntityIterator::None,
         }
     }
 }

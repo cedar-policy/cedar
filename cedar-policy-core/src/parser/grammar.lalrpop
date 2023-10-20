@@ -95,9 +95,12 @@ pub Policy: Node<Option<cst::Policy>> = {
 
 // VariableDef := Variable [':' Name] [('in' | '==') Expr]
 VariableDef: Node<Option<cst::VariableDef>> = {
-    <l:@L> <variable: AnyIdent> <name: (":" <Name>)?>
+    <l:@L> <variable: AnyIdent> <name: (":" <Name>)?> <entity_type: (IS <Name>)?>
         <ineq: (RelOp Expr)?> <r:@R>
-        => Node::new(Some(cst::VariableDef{ variable,name,ineq }),l,r),
+        => Node::new(Some(cst::VariableDef{ variable,name,entity_type,ineq, }),l,r),
+    //<l:@L> <variable: AnyIdent> <bad_name: (":" <Name>)?>
+    //    IS <name: Name> <in: (IN <Expr>)?> <r:@R>
+    //    => Node::new(Some(cst::VariableDef{ variable, name: bad_name, }))
 }
 
 // Identifier, but not the special ones
@@ -197,10 +200,8 @@ Relation: Node<Option<cst::Relation>> = {
     },
     <l:@L> <t:Add> LIKE <p:Add> <r:@R>
         => Node::new(Some(cst::Relation::Like{target: t, pattern: p}),l,r),
-    <l:@L> <t:Add> IS <n:Add> <r:@R>
-        => Node::new(Some(cst::Relation::Is{target: t, entity_type: n}),l,r),
-    <l:@L> <t:Add> IS <n:Add> IN <r:@R>
-        => Node::new(Some(cst::Relation::Is{target: t, entity_type: n}),l,r),
+    <l:@L> <t:Add> IS <n:Name> <e: (IN <Add>)?> <r:@R>
+        => Node::new(Some(cst::Relation::IsIn{target: t, entity_type: n, in_entity: e}),l,r),
 }
 // RelOp     := '<' | '<=' | '>=' | '>' | '!=' | '==' | 'in'
 RelOp: cst::RelOp = {

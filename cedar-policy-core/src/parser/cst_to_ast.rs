@@ -806,24 +806,6 @@ impl ExprOrSpecial<'_> {
             }
         }
     }
-
-    fn into_name(self, errs: &mut ParseErrors) -> Option<ast::Name> {
-        match self {
-            Self::StrLit(s, _) => {
-                errs.push(ToASTError::InvalidEntityType(s.to_string()).into());
-                None
-            }
-            Self::Var(var, _) => {
-                errs.push(ToASTError::InvalidEntityType(var.to_string()).into());
-                None
-            }
-            Self::Name(name) => Some(name),
-            Self::Expr(e) => {
-                errs.push(ToASTError::InvalidEntityType(e.to_string()).into());
-                None
-            }
-        }
-    }
 }
 
 impl ASTNode<Option<cst::Expr>> {
@@ -957,7 +939,7 @@ impl RefKind for OneOrMultipleRefs {
 }
 
 impl ASTNode<Option<cst::Or>> {
-    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
+    pub(crate) fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (src, maybe_or) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let or = maybe_or?;
@@ -1007,7 +989,7 @@ impl ASTNode<Option<cst::And>> {
     fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
-    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
+    pub(crate) fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (src, maybe_and) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let and = maybe_and?;
@@ -1048,7 +1030,7 @@ impl ASTNode<Option<cst::Relation>> {
                 errs.push(ToASTError::wrong_node(T::err_str(), "like").into());
                 None
             }
-            cst::Relation::Is { .. } => {
+            cst::Relation::IsIn { .. } => {
                 errs.push(ToASTError::wrong_node(T::err_str(), "is").into());
                 None
             }
@@ -1058,7 +1040,7 @@ impl ASTNode<Option<cst::Relation>> {
     fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
-    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
+    pub(crate) fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (src, maybe_rel) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let rel = maybe_rel?;
@@ -1110,20 +1092,24 @@ impl ASTNode<Option<cst::Relation>> {
                     _ => None,
                 }
             }
-            cst::Relation::Is {
+            cst::Relation::IsIn {
                 target,
                 entity_type,
-            } => {
-                match (
-                    target.to_expr(errs),
-                    entity_type.to_expr_or_special(errs)?.into_name(errs),
-                ) {
-                    (Some(t), Some(n)) => {
-                        Some(ExprOrSpecial::Expr(construct_expr_is(t, n, src.clone())))
-                    }
-                    _ => None,
-                }
-            }
+                in_entity,
+            } => match (target.to_expr(errs), entity_type.to_name(errs)) {
+                (Some(t), Some(n)) => match in_entity {
+                    Some(in_entity) => in_entity.to_expr(errs).map(|in_entity| {
+                        ExprOrSpecial::Expr(construct_expr_and(
+                            construct_expr_is(t.clone(), n, src.clone()),
+                            construct_expr_rel(t, cst::RelOp::In, in_entity, src.clone()),
+                            std::iter::empty(),
+                            src.clone(),
+                        ))
+                    }),
+                    None => Some(ExprOrSpecial::Expr(construct_expr_is(t, n, src.clone()))),
+                },
+                _ => None,
+            },
         }
     }
 }
@@ -1144,7 +1130,7 @@ impl ASTNode<Option<cst::Add>> {
     fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
-    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
+    pub(crate) fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (src, maybe_add) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let add = maybe_add?;

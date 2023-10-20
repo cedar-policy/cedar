@@ -18,6 +18,7 @@ use super::{FromJsonError, InstantiationError};
 use crate::ast;
 use crate::entities::{EntityUidJSON, JsonDeserializationErrorContext};
 use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -34,6 +35,9 @@ pub enum PrincipalConstraint {
     /// `in` constraint
     #[serde(rename = "in")]
     In(PrincipalOrResourceInConstraint),
+    /// `is` (and possibly `in`) constraint
+    #[serde(rename = "is")]
+    Is(PrincipalOrResourceIsConstraint),
 }
 
 /// Serde JSON structure for an action head constraint in the EST format
@@ -64,6 +68,9 @@ pub enum ResourceConstraint {
     /// `in` constraint
     #[serde(rename = "in")]
     In(PrincipalOrResourceInConstraint),
+    #[serde(rename = "is")]
+    /// `is` (and possibly `in`) constraint
+    Is(PrincipalOrResourceIsConstraint),
 }
 
 /// Serde JSON structure for a `==` head constraint in the EST format
@@ -97,6 +104,15 @@ pub enum PrincipalOrResourceInConstraint {
         /// slot
         slot: ast::SlotId,
     },
+}
+
+/// Serde JSON structure for an `is` head constraint for principal/resource in
+/// the EST format
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PrincipalOrResourceIsConstraint {
+    entity_type: SmolStr,
+    #[serde(flatten)]
+    in_constraint: Option<PrincipalOrResourceInConstraint>,
 }
 
 /// Serde JSON structure for an `in` head constraint for action in the EST

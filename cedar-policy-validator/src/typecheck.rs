@@ -41,9 +41,7 @@ use crate::{
     schema::{
         is_action_entity_type, ActionHeadVar, HeadVar, PrincipalOrResourceHeadVar, ValidatorSchema,
     },
-    types::{
-        AttributeType, Effect, EffectSet, EntityLUB, EntityRecordKind, OpenTag, RequestEnv, Type,
-    },
+    types::{AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, RequestEnv, Type},
     AttributeAccess, ValidationMode,
 };
 

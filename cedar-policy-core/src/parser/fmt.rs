@@ -190,11 +190,25 @@ impl fmt::Display for Relation {
             Relation::Like { target, pattern } => {
                 write!(f, "{} like {}", View(target), View(pattern))?;
             }
-            Relation::Is {
+            Relation::IsIn {
                 target,
                 entity_type,
+                in_entity: None,
             } => {
                 write!(f, "{} is {}", View(target), View(entity_type))?;
+            }
+            Relation::IsIn {
+                target,
+                entity_type,
+                in_entity: Some(in_entity),
+            } => {
+                write!(
+                    f,
+                    "{} is {} in {}",
+                    View(target),
+                    View(entity_type),
+                    View(in_entity)
+                )?;
             }
         }
         Ok(())

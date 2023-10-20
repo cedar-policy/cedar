@@ -2068,6 +2068,12 @@ impl Template {
                     ast::EntityReference::Slot => None,
                 })
             }
+            ast::PrincipalOrResourceConstraint::Is(entity_type, eref) => {
+                TemplateResourceConstraint::Is(EntityTypeName(entity_type.clone()), eref.map(|eref| match eref {
+                    ast::EntityReference::EUID(e) => Some(EntityUID(e.as_ref().clone())),
+                    ast::EntityReference::Slot => None,
+                }))
+            }
         }
     }
 
@@ -2100,6 +2106,12 @@ impl Template {
                     ast::EntityReference::EUID(e) => Some(EntityUid(e.as_ref().clone())),
                     ast::EntityReference::Slot => None,
                 })
+            }
+            ast::PrincipalOrResourceConstraint::Is(entity_type, eref) => {
+                TemplateResourceConstraint::Is(EntityTypeName(entity_type.clone()), eref.map(|eref| match eref {
+                    ast::EntityReference::EUID(e) => Some(EntityUID(e.as_ref().clone())),
+                    ast::EntityReference::Slot => None,
+                }))
             }
         }
     }
@@ -2161,6 +2173,8 @@ pub enum PrincipalConstraint {
     In(EntityUid),
     /// Must be equal to the given EntityUid
     Eq(EntityUid),
+    /// Must be the given EntityTypeName, and `in` the EntityUID if it is present
+    Is(EntityTypeName, Option<EntityUID>),
 }
 
 /// Head constraint on policy principals for templates.
@@ -2174,14 +2188,17 @@ pub enum TemplatePrincipalConstraint {
     /// Must be equal to the given EntityUid.
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
+    /// Must be the given EntityTypeName, and `in` the EntityUID if it is present
+    /// TODO: Option<Option<_>> is gross
+    Is(Name, Option<Option<EntityUID>>),
 }
 
 impl TemplatePrincipalConstraint {
     /// Does this constraint contain a slot?
     pub fn has_slot(&self) -> bool {
         match self {
-            Self::Any => false,
-            Self::In(o) | Self::Eq(o) => o.is_none(),
+            Self::Any | Self::Is(_, None) => false,
+            Self::In(o) | Self::Eq(o) | Self::Is(_, Some(o)) => o.is_none(),
         }
     }
 }
@@ -2206,6 +2223,8 @@ pub enum ResourceConstraint {
     In(EntityUid),
     /// Must be equal to the given EntityUid
     Eq(EntityUid),
+    /// Must be the given EntityTypeName, and `in` the EntityUID if it is present
+    Is(EntityTypeName, Option<EntityUID>),
 }
 
 /// Head constraint on policy resources for templates.
@@ -2219,14 +2238,17 @@ pub enum TemplateResourceConstraint {
     /// Must be equal to the given EntityUid.
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
+    /// Must be the given EntityTypeName, and `in` the EntityUID if it is present
+    /// TODO: Option<Option<_>> is gross
+    Is(Name, Option<Option<EntityUID>>),
 }
 
 impl TemplateResourceConstraint {
     /// Does this constraint contain a slot?
     pub fn has_slot(&self) -> bool {
         match self {
-            Self::Any => false,
-            Self::In(o) | Self::Eq(o) => o.is_none(),
+            Self::Any | Self::Is(_, None) => false,
+            Self::In(o) | Self::Eq(o) | Self::Is(_, Some(o)) => o.is_none(),
         }
     }
 }
@@ -2334,6 +2356,8 @@ impl Policy {
             }
             ast::PrincipalOrResourceConstraint::Eq(eref) => {
                 PrincipalConstraint::Eq(self.convert_entity_reference(eref, slot_id).clone())
+            }
+            ast::PrincipalOrResourceConstraint::Is(entity_type, eref) => {
             }
         }
     }
@@ -5477,5 +5501,19 @@ mod schema_based_parsing_tests {
             EntitiesError::Duplicate(euid) => assert_eq!(euid, expected_euid),
             e => panic!("Wrong error. Expected `Duplicate`, got: {e:?}"),
         }
+    }
+
+    #[test]
+    fn test_to_est() {
+        let p = Policy::parse(
+            None,
+            r#"permit(principal,action,resource) when { principal is User in Group::"friends" };"#,
+        )
+        .unwrap();
+        println!("{}", p.to_string());
+        let json = p.to_json().unwrap();
+        println!("{}", json);
+        let p2 = Policy::from_json(None, json).unwrap();
+        println!("{}", p2.to_string());
     }
 }
