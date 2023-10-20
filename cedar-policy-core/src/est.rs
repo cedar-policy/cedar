@@ -25,7 +25,7 @@ pub use head_constraints::*;
 mod utils;
 
 use crate::ast;
-use crate::entities::EntityUidJSON;
+use crate::entities::EntityUidJson;
 use crate::parser::cst;
 use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::ASTNode;
@@ -73,7 +73,7 @@ impl Policy {
     /// `self` is an inline policy (in which case it is returned unchanged).
     pub fn link(
         self,
-        vals: &HashMap<ast::SlotId, EntityUidJSON>,
+        vals: &HashMap<ast::SlotId, EntityUidJson>,
     ) -> Result<Self, InstantiationError> {
         Ok(Policy {
             effect: self.effect,
@@ -96,7 +96,7 @@ impl Clause {
     /// an error if `vals` contains unused mappings.
     pub fn instantiate(
         self,
-        _vals: &HashMap<ast::SlotId, EntityUidJSON>,
+        _vals: &HashMap<ast::SlotId, EntityUidJson>,
     ) -> Result<Self, InstantiationError> {
         // currently, slots are not allowed in clauses
         Ok(self)
@@ -2337,7 +2337,7 @@ mod test {
             .clone()
             .link(&HashMap::from_iter([(
                 ast::SlotId::principal(),
-                EntityUidJSON::new("XYZCorp::User", "12UA45"),
+                EntityUidJson::new("XYZCorp::User", "12UA45"),
             )]))
             .expect_err("didn't fill all the slots");
         assert_eq!(
@@ -2350,9 +2350,9 @@ mod test {
             .link(&HashMap::from_iter([
                 (
                     ast::SlotId::principal(),
-                    EntityUidJSON::new("XYZCorp::User", "12UA45"),
+                    EntityUidJson::new("XYZCorp::User", "12UA45"),
                 ),
-                (ast::SlotId::resource(), EntityUidJSON::new("Folder", "abc")),
+                (ast::SlotId::resource(), EntityUidJson::new("Folder", "abc")),
             ]))
             .expect("did fill all the slots");
         let expected_json = json!(

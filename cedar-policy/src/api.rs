@@ -45,6 +45,7 @@ use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::convert::Infallible;
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -1472,7 +1473,7 @@ impl<'a> From<cedar_policy_validator::ValidationWarning<'a>> for ValidationWarni
 pub struct EntityId(ast::Eid);
 
 impl FromStr for EntityId {
-    type Err = ParseErrors;
+    type Err = Infallible;
     fn from_str(eid_str: &str) -> Result<Self, Self::Err> {
         Ok(Self(ast::Eid::new(eid_str)))
     }
@@ -1635,7 +1636,7 @@ impl EntityUid {
     /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
     /// ```
     pub fn from_json(json: serde_json::Value) -> Result<Self, impl std::error::Error> {
-        let parsed: entities::EntityUidJSON = serde_json::from_value(json)?;
+        let parsed: entities::EntityUidJson = serde_json::from_value(json)?;
         // INVARIANT: There is no way to write down the unspecified entityuid
         Ok::<Self, entities::JsonDeserializationError>(Self(
             parsed.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
@@ -2694,7 +2695,7 @@ impl LosslessPolicy {
     ) -> Result<Self, est::InstantiationError> {
         match self {
             Self::Est(est) => {
-                let unwrapped_est_vals: HashMap<ast::SlotId, entities::EntityUidJSON> =
+                let unwrapped_est_vals: HashMap<ast::SlotId, entities::EntityUidJson> =
                     vals.into_iter().map(|(k, v)| (k, v.into())).collect();
                 Ok(Self::Est(est.link(&unwrapped_est_vals)?))
             }

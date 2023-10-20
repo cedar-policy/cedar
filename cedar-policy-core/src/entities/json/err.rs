@@ -226,7 +226,7 @@ pub enum JsonSerializationError {
         key: SmolStr,
     },
     /// Encountered an `ExprKind` which we didn't expect. Either a case is
-    /// missing in `JSONValue::from_expr()`, or an internal invariant was
+    /// missing in `CedarValueJson::from_expr()`, or an internal invariant was
     /// violated and there is a non-restricted expression in `RestrictedExpr`
     #[error("unexpected restricted expression `{kind:?}`")]
     UnexpectedRestrictedExprKind {

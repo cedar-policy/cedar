@@ -208,7 +208,7 @@ impl Entities {
     ///
     /// To parse an `Entities` object from a JSON value, use `EntityJsonParser`.
     pub fn to_json_value(&self) -> Result<serde_json::Value> {
-        let ejsons: Vec<EntityJSON> = self.to_ejsons()?;
+        let ejsons: Vec<EntityJson> = self.to_ejsons()?;
         serde_json::to_value(ejsons)
             .map_err(JsonSerializationError::from)
             .map_err(Into::into)
@@ -222,16 +222,16 @@ impl Entities {
     /// To read an `Entities` object from an entities JSON file, use
     /// `EntityJsonParser`.
     pub fn write_to_json(&self, f: impl std::io::Write) -> Result<()> {
-        let ejsons: Vec<EntityJSON> = self.to_ejsons()?;
+        let ejsons: Vec<EntityJson> = self.to_ejsons()?;
         serde_json::to_writer_pretty(f, &ejsons).map_err(JsonSerializationError::from)?;
         Ok(())
     }
 
-    /// Internal helper function to convert this `Entities` into a `Vec<EntityJSON>`
-    fn to_ejsons(&self) -> Result<Vec<EntityJSON>> {
+    /// Internal helper function to convert this `Entities` into a `Vec<EntityJson>`
+    fn to_ejsons(&self) -> Result<Vec<EntityJson>> {
         self.entities
             .values()
-            .map(EntityJSON::from_entity)
+            .map(EntityJson::from_entity)
             .collect::<std::result::Result<_, JsonSerializationError>>()
             .map_err(Into::into)
     }
