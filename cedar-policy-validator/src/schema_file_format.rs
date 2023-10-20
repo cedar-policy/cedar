@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::entities::JSONValue;
+use cedar_policy_core::entities::CedarValueJson;
 use serde::{
     de::{MapAccess, Visitor},
     Deserialize, Serialize,
@@ -122,10 +122,10 @@ impl Default for AttributesOrContext {
 #[serde(deny_unknown_fields)]
 pub struct ActionType {
     /// This maps attribute names to
-    /// `cedar_policy_core::entities::json::jsonvalue::JSONValue` which is the
+    /// `cedar_policy_core::entities::json::value::CedarValueJson` which is the
     /// canonical representation of a cedar value as JSON.
     #[serde(default)]
-    pub attributes: Option<HashMap<SmolStr, JSONValue>>,
+    pub attributes: Option<HashMap<SmolStr, CedarValueJson>>,
     #[serde(default)]
     #[serde(rename = "appliesTo")]
     pub applies_to: Option<ApplySpec>,

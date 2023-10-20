@@ -15,7 +15,7 @@
  */
 
 use super::{
-    EntityTypeDescription, EntityUidJSON, JSONValue, JsonDeserializationError,
+    EntityTypeDescription, EntityUidJSON, CedarValueJson, JsonDeserializationError,
     JsonDeserializationErrorContext, JsonSerializationError, NoEntitiesSchema, Schema, TypeAndId,
     ValueParser,
 };
@@ -33,7 +33,7 @@ pub struct EntityJSON {
     /// UID of the entity, specified in any form accepted by `EntityUidJSON`
     uid: EntityUidJSON,
     /// attributes, whose values can be any JSON value.
-    /// (Probably a `JSONValue`, but for schema-based parsing, it could for
+    /// (Probably a `CedarValueJson`, but for schema-based parsing, it could for
     /// instance be an `EntityUidJSON` if we're expecting an entity reference,
     /// so for now we leave it in its raw `serde_json::Value` form.)
     attrs: HashMap<SmolStr, serde_json::Value>,
@@ -408,7 +408,7 @@ impl EntityJSON {
             uid: EntityUidJSON::ImplicitEntityEscape(TypeAndId::from(entity.uid())),
             attrs: entity
                 .attrs()
-                .map(|(k, expr)| Ok((k.into(), serde_json::to_value(JSONValue::from_expr(expr)?)?)))
+                .map(|(k, expr)| Ok((k.into(), serde_json::to_value(CedarValueJson::from_expr(expr)?)?)))
                 .collect::<Result<_, JsonSerializationError>>()?,
             parents: entity
                 .ancestors()
