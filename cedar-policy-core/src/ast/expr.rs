@@ -564,7 +564,7 @@ impl Expr {
                 Ok(Expr::record(pairs))
             }
             ExprKind::MulByConst { arg, constant } => {
-                Ok(Expr::mul(arg.substitute(definitions)?, *constant))
+                Ok(Expr::mul(arg.substitute(definitions)?, (*constant).clone()))
             }
         }
     }
@@ -575,7 +575,7 @@ impl std::fmt::Display for Expr {
         match &self.expr_kind {
             // Add parenthesis around negative numeric literals otherwise
             // round-tripping fuzzer fails for expressions like `(-1)["a"]`.
-            ExprKind::Lit(Literal::Long(n)) if *n < 0 => write!(f, "({})", n),
+            ExprKind::Lit(Literal::Long(n)) if *n < 0.into() => write!(f, "({:?})", n),
             ExprKind::Lit(l) => write!(f, "{}", l),
             ExprKind::Var(v) => write!(f, "{}", v),
             ExprKind::Unknown {
@@ -666,7 +666,7 @@ impl std::fmt::Display for Expr {
                 }
             },
             ExprKind::MulByConst { arg, constant } => {
-                write!(f, "{} * {}", maybe_with_parens(arg), constant)
+                write!(f, "{} * {:?}", maybe_with_parens(arg), constant)
             }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 // search for the name and callstyle
@@ -1457,7 +1457,7 @@ mod test {
     fn exprs() {
         assert_eq!(
             Expr::val(33),
-            Expr::new(ExprKind::Lit(Literal::Long(33)), None, ())
+            Expr::new(ExprKind::Lit(Literal::Long(33.into())), None, ())
         );
         assert_eq!(
             Expr::val("hello"),
@@ -1480,8 +1480,16 @@ mod test {
             Expr::new(
                 ExprKind::If {
                     test_expr: Arc::new(Expr::new(ExprKind::Lit(Literal::Bool(true)), None, ())),
-                    then_expr: Arc::new(Expr::new(ExprKind::Lit(Literal::Long(88)), None, ())),
-                    else_expr: Arc::new(Expr::new(ExprKind::Lit(Literal::Long(-100)), None, ())),
+                    then_expr: Arc::new(Expr::new(
+                        ExprKind::Lit(Literal::Long(88.into())),
+                        None,
+                        ()
+                    )),
+                    else_expr: Arc::new(Expr::new(
+                        ExprKind::Lit(Literal::Long((-100).into())),
+                        None,
+                        ()
+                    )),
                 },
                 None,
                 ()
@@ -1679,8 +1687,8 @@ mod test {
                 Expr::sub(Expr::val(1), Expr::val(1)),
             ),
             (
-                ExprBuilder::with_data(1).mul(temp.clone(), 1),
-                Expr::mul(Expr::val(1), 1),
+                ExprBuilder::with_data(1).mul(temp.clone(), 1.into()),
+                Expr::mul(Expr::val(1), 1.into()),
             ),
             (
                 ExprBuilder::with_data(1).neg(temp.clone()),

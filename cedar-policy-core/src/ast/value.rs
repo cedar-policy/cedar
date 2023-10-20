@@ -464,8 +464,8 @@ mod test {
     fn values() {
         assert_eq!(Value::from(true), Value::Lit(Literal::Bool(true)));
         assert_eq!(Value::from(false), Value::Lit(Literal::Bool(false)));
-        assert_eq!(Value::from(23), Value::Lit(Literal::Long(23)));
-        assert_eq!(Value::from(-47), Value::Lit(Literal::Long(-47)));
+        assert_eq!(Value::from(23), Value::Lit(Literal::Long(23.into())));
+        assert_eq!(Value::from(-47), Value::Lit(Literal::Long((-47).into())));
         assert_eq!(
             Value::from("hello"),
             Value::Lit(Literal::String("hello".into()))

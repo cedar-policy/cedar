@@ -1189,7 +1189,7 @@ impl ASTNode<Option<cst::Mult>> {
             let constantints = constantints
                 .into_iter()
                 .map(|e| match e.expr_kind() {
-                    ast::ExprKind::Lit(ast::Literal::Long(i)) => *i,
+                    ast::ExprKind::Lit(ast::Literal::Long(i)) => (*i).clone(),
                     // PANIC SAFETY Checked the match above via the call to `partition`
                     #[allow(clippy::unreachable)]
                     _ => unreachable!(
@@ -1205,8 +1205,8 @@ impl ASTNode<Option<cst::Mult>> {
                 // PANIC SAFETY If nonconstantints is empty then constantints must have at least one value
                 #[allow(clippy::indexing_slicing)]
                 Some(ExprOrSpecial::Expr(construct_expr_mul(
-                    construct_expr_num(constantints[0], src.clone()),
-                    constantints[1..].iter().copied(),
+                    construct_expr_num(constantints[0].clone(), src.clone()),
+                    constantints[1..].iter().cloned(),
                     src.clone(),
                 )))
             } else {
@@ -1280,14 +1280,14 @@ impl ASTNode<Option<cst::Unary>> {
                     match n.cmp(&((InputInteger::MAX as u128 + 1) as u64)) {
                         Ordering::Equal => (
                             Some(construct_expr_num(
-                                InputInteger::MIN as Integer,
+                                Integer::from(InputInteger::MIN),
                                 unary.item.info.clone(),
                             )),
                             c - 1,
                         ),
                         Ordering::Less => (
                             Some(construct_expr_num(
-                                -(*n as Integer),
+                                -(Integer::from(*n)),
                                 unary.item.info.clone(),
                             )),
                             c - 1,
@@ -3393,18 +3393,30 @@ mod tests {
     #[test]
     fn test_mul() {
         for (es, expr) in [
-            ("--2*3", Expr::mul(Expr::neg(Expr::val(-2)), 3)),
+            (
+                "--2*3",
+                Expr::mul(Expr::neg(Expr::val(-2)), Integer::from(3)),
+            ),
             (
                 "1 * 2 * false",
-                Expr::mul(Expr::mul(Expr::val(false), 1), 2),
+                Expr::mul(
+                    Expr::mul(Expr::val(false), Integer::from(1)),
+                    Integer::from(2),
+                ),
             ),
             (
                 "0 * 1 * principal",
-                Expr::mul(Expr::mul(Expr::var(ast::Var::Principal), 0), 1),
+                Expr::mul(
+                    Expr::mul(Expr::var(ast::Var::Principal), Integer::from(0)),
+                    Integer::from(1),
+                ),
             ),
             (
                 "0 * (-1) * principal",
-                Expr::mul(Expr::mul(Expr::var(ast::Var::Principal), 0), -1),
+                Expr::mul(
+                    Expr::mul(Expr::var(ast::Var::Principal), Integer::from(0)),
+                    Integer::from(-1),
+                ),
             ),
         ] {
             let mut errs = ParseErrors::new();

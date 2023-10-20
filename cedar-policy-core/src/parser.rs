@@ -414,6 +414,7 @@ mod test {
 mod eval_tests {
     use super::err::{ParseErrors, ToASTError};
     use super::*;
+    use crate::ast::Integer;
     use crate::evaluator as eval;
     use crate::extensions::Extensions;
     use crate::parser::err::ParseError;
@@ -486,7 +487,7 @@ mod eval_tests {
             evaluator
                 .interpret_inline_policy(&expr)
                 .expect("interpret fail"),
-            ast::Value::Lit(ast::Literal::Long(600))
+            ast::Value::Lit(ast::Literal::Long(Integer::from(600)))
         );
     }
 

@@ -536,8 +536,8 @@ impl TryFrom<Expr> for ast::Expr {
                     _ => None,
                 };
                 match (left_c, right_c) {
-                    (_, Some(c)) => Ok(ast::Expr::mul(left, *c)),
-                    (Some(c), _) => Ok(ast::Expr::mul(right, *c)),
+                    (_, Some(c)) => Ok(ast::Expr::mul(left, (*c).clone())),
+                    (Some(c), _) => Ok(ast::Expr::mul(right, (*c).clone())),
                     (None, None) => Err(Self::Error::MultiplicationByNonConstant {
                         arg1: left,
                         arg2: right,
@@ -667,7 +667,7 @@ impl From<ast::Expr> for Expr {
             }
             ast::ExprKind::MulByConst { arg, constant } => Expr::mul(
                 unwrap_or_clone(arg).into(),
-                Expr::lit(JSONValue::Long(constant as JsonIntegerType)),
+                Expr::lit(JSONValue::Long(JsonIntegerType::from(constant))),
             ),
             ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let args = unwrap_or_clone(args).into_iter().map(Into::into).collect();

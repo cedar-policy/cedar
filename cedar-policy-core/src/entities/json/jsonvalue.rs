@@ -162,7 +162,7 @@ impl JSONValue {
     pub fn into_expr(self) -> Result<RestrictedExpr, JsonDeserializationError> {
         match self {
             Self::Bool(b) => Ok(RestrictedExpr::val(b)),
-            Self::Long(i) => Ok(RestrictedExpr::val(i as Integer)),
+            Self::Long(i) => Ok(RestrictedExpr::val(Into::<Integer>::into(i))),
             Self::String(s) => Ok(RestrictedExpr::val(s)),
             Self::Set(vals) => Ok(RestrictedExpr::set(
                 vals.into_iter()
@@ -273,7 +273,7 @@ impl JSONValue {
     pub fn from_lit(lit: Literal) -> Self {
         match lit {
             Literal::Bool(b) => Self::Bool(b),
-            Literal::Long(i) => Self::Long(i as JsonIntegerType),
+            Literal::Long(i) => Self::Long(Into::<JsonIntegerType>::into(i)),
             Literal::String(s) => Self::String(s),
             Literal::EntityUID(euid) => Self::EntityEscape {
                 __entity: (*euid).clone().into(),

@@ -60,7 +60,7 @@ impl std::fmt::Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Bool(b) => write!(f, "{}", b),
-            Self::Long(i) => write!(f, "{}", i),
+            Self::Long(i) => write!(f, "{:?}", i),
             // print string literals after the `escape_debug` transformation
             // note that it adds backslashes for more characters than we may want,
             // e.g., a single quote is printed as `\'`.
@@ -85,12 +85,12 @@ impl From<bool> for Literal {
     }
 }
 
-// /// Create a Literal directly from an i64
-// impl From<i64> for Literal {
-//     fn from(i: i64) -> Self {
-//         Self::Long(i as Integer)
-//     }
-// }
+/// Create a Literal directly from an i64
+impl From<i64> for Literal {
+    fn from(i: i64) -> Self {
+        Self::Long(i.into())
+    }
+}
 
 /// Create a Literal directly from an Integer
 impl From<Integer> for Literal {
