@@ -15,7 +15,7 @@
  */
 
 use super::{
-    EntityTypeDescription, EntityUidJson, CedarValueJson, JsonDeserializationError,
+    CedarValueJson, EntityTypeDescription, EntityUidJson, JsonDeserializationError,
     JsonDeserializationErrorContext, JsonSerializationError, NoEntitiesSchema, Schema, TypeAndId,
     ValueParser,
 };
@@ -408,7 +408,12 @@ impl EntityJson {
             uid: EntityUidJson::ImplicitEntityEscape(TypeAndId::from(entity.uid())),
             attrs: entity
                 .attrs()
-                .map(|(k, expr)| Ok((k.into(), serde_json::to_value(CedarValueJson::from_expr(expr)?)?)))
+                .map(|(k, expr)| {
+                    Ok((
+                        k.into(),
+                        serde_json::to_value(CedarValueJson::from_expr(expr)?)?,
+                    ))
+                })
                 .collect::<Result<_, JsonSerializationError>>()?,
             parents: entity
                 .ancestors()

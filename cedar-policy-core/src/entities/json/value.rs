@@ -209,8 +209,8 @@ impl CedarValueJson {
                     __extn: FnAndArg {
                         ext_fn: fn_name.to_string().into(),
                         arg: Box::new(CedarValueJson::from_expr(
+                            // assuming the invariant holds for `expr`, it must also hold here
                             BorrowedRestrictedExpr::new_unchecked(
-                                // assuming the invariant holds for `expr`, it must also hold here
                                 &args[0], // checked above that |args| == 1
                             ),
                         )?),
@@ -252,7 +252,10 @@ impl CedarValueJson {
                             .map(|(k, v)| {
                                 Ok((
                                     k.clone(),
-                                    CedarValueJson::from_expr(BorrowedRestrictedExpr::new_unchecked(v))?, // assuming the invariant holds for `expr`, it must also hold here
+                                    CedarValueJson::from_expr(
+                                        // assuming the invariant holds for `expr`, it must also hold here
+                                        BorrowedRestrictedExpr::new_unchecked(v),
+                                    )?,
                                 ))
                             })
                             .collect::<Result<_, JsonSerializationError>>()?,
@@ -637,7 +640,9 @@ impl EntityUidJson {
                         #[allow(clippy::unwrap_used)]
                         JsonDeserializationError::ExpectedLiteralEntityRef {
                             ctx: Box::new(ctx()),
-                            got: Box::new(CedarValueJson::String(__expr).into_expr().unwrap().into()),
+                            got: Box::new(
+                                CedarValueJson::String(__expr).into_expr().unwrap().into(),
+                            ),
                         }
                     } else {
                         e

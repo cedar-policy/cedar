@@ -17,7 +17,7 @@
 use super::utils::unwrap_or_clone;
 use super::FromJsonError;
 use crate::ast;
-use crate::entities::{EscapeKind, CedarValueJson, JsonDeserializationError, TypeAndId};
+use crate::entities::{CedarValueJson, EscapeKind, JsonDeserializationError, TypeAndId};
 use crate::parser::cst::{self, Ident};
 use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::unescape;
@@ -1007,7 +1007,9 @@ impl TryFrom<cst::Unary> for Expr {
             Some(cst::NegOp::Dash(0)) => Ok(inner),
             Some(cst::NegOp::Dash(mut num_dashes)) => {
                 let inner = match inner {
-                    Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(n))) if n != std::i64::MIN => {
+                    Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(n)))
+                        if n != std::i64::MIN =>
+                    {
                         // collapse the negated literal into a single negative literal.
                         // Important for multiplication-by-constant to allow multiplication by negative constants.
                         num_dashes -= 1;
@@ -1293,11 +1295,10 @@ impl TryFrom<cst::Literal> for Expr {
         match lit {
             cst::Literal::True => Ok(Expr::lit(CedarValueJson::Bool(true))),
             cst::Literal::False => Ok(Expr::lit(CedarValueJson::Bool(false))),
-            cst::Literal::Num(n) => {
-                Ok(Expr::lit(CedarValueJson::Long(n.try_into().map_err(|_| {
-                    ParseError::ToAST(ToASTError::IntegerLiteralTooLarge(n))
-                })?)))
-            }
+            cst::Literal::Num(n) => Ok(Expr::lit(CedarValueJson::Long(
+                n.try_into()
+                    .map_err(|_| ParseError::ToAST(ToASTError::IntegerLiteralTooLarge(n)))?,
+            ))),
             cst::Literal::Str(ASTNode { node, .. }) => match node {
                 Some(cst::Str::String(s)) => Ok(Expr::lit(CedarValueJson::String(s))),
                 Some(cst::Str::Invalid(invalid_str)) => Err(ParseError::ToAST(
