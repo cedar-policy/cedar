@@ -15,7 +15,7 @@
  */
 
 use super::{
-    EntityTypeDescription, EntityUidJSON, CedarValueJson, JsonDeserializationError,
+    EntityTypeDescription, EntityUidJson, CedarValueJson, JsonDeserializationError,
     JsonDeserializationErrorContext, JsonSerializationError, NoEntitiesSchema, Schema, TypeAndId,
     ValueParser,
 };
@@ -29,16 +29,16 @@ use std::sync::Arc;
 
 /// Serde JSON format for a single entity
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct EntityJSON {
-    /// UID of the entity, specified in any form accepted by `EntityUidJSON`
-    uid: EntityUidJSON,
+pub struct EntityJson {
+    /// UID of the entity, specified in any form accepted by `EntityUidJson`
+    uid: EntityUidJson,
     /// attributes, whose values can be any JSON value.
     /// (Probably a `CedarValueJson`, but for schema-based parsing, it could for
-    /// instance be an `EntityUidJSON` if we're expecting an entity reference,
+    /// instance be an `EntityUidJson` if we're expecting an entity reference,
     /// so for now we leave it in its raw `serde_json::Value` form.)
     attrs: HashMap<SmolStr, serde_json::Value>,
-    /// Parents of the entity, specified in any form accepted by `EntityUidJSON`
-    parents: Vec<EntityUidJSON>,
+    /// Parents of the entity, specified in any form accepted by `EntityUidJson`
+    parents: Vec<EntityUidJson>,
 }
 
 /// Struct used to parse entities from JSON.
@@ -98,21 +98,21 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
 
     /// Parse an entities JSON file (in [`&str`] form) into an [`Entities`] object
     pub fn from_json_str(&self, json: &str) -> Result<Entities, EntitiesError> {
-        let ejsons: Vec<EntityJSON> =
+        let ejsons: Vec<EntityJson> =
             serde_json::from_str(json).map_err(JsonDeserializationError::from)?;
         self.parse_ejsons(ejsons)
     }
 
     /// Parse an entities JSON file (in [`serde_json::Value`] form) into an [`Entities`] object
     pub fn from_json_value(&self, json: serde_json::Value) -> Result<Entities, EntitiesError> {
-        let ejsons: Vec<EntityJSON> =
+        let ejsons: Vec<EntityJson> =
             serde_json::from_value(json).map_err(JsonDeserializationError::from)?;
         self.parse_ejsons(ejsons)
     }
 
     /// Parse an entities JSON file (in [`std::io::Read`] form) into an [`Entities`] object
     pub fn from_json_file(&self, json: impl std::io::Read) -> Result<Entities, EntitiesError> {
-        let ejsons: Vec<EntityJSON> =
+        let ejsons: Vec<EntityJson> =
             serde_json::from_reader(json).map_err(JsonDeserializationError::from)?;
         self.parse_ejsons(ejsons)
     }
@@ -122,7 +122,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
         &self,
         json: &str,
     ) -> Result<impl Iterator<Item = Result<Entity, EntitiesError>> + '_, EntitiesError> {
-        let ejsons: Vec<EntityJSON> =
+        let ejsons: Vec<EntityJson> =
             serde_json::from_str(json).map_err(JsonDeserializationError::from)?;
         Ok(ejsons
             .into_iter()
@@ -134,7 +134,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
         &self,
         json: serde_json::Value,
     ) -> Result<impl Iterator<Item = Result<Entity, EntitiesError>> + '_, EntitiesError> {
-        let ejsons: Vec<EntityJSON> =
+        let ejsons: Vec<EntityJson> =
             serde_json::from_value(json).map_err(JsonDeserializationError::from)?;
         Ok(ejsons
             .into_iter()
@@ -146,17 +146,17 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
         &self,
         json: impl std::io::Read,
     ) -> Result<impl Iterator<Item = Result<Entity, EntitiesError>> + '_, EntitiesError> {
-        let ejsons: Vec<EntityJSON> =
+        let ejsons: Vec<EntityJson> =
             serde_json::from_reader(json).map_err(JsonDeserializationError::from)?;
         Ok(ejsons
             .into_iter()
             .map(|ejson| self.parse_ejson(ejson).map_err(EntitiesError::from)))
     }
 
-    /// internal function that creates an [`Entities`] from a stream of [`EntityJSON`]
+    /// internal function that creates an [`Entities`] from a stream of [`EntityJson`]
     fn parse_ejsons(
         &self,
-        ejsons: impl IntoIterator<Item = EntityJSON>,
+        ejsons: impl IntoIterator<Item = EntityJson>,
     ) -> Result<Entities, EntitiesError> {
         let entities = ejsons
             .into_iter()
@@ -165,8 +165,8 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
         Entities::from_entities(entities, self.tc_computation)
     }
 
-    /// internal function that parses an `EntityJSON` into an `Entity`
-    fn parse_ejson(&self, ejson: EntityJSON) -> Result<Entity, JsonDeserializationError> {
+    /// internal function that parses an `EntityJson` into an `Entity`
+    fn parse_ejson(&self, ejson: EntityJson) -> Result<Entity, JsonDeserializationError> {
         let uid = ejson
             .uid
             .into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
@@ -398,21 +398,21 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
     }
 }
 
-impl EntityJSON {
-    /// Convert an `Entity` into an EntityJSON
+impl EntityJson {
+    /// Convert an `Entity` into an EntityJson
     ///
     /// (for the reverse transformation, use `EntityJsonParser`)
     pub fn from_entity(entity: &Entity) -> Result<Self, JsonSerializationError> {
         Ok(Self {
             // for now, we encode `uid` and `parents` using an implied `__entity` escape
-            uid: EntityUidJSON::ImplicitEntityEscape(TypeAndId::from(entity.uid())),
+            uid: EntityUidJson::ImplicitEntityEscape(TypeAndId::from(entity.uid())),
             attrs: entity
                 .attrs()
                 .map(|(k, expr)| Ok((k.into(), serde_json::to_value(CedarValueJson::from_expr(expr)?)?)))
                 .collect::<Result<_, JsonSerializationError>>()?,
             parents: entity
                 .ancestors()
-                .map(|euid| EntityUidJSON::ImplicitEntityEscape(TypeAndId::from(euid.clone())))
+                .map(|euid| EntityUidJson::ImplicitEntityEscape(TypeAndId::from(euid.clone())))
                 .collect(),
         })
     }

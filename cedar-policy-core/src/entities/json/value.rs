@@ -325,18 +325,18 @@ impl<'e> ValueParser<'e> {
             }
             // The expected type is an entity reference. Special parsing rules
             // apply: for instance, the `__entity` escape can optionally be omitted.
-            // What this means is that we parse the contents as `EntityUidJSON`, and
+            // What this means is that we parse the contents as `EntityUidJson`, and
             // then convert that into an entity reference `RestrictedExpr`
             Some(SchemaType::Entity { .. }) => {
-                let uidjson: EntityUidJSON = serde_json::from_value(val)?;
+                let uidjson: EntityUidJson = serde_json::from_value(val)?;
                 Ok(RestrictedExpr::val(uidjson.into_euid(ctx)?))
             }
             // The expected type is an extension type. Special parsing rules apply:
             // for instance, the `__extn` escape can optionally be omitted. What
-            // this means is that we parse the contents as `ExtnValueJSON`, and then
+            // this means is that we parse the contents as `ExtnValueJson`, and then
             // convert that into an extension-function-call `RestrictedExpr`
             Some(SchemaType::Extension { ref name, .. }) => {
-                let extjson: ExtnValueJSON = serde_json::from_value(val)?;
+                let extjson: ExtnValueJson = serde_json::from_value(val)?;
                 self.extn_value_json_into_rexpr(extjson, name.clone(), ctx)
             }
             // The expected type is a set type. No special parsing rules apply, but
@@ -414,18 +414,18 @@ impl<'e> ValueParser<'e> {
         }
     }
 
-    /// internal function that converts an `ExtnValueJSON` into a
+    /// internal function that converts an `ExtnValueJson` into a
     /// `RestrictedExpr`, which will be an extension constructor call.
     ///
     /// `expected_typename`: Specific extension type that is expected.
     fn extn_value_json_into_rexpr(
         &self,
-        extnjson: ExtnValueJSON,
+        extnjson: ExtnValueJson,
         expected_typename: Name,
         ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
     ) -> Result<RestrictedExpr, JsonDeserializationError> {
         match extnjson {
-            ExtnValueJSON::ExplicitExprEscape { __expr } => {
+            ExtnValueJson::ExplicitExprEscape { __expr } => {
                 // reuse the same logic that parses CedarValueJson
                 let jvalue = CedarValueJson::ExprEscape { __expr };
                 let expr = jvalue.into_expr()?;
@@ -437,8 +437,8 @@ impl<'e> ValueParser<'e> {
                     }),
                 }
             }
-            ExtnValueJSON::ExplicitExtnEscape { __extn }
-            | ExtnValueJSON::ImplicitExtnEscape(__extn) => {
+            ExtnValueJson::ExplicitExtnEscape { __extn }
+            | ExtnValueJson::ImplicitExtnEscape(__extn) => {
                 // reuse the same logic that parses CedarValueJson
                 let jvalue = CedarValueJson::ExtnEscape { __extn };
                 let expr = jvalue.into_expr()?;
@@ -450,7 +450,7 @@ impl<'e> ValueParser<'e> {
                     }),
                 }
             }
-            ExtnValueJSON::ImplicitConstructor(val) => {
+            ExtnValueJson::ImplicitConstructor(val) => {
                 let arg = val.into_expr()?;
                 let argty = self.type_of_rexpr(arg.as_borrowed(), ctx.clone())?;
                 let func = self
@@ -545,7 +545,7 @@ impl<'e> ValueParser<'e> {
 /// reference
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
-pub enum EntityUidJSON {
+pub enum EntityUidJson {
     /// Explicit `__expr` escape; see notes on CedarValueJson::ExprEscape.
     ///
     /// Deprecated since the 1.2 release; use
@@ -574,7 +574,7 @@ pub enum EntityUidJSON {
 /// extension value
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
-pub enum ExtnValueJSON {
+pub enum ExtnValueJson {
     /// Explicit `__expr` escape; see notes on CedarValueJson::ExprEscape.
     ///
     /// Deprecated since the 1.2 release; use
@@ -600,8 +600,8 @@ pub enum ExtnValueJSON {
     ImplicitConstructor(CedarValueJson),
 }
 
-impl EntityUidJSON {
-    /// Construct an `EntityUidJSON` from entity type name and EID.
+impl EntityUidJson {
+    /// Construct an `EntityUidJson` from entity type name and EID.
     ///
     /// This will use the `ImplicitEntityEscape` form, if it matters.
     pub fn new(entity_type: impl Into<SmolStr>, id: impl Into<SmolStr>) -> Self {
@@ -611,7 +611,7 @@ impl EntityUidJSON {
         })
     }
 
-    /// Convert this `EntityUidJSON` into an `EntityUID`
+    /// Convert this `EntityUidJson` into an `EntityUID`
     pub fn into_euid(
         self,
         ctx: impl Fn() -> JsonDeserializationErrorContext,
@@ -667,19 +667,19 @@ impl EntityUidJSON {
     }
 }
 
-/// Convert an EntityUID to EntityUidJSON, using the ExplicitEntityEscape option
-impl From<EntityUID> for EntityUidJSON {
-    fn from(uid: EntityUID) -> EntityUidJSON {
-        EntityUidJSON::ExplicitEntityEscape {
+/// Convert an EntityUID to EntityUidJson, using the ExplicitEntityEscape option
+impl From<EntityUID> for EntityUidJson {
+    fn from(uid: EntityUID) -> EntityUidJson {
+        EntityUidJson::ExplicitEntityEscape {
             __entity: uid.into(),
         }
     }
 }
 
-/// Convert an EntityUID to EntityUidJSON, using the ExplicitEntityEscape option
-impl From<&EntityUID> for EntityUidJSON {
-    fn from(uid: &EntityUID) -> EntityUidJSON {
-        EntityUidJSON::ExplicitEntityEscape {
+/// Convert an EntityUID to EntityUidJson, using the ExplicitEntityEscape option
+impl From<&EntityUID> for EntityUidJson {
+    fn from(uid: &EntityUID) -> EntityUidJson {
+        EntityUidJson::ExplicitEntityEscape {
             __entity: uid.into(),
         }
     }
