@@ -169,7 +169,7 @@ impl<'a> BorrowedRestrictedExpr<'a> {
     /// Used to output the context as a map from Strings to JSON Values
     pub fn to_natural_json(self) -> Result<serde_json::Value, JsonSerializationError> {
         Ok(serde_json::to_value(
-            crate::entities::JSONValue::from_expr(self)?,
+            crate::entities::CedarValueJson::from_expr(self)?,
         )?)
     }
 }

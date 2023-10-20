@@ -17,7 +17,7 @@
 use super::utils::unwrap_or_clone;
 use super::FromJsonError;
 use crate::ast;
-use crate::entities::{EscapeKind, JSONValue, JsonDeserializationError, TypeAndId};
+use crate::entities::{CedarValueJson, EscapeKind, JsonDeserializationError, TypeAndId};
 use crate::parser::cst::{self, Ident};
 use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::unescape;
@@ -48,7 +48,7 @@ pub enum Expr {
 pub enum ExprNoExt {
     /// Literal value (including anything that's legal to express in the
     /// attribute-value JSON format)
-    Value(JSONValue),
+    Value(CedarValueJson),
     /// Var
     Var(ast::Var),
     /// Template slot
@@ -254,7 +254,7 @@ pub struct ExtFuncCall {
 #[allow(clippy::should_implement_trait)] // the names of arithmetic constructors alias with those of certain trait methods such as `add` of `std::ops::Add`
 impl Expr {
     /// literal
-    pub fn lit(lit: JSONValue) -> Self {
+    pub fn lit(lit: CedarValueJson) -> Self {
         Expr::ExprNoExt(ExprNoExt::Value(lit))
     }
 
@@ -456,7 +456,7 @@ impl Expr {
     /// Consume the `Expr`, producing a string literal if it was a string literal, otherwise returns the literal in the `Err` variant.
     pub fn into_string_literal(self) -> Result<SmolStr, Self> {
         match self {
-            Expr::ExprNoExt(ExprNoExt::Value(JSONValue::String(s))) => Ok(s),
+            Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::String(s))) => Ok(s),
             _ => Err(self),
         }
     }
@@ -665,7 +665,7 @@ impl From<ast::Expr> for Expr {
             }
             ast::ExprKind::MulByConst { arg, constant } => Expr::mul(
                 unwrap_or_clone(arg).into(),
-                Expr::lit(JSONValue::Long(constant)),
+                Expr::lit(CedarValueJson::Long(constant)),
             ),
             ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let args = unwrap_or_clone(args).into_iter().map(Into::into).collect();
@@ -695,7 +695,7 @@ impl From<ast::Expr> for Expr {
 
 impl From<ast::Literal> for Expr {
     fn from(lit: ast::Literal) -> Expr {
-        Expr::lit(JSONValue::from_lit(lit))
+        Expr::lit(CedarValueJson::from_lit(lit))
     }
 }
 
@@ -1007,11 +1007,13 @@ impl TryFrom<cst::Unary> for Expr {
             Some(cst::NegOp::Dash(0)) => Ok(inner),
             Some(cst::NegOp::Dash(mut num_dashes)) => {
                 let inner = match inner {
-                    Expr::ExprNoExt(ExprNoExt::Value(JSONValue::Long(n))) if n != std::i64::MIN => {
+                    Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(n)))
+                        if n != std::i64::MIN =>
+                    {
                         // collapse the negated literal into a single negative literal.
                         // Important for multiplication-by-constant to allow multiplication by negative constants.
                         num_dashes -= 1;
-                        Expr::lit(JSONValue::Long(-n))
+                        Expr::lit(CedarValueJson::Long(-n))
                     }
                     _ => inner,
                 };
@@ -1064,7 +1066,7 @@ fn interpret_primary(p: cst::Primary) -> Result<Either<ast::Name, Expr>, ParseEr
 
                 match (maybe_name, maybe_eid) {
                     (Some(name), Some(eid)) => {
-                        Ok(Either::Right(Expr::lit(JSONValue::EntityEscape {
+                        Ok(Either::Right(Expr::lit(CedarValueJson::EntityEscape {
                             __entity: TypeAndId::from(ast::EntityUID::from_components(
                                 name,
                                 ast::Eid::new(eid.clone()),
@@ -1291,15 +1293,14 @@ impl TryFrom<cst::Literal> for Expr {
     type Error = ParseErrors;
     fn try_from(lit: cst::Literal) -> Result<Expr, ParseErrors> {
         match lit {
-            cst::Literal::True => Ok(Expr::lit(JSONValue::Bool(true))),
-            cst::Literal::False => Ok(Expr::lit(JSONValue::Bool(false))),
-            cst::Literal::Num(n) => {
-                Ok(Expr::lit(JSONValue::Long(n.try_into().map_err(|_| {
-                    ParseError::ToAST(ToASTError::IntegerLiteralTooLarge(n))
-                })?)))
-            }
+            cst::Literal::True => Ok(Expr::lit(CedarValueJson::Bool(true))),
+            cst::Literal::False => Ok(Expr::lit(CedarValueJson::Bool(false))),
+            cst::Literal::Num(n) => Ok(Expr::lit(CedarValueJson::Long(
+                n.try_into()
+                    .map_err(|_| ParseError::ToAST(ToASTError::IntegerLiteralTooLarge(n)))?,
+            ))),
             cst::Literal::Str(ASTNode { node, .. }) => match node {
-                Some(cst::Str::String(s)) => Ok(Expr::lit(JSONValue::String(s))),
+                Some(cst::Str::String(s)) => Ok(Expr::lit(CedarValueJson::String(s))),
                 Some(cst::Str::Invalid(invalid_str)) => Err(ParseError::ToAST(
                     ToASTError::InvalidString(invalid_str.to_string()),
                 )
