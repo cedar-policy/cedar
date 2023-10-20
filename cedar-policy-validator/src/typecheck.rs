@@ -602,7 +602,7 @@ impl<'a> Typechecker<'a> {
             ExprKind::Lit(Literal::Long(val)) => TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(Type::primitive_long()))
                     .with_same_source_info(e)
-                    .val(*val),
+                    .val((*val).clone()),
             ),
             ExprKind::Lit(Literal::String(val)) => TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(Type::primitive_string()))
@@ -1455,7 +1455,7 @@ impl<'a> Typechecker<'a> {
             TypecheckAnswer::success({
                 ExprBuilder::with_data(Some(Type::primitive_long()))
                     .with_same_source_info(mul_expr)
-                    .mul(arg_expr_ty, *constant)
+                    .mul(arg_expr_ty, (*constant).clone())
             })
         })
     }
