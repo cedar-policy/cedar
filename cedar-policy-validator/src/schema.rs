@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use cedar_policy_core::{
     ast::{Eid, Entity, EntityType, EntityUID, Id, Name, RestrictedExpr},
-    entities::{Entities, CedarValueJson, TCComputation},
+    entities::{CedarValueJson, Entities, TCComputation},
     parser::err::ParseErrors,
     transitive_closure::{compute_tc, TCNode},
     FromNormalizedStr,
@@ -382,14 +382,18 @@ impl ValidatorNamespaceDef {
                     "entity escape (`__entity`)".to_owned(),
                 ))
             }
-            CedarValueJson::ExprEscape { __expr: _ } => Err(SchemaError::UnsupportedActionAttribute(
-                action_id.clone(),
-                "expression escape (`__expr`)".to_owned(),
-            )),
-            CedarValueJson::ExtnEscape { __extn: _ } => Err(SchemaError::UnsupportedActionAttribute(
-                action_id.clone(),
-                "extension function escape (`__extn`)".to_owned(),
-            )),
+            CedarValueJson::ExprEscape { __expr: _ } => {
+                Err(SchemaError::UnsupportedActionAttribute(
+                    action_id.clone(),
+                    "expression escape (`__expr`)".to_owned(),
+                ))
+            }
+            CedarValueJson::ExtnEscape { __extn: _ } => {
+                Err(SchemaError::UnsupportedActionAttribute(
+                    action_id.clone(),
+                    "extension function escape (`__extn`)".to_owned(),
+                ))
+            }
         }
     }
 
