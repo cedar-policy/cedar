@@ -154,7 +154,7 @@ impl CedarValueJson {
         }
     }
 
-    /// Convert this CedarValueJson into a Cedar "restricted expression"
+    /// Convert this `CedarValueJson` into a Cedar "restricted expression"
     pub fn into_expr(self) -> Result<RestrictedExpr, JsonDeserializationError> {
         match self {
             Self::Bool(b) => Ok(RestrictedExpr::val(b)),
@@ -549,7 +549,7 @@ impl<'e> ValueParser<'e> {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum EntityUidJson {
-    /// Explicit `__expr` escape; see notes on CedarValueJson::ExprEscape.
+    /// Explicit `__expr` escape; see notes on `CedarValueJson::ExprEscape`.
     ///
     /// Deprecated since the 1.2 release; use
     /// `{ "__entity": { "type": "...", "id": "..." } }` instead.
@@ -558,7 +558,7 @@ pub enum EntityUidJson {
         /// In this case, it must evaluate to an entity reference.
         __expr: SmolStr,
     },
-    /// Explicit `__entity` escape; see notes on CedarValueJson::EntityEscape
+    /// Explicit `__entity` escape; see notes on `CedarValueJson::EntityEscape`
     ExplicitEntityEscape {
         /// JSON object containing the entity type and ID
         __entity: TypeAndId,
@@ -578,7 +578,7 @@ pub enum EntityUidJson {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum ExtnValueJson {
-    /// Explicit `__expr` escape; see notes on CedarValueJson::ExprEscape.
+    /// Explicit `__expr` escape; see notes on `CedarValueJson::ExprEscape`.
     ///
     /// Deprecated since the 1.2 release; use
     /// `{ "__extn": { "fn": "...", "arg": "..." } }` instead.
@@ -587,7 +587,7 @@ pub enum ExtnValueJson {
         /// In this case, it must evaluate to an extension value.
         __expr: SmolStr,
     },
-    /// Explicit `__extn` escape; see notes on CedarValueJson::ExtnEscape
+    /// Explicit `__extn` escape; see notes on `CedarValueJson::ExtnEscape`
     ExplicitExtnEscape {
         /// JSON object containing the extension-constructor call
         __extn: FnAndArg,
@@ -604,7 +604,7 @@ pub enum ExtnValueJson {
 }
 
 impl EntityUidJson {
-    /// Construct an `EntityUidJson` from entity type name and EID.
+    /// Construct an `EntityUidJson` from entity type name and eid.
     ///
     /// This will use the `ImplicitEntityEscape` form, if it matters.
     pub fn new(entity_type: impl Into<SmolStr>, id: impl Into<SmolStr>) -> Self {
@@ -672,7 +672,7 @@ impl EntityUidJson {
     }
 }
 
-/// Convert an EntityUID to EntityUidJson, using the ExplicitEntityEscape option
+/// Convert an `EntityUID` to `EntityUidJson`, using the `ExplicitEntityEscape` option
 impl From<EntityUID> for EntityUidJson {
     fn from(uid: EntityUID) -> EntityUidJson {
         EntityUidJson::ExplicitEntityEscape {
@@ -681,7 +681,7 @@ impl From<EntityUID> for EntityUidJson {
     }
 }
 
-/// Convert an EntityUID to EntityUidJson, using the ExplicitEntityEscape option
+/// Convert an `EntityUID` to `EntityUidJson`, using the `ExplicitEntityEscape` option
 impl From<&EntityUID> for EntityUidJson {
     fn from(uid: &EntityUID) -> EntityUidJson {
         EntityUidJson::ExplicitEntityEscape {

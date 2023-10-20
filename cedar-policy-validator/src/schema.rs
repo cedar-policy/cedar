@@ -337,8 +337,8 @@ impl ValidatorNamespaceDef {
         })
     }
 
-    // Helper to get types from CedarValueJsons. Currently doesn't support all
-    // CedarValueJson types. Note: If this function is extended to cover move
+    // Helper to get types from `CedarValueJson`s. Currently doesn't support all
+    // `CedarValueJson` types. Note: If this function is extended to cover move
     // `CedarValueJson`s, we must update `convert_attr_jsonval_map_to_attributes` to
     // handle errors that may occur when parsing these values. This will require
     // a breaking change in the `SchemaError` type in the public API.

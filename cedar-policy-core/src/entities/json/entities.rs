@@ -399,7 +399,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
 }
 
 impl EntityJson {
-    /// Convert an `Entity` into an EntityJson
+    /// Convert an `Entity` into an `EntityJson`
     ///
     /// (for the reverse transformation, use `EntityJsonParser`)
     pub fn from_entity(entity: &Entity) -> Result<Self, JsonSerializationError> {
