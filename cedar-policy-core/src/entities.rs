@@ -1294,7 +1294,8 @@ mod json_parsing_tests {
             .from_json_str(json)
             .expect_err("should fail due to duplicate key in record");
         assert!(
-            err.to_string().contains(r#"duplicate key error for `bar`"#),
+            err.to_string()
+                .contains(r#"the key `bar` occurs two or more times in the same JSON object"#),
             "actual error message was {err}"
         );
     }
