@@ -416,6 +416,12 @@ impl Expr {
     }
 
     /// Create an `Expr` which evaluates to a Record with the given key-value mapping.
+    ///
+    /// If you have an iterator of pairs, generally prefer calling
+    /// `Expr::record()` instead of `.collect()`-ing yourself and calling this,
+    /// potentially for efficiency reasons but also because `Expr::record()`
+    /// will properly handle duplicate keys but your own `.collect()` will not
+    /// (by default).
     pub fn record_arc(map: Arc<BTreeMap<SmolStr, Expr>>) -> Self {
         ExprBuilder::new().record_arc(map)
     }
@@ -1070,6 +1076,11 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an `Expr` which evalutes to a Record with the given key-value mapping.
+    ///
+    /// If you have an iterator of pairs, generally prefer calling `.record()`
+    /// instead of `.collect()`-ing yourself and calling this, potentially for
+    /// efficiency reasons but also because `.record()` will properly handle
+    /// duplicate keys but your own `.collect()` will not (by default).
     pub fn record_arc(self, map: Arc<BTreeMap<SmolStr, Expr<T>>>) -> Expr<T> {
         self.with_expr_kind(ExprKind::Record(map))
     }
