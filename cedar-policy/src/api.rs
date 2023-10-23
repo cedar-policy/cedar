@@ -2069,10 +2069,13 @@ impl Template {
                 })
             }
             ast::PrincipalOrResourceConstraint::Is(entity_type, eref) => {
-                TemplateResourceConstraint::Is(EntityTypeName(entity_type.clone()), eref.map(|eref| match eref {
-                    ast::EntityReference::EUID(e) => Some(EntityUID(e.as_ref().clone())),
-                    ast::EntityReference::Slot => None,
-                }))
+                TemplatePrincipalConstraint::Is(
+                    EntityTypeName(entity_type.clone()),
+                    eref.as_ref().map(|eref| match eref {
+                        ast::EntityReference::EUID(e) => Some(EntityUid(e.as_ref().clone())),
+                        ast::EntityReference::Slot => None,
+                    }),
+                )
             }
         }
     }
@@ -2108,10 +2111,13 @@ impl Template {
                 })
             }
             ast::PrincipalOrResourceConstraint::Is(entity_type, eref) => {
-                TemplateResourceConstraint::Is(EntityTypeName(entity_type.clone()), eref.map(|eref| match eref {
-                    ast::EntityReference::EUID(e) => Some(EntityUID(e.as_ref().clone())),
-                    ast::EntityReference::Slot => None,
-                }))
+                TemplateResourceConstraint::Is(
+                    EntityTypeName(entity_type.clone()),
+                    eref.as_ref().map(|eref| match eref {
+                        ast::EntityReference::EUID(e) => Some(EntityUid(e.as_ref().clone())),
+                        ast::EntityReference::Slot => None,
+                    }),
+                )
             }
         }
     }
@@ -2174,7 +2180,7 @@ pub enum PrincipalConstraint {
     /// Must be equal to the given EntityUid
     Eq(EntityUid),
     /// Must be the given EntityTypeName, and `in` the EntityUID if it is present
-    Is(EntityTypeName, Option<EntityUID>),
+    Is(EntityTypeName, Option<EntityUid>),
 }
 
 /// Head constraint on policy principals for templates.
@@ -2190,7 +2196,7 @@ pub enum TemplatePrincipalConstraint {
     Eq(Option<EntityUid>),
     /// Must be the given EntityTypeName, and `in` the EntityUID if it is present
     /// TODO: Option<Option<_>> is gross
-    Is(Name, Option<Option<EntityUID>>),
+    Is(EntityTypeName, Option<Option<EntityUid>>),
 }
 
 impl TemplatePrincipalConstraint {
@@ -2224,7 +2230,7 @@ pub enum ResourceConstraint {
     /// Must be equal to the given EntityUid
     Eq(EntityUid),
     /// Must be the given EntityTypeName, and `in` the EntityUID if it is present
-    Is(EntityTypeName, Option<EntityUID>),
+    Is(EntityTypeName, Option<EntityUid>),
 }
 
 /// Head constraint on policy resources for templates.
@@ -2240,7 +2246,7 @@ pub enum TemplateResourceConstraint {
     Eq(Option<EntityUid>),
     /// Must be the given EntityTypeName, and `in` the EntityUID if it is present
     /// TODO: Option<Option<_>> is gross
-    Is(Name, Option<Option<EntityUID>>),
+    Is(EntityTypeName, Option<Option<EntityUid>>),
 }
 
 impl TemplateResourceConstraint {
@@ -2357,8 +2363,11 @@ impl Policy {
             ast::PrincipalOrResourceConstraint::Eq(eref) => {
                 PrincipalConstraint::Eq(self.convert_entity_reference(eref, slot_id).clone())
             }
-            ast::PrincipalOrResourceConstraint::Is(entity_type, eref) => {
-            }
+            ast::PrincipalOrResourceConstraint::Is(entity_type, eref) => PrincipalConstraint::Is(
+                EntityTypeName(entity_type.clone()),
+                eref.as_ref()
+                    .map(|eref| self.convert_entity_reference(eref, slot_id).clone()),
+            ),
         }
     }
 
@@ -2389,6 +2398,11 @@ impl Policy {
             ast::PrincipalOrResourceConstraint::Eq(eref) => {
                 ResourceConstraint::Eq(self.convert_entity_reference(eref, slot_id).clone())
             }
+            ast::PrincipalOrResourceConstraint::Is(entity_type, eref) => ResourceConstraint::Is(
+                EntityTypeName(entity_type.clone()),
+                eref.as_ref()
+                    .map(|eref| self.convert_entity_reference(eref, slot_id).clone()),
+            ),
         }
     }
 

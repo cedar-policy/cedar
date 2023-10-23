@@ -470,9 +470,12 @@ impl<'a> Typechecker<'a> {
                 PrincipalOrResourceConstraint::Eq(_) => {
                     Box::new(std::iter::once(Some(var.clone())))
                 }
-                // The condition is `var in ?slot`, so the policy can only apply
-                // if the var is some descendant of the slot.
-                PrincipalOrResourceConstraint::In(_) => Box::new(
+                // The condition is `var in ?slot` or `var is type in ?slot`, so
+                // the policy can only apply if the var is some descendant of
+                // the slot. We ignore the `is type` portion because this
+                // constrains the `var` and not the slot.
+                PrincipalOrResourceConstraint::Is(_, Some(_))
+                | PrincipalOrResourceConstraint::In(_) => Box::new(
                     all_entity_types
                         .filter(|(_, ety)| ety.has_descendant_entity_type(var))
                         .map(|(name, _)| Some(EntityType::Concrete(name.clone())))
@@ -483,9 +486,11 @@ impl<'a> Typechecker<'a> {
                 // appear in head constraints, but if we ever see this, then the
                 // only correct way to proceed is by returning all entity types
                 // as possible instantiations.
-                PrincipalOrResourceConstraint::Any => Box::new(
-                    all_entity_types.map(|(name, _)| Some(EntityType::Concrete(name.clone()))),
-                ),
+                PrincipalOrResourceConstraint::Is(_, None) | PrincipalOrResourceConstraint::Any => {
+                    Box::new(
+                        all_entity_types.map(|(name, _)| Some(EntityType::Concrete(name.clone()))),
+                    )
+                }
             }
         } else {
             // If the template does not contain this slot, then we don't need to

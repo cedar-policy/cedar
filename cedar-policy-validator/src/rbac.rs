@@ -395,7 +395,7 @@ impl Validator {
     ) -> Box<dyn Iterator<Item = K> + 'a>
     where
         H: 'a + HeadVar<K>,
-        K: 'a + Clone,
+        K: 'a + Clone + Eq + std::hash::Hash,
     {
         match head_var_condition {
             HeadConstraint::Action(ActionConstraint::Any)
@@ -425,6 +425,22 @@ impl Validator {
             HeadConstraint::PrincipalOrResource(PrincipalOrResourceConstraint::In(
                 EntityReference::Slot,
             )) => Box::new(var.get_known_vars(&self.schema).map(Clone::clone)),
+            // <var> is <type> (in <literal euid>)?
+            HeadConstraint::PrincipalOrResource(PrincipalOrResourceConstraint::Is(
+                entity_type,
+                in_entity,
+            )) => match in_entity {
+                Some(EntityReference::EUID(in_entity)) => {
+                    let entities_same_type: HashSet<_> =
+                        var.get_same_type(&self.schema, entity_type).collect();
+                    Box::new(
+                        self.schema
+                            .get_entities_in(var, in_entity.as_ref().clone())
+                            .filter(move |k| entities_same_type.contains(k)),
+                    )
+                }
+                _ => Box::new(var.get_same_type(&self.schema, entity_type).cloned()),
+            },
             HeadConstraint::Action(ActionConstraint::In(euids)) => {
                 // <var> in [<literal euid>...]
                 Box::new(

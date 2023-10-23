@@ -1011,7 +1011,20 @@ impl PrincipalConstraint {
     /// Hierarchical constraint to Slot
     pub fn is_in_slot() -> Self {
         Self {
+            // FIXME: bug!
             constraint: PrincipalOrResourceConstraint::is_eq_slot(),
+        }
+    }
+
+    pub fn is_type(entity_type: Name, in_entity: Option<EntityUID>) -> Self {
+        Self {
+            constraint: PrincipalOrResourceConstraint::is_type(entity_type, in_entity),
+        }
+    }
+
+    pub fn is_type_slot(entity_type: Name) -> Self {
+        Self {
+            constraint: PrincipalOrResourceConstraint::is_type_slot(entity_type),
         }
     }
 
@@ -1247,6 +1260,14 @@ impl PrincipalOrResourceConstraint {
     /// Hierarchical constraint.
     pub fn is_in(euid: EntityUID) -> Self {
         PrincipalOrResourceConstraint::In(EntityReference::euid(euid))
+    }
+
+    pub fn is_type_slot(entity_type: Name) -> Self {
+        PrincipalOrResourceConstraint::Is(entity_type, Some(EntityReference::Slot))
+    }
+
+    pub fn is_type(entity_type: Name, in_entity: Option<EntityUID>) -> Self {
+        PrincipalOrResourceConstraint::Is(entity_type, in_entity.map(EntityReference::euid))
     }
 
     /// Turn the constraint into an expr

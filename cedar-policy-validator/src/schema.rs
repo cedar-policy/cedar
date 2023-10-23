@@ -1118,7 +1118,7 @@ impl ValidatorSchema {
     }
 
     /// Lookup the ValidatorEntityType object in the schema with the given name.
-    pub fn get_entity_type(&self, entity_type_id: &Name) -> Option<&ValidatorEntityType> {
+    pub fn get_entity_type<'a>(&'a self, entity_type_id: &Name) -> Option<&'a ValidatorEntityType> {
         self.entity_types.get(entity_type_id)
     }
 
@@ -1579,6 +1579,13 @@ pub(crate) trait HeadVar<K>: Copy {
         schema: &'a ValidatorSchema,
         euid: EntityUID,
     ) -> Option<Box<dyn Iterator<Item = &'a K> + 'a>>;
+
+    /// Get the entities that have the same type as the `entity_type` provided.
+    fn get_same_type<'a>(
+        &self,
+        schema: &'a ValidatorSchema,
+        entity_type: &'a Name,
+    ) -> Box<dyn Iterator<Item = &'a K> + 'a>;
 }
 
 /// Used to have `get_entities_satisfying_constraint` return the
@@ -1629,6 +1636,17 @@ impl HeadVar<Name> for PrincipalOrResourceHeadVar {
             None => None,
         }
     }
+
+    fn get_same_type<'a>(
+        &self,
+        schema: &'a ValidatorSchema,
+        entity_type: &'a Name,
+    ) -> Box<dyn Iterator<Item = &'a Name> + 'a> {
+        match schema.get_entity_type(entity_type) {
+            Some(_) => Box::new(std::iter::once(entity_type)),
+            None => Box::new(std::iter::empty()),
+        }
+    }
 }
 
 /// Used to have `get_entities_satisfying_constraint` return the
@@ -1673,6 +1691,21 @@ impl HeadVar<EntityUID> for ActionHeadVar {
             Some(action_id) => Some(Box::new(action_id.descendants.iter())),
             None => None,
         }
+    }
+
+    fn get_same_type<'a>(
+        &self,
+        schema: &'a ValidatorSchema,
+        entity_type: &'a Name,
+    ) -> Box<dyn Iterator<Item = &'a EntityUID> + 'a> {
+        Box::new(
+            schema
+                .known_action_ids()
+                .filter(move |a| match a.entity_type() {
+                    EntityType::Concrete(a_type) => a_type == entity_type,
+                    EntityType::Unspecified => false,
+                }),
+        )
     }
 }
 
