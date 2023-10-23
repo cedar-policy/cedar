@@ -1532,7 +1532,7 @@ impl EntityUid {
     /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
     /// ```
     pub fn from_json(json: serde_json::Value) -> Result<Self, impl std::error::Error> {
-        let parsed: entities::EntityUidJSON = serde_json::from_value(json)?;
+        let parsed: entities::EntityUidJson = serde_json::from_value(json)?;
         // INVARIANT: There is no way to write down the unspecified entityuid
         Ok::<Self, entities::JsonDeserializationError>(Self(
             parsed.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
@@ -2629,7 +2629,7 @@ impl LosslessPolicy {
     ) -> Result<Self, est::InstantiationError> {
         match self {
             Self::Est(est) => {
-                let unwrapped_est_vals: HashMap<ast::SlotId, entities::EntityUidJSON> =
+                let unwrapped_est_vals: HashMap<ast::SlotId, entities::EntityUidJson> =
                     vals.into_iter().map(|(k, v)| (k, v.into())).collect();
                 Ok(Self::Est(est.link(&unwrapped_est_vals)?))
             }
