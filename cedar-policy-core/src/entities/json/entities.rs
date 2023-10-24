@@ -47,20 +47,11 @@ pub struct EntityJson {
 /// Struct used to parse entities from JSON.
 #[derive(Debug, Clone)]
 pub struct EntityJsonParser<'e, 's, S: Schema = NoEntitiesSchema> {
-    /// `schema` represents a source of `Action` entities, which will be added
-    /// to the entities parsed from JSON.
-    /// (If any `Action` entities are present in the JSON, and a `schema` is
-    /// also provided, each `Action` entity in the JSON must exactly match its
-    /// definition in the schema or an error is returned.)
+    /// See comments on [`EntityJsonParser::new()`] for the interpretation and
+    /// effects of this `schema` field.
     ///
-    /// If a `schema` is present, this will also inform the parsing: for
-    /// instance, it will allow `__entity` and `__extn` escapes to be implicit.
-    ///
-    /// Finally, if a `schema` is present, the `EntityJsonParser` will ensure
-    /// that the produced entities fully conform to the `schema` -- for
-    /// instance, it will error if attributes have the wrong types (e.g., string
-    /// instead of integer), or if required attributes are missing or
-    /// superfluous attributes are provided.
+    /// (Long doc comment on `EntityJsonParser::new()` is not repeated here, and
+    /// instead incorporated by reference, to avoid them becoming out of sync.)
     schema: Option<&'s S>,
 
     /// Extensions which are active for the JSON parsing.
