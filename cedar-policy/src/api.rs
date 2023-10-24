@@ -2469,7 +2469,7 @@ impl Policy {
     ///            ]
     ///        }
     /// );
-    /// let policy = Policy::from_json(None, json).unwrap();
+    /// let json_policy = Policy::from_json(None, json).unwrap();
     /// let src = r#"
     ///   permit(
     ///     principal == User::"bob",
@@ -2477,8 +2477,8 @@ impl Policy {
     ///     resource == Album::"trip"
     ///   )
     ///   when { principal.age > 18 };"#;
-    /// let expected_output = Policy::parse(None, src).unwrap();
-    /// assert_eq!(policy.to_string(), expected_output.to_string());
+    /// let text_policy = Policy::parse(None, src).unwrap();
+    /// assert_eq!(json_policy.to_json().unwrap(), text_policy.to_json().unwrap());
     /// ```
     pub fn from_json(
         id: Option<PolicyId>,
@@ -2494,7 +2494,7 @@ impl Policy {
 
     /// Get the JSON representation of this `Policy`.
     ///  ```
-    /// use cedar_policy::Policy;
+    /// # use cedar_policy::Policy;
     /// let src = r#"
     ///   permit(
     ///     principal == User::"bob",
@@ -2502,13 +2502,13 @@ impl Policy {
     ///     resource == Album::"trip"
     ///   )
     ///   when { principal.age > 18 };"#;
-
+    ///
     /// let policy = Policy::parse(None, src).unwrap();
     /// println!("{}", policy);
     /// // convert the policy to JSON
     /// let json = policy.to_json().unwrap();
     /// println!("{}", json);
-    /// assert_eq!(policy.to_string(), Policy::from_json(None, json).unwrap().to_string());
+    /// assert_eq!(json, Policy::from_json(None, json.clone()).unwrap().to_json().unwrap());
     /// ```
     pub fn to_json(&self) -> Result<serde_json::Value, impl std::error::Error> {
         let est = self.lossless.est()?;
