@@ -22,12 +22,15 @@ use super::{
 use crate::ast::{Entity, EntityType, EntityUID, RestrictedExpr};
 use crate::entities::{Entities, EntitiesError, TCComputation};
 use crate::extensions::Extensions;
+use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Serde JSON format for a single entity
+#[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct EntityJson {
     /// UID of the entity, specified in any form accepted by `EntityUidJson`
@@ -35,8 +38,12 @@ pub struct EntityJson {
     /// attributes, whose values can be any JSON value.
     /// (Probably a `CedarValueJson`, but for schema-based parsing, it could for
     /// instance be an `EntityUidJson` if we're expecting an entity reference,
-    /// so for now we leave it in its raw `serde_json::Value` form.)
-    attrs: HashMap<SmolStr, serde_json::Value>,
+    /// so for now we leave it in its raw json-value form, albeit not allowing
+    /// any duplicate keys in any records that may occur in an attribute value
+    /// (even nested).)
+    #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
+    // the annotation covers duplicates in this `HashMap` itself, while the `JsonValueWithNoDuplicateKeys` covers duplicates in any records contained in attribute values (including recursively)
+    attrs: HashMap<SmolStr, JsonValueWithNoDuplicateKeys>,
     /// Parents of the entity, specified in any form accepted by `EntityUidJson`
     parents: Vec<EntityUidJson>,
 }
@@ -234,7 +241,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
             .map(|(k, v)| match &entity_schema_info {
                 EntitySchemaInfo::NoSchema => Ok((
                     k.clone(),
-                    vparser.val_into_rexpr(v, None, || {
+                    vparser.val_into_rexpr(v.into(), None, || {
                         JsonDeserializationErrorContext::EntityAttribute {
                             uid: uid.clone(),
                             attr: k.clone(),
@@ -254,7 +261,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                             })
                         }
                         Some(expected_ty) => (
-                            vparser.val_into_rexpr(v, Some(&expected_ty), || {
+                            vparser.val_into_rexpr(v.into(), Some(&expected_ty), || {
                                 JsonDeserializationErrorContext::EntityAttribute {
                                     uid: uid.clone(),
                                     attr: k.clone(),
@@ -310,12 +317,13 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                                 attr: k.clone(),
                             }
                         })?;
-                    let actual_rexpr = vparser.val_into_rexpr(v, Some(&expected_ty), || {
-                        JsonDeserializationErrorContext::EntityAttribute {
-                            uid: uid.clone(),
-                            attr: k.clone(),
-                        }
-                    })?;
+                    let actual_rexpr =
+                        vparser.val_into_rexpr(v.into(), Some(&expected_ty), || {
+                            JsonDeserializationErrorContext::EntityAttribute {
+                                uid: uid.clone(),
+                                attr: k.clone(),
+                            }
+                        })?;
                     if actual_rexpr == *expected_rexpr {
                         Ok((k, actual_rexpr))
                     } else {
@@ -411,7 +419,7 @@ impl EntityJson {
                 .map(|(k, expr)| {
                     Ok((
                         k.into(),
-                        serde_json::to_value(CedarValueJson::from_expr(expr)?)?,
+                        serde_json::to_value(CedarValueJson::from_expr(expr)?)?.into(),
                     ))
                 })
                 .collect::<Result<_, JsonSerializationError>>()?,

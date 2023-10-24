@@ -21,6 +21,8 @@
 - The `Diagnostics::errors()` function now returns an iterator over `AuthorizationError`s.
 - The `Response::new()` constructor now expects a `Vec<AuthorizationError>` as its third argument.
 - Implements RFC #19, making validation slightly more strict, but more explainable.
+- Implemented RFC #20, disallowing duplicate keys in record values (including
+  record literals in policies, request `context`, and records in entity attributes).
 - Improved formatting for error messages.
 - Changed the semantics of equality for IP ranges. For example,
   `ip("192.168.0.1/24") == ip("192.168.0.3/24")` was previously `true` and is now

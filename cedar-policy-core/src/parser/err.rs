@@ -246,6 +246,12 @@ pub enum ToASTError {
     /// Returned when the contents of an indexing expression is not a string literal
     #[error("the contents of an index expression must be a string literal")]
     NonStringIndex,
+    /// Returned when the same key appears two or more times in a single record literal
+    #[error("duplicate key `{key}` in record literal")]
+    DuplicateKeyInRecordLiteral {
+        /// The key that appeared two or more times
+        key: SmolStr,
+    },
     /// Returned when a user attempts to use type-constraint syntax. This is not currently supported
     #[error("type constraints are not currently supported")]
     TypeConstraints,
