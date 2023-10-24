@@ -137,8 +137,8 @@ pub enum JsonDeserializationError {
         /// Name of the (Record) attribute which was expected
         record_attr: SmolStr,
     },
-    /// During schema-based parsing of the Context, found a different type than
-    /// the schema indicated
+    /// During schema-based parsing of the `Context`, found a different type
+    /// than the schema indicated
     ///
     /// (type mismatches in entity attributes will be
     /// `EntitySchemaConformanceError`)
@@ -149,13 +149,13 @@ pub enum JsonDeserializationError {
         /// Type which was encountered instead
         actual: Box<SchemaType>,
     },
-    /// During schema-based parsing of the Context, found a set whose elements
+    /// During schema-based parsing of the `Context`, found a set whose elements
     /// don't all have the same type.  This doesn't match any possible schema.
     #[error("while parsing context, {0}")]
     ContextHeterogeneousSet(HeterogeneousSetError),
-    /// During schema-based parsing of the Context, error looking up an extension function.
-    /// This error can occur when parsing the Context because that may require
-    /// getting information about any extension functions referenced in Context values.
+    /// During schema-based parsing of the `Context`, error looking up an extension function.
+    /// This error can occur when parsing the `Context` because that may require
+    /// getting information about any extension functions referenced in `Context` values.
     #[error("while parsing context, {0}")]
     ContextExtension(ExtensionFunctionLookupError),
     /// Type mismatch somewhere other than entity attributes or context, which
