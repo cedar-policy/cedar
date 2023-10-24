@@ -110,15 +110,23 @@ impl<'e> RestrictedEvaluator<'e> {
                 }
             }
             ExprKind::Unknown{name, type_annotation} => Ok(PartialValue::Residual(Expr::unknown_with_type(name.clone(), type_annotation.clone()))),
-            ExprKind::Record { pairs } => {
-                let map = pairs
+            ExprKind::Record(map) => {
+                let map = map
                     .iter()
                     .map(|(k, v)| Ok((k.clone(), self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(v))?))) // assuming the invariant holds for `e`, it will hold here
                     .collect::<Result<Vec<_>>>()?;
                 let (names, attrs) : (Vec<_>, Vec<_>) = map.into_iter().unzip();
                 match split(attrs) {
                     Either::Left(values) => Ok(Value::Record(Arc::new(names.into_iter().zip(values).collect())).into()),
-                    Either::Right(residuals) => Ok(Expr::record(names.into_iter().zip(residuals)).into()),
+                    Either::Right(residuals) => {
+                        // PANIC SAFETY: can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`
+                        #[allow(clippy::expect_used)]
+                        Ok(
+                            Expr::record(names.into_iter().zip(residuals))
+                                .expect("can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`")
+                                .into()
+                        )
+                    }
                 }
             }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
@@ -549,8 +557,8 @@ impl<'q, 'e> Evaluator<'e> {
                     Either::Right(r) => Ok(Expr::set(r).into()),
                 }
             }
-            ExprKind::Record { pairs } => {
-                let map = pairs
+            ExprKind::Record(map) => {
+                let map = map
                     .iter()
                     .map(|(k, v)| Ok((k.clone(), self.partial_interpret(v, slots)?)))
                     .collect::<Result<Vec<_>>>()?;
@@ -559,7 +567,15 @@ impl<'q, 'e> Evaluator<'e> {
                     Either::Left(vals) => {
                         Ok(Value::Record(Arc::new(names.into_iter().zip(vals).collect())).into())
                     }
-                    Either::Right(rs) => Ok(Expr::record(names.into_iter().zip(rs)).into()),
+                    Either::Right(rs) => {
+                        // PANIC SAFETY: can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`
+                        #[allow(clippy::expect_used)]
+                        Ok(
+                            Expr::record(names.into_iter().zip(rs))
+                                .expect("can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`")
+                                .into()
+                        )
+                    }
                 }
             }
         }
@@ -636,33 +652,32 @@ impl<'q, 'e> Evaluator<'e> {
             // PE Cases
             PartialValue::Residual(e) => {
                 match e.expr_kind() {
-                    ExprKind::Record { pairs } => {
+                    ExprKind::Record(map) => {
                         // If we have a residual record, we evaluate as follows:
                         // 1) If it's safe to project, we can project. We can evaluate to see if this attribute can become a value
                         // 2) If it's not safe to project, we can check to see if the requested key exists in the record
-                        //    if it doens't, we can fail early
+                        //    if it doesn't, we can fail early
                         if e.is_projectable() {
-                            pairs
-                                .as_ref()
+                            map.as_ref()
                                 .iter()
                                 .filter_map(|(k, v)| if k == attr { Some(v) } else { None })
                                 .next()
                                 .ok_or_else(|| {
                                     EvaluationError::record_attr_does_not_exist(
                                         attr.clone(),
-                                        pairs.iter().map(|(f, _)| f.clone()).collect(),
+                                        map.keys().cloned().collect(),
                                     )
                                 })
                                 .and_then(|e| self.partial_interpret(e, slots))
-                        } else if pairs.iter().any(|(k, _v)| k == attr) {
+                        } else if map.keys().any(|k| k == attr) {
                             Ok(PartialValue::Residual(Expr::get_attr(
-                                Expr::record(pairs.as_ref().clone()), // We should try to avoid this copy
+                                Expr::record_arc(Arc::clone(map)),
                                 attr.clone(),
                             )))
                         } else {
                             Err(EvaluationError::record_attr_does_not_exist(
                                 attr.clone(),
-                                pairs.iter().map(|(f, _)| f.clone()).collect(),
+                                map.keys().cloned().collect(),
                             ))
                         }
                     }
@@ -847,9 +862,11 @@ pub mod test {
                     RestrictedExpr::record(vec![
                         ("os_name".into(), RestrictedExpr::val("Windows")),
                         ("manufacturer".into(), RestrictedExpr::val("ACME Corp")),
-                    ]),
+                    ])
+                    .unwrap(),
                 ),
-            ]),
+            ])
+            .unwrap(),
         )
     }
 
@@ -889,7 +906,8 @@ pub mod test {
                 ("street".into(), RestrictedExpr::val("234 magnolia")),
                 ("town".into(), RestrictedExpr::val("barmstadt")),
                 ("country".into(), RestrictedExpr::val("amazonia")),
-            ]),
+            ])
+            .unwrap(),
         );
         let mut child = Entity::with_uid(EntityUID::with_eid("child"));
         let mut parent = Entity::with_uid(EntityUID::with_eid("parent"));
@@ -1383,7 +1401,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::ite(
                 Expr::val(true),
                 Expr::val(3),
-                Expr::get_attr(Expr::record(vec![]), "foo".into()),
+                Expr::get_attr(Expr::record(vec![]).unwrap(), "foo".into()),
             )),
             Ok(Value::Lit(Literal::Long(3)))
         );
@@ -1392,7 +1410,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::ite(
                 Expr::val(false),
                 Expr::val(3),
-                Expr::get_attr(Expr::record(vec![]), "foo".into()),
+                Expr::get_attr(Expr::record(vec![]).unwrap(), "foo".into()),
             )),
             Err(EvaluationError::record_attr_does_not_exist(
                 "foo".into(),
@@ -1403,7 +1421,7 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::ite(
                 Expr::val(true),
-                Expr::get_attr(Expr::record(vec![]), "foo".into()),
+                Expr::get_attr(Expr::record(vec![]).unwrap(), "foo".into()),
                 Expr::val(3),
             )),
             Err(EvaluationError::record_attr_does_not_exist(
@@ -1415,7 +1433,7 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::ite(
                 Expr::val(false),
-                Expr::get_attr(Expr::record(vec![]), "foo".into()),
+                Expr::get_attr(Expr::record(vec![]).unwrap(), "foo".into()),
                 Expr::val(3),
             )),
             Ok(Value::Lit(Literal::Long(3)))
@@ -1576,7 +1594,7 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
         // {"key": 3}["key"] or {"key": 3}.key
-        let string_key = Expr::record(vec![("key".into(), Expr::val(3))]);
+        let string_key = Expr::record(vec![("key".into(), Expr::val(3))]).unwrap();
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(string_key, "key".into())),
             Ok(Value::Lit(Literal::Long(3)))
@@ -1585,7 +1603,8 @@ pub mod test {
         let ham_and_eggs = Expr::record(vec![
             ("ham".into(), Expr::val(3)),
             ("eggs".into(), Expr::val(7)),
-        ]);
+        ])
+        .unwrap();
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(ham_and_eggs.clone(), "ham".into())),
             Ok(Value::Lit(Literal::Long(3)))
@@ -1608,7 +1627,8 @@ pub mod test {
         let ham_and_eggs_2 = Expr::record(vec![
             ("ham".into(), Expr::val(3)),
             ("eggs".into(), Expr::val("why")),
-        ]);
+        ])
+        .unwrap();
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(ham_and_eggs_2.clone(), "ham".into())),
             Ok(Value::Lit(Literal::Long(3)))
@@ -1623,7 +1643,8 @@ pub mod test {
             ("ham".into(), Expr::val(3)),
             ("eggs".into(), Expr::val("why")),
             ("else".into(), Expr::val(EntityUID::with_eid("foo"))),
-        ]);
+        ])
+        .unwrap();
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(ham_and_eggs_3, "else".into())),
             Ok(Value::from(EntityUID::with_eid("foo")))
@@ -1635,10 +1656,12 @@ pub mod test {
                 Expr::record(vec![
                     ("some".into(), Expr::val(1)),
                     ("more".into(), Expr::val(2)),
-                ]),
+                ])
+                .unwrap(),
             ),
             ("eggs".into(), Expr::val("why")),
-        ]);
+        ])
+        .unwrap();
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(
                 Expr::get_attr(hams_and_eggs, "hams".into()),
@@ -1650,7 +1673,8 @@ pub mod test {
         let weird_key = Expr::record(vec![(
             "this is a valid map key+.-_%() ".into(),
             Expr::val(7),
-        )]);
+        )])
+        .unwrap();
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(
                 weird_key,
@@ -1667,7 +1691,8 @@ pub mod test {
                         "bar".into(),
                         Expr::set(vec!(Expr::val(3), Expr::val(33), Expr::val(333)))
                     )
-                ]),
+                ])
+                .unwrap(),
                 "bar".into()
             )),
             Ok(Value::set(vec![
@@ -1688,8 +1713,10 @@ pub mod test {
                                 ("a+b".into(), Expr::val(5)),
                                 ("jkl;".into(), Expr::val(10)),
                             ])
+                            .unwrap()
                         ),
-                    ]),
+                    ])
+                    .unwrap(),
                     "bar".into()
                 ),
                 "a+b".into()
@@ -1708,13 +1735,25 @@ pub mod test {
                                 ("foo".into(), Expr::val(4)),
                                 ("cake".into(), Expr::val(77)),
                             ])
+                            .unwrap()
                         ),
-                    ]),
+                    ])
+                    .unwrap(),
                     "bar".into(),
                 ),
                 "foo".into(),
             )),
             Ok(Value::Lit(Literal::Long(4)))
+        );
+        // duplicate record key
+        // { foo: 2, bar: 4, foo: "hi" }.bar
+        assert_eq!(
+            Expr::record(vec![
+                ("foo".into(), Expr::val(2)),
+                ("bar".into(), Expr::val(4)),
+                ("foo".into(), Expr::val("hi")),
+            ]),
+            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
         );
         // entity_with_attrs.address.street
         assert_eq!(
@@ -1750,32 +1789,34 @@ pub mod test {
                 Expr::record(vec![
                     ("foo".into(), Expr::val(77)),
                     ("bar".into(), Expr::val("pancakes")),
-                ]),
+                ])
+                .unwrap(),
                 "foo".into()
             )),
             Ok(Value::Lit(Literal::Bool(true)))
         );
         // using has() to test for existence of a record field (which doesn't exist)
-        // has({"foo": 77, "bar" : "pancakes"}.pancakes)
+        // {"foo": 77, "bar" : "pancakes"} has pancakes
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(
                 Expr::record(vec![
                     ("foo".into(), Expr::val(77)),
                     ("bar".into(), Expr::val("pancakes")),
-                ]),
+                ])
+                .unwrap(),
                 "pancakes".into()
             )),
             Ok(Value::Lit(Literal::Bool(false)))
         );
-        // has({"2": "ham"}["2"])
+        // {"2": "ham"} has "2"
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(
-                Expr::record(vec![("2".into(), Expr::val("ham"))]),
+                Expr::record(vec![("2".into(), Expr::val("ham"))]).unwrap(),
                 "2".into()
             )),
             Ok(Value::Lit(Literal::Bool(true)))
         );
-        // has({"ham": 17, "eggs": if has(foo.spaghetti) then 3 else 7}.ham)
+        // {"ham": 17, "eggs": if foo has spaghetti then 3 else 7} has ham
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(
                 Expr::record(vec![
@@ -1791,7 +1832,8 @@ pub mod test {
                             Expr::val(7)
                         )
                     ),
-                ]),
+                ])
+                .unwrap(),
                 "ham".into()
             )),
             Ok(Value::Lit(Literal::Bool(true)))
@@ -1824,7 +1866,7 @@ pub mod test {
                 Type::String,
             ))
         );
-        // has_attr on something that's not a record, has(1010122.hello)
+        // has_attr on something that's not a record, 1010122 has hello
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(Expr::val(1010122), "hello".into())),
             Err(EvaluationError::type_error(
@@ -1838,7 +1880,7 @@ pub mod test {
                 Type::Long,
             ))
         );
-        // has_attr on something that's not a record, has("hello".eggs)
+        // has_attr on something that's not a record, "hello" has eggs
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(Expr::val("hello"), "eggs".into())),
             Err(EvaluationError::type_error(
@@ -2093,6 +2135,7 @@ pub mod test {
                     ("os_name".into(), Expr::val("Windows")),
                     ("manufacturer".into(), Expr::val("ACME Corp")),
                 ])
+                .unwrap()
             )),
             Ok(Value::Lit(Literal::Bool(true)))
         );
@@ -2100,7 +2143,7 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_eq(
                 Expr::get_attr(Expr::var(Var::Context), "device_properties".into()),
-                Expr::record(vec![("os_name".into(), Expr::val("Windows")),])
+                Expr::record(vec![("os_name".into(), Expr::val("Windows"))]).unwrap()
             )),
             Ok(Value::Lit(Literal::Bool(false)))
         );
@@ -2113,6 +2156,7 @@ pub mod test {
                     ("manufacturer".into(), Expr::val("ACME Corp")),
                     ("extrafield".into(), Expr::val(true)),
                 ])
+                .unwrap()
             )),
             Ok(Value::Lit(Literal::Bool(false)))
         );
@@ -2124,6 +2168,7 @@ pub mod test {
                     ("os_name".into(), Expr::val("Windows")),
                     ("manufacturer".into(), Expr::val("ACME Corp")),
                 ])
+                .unwrap()
             )),
             Ok(Value::Lit(Literal::Bool(true)))
         );
@@ -2649,7 +2694,7 @@ pub mod test {
         // { ham: "eggs" } contains "ham"
         assert_eq!(
             eval.interpret_inline_policy(&Expr::contains(
-                Expr::record(vec![("ham".into(), Expr::val("eggs"))]),
+                Expr::record(vec![("ham".into(), Expr::val("eggs"))]).unwrap(),
                 Expr::val("ham")
             )),
             Err(EvaluationError::type_error(vec![Type::Set], Type::Record))
@@ -2951,7 +2996,7 @@ pub mod test {
                 Expr::record(vec![
                     ("foo".into(), Expr::val(2)),
                     ("bar".into(), Expr::val(true)),
-                ])
+                ]).unwrap()
             )),
             Err(EvaluationError::type_error_with_advice(
                 vec![Type::entity_type(
@@ -2970,6 +3015,7 @@ pub mod test {
                     ("foo".into(), Expr::val(2)),
                     ("bar".into(), Expr::val(true)),
                 ])
+                .unwrap()
             )),
             Err(EvaluationError::type_error(
                 vec![
@@ -3360,11 +3406,11 @@ pub mod test {
                     Expr::val(false),
                     Expr::val(3),
                     Expr::set(vec![Expr::val(47), Expr::val(0)]),
-                    Expr::record(vec![("2".into(), Expr::val("ham"))])
+                    Expr::record(vec![("2".into(), Expr::val("ham"))]).unwrap()
                 ]),
                 Expr::set(vec![
                     Expr::val(3),
-                    Expr::record(vec![("2".into(), Expr::val("ham"))])
+                    Expr::record(vec![("2".into(), Expr::val("ham"))]).unwrap()
                 ])
             )),
             Ok(Value::Lit(Literal::Bool(true)))
@@ -3380,11 +3426,12 @@ pub mod test {
         // {"2": "ham", "3": "eggs"} containsall {"2": "ham"} ?
         assert_eq!(
             eval.interpret_inline_policy(&Expr::contains_all(
-                Expr::record(vec![("2".into(), Expr::val("ham"))]),
+                Expr::record(vec![("2".into(), Expr::val("ham"))]).unwrap(),
                 Expr::record(vec![
                     ("2".into(), Expr::val("ham")),
                     ("3".into(), Expr::val("eggs"))
                 ])
+                .unwrap()
             )),
             Err(EvaluationError::type_error(vec![Type::Set], Type::Record))
         );
@@ -3467,6 +3514,7 @@ pub mod test {
                         ("2".into(), Expr::val("ham")),
                         ("1".into(), Expr::val("eggs"))
                     ])
+                    .unwrap()
                 ]),
                 Expr::set(vec![
                     Expr::val(7),
@@ -3476,6 +3524,7 @@ pub mod test {
                         ("1".into(), Expr::val("eggs")),
                         ("2".into(), Expr::val("ham"))
                     ])
+                    .unwrap()
                 ])
             )),
             Ok(Value::Lit(Literal::Bool(true)))
@@ -3491,11 +3540,12 @@ pub mod test {
         // test for {"2": "ham"} contains_any of {"2": "ham", "3": "eggs"}
         assert_eq!(
             eval.interpret_inline_policy(&Expr::contains_any(
-                Expr::record(vec![("2".into(), Expr::val("ham"))]),
+                Expr::record(vec![("2".into(), Expr::val("ham"))]).unwrap(),
                 Expr::record(vec![
                     ("2".into(), Expr::val("ham")),
                     ("3".into(), Expr::val("eggs"))
                 ])
+                .unwrap()
             )),
             Err(EvaluationError::type_error(vec![Type::Set], Type::Record))
         );
@@ -3834,10 +3884,13 @@ pub mod test {
             Ok(PartialValue::Value(Value::Set(_)))
         );
         assert_matches!(
-            BorrowedRestrictedExpr::new(&Expr::record([
-                ("hi".into(), Expr::val(1001)),
-                ("foo".into(), Expr::val("bar"))
-            ]),)
+            BorrowedRestrictedExpr::new(
+                &Expr::record([
+                    ("hi".into(), Expr::val(1001)),
+                    ("foo".into(), Expr::val("bar"))
+                ])
+                .unwrap()
+            )
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
             Ok(PartialValue::Value(Value::Record(_)))
@@ -3917,7 +3970,7 @@ pub mod test {
     #[test]
     fn partial_contexts1() {
         // { "cell" : <unknown> }
-        let c_expr = Expr::record([("cell".into(), Expr::unknown("cell"))]);
+        let c_expr = Expr::record([("cell".into(), Expr::unknown("cell"))]).unwrap();
         let expr = Expr::binary_app(
             BinaryOp::Eq,
             Expr::get_attr(Expr::var(Var::Context), "cell".into()),
@@ -3940,7 +3993,8 @@ pub mod test {
         let c_expr = Expr::record([
             ("loc".into(), Expr::val("test")),
             ("cell".into(), Expr::unknown("cell")),
-        ]);
+        ])
+        .unwrap();
         // context["cell"] == 2
         let expr = Expr::binary_app(
             BinaryOp::Eq,
@@ -3968,9 +4022,10 @@ pub mod test {
     #[test]
     fn partial_contexts3() {
         // { "loc" : "test", "cell" : { "row" : <unknown> } }
-        let row = Expr::record([("row".into(), Expr::unknown("row"))]);
+        let row = Expr::record([("row".into(), Expr::unknown("row"))]).unwrap();
         //assert!(row.is_partially_projectable());
-        let c_expr = Expr::record([("loc".into(), Expr::val("test")), ("cell".into(), row)]);
+        let c_expr =
+            Expr::record([("loc".into(), Expr::val("test")), ("cell".into(), row)]).unwrap();
         //assert!(c_expr.is_partially_projectable());
         // context["cell"]["row"] == 2
         let expr = Expr::binary_app(
@@ -3993,9 +4048,11 @@ pub mod test {
         let row = Expr::record([
             ("row".into(), Expr::unknown("row")),
             ("col".into(), Expr::unknown("col")),
-        ]);
+        ])
+        .unwrap();
         //assert!(row.is_partially_projectable());
-        let c_expr = Expr::record([("loc".into(), Expr::val("test")), ("cell".into(), row)]);
+        let c_expr =
+            Expr::record([("loc".into(), Expr::val("test")), ("cell".into(), row)]).unwrap();
         //assert!(c_expr.is_partially_projectable());
         // context["cell"]["row"] == 2
         let expr = Expr::binary_app(
@@ -4026,10 +4083,13 @@ pub mod test {
 
     #[test]
     fn partial_context_fail() {
-        let context = Context::from_expr(RestrictedExpr::new_unchecked(Expr::record([
-            ("a".into(), Expr::val(3)),
-            ("b".into(), Expr::unknown("b".to_string())),
-        ])))
+        let context = Context::from_expr(RestrictedExpr::new_unchecked(
+            Expr::record([
+                ("a".into(), Expr::val(3)),
+                ("b".into(), Expr::unknown("b".to_string())),
+            ])
+            .unwrap(),
+        ))
         .unwrap();
         let euid: EntityUID = r#"Test::"test""#.parse().unwrap();
         let q = Request::new(euid.clone(), euid.clone(), euid, context);
@@ -4064,10 +4124,9 @@ pub mod test {
         let a: EntityUID = r#"Action::"a""#.parse().expect("Failed to parse");
         let r: EntityUID = r#"Table::"t""#.parse().expect("Failed to parse");
 
-        let c_expr = RestrictedExpr::new(Expr::record([(
-            "cell".into(),
-            Expr::unknown("cell".to_string()),
-        )]))
+        let c_expr = RestrictedExpr::new(
+            Expr::record([("cell".into(), Expr::unknown("cell".to_string()))]).unwrap(),
+        )
         .expect("should qualify as restricted");
         let context = Context::from_expr(c_expr).unwrap();
 
@@ -4139,10 +4198,9 @@ pub mod test {
             EntityUID::with_eid("p"),
             EntityUID::with_eid("a"),
             EntityUID::with_eid("r"),
-            Context::from_expr(RestrictedExpr::new_unchecked(Expr::record([(
-                "condition".into(),
-                Expr::unknown("unknown_condition"),
-            )])))
+            Context::from_expr(RestrictedExpr::new_unchecked(
+                Expr::record([("condition".into(), Expr::unknown("unknown_condition"))]).unwrap(),
+            ))
             .unwrap(),
         );
         let eval = Evaluator::new(&q, &es, &exts).unwrap();
@@ -4323,7 +4381,7 @@ pub mod test {
     #[test]
     fn record_semantics_err() {
         let a = Expr::get_attr(
-            Expr::record([("value".into(), Expr::unknown("test".to_string()))]),
+            Expr::record([("value".into(), Expr::unknown("test".to_string()))]).unwrap(),
             "notpresent".into(),
         );
 
@@ -4337,7 +4395,7 @@ pub mod test {
     #[test]
     fn record_semantics_key_present() {
         let a = Expr::get_attr(
-            Expr::record([("value".into(), Expr::unknown("test".to_string()))]),
+            Expr::record([("value".into(), Expr::unknown("test".to_string()))]).unwrap(),
             "value".into(),
         );
 
@@ -4358,7 +4416,8 @@ pub mod test {
             Expr::record([
                 ("a".into(), Expr::unknown("a")),
                 ("b".into(), Expr::unknown("c")),
-            ]),
+            ])
+            .unwrap(),
             "c".into(),
         );
 
@@ -4375,7 +4434,8 @@ pub mod test {
             Expr::record([
                 ("a".into(), Expr::unknown("a")),
                 ("b".into(), Expr::unknown("b")),
-            ]),
+            ])
+            .unwrap(),
             "b".into(),
         );
 
@@ -4895,28 +4955,21 @@ pub mod test {
             ("a".into(), Expr::val(1)),
             ("b".into(), Expr::unknown("a")),
             ("c".into(), Expr::val(2)),
-        ]);
+        ])
+        .unwrap();
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(r, PartialValue::Residual(e));
 
         let e = Expr::record([("a".into(), Expr::val(1)), ("a".into(), Expr::unknown("a"))]);
-        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(
-            r,
-            PartialValue::Residual(Expr::record([
-                ("a".into(), Expr::val(1)),
-                ("a".into(), Expr::unknown("a"))
-            ]))
+            e,
+            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "a".into() })
         );
 
         let e = Expr::record([("a".into(), Expr::unknown("a")), ("a".into(), Expr::val(1))]);
-        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(
-            r,
-            PartialValue::Residual(Expr::record([
-                ("a".into(), Expr::unknown("a")),
-                ("a".into(), Expr::val(1))
-            ]))
+            e,
+            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "a".into() })
         );
 
         let e = Expr::record([
@@ -4926,15 +4979,19 @@ pub mod test {
                 "c".into(),
                 Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(2)),
             ),
-        ]);
+        ])
+        .unwrap();
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(
             r,
-            PartialValue::Residual(Expr::record([
-                ("a".into(), Expr::val(1)),
-                ("b".into(), Expr::unknown("a")),
-                ("c".into(), Expr::val(3))
-            ]))
+            PartialValue::Residual(
+                Expr::record([
+                    ("a".into(), Expr::val(1)),
+                    ("b".into(), Expr::unknown("a")),
+                    ("c".into(), Expr::val(3))
+                ])
+                .unwrap()
+            )
         );
 
         let e = Expr::record([
@@ -4944,7 +5001,8 @@ pub mod test {
                 "c".into(),
                 Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("hello")),
             ),
-        ]);
+        ])
+        .unwrap();
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
     }
 
@@ -4976,7 +5034,8 @@ pub mod test {
                     Expr::binary_app(BinaryOp::Add, Expr::unknown("a"), Expr::val(3)),
                 ),
                 ("b".into(), Expr::val(83)),
-            ]),
+            ])
+            .unwrap(),
             "b".into(),
         );
         let r = eval.partial_eval_expr(&e).unwrap();
@@ -4986,7 +5045,8 @@ pub mod test {
             Expr::record([(
                 "a".into(),
                 Expr::binary_app(BinaryOp::Add, Expr::unknown("a"), Expr::val(3)),
-            )]),
+            )])
+            .unwrap(),
             "b".into(),
         );
         assert!(eval.partial_eval_expr(&e).is_err());

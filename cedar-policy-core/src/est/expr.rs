@@ -17,7 +17,10 @@
 use super::utils::unwrap_or_clone;
 use super::FromJsonError;
 use crate::ast;
-use crate::entities::{CedarValueJson, EscapeKind, JsonDeserializationError, TypeAndId};
+use crate::entities::{
+    CedarValueJson, EscapeKind, JsonDeserializationError, JsonDeserializationErrorContext,
+    TypeAndId,
+};
 use crate::parser::cst::{self, Ident};
 use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::unescape;
@@ -462,69 +465,72 @@ impl Expr {
     }
 }
 
-impl TryFrom<Expr> for ast::Expr {
-    type Error = FromJsonError;
-    fn try_from(expr: Expr) -> Result<ast::Expr, Self::Error> {
-        match expr {
-            Expr::ExprNoExt(ExprNoExt::Value(jsonvalue)) => {
-                jsonvalue.into_expr().map(Into::into).map_err(Into::into)
-            }
+impl Expr {
+    /// Attempt to convert this `est::Expr` into an `ast::Expr`
+    ///
+    /// `id`: the ID of the policy this `Expr` belongs to, used only for reporting errors
+    pub fn try_into_ast(self, id: ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
+        match self {
+            Expr::ExprNoExt(ExprNoExt::Value(jsonvalue)) => jsonvalue
+                .into_expr(|| JsonDeserializationErrorContext::Policy { id: id.clone() })
+                .map(Into::into)
+                .map_err(Into::into),
             Expr::ExprNoExt(ExprNoExt::Var(var)) => Ok(ast::Expr::var(var)),
             Expr::ExprNoExt(ExprNoExt::Slot(slot)) => Ok(ast::Expr::slot(slot)),
             Expr::ExprNoExt(ExprNoExt::Unknown { name }) => Ok(ast::Expr::unknown(name)),
             Expr::ExprNoExt(ExprNoExt::Not { arg }) => {
-                Ok(ast::Expr::not((*arg).clone().try_into()?))
+                Ok(ast::Expr::not((*arg).clone().try_into_ast(id)?))
             }
             Expr::ExprNoExt(ExprNoExt::Neg { arg }) => {
-                Ok(ast::Expr::neg((*arg).clone().try_into()?))
+                Ok(ast::Expr::neg((*arg).clone().try_into_ast(id)?))
             }
             Expr::ExprNoExt(ExprNoExt::Eq { left, right }) => Ok(ast::Expr::is_eq(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::NotEq { left, right }) => Ok(ast::Expr::noteq(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::In { left, right }) => Ok(ast::Expr::is_in(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Less { left, right }) => Ok(ast::Expr::less(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::LessEq { left, right }) => Ok(ast::Expr::lesseq(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Greater { left, right }) => Ok(ast::Expr::greater(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::GreaterEq { left, right }) => Ok(ast::Expr::greatereq(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::And { left, right }) => Ok(ast::Expr::and(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Or { left, right }) => Ok(ast::Expr::or(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Add { left, right }) => Ok(ast::Expr::add(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Sub { left, right }) => Ok(ast::Expr::sub(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Mul { left, right }) => {
-                let left: ast::Expr = (*left).clone().try_into()?;
-                let right: ast::Expr = (*right).clone().try_into()?;
+                let left: ast::Expr = (*left).clone().try_into_ast(id.clone())?;
+                let right: ast::Expr = (*right).clone().try_into_ast(id)?;
                 let left_c = match left.expr_kind() {
                     ast::ExprKind::Lit(ast::Literal::Long(c)) => Some(c),
                     _ => None,
@@ -536,34 +542,34 @@ impl TryFrom<Expr> for ast::Expr {
                 match (left_c, right_c) {
                     (_, Some(c)) => Ok(ast::Expr::mul(left, *c)),
                     (Some(c), _) => Ok(ast::Expr::mul(right, *c)),
-                    (None, None) => Err(Self::Error::MultiplicationByNonConstant {
+                    (None, None) => Err(FromJsonError::MultiplicationByNonConstant {
                         arg1: left,
                         arg2: right,
                     })?,
                 }
             }
             Expr::ExprNoExt(ExprNoExt::Contains { left, right }) => Ok(ast::Expr::contains(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::ContainsAll { left, right }) => Ok(ast::Expr::contains_all(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::ContainsAny { left, right }) => Ok(ast::Expr::contains_any(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::GetAttr { left, attr }) => {
-                Ok(ast::Expr::get_attr((*left).clone().try_into()?, attr))
+                Ok(ast::Expr::get_attr((*left).clone().try_into_ast(id)?, attr))
             }
             Expr::ExprNoExt(ExprNoExt::HasAttr { left, attr }) => {
-                Ok(ast::Expr::has_attr((*left).clone().try_into()?, attr))
+                Ok(ast::Expr::has_attr((*left).clone().try_into_ast(id)?, attr))
             }
             Expr::ExprNoExt(ExprNoExt::Like { left, pattern }) => {
                 match unescape::to_pattern(&pattern) {
-                    Ok(pattern) => Ok(ast::Expr::like((*left).clone().try_into()?, pattern)),
-                    Err(errs) => Err(Self::Error::UnescapeError(errs)),
+                    Ok(pattern) => Ok(ast::Expr::like((*left).clone().try_into_ast(id)?, pattern)),
+                    Err(errs) => Err(FromJsonError::UnescapeError(errs)),
                 }
             }
             Expr::ExprNoExt(ExprNoExt::If {
@@ -571,24 +577,29 @@ impl TryFrom<Expr> for ast::Expr {
                 then_expr,
                 else_expr,
             }) => Ok(ast::Expr::ite(
-                (*cond_expr).clone().try_into()?,
-                (*then_expr).clone().try_into()?,
-                (*else_expr).clone().try_into()?,
+                (*cond_expr).clone().try_into_ast(id.clone())?,
+                (*then_expr).clone().try_into_ast(id.clone())?,
+                (*else_expr).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Set(elements)) => Ok(ast::Expr::set(
                 elements
                     .into_iter()
-                    .map(|el| el.try_into())
-                    .collect::<Result<Vec<_>, Self::Error>>()?,
+                    .map(|el| el.try_into_ast(id.clone()))
+                    .collect::<Result<Vec<_>, FromJsonError>>()?,
             )),
-            Expr::ExprNoExt(ExprNoExt::Record(map)) => Ok(ast::Expr::record(
-                map.into_iter()
-                    .map(|(k, v)| Ok((k, v.try_into()?)))
-                    .collect::<Result<HashMap<SmolStr, _>, Self::Error>>()?,
-            )),
+            Expr::ExprNoExt(ExprNoExt::Record(map)) => {
+                // PANIC SAFETY: can't have duplicate keys here because the input was already a HashMap
+                #[allow(clippy::expect_used)]
+                Ok(ast::Expr::record(
+                    map.into_iter()
+                        .map(|(k, v)| Ok((k, v.try_into_ast(id.clone())?)))
+                        .collect::<Result<HashMap<SmolStr, _>, FromJsonError>>()?,
+                )
+                .expect("can't have duplicate keys here because the input was already a HashMap"))
+            }
             Expr::ExtFuncCall(ExtFuncCall { call }) => {
                 match call.len() {
-                    0 => Err(Self::Error::MissingOperator),
+                    0 => Err(FromJsonError::MissingOperator),
                     1 => {
                         // PANIC SAFETY checked that `call.len() == 1`
                         #[allow(clippy::expect_used)]
@@ -606,11 +617,11 @@ impl TryFrom<Expr> for ast::Expr {
                         Ok(ast::Expr::call_extension_fn(
                             fn_name,
                             args.into_iter()
-                                .map(TryInto::try_into)
+                                .map(|arg| arg.try_into_ast(id.clone()))
                                 .collect::<Result<_, _>>()?,
                         ))
                     }
-                    _ => Err(Self::Error::MultipleOperators {
+                    _ => Err(FromJsonError::MultipleOperators {
                         ops: call.into_keys().collect(),
                     }),
                 }
@@ -683,8 +694,8 @@ impl From<ast::Expr> for Expr {
             ast::ExprKind::Set(set) => {
                 Expr::set(unwrap_or_clone(set).into_iter().map(Into::into).collect())
             }
-            ast::ExprKind::Record { pairs } => Expr::record(
-                unwrap_or_clone(pairs)
+            ast::ExprKind::Record(map) => Expr::record(
+                unwrap_or_clone(map)
                     .into_iter()
                     .map(|(k, v)| (k, v.into()))
                     .collect(),

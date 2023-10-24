@@ -290,9 +290,9 @@ pub fn type_of_restricted_expr(
                 }
             }
         }
-        ExprKind::Record { pairs } => {
+        ExprKind::Record(map) => {
             Ok(SchemaType::Record { attrs: {
-                pairs.iter().map(|(k, v)| {
+                map.iter().map(|(k, v)| {
                     let attr_type = type_of_restricted_expr(
                         BorrowedRestrictedExpr::new_unchecked(v), // assuming the invariant holds for the record as a whole, it will also hold for each attribute value
                         extensions,

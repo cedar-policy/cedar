@@ -23,7 +23,7 @@
 pub use ast::Effect;
 pub use authorizer::Decision;
 use cedar_policy_core::ast;
-use cedar_policy_core::ast::RestrictedExprError;
+use cedar_policy_core::ast::{ExprConstructionError, RestrictedExprError};
 use cedar_policy_core::authorizer;
 pub use cedar_policy_core::authorizer::AuthorizationError;
 use cedar_policy_core::entities::{
@@ -2746,10 +2746,14 @@ impl Expression {
     }
 
     /// Create an expression representing a record.
-    pub fn new_record(fields: impl IntoIterator<Item = (String, Self)>) -> Self {
-        Self(ast::Expr::record(
+    ///
+    /// Error if any key appears two or more times in `fields`.
+    pub fn new_record(
+        fields: impl IntoIterator<Item = (String, Self)>,
+    ) -> Result<Self, ExprConstructionError> {
+        Ok(Self(ast::Expr::record(
             fields.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
-        ))
+        )?))
     }
 
     /// Create an expression representing a Set.
@@ -2803,10 +2807,14 @@ impl RestrictedExpression {
     }
 
     /// Create an expression representing a record.
-    pub fn new_record(fields: impl IntoIterator<Item = (String, Self)>) -> Self {
-        Self(ast::RestrictedExpr::record(
+    ///
+    /// Error if any key appears two or more times in `fields`.
+    pub fn new_record(
+        fields: impl IntoIterator<Item = (String, Self)>,
+    ) -> Result<Self, ExprConstructionError> {
+        Ok(Self(ast::RestrictedExpr::record(
             fields.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
-        ))
+        )?))
     }
 
     /// Create an expression representing a Set.
@@ -3032,7 +3040,7 @@ impl Context {
     /// let mut groups: HashMap<String, RestrictedExpression> = HashMap::new();
     /// groups.insert("key".to_string(), RestrictedExpression::from_str(&data.to_string()).unwrap());
     /// groups.insert("age".to_string(), RestrictedExpression::from_str("18").unwrap());
-    /// let context = Context::from_pairs(groups);
+    /// let context = Context::from_pairs(groups).unwrap();
     /// # // create a request
     /// # let p_eid = EntityId::from_str("alice").unwrap();
     /// # let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
@@ -3046,10 +3054,12 @@ impl Context {
     /// # let r = EntityUid::from_type_name_and_id(r_name, r_eid);
     /// let request: Request = Request::new(Some(p), Some(a), Some(r), context);
     /// ```
-    pub fn from_pairs(pairs: impl IntoIterator<Item = (String, RestrictedExpression)>) -> Self {
-        Self(ast::Context::from_pairs(
+    pub fn from_pairs(
+        pairs: impl IntoIterator<Item = (String, RestrictedExpression)>,
+    ) -> Result<Self, ExprConstructionError> {
+        Ok(Self(ast::Context::from_pairs(
             pairs.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
-        ))
+        )?))
     }
 
     /// Create a `Context` from a string containing JSON (which must be a JSON
@@ -4689,9 +4699,9 @@ mod entity_validate_tests {
                             RestrictedExpression::new_record([(
                                 "innerinner".into(),
                                 RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap(),
-                            )]),
+                            )]).unwrap(),
                         ),
-                    ]),
+                    ]).unwrap(),
                 ),
                 (
                     "home_ip".into(),
@@ -4745,9 +4755,9 @@ mod entity_validate_tests {
                             RestrictedExpression::new_record([(
                                 "innerinner".into(),
                                 RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap(),
-                            )]),
+                            )]).unwrap(),
                         ),
-                    ]),
+                    ]).unwrap(),
                 ),
                 (
                     "home_ip".into(),
@@ -4804,9 +4814,9 @@ mod entity_validate_tests {
                             RestrictedExpression::new_record([(
                                 "innerinner".into(),
                                 RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap(),
-                            )]),
+                            )]).unwrap(),
                         ),
-                    ]),
+                    ]).unwrap(),
                 ),
                 (
                     "home_ip".into(),
@@ -4865,9 +4875,9 @@ mod entity_validate_tests {
                             RestrictedExpression::new_record([(
                                 "innerinner".into(),
                                 RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap(),
-                            )]),
+                            )]).unwrap(),
                         ),
-                    ]),
+                    ]).unwrap(),
                 ),
                 (
                     "home_ip".into(),

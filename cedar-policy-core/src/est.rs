@@ -214,10 +214,14 @@ impl Policy {
         self,
         id: Option<ast::PolicyID>,
     ) -> Result<ast::Template, FromJsonError> {
+        let id = id.unwrap_or(ast::PolicyID::from_string("JSON policy"));
         let conditions = match self.conditions.len() {
             0 => ast::Expr::val(true),
             _ => {
-                let mut conditions = self.conditions.into_iter().map(ast::Expr::try_from);
+                let mut conditions = self
+                    .conditions
+                    .into_iter()
+                    .map(|cond| cond.try_into_ast(id.clone()));
                 // PANIC SAFETY checked above that `conditions` has at least 1 element
                 #[allow(clippy::expect_used)]
                 let first = conditions
@@ -228,7 +232,7 @@ impl Policy {
             }
         };
         Ok(ast::Template::new(
-            id.unwrap_or(ast::PolicyID::from_string("JSON policy")),
+            id,
             self.annotations.into_iter().collect(),
             self.effect,
             self.principal.try_into()?,
@@ -239,12 +243,12 @@ impl Policy {
     }
 }
 
-impl TryFrom<Clause> for ast::Expr {
-    type Error = FromJsonError;
-    fn try_from(clause: Clause) -> Result<ast::Expr, Self::Error> {
-        match clause {
-            Clause::When(expr) => expr.try_into(),
-            Clause::Unless(expr) => Ok(ast::Expr::not(expr.try_into()?)),
+impl Clause {
+    /// `id` is the ID of the policy the clause belongs to, used only for reporting errors
+    fn try_into_ast(self, id: ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
+        match self {
+            Clause::When(expr) => expr.try_into_ast(id),
+            Clause::Unless(expr) => Ok(ast::Expr::not(expr.try_into_ast(id)?)),
         }
     }
 }

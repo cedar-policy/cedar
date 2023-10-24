@@ -29,5 +29,6 @@ pub mod entities;
 pub mod est;
 pub mod evaluator;
 pub mod extensions;
+pub mod jsonvalue;
 pub mod parser;
 pub mod transitive_closure;
