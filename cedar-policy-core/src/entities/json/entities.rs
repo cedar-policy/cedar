@@ -474,7 +474,7 @@ mod test {
             "attrs" : {},
             "parents" : []
         });
-        let x: Result<EntityJSON, _> = serde_json::from_value(test);
+        let x: Result<EntityJson, _> = serde_json::from_value(test);
         x.unwrap();
     }
 }

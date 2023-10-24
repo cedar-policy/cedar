@@ -1366,7 +1366,7 @@ mod json_parsing_tests {
         match err {
             EntitiesError::Deserialization(err) => assert!(
                 err.to_string()
-                    .contains(r#"expected a literal entity reference, but got `"hello"`"#),
+                    .contains(r#"expected a literal entity reference, but got `"\"hello\""`"#),
                 "actual error message was {err}"
             ),
             _ => panic!("expected deserialization error, got a different error: {err}"),

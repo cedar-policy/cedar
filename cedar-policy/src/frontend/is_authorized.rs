@@ -1318,9 +1318,18 @@ mod test {
     #[test]
     fn test_authorized_fails_duplicate_entity_uid() {
         let call = r#"{
-            "principal" : "User::\"alice\"",
-            "action" : "Photo::\"view\"",
-            "resource" : "Photo::\"door\"",
+            "principal" : {
+                "type" : "User",
+                "id" : "alice"
+            },
+            "action" : {
+                "type" : "Photo",
+                "id" : "view"
+            },
+            "resource" : {
+                "type" : "Photo",
+                "id" : "door"
+            },
             "context" : {},
             "slice" : {
                 "policies" : {},
@@ -1356,9 +1365,18 @@ mod test {
     #[test]
     fn test_authorized_fails_duplicate_context_key() {
         let call = r#"{
-            "principal" : "User::\"alice\"",
-            "action" : "Photo::\"view\"",
-            "resource" : "Photo::\"door\"",
+            "principal" : {
+                "type" : "User",
+                "id" : "alice"
+            },
+            "action" : {
+                "type" : "Photo",
+                "id" : "view"
+            },
+            "resource" : {
+                "type" : "Photo",
+                "id" : "door"
+            },
             "context" : {
                 "is_authenticated": true,
                 "is_authenticated": false
