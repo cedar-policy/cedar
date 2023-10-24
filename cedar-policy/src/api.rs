@@ -26,9 +26,10 @@ use cedar_policy_core::ast;
 use cedar_policy_core::ast::RestrictedExprError;
 use cedar_policy_core::authorizer;
 pub use cedar_policy_core::authorizer::AuthorizationError;
-use cedar_policy_core::entities::JsonDeserializationErrorContext;
-use cedar_policy_core::entities::{self, EntitySchemaConformanceChecker};
-use cedar_policy_core::entities::{ContextSchema, Dereference, JsonDeserializationError};
+use cedar_policy_core::entities::{
+    self, ContextSchema, Dereference, EntitySchemaConformanceChecker, JsonDeserializationError,
+    JsonDeserializationErrorContext,
+};
 use cedar_policy_core::est;
 pub use cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind};
 use cedar_policy_core::evaluator::{Evaluator, RestrictedEvaluator};
