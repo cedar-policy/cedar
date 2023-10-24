@@ -4699,9 +4699,11 @@ mod entity_validate_tests {
                             RestrictedExpression::new_record([(
                                 "innerinner".into(),
                                 RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap(),
-                            )]).unwrap(),
+                            )])
+                            .unwrap(),
                         ),
-                    ]).unwrap(),
+                    ])
+                    .unwrap(),
                 ),
                 (
                     "home_ip".into(),
@@ -4755,9 +4757,11 @@ mod entity_validate_tests {
                             RestrictedExpression::new_record([(
                                 "innerinner".into(),
                                 RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap(),
-                            )]).unwrap(),
+                            )])
+                            .unwrap(),
                         ),
-                    ]).unwrap(),
+                    ])
+                    .unwrap(),
                 ),
                 (
                     "home_ip".into(),
@@ -4814,9 +4818,11 @@ mod entity_validate_tests {
                             RestrictedExpression::new_record([(
                                 "innerinner".into(),
                                 RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap(),
-                            )]).unwrap(),
+                            )])
+                            .unwrap(),
                         ),
-                    ]).unwrap(),
+                    ])
+                    .unwrap(),
                 ),
                 (
                     "home_ip".into(),
@@ -4875,9 +4881,11 @@ mod entity_validate_tests {
                             RestrictedExpression::new_record([(
                                 "innerinner".into(),
                                 RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap(),
-                            )]).unwrap(),
+                            )])
+                            .unwrap(),
                         ),
-                    ]).unwrap(),
+                    ])
+                    .unwrap(),
                 ),
                 (
                     "home_ip".into(),
