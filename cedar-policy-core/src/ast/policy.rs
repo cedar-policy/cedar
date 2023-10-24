@@ -1016,18 +1016,6 @@ impl PrincipalConstraint {
         }
     }
 
-    pub fn is_type(entity_type: Name, in_entity: Option<EntityUID>) -> Self {
-        Self {
-            constraint: PrincipalOrResourceConstraint::is_type(entity_type, in_entity),
-        }
-    }
-
-    pub fn is_type_slot(entity_type: Name) -> Self {
-        Self {
-            constraint: PrincipalOrResourceConstraint::is_type_slot(entity_type),
-        }
-    }
-
     /// Fill in the Slot, if any, with the given EUID
     pub fn with_filled_slot(self, euid: Arc<EntityUID>) -> Self {
         match self.constraint {
@@ -1262,10 +1250,12 @@ impl PrincipalOrResourceConstraint {
         PrincipalOrResourceConstraint::In(EntityReference::euid(euid))
     }
 
-    pub fn is_type_slot(entity_type: Name) -> Self {
+    /// Type constraint additionally constrained to be in a slot.
+    pub fn is_type_in_slot(entity_type: Name) -> Self {
         PrincipalOrResourceConstraint::Is(entity_type, Some(EntityReference::Slot))
     }
 
+    /// Type constraint, optionally with a hierarchical constraint.
     pub fn is_type(entity_type: Name, in_entity: Option<EntityUID>) -> Self {
         PrincipalOrResourceConstraint::Is(entity_type, in_entity.map(EntityReference::euid))
     }

@@ -410,7 +410,7 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
                             )
                         }
                         Some(PrincipalOrResourceInConstraint::Slot { .. }) => {
-                            ast::PrincipalOrResourceConstraint::is_type_slot(entity_type)
+                            ast::PrincipalOrResourceConstraint::is_type_in_slot(entity_type)
                         }
                     })
                 }),
@@ -471,7 +471,7 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
                             )
                         }
                         Some(PrincipalOrResourceInConstraint::Slot { .. }) => {
-                            ast::PrincipalOrResourceConstraint::is_type_slot(entity_type)
+                            ast::PrincipalOrResourceConstraint::is_type_in_slot(entity_type)
                         }
                     })
                 }),

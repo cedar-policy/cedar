@@ -41,6 +41,15 @@ impl Doc for ASTNode<Option<VariableDef>> {
         let end_comment = get_comment_at_end(self.info.0.end, &mut context.tokens)?;
         let var_doc = vd.variable.as_inner()?.to_doc(context)?;
 
+        let var_doc = match &vd.entity_type {
+            Some(entity_type) => var_doc
+                .append(RcDoc::space())
+                .append(RcDoc::text("is"))
+                .append(RcDoc::space())
+                .append(entity_type.to_doc(context)),
+            None => var_doc,
+        };
+
         Some(match &vd.ineq {
             Some((op, rhs)) => get_leading_comment_doc_from_str(&start_comment.leading_comment)
                 .append(
