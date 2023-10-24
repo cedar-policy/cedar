@@ -204,17 +204,15 @@ impl ActionConstraint {
 impl std::fmt::Display for PrincipalConstraint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::All => write!(f, "principal, "),
+            Self::All => write!(f, "principal"),
             Self::Eq(ec) => {
                 write!(f, "principal ")?;
                 std::fmt::Display::fmt(ec, f)?;
-                write!(f, ", ")?;
                 Ok(())
             }
             Self::In(ic) => {
                 write!(f, "principal ")?;
                 std::fmt::Display::fmt(ic, f)?;
-                write!(f, ", ")?;
                 Ok(())
             }
         }
@@ -224,17 +222,15 @@ impl std::fmt::Display for PrincipalConstraint {
 impl std::fmt::Display for ActionConstraint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::All => write!(f, "action, "),
+            Self::All => write!(f, "action"),
             Self::Eq(ec) => {
                 write!(f, "action ")?;
                 std::fmt::Display::fmt(ec, f)?;
-                write!(f, ", ")?;
                 Ok(())
             }
             Self::In(aic) => {
                 write!(f, "action ")?;
                 std::fmt::Display::fmt(aic, f)?;
-                write!(f, ", ")?;
                 Ok(())
             }
         }
