@@ -27,21 +27,27 @@
   `false`. The behavior of equality on single IP addresses is unchanged, and so is
   the behavior of `.isInRange()`.
 - Standardized on duplicates being errors instead of last-write-wins in the following APIs:
-	+ Policy set JSONs
-	+ Template set JSONs
-	+ Template instantiation records
-	+ Entity slice JSONs
-	+ Context JSONs
+  - Policy set JSONs
+  - Template set JSONs
+  - Template instantiation records
+  - Entity slice JSONs
+  - Context JSONs
 - `<EntityId as FromStr>::Error` is now `Infallible` instead of `ParseErrors`
-- Fixed bug (#370) related to how the validator handles template-linked policies 
 
+## 2.4.2
+
+### Changed
+
+- Fixed bug (#370) related to how the validator handles template-linked policies
 
 ## 2.4.1
 
 ### Added
+
 - New experimental API to construct queries with `Unknown` fields for partial evaluation.
 
 ### Changed
+
 - Improved validation error messages for access to undeclared attributes and
   unsafe access to optional attributes to report the target of the access (fix #175).
 - `EntityUid`'s impl of `FromStr` is no longer marked as deprecated.
@@ -53,12 +59,14 @@
 ## 2.4.0
 
 ### Added
+
 - New methods exported for `EntityTypeName`.
   - `basename` to get the basename (without namespaces).
   - `namespace_components` to get the namespace as an iterator over its components.
   - `namespace` to get the namespace as a single string.
 
 ### Changed
+
 - Some error types now carry more information about the error, with error
 messages updated appropriately. For instance, added list of attributes that _do_
 exist to the `RecordAttrDoesNotExist` error message.
@@ -75,12 +83,14 @@ validator will return an error for a policy that can never fire.
 ## 2.3.3
 
 ### Added
+
 - Re-export `cedar_policy_core::entities::EntitiesError`.
 - Fixed bug (#150) around implicit namespaces for actions in `memberOf` lists in
   schemas. An action without an explicit namespace in a `memberOf` now
   correctly uses the default namespace.
 
 ### Changed
+
 - Improved error messages and documentation for some errors raised during
   policy parsing, validation, and evaluation.
 - More precise "expected tokens" lists in some parse errors.
@@ -88,6 +98,7 @@ validator will return an error for a policy that can never fire.
 ## 2.3.2
 
 ### Removed
+
 - Move public API for partial evaluation behind experimental feature flag. To
   continue using this feature you must enable the `partial-eval` feature flag.
 
