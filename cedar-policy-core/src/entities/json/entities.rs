@@ -217,7 +217,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
         Entities::from_entities(entities, self.schema, self.tc_computation, self.extensions)
     }
 
-    /// internal function that parses an `EntityJSON` into an `Entity`
+    /// internal function that parses an `EntityJson` into an `Entity`
     ///
     /// This function is not responsible for fully validating the `Entity`
     /// against the `schema`; that happens on construction of an `Entities`
