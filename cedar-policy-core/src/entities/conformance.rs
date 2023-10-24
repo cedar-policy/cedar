@@ -247,7 +247,7 @@ pub enum TypeOfRestrictedExprError {
 
 /// Get the [`SchemaType`] of a restricted expression.
 ///
-/// This isn't possible for general `Expr`s (without a Request, full schema,
+/// This isn't possible for general `Expr`s (without a request, full schema,
 /// etc), but is possible for restricted expressions, given the information in
 /// `Extensions`.
 ///

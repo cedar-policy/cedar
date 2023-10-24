@@ -115,7 +115,7 @@ pub enum JsonDeserializationError {
     /// During schema-based parsing, encountered an entity which does not
     /// conform to the schema.
     ///
-    /// This error contains the Entity analogues of the Context error cases
+    /// This error contains the `Entity` analogues of the `Context` error cases
     /// listed below, among other things.
     #[error(transparent)]
     EntitySchemaConformance(EntitySchemaConformanceError),

@@ -184,7 +184,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
         self.iter_ejson_to_iter_entity(ejsons)
     }
 
-    /// internal function that converts an iterator over [`EntityJson`] into an
+    /// Internal function that converts an iterator over [`EntityJson`] into an
     /// iterator over [`Entity`] and also adds any `Action` entities declared in
     /// `self.schema`.
     fn iter_ejson_to_iter_entity(
@@ -201,7 +201,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
         Ok(entities.into_iter())
     }
 
-    /// internal function that creates an [`Entities`] from a stream of [`EntityJson`].
+    /// Internal function that creates an [`Entities`] from a stream of [`EntityJson`].
     ///
     /// If the `EntityJsonParser` has a `schema`, this also adds `Action`
     /// entities declared in the `schema`, and validates all the entities
@@ -217,7 +217,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
         Entities::from_entities(entities, self.schema, self.tc_computation, self.extensions)
     }
 
-    /// internal function that parses an `EntityJson` into an `Entity`
+    /// Internal function that parses an `EntityJson` into an `Entity`.
     ///
     /// This function is not responsible for fully validating the `Entity`
     /// against the `schema`; that happens on construction of an `Entities`
