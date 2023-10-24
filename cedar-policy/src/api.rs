@@ -2423,7 +2423,7 @@ impl Policy {
     /// use cedar_policy::{Policy, PolicyId};
     /// use std::str::FromStr;
     ///
-    /// let data : serde_json::Value = serde_json::json!(
+    /// let json: serde_json::Value = serde_json::json!(
     ///        {
     ///            "effect":"permit",
     ///            "principal":{
@@ -2469,7 +2469,7 @@ impl Policy {
     ///            ]
     ///        }
     /// );
-    /// let policy = Policy::from_json(None, data).unwrap();
+    /// let policy = Policy::from_json(None, json).unwrap();
     /// let src = r#"
     ///   permit(
     ///     principal == User::"bob",
