@@ -109,10 +109,12 @@ pub enum PrincipalOrResourceInConstraint {
 /// Serde JSON structure for an `is` head constraint for principal/resource in
 /// the EST format
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PrincipalOrResourceIsConstraint {
     entity_type: SmolStr,
-    #[serde(flatten)]
-    in_constraint: Option<PrincipalOrResourceInConstraint>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "in")]
+    in_entity: Option<PrincipalOrResourceInConstraint>,
 }
 
 /// Serde JSON structure for an `in` head constraint for action in the EST
@@ -166,15 +168,15 @@ impl PrincipalConstraint {
             }
             e @ PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type: _,
-                in_constraint: None | Some(PrincipalOrResourceInConstraint::Entity { .. }),
+                in_entity: None | Some(PrincipalOrResourceInConstraint::Entity { .. }),
             }) => Ok(e),
             PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type,
-                in_constraint: Some(PrincipalOrResourceInConstraint::Slot { slot }),
+                in_entity: Some(PrincipalOrResourceInConstraint::Slot { slot }),
             }) => match vals.get(&slot) {
                 Some(val) => Ok(PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
                     entity_type,
-                    in_constraint: Some(PrincipalOrResourceInConstraint::Entity {
+                    in_entity: Some(PrincipalOrResourceInConstraint::Entity {
                         entity: val.clone(),
                     }),
                 })),
@@ -218,15 +220,15 @@ impl ResourceConstraint {
             }
             e @ ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type: _,
-                in_constraint: None | Some(PrincipalOrResourceInConstraint::Entity { .. }),
+                in_entity: None | Some(PrincipalOrResourceInConstraint::Entity { .. }),
             }) => Ok(e),
             ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type,
-                in_constraint: Some(PrincipalOrResourceInConstraint::Slot { slot }),
+                in_entity: Some(PrincipalOrResourceInConstraint::Slot { slot }),
             }) => match vals.get(&slot) {
                 Some(val) => Ok(ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
                     entity_type,
-                    in_constraint: Some(PrincipalOrResourceInConstraint::Entity {
+                    in_entity: Some(PrincipalOrResourceInConstraint::Entity {
                         entity: val.clone(),
                     }),
                 })),
@@ -302,7 +304,7 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
             ast::PrincipalOrResourceConstraint::Is(entity_type, euid) => {
                 PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
                     entity_type: entity_type.to_string().into(),
-                    in_constraint: euid.map(|euid| match euid {
+                    in_entity: euid.map(|euid| match euid {
                         ast::EntityReference::EUID(e) => PrincipalOrResourceInConstraint::Entity {
                             entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                         },
@@ -343,7 +345,7 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
             ast::PrincipalOrResourceConstraint::Is(entity_type, euid) => {
                 ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
                     entity_type: entity_type.to_string().into(),
-                    in_constraint: euid.map(|euid| match euid {
+                    in_entity: euid.map(|euid| match euid {
                         ast::EntityReference::EUID(e) => PrincipalOrResourceInConstraint::Entity {
                             entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                         },
@@ -394,11 +396,11 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
             }
             PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type,
-                in_constraint,
+                in_entity,
             }) => ast::Name::from_normalized_str(entity_type.as_str())
                 .map_err(Self::Error::InvalidEntityType)
                 .and_then(|entity_type| {
-                    Ok(match in_constraint {
+                    Ok(match in_entity {
                         None => ast::PrincipalOrResourceConstraint::is_type(entity_type, None),
                         Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
                             ast::PrincipalOrResourceConstraint::is_type(
@@ -455,11 +457,11 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
             }
             ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type,
-                in_constraint,
+                in_entity,
             }) => ast::Name::from_normalized_str(entity_type.as_str())
                 .map_err(Self::Error::InvalidEntityType)
                 .and_then(|entity_type| {
-                    Ok(match in_constraint {
+                    Ok(match in_entity {
                         None => ast::PrincipalOrResourceConstraint::is_type(entity_type, None),
                         Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
                             ast::PrincipalOrResourceConstraint::is_type(

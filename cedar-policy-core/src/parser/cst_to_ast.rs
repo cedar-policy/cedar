@@ -507,22 +507,39 @@ impl ASTNode<Option<cst::VariableDef>> {
             None => None,
         }?;
 
-        if let Some(typename) = vardef.name.as_ref() {
-            typename.to_type_constraint(errs)?;
+        if let Some(unused_typename) = vardef.unused_type_name.as_ref() {
+            unused_typename.to_type_constraint(errs)?;
         }
 
         let c = if let Some((op, rel_expr)) = &vardef.ineq {
             let eref = rel_expr.to_ref_or_slot(errs, var)?;
-            match op {
-                cst::RelOp::Eq => Some(PrincipalOrResourceConstraint::Eq(eref)),
-                cst::RelOp::In => Some(PrincipalOrResourceConstraint::In(eref)),
-                op => {
+            match (op, &vardef.entity_type) {
+                (cst::RelOp::Eq, None) => Some(PrincipalOrResourceConstraint::Eq(eref)),
+                (cst::RelOp::Eq, Some(_)) => {
+                    errs.push(
+                        ToASTError::InvalidIs(err::InvalidIsError::WrongOp(cst::RelOp::Eq)).into(),
+                    );
+                    None
+                }
+                (cst::RelOp::In, None) => Some(PrincipalOrResourceConstraint::In(eref)),
+                (cst::RelOp::In, Some(entity_type)) => Some(PrincipalOrResourceConstraint::Is(
+                    entity_type.to_name(errs)?,
+                    Some(eref),
+                )),
+                (op, _) => {
                     errs.push(ToASTError::InvalidConstraintOperator(*op).into());
                     None
                 }
             }
         } else {
-            Some(PrincipalOrResourceConstraint::Any)
+            if let Some(entity_type) = &vardef.entity_type {
+                Some(PrincipalOrResourceConstraint::Is(
+                    entity_type.to_name(errs)?,
+                    None,
+                ))
+            } else {
+                Some(PrincipalOrResourceConstraint::Any)
+            }
         }?;
         match var {
             ast::Var::Principal => {
@@ -555,8 +572,13 @@ impl ASTNode<Option<cst::VariableDef>> {
             None => None,
         }?;
 
-        if let Some(typename) = vardef.name.as_ref() {
+        if let Some(typename) = vardef.unused_type_name.as_ref() {
             typename.to_type_constraint(errs)?;
+        }
+
+        if vardef.entity_type.is_some() {
+            errs.push(ToASTError::InvalidIs(err::InvalidIsError::ActionScope).into());
+            return None;
         }
 
         let action_constraint = if let Some((op, rel_expr)) = &vardef.ineq {
@@ -2059,7 +2081,7 @@ fn construct_expr_like(e: ast::Expr, s: Vec<PatternElem>, l: SourceInfo) -> ast:
     ast::ExprBuilder::new().with_source_info(l).like(e, s)
 }
 fn construct_expr_is(e: ast::Expr, n: ast::Name, l: SourceInfo) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_info(l).is(e, n)
+    ast::ExprBuilder::new().with_source_info(l).is_type(e, n)
 }
 fn construct_ext_func(name: ast::Name, args: Vec<ast::Expr>, l: SourceInfo) -> ast::Expr {
     // INVARIANT (MethodStyleArgs): CallStyle is not MethodStyle, so any args vector is fine

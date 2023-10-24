@@ -1141,7 +1141,7 @@ impl<'a> Typechecker<'a> {
                             TypecheckAnswer::success(
                                 ExprBuilder::with_data(Some(type_of_is))
                                     .with_same_source_info(e)
-                                    .is(expr_ty, entity_type.clone()),
+                                    .is_type(expr_ty, entity_type.clone()),
                             )
                         }
                         Some(Type::EntityOrRecord(EntityRecordKind::ActionEntity {
@@ -1160,7 +1160,7 @@ impl<'a> Typechecker<'a> {
                             TypecheckAnswer::success(
                                 ExprBuilder::with_data(Some(type_of_is))
                                     .with_same_source_info(e)
-                                    .is(expr_ty, entity_type.clone()),
+                                    .is_type(expr_ty, entity_type.clone()),
                             )
                         }
                         // For `AnyEntity` we don't know anything about what
@@ -1169,7 +1169,7 @@ impl<'a> Typechecker<'a> {
                             TypecheckAnswer::success(
                                 ExprBuilder::with_data(Some(Type::primitive_boolean()))
                                     .with_same_source_info(e)
-                                    .is(expr_ty, entity_type.clone()),
+                                    .is_type(expr_ty, entity_type.clone()),
                             )
                         }
                         // Expression type is not an entity type or is `None`.
@@ -1177,7 +1177,7 @@ impl<'a> Typechecker<'a> {
                         _ => TypecheckAnswer::fail(
                             ExprBuilder::with_data(Some(Type::primitive_boolean()))
                                 .with_same_source_info(e)
-                                .is(expr_ty, entity_type.clone()),
+                                .is_type(expr_ty, entity_type.clone()),
                         ),
                     }
                 })

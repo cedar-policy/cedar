@@ -2609,4 +2609,565 @@ mod test {
             ))
         );
     }
+
+    mod is_type {
+        use cool_asserts::assert_panics;
+
+        use super::*;
+
+        #[test]
+        fn principal() {
+            let policy = r"permit(principal is User, action, resource);";
+            let cst = parser::text_to_cst::parse_policy(policy)
+                .unwrap()
+                .node
+                .unwrap();
+            let est: Policy = cst.try_into().unwrap();
+            let expected_json = json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "is",
+                        "entity_type": "User"
+                    },
+                    "action": {
+                        "op": "All",
+                    },
+                    "resource": {
+                        "op": "All",
+                    },
+                    "conditions": [ ]
+                }
+            );
+            assert_eq!(
+                serde_json::to_value(&est).unwrap(),
+                expected_json,
+                "\nExpected:\n{}\n\nActual:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json).unwrap(),
+                serde_json::to_string_pretty(&est).unwrap()
+            );
+            let old_est = est.clone();
+            let est = est_roundtrip(est);
+            assert_eq!(&old_est, &est);
+
+            let expected_json_after_roundtrip = json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "is",
+                        "entity_type": "User"
+                    },
+                    "action": {
+                        "op": "All",
+                    },
+                    "resource": {
+                        "op": "All",
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "Value": true
+                            }
+                        }
+                    ],
+                }
+            );
+            let roundtripped = serde_json::to_value(ast_roundtrip(est.clone())).unwrap();
+            assert_eq!(
+                roundtripped,
+                expected_json_after_roundtrip,
+                "\nExpected after roundtrip:\n{}\n\nActual after roundtrip:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json_after_roundtrip).unwrap(),
+                serde_json::to_string_pretty(&roundtripped).unwrap()
+            );
+            let roundtripped = serde_json::to_value(circular_roundtrip(est)).unwrap();
+            assert_eq!(
+                roundtripped,
+                expected_json_after_roundtrip,
+                "\nExpected after roundtrip:\n{}\n\nActual after roundtrip:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json_after_roundtrip).unwrap(),
+                serde_json::to_string_pretty(&roundtripped).unwrap()
+            );
+        }
+
+        #[test]
+        fn resource() {
+            let policy = r"permit(principal, action, resource is Log);";
+            let cst = parser::text_to_cst::parse_policy(policy)
+                .unwrap()
+                .node
+                .unwrap();
+            let est: Policy = cst.try_into().unwrap();
+            let expected_json = json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "All",
+                    },
+                    "action": {
+                        "op": "All",
+                    },
+                    "resource": {
+                        "op": "is",
+                        "entity_type": "Log"
+                    },
+                    "conditions": [ ]
+                }
+            );
+            assert_eq!(
+                serde_json::to_value(&est).unwrap(),
+                expected_json,
+                "\nExpected:\n{}\n\nActual:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json).unwrap(),
+                serde_json::to_string_pretty(&est).unwrap()
+            );
+            let old_est = est.clone();
+            let est = est_roundtrip(est);
+            assert_eq!(&old_est, &est);
+
+            let expected_json_after_roundtrip = json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "All",
+                    },
+                    "action": {
+                        "op": "All",
+                    },
+                    "resource": {
+                        "op": "is",
+                        "entity_type": "Log"
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "Value": true
+                            }
+                        }
+                    ],
+                }
+            );
+            let roundtripped = serde_json::to_value(ast_roundtrip(est.clone())).unwrap();
+            assert_eq!(
+                roundtripped,
+                expected_json_after_roundtrip,
+                "\nExpected after roundtrip:\n{}\n\nActual after roundtrip:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json_after_roundtrip).unwrap(),
+                serde_json::to_string_pretty(&roundtripped).unwrap()
+            );
+            let roundtripped = serde_json::to_value(circular_roundtrip(est)).unwrap();
+            assert_eq!(
+                roundtripped,
+                expected_json_after_roundtrip,
+                "\nExpected after roundtrip:\n{}\n\nActual after roundtrip:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json_after_roundtrip).unwrap(),
+                serde_json::to_string_pretty(&roundtripped).unwrap()
+            );
+        }
+
+        #[test]
+        fn principal_in_entity() {
+            let policy = r#"permit(principal is User in Group::"admin", action, resource);"#;
+            let cst = parser::text_to_cst::parse_policy(policy)
+                .unwrap()
+                .node
+                .unwrap();
+            let est: Policy = cst.try_into().unwrap();
+            let expected_json = json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "is",
+                        "entity_type": "User",
+                        "in": { "entity": { "type": "Group", "id": "admin" } }
+                    },
+                    "action": {
+                        "op": "All",
+                    },
+                    "resource": {
+                        "op": "All",
+                    },
+                    "conditions": [ ]
+                }
+            );
+            assert_eq!(
+                serde_json::to_value(&est).unwrap(),
+                expected_json,
+                "\nExpected:\n{}\n\nActual:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json).unwrap(),
+                serde_json::to_string_pretty(&est).unwrap()
+            );
+            let old_est = est.clone();
+            let est = est_roundtrip(est);
+            assert_eq!(&old_est, &est);
+
+            let expected_json_after_roundtrip = json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "is",
+                        "entity_type": "User",
+                        "in": { "entity": { "type": "Group", "id": "admin" } }
+                    },
+                    "action": {
+                        "op": "All",
+                    },
+                    "resource": {
+                        "op": "All",
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "Value": true
+                            }
+                        }
+                    ],
+                }
+            );
+            let roundtripped = serde_json::to_value(ast_roundtrip(est.clone())).unwrap();
+            assert_eq!(
+                roundtripped,
+                expected_json_after_roundtrip,
+                "\nExpected after roundtrip:\n{}\n\nActual after roundtrip:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json_after_roundtrip).unwrap(),
+                serde_json::to_string_pretty(&roundtripped).unwrap()
+            );
+            let roundtripped = serde_json::to_value(circular_roundtrip(est)).unwrap();
+            assert_eq!(
+                roundtripped,
+                expected_json_after_roundtrip,
+                "\nExpected after roundtrip:\n{}\n\nActual after roundtrip:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json_after_roundtrip).unwrap(),
+                serde_json::to_string_pretty(&roundtripped).unwrap()
+            );
+        }
+
+        #[test]
+        fn principal_in_slot() {
+            let policy = r#"permit(principal is User in ?principal, action, resource);"#;
+            let cst = parser::text_to_cst::parse_policy(policy)
+                .unwrap()
+                .node
+                .unwrap();
+            let est: Policy = cst.try_into().unwrap();
+            let expected_json = json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "is",
+                        "entity_type": "User",
+                        "in": { "slot": "?principal" }
+                    },
+                    "action": {
+                        "op": "All",
+                    },
+                    "resource": {
+                        "op": "All",
+                    },
+                    "conditions": [ ]
+                }
+            );
+            assert_eq!(
+                serde_json::to_value(&est).unwrap(),
+                expected_json,
+                "\nExpected:\n{}\n\nActual:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json).unwrap(),
+                serde_json::to_string_pretty(&est).unwrap()
+            );
+            let old_est = est.clone();
+            let est = est_roundtrip(est);
+            assert_eq!(&old_est, &est);
+
+            let expected_json_after_roundtrip = json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "is",
+                        "entity_type": "User",
+                        "in": { "slot": "?principal" }
+                    },
+                    "action": {
+                        "op": "All",
+                    },
+                    "resource": {
+                        "op": "All",
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "Value": true
+                            }
+                        }
+                    ],
+                }
+            );
+            let roundtripped = serde_json::to_value(ast_roundtrip_template(est.clone())).unwrap();
+            assert_eq!(
+                roundtripped,
+                expected_json_after_roundtrip,
+                "\nExpected after roundtrip:\n{}\n\nActual after roundtrip:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json_after_roundtrip).unwrap(),
+                serde_json::to_string_pretty(&roundtripped).unwrap()
+            );
+            let roundtripped = serde_json::to_value(circular_roundtrip_template(est)).unwrap();
+            assert_eq!(
+                roundtripped,
+                expected_json_after_roundtrip,
+                "\nExpected after roundtrip:\n{}\n\nActual after roundtrip:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json_after_roundtrip).unwrap(),
+                serde_json::to_string_pretty(&roundtripped).unwrap()
+            );
+        }
+
+        #[test]
+        fn condition() {
+            let policy = r#"
+            permit(principal, action, resource)
+            when { principal is User };"#;
+            let cst = parser::text_to_cst::parse_policy(policy)
+                .unwrap()
+                .node
+                .unwrap();
+            let est: Policy = cst.try_into().unwrap();
+            let expected_json = json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "All",
+                    },
+                    "action": {
+                        "op": "All",
+                    },
+                    "resource": {
+                        "op": "All",
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "is": {
+                                    "left": {
+                                        "Var": "principal"
+                                    },
+                                    "entity_type": "User",
+                                }
+                            }
+                        }
+                    ]
+                }
+            );
+            assert_eq!(
+                serde_json::to_value(&est).unwrap(),
+                expected_json,
+                "\nExpected:\n{}\n\nActual:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json).unwrap(),
+                serde_json::to_string_pretty(&est).unwrap()
+            );
+            let old_est = est.clone();
+            let est = est_roundtrip(est);
+            assert_eq!(&old_est, &est);
+
+            assert_eq!(ast_roundtrip(est.clone()), est);
+            assert_eq!(circular_roundtrip(est.clone()), est);
+        }
+
+        #[test]
+        fn condition_in() {
+            let policy = r#"
+            permit(principal, action, resource)
+            when { principal is User in 1 };"#;
+            let cst = parser::text_to_cst::parse_policy(policy)
+                .unwrap()
+                .node
+                .unwrap();
+            let est: Policy = cst.try_into().unwrap();
+            let expected_json = json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "All",
+                    },
+                    "action": {
+                        "op": "All",
+                    },
+                    "resource": {
+                        "op": "All",
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "is": {
+                                    "left": { "Var": "principal" },
+                                    "entity_type": "User",
+                                    "in": {"Value": 1}
+                                }
+                            }
+                        }
+                    ]
+                }
+            );
+            assert_eq!(
+                serde_json::to_value(&est).unwrap(),
+                expected_json,
+                "\nExpected:\n{}\n\nActual:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json).unwrap(),
+                serde_json::to_string_pretty(&est).unwrap()
+            );
+            let old_est = est.clone();
+            let est = est_roundtrip(est);
+            assert_eq!(&old_est, &est);
+
+            let expected_json_after_roundtrip = json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "All",
+                    },
+                    "action": {
+                        "op": "All",
+                    },
+                    "resource": {
+                        "op": "All",
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "&&": {
+                                    "left": {
+                                        "is": {
+                                            "left": { "Var": "principal" },
+                                            "entity_type": "User",
+                                        }
+                                    },
+                                    "right": {
+                                        "in": {
+                                            "left": { "Var": "principal" },
+                                            "right": { "Value": 1}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ],
+                }
+            );
+            let roundtripped = serde_json::to_value(ast_roundtrip_template(est.clone())).unwrap();
+            assert_eq!(
+                roundtripped,
+                expected_json_after_roundtrip,
+                "\nExpected after roundtrip:\n{}\n\nActual after roundtrip:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json_after_roundtrip).unwrap(),
+                serde_json::to_string_pretty(&roundtripped).unwrap()
+            );
+            let roundtripped = serde_json::to_value(circular_roundtrip_template(est)).unwrap();
+            assert_eq!(
+                roundtripped,
+                expected_json_after_roundtrip,
+                "\nExpected after roundtrip:\n{}\n\nActual after roundtrip:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json_after_roundtrip).unwrap(),
+                serde_json::to_string_pretty(&roundtripped).unwrap()
+            );
+        }
+
+        #[test]
+        fn invalid() {
+            let bad = json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "is"
+                    },
+                    "action": {
+                        "op": "All"
+                    },
+                    "resource": {
+                        "op": "All"
+                    },
+                    "conditions": []
+                }
+            );
+            assert_panics!(
+                serde_json::from_value::<Policy>(bad).unwrap(),
+                includes("missing field `entity_type`"),
+            );
+
+            let bad = json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "is",
+                        "entity_type": "!"
+                    },
+                    "action": {
+                        "op": "All"
+                    },
+                    "resource": {
+                        "op": "All"
+                    },
+                    "conditions": []
+                }
+            );
+            assert_matches!(
+                serde_json::from_value::<Policy>(bad)
+                    .unwrap()
+                    .try_into_ast_policy(None),
+                Err(FromJsonError::InvalidEntityType(_)),
+            );
+
+            let bad = json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "is",
+                        "entity_type": "User",
+                        "==": {"entity": { "type": "User", "id": "alice"}}
+                    },
+                    "action": {
+                        "op": "All"
+                    },
+                    "resource": {
+                        "op": "All"
+                    },
+                    "conditions": []
+                }
+            );
+            assert_panics!(
+                serde_json::from_value::<Policy>(bad)
+                    .unwrap()
+                    .try_into_ast_policy(None)
+                    .unwrap(),
+                includes("unknown field `==`, expected `entity_type` or `in`"),
+            );
+
+            let bad = json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "All",
+                    },
+                    "action": {
+                        "op": "is",
+                        "entity_type": "Action"
+                    },
+                    "resource": {
+                        "op": "All"
+                    },
+                    "conditions": []
+                }
+            );
+            assert_panics!(
+                serde_json::from_value::<Policy>(bad)
+                    .unwrap()
+                    .try_into_ast_policy(None)
+                    .unwrap(),
+                includes("unknown variant `is`, expected one of `All`, `==`, `in`"),
+            );
+        }
+    }
 }

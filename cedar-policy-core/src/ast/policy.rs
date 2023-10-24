@@ -1011,7 +1011,6 @@ impl PrincipalConstraint {
     /// Hierarchical constraint to Slot
     pub fn is_in_slot() -> Self {
         Self {
-            // FIXME: bug!
             constraint: PrincipalOrResourceConstraint::is_eq_slot(),
         }
     }
@@ -1273,7 +1272,7 @@ impl PrincipalOrResourceConstraint {
                 Expr::is_in(Expr::var(v.into()), euid.into_expr(v.into()))
             }
             PrincipalOrResourceConstraint::Is(entity_type, euid) => {
-                let is_expr = Expr::is(Expr::var(v.into()), entity_type.clone());
+                let is_expr = Expr::is_type(Expr::var(v.into()), entity_type.clone());
                 match euid {
                     Some(euid) => Expr::and(
                         is_expr,
@@ -1823,13 +1822,31 @@ mod test {
             0
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::Eq(EntityReference::EUID(e))
+            PrincipalOrResourceConstraint::Eq(EntityReference::EUID(e.clone()))
                 .iter_euids()
                 .count(),
             1
         );
         assert_eq!(
             PrincipalOrResourceConstraint::Eq(EntityReference::Slot)
+                .iter_euids()
+                .count(),
+            0
+        );
+        assert_eq!(
+            PrincipalOrResourceConstraint::Is("T".parse().unwrap(), Some(EntityReference::EUID(e)))
+                .iter_euids()
+                .count(),
+            1
+        );
+        assert_eq!(
+            PrincipalOrResourceConstraint::Is("T".parse().unwrap(), None)
+                .iter_euids()
+                .count(),
+            0
+        );
+        assert_eq!(
+            PrincipalOrResourceConstraint::Is("T".parse().unwrap(), Some(EntityReference::Slot))
                 .iter_euids()
                 .count(),
             0

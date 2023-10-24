@@ -222,6 +222,8 @@ pub enum ExprNoExt {
         /// Entity type
         entity_type: SmolStr,
         /// Entity or entity set
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(rename = "in")]
         in_expr: Option<Arc<Expr>>,
     },
     /// Ternary
@@ -438,7 +440,7 @@ impl Expr {
     }
 
     /// `left is entity_type`
-    pub fn is(left: Expr, entity_type: SmolStr) -> Self {
+    pub fn is_type(left: Expr, entity_type: SmolStr) -> Self {
         Expr::ExprNoExt(ExprNoExt::Is {
             left: Arc::new(left),
             entity_type,
@@ -602,7 +604,7 @@ impl TryFrom<Expr> for ast::Expr {
                 .map_err(Self::Error::InvalidEntityType)
                 .and_then(|entity_type_name| {
                     let left: ast::Expr = (*left).clone().try_into()?;
-                    let is_expr = ast::Expr::is(left.clone(), entity_type_name);
+                    let is_expr = ast::Expr::is_type(left.clone(), entity_type_name);
                     match in_expr {
                         Some(in_expr) => Ok(ast::Expr::and(
                             is_expr,
@@ -726,7 +728,7 @@ impl From<ast::Expr> for Expr {
                 Expr::like(unwrap_or_clone(expr).into(), pattern.to_string().into())
             }
             ast::ExprKind::Is { expr, entity_type } => {
-                Expr::is(unwrap_or_clone(expr).into(), entity_type.to_string().into())
+                Expr::is_type(unwrap_or_clone(expr).into(), entity_type.to_string().into())
             }
             ast::ExprKind::Set(set) => {
                 Expr::set(unwrap_or_clone(set).into_iter().map(Into::into).collect())
@@ -935,7 +937,7 @@ impl TryFrom<cst::Relation> for Expr {
                             entity_type.to_string().into(),
                             in_entity.try_into()?,
                         )),
-                        None => Ok(Expr::is(target, entity_type.to_string().into())),
+                        None => Ok(Expr::is_type(target, entity_type.to_string().into())),
                         Some(ASTNode { node: None, .. }) => {
                             Err(ParseError::ToAST(ToASTError::MissingNodeData).into())
                         }

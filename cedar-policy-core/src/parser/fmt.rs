@@ -123,7 +123,7 @@ impl fmt::Display for Annotation {
 impl fmt::Display for VariableDef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", View(&self.variable))?;
-        if let Some(name) = &self.name {
+        if let Some(name) = &self.unused_type_name {
             write!(f, ": {}", View(name))?;
         }
         if let Some((op, expr)) = &self.ineq {

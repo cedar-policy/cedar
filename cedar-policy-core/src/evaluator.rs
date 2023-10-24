@@ -547,7 +547,7 @@ impl<'q, 'e> Evaluator<'e> {
                         EntityType::Unspecified => false,
                     }
                     .into()),
-                    PartialValue::Residual(r) => Ok(Expr::is(r, entity_type.clone()).into()),
+                    PartialValue::Residual(r) => Ok(Expr::is_type(r, entity_type.clone()).into()),
                 }
             }
             ExprKind::Set(items) => {

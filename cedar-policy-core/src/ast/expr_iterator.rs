@@ -244,6 +244,15 @@ mod test {
     }
 
     #[test]
+    fn is() {
+        let e = Expr::is_type(Expr::val(1), "T".parse().unwrap());
+        assert_eq!(
+            e.subexpressions().collect::<HashSet<_>>(),
+            HashSet::from([&e, &Expr::val(1)])
+        );
+    }
+
+    #[test]
     fn duplicates() {
         let e = Expr::ite(Expr::val(true), Expr::val(true), Expr::val(true));
         let v: Vec<_> = e.subexpressions().collect();

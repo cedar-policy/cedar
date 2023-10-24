@@ -66,8 +66,9 @@ pub struct VariableDef {
     /// identifier, expected:
     /// principal, action, resource
     pub variable: Node<Ident>,
-    /// type of entity using previously considered `var : type` syntax
-    pub name: Option<Node<Name>>,
+    /// type of entity using previously considered `var : type` syntax. This is
+    /// not used for anything other than error reporting.
+    pub unused_type_name: Option<Node<Name>>,
     /// type of entity using current `var is type` syntax
     pub entity_type: Option<Node<Name>>,
     /// hierarchy of entity

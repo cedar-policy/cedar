@@ -95,12 +95,9 @@ pub Policy: Node<Option<cst::Policy>> = {
 
 // VariableDef := Variable [':' Name] [('in' | '==') Expr]
 VariableDef: Node<Option<cst::VariableDef>> = {
-    <l:@L> <variable: AnyIdent> <name: (":" <Name>)?> <entity_type: (IS <Name>)?>
+    <l:@L> <variable: AnyIdent> <unused_type_name: (":" <Name>)?> <entity_type: (IS <Name>)?>
         <ineq: (RelOp Expr)?> <r:@R>
-        => Node::new(Some(cst::VariableDef{ variable,name,entity_type,ineq, }),l,r),
-    //<l:@L> <variable: AnyIdent> <bad_name: (":" <Name>)?>
-    //    IS <name: Name> <in: (IN <Expr>)?> <r:@R>
-    //    => Node::new(Some(cst::VariableDef{ variable, name: bad_name, }))
+        => Node::new(Some(cst::VariableDef{ variable,unused_type_name,entity_type,ineq, }),l,r),
 }
 
 // Identifier, but not the special ones

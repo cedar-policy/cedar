@@ -474,11 +474,9 @@ impl Expr {
         ExprBuilder::new().like(expr, pattern)
     }
 
-    /// Create a 'like' expression.
-    ///
-    /// `expr` must evaluate to a String type
-    pub fn is(expr: Expr, entity_type: Name) -> Self {
-        ExprBuilder::new().is(expr, entity_type)
+    /// Create a 'is' expression.
+    pub fn is_type(expr: Expr, entity_type: Name) -> Self {
+        ExprBuilder::new().is_type(expr, entity_type)
     }
 
     /// Check if an expression contains any symbolic unknowns
@@ -581,9 +579,10 @@ impl Expr {
             ExprKind::MulByConst { arg, constant } => {
                 Ok(Expr::mul(arg.substitute(definitions)?, *constant))
             }
-            ExprKind::Is { expr, entity_type } => {
-                Ok(Expr::is(expr.substitute(definitions)?, entity_type.clone()))
-            }
+            ExprKind::Is { expr, entity_type } => Ok(Expr::is_type(
+                expr.substitute(definitions)?,
+                entity_type.clone(),
+            )),
         }
     }
 }
@@ -1141,9 +1140,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an 'is' expression.
-    ///
-    /// `expr` must evaluate to an entity type
-    pub fn is(self, expr: Expr<T>, entity_type: Name) -> Expr<T> {
+    pub fn is_type(self, expr: Expr<T>, entity_type: Name) -> Expr<T> {
         self.with_expr_kind(ExprKind::Is {
             expr: Arc::new(expr),
             entity_type,
@@ -1571,6 +1568,24 @@ mod test {
                 ()
             )
         );
+        assert_eq!(
+            Expr::is_type(
+                Expr::val(EntityUID::with_eid("foo")),
+                "Type".parse().unwrap()
+            ),
+            Expr::new(
+                ExprKind::Is {
+                    expr: Arc::new(Expr::new(
+                        ExprKind::Lit(Literal::from(EntityUID::with_eid("foo"))),
+                        None,
+                        ()
+                    )),
+                    entity_type: "Type".parse().unwrap()
+                },
+                None,
+                ()
+            ),
+        );
     }
 
     #[test]
@@ -1767,8 +1782,12 @@ mod test {
                 Expr::has_attr(Expr::val(1), "foo".into()),
             ),
             (
-                ExprBuilder::with_data(1).like(temp, vec![PatternElem::Wildcard]),
+                ExprBuilder::with_data(1).like(temp.clone(), vec![PatternElem::Wildcard]),
                 Expr::like(Expr::val(1), vec![PatternElem::Wildcard]),
+            ),
+            (
+                ExprBuilder::with_data(1).is_type(temp, "T".parse().unwrap()),
+                Expr::is_type(Expr::val(1), "T".parse().unwrap()),
             ),
         ];
 
