@@ -286,12 +286,10 @@ impl Entities {
     /// Add all of the [`Entity`]s in the collection to this [`Entities`]
     /// structure, re-computing the transitive closure.
     ///
-    /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit.
-    /// This method will also ensure that the added entities fully conform to the
-    /// schema -- for instance, it will error if attributes have the wrong types
-    /// (e.g., string instead of integer), or if required attributes are missing
-    /// or superfluous attributes are provided.
+    /// If a `schema` is provided, this method will ensure that the added
+    /// entities fully conform to the schema -- for instance, it will error if
+    /// attributes have the wrong types (e.g., string instead of integer), or if
+    /// required attributes are missing or superfluous attributes are provided.
     /// (This method will not add action entities from the `schema`.)
     ///
     /// Re-computing the transitive closure can be expensive, so it is advised
