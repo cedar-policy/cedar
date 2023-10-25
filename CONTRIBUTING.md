@@ -15,7 +15,7 @@ A bug is when software behaves in a way that you didn't expect and the developer
 
 Once you've confirmed that the bug still exists in the latest version, you'll want to check to make sure it's not something we already know about on the [open issues GitHub page](https://github.com/cedar-policy/cedar/issues).
 
-If you've upgraded to the latest version and you can't find it in our open issues list, then you'll need to tell us how to reproduce it. To make the behavior as clear as possible, please provided your policies, entities, request, and CLI commands.
+If you've upgraded to the latest version and you can't find it in our open issues list, then you'll need to tell us how to reproduce it. To make the behavior as clear as possible, please provide your policies, entities, request, and CLI commands.
 
 The easier it is for us to recreate your problem, the faster it is likely to be fixed. Please try to include as much information as you can. Details like these are incredibly useful:
 
@@ -30,7 +30,7 @@ If you've thought of a way that Cedar could be better, we want to hear about it.
 
 ### Documentation Changes
 
-If you would like to contribute to the documentation, please do so in the [documentation](https://github.com/cedar-policy/cedar-docs) repo.
+If you would like to contribute to the documentation hosted on docs.cedarpolicy.com, please do so in the [documentation](https://github.com/cedar-policy/cedar-docs) repo.
 
 ### Contributing Code
 
