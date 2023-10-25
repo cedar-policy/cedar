@@ -3139,8 +3139,6 @@ mod test {
             );
             assert_panics!(
                 serde_json::from_value::<Policy>(bad)
-                    .unwrap()
-                    .try_into_ast_policy(None)
                     .unwrap(),
                 includes("unknown field `==`, expected `entity_type` or `in`"),
             );
@@ -3163,8 +3161,6 @@ mod test {
             );
             assert_panics!(
                 serde_json::from_value::<Policy>(bad)
-                    .unwrap()
-                    .try_into_ast_policy(None)
                     .unwrap(),
                 includes("unknown variant `is`, expected one of `All`, `==`, `in`"),
             );
