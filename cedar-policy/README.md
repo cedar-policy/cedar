@@ -19,7 +19,7 @@ cedar-policy = "2.4"
 
 Let's write a super simple Cedar policy and test it:
 
-```
+```cedar
 permit(principal == User::"alice", action == Action::"view", resource == File::"93");
 ```
 

@@ -50,7 +50,7 @@ Let's put the policy in `policy.cedar` and the entities in `entities.json`.
 
 `policy.cedar`:
 
-```
+```cedar
 permit (
   principal == User::"alice",
   action == Action::"view",
@@ -82,7 +82,7 @@ Cedar represents principals, resources, and actions as entities. An entity has a
 
 Now, let's test our policy with the CLI:
 
-```rust
+```sh
  cargo run authorize \
     --policies policy.cedar \
     --entities entities.json \
