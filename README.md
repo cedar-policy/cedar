@@ -135,7 +135,7 @@ Note that this is different from:
 cedar-policy = "2.4.2"
 ```
 
-Which will pull the latest patch of version 2.4.
+Which expresses that 2.4.2 is the minimum version of Cedar you accept, and you implicitly accept anything newer that is semver-compatible. See <https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html>.
 
 ## Security
 
