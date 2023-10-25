@@ -599,7 +599,7 @@ pub enum EntityUidJson {
         /// Contents are ignored.
         __expr: String,
     },
-    /// Explicit `__entity` escape; see notes on JSONValue::EntityEscape
+    /// Explicit `__entity` escape; see notes on `CedarValueJson::EntityEscape`
     ExplicitEntityEscape {
         /// JSON object containing the entity type and ID
         __entity: TypeAndId,
