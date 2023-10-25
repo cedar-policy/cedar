@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use super::{Expr, ExprKind, Literal, Name};
+use super::{Expr, ExprConstructionError, ExprKind, Literal, Name};
 use crate::entities::JsonSerializationError;
 use crate::parser;
 use crate::parser::err::ParseErrors;
@@ -98,12 +98,19 @@ impl RestrictedExpr {
         Self::new_unchecked(Expr::set(exprs.into_iter().map(Into::into)))
     }
 
-    /// Create a `RestrictedExpr` which evaluates to a Record with the given (key, value) pairs.
-    pub fn record(pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>) -> Self {
+    /// Create a `RestrictedExpr` which evaluates to a Record with the given
+    /// (key, value) pairs.
+    ///
+    /// Throws an error if any key occurs two or more times.
+    pub fn record(
+        pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
+    ) -> Result<Self, ExprConstructionError> {
         // Record expressions are valid restricted-exprs if their elements are;
         // and we know the elements are because we require `RestrictedExpr`s in
         // the parameter
-        Self::new_unchecked(Expr::record(pairs.into_iter().map(|(k, v)| (k, v.into()))))
+        Ok(Self::new_unchecked(Expr::record(
+            pairs.into_iter().map(|(k, v)| (k, v.into())),
+        )?))
     }
 
     /// Create a `RestrictedExpr` which calls the given extension function
@@ -227,7 +234,7 @@ fn is_restricted(expr: &Expr) -> Result<(), RestrictedExprError> {
         }),
         ExprKind::ExtensionFunctionApp { args, .. } => args.iter().try_for_each(is_restricted),
         ExprKind::Set(exprs) => exprs.iter().try_for_each(is_restricted),
-        ExprKind::Record { pairs } => pairs.iter().map(|(_, v)| v).try_for_each(is_restricted),
+        ExprKind::Record(map) => map.values().try_for_each(is_restricted),
     }
 }
 
@@ -340,4 +347,61 @@ pub enum RestrictedExprError {
     /// Failed to parse the expression that the restricted expression wraps.
     #[error("failed to parse restricted expression: {0}")]
     Parse(#[from] ParseErrors),
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::parser::err::{ParseError, ToASTError};
+    use std::str::FromStr;
+
+    #[test]
+    fn duplicate_key() {
+        // duplicate key is an error when mapped to values of different types
+        assert_eq!(
+            RestrictedExpr::record([
+                ("foo".into(), RestrictedExpr::val(37),),
+                ("foo".into(), RestrictedExpr::val("hello"),),
+            ]),
+            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+        );
+
+        // duplicate key is an error when mapped to different values of same type
+        assert_eq!(
+            RestrictedExpr::record([
+                ("foo".into(), RestrictedExpr::val(37),),
+                ("foo".into(), RestrictedExpr::val(101),),
+            ]),
+            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+        );
+
+        // duplicate key is an error when mapped to the same value multiple times
+        assert_eq!(
+            RestrictedExpr::record([
+                ("foo".into(), RestrictedExpr::val(37),),
+                ("foo".into(), RestrictedExpr::val(37),),
+            ]),
+            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+        );
+
+        // duplicate key is an error even when other keys appear in between
+        assert_eq!(
+            RestrictedExpr::record([
+                ("bar".into(), RestrictedExpr::val(-3),),
+                ("foo".into(), RestrictedExpr::val(37),),
+                ("spam".into(), RestrictedExpr::val("eggs"),),
+                ("foo".into(), RestrictedExpr::val(37),),
+                ("eggs".into(), RestrictedExpr::val("spam"),),
+            ]),
+            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+        );
+
+        // duplicate key is also an error when parsing from string
+        assert_eq!(
+            RestrictedExpr::from_str(r#"{ foo: 37, bar: "hi", foo: 101 }"#),
+            Err(RestrictedExprError::Parse(ParseErrors(vec![
+                ParseError::ToAST(ToASTError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+            ]))),
+        )
+    }
 }

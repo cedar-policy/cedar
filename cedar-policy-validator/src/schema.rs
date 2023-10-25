@@ -23,6 +23,7 @@
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::sync::Arc;
 
+use cedar_policy_core::entities::JsonDeserializationErrorContext;
 use cedar_policy_core::{
     ast::{Eid, Entity, EntityType, EntityUID, Id, Name, RestrictedExpr},
     entities::{CedarValueJson, Entities, TCComputation},
@@ -422,7 +423,7 @@ impl ValidatorNamespaceDef {
             // `non_exhaustive`, so any new variants are a breaking change.
             // PANIC SAFETY: see above
             #[allow(clippy::expect_used)]
-            let e = v.into_expr().expect("`Self::jsonval_to_type_helper` will always return `Err` for a `CedarValueJson` that might make `into_expr` return `Err`");
+            let e = v.into_expr(|| JsonDeserializationErrorContext::EntityAttribute { uid: action_id.clone(), attr: k.clone() }).expect("`Self::jsonval_to_type_helper` will always return `Err` for a `CedarValueJson` that might make `into_expr` return `Err`");
             attr_values.insert(k.clone(), e);
         }
         Ok((
