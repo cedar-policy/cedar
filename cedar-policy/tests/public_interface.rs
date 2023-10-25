@@ -111,7 +111,8 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
             "suspicion".to_string(),
             RestrictedExpression::from_str("4")?,
         ),
-    ]);
+    ])
+    .unwrap();
 
     // Combine into request
     let request = Request::new(
@@ -299,7 +300,8 @@ fn expression_eval_context() -> Result<(), Box<dyn Error>> {
             "suspicion".to_string(),
             RestrictedExpression::from_str("4")?,
         ),
-    ]);
+    ])
+    .unwrap();
 
     // Combine into request
     let request = Request::new(Some(principal), Some(action), Some(resource), context);

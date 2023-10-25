@@ -25,7 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rename variants in `cedar_policy::SchemaError`.
 - `Diagnostics::errors()` now returns an iterator over `AuthorizationError`s.
 - `Response::new()` now expects a `Vec<AuthorizationError>` as its third argument.
-- Implement [RFC 19](https://github.com/cedar-policy/rfcs/blob/main/text/0019-stricter-validation.md), making validation slightly more strict, but more explainable.
+- Implement [RFC 19](https://github.com/cedar-policy/rfcs/blob/main/text/0019-stricter-validation.md),
+  making validation slightly more strict, but more explainable.
+- Implement [RFC 20](https://github.com/cedar-policy/rfcs/blob/main/text/0020-unique-record-keys.md),
+  disallowing duplicate keys in record values (including record literals in policies, request `context`,
+  and records in entity attributes).
 - Change the semantics of equality for IP ranges. For example,
   `ip("192.168.0.1/24") == ip("192.168.0.3/24")` was previously `true` and is now
   `false`. The behavior of equality on single IP addresses is unchanged, and so is
@@ -69,7 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Export additional methods for `EntityTypeName`.
+- New methods for `EntityTypeName`.
   - `basename` to get the basename (without namespaces).
   - `namespace_components` to get the namespace as an iterator over its components.
   - `namespace` to get the namespace as a single string.
@@ -77,17 +81,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Some error types now carry more information about the error, with error
-messages updated appropriately. For instance, add a list of attributes that _do_
-exist to the `RecordAttrDoesNotExist` error message.
+  messages updated appropriately. For instance, the `RecordAttrDoesNotExist` error
+  message now contains a list of attributes that _do_ exist.
 - Improve error messages for some schema parsing errors.
   - When an entity type shape or action context is declared with type other than
   `Record`, the error message will indicated the affected entity type or action.
-- Various improvements to error messages and documentation for errors raised during
+- Various other improvements to error messages and documentation for errors raised during
   policy parsing, validation, and evaluation.
 - Increase precision for validating records.  Previously,
-`permit(principal, action, resource) when {{"foo": 5} has bar};` would validate.
-Now it will not, since we know `{"foo": 5} has bar` is `False`, and the
-validator will return an error for a policy that can never fire.
+  `permit(principal, action, resource) when {{"foo": 5} has bar};` would validate.
+  Now it will not, since we know `{"foo": 5} has bar` is `False`, and the
+  validator will return an error for a policy that can never fire.
 
 ### Removed
 
