@@ -173,15 +173,15 @@ impl PrincipalConstraint {
             PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type,
                 in_entity: Some(PrincipalOrResourceInConstraint::Slot { slot }),
-            }) => match vals.get(&slot) {
-                Some(val) => Ok(PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
-                    entity_type,
-                    in_entity: Some(PrincipalOrResourceInConstraint::Entity {
-                        entity: val.clone(),
-                    }),
-                })),
-                None => Err(InstantiationError::MissedSlot { slot }),
-            },
+            }) => Ok(PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type,
+                in_entity: Some(PrincipalOrResourceInConstraint::Entity {
+                    entity: vals
+                        .get(&slot)
+                        .ok_or(InstantiationError::MissedSlot { slot })?
+                        .clone(),
+                }),
+            })),
         }
     }
 }
@@ -225,15 +225,15 @@ impl ResourceConstraint {
             ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type,
                 in_entity: Some(PrincipalOrResourceInConstraint::Slot { slot }),
-            }) => match vals.get(&slot) {
-                Some(val) => Ok(ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
-                    entity_type,
-                    in_entity: Some(PrincipalOrResourceInConstraint::Entity {
-                        entity: val.clone(),
-                    }),
-                })),
-                None => Err(InstantiationError::MissedSlot { slot }),
-            },
+            }) => Ok(ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type,
+                in_entity: Some(PrincipalOrResourceInConstraint::Entity {
+                    entity: vals
+                        .get(&slot)
+                        .ok_or(InstantiationError::MissedSlot { slot })?
+                        .clone(),
+                }),
+            })),
         }
     }
 }
@@ -350,7 +350,7 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
                             entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                         },
                         ast::EntityReference::Slot => PrincipalOrResourceInConstraint::Slot {
-                            slot: ast::SlotId::principal(),
+                            slot: ast::SlotId::resource(),
                         },
                     }),
                 })

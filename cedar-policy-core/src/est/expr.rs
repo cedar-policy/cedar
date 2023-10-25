@@ -16,7 +16,6 @@
 
 use super::utils::unwrap_or_clone;
 use super::FromJsonError;
-use crate::{ast, FromNormalizedStr};
 use crate::entities::{
     CedarValueJson, EscapeKind, JsonDeserializationError, JsonDeserializationErrorContext,
     TypeAndId,
@@ -25,6 +24,7 @@ use crate::parser::cst::{self, Ident};
 use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::unescape;
 use crate::parser::ASTNode;
+use crate::{ast, FromNormalizedStr};
 use either::Either;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -452,7 +452,7 @@ impl Expr {
     }
 
     /// `left is entity_type in entity`
-    pub fn is_in(left: Expr, entity_type: SmolStr, entity: Expr) -> Self {
+    pub fn is_type_in(left: Expr, entity_type: SmolStr, entity: Expr) -> Self {
         Expr::ExprNoExt(ExprNoExt::Is {
             left: Arc::new(left),
             entity_type,
@@ -612,6 +612,8 @@ impl Expr {
                     let left: ast::Expr = (*left).clone().try_into_ast(id.clone())?;
                     let is_expr = ast::Expr::is_type(left.clone(), entity_type_name);
                     match in_expr {
+                        // The AST doesn't have an `... is ... in ..` node, so
+                        // we represent it as a conjunction of `is` and `in`.
                         Some(in_expr) => Ok(ast::Expr::and(
                             is_expr,
                             ast::Expr::is_in(left, (*in_expr).clone().try_into_ast(id)?),
@@ -943,7 +945,7 @@ impl TryFrom<cst::Relation> for Expr {
                         Some(ASTNode {
                             node: Some(in_entity),
                             ..
-                        }) => Ok(Expr::is_in(
+                        }) => Ok(Expr::is_type_in(
                             target,
                             entity_type.to_string().into(),
                             in_entity.try_into()?,

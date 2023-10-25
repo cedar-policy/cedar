@@ -3142,8 +3142,7 @@ mod test {
                 }
             );
             assert_panics!(
-                serde_json::from_value::<Policy>(bad)
-                    .unwrap(),
+                serde_json::from_value::<Policy>(bad).unwrap(),
                 includes("unknown field `==`, expected `entity_type` or `in`"),
             );
 
@@ -3164,9 +3163,77 @@ mod test {
                 }
             );
             assert_panics!(
-                serde_json::from_value::<Policy>(bad)
-                    .unwrap(),
+                serde_json::from_value::<Policy>(bad).unwrap(),
                 includes("unknown variant `is`, expected one of `All`, `==`, `in`"),
+            );
+        }
+
+        #[test]
+        fn instantiate() {
+            let template = r#"
+            permit(
+                principal is User in ?principal,
+                action,
+                resource is Doc in ?resource
+            );
+        "#;
+            let cst = parser::text_to_cst::parse_policy(template)
+                .unwrap()
+                .node
+                .unwrap();
+            let est: Policy = cst.try_into().unwrap();
+            let err = est.clone().link(&HashMap::from_iter([]));
+            assert_eq!(
+                err,
+                Err(InstantiationError::MissedSlot {
+                    slot: ast::SlotId::principal()
+                })
+            );
+            let err = est.clone().link(&HashMap::from_iter([(
+                ast::SlotId::principal(),
+                EntityUidJson::new("User", "alice"),
+            )]));
+            assert_eq!(
+                err,
+                Err(InstantiationError::MissedSlot {
+                    slot: ast::SlotId::resource()
+                })
+            );
+            let linked = est
+                .link(&HashMap::from_iter([
+                    (
+                        ast::SlotId::principal(),
+                        EntityUidJson::new("User", "alice"),
+                    ),
+                    (ast::SlotId::resource(), EntityUidJson::new("Folder", "abc")),
+                ]))
+                .expect("did fill all the slots");
+            let expected_json = json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "is",
+                        "entity_type": "User",
+                        "in": { "entity": { "type": "User", "id": "alice" } }
+                    },
+                    "action": {
+                        "op": "All"
+                    },
+                    "resource": {
+                        "op": "is",
+                        "entity_type": "Doc",
+                        "in": { "entity": { "type": "Folder", "id": "abc" } }
+                    },
+                    "conditions": [ ],
+                }
+            );
+            let linked_json = serde_json::to_value(linked).unwrap();
+            assert_eq!(
+                linked_json,
+                expected_json,
+                "\nExpected:\n{}\n\nActual:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json).unwrap(),
+                serde_json::to_string_pretty(&linked_json).unwrap(),
             );
         }
     }
