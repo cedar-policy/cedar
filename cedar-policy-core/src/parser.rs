@@ -600,6 +600,7 @@ mod eval_tests {
 #[cfg(test)]
 mod parse_tests {
     use super::*;
+    use cool_asserts::assert_matches;
 
     #[test]
     fn parse_exists() {
@@ -664,7 +665,8 @@ mod parse_tests {
         let src = r#"
             permit(principal, action, resource) when { principal.name.like == "3" };
             "#;
-        let _ = parse_policyset_to_ests_and_pset(src);
+        let p = parse_policyset_to_ests_and_pset(src);
+        assert_matches!(p, Err(_));
     }
 
     #[test]
@@ -711,17 +713,39 @@ mod parse_tests {
 
         for src in srcs {
             let p = parse_policy(None, src);
-            assert!(p.is_err());
+            assert_matches!(p, Err(_));
             let p = parse_policy_template(None, src);
-            assert!(p.is_err());
+            assert_matches!(p, Err(_));
             let p = parse_policy_to_est_and_ast(None, src);
-            assert!(p.is_err());
+            assert_matches!(p, Err(_));
             let p = parse_policy_template_to_est_and_ast(None, src);
-            assert!(p.is_err());
+            assert_matches!(p, Err(_));
             let p = parse_policyset(src);
-            assert!(p.is_err());
+            assert_matches!(p, Err(_));
             let p = parse_policyset_to_ests_and_pset(src);
-            assert!(p.is_err());
+            assert_matches!(p, Err(_));
         }
+    }
+
+    #[test]
+    fn record_literals() {
+        // unquoted keys
+        let p = parse_policy(
+            None,
+            r#"permit(principal, action, resource) when { context.foo == { foo: 2, bar: "baz" } };"#,
+        );
+        assert_matches!(p, Ok(_));
+        // quoted keys
+        let p = parse_policy(
+            None,
+            r#"permit(principal, action, resource) when { context.foo == { "foo": 2, "hi mom it's 🦀": "baz" } };"#,
+        );
+        assert_matches!(p, Ok(_));
+        // duplicate key
+        let p = parse_policy(
+            None,
+            r#"permit(principal, action, resource) when { context.foo == { "spam": -341, foo: 2, "🦀": true, foo: "baz" } };"#,
+        );
+        assert_matches!(p, Err(err::ParseErrors(v)) if v == vec![err::ParseError::ToAST(err::ToASTError::DuplicateKeyInRecordLiteral { key: "foo".into() })]);
     }
 }

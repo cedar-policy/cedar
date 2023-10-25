@@ -40,8 +40,9 @@ use super::node::{ASTNode, SourceInfo};
 use super::unescape::{to_pattern, to_unescaped_string};
 use super::{cst, err};
 use crate::ast::{
-    self, ActionConstraint, CallStyle, EntityReference, EntityType, EntityUID, PatternElem,
-    PolicySetError, PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint,
+    self, ActionConstraint, CallStyle, EntityReference, EntityType, EntityUID,
+    ExprConstructionError, PatternElem, PolicySetError, PrincipalConstraint,
+    PrincipalOrResourceConstraint, ResourceConstraint,
 };
 use itertools::Either;
 use smol_str::SmolStr;
@@ -1699,7 +1700,13 @@ impl ASTNode<Option<cst::Primary>> {
             cst::Primary::RInits(is) => {
                 let rec: Vec<_> = is.iter().filter_map(|i| i.to_init(errs)).collect();
                 if rec.len() == is.len() {
-                    Some(ExprOrSpecial::Expr(construct_expr_record(rec, src.clone())))
+                    match construct_expr_record(rec, src.clone()) {
+                        Ok(rec) => Some(ExprOrSpecial::Expr(rec)),
+                        Err(e) => {
+                            errs.push(e.into());
+                            None
+                        }
+                    }
                 } else {
                     errs.push(ToASTError::InvalidAttributesInRecordLiteral.into());
                     None
@@ -2116,8 +2123,18 @@ fn construct_ext_meth(n: String, args: Vec<ast::Expr>, l: SourceInfo) -> ast::Ex
 fn construct_expr_set(s: Vec<ast::Expr>, l: SourceInfo) -> ast::Expr {
     ast::ExprBuilder::new().with_source_info(l).set(s)
 }
-fn construct_expr_record(kvs: Vec<(SmolStr, ast::Expr)>, l: SourceInfo) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_info(l).record(kvs)
+fn construct_expr_record(
+    kvs: Vec<(SmolStr, ast::Expr)>,
+    l: SourceInfo,
+) -> Result<ast::Expr, ToASTError> {
+    ast::ExprBuilder::new()
+        .with_source_info(l)
+        .record(kvs)
+        .map_err(|e| match e {
+            ExprConstructionError::DuplicateKeyInRecordLiteral { key } => {
+                ToASTError::DuplicateKeyInRecordLiteral { key }
+            }
+        })
 }
 
 // PANIC SAFETY: Unit Test Code

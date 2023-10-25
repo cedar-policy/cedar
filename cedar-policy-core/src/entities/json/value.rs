@@ -19,14 +19,16 @@ use super::{
     JsonSerializationError, SchemaType,
 };
 use crate::ast::{
-    BorrowedRestrictedExpr, Eid, EntityUID, Expr, ExprKind, Literal, Name, RestrictedExpr,
+    BorrowedRestrictedExpr, Eid, EntityUID, Expr, ExprConstructionError, ExprKind, Literal, Name,
+    RestrictedExpr,
 };
 use crate::entities::EscapeKind;
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use crate::FromNormalizedStr;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use smol_str::SmolStr;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// The canonical JSON representation of a Cedar value.
 /// Many Cedar values have a natural one-to-one mapping to and from JSON values.
@@ -92,8 +94,49 @@ pub enum CedarValueJson {
     /// heterogeneously
     Set(Vec<CedarValueJson>),
     /// JSON object => Cedar record; must have string keys, but values
-    /// can be any `CedarValueJson`s, even heterogeneously
-    Record(HashMap<SmolStr, CedarValueJson>),
+    /// can be any JSONValues, even heterogeneously
+    Record(JsonRecord),
+}
+
+/// Structure representing a Cedar record in JSON
+#[serde_as]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct JsonRecord {
+    /// Cedar records must have string keys, but values can be any
+    /// `CedarValueJson`s, even heterogeneously
+    #[serde_as(as = "serde_with::MapPreventDuplicates<_, _>")]
+    #[serde(flatten)]
+    values: BTreeMap<SmolStr, CedarValueJson>,
+}
+
+impl IntoIterator for JsonRecord {
+    type Item = (SmolStr, CedarValueJson);
+    type IntoIter = <BTreeMap<SmolStr, CedarValueJson> as IntoIterator>::IntoIter;
+    fn into_iter(self) -> Self::IntoIter {
+        self.values.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a JsonRecord {
+    type Item = (&'a SmolStr, &'a CedarValueJson);
+    type IntoIter = <&'a BTreeMap<SmolStr, CedarValueJson> as IntoIterator>::IntoIter;
+    fn into_iter(self) -> Self::IntoIter {
+        self.values.iter()
+    }
+}
+
+// At this time, this doesn't check for duplicate keys upon constructing a
+// `JsonRecord` from an iterator.
+// As of this writing, we only construct `JsonRecord` from an iterator during
+// _serialization_, not _deserialization_, and we can assume that values being
+// serialized (i.e., coming from the Cedar engine itself) are already free of
+// duplicate keys.
+impl FromIterator<(SmolStr, CedarValueJson)> for JsonRecord {
+    fn from_iter<T: IntoIterator<Item = (SmolStr, CedarValueJson)>>(iter: T) -> Self {
+        Self {
+            values: BTreeMap::from_iter(iter),
+        }
+    }
 }
 
 /// Structure expected by the `__entity` escape
@@ -155,21 +198,32 @@ impl CedarValueJson {
     }
 
     /// Convert this `CedarValueJson` into a Cedar "restricted expression"
-    pub fn into_expr(self) -> Result<RestrictedExpr, JsonDeserializationError> {
+    pub fn into_expr(
+        self,
+        ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
+    ) -> Result<RestrictedExpr, JsonDeserializationError> {
         match self {
             Self::Bool(b) => Ok(RestrictedExpr::val(b)),
             Self::Long(i) => Ok(RestrictedExpr::val(i)),
             Self::String(s) => Ok(RestrictedExpr::val(s)),
             Self::Set(vals) => Ok(RestrictedExpr::set(
                 vals.into_iter()
-                    .map(CedarValueJson::into_expr)
+                    .map(|v| v.into_expr(ctx.clone()))
                     .collect::<Result<Vec<_>, _>>()?,
             )),
             Self::Record(map) => Ok(RestrictedExpr::record(
                 map.into_iter()
-                    .map(|(k, v)| Ok((k, v.into_expr()?)))
+                    .map(|(k, v)| Ok((k, v.into_expr(ctx.clone())?)))
                     .collect::<Result<Vec<_>, JsonDeserializationError>>()?,
-            )),
+            )
+            .map_err(|e| match e {
+                ExprConstructionError::DuplicateKeyInRecordLiteral { key } => {
+                    JsonDeserializationError::DuplicateKeyInRecordLiteral {
+                        ctx: Box::new(ctx()),
+                        key,
+                    }
+                }
+            })?),
             Self::ExprEscape { __expr: expr } => {
                 use crate::parser;
                 let expr: Expr = parser::parse_expr(&expr).map_err(|errs| {
@@ -191,7 +245,7 @@ impl CedarValueJson {
                     }
                 })?,
             )),
-            Self::ExtnEscape { __extn: extn } => extn.into_expr(),
+            Self::ExtnEscape { __extn: extn } => extn.into_expr(ctx),
         }
     }
 
@@ -227,8 +281,8 @@ impl CedarValueJson {
                     .map(CedarValueJson::from_expr)
                     .collect::<Result<_, JsonSerializationError>>()?,
             )),
-            ExprKind::Record { pairs } => {
-                // if `pairs` contains a key which collides with one of our JSON
+            ExprKind::Record(map) => {
+                // if `map` contains a key which collides with one of our JSON
                 // escapes, then we have a problem because it would be interpreted
                 // as an escape when being read back in.
                 // We could be a little more permissive here, but to be
@@ -237,18 +291,15 @@ impl CedarValueJson {
                 // with the reserved names.
                 let reserved_keys: HashSet<&str> =
                     HashSet::from_iter(["__entity", "__extn", "__expr"]);
-                let collision = pairs
-                    .iter()
-                    .find(|(k, _)| reserved_keys.contains(k.as_str()));
+                let collision = map.keys().find(|k| reserved_keys.contains(k.as_str()));
                 if let Some(collision) = collision {
                     Err(JsonSerializationError::ReservedKey {
-                        key: collision.0.clone(),
+                        key: collision.clone(),
                     })
                 } else {
                     // the common case: the record doesn't use any reserved keys
                     Ok(Self::Record(
-                        pairs
-                            .iter()
+                        map.iter()
                             .map(|(k, v)| {
                                 Ok((
                                     k.clone(),
@@ -283,7 +334,10 @@ impl CedarValueJson {
 
 impl FnAndArg {
     /// Convert this `FnAndArg` into a Cedar "restricted expression" (which will be a call to an extension constructor)
-    pub fn into_expr(self) -> Result<RestrictedExpr, JsonDeserializationError> {
+    pub fn into_expr(
+        self,
+        ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
+    ) -> Result<RestrictedExpr, JsonDeserializationError> {
         Ok(RestrictedExpr::call_extension_fn(
             Name::from_normalized_str(&self.ext_fn).map_err(|errs| {
                 JsonDeserializationError::ParseEscape {
@@ -292,7 +346,7 @@ impl FnAndArg {
                     errs,
                 }
             })?,
-            vec![CedarValueJson::into_expr(*self.arg)?],
+            vec![CedarValueJson::into_expr(*self.arg, ctx)?],
         ))
     }
 }
@@ -320,12 +374,6 @@ impl<'e> ValueParser<'e> {
         ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
     ) -> Result<RestrictedExpr, JsonDeserializationError> {
         match expected_ty {
-            None => {
-                // ordinary, non-schema-based parsing. Everything is parsed as
-                // `CedarValueJson`, and converted into `RestrictedExpr` from that.
-                let jvalue: CedarValueJson = serde_json::from_value(val)?;
-                jvalue.into_expr()
-            }
             // The expected type is an entity reference. Special parsing rules
             // apply: for instance, the `__entity` escape can optionally be omitted.
             // What this means is that we parse the contents as `EntityUidJson`, and
@@ -356,7 +404,9 @@ impl<'e> ValueParser<'e> {
                     expected: Box::new(expected_ty.clone()),
                     actual: {
                         let jvalue: CedarValueJson = serde_json::from_value(val)?;
-                        Box::new(self.type_of_rexpr(jvalue.into_expr()?.as_borrowed(), ctx)?)
+                        Box::new(
+                            self.type_of_rexpr(jvalue.into_expr(ctx.clone())?.as_borrowed(), ctx)?,
+                        )
                     },
                 }),
             },
@@ -397,22 +447,37 @@ impl<'e> ValueParser<'e> {
                             record_attr: record_attr.into(),
                         });
                     }
-                    Ok(RestrictedExpr::record(rexpr_pairs))
+                    // having duplicate keys should be impossible here (because
+                    // neither `actual_attrs` nor `expected_attrs` can have
+                    // duplicate keys; they're both maps), but we can still throw
+                    // the error properly in the case that it somehow happens
+                    RestrictedExpr::record(rexpr_pairs).map_err(|e| match e {
+                        ExprConstructionError::DuplicateKeyInRecordLiteral { key } => {
+                            JsonDeserializationError::DuplicateKeyInRecordLiteral {
+                                ctx: Box::new(ctx2()),
+                                key,
+                            }
+                        }
+                    })
                 }
                 _ => Err(JsonDeserializationError::TypeMismatch {
                     ctx: Box::new(ctx()),
                     expected: Box::new(expected_ty.clone()),
                     actual: {
                         let jvalue: CedarValueJson = serde_json::from_value(val)?;
-                        Box::new(self.type_of_rexpr(jvalue.into_expr()?.as_borrowed(), ctx)?)
+                        Box::new(
+                            self.type_of_rexpr(jvalue.into_expr(ctx.clone())?.as_borrowed(), ctx)?,
+                        )
                     },
                 }),
             },
-            // The expected type is any other type. No special parsing rules apply,
-            // and we treat this exactly as the non-schema-based-parsing case.
-            Some(_) => {
+            // The expected type is any other type, or we don't have an expected type.
+            // No special parsing rules apply; we do ordinary, non-schema-based parsing.
+            Some(_) | None => {
+                // Everything is parsed as `CedarValueJson`, and converted into
+                // `RestrictedExpr` from that.
                 let jvalue: CedarValueJson = serde_json::from_value(val)?;
-                jvalue.into_expr()
+                Ok(jvalue.into_expr(ctx)?)
             }
         }
     }
@@ -431,7 +496,7 @@ impl<'e> ValueParser<'e> {
             ExtnValueJson::ExplicitExprEscape { __expr } => {
                 // reuse the same logic that parses CedarValueJson
                 let jvalue = CedarValueJson::ExprEscape { __expr };
-                let expr = jvalue.into_expr()?;
+                let expr = jvalue.into_expr(ctx.clone())?;
                 match expr.expr_kind() {
                     ExprKind::ExtensionFunctionApp { .. } => Ok(expr),
                     _ => Err(JsonDeserializationError::ExpectedExtnValue {
@@ -444,7 +509,7 @@ impl<'e> ValueParser<'e> {
             | ExtnValueJson::ImplicitExtnEscape(__extn) => {
                 // reuse the same logic that parses CedarValueJson
                 let jvalue = CedarValueJson::ExtnEscape { __extn };
-                let expr = jvalue.into_expr()?;
+                let expr = jvalue.into_expr(ctx.clone())?;
                 match expr.expr_kind() {
                     ExprKind::ExtensionFunctionApp { .. } => Ok(expr),
                     _ => Err(JsonDeserializationError::ExpectedExtnValue {
@@ -454,7 +519,7 @@ impl<'e> ValueParser<'e> {
                 }
             }
             ExtnValueJson::ImplicitConstructor(val) => {
-                let arg = val.into_expr()?;
+                let arg = val.into_expr(ctx.clone())?;
                 let argty = self.type_of_rexpr(arg.as_borrowed(), ctx.clone())?;
                 let func = self
                     .extensions
@@ -517,9 +582,9 @@ impl<'e> ValueParser<'e> {
                     }
                 }
             }
-            ExprKind::Record { pairs } => {
+            ExprKind::Record(map) => {
                 Ok(SchemaType::Record { attrs: {
-                    pairs.iter().map(|(k, v)| {
+                    map.iter().map(|(k, v)| {
                         let attr_type = self.type_of_rexpr(
                             BorrowedRestrictedExpr::new_unchecked(v), // assuming the invariant holds for the record as a whole, it will also hold for each attribute value
                             ctx.clone(),
@@ -617,7 +682,7 @@ impl EntityUidJson {
     /// Convert this `EntityUidJson` into an `EntityUID`
     pub fn into_euid(
         self,
-        ctx: impl Fn() -> JsonDeserializationErrorContext,
+        ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
     ) -> Result<EntityUID, JsonDeserializationError> {
         let is_implicit_expr = matches!(self, Self::ImplicitExprEscape(_));
         match self {
@@ -626,7 +691,7 @@ impl EntityUidJson {
                 let jvalue = CedarValueJson::ExprEscape {
                     __expr: __expr.clone(),
                 };
-                let expr = jvalue.into_expr().map_err(|e| {
+                let expr = jvalue.into_expr(ctx.clone()).map_err(|e| {
                     if is_implicit_expr {
                         // in this case, the user provided a string that wasn't
                         // an appropriate entity reference.
@@ -641,7 +706,10 @@ impl EntityUidJson {
                         JsonDeserializationError::ExpectedLiteralEntityRef {
                             ctx: Box::new(ctx()),
                             got: Box::new(
-                                CedarValueJson::String(__expr).into_expr().unwrap().into(),
+                                CedarValueJson::String(__expr)
+                                    .into_expr(ctx.clone())
+                                    .unwrap()
+                                    .into(),
                             ),
                         }
                     } else {
@@ -659,7 +727,7 @@ impl EntityUidJson {
             Self::ExplicitEntityEscape { __entity } | Self::ImplicitEntityEscape(__entity) => {
                 // reuse the same logic that parses CedarValueJson
                 let jvalue = CedarValueJson::EntityEscape { __entity };
-                let expr = jvalue.into_expr()?;
+                let expr = jvalue.into_expr(ctx.clone())?;
                 match expr.expr_kind() {
                     ExprKind::Lit(Literal::EntityUID(euid)) => Ok((**euid).clone()),
                     _ => Err(JsonDeserializationError::ExpectedLiteralEntityRef {

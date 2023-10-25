@@ -23,8 +23,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::{
-    collections::HashMap,
-    collections::HashSet,
+    collections::{btree_map, BTreeMap, HashMap},
     hash::{Hash, Hasher},
     mem,
     sync::Arc,
@@ -163,11 +162,7 @@ pub enum ExprKind<T = ()> {
     // evaluated into `Value`s
     Set(Arc<Vec<Expr<T>>>),
     /// Anonymous record (whose elements may be arbitrary expressions)
-    /// This is a `Vec` for the same reason as above.
-    Record {
-        /// key/value pairs
-        pairs: Arc<Vec<(SmolStr, Expr<T>)>>,
-    },
+    Record(Arc<BTreeMap<SmolStr, Expr<T>>>),
 }
 
 impl From<Value> for Expr {
@@ -175,13 +170,14 @@ impl From<Value> for Expr {
         match v {
             Value::Lit(l) => Expr::val(l),
             Value::Set(s) => Expr::set(s.iter().map(|v| Expr::from(v.clone()))),
+            // PANIC SAFETY: cannot have duplicate key because the input was already a BTreeMap
+            #[allow(clippy::expect_used)]
             Value::Record(fields) => Expr::record(
-                fields
-                    .as_ref()
-                    .clone()
+                unwrap_or_clone(fields)
                     .into_iter()
                     .map(|(k, v)| (k, Expr::from(v))),
-            ),
+            )
+            .expect("cannot have duplicate key because the input was already a BTreeMap"),
             Value::ExtensionValue(ev) => ev.as_ref().clone().into(),
         }
     }
@@ -284,15 +280,7 @@ impl<T> Expr<T> {
             ExprKind::Unknown { .. } => true,
             ExprKind::Set(_) => true,
             ExprKind::Var(_) => true,
-            ExprKind::Record { pairs } => {
-                // We need to ensure there are no duplicate keys in the expression
-                let uniq_keys = pairs
-                    .as_ref()
-                    .iter()
-                    .map(|(key, _)| key)
-                    .collect::<HashSet<_>>();
-                pairs.len() == uniq_keys.len()
-            }
+            ExprKind::Record(_) => true,
             _ => false,
         })
     }
@@ -429,8 +417,21 @@ impl Expr {
     }
 
     /// Create an `Expr` which evaluates to a Record with the given (key, value) pairs.
-    pub fn record(pairs: impl IntoIterator<Item = (SmolStr, Expr)>) -> Self {
+    pub fn record(
+        pairs: impl IntoIterator<Item = (SmolStr, Expr)>,
+    ) -> Result<Self, ExprConstructionError> {
         ExprBuilder::new().record(pairs)
+    }
+
+    /// Create an `Expr` which evaluates to a Record with the given key-value mapping.
+    ///
+    /// If you have an iterator of pairs, generally prefer calling
+    /// `Expr::record()` instead of `.collect()`-ing yourself and calling this,
+    /// potentially for efficiency reasons but also because `Expr::record()`
+    /// will properly handle duplicate keys but your own `.collect()` will not
+    /// (by default).
+    pub fn record_arc(map: Arc<BTreeMap<SmolStr, Expr>>) -> Self {
+        ExprBuilder::new().record_arc(map)
     }
 
     /// Create an `Expr` which calls the extension function with the given
@@ -569,12 +570,15 @@ impl Expr {
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(Expr::set(members))
             }
-            ExprKind::Record { pairs } => {
-                let pairs = pairs
+            ExprKind::Record(map) => {
+                let map = map
                     .iter()
                     .map(|(name, e)| Ok((name.clone(), e.substitute(definitions)?)))
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(Expr::record(pairs))
+                    .collect::<Result<BTreeMap<_, _>, _>>()?;
+                // PANIC SAFETY: cannot have a duplicate key because the input was already a BTreeMap
+                #[allow(clippy::expect_used)]
+                Ok(Expr::record(map)
+                    .expect("cannot have a duplicate key because the input was already a BTreeMap"))
             }
             ExprKind::MulByConst { arg, constant } => {
                 Ok(Expr::mul(arg.substitute(definitions)?, *constant))
@@ -734,11 +738,10 @@ impl std::fmt::Display for Expr {
                 write!(f, "{} like \"{}\"", maybe_with_parens(expr), pattern,)
             }
             ExprKind::Set(v) => write!(f, "[{}]", v.iter().join(", ")),
-            ExprKind::Record { pairs } => write!(
+            ExprKind::Record(m) => write!(
                 f,
                 "{{{}}}",
-                pairs
-                    .iter()
+                m.iter()
                     .map(|(k, v)| format!("\"{}\": {}", k.escape_debug(), v))
                     .join(", ")
             ),
@@ -1073,10 +1076,34 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an `Expr` which evaluates to a Record with the given (key, value) pairs.
-    pub fn record(self, pairs: impl IntoIterator<Item = (SmolStr, Expr<T>)>) -> Expr<T> {
-        self.with_expr_kind(ExprKind::Record {
-            pairs: Arc::new(pairs.into_iter().collect()),
-        })
+    pub fn record(
+        self,
+        pairs: impl IntoIterator<Item = (SmolStr, Expr<T>)>,
+    ) -> Result<Expr<T>, ExprConstructionError> {
+        let mut map = BTreeMap::new();
+        for (k, v) in pairs {
+            match map.entry(k) {
+                btree_map::Entry::Occupied(oentry) => {
+                    return Err(ExprConstructionError::DuplicateKeyInRecordLiteral {
+                        key: oentry.key().clone(),
+                    });
+                }
+                btree_map::Entry::Vacant(ventry) => {
+                    ventry.insert(v);
+                }
+            }
+        }
+        Ok(self.with_expr_kind(ExprKind::Record(Arc::new(map))))
+    }
+
+    /// Create an `Expr` which evalutes to a Record with the given key-value mapping.
+    ///
+    /// If you have an iterator of pairs, generally prefer calling `.record()`
+    /// instead of `.collect()`-ing yourself and calling this, potentially for
+    /// efficiency reasons but also because `.record()` will properly handle
+    /// duplicate keys but your own `.collect()` will not (by default).
+    pub fn record_arc(self, map: Arc<BTreeMap<SmolStr, Expr<T>>>) -> Expr<T> {
+        self.with_expr_kind(ExprKind::Record(map))
     }
 
     /// Create an `Expr` which calls the extension function with the given
@@ -1178,6 +1205,17 @@ impl<T: Clone> ExprBuilder<T> {
                 .or(acc, next)
         })
     }
+}
+
+/// Errors when constructing an `Expr`
+#[derive(Debug, PartialEq, Error)]
+pub enum ExprConstructionError {
+    /// A key occurred twice (or more) in a record literal
+    #[error("duplicate key `{key}` in record literal")]
+    DuplicateKeyInRecordLiteral {
+        /// The key which occurred twice (or more) in the record literal
+        key: SmolStr,
+    },
 }
 
 /// A new type wrapper around `Expr` that provides `Eq` and `Hash`
@@ -1310,10 +1348,13 @@ impl<T> Expr<T> {
                 .iter()
                 .zip(elems1.iter())
                 .all(|(e, e1)| e.eq_shape(e1)),
-            (Record { pairs }, Record { pairs: pairs1 }) => pairs
-                .iter()
-                .zip(pairs1.iter())
-                .all(|((a, e), (a1, e1))| a == a1 && e.eq_shape(e1)),
+            (Record(map), Record(map1)) => {
+                map.len() == map1.len()
+                    && map
+                        .iter()
+                        .zip(map1.iter()) // relying on BTreeMap producing an iterator sorted by key
+                        .all(|((a, e), (a1, e1))| a == a1 && e.eq_shape(e1))
+            }
             (
                 Is { expr, entity_type },
                 Is {
@@ -1399,9 +1440,9 @@ impl<T> Expr<T> {
                     e.hash_shape(state);
                 })
             }
-            ExprKind::Record { pairs } => {
-                state.write_usize(pairs.len());
-                pairs.iter().for_each(|(s, a)| {
+            ExprKind::Record(map) => {
+                state.write_usize(map.len());
+                map.iter().for_each(|(s, a)| {
                     s.hash(state);
                     a.hash_shape(state);
                 });
@@ -1765,8 +1806,10 @@ mod test {
                 Expr::set([Expr::val(1)]),
             ),
             (
-                ExprBuilder::with_data(1).record([("foo".into(), temp.clone())]),
-                Expr::record([("foo".into(), Expr::val(1))]),
+                ExprBuilder::with_data(1)
+                    .record([("foo".into(), temp.clone())])
+                    .unwrap(),
+                Expr::record([("foo".into(), Expr::val(1))]).unwrap(),
             ),
             (
                 ExprBuilder::with_data(1)
