@@ -11,22 +11,31 @@ This repository contains source code of the Rust crates that implement the [Ceda
 Cedar is a language for writing and enforcing authorization policies in your applications. Using Cedar, you can write policies that specify your applications' fine-grained permissions. Your applications then authorize access requests by calling Cedar's authorization engine. Because Cedar policies are separate from application code, they can be independently authored, updated, analyzed, and audited. You can use Cedar's validator to check that Cedar policies are consistent with a declared schema which defines your application's authorization model.
 
 Cedar is:
+
 ### Expressive
+
 Cedar is a simple yet expressive language that is purpose-built to support authorization use cases for common authorization models such as RBAC and ABAC.
+
 ### Performant
+
 Cedar is fast and scalable. The policy structure is designed to be indexed for quick retrieval and to support fast and scalable real-time evaluation, with bounded latency.
+
 ### Analyzable
+
 Cedar is designed for analysis using Automated Reasoning. This enables analyzer tools capable of optimizing your policies and proving that your security model is what you believe it is.
 
 ## Using Cedar
-Cedar can be used in your application by depending on the `cedar-policy` crate.
 
-Just add `cedar-policy` as a dependency in your `Cargo.toml`:
+Cedar can be used in your application by depending on the [`cedar-policy` crate](https://crates.io/crates/cedar-policy).
+
+Just add `cedar-policy` as a dependency in your `Cargo.toml`. For example:
+
 ```toml
 [dependencies]
-cedar-policy = "2.0"
+cedar-policy = "2.4"
 ```
-## Crates in this workspace
+
+## Crates in This Workspace
 
 * [cedar-policy](./cedar-policy) : Main crate for using Cedar to authorize access requests in your applications, and validate Cedar policies against a schema
 * [cedar-policy-cli](./cedar-policy-cli) : Crate containing a simple command-line interface (CLI) for interacting with Cedar
@@ -37,9 +46,10 @@ cedar-policy = "2.0"
 
 ## Quick Start
 
-Let's put the policy in policy.cedar and the entities in entities.json:
+Let's put the policy in `policy.cedar` and the entities in `entities.json`.
 
-policy.cedar
+`policy.cedar`:
+
 ```
 permit (
   principal == User::"alice",
@@ -47,9 +57,11 @@ permit (
   resource in Album::"jane_vacation"
 );
 ```
+
 This policy specifies that `alice` is allowed to view the photos in the `"jane_vacation"` album.
 
-entities.json
+`entities.json`:
+
 ```json
 [
     {
@@ -65,9 +77,11 @@ entities.json
 ]
 
 ```
+
 Cedar represents principals, resources, and actions as entities. An entity has a type (e.g., `User`) and an id (e.g., `alice`). They can also have attributes (e.g., `User::"alice"`'s `age` attribute is the integer `18`).
 
-Now, let's test our policy with the CLI
+Now, let's test our policy with the CLI:
+
 ```rust
  cargo run authorize \
     --policies policy.cedar \
@@ -78,18 +92,20 @@ Now, let's test our policy with the CLI
 ```
 
 CLI output:
+
 ```
 ALLOW
 ```
-It is allowed because `VacationPhoto94.jpg` belongs to `Album::"jane_vacation"`, and `alice` can view photos in `Album::"jane_vacation"`.
 
-If you'd like to see more details on what can be expressed as Cedar policies, see the [documentation](https://docs.cedarpolicy.com/what-is-cedar.html).
+This request is allowed because `VacationPhoto94.jpg` belongs to `Album::"jane_vacation"`, and `alice` can view photos in `Album::"jane_vacation"`.
+
+If you'd like to see more details on what can be expressed as Cedar policies, see the [documentation](https://docs.cedarpolicy.com).
 
 Examples of how to use Cedar in an application are contained in the repository [cedar-examples](https://github.com/cedar-policy/cedar-examples). [TinyTodo](https://github.com/cedar-policy/cedar-examples/tree/main/tinytodo) is a simple task list management app whose users' requests, sent as HTTP messages, are authorized by Cedar. It shows how you can integrate Cedar into your own Rust program.
 
 ## Documentation
 
-General documentation for Cedar is available at [docs.cedarpolicy.com](https://docs.cedarpolicy.com), with docs source code in the [cedar-policy/cedar-docs](https://github.com/cedar-policy/cedar-docs/) repository.
+General documentation for Cedar is available at [docs.cedarpolicy.com](https://docs.cedarpolicy.com), with source code in the [cedar-policy/cedar-docs](https://github.com/cedar-policy/cedar-docs/) repository.
 
 Generated documentation for the latest version of the Rust crates can be accessed
 [on docs.rs](https://docs.rs/cedar-policy).
@@ -98,28 +114,28 @@ Generated documentation for the latest version of the Rust crates can be accesse
 
 To build, simply run `cargo build` (or `cargo build --release`).
 
-## What's new / Changelog
+## What's New
 
 We maintain changelogs for our public-facing crates: [cedar-policy](./cedar-policy/CHANGELOG.md) and [cedar-policy-cli](./cedar-policy-cli/CHANGELOG.md).
 For a list of the current and past releases, see [crates.io](https://crates.io/crates/cedar-policy) or [Releases](https://github.com/cedar-policy/cedar/releases).
 
 ## Backward Compatibility Considerations
 
-Cedar is written in Rust and you will typically depend on Cedar via Cargo. Cargo makes sane choices for the majority of project, but your needs may differ. If you don't want automatic updates to Cedar replace
+Cedar is written in Rust and you will typically depend on Cedar via Cargo. Cargo makes sane choices for the majority of projects, but your needs may differ. If you don't want automatic updates to Cedar, then you can pin to a specific version in your `Cargo.toml`. For example:
 
-```
+```toml
 [dependencies]
-cedar-policy = "2.3.3"
+cedar-policy = "=2.4.2"
 ```
 
-with
+Note that this is different from:
 
-```
+```toml
 [dependencies]
-cedar-policy = "=2.3.3"
+cedar-policy = "2.4.2"
 ```
 
-in your `Cargo.toml` file.
+Which will pull the latest patch of version 2.4.
 
 ## Security
 
