@@ -44,7 +44,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 pub enum CedarValueJson {
     /// The `__expr` escape has been removed, but is still reserved in order to throw meaningful errors.
     ExprEscape {
-        /// Contents, will be ignored and an error is thrown are attempting to parse this
+        /// Contents, will be ignored and an error is thrown when attempting to parse this
         __expr: SmolStr,
     },
     /// Special JSON object with single reserved "__entity" key:
