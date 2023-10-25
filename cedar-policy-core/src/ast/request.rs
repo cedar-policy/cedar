@@ -156,7 +156,7 @@ impl std::fmt::Display for Request {
 pub struct Context {
     /// an `Expr::Record` that qualifies as a "restricted expression"
     /// INVARIANT: This must be of the variant `Record`
-    /// TOOD: This should be refactored if possible to require this runtime invariant
+    /// TODO: This should be refactored if possible to require this runtime invariant
     #[serde(flatten)]
     context: RestrictedExpr,
 }
