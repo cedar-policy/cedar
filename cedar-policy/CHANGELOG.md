@@ -10,13 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Option to eagerly evaluate entity attributes and re-use across calls to `is_authorized`.
-- APIs to `Entities` to make it easy to add a collection of entities to an existing `Entities` structure.
+- New APIs to `Entities` to make it easy to add a collection of entities to an existing `Entities` structure.
 - Export the `cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind}` and
   `cedar_policy_core::authorizer::AuthorizationError` error types.
-- API to `ParseError` to quickly get the primary source span.
-- API, `unknown_entities`, to `PolicySet` to collect unknown entity UIDs from `PartialResponse`.
-- APIs `remove`, `remove_template` and `unlink` to remove policies from the `PolicySet`.
-- API `get_linked_policies` to get the policies linked to a `Template`.
+- `ParseError::primary_source_span` to get the primary source span locating an error.
+- Experimental API `PolicySet::unknown_entities` to collect unknown entity UIDs from a `PartialResponse`.
+- `PolicySet::remove_static`, `PolicySet::remove_template` and `PolicySet::unlink` to remove policies from the policy set.
+- `PolicySet::get_linked_policies` to get the policies linked to a `Template`.
 
 ### Changed
 
@@ -34,12 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ip("192.168.0.1/24") == ip("192.168.0.3/24")` was previously `true` and is now
   `false`. The behavior of equality on single IP addresses is unchanged, and so is
   the behavior of `.isInRange()`.
-- Standardize on duplicates being errors instead of last-write-wins in the following APIs:
-  - Policy set JSON representation
-  - Template set JSON representation
-  - Template instantiation records
-  - Entity slice JSON representation
-  - Context JSON representation
+- Standardize on duplicates being errors instead of last-write-wins in the JSON-based `is_authorized` APIs.
 - `<EntityId as FromStr>::Error` is now `Infallible` instead of `ParseErrors`.
 
 ## [2.4.2] - 2023-10-23
@@ -59,15 +54,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Improve validation error messages for access to undeclared attributes and
-  unsafe access to optional attributes to report the target of the access (fix #175).
+  unsafe access to optional attributes to report the target of the access (issue #175).
 - `EntityUid`'s impl of `FromStr` is no longer marked as deprecated.
-- Update the behavior of `Request::principal()`, `Request::action()`, and
-  `Request::resource()` to return `None` if the entities are unspecified (i.e.,
-  constructed by passing `None` to `Request::new()`).
 
 ### Fixed
 
-- Issue #299 related to the condition of `if` not being partial evaluated.
+- Issue #299 related to how partial evaluation handled conditions of `if`,
+  resulting in a panic on some inputs.
+- `Request::principal()`, `Request::action()`, and `Request::resource()` will
+  now return `None` if the entities are unspecified (i.e., constructed by passing
+  `None` to `Request::new()`).
 
 ## [2.4.0] - 2023-09-21
 
