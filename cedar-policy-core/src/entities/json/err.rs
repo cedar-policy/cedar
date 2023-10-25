@@ -68,9 +68,6 @@ pub enum JsonDeserializationError {
     /// Restricted expression error
     #[error(transparent)]
     RestrictedExpressionError(#[from] RestrictedExprError),
-    /// An error occurred when looking up an extension function
-    #[error(transparent)]
-    FailedExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
     /// A field that needs to be a literal entity reference, was some other JSON value
     #[error("{ctx}, expected a literal entity reference, but got `{got}`")]
     ExpectedLiteralEntityRef {
@@ -112,10 +109,18 @@ pub enum JsonDeserializationError {
         /// argument type of the constructor we were looking for
         arg_type: Box<SchemaType>,
     },
+    /// The same key appears two or more times in a single record literal
+    #[error("{ctx}, duplicate key `{key}` in record literal")]
+    DuplicateKeyInRecordLiteral {
+        /// Context of this error
+        ctx: Box<JsonDeserializationErrorContext>,
+        /// The key that appeared two or more times
+        key: SmolStr,
+    },
     /// During schema-based parsing, encountered an entity which does not
     /// conform to the schema.
     ///
-    /// This error contains the `Entity` analogues of the `Context` error cases
+    /// This error contains the `Entity` analogues some of the other errors
     /// listed below, among other things.
     #[error(transparent)]
     EntitySchemaConformance(EntitySchemaConformanceError),
@@ -137,72 +142,58 @@ pub enum JsonDeserializationError {
         /// Name of the (Record) attribute which was expected
         record_attr: SmolStr,
     },
-    /// During schema-based parsing of the `Context`, found a different type
-    /// than the schema indicated
+    /// During schema-based parsing, found a different type than the schema indicated.
     ///
-    /// (type mismatches in entity attributes will be
-    /// `EntitySchemaConformanceError`)
-    #[error("while parsing context, type mismatch: expected type {expected}, but actually has type {actual}")]
-    ContextTypeMismatch {
-        /// Type which was expected
-        expected: Box<SchemaType>,
-        /// Type which was encountered instead
-        actual: Box<SchemaType>,
-    },
-    /// During schema-based parsing of the `Context`, found a set whose elements
-    /// don't all have the same type.  This doesn't match any possible schema.
-    #[error("while parsing context, {0}")]
-    ContextHeterogeneousSet(HeterogeneousSetError),
-    /// During schema-based parsing of the `Context`, error looking up an extension function.
-    /// This error can occur when parsing the `Context` because that may require
-    /// getting information about any extension functions referenced in `Context` values.
-    #[error("while parsing context, {0}")]
-    ContextExtension(ExtensionFunctionLookupError),
-    /// Type mismatch somewhere other than entity attributes or context, which
-    /// would result in `Self::EntitySchemaConformance` or
-    /// `Self::ContextTypeMismatch` respectively.
-    /// This should never occur, but is propagated as this error instead of a panic.
+    /// (This is used in all cases except inside entity attributes; type mismatches in
+    /// entity attributes are reported as `Self::EntitySchemaConformance`. As of
+    /// this writing, that means this should only be used for schema-based
+    /// parsing of the `Context`.)
     #[error("{ctx}, type mismatch: expected type {expected}, but actually has type {actual}")]
-    OtherTypeMismatch {
-        /// Context of this error, which will be something other than `EntityAttribute`
-        /// or `Context`
+    TypeMismatch {
+        /// Context of this error, which will be something other than `EntityAttribute`.
+        /// (Type mismatches in entity attributes are reported as
+        /// `Self::EntitySchemaConformance`.)
         ctx: Box<JsonDeserializationErrorContext>,
         /// Type which was expected
         expected: Box<SchemaType>,
         /// Type which was encountered instead
         actual: Box<SchemaType>,
     },
-    /// Heterogeneous set found somewhere other than entity attributes or
-    /// context, which would result in `Self::EntitySchemaConformance` or
-    /// `Self::ContextHeterogeneousSet` respectively.
-    /// This should never occur, but is propagated as this error instead of a panic.
+    /// During schema-based parsing, found a set whose elements don't all have
+    /// the same type.  This doesn't match any possible schema.
+    ///
+    /// (This is used in all cases except inside entity attributes;
+    /// heterogeneous sets in entity attributes are reported as
+    /// `Self::EntitySchemaConformance`. As of this writing, that means this
+    /// should only be used for schema-based parsing of the `Context`. Note that
+    /// for non-schema-based parsing, heterogeneous sets are not an error.)
     #[error("{ctx}, {err}")]
-    OtherHeterogeneousSet {
-        /// Context of this error, which will be something other than
-        /// `EntityAttribute` or `Context`
+    HeterogeneousSet {
+        /// Context of this error, which will be something other than `EntityAttribute`.
+        /// (Heterogeneous sets in entity attributes are reported as
+        /// `Self::EntitySchemaConformance`.)
         ctx: Box<JsonDeserializationErrorContext>,
         /// Underlying error
         err: HeterogeneousSetError,
     },
-    /// Extension function lookup error somewhere other than entity attributes
-    /// or context, which would result in `Self::EntitySchemaConformance` or
-    /// `Self::ContextExtension` respectively.
-    /// This should never occur, but is propagated as this error instead of a panic.
+    /// During schema-based parsing, error looking up an extension function.
+    /// This error can occur during schema-based parsing because that may
+    /// require getting information about any extension functions referenced in
+    /// the JSON.
+    ///
+    /// (This is used in all cases except inside entity attributes; extension
+    /// function lookup errors in entity attributes are reported as
+    /// `Self::EntitySchemaConformance`. As of this writing, that means this
+    /// should only be used for schema-based parsing of the `Context`.)
     #[error("{ctx}, {err}")]
-    OtherExtension {
+    ExtensionFunctionLookup {
         /// Context of this error, which will be something other than
-        /// `EntityAttribute` or `Context`
+        /// `EntityAttribute`.
+        /// (Extension function lookup errors in entity attributes are reported
+        /// as `Self::EntitySchemaConformance`.)
         ctx: Box<JsonDeserializationErrorContext>,
         /// Underlying error
         err: ExtensionFunctionLookupError,
-    },
-    /// The same key appears two or more times in a single record literal
-    #[error("{ctx}, duplicate key `{key}` in record literal")]
-    DuplicateKeyInRecordLiteral {
-        /// Context of this error
-        ctx: Box<JsonDeserializationErrorContext>,
-        /// The key that appeared two or more times
-        key: SmolStr,
     },
 }
 

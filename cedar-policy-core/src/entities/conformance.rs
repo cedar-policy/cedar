@@ -91,7 +91,7 @@ pub enum EntitySchemaConformanceError {
     /// checking entity conformance because that may require getting information
     /// about any extension functions referenced in entity attribute values.
     #[error("in attribute `{attr}` on `{uid}`, {err}")]
-    Extension {
+    ExtensionFunctionLookup {
         /// Entity where the error occurred
         uid: EntityUID,
         /// Name of the attribute where the error occurred
@@ -202,12 +202,14 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                                     err,
                                 });
                             }
-                            Err(TypeOfRestrictedExprError::Extension(err)) => {
-                                return Err(EntitySchemaConformanceError::Extension {
-                                    uid: uid.clone(),
-                                    attr: attr.into(),
-                                    err,
-                                });
+                            Err(TypeOfRestrictedExprError::ExtensionFunctionLookup(err)) => {
+                                return Err(
+                                    EntitySchemaConformanceError::ExtensionFunctionLookup {
+                                        uid: uid.clone(),
+                                        attr: attr.into(),
+                                        err,
+                                    },
+                                );
                             }
                         }
                     }
@@ -242,7 +244,7 @@ pub enum TypeOfRestrictedExprError {
     HeterogeneousSet(#[from] HeterogeneousSetError),
     /// Error looking up an extension function
     #[error(transparent)]
-    Extension(#[from] ExtensionFunctionLookupError),
+    ExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
 }
 
 /// Get the [`SchemaType`] of a restricted expression.

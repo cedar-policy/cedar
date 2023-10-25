@@ -319,8 +319,14 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                                         },
                                     )
                                 }
-                                TypeOfRestrictedExprError::Extension(err) => {
-                                    JsonDeserializationError::FailedExtensionFunctionLookup(err)
+                                TypeOfRestrictedExprError::ExtensionFunctionLookup(err) => {
+                                    JsonDeserializationError::EntitySchemaConformance(
+                                        EntitySchemaConformanceError::ExtensionFunctionLookup {
+                                            uid: uid.clone(),
+                                            attr: k.clone(),
+                                            err,
+                                        },
+                                    )
                                 }
                             })?;
                     let actual_rexpr =

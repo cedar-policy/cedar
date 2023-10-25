@@ -427,10 +427,7 @@ impl<'e> ValueParser<'e> {
                                 },
                             ))
                         }
-                        JsonDeserializationErrorContext::Context => {
-                            Err(JsonDeserializationError::ContextTypeMismatch { expected, actual })
-                        }
-                        ctx => Err(JsonDeserializationError::OtherTypeMismatch {
+                        ctx => Err(JsonDeserializationError::TypeMismatch {
                             ctx: Box::new(ctx),
                             expected,
                             actual,
@@ -512,10 +509,7 @@ impl<'e> ValueParser<'e> {
                                 },
                             ))
                         }
-                        JsonDeserializationErrorContext::Context => {
-                            Err(JsonDeserializationError::ContextTypeMismatch { expected, actual })
-                        }
-                        ctx => Err(JsonDeserializationError::OtherTypeMismatch {
+                        ctx => Err(JsonDeserializationError::TypeMismatch {
                             ctx: Box::new(ctx),
                             expected,
                             actual,
@@ -583,7 +577,11 @@ impl<'e> ValueParser<'e> {
                             name: expected_typename.clone(),
                         },
                         &argty,
-                    )?
+                    )
+                    .map_err(|err| JsonDeserializationError::ExtensionFunctionLookup {
+                        ctx: Box::new(ctx()),
+                        err,
+                    })?
                     .ok_or_else(|| JsonDeserializationError::MissingImpliedConstructor {
                         ctx: Box::new(ctx()),
                         return_type: Box::new(SchemaType::Extension {
@@ -611,24 +609,18 @@ fn type_of_restricted_expr_error_to_json_deserialization_error(
                     EntitySchemaConformanceError::HeterogeneousSet { uid, attr, err },
                 )
             }
-            JsonDeserializationErrorContext::Context => {
-                JsonDeserializationError::ContextHeterogeneousSet(err)
-            }
-            ctx => JsonDeserializationError::OtherHeterogeneousSet {
+            ctx => JsonDeserializationError::HeterogeneousSet {
                 ctx: Box::new(ctx),
                 err,
             },
         },
-        TypeOfRestrictedExprError::Extension(err) => match ctx {
+        TypeOfRestrictedExprError::ExtensionFunctionLookup(err) => match ctx {
             JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                 JsonDeserializationError::EntitySchemaConformance(
-                    EntitySchemaConformanceError::Extension { uid, attr, err },
+                    EntitySchemaConformanceError::ExtensionFunctionLookup { uid, attr, err },
                 )
             }
-            JsonDeserializationErrorContext::Context => {
-                JsonDeserializationError::ContextExtension(err)
-            }
-            ctx => JsonDeserializationError::OtherExtension {
+            ctx => JsonDeserializationError::ExtensionFunctionLookup {
                 ctx: Box::new(ctx),
                 err,
             },
