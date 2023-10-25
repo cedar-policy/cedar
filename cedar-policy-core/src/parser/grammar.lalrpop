@@ -177,7 +177,7 @@ And: Node<Option<cst::And>> = {
     <l:@L> <i:Relation> <e:("&&" <Relation>)*> <r:@R>
         => Node::new(Some(cst::And{initial: i, extended: e}),l,r),
 }
-// Relation := Add {RelOp Add} | Add HAS Add | Add LIKE Add | Add IS Add
+// Relation := Add {RelOp Add} | Add HAS Add | Add LIKE Add | Add IS Name (IN Add)?
 Relation: Node<Option<cst::Relation>> = {
     <l:@L> <i:Add> <e:(RelOp Add)*> <r:@R>
         => Node::new(Some(cst::Relation::Common{initial: i, extended: e}),l,r),

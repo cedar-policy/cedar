@@ -44,7 +44,7 @@ impl<'a> From<&'a PrincipalOrResourceConstraint> for HeadConstraint<'a> {
     }
 }
 
-use crate::expr_iterator::policy_entity_uids;
+use crate::expr_iterator::{policy_entity_type_names, policy_entity_uids};
 
 use super::{
     fuzzy_match::fuzzy_search, schema::*, validation_result::ValidationErrorKind, Validator,
@@ -65,30 +65,32 @@ impl Validator {
             .map(ToString::to_string)
             .collect::<Vec<_>>();
 
-        policy_entity_uids(template).filter_map(move |euid| {
-            let entity_type = euid.entity_type();
-            match entity_type {
-                cedar_policy_core::ast::EntityType::Unspecified => Some(
-                    ValidationErrorKind::unspecified_entity(euid.eid().to_string()),
-                ),
-                cedar_policy_core::ast::EntityType::Concrete(name) => {
-                    let is_action_entity_type = is_action_entity_type(name);
-                    let is_known_entity_type = self.schema.is_known_entity_type(name);
+        policy_entity_type_names(template)
+            .filter_map(move |name| {
+                let is_action_entity_type = is_action_entity_type(name);
+                let is_known_entity_type = self.schema.is_known_entity_type(name);
 
-                    if !is_action_entity_type && !is_known_entity_type {
-                        let actual_entity_type = entity_type.to_string();
-                        let suggested_entity_type =
-                            fuzzy_search(&actual_entity_type, known_entity_types.as_slice());
-                        Some(ValidationErrorKind::unrecognized_entity_type(
-                            actual_entity_type,
-                            suggested_entity_type,
-                        ))
-                    } else {
-                        None
-                    }
+                if !is_action_entity_type && !is_known_entity_type {
+                    let actual_entity_type = name.to_string();
+                    let suggested_entity_type =
+                        fuzzy_search(&actual_entity_type, known_entity_types.as_slice());
+                    Some(ValidationErrorKind::unrecognized_entity_type(
+                        actual_entity_type,
+                        suggested_entity_type,
+                    ))
+                } else {
+                    None
                 }
-            }
-        })
+            })
+            .chain(policy_entity_uids(template).filter_map(move |euid| {
+                let entity_type = euid.entity_type();
+                match entity_type {
+                    cedar_policy_core::ast::EntityType::Unspecified => Some(
+                        ValidationErrorKind::unspecified_entity(euid.eid().to_string()),
+                    ),
+                    cedar_policy_core::ast::EntityType::Concrete(_) => None,
+                }
+            }))
     }
 
     /// Generate UnrecognizedActionId notes for every entity id with an action
@@ -462,7 +464,7 @@ mod test {
 
     use cedar_policy_core::{
         ast::{Effect, Eid, EntityUID, Expr, PolicyID, PrincipalConstraint, ResourceConstraint},
-        parser::parse_policy,
+        parser::{parse_policy, parse_policy_template},
     };
 
     use super::*;
@@ -1334,6 +1336,186 @@ mod test {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn validate_principal_is() {
+        let (_, _, _, schema) = schema_with_single_principal_action_resource();
+
+        let policy =
+            parse_policy_template(None, "permit(principal is bar, action, resource);").unwrap();
+
+        let validate = Validator::new(schema.clone());
+        assert!(
+            validate
+                .validate_policy(&policy, ValidationMode::default())
+                .next()
+                .is_none(),
+            "Did not expect any validation notes."
+        );
+
+        let policy = parse_policy_template(
+            None,
+            r#"permit(principal is bar in bar::"baz", action, resource);"#,
+        )
+        .unwrap();
+
+        let validate = Validator::new(schema);
+        assert!(
+            validate
+                .validate_policy(&policy, ValidationMode::default())
+                .next()
+                .is_none(),
+            "Did not expect any validation notes."
+        );
+    }
+
+    #[test]
+    fn validate_principal_err() {
+        let (_, _, _, schema) = schema_with_single_principal_action_resource();
+
+        let policy =
+            parse_policy_template(None, "permit(principal is baz, action, resource);").unwrap();
+
+        let validate = Validator::new(schema.clone());
+        assert_eq!(
+            validate
+                .validate_policy(&policy, ValidationMode::default())
+                .map(|e| { e.into_location_and_error_kind().1 })
+                .collect::<Vec<ValidationErrorKind>>(),
+            vec![
+                ValidationErrorKind::invalid_action_application(false, false),
+                ValidationErrorKind::TypeError(TypeErrorKind::ImpossiblePolicy)
+            ],
+        );
+
+        let policy = parse_policy_template(
+            None,
+            r#"permit(principal is biz in faz::"a", action, resource);"#,
+        )
+        .unwrap();
+
+        let validate = Validator::new(schema.clone());
+        assert_eq!(
+            validate
+                .validate_policy(&policy, ValidationMode::default())
+                .map(|e| { e.into_location_and_error_kind().1 })
+                .collect::<Vec<ValidationErrorKind>>(),
+            vec![
+                ValidationErrorKind::unrecognized_entity_type("faz".into(), Some("baz".into())),
+                ValidationErrorKind::unrecognized_entity_type("biz".into(), Some("baz".into())),
+                ValidationErrorKind::invalid_action_application(false, false),
+                ValidationErrorKind::TypeError(TypeErrorKind::ImpossiblePolicy)
+            ],
+        );
+
+        let policy = parse_policy_template(
+            None,
+            r#"permit(principal is bar in baz::"buz", action, resource);"#,
+        )
+        .unwrap();
+
+        let validate = Validator::new(schema.clone());
+        assert_eq!(
+            validate
+                .validate_policy(&policy, ValidationMode::default())
+                .map(|e| { e.into_location_and_error_kind().1 })
+                .collect::<Vec<ValidationErrorKind>>(),
+            vec![
+                ValidationErrorKind::invalid_action_application(false, false),
+                ValidationErrorKind::TypeError(TypeErrorKind::ImpossiblePolicy)
+            ],
+        );
+    }
+
+    #[test]
+    fn validate_resource_is() {
+        let (_, _, _, schema) = schema_with_single_principal_action_resource();
+
+        let policy =
+            parse_policy_template(None, "permit(principal, action, resource is baz);").unwrap();
+
+        let validate = Validator::new(schema.clone());
+        assert!(
+            validate
+                .validate_policy(&policy, ValidationMode::default())
+                .next()
+                .is_none(),
+            "Did not expect any validation notes."
+        );
+
+        let policy = parse_policy_template(
+            None,
+            r#"permit(principal, action, resource is baz in baz::"bar");"#,
+        )
+        .unwrap();
+
+        let validate = Validator::new(schema);
+        assert!(
+            validate
+                .validate_policy(&policy, ValidationMode::default())
+                .next()
+                .is_none(),
+            "Did not expect any validation notes."
+        );
+    }
+
+    #[test]
+    fn validate_resource_err() {
+        let (_, _, _, schema) = schema_with_single_principal_action_resource();
+
+        let policy =
+            parse_policy_template(None, "permit(principal, action, resource is bar);").unwrap();
+
+        let validate = Validator::new(schema.clone());
+        assert_eq!(
+            validate
+                .validate_policy(&policy, ValidationMode::default())
+                .map(|e| { e.into_location_and_error_kind().1 })
+                .collect::<Vec<ValidationErrorKind>>(),
+            vec![
+                ValidationErrorKind::invalid_action_application(false, false),
+                ValidationErrorKind::TypeError(TypeErrorKind::ImpossiblePolicy)
+            ],
+        );
+
+        let policy = parse_policy_template(
+            None,
+            r#"permit(principal, action, resource is baz in bar::"buz");"#,
+        )
+        .unwrap();
+
+        let validate = Validator::new(schema.clone());
+        assert_eq!(
+            validate
+                .validate_policy(&policy, ValidationMode::default())
+                .map(|e| { e.into_location_and_error_kind().1 })
+                .collect::<Vec<ValidationErrorKind>>(),
+            vec![
+                ValidationErrorKind::invalid_action_application(false, false),
+                ValidationErrorKind::TypeError(TypeErrorKind::ImpossiblePolicy)
+            ],
+        );
+
+        let policy = parse_policy_template(
+            None,
+            r#"permit(principal, action, resource is biz in faz::"a");"#,
+        )
+        .unwrap();
+
+        let validate = Validator::new(schema.clone());
+        assert_eq!(
+            validate
+                .validate_policy(&policy, ValidationMode::default())
+                .map(|e| { e.into_location_and_error_kind().1 })
+                .collect::<Vec<ValidationErrorKind>>(),
+            vec![
+                ValidationErrorKind::unrecognized_entity_type("faz".into(), Some("baz".into())),
+                ValidationErrorKind::unrecognized_entity_type("biz".into(), Some("baz".into())),
+                ValidationErrorKind::invalid_action_application(false, false),
+                ValidationErrorKind::TypeError(TypeErrorKind::ImpossiblePolicy)
+            ],
+        );
     }
 
     #[test]

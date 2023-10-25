@@ -26,6 +26,20 @@ pub(super) fn expr_entity_uids(expr: &Expr) -> impl Iterator<Item = &EntityUID> 
     })
 }
 
+/// Returns an iterator over all entity type names in the expression.
+/// The Unspecified entity type does not have a `Name`, so it is excluded
+/// from this iter.
+pub(super) fn expr_entity_type_names(expr: &Expr) -> impl Iterator<Item = &Name> {
+    expr.subexpressions().filter_map(|e| match e.expr_kind() {
+        ExprKind::Lit(Literal::EntityUID(uid)) => match uid.entity_type() {
+            EntityType::Concrete(entity_type) => Some(entity_type),
+            EntityType::Unspecified => None,
+        },
+        ExprKind::Is { entity_type, .. } => Some(entity_type),
+        _ => None,
+    })
+}
+
 /// Returns an iterator over all literal entity uids in a policy. This iterates
 /// over any entities in the policy head condition in addition to any entities
 /// in the body.
@@ -37,6 +51,23 @@ pub(super) fn policy_entity_uids(template: &Template) -> impl Iterator<Item = &E
         .chain(template.action_constraint().iter_euids())
         .chain(template.resource_constraint().as_inner().iter_euids())
         .chain(expr_entity_uids(template.non_head_constraints()))
+}
+
+/// Returns an iterator over all entity type names in the policy. This iterates
+/// over the policy head condition in addition to the body.
+pub(super) fn policy_entity_type_names(template: &Template) -> impl Iterator<Item = &Name> {
+    template
+        .principal_constraint()
+        .as_inner()
+        .iter_entity_type_names()
+        .chain(template.action_constraint().iter_entity_type_names())
+        .chain(
+            template
+                .resource_constraint()
+                .as_inner()
+                .iter_entity_type_names(),
+        )
+        .chain(expr_entity_type_names(template.non_head_constraints()))
 }
 
 /// The 3 different "classes" of text in an expression.

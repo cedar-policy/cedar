@@ -1323,6 +1323,21 @@ impl PrincipalOrResourceConstraint {
             PrincipalOrResourceConstraint::Is(_, _) => EntityIterator::None,
         }
     }
+
+    /// Get an iterator over all of the entity type names in this constraint.
+    /// The Unspecified entity type does not have a `Name`, so it is excluded
+    /// from this iter.
+    pub fn iter_entity_type_names(&self) -> impl Iterator<Item = &'_ Name> {
+        self.iter_euids()
+            .filter_map(|euid| match euid.entity_type() {
+                EntityType::Concrete(name) => Some(name),
+                EntityType::Unspecified => None,
+            })
+            .chain(match self {
+                PrincipalOrResourceConstraint::Is(entity_type, _) => Some(entity_type),
+                _ => None,
+            })
+    }
 }
 
 /// Constraint for action head variables.
@@ -1394,6 +1409,15 @@ impl ActionConstraint {
             }
             ActionConstraint::Eq(euid) => EntityIterator::One(euid),
         }
+    }
+
+    /// Get an iterator over all of the entity types in this constraint.
+    pub fn iter_entity_type_names(&self) -> impl Iterator<Item = &'_ Name> {
+        self.iter_euids()
+            .filter_map(|euid| match euid.entity_type() {
+                EntityType::Concrete(name) => Some(name),
+                EntityType::Unspecified => None,
+            })
     }
 }
 

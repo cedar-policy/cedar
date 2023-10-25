@@ -962,7 +962,7 @@ impl RefKind for OneOrMultipleRefs {
 }
 
 impl ASTNode<Option<cst::Or>> {
-    pub(crate) fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
+    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (src, maybe_or) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let or = maybe_or?;
@@ -1012,7 +1012,7 @@ impl ASTNode<Option<cst::And>> {
     fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
-    pub(crate) fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
+    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (src, maybe_and) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let and = maybe_and?;
@@ -1063,7 +1063,7 @@ impl ASTNode<Option<cst::Relation>> {
     fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
-    pub(crate) fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
+    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (src, maybe_rel) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let rel = maybe_rel?;
@@ -1153,7 +1153,7 @@ impl ASTNode<Option<cst::Add>> {
     fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
-    pub(crate) fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
+    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (src, maybe_add) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let add = maybe_add?;
