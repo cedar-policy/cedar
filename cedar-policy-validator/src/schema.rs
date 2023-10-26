@@ -32,13 +32,13 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
 
+use super::NamespaceDefinition;
 use crate::types::OpenTag;
 use crate::{
     err::*,
     types::{Attributes, EntityRecordKind, Type},
     SchemaFragment,
 };
-use super::NamespaceDefinition;
 
 mod action;
 pub use action::ValidatorActionId;
@@ -46,8 +46,8 @@ pub(crate) use action::ValidatorApplySpec;
 mod entity_type;
 pub use entity_type::ValidatorEntityType;
 mod namespace_def;
-pub use namespace_def::ValidatorNamespaceDef;
 pub(crate) use namespace_def::is_action_entity_type;
+pub use namespace_def::ValidatorNamespaceDef;
 #[cfg(test)]
 pub(crate) use namespace_def::ACTION_ENTITY_TYPE;
 

@@ -12,15 +12,15 @@ use cedar_policy_core::{
 };
 use smol_str::SmolStr;
 
+use super::ValidatorApplySpec;
 use crate::types::OpenTag;
 use crate::{
     err::*,
     schema_file_format,
     types::{AttributeType, Attributes, Type},
-    ActionBehavior, ActionEntityUID, ActionType, NamespaceDefinition, SchemaType, SchemaTypeVariant, TypeOfAttribute,
-    SCHEMA_TYPE_VARIANT_TAGS,
+    ActionBehavior, ActionEntityUID, ActionType, NamespaceDefinition, SchemaType,
+    SchemaTypeVariant, TypeOfAttribute, SCHEMA_TYPE_VARIANT_TAGS,
 };
-use super::ValidatorApplySpec;
 
 /// The current schema format specification does not include multiple action entity
 /// types. All action entities are required to use a single `Action` entity
