@@ -26,7 +26,7 @@ use std::sync::Arc;
 use cedar_policy_core::{
     ast::{Entity, EntityType, EntityUID, Id, Name},
     entities::{Entities, TCComputation},
-    transitive_closure::{compute_tc, TCNode},
+    transitive_closure::compute_tc,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -35,7 +35,7 @@ use smol_str::SmolStr;
 use crate::types::OpenTag;
 use crate::{
     err::*,
-    types::{AttributeType, Attributes, EntityRecordKind, Type},
+    types::{Attributes, EntityRecordKind, Type},
     SchemaFragment,
 };
 use super::NamespaceDefinition;
@@ -43,6 +43,8 @@ use super::NamespaceDefinition;
 mod action;
 pub use action::ValidatorActionId;
 pub(crate) use action::ValidatorApplySpec;
+mod entity_type;
+pub use entity_type::ValidatorEntityType;
 mod namespace_def;
 pub use namespace_def::ValidatorNamespaceDef;
 pub(crate) use namespace_def::is_action_entity_type;
@@ -718,67 +720,6 @@ impl cedar_policy_core::entities::ContextSchema for ContextSchema {
             .clone()
             .try_into()
             .expect("failed to convert validator type into Core SchemaType")
-    }
-}
-
-/// Contains entity type information for use by the validator. The contents of
-/// the struct are the same as the schema entity type structure, but the
-/// `member_of` relation is reversed to instead be `descendants`.
-#[derive(Clone, Debug, Serialize)]
-pub struct ValidatorEntityType {
-    /// The name of the entity type.
-    pub(crate) name: Name,
-
-    /// The set of entity types that can be members of this entity type. When
-    /// this structure is initially constructed, the field will contain direct
-    /// children, but it will be updated to contain the closure of all
-    /// descendants before it is used in any validation.
-    pub descendants: HashSet<Name>,
-
-    /// The attributes associated with this entity. Keys are the attribute
-    /// identifiers while the values are the type of the attribute.
-    pub(crate) attributes: Attributes,
-}
-
-impl ValidatorEntityType {
-    /// Get the type of the attribute with the given name, if it exists
-    pub fn attr(&self, attr: &str) -> Option<&AttributeType> {
-        self.attributes.get_attr(attr)
-    }
-
-    /// An iterator over the attributes of this entity
-    pub fn attributes(&self) -> impl Iterator<Item = (&SmolStr, &AttributeType)> {
-        self.attributes.iter()
-    }
-
-    /// Return `true` if this entity type has an `EntityType` declared as a
-    /// possible descendant in the schema. This takes an `EntityType` rather
-    /// than a `Name`, It's not possible to declare the unspecified entity type
-    /// is a descendant of an entity type in the schema, so we can return false
-    /// in the unspecified case.
-    pub fn has_descendant_entity_type(&self, ety: &EntityType) -> bool {
-        match ety {
-            EntityType::Concrete(ety) => self.descendants.contains(ety),
-            EntityType::Unspecified => false,
-        }
-    }
-}
-
-impl TCNode<Name> for ValidatorEntityType {
-    fn get_key(&self) -> Name {
-        self.name.clone()
-    }
-
-    fn add_edge_to(&mut self, k: Name) {
-        self.descendants.insert(k);
-    }
-
-    fn out_edges(&self) -> Box<dyn Iterator<Item = &Name> + '_> {
-        Box::new(self.descendants.iter())
-    }
-
-    fn has_edge_to(&self, e: &Name) -> bool {
-        self.descendants.contains(e)
     }
 }
 
