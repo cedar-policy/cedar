@@ -3305,6 +3305,40 @@ pub mod test {
     }
 
     #[test]
+    fn interpret_is() {
+        let request = basic_request();
+        let entities = basic_entities();
+        let exts = Extensions::none();
+        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"User::"alice" is User"#).expect("parsing error")
+            ),
+            Ok(Value::Lit(Literal::Bool(true)))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"User::"alice" is Group"#).expect("parsing error")
+            ),
+            Ok(Value::Lit(Literal::Bool(false)))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::is_type(
+                Expr::val(EntityUID::unspecified_from_eid(Eid::new("thing"))),
+                "User".parse().unwrap()
+            )),
+            Ok(Value::Lit(Literal::Bool(false)))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&parse_expr(r#"1 is Group"#).expect("parsing error")),
+            Err(EvaluationError::type_error(
+                vec![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
+                Type::Long
+            ))
+        );
+    }
+
+    #[test]
     fn interpret_contains_all_and_contains_any() -> Result<()> {
         let request = basic_request();
         let entities = basic_entities();
@@ -3911,6 +3945,15 @@ pub mod test {
             BorrowedRestrictedExpr::new(&Expr::call_extension_fn(
                 "ip".parse().expect("should be a valid Name"),
                 vec![Expr::var(Var::Principal)],
+            ))
+            .map_err(Into::into)
+            .and_then(|e| evaluator.partial_interpret(e)),
+        );
+
+        assert_restricted_expression_error(
+            BorrowedRestrictedExpr::new(&Expr::is_type(
+                Expr::val(EntityUID::with_eid("alice")),
+                "User".parse().unwrap(),
             ))
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
@@ -4899,6 +4942,19 @@ pub mod test {
         let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
 
         let e = Expr::like(Expr::unknown("a"), []);
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        assert_eq!(r, PartialValue::Residual(e));
+    }
+
+    #[test]
+    fn partial_is() {
+        let es = Entities::new();
+        let exts = Extensions::none();
+        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+
+        let e = Expr::is_type(Expr::unknown("a"), "User".parse().unwrap());
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 

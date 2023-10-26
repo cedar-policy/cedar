@@ -3605,4 +3605,126 @@ mod tests {
             assert!(errs.contains(&em));
         }
     }
+
+    #[test]
+    fn test_is_condition_ok() {
+        for (es, expr) in [
+            (
+                r#"User::"alice" is User"#,
+                Expr::is_type(
+                    Expr::val(r#"User::"alice""#.parse::<EntityUID>().unwrap()),
+                    "User".parse().unwrap(),
+                ),
+            ),
+            (
+                r#"principal is User"#,
+                Expr::is_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
+            ),
+            (
+                r#"principal.foo is User"#,
+                Expr::is_type(
+                    Expr::get_attr(Expr::var(ast::Var::Principal), "foo".into()),
+                    "User".parse().unwrap(),
+                ),
+            ),
+            (
+                r#"1 is User"#,
+                Expr::is_type(Expr::val(1), "User".parse().unwrap()),
+            ),
+            (
+                r#"principal is User in Group::"friends""#,
+                Expr::and(
+                    Expr::is_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
+                    Expr::is_in(
+                        Expr::var(ast::Var::Principal),
+                        Expr::val(r#"Group::"friends""#.parse::<EntityUID>().unwrap()),
+                    ),
+                ),
+            ),
+            (
+                r#"true && principal is User in principal"#,
+                Expr::and(
+                    Expr::val(true),
+                    Expr::and(
+                        Expr::is_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
+                        Expr::is_in(
+                            Expr::var(ast::Var::Principal),
+                            Expr::var(ast::Var::Principal),
+                        ),
+                    ),
+                ),
+            ),
+            (
+                r#"principal is User in principal && true"#,
+                Expr::and(
+                    Expr::and(
+                        Expr::is_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
+                        Expr::is_in(
+                            Expr::var(ast::Var::Principal),
+                            Expr::var(ast::Var::Principal),
+                        ),
+                    ),
+                    Expr::val(true),
+                ),
+            ),
+        ] {
+            let mut errs = ParseErrors::new();
+            let e = text_to_cst::parse_expr(es)
+                .expect("should construct a CST")
+                .to_expr(&mut errs)
+                .expect("should convert to AST");
+            assert!(
+                e.eq_shape(&expr),
+                "{:?} and {:?} should have the same shape.",
+                e,
+                expr
+            );
+        }
+    }
+
+    #[test]
+    fn is_scope() {
+        let id = ast::PolicyID::from_string("id");
+        for (src, p, a, r) in [
+            (
+                r#"permit(principal is User, action, resource);"#,
+                PrincipalConstraint::is_type("User".parse().unwrap(), None),
+                ActionConstraint::any(),
+                ResourceConstraint::any(),
+            ),
+            (
+                r#"permit(principal is User in Group::"thing", action, resource);"#,
+                PrincipalConstraint::is_type(
+                    "User".parse().unwrap(),
+                    Some(r#"Group::"thing""#.parse().unwrap()),
+                ),
+                ActionConstraint::any(),
+                ResourceConstraint::any(),
+            ),
+            (
+                r#"permit(principal, action, resource is Folder);"#,
+                PrincipalConstraint::any(),
+                ActionConstraint::any(),
+                ResourceConstraint::is_type("Folder".parse().unwrap(), None),
+            ),
+            (
+                r#"permit(principal, action, resource is Folder in Folder::"inner");"#,
+                PrincipalConstraint::any(),
+                ActionConstraint::any(),
+                ResourceConstraint::is_type(
+                    "Folder".parse().unwrap(),
+                    Some(r#"Folder::"inner""#.parse().unwrap()),
+                ),
+            ),
+        ] {
+            let mut errs = ParseErrors::new();
+            let policy = text_to_cst::parse_policy(src)
+                .expect("should parse")
+                .to_policy(id.clone(), &mut errs)
+                .expect("should be valid");
+            assert_eq!(policy.principal_constraint(), &p);
+            assert_eq!(policy.action_constraint(), &a);
+            assert_eq!(policy.resource_constraint(), &r);
+        }
+    }
 }
