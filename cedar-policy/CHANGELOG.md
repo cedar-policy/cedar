@@ -42,7 +42,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the behavior of `.isInRange()`.
 - Standardize on duplicates being errors instead of last-write-wins in the JSON-based `is_authorized` APIs.
 - `<EntityId as FromStr>::Error` is now `Infallible` instead of `ParseErrors`.
-- Improved formatting for error messages.
 
 ## [2.4.2] - 2023-10-23
 
