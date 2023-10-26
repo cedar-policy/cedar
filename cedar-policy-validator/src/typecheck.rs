@@ -914,15 +914,19 @@ impl<'a> Typechecker<'a> {
             }
 
             ExprKind::UnaryApp { .. } => {
+                // INVARIANT `e` is a `UnaryApp`, as required
                 self.typecheck_unary(request_env, prior_eff, e, type_errors)
             }
             ExprKind::BinaryApp { .. } => {
+                // INVARIANT `e` is a `BinaryApp`, as required
                 self.typecheck_binary(request_env, prior_eff, e, type_errors)
             }
             ExprKind::MulByConst { .. } => {
+                // INVARIANT `e` is a `MulByConst`, as required
                 self.typecheck_mul(request_env, prior_eff, e, type_errors)
             }
             ExprKind::ExtensionFunctionApp { .. } => {
+                // INVARIANT `e` is a `ExtensionFunctionApp`, as required
                 self.typecheck_extension(request_env, prior_eff, e, type_errors)
             }
 
@@ -1150,11 +1154,11 @@ impl<'a> Typechecker<'a> {
 
             // For records, each (attribute, value) pair in the initializer need
             // to be individually accounted for in the record type.
-            ExprKind::Record { pairs } => {
+            ExprKind::Record(map) => {
                 // Typecheck each attribute initializer expression individually.
-                let record_attr_tys = pairs
-                    .iter()
-                    .map(|(_, value)| self.typecheck(request_env, prior_eff, value, type_errors));
+                let record_attr_tys = map
+                    .values()
+                    .map(|value| self.typecheck(request_env, prior_eff, value, type_errors));
                 // This will cause the return value to be `TypecheckFail` if any
                 // of the attributes did not typecheck.
                 TypecheckAnswer::sequence_all_then_typecheck(
@@ -1170,34 +1174,28 @@ impl<'a> Typechecker<'a> {
                             .iter()
                             .map(|e| e.data().clone())
                             .collect::<Option<Vec<_>>>();
-                        let t = pairs
-                            .iter()
-                            .map(|(attr, _)| attr.clone())
-                            .zip(record_attr_expr_tys);
-                        match record_attr_tys {
-                            Some(record_attr_tys) => {
-                                // Given the attribute types which we know know
-                                // exist, we pair them with the corresponding
-                                // attribute names to get a record type.
-                                let record_attrs = pairs.iter().map(|(id, _)| id.clone());
-                                let record_type_entries =
-                                    std::iter::zip(record_attrs, record_attr_tys);
-                                TypecheckAnswer::success(
-                                    ExprBuilder::with_data(Some(
-                                        Type::record_with_required_attributes(
-                                            record_type_entries,
-                                            OpenTag::ClosedAttributes,
-                                        ),
-                                    ))
-                                    .with_same_source_info(e)
-                                    .record(t),
-                                )
-                            }
-                            None => TypecheckAnswer::fail(
-                                ExprBuilder::with_data(None)
-                                    .with_same_source_info(e)
-                                    .record(t),
-                            ),
+                        let ty = record_attr_tys.map(|record_attr_tys| {
+                            // Given the attribute types which we know know
+                            // exist, we pair them with the corresponding
+                            // attribute names to get a record type.
+                            let record_attrs = map.keys().cloned();
+                            let record_type_entries = std::iter::zip(record_attrs, record_attr_tys);
+                            Type::record_with_required_attributes(
+                                record_type_entries,
+                                OpenTag::ClosedAttributes,
+                            )
+                        });
+                        let is_success = ty.is_some();
+                        // PANIC SAFETY: can't have duplicate keys because the keys are the same as those in `map` which was already a BTreeMap
+                        #[allow(clippy::expect_used)]
+                        let expr = ExprBuilder::with_data(ty)
+                            .with_same_source_info(e)
+                            .record(map.keys().cloned().zip(record_attr_expr_tys))
+                            .expect("this can't have duplicate keys because the keys are the same as those in `map` which was already a BTreeMap");
+                        if is_success {
+                            TypecheckAnswer::success(expr)
+                        } else {
+                            TypecheckAnswer::fail(expr)
                         }
                     },
                 )
@@ -1207,6 +1205,7 @@ impl<'a> Typechecker<'a> {
 
     /// A utility called by the main typecheck method to handle binary operator
     /// application.
+    /// INVARIANT `bin_expr` must be a `BinaryApp`
     fn typecheck_binary<'b>(
         &self,
         request_env: &RequestEnv,
@@ -1214,6 +1213,8 @@ impl<'a> Typechecker<'a> {
         bin_expr: &'b Expr,
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
+        // PANIC SAFETY by invariant on method
+        #[allow(clippy::panic)]
         let ExprKind::BinaryApp { op, arg1, arg2 } = bin_expr.expr_kind() else {
             panic!("`typecheck_binary` called with an expression kind other than `BinaryApp`");
         };
@@ -1403,7 +1404,7 @@ impl<'a> Typechecker<'a> {
             }
             _ => match (lhs_ty, rhs_ty) {
                 (Some(lhs_ty), Some(rhs_ty))
-                    if Type::least_upper_bound(self.schema, &lhs_ty, &rhs_ty, self.mode)
+                    if Type::least_upper_bound(self.schema, lhs_ty, rhs_ty, self.mode)
                         .is_none() =>
                 {
                     type_errors.push(TypeError::incompatible_types(
@@ -1423,6 +1424,7 @@ impl<'a> Typechecker<'a> {
 
     /// Like `typecheck_binary()`, but for multiplication, which isn't
     /// technically a `BinaryOp`
+    /// INVARIANT `mul_expr` must be a `MulByConst`
     fn typecheck_mul<'b>(
         &self,
         request_env: &RequestEnv,
@@ -1430,6 +1432,8 @@ impl<'a> Typechecker<'a> {
         mul_expr: &'b Expr,
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
+        // PANIC SAFETY by invariant on method
+        #[allow(clippy::panic)]
         let ExprKind::MulByConst { arg, constant } = mul_expr.expr_kind() else {
             panic!("`typecheck_mul` called with an expression kind other than `MulByConst`");
         };
@@ -1929,6 +1933,7 @@ impl<'a> Typechecker<'a> {
 
     /// A utility called by the main typecheck method to handle unary operator
     /// application.
+    /// INVARIANT `unary_expr` must be a UnaryApp
     fn typecheck_unary<'b>(
         &self,
         request_env: &RequestEnv,
@@ -1936,6 +1941,8 @@ impl<'a> Typechecker<'a> {
         unary_expr: &'b Expr,
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
+        // PANIC SAFETY by invariant on method
+        #[allow(clippy::panic)]
         let ExprKind::UnaryApp { op, arg } = unary_expr.expr_kind() else {
             panic!("`typecheck_unary` called with an expression kind other than `UnaryApp`");
         };
@@ -2135,6 +2142,7 @@ impl<'a> Typechecker<'a> {
 
     /// Utility called by the main typecheck method to handle extension function
     /// application.
+    /// INVARIANT `ext_expr` must be a `ExtensionFunctionApp`
     fn typecheck_extension<'b>(
         &self,
         request_env: &RequestEnv,
@@ -2142,6 +2150,8 @@ impl<'a> Typechecker<'a> {
         ext_expr: &'b Expr,
         type_errors: &mut Vec<TypeError>,
     ) -> TypecheckAnswer<'b> {
+        // PANIC SAFETY by invariant on method
+        #[allow(clippy::panic)]
         let ExprKind::ExtensionFunctionApp { fn_name, args } = ext_expr.expr_kind() else {
             panic!("`typecheck_extension` called with an expression kind other than `ExtensionFunctionApp`");
         };

@@ -44,7 +44,7 @@ pub enum Value {
 /// An error that can be thrown converting an expression to a value
 pub enum NotValue {
     /// General error for non-values
-    #[error("Not A Value")]
+    #[error("not a value")]
     NotValue,
 }
 
@@ -72,7 +72,7 @@ impl TryFrom<Expr> for Value {
                 .map(|e| e.clone().try_into())
                 .collect::<Result<Set, _>>()
                 .map(Value::Set),
-            ExprKind::Record { pairs } => pairs
+            ExprKind::Record(map) => map
                 .iter()
                 .map(|(k, v)| v.clone().try_into().map(|v: Value| (k.clone(), v)))
                 .collect::<Result<BTreeMap<SmolStr, Value>, _>>()
@@ -296,9 +296,7 @@ impl Eq for Set {}
 // HashSet doesn't implement PartialOrd
 impl PartialOrd<Set> for Set {
     fn partial_cmp(&self, other: &Set) -> Option<std::cmp::Ordering> {
-        self.authoritative
-            .as_ref()
-            .partial_cmp(other.authoritative.as_ref())
+        Some(self.cmp(other))
     }
 }
 
@@ -456,6 +454,8 @@ impl Value {
     }
 }
 
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
     use super::*;

@@ -23,6 +23,8 @@ use cedar_policy::{
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
+// PANIC SAFETY unit tests
+#[allow(clippy::unwrap_used)]
 pub fn criterion_benchmark(c: &mut Criterion) {
     let auth = Authorizer::new();
 
@@ -119,7 +121,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         Some(principal.clone()),
         Some(action.clone()),
         Some(resource.clone()),
-        Context::from_pairs(context.clone()),
+        Context::from_pairs(context.clone()).expect("no duplicate keys in this context"),
     );
 
     c.bench_function("request_new", |b| {
@@ -128,7 +130,10 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 Some(black_box(principal.clone())),
                 Some(black_box(action.clone())),
                 Some(black_box(resource.clone())),
-                black_box(Context::from_pairs(context.clone())),
+                black_box(
+                    Context::from_pairs(context.clone())
+                        .expect("no duplicate keys in this context"),
+                ),
             )
         })
     });

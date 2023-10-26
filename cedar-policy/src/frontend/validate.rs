@@ -38,7 +38,7 @@ fn validate(call: &ValidateCall) -> Result<ValidateAnswer, String> {
                 parse_errors.extend(
                     policy_set_parse_errs
                         .into_iter()
-                        .map(|pe| format!("{pe:?}")),
+                        .map(|pe| format!("parse error in policy: {pe}")),
                 );
             }
         },
@@ -68,7 +68,7 @@ fn validate(call: &ValidateCall) -> Result<ValidateAnswer, String> {
         .schema
         .clone()
         .try_into()
-        .map_err(|e| format!("couldn't construct schema - {e}"))?;
+        .map_err(|e| format!("could not construct schema: {e}"))?;
     let validator = Validator::new(schema);
 
     let notes: Vec<ValidationNote> = validator
@@ -141,8 +141,12 @@ enum ValidateAnswer {
     Success { notes: Vec<ValidationNote> },
 }
 
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
+    use crate::frontend::utils::assert_is_failure;
+
     use super::*;
     use std::collections::HashMap;
 
@@ -244,7 +248,11 @@ mod test {
         .to_string();
 
         let result = json_validate(&call_json);
-        assert_fails_with_user_errors(result);
+        assert_is_failure(
+            &result,
+            false,
+            "parse error in policy policy0: unexpected end of input",
+        );
     }
 
     #[test]
@@ -347,7 +355,11 @@ mod test {
         .to_string();
 
         let result = json_validate(&call_json);
-        assert_fails_with_user_errors(result);
+        assert_is_failure(
+            &result,
+            false,
+            "parse error in policy: unexpected end of input",
+        );
     }
 
     #[test]
@@ -389,24 +401,36 @@ mod test {
             "policySet": "permit(principal, action, resource);forbid"
         }"#
         .to_string();
-
         let result = json_validate(&call_json);
-        assert_fails_with_user_errors(result);
+        assert_is_failure(
+            &result,
+            false,
+            "parse error in policy: unexpected end of input",
+        );
     }
 
     #[test]
     fn test_bad_call_format_fails() {
         let result = json_validate("uerfheriufheiurfghtrg");
-        assert_fails(result);
+        assert_is_failure(&result, true, "error parsing call: expected value");
     }
 
-    fn assert_fails(result: InterfaceResult) {
-        match result {
-            InterfaceResult::Success { result } => {
-                panic!("expected call to fail but got {:?}", &result)
-            }
-            InterfaceResult::Failure { .. } => {}
-        }
+    #[test]
+    fn test_validate_fails_on_duplicate_namespace() {
+        let call_json = r#"{
+            "schema": {
+              "foo": { "entityTypes": {}, "actions": {} },
+              "foo": { "entityTypes": {}, "actions": {} }
+            },
+            "policySet": ""
+        }"#
+        .to_string();
+        let result = json_validate(&call_json);
+        assert_is_failure(
+            &result,
+            true,
+            "error parsing call: invalid entry: found duplicate key",
+        );
     }
 
     fn assert_validates_without_notes(result: InterfaceResult) {
@@ -447,19 +471,17 @@ mod test {
         }
     }
 
-    fn assert_fails_with_user_errors(result: InterfaceResult) {
-        dbg!(&result);
-        match result {
-            InterfaceResult::Success { result } => {
-                panic!("expected call to fail but got {:?}", &result)
+    #[test]
+    fn test_validate_fails_on_duplicate_policy_id() {
+        let call_json = r#"{
+            "schema": { "": { "entityTypes": {}, "actions": {} } },
+            "policySet": {
+              "ID0": "permit(principal, action, resource);",
+              "ID0": "permit(principal, action, resource);"
             }
-            InterfaceResult::Failure {
-                is_internal,
-                errors,
-            } => {
-                assert!(!is_internal);
-                assert_ne!(errors.len(), 0);
-            }
-        }
+        }"#
+        .to_string();
+        let result = json_validate(&call_json);
+        assert_is_failure(&result, true, "no duplicate IDs");
     }
 }

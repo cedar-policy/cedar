@@ -13,14 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+//! Note on panic safety
+//! If any of the panics in this file are triggered, that means that this file has become
+//! out-of-date with the decimal extension definition in CedarCore.
+//! This is tested by the `extension_schema_correctness()` test
 
 use crate::extension_schema::{ExtensionFunctionType, ExtensionSchema};
 use crate::types::{self, Type};
 use cedar_policy_core::extensions::partial_evaluation;
 
-/// If any of the panics in this file are triggered, that means that this file has become
-/// out-of-date with the decimal extension definition in CedarCore.
-
+// PANIC SAFETY see note on panic safety above
+#[allow(clippy::panic)]
 fn get_argument_types(fname: &str) -> Vec<types::Type> {
     match fname {
         "error" => vec![Type::primitive_string()],
@@ -29,6 +32,8 @@ fn get_argument_types(fname: &str) -> Vec<types::Type> {
     }
 }
 
+// PANIC SAFETY see note on panic safety above
+#[allow(clippy::panic)]
 fn get_return_type(fname: &str) -> Type {
     match fname {
         "error" => Type::Never,
@@ -60,4 +65,15 @@ pub fn extension_schema() -> ExtensionSchema {
         })
         .collect();
     ExtensionSchema::new(pe_ext.name().clone(), fun_tys)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    // Ensures that `extension_schema()` does not panic
+    #[test]
+    fn extension_schema_correctness() {
+        let _ = extension_schema();
+    }
 }

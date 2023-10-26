@@ -15,30 +15,37 @@
  */
 
 use super::{
-    EntityTypeDescription, EntityUidJSON, JSONValue, JsonDeserializationError,
+    CedarValueJson, EntityTypeDescription, EntityUidJson, JsonDeserializationError,
     JsonDeserializationErrorContext, JsonSerializationError, NoEntitiesSchema, Schema, TypeAndId,
     ValueParser,
 };
 use crate::ast::{Entity, EntityType, EntityUID, RestrictedExpr};
 use crate::entities::{Entities, EntitiesError, TCComputation};
 use crate::extensions::Extensions;
+use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Serde JSON format for a single entity
+#[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct EntityJSON {
-    /// UID of the entity, specified in any form accepted by `EntityUidJSON`
-    uid: EntityUidJSON,
+pub struct EntityJson {
+    /// UID of the entity, specified in any form accepted by `EntityUidJson`
+    uid: EntityUidJson,
     /// attributes, whose values can be any JSON value.
-    /// (Probably a `JSONValue`, but for schema-based parsing, it could for
-    /// instance be an `EntityUidJSON` if we're expecting an entity reference,
-    /// so for now we leave it in its raw `serde_json::Value` form.)
-    attrs: HashMap<SmolStr, serde_json::Value>,
-    /// Parents of the entity, specified in any form accepted by `EntityUidJSON`
-    parents: Vec<EntityUidJSON>,
+    /// (Probably a `CedarValueJson`, but for schema-based parsing, it could for
+    /// instance be an `EntityUidJson` if we're expecting an entity reference,
+    /// so for now we leave it in its raw json-value form, albeit not allowing
+    /// any duplicate keys in any records that may occur in an attribute value
+    /// (even nested).)
+    #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
+    // the annotation covers duplicates in this `HashMap` itself, while the `JsonValueWithNoDuplicateKeys` covers duplicates in any records contained in attribute values (including recursively)
+    attrs: HashMap<SmolStr, JsonValueWithNoDuplicateKeys>,
+    /// Parents of the entity, specified in any form accepted by `EntityUidJson`
+    parents: Vec<EntityUidJson>,
 }
 
 /// Struct used to parse entities from JSON.
@@ -98,21 +105,21 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
 
     /// Parse an entities JSON file (in [`&str`] form) into an [`Entities`] object
     pub fn from_json_str(&self, json: &str) -> Result<Entities, EntitiesError> {
-        let ejsons: Vec<EntityJSON> =
+        let ejsons: Vec<EntityJson> =
             serde_json::from_str(json).map_err(JsonDeserializationError::from)?;
         self.parse_ejsons(ejsons)
     }
 
     /// Parse an entities JSON file (in [`serde_json::Value`] form) into an [`Entities`] object
     pub fn from_json_value(&self, json: serde_json::Value) -> Result<Entities, EntitiesError> {
-        let ejsons: Vec<EntityJSON> =
+        let ejsons: Vec<EntityJson> =
             serde_json::from_value(json).map_err(JsonDeserializationError::from)?;
         self.parse_ejsons(ejsons)
     }
 
     /// Parse an entities JSON file (in [`std::io::Read`] form) into an [`Entities`] object
     pub fn from_json_file(&self, json: impl std::io::Read) -> Result<Entities, EntitiesError> {
-        let ejsons: Vec<EntityJSON> =
+        let ejsons: Vec<EntityJson> =
             serde_json::from_reader(json).map_err(JsonDeserializationError::from)?;
         self.parse_ejsons(ejsons)
     }
@@ -122,7 +129,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
         &self,
         json: &str,
     ) -> Result<impl Iterator<Item = Result<Entity, EntitiesError>> + '_, EntitiesError> {
-        let ejsons: Vec<EntityJSON> =
+        let ejsons: Vec<EntityJson> =
             serde_json::from_str(json).map_err(JsonDeserializationError::from)?;
         Ok(ejsons
             .into_iter()
@@ -134,7 +141,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
         &self,
         json: serde_json::Value,
     ) -> Result<impl Iterator<Item = Result<Entity, EntitiesError>> + '_, EntitiesError> {
-        let ejsons: Vec<EntityJSON> =
+        let ejsons: Vec<EntityJson> =
             serde_json::from_value(json).map_err(JsonDeserializationError::from)?;
         Ok(ejsons
             .into_iter()
@@ -146,17 +153,17 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
         &self,
         json: impl std::io::Read,
     ) -> Result<impl Iterator<Item = Result<Entity, EntitiesError>> + '_, EntitiesError> {
-        let ejsons: Vec<EntityJSON> =
+        let ejsons: Vec<EntityJson> =
             serde_json::from_reader(json).map_err(JsonDeserializationError::from)?;
         Ok(ejsons
             .into_iter()
             .map(|ejson| self.parse_ejson(ejson).map_err(EntitiesError::from)))
     }
 
-    /// internal function that creates an [`Entities`] from a stream of [`EntityJSON`]
+    /// internal function that creates an [`Entities`] from a stream of [`EntityJson`]
     fn parse_ejsons(
         &self,
-        ejsons: impl IntoIterator<Item = EntityJSON>,
+        ejsons: impl IntoIterator<Item = EntityJson>,
     ) -> Result<Entities, EntitiesError> {
         let entities = ejsons
             .into_iter()
@@ -165,8 +172,8 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
         Entities::from_entities(entities, self.tc_computation)
     }
 
-    /// internal function that parses an `EntityJSON` into an `Entity`
-    fn parse_ejson(&self, ejson: EntityJSON) -> Result<Entity, JsonDeserializationError> {
+    /// internal function that parses an `EntityJson` into an `Entity`
+    fn parse_ejson(&self, ejson: EntityJson) -> Result<Entity, JsonDeserializationError> {
         let uid = ejson
             .uid
             .into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
@@ -234,7 +241,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
             .map(|(k, v)| match &entity_schema_info {
                 EntitySchemaInfo::NoSchema => Ok((
                     k.clone(),
-                    vparser.val_into_rexpr(v, None, || {
+                    vparser.val_into_rexpr(v.into(), None, || {
                         JsonDeserializationErrorContext::EntityAttribute {
                             uid: uid.clone(),
                             attr: k.clone(),
@@ -254,7 +261,7 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                             })
                         }
                         Some(expected_ty) => (
-                            vparser.val_into_rexpr(v, Some(&expected_ty), || {
+                            vparser.val_into_rexpr(v.into(), Some(&expected_ty), || {
                                 JsonDeserializationErrorContext::EntityAttribute {
                                     uid: uid.clone(),
                                     attr: k.clone(),
@@ -310,12 +317,13 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                                 attr: k.clone(),
                             }
                         })?;
-                    let actual_rexpr = vparser.val_into_rexpr(v, Some(&expected_ty), || {
-                        JsonDeserializationErrorContext::EntityAttribute {
-                            uid: uid.clone(),
-                            attr: k.clone(),
-                        }
-                    })?;
+                    let actual_rexpr =
+                        vparser.val_into_rexpr(v.into(), Some(&expected_ty), || {
+                            JsonDeserializationErrorContext::EntityAttribute {
+                                uid: uid.clone(),
+                                attr: k.clone(),
+                            }
+                        })?;
                     if actual_rexpr == *expected_rexpr {
                         Ok((k, actual_rexpr))
                     } else {
@@ -398,22 +406,65 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
     }
 }
 
-impl EntityJSON {
-    /// Convert an `Entity` into an EntityJSON
+impl EntityJson {
+    /// Convert an `Entity` into an `EntityJson`
     ///
     /// (for the reverse transformation, use `EntityJsonParser`)
     pub fn from_entity(entity: &Entity) -> Result<Self, JsonSerializationError> {
         Ok(Self {
             // for now, we encode `uid` and `parents` using an implied `__entity` escape
-            uid: EntityUidJSON::ImplicitEntityEscape(TypeAndId::from(entity.uid())),
+            uid: EntityUidJson::ImplicitEntityEscape(TypeAndId::from(entity.uid())),
             attrs: entity
                 .attrs()
-                .map(|(k, expr)| Ok((k.into(), serde_json::to_value(JSONValue::from_expr(expr)?)?)))
+                .map(|(k, expr)| {
+                    Ok((
+                        k.into(),
+                        serde_json::to_value(CedarValueJson::from_expr(expr)?)?.into(),
+                    ))
+                })
                 .collect::<Result<_, JsonSerializationError>>()?,
             parents: entity
                 .ancestors()
-                .map(|euid| EntityUidJSON::ImplicitEntityEscape(TypeAndId::from(euid.clone())))
+                .map(|euid| EntityUidJson::ImplicitEntityEscape(TypeAndId::from(euid.clone())))
                 .collect(),
         })
+    }
+}
+
+#[cfg(test)]
+// PANIC SAFETY unit test code
+#[allow(clippy::panic)]
+mod test {
+
+    use cool_asserts::assert_matches;
+
+    use super::*;
+    #[test]
+    fn reject_duplicates() {
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "User",
+                    "id" : "alice"
+                },
+                "attrs" : {},
+                "parents": []
+            },
+            {
+                "uid" : {
+                    "type" : "User",
+                    "id" : "alice"
+                },
+                "attrs" : {},
+                "parents": []
+            }
+        ]);
+        let eparser: EntityJsonParser<'_, NoEntitiesSchema> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let e = eparser.from_json_value(json);
+        let bad_euid: EntityUID = r#"User::"alice""#.parse().unwrap();
+        assert_matches!(e, Err(EntitiesError::Duplicate(euid)) => {
+          assert_eq!(bad_euid, euid, r#"Returned euid should be User::"alice""#);
+        });
     }
 }

@@ -15,7 +15,10 @@
  */
 
 #![cfg(test)]
-
+// PANIC SAFETY unit tests
+#![allow(clippy::panic)]
+// PANIC SAFETY unit tests
+#![allow(clippy::indexing_slicing)]
 use std::collections::HashSet;
 
 use cedar_policy_core::ast::{EntityUID, Expr, ExprBuilder};
@@ -118,7 +121,8 @@ fn expr_typechecks_with_correct_annotation() {
         &Expr::record([
             ("foo".into(), Expr::val(1)),
             ("bar".into(), Expr::val(false)),
-        ]),
+        ])
+        .unwrap(),
         &ExprBuilder::with_data(Some(Type::closed_record_with_required_attributes([
             ("foo".into(), Type::primitive_long()),
             ("bar".into(), Type::singleton_boolean(false)),
@@ -132,7 +136,8 @@ fn expr_typechecks_with_correct_annotation() {
                 "bar".into(),
                 ExprBuilder::with_data(Some(Type::singleton_boolean(false))).val(false),
             ),
-        ]),
+        ])
+        .unwrap(),
     );
     with_typechecker_from_schema(
         serde_json::from_value::<SchemaFragment>(

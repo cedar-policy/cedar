@@ -17,8 +17,8 @@
 //! Contains the validation logic specific to RBAC policy validation.
 
 use cedar_policy_core::ast::{
-    self, ActionConstraint, EntityReference, EntityUID, Name, PrincipalOrResourceConstraint,
-    SlotEnv, Template,
+    self, ActionConstraint, EntityReference, EntityUID, Name, PrincipalConstraint,
+    PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv, Template,
 };
 
 use std::{collections::HashSet, sync::Arc};
@@ -131,7 +131,7 @@ impl Validator {
     /// Generate UnrecognizedEntityType or UnspecifiedEntity notes for every
     /// entity type in the slot environment that is either not in the schema,
     /// or unspecified.
-    pub(crate) fn validate_slots<'a>(
+    pub(crate) fn validate_entity_types_in_slots<'a>(
         &'a self,
         slots: &'a SlotEnv,
     ) -> impl Iterator<Item = ValidationErrorKind> + 'a {
@@ -166,21 +166,29 @@ impl Validator {
         })
     }
 
-    fn check_if_in_fixes_principal(&self, template: &Template) -> bool {
+    fn check_if_in_fixes_principal(
+        &self,
+        principal_constraint: &PrincipalConstraint,
+        action_constraint: &ActionConstraint,
+    ) -> bool {
         self.check_if_in_fixes(
-            template.principal_constraint().as_inner(),
+            principal_constraint.as_inner(),
             &self
-                .get_apply_specs_for_action(template)
+                .get_apply_specs_for_action(action_constraint)
                 .collect::<Vec<_>>(),
             &|spec| Box::new(spec.applicable_principal_types()),
         )
     }
 
-    fn check_if_in_fixes_resource(&self, template: &Template) -> bool {
+    fn check_if_in_fixes_resource(
+        &self,
+        resource_constraint: &ResourceConstraint,
+        action_constraint: &ActionConstraint,
+    ) -> bool {
         self.check_if_in_fixes(
-            template.resource_constraint().as_inner(),
+            resource_constraint.as_inner(),
             &self
-                .get_apply_specs_for_action(template)
+                .get_apply_specs_for_action(action_constraint)
                 .collect::<Vec<_>>(),
             &|spec| Box::new(spec.applicable_resource_types()),
         )
@@ -268,20 +276,26 @@ impl Validator {
 
     // Check that there exists a (action id, principal type, resource type)
     // entity type pair where the action can be applied to both the principal
-    // and resource.
+    // and resource. This function takes the three scope constraints as input
+    // (rather than a template) to facilitate code reuse.
     pub(crate) fn validate_action_application(
         &self,
-        template: &Template,
+        principal_constraint: &PrincipalConstraint,
+        action_constraint: &ActionConstraint,
+        resource_constraint: &ResourceConstraint,
     ) -> impl Iterator<Item = ValidationErrorKind> {
-        let mut apply_specs = self.get_apply_specs_for_action(template);
-        let resources_for_head: HashSet<Name> =
-            self.get_resources_satisfying_constraint(template).collect();
+        let mut apply_specs = self.get_apply_specs_for_action(action_constraint);
+        let resources_for_head: HashSet<Name> = self
+            .get_resources_satisfying_constraint(resource_constraint)
+            .collect();
         let principals_for_head: HashSet<Name> = self
-            .get_principals_satisfying_constraint(template)
+            .get_principals_satisfying_constraint(principal_constraint)
             .collect();
 
-        let would_in_fix_principal = self.check_if_in_fixes_principal(template);
-        let would_in_fix_resource = self.check_if_in_fixes_resource(template);
+        let would_in_fix_principal =
+            self.check_if_in_fixes_principal(principal_constraint, action_constraint);
+        let would_in_fix_resource =
+            self.check_if_in_fixes_resource(resource_constraint, action_constraint);
 
         Some(ValidationErrorKind::invalid_action_application(
             would_in_fix_principal,
@@ -321,15 +335,15 @@ impl Validator {
     }
 
     /// Gather all ApplySpec objects for all actions in the schema. The `applies_to`
-    /// field is optional, so any actions lacking this field are omitted from the
-    /// result.
+    /// field is optional in the schema. In the case that it was not supplied, the
+    /// `applies_to` field will contain `UnspecifiedEntity`.
     pub(crate) fn get_apply_specs_for_action<'a>(
         &'a self,
-        template: &'a Template,
+        action_constraint: &'a ActionConstraint,
     ) -> impl Iterator<Item = &ValidatorApplySpec> + 'a {
-        self.get_actions_satisfying_constraint(template)
+        self.get_actions_satisfying_constraint(action_constraint)
             // Get the action type if the id string exists, and then the
-            // applies_to list for the action type, if that exists.
+            // applies_to list.
             .filter_map(|action_id| self.schema.get_action_id(&action_id))
             .map(|action| &action.applies_to)
     }
@@ -338,10 +352,10 @@ impl Validator {
     /// head constraint of the policy.
     pub(crate) fn get_principals_satisfying_constraint<'a>(
         &'a self,
-        template: &'a Template,
+        principal_constraint: &'a PrincipalConstraint,
     ) -> impl Iterator<Item = Name> + 'a {
         self.get_entities_satisfying_constraint(
-            HeadConstraint::from(template.principal_constraint().as_inner()),
+            HeadConstraint::from(principal_constraint.as_inner()),
             PrincipalOrResourceHeadVar::PrincipalOrResource,
         )
     }
@@ -350,10 +364,10 @@ impl Validator {
     /// action head constraint of the policy.
     pub(crate) fn get_actions_satisfying_constraint<'a>(
         &'a self,
-        template: &'a Template,
+        action_constraint: &'a ActionConstraint,
     ) -> impl Iterator<Item = EntityUID> + 'a {
         self.get_entities_satisfying_constraint(
-            HeadConstraint::from(template.action_constraint()),
+            HeadConstraint::from(action_constraint),
             ActionHeadVar::Action,
         )
     }
@@ -362,10 +376,10 @@ impl Validator {
     /// head constraint of the policy.
     pub(crate) fn get_resources_satisfying_constraint<'a>(
         &'a self,
-        template: &'a Template,
+        resource_constraint: &'a ResourceConstraint,
     ) -> impl Iterator<Item = Name> + 'a {
         self.get_entities_satisfying_constraint(
-            HeadConstraint::from(template.resource_constraint().as_inner()),
+            HeadConstraint::from(resource_constraint.as_inner()),
             PrincipalOrResourceHeadVar::PrincipalOrResource,
         )
     }
@@ -422,6 +436,10 @@ impl Validator {
     }
 }
 
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
+// PANIC SAFETY unit tests
+#[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
     use std::collections::{BTreeMap, HashMap, HashSet};
@@ -532,20 +550,19 @@ mod test {
 
         let bin_eid = EntityUID::with_eid_and_type(bin_type, "bin").expect("");
 
-        let id = "id";
-        let p = Template::new(
-            PolicyID::from_string(id),
-            BTreeMap::new(),
-            Effect::Permit,
-            PrincipalConstraint::is_eq(group_eid),
-            ActionConstraint::is_eq(action_eid),
-            ResourceConstraint::is_eq(bin_eid),
-            Expr::val(true),
-        );
+        let principal_constraint = PrincipalConstraint::is_eq(group_eid);
+        let action_constraint = ActionConstraint::is_eq(action_eid);
+        let resource_constraint = ResourceConstraint::is_eq(bin_eid);
 
         let v = Validator::new(schema);
 
-        let notes = v.validate_action_application(&p).collect::<Vec<_>>();
+        let notes = v
+            .validate_action_application(
+                &principal_constraint,
+                &action_constraint,
+                &resource_constraint,
+            )
+            .collect::<Vec<_>>();
 
         assert_eq!(
             vec![ValidationErrorKind::invalid_action_application(true, true)],
@@ -725,18 +742,10 @@ mod test {
             [],
         );
         let schema = schema_file.try_into().unwrap();
-        let template = Template::new(
-            PolicyID::from_string("id"),
-            BTreeMap::new(),
-            Effect::Forbid,
-            PrincipalConstraint::is_eq_slot(),
-            ActionConstraint::any(),
-            ResourceConstraint::any(),
-            Expr::val(true),
-        );
+        let principal_constraint = PrincipalConstraint::is_eq_slot();
         let validator = Validator::new(schema);
         let entities = validator
-            .get_principals_satisfying_constraint(&template)
+            .get_principals_satisfying_constraint(&principal_constraint)
             .collect::<Vec<_>>();
         assert_eq!(entities.len(), 1);
         let name = &entities[0];
@@ -757,18 +766,10 @@ mod test {
             [],
         );
         let schema = schema_file.try_into().unwrap();
-        let template = Template::new(
-            PolicyID::from_string("id"),
-            BTreeMap::new(),
-            Effect::Forbid,
-            PrincipalConstraint::any(),
-            ActionConstraint::any(),
-            ResourceConstraint::is_in_slot(),
-            Expr::val(true),
-        );
+        let principal_constraint = PrincipalConstraint::any();
         let validator = Validator::new(schema);
         let entities = validator
-            .get_principals_satisfying_constraint(&template)
+            .get_principals_satisfying_constraint(&principal_constraint)
             .collect::<Vec<_>>();
         assert_eq!(entities.len(), 1);
         let name = &entities[0];
@@ -796,7 +797,8 @@ mod test {
         let env = HashMap::from([(ast::SlotId::principal(), undefined_euid)]);
 
         let validator = Validator::new(schema);
-        let notes: Vec<ValidationErrorKind> = validator.validate_slots(&env).collect();
+        let notes: Vec<ValidationErrorKind> =
+            validator.validate_entity_types_in_slots(&env).collect();
 
         assert_eq!(1, notes.len());
         match notes.get(0) {
@@ -1008,15 +1010,7 @@ mod test {
         let foo_name = "foo_name";
         let euid_foo =
             EntityUID::with_eid_and_type("Action", foo_name).expect("should be a valid identifier");
-        let policy = Template::new(
-            PolicyID::from_string("policy0"),
-            BTreeMap::new(),
-            Effect::Permit,
-            PrincipalConstraint::any(),
-            ActionConstraint::is_eq(euid_foo.clone()),
-            ResourceConstraint::any(),
-            Expr::val(true),
-        );
+        let action_constraint = ActionConstraint::is_eq(euid_foo.clone());
 
         let schema_file = NamespaceDefinition::new(
             [],
@@ -1033,7 +1027,7 @@ mod test {
 
         let validate = Validator::new(singleton_schema);
         let actions = validate
-            .get_actions_satisfying_constraint(&policy)
+            .get_actions_satisfying_constraint(&action_constraint)
             .collect();
         assert_eq!(HashSet::from([euid_foo]), actions);
 
@@ -1045,15 +1039,7 @@ mod test {
         let foo_name = "foo_name";
         let euid_foo =
             EntityUID::with_eid_and_type("Action", foo_name).expect("should be a valid identifier");
-        let policy = Template::new(
-            PolicyID::from_string("policy0"),
-            BTreeMap::new(),
-            Effect::Permit,
-            PrincipalConstraint::any(),
-            ActionConstraint::is_in(vec![euid_foo.clone()]),
-            ResourceConstraint::any(),
-            Expr::val(true),
-        );
+        let action_constraint = ActionConstraint::is_in(vec![euid_foo.clone()]);
 
         let schema_file = NamespaceDefinition::new(
             [],
@@ -1070,7 +1056,7 @@ mod test {
 
         let validate = Validator::new(singleton_schema);
         let actions = validate
-            .get_actions_satisfying_constraint(&policy)
+            .get_actions_satisfying_constraint(&action_constraint)
             .collect();
         assert_eq!(HashSet::from([euid_foo]), actions);
 
@@ -1082,15 +1068,7 @@ mod test {
         let foo_name = "foo_name";
         let euid_foo =
             EntityUID::with_eid_and_type("Action", foo_name).expect("should be a valid identifier");
-        let policy = Template::new(
-            PolicyID::from_string("policy0"),
-            BTreeMap::new(),
-            Effect::Permit,
-            PrincipalConstraint::any(),
-            ActionConstraint::is_in(vec![euid_foo.clone()]),
-            ResourceConstraint::any(),
-            Expr::val(true),
-        );
+        let action_constraint = ActionConstraint::is_in(vec![euid_foo.clone()]);
 
         let schema_file = NamespaceDefinition::new(
             [],
@@ -1107,7 +1085,7 @@ mod test {
 
         let validate = Validator::new(singleton_schema);
         let actions = validate
-            .get_actions_satisfying_constraint(&policy)
+            .get_actions_satisfying_constraint(&action_constraint)
             .collect();
         assert_eq!(HashSet::from([euid_foo]), actions);
 
@@ -1119,15 +1097,7 @@ mod test {
         let foo_type = "foo_type";
         let euid_foo = EntityUID::with_eid_and_type(foo_type, "foo_name")
             .expect("should be a valid identifier");
-        let policy = Template::new(
-            PolicyID::from_string("policy0"),
-            BTreeMap::new(),
-            Effect::Permit,
-            PrincipalConstraint::is_eq(euid_foo.clone()),
-            ActionConstraint::any(),
-            ResourceConstraint::any(),
-            Expr::val(true),
-        );
+        let principal_constraint = PrincipalConstraint::is_eq(euid_foo.clone());
 
         let schema_file = NamespaceDefinition::new(
             [(
@@ -1143,7 +1113,7 @@ mod test {
 
         let validate = Validator::new(singleton_schema);
         let principals = validate
-            .get_principals_satisfying_constraint(&policy)
+            .get_principals_satisfying_constraint(&principal_constraint)
             .map(cedar_policy_core::ast::EntityType::Concrete)
             .collect::<HashSet<_>>();
         assert_eq!(HashSet::from([euid_foo.components().0]), principals);
@@ -1228,19 +1198,18 @@ mod test {
     fn validate_action_apply_incorrect_principal() -> Result<()> {
         let (_, action, resource, schema) = schema_with_single_principal_action_resource();
 
-        let policy = Template::new(
-            PolicyID::from_string("policy0"),
-            BTreeMap::new(),
-            Effect::Permit,
-            PrincipalConstraint::is_eq(resource.clone()),
-            ActionConstraint::is_eq(action),
-            ResourceConstraint::is_eq(resource),
-            Expr::val(true),
-        );
+        let principal_constraint = PrincipalConstraint::is_eq(resource.clone());
+        let action_constraint = ActionConstraint::is_eq(action);
+        let resource_constraint = ResourceConstraint::is_eq(resource);
 
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationErrorKind> =
-            validate.validate_action_application(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_action_application(
+                &principal_constraint,
+                &action_constraint,
+                &resource_constraint,
+            )
+            .collect();
         assert_eq!(1, notes.len());
         match notes.get(0) {
             Some(ValidationErrorKind::InvalidActionApplication(_)) => (),
@@ -1254,19 +1223,18 @@ mod test {
     fn validate_action_apply_incorrect_resource() -> Result<()> {
         let (principal, action, _, schema) = schema_with_single_principal_action_resource();
 
-        let policy = Template::new(
-            PolicyID::from_string("policy0"),
-            BTreeMap::new(),
-            Effect::Permit,
-            PrincipalConstraint::is_eq(principal.clone()),
-            ActionConstraint::is_eq(action),
-            ResourceConstraint::is_eq(principal),
-            Expr::val(true),
-        );
+        let principal_constraint = PrincipalConstraint::is_eq(principal.clone());
+        let action_constraint = ActionConstraint::is_eq(action);
+        let resource_constraint = ResourceConstraint::is_eq(principal);
 
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationErrorKind> =
-            validate.validate_action_application(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_action_application(
+                &principal_constraint,
+                &action_constraint,
+                &resource_constraint,
+            )
+            .collect();
         assert_eq!(1, notes.len());
         match notes.get(0) {
             Some(ValidationErrorKind::InvalidActionApplication(_)) => (),
@@ -1280,19 +1248,18 @@ mod test {
     fn validate_action_apply_incorrect_principal_and_resource() -> Result<()> {
         let (principal, action, resource, schema) = schema_with_single_principal_action_resource();
 
-        let policy = Template::new(
-            PolicyID::from_string("policy0"),
-            BTreeMap::new(),
-            Effect::Permit,
-            PrincipalConstraint::is_eq(resource),
-            ActionConstraint::is_eq(action),
-            ResourceConstraint::is_eq(principal),
-            Expr::val(true),
-        );
+        let principal_constraint = PrincipalConstraint::is_eq(resource);
+        let action_constraint = ActionConstraint::is_eq(action);
+        let resource_constraint = ResourceConstraint::is_eq(principal);
 
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationErrorKind> =
-            validate.validate_action_application(&policy).collect();
+        let notes: Vec<ValidationErrorKind> = validate
+            .validate_action_application(
+                &principal_constraint,
+                &action_constraint,
+                &resource_constraint,
+            )
+            .collect();
         assert_eq!(1, notes.len());
         match notes.get(0) {
             Some(ValidationErrorKind::InvalidActionApplication(_)) => (),
@@ -1331,18 +1298,18 @@ mod test {
     fn validate_used_as_incorrect() -> Result<()> {
         let (principal, _, resource, schema) = schema_with_single_principal_action_resource();
 
-        let policy = Template::new(
-            PolicyID::from_string("policy0"),
-            BTreeMap::new(),
-            Effect::Permit,
-            PrincipalConstraint::is_eq(resource),
-            ActionConstraint::any(),
-            ResourceConstraint::is_eq(principal),
-            Expr::val(true),
-        );
+        let principal_constraint = PrincipalConstraint::is_eq(resource);
+        let action_constraint = ActionConstraint::any();
+        let resource_constraint = ResourceConstraint::is_eq(principal);
 
         let validate = Validator::new(schema);
-        let notes: Vec<_> = validate.validate_action_application(&policy).collect();
+        let notes: Vec<_> = validate
+            .validate_action_application(
+                &principal_constraint,
+                &action_constraint,
+                &resource_constraint,
+            )
+            .collect();
         assert_eq!(
             notes,
             vec![ValidationErrorKind::invalid_action_application(

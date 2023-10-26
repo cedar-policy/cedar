@@ -22,7 +22,7 @@
 mod err;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use miette::{miette, NamedSource, Report, Result, WrapErr};
+use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -36,8 +36,6 @@ use std::{
 
 use cedar_policy::*;
 use cedar_policy_formatter::{policies_str_to_pretty, Config};
-
-use crate::err::IntoDiagnostic;
 
 /// Basic Cedar CLI for evaluating authorization queries
 #[derive(Parser)]
@@ -98,6 +96,8 @@ pub enum Commands {
     Link(LinkArgs),
     /// Format a policy set
     Format(FormatArgs),
+    /// Create a Cedar project
+    New(NewArgs),
 }
 
 #[derive(Args, Debug)]
@@ -291,6 +291,13 @@ pub struct FormatArgs {
     pub indent_width: isize,
 }
 
+#[derive(Args, Debug)]
+pub struct NewArgs {
+    /// Name of the Cedar project
+    #[arg(short, long, value_name = "DIR")]
+    pub name: String,
+}
+
 /// Wrapper struct
 #[derive(Clone, Debug, Deserialize)]
 #[serde(try_from = "HashMap<String,String>")]
@@ -456,13 +463,6 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
             }
         },
     };
-    let entities = match load_actions_from_schema(entities, &schema) {
-        Ok(entities) => entities,
-        Err(e) => {
-            println!("Error: {e:?}");
-            return (CedarExitCode::Failure, EvalResult::Bool(false));
-        }
-    };
     match eval_expression(&request, &entities, &expr)
         .into_diagnostic()
         .wrap_err("failed to evaluate the expression")
@@ -499,6 +499,104 @@ fn format_policies_inner(args: &FormatArgs) -> Result<()> {
 
 pub fn format_policies(args: &FormatArgs) -> CedarExitCode {
     if let Err(err) = format_policies_inner(args) {
+        println!("Error: {err:?}");
+        CedarExitCode::Failure
+    } else {
+        CedarExitCode::Success
+    }
+}
+
+fn generate_schema(path: &Path) -> Result<()> {
+    std::fs::write(
+        path,
+        serde_json::to_string_pretty(&serde_json::json!(
+        {
+            "": {
+                "entityTypes": {
+                    "A": {
+                        "memberOfTypes": [
+                            "B"
+                        ]
+                    },
+                    "B": {
+                        "memberOfTypes": []
+                    },
+                    "C": {
+                        "memberOfTypes": []
+                    }
+                },
+                "actions": {
+                    "action": {
+                        "appliesTo": {
+                            "resourceTypes": [
+                                "C"
+                            ],
+                            "principalTypes": [
+                                "A",
+                                "B"
+                            ]
+                        }
+                    }
+                }
+            }
+        }))
+        .into_diagnostic()?,
+    )
+    .into_diagnostic()
+}
+
+fn generate_policy(path: &Path) -> Result<()> {
+    std::fs::write(
+        path,
+        r#"permit (
+  principal in A::"a",
+  action == Action::"action",
+  resource == C::"c"
+) when { true };
+"#,
+    )
+    .into_diagnostic()
+}
+
+fn generate_entities(path: &Path) -> Result<()> {
+    std::fs::write(
+        path,
+        serde_json::to_string_pretty(&serde_json::json!(
+        [
+            {
+                "uid": { "type": "A", "id": "a"} ,
+                "attrs": {},
+                "parents": [{"type": "B", "id": "b"}]
+            },
+            {
+                "uid": { "type": "B", "id": "b"} ,
+                "attrs": {},
+                "parents": []
+            },
+            {
+                "uid": { "type": "C", "id": "c"} ,
+                "attrs": {},
+                "parents": []
+            }
+        ]))
+        .into_diagnostic()?,
+    )
+    .into_diagnostic()
+}
+
+fn new_inner(args: &NewArgs) -> Result<()> {
+    let dir = &std::env::current_dir().into_diagnostic()?.join(&args.name);
+    std::fs::create_dir(dir).into_diagnostic()?;
+    let schema_path = dir.join("schema.cedarschema.json");
+    let policy_path = dir.join("policy.cedar");
+    let entities_path = dir.join("entities.jon");
+    generate_schema(&schema_path)?;
+    generate_policy(&policy_path)?;
+    generate_entities(&entities_path)
+}
+
+pub fn new(args: &NewArgs) -> CedarExitCode {
+    if let Err(err) = new_inner(args) {
         println!("Error: {err:?}");
         CedarExitCode::Failure
     } else {
@@ -830,25 +928,6 @@ fn read_schema_file(filename: impl AsRef<Path> + std::marker::Copy) -> Result<Sc
         })
 }
 
-fn load_actions_from_schema(entities: Entities, schema: &Option<Schema>) -> Result<Entities> {
-    match schema {
-        Some(schema) => match schema.action_entities() {
-            Ok(action_entities) => Entities::from_entities(
-                entities
-                    .iter()
-                    .cloned()
-                    .chain(action_entities.iter().cloned()),
-            )
-            .into_diagnostic()
-            .wrap_err("failed to merge action entities with entity file"),
-            Err(e) => Err(e)
-                .into_diagnostic()
-                .wrap_err("failed to construct action entities"),
-        },
-        None => Ok(entities),
-    }
-}
-
 /// This uses the Cedar API to call the authorization engine.
 fn execute_request(
     request: &RequestArgs,
@@ -875,13 +954,6 @@ fn execute_request(
         }
     };
     let entities = match load_entities(entities_filename, schema.as_ref()) {
-        Ok(entities) => entities,
-        Err(e) => {
-            errs.push(e);
-            Entities::empty()
-        }
-    };
-    let entities = match load_actions_from_schema(entities, &schema) {
         Ok(entities) => entities,
         Err(e) => {
             errs.push(e);

@@ -16,7 +16,7 @@
 
 use super::{FromJsonError, InstantiationError};
 use crate::ast;
-use crate::entities::{EntityUidJSON, JsonDeserializationErrorContext};
+use crate::entities::{EntityUidJson, JsonDeserializationErrorContext};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -73,7 +73,7 @@ pub enum EqConstraint {
     /// `==` a literal entity
     Entity {
         /// Entity it must be `==` to
-        entity: EntityUidJSON,
+        entity: EntityUidJson,
     },
     /// Template slot
     Slot {
@@ -90,7 +90,7 @@ pub enum PrincipalOrResourceInConstraint {
     /// `in` a literal entity
     Entity {
         /// Entity it must be `in`
-        entity: EntityUidJSON,
+        entity: EntityUidJson,
     },
     /// Template slot
     Slot {
@@ -107,12 +107,12 @@ pub enum ActionInConstraint {
     /// Single entity
     Single {
         /// the single entity
-        entity: EntityUidJSON,
+        entity: EntityUidJson,
     },
     /// Set of entities
     Set {
         /// the set of entities
-        entities: Vec<EntityUidJSON>,
+        entities: Vec<EntityUidJson>,
     },
 }
 
@@ -122,7 +122,7 @@ impl PrincipalConstraint {
     /// but does not throw an error if `vals` contains unused mappings.
     pub fn instantiate(
         self,
-        vals: &HashMap<ast::SlotId, EntityUidJSON>,
+        vals: &HashMap<ast::SlotId, EntityUidJson>,
     ) -> Result<Self, InstantiationError> {
         match self {
             PrincipalConstraint::All => Ok(PrincipalConstraint::All),
@@ -158,7 +158,7 @@ impl ResourceConstraint {
     /// but does not throw an error if `vals` contains unused mappings.
     pub fn instantiate(
         self,
-        vals: &HashMap<ast::SlotId, EntityUidJSON>,
+        vals: &HashMap<ast::SlotId, EntityUidJson>,
     ) -> Result<Self, InstantiationError> {
         match self {
             ResourceConstraint::All => Ok(ResourceConstraint::All),
@@ -194,10 +194,131 @@ impl ActionConstraint {
     /// not throw an error if `vals` contains unused mappings.
     pub fn instantiate(
         self,
-        _vals: &HashMap<ast::SlotId, EntityUidJSON>,
+        _vals: &HashMap<ast::SlotId, EntityUidJson>,
     ) -> Result<Self, InstantiationError> {
         // currently, slots are not allowed in action constraints
         Ok(self)
+    }
+}
+
+impl std::fmt::Display for PrincipalConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::All => write!(f, "principal"),
+            Self::Eq(ec) => {
+                write!(f, "principal ")?;
+                std::fmt::Display::fmt(ec, f)?;
+                Ok(())
+            }
+            Self::In(ic) => {
+                write!(f, "principal ")?;
+                std::fmt::Display::fmt(ic, f)?;
+                Ok(())
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for ActionConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::All => write!(f, "action"),
+            Self::Eq(ec) => {
+                write!(f, "action ")?;
+                std::fmt::Display::fmt(ec, f)?;
+                Ok(())
+            }
+            Self::In(aic) => {
+                write!(f, "action ")?;
+                std::fmt::Display::fmt(aic, f)?;
+                Ok(())
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for ResourceConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::All => write!(f, "resource"),
+            Self::Eq(ec) => {
+                write!(f, "resource ")?;
+                std::fmt::Display::fmt(ec, f)?;
+                Ok(())
+            }
+            Self::In(ic) => {
+                write!(f, "resource ")?;
+                std::fmt::Display::fmt(ic, f)?;
+                Ok(())
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for EqConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Entity { entity } => {
+                match entity
+                    .clone()
+                    .into_euid(|| JsonDeserializationErrorContext::EntityUid)
+                {
+                    Ok(euid) => write!(f, "== {euid}"),
+                    Err(e) => write!(f, "== (invalid entity uid: {e})"),
+                }
+            }
+            Self::Slot { slot } => write!(f, "== {slot}"),
+        }
+    }
+}
+
+impl std::fmt::Display for PrincipalOrResourceInConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Entity { entity } => {
+                match entity
+                    .clone()
+                    .into_euid(|| JsonDeserializationErrorContext::EntityUid)
+                {
+                    Ok(euid) => write!(f, "in {euid}"),
+                    Err(e) => write!(f, "in (invalid entity uid: {e})"),
+                }
+            }
+            Self::Slot { slot } => write!(f, "in {slot}"),
+        }
+    }
+}
+
+impl std::fmt::Display for ActionInConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Single { entity } => {
+                match entity
+                    .clone()
+                    .into_euid(|| JsonDeserializationErrorContext::EntityUid)
+                {
+                    Ok(euid) => write!(f, "in {euid}"),
+                    Err(e) => write!(f, "in (invalid entity uid: {e})"),
+                }
+            }
+            Self::Set { entities } => {
+                write!(f, "in [")?;
+                for (i, entity) in entities.iter().enumerate() {
+                    match entity
+                        .clone()
+                        .into_euid(|| JsonDeserializationErrorContext::EntityUid)
+                    {
+                        Ok(euid) => write!(f, "{euid}"),
+                        Err(e) => write!(f, "(invalid entity uid: {e})"),
+                    }?;
+                    if i < (entities.len() - 1) {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, "]")?;
+                Ok(())
+            }
+        }
     }
 }
 
@@ -233,7 +354,7 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
             ast::PrincipalOrResourceConstraint::Any => PrincipalConstraint::All,
             ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::EUID(e)) => {
                 PrincipalConstraint::Eq(EqConstraint::Entity {
-                    entity: EntityUidJSON::ImplicitEntityEscape((&*e).into()),
+                    entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                 })
             }
             ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::Slot) => {
@@ -243,7 +364,7 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
             }
             ast::PrincipalOrResourceConstraint::In(ast::EntityReference::EUID(e)) => {
                 PrincipalConstraint::In(PrincipalOrResourceInConstraint::Entity {
-                    entity: EntityUidJSON::ImplicitEntityEscape((&*e).into()),
+                    entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                 })
             }
             ast::PrincipalOrResourceConstraint::In(ast::EntityReference::Slot) => {
@@ -261,7 +382,7 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
             ast::PrincipalOrResourceConstraint::Any => ResourceConstraint::All,
             ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::EUID(e)) => {
                 ResourceConstraint::Eq(EqConstraint::Entity {
-                    entity: EntityUidJSON::ImplicitEntityEscape((&*e).into()),
+                    entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                 })
             }
             ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::Slot) => {
@@ -271,7 +392,7 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
             }
             ast::PrincipalOrResourceConstraint::In(ast::EntityReference::EUID(e)) => {
                 ResourceConstraint::In(PrincipalOrResourceInConstraint::Entity {
-                    entity: EntityUidJSON::ImplicitEntityEscape((&*e).into()),
+                    entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                 })
             }
             ast::PrincipalOrResourceConstraint::In(ast::EntityReference::Slot) => {
@@ -366,16 +487,16 @@ impl From<ast::ActionConstraint> for ActionConstraint {
         match constraint {
             ast::ActionConstraint::Any => ActionConstraint::All,
             ast::ActionConstraint::Eq(e) => ActionConstraint::Eq(EqConstraint::Entity {
-                entity: EntityUidJSON::ImplicitEntityEscape((&*e).into()),
+                entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
             }),
             ast::ActionConstraint::In(es) => match &es[..] {
                 [e] => ActionConstraint::In(ActionInConstraint::Single {
-                    entity: EntityUidJSON::ImplicitEntityEscape((&**e).into()),
+                    entity: EntityUidJson::ImplicitEntityEscape((&**e).into()),
                 }),
                 es => ActionConstraint::In(ActionInConstraint::Set {
                     entities: es
                         .iter()
-                        .map(|e| EntityUidJSON::ImplicitEntityEscape((&**e).into()))
+                        .map(|e| EntityUidJson::ImplicitEntityEscape((&**e).into()))
                         .collect(),
                 }),
             },

@@ -15,7 +15,7 @@
  */
 
 use super::{JsonDeserializationError, JsonDeserializationErrorContext, SchemaType, ValueParser};
-use crate::ast::{Context, ExprKind};
+use crate::ast::Context;
 use crate::extensions::Extensions;
 use std::collections::HashMap;
 
@@ -80,12 +80,11 @@ impl<'e, 's, S: ContextSchema> ContextJsonParser<'e, 's, S> {
         let rexpr = vparser.val_into_rexpr(json, expected_ty.as_ref(), || {
             JsonDeserializationErrorContext::Context
         })?;
-        match rexpr.expr_kind() {
-            ExprKind::Record { .. } => Ok(Context::from_expr(rexpr)),
-            _ => Err(JsonDeserializationError::ExpectedContextToBeRecord {
+        Context::from_expr(rexpr).map_err(|rexpr| {
+            JsonDeserializationError::ExpectedContextToBeRecord {
                 got: Box::new(rexpr),
-            }),
-        }
+            }
+        })
     }
 
     /// Parse context JSON (in `std::io::Read` form) into a `Context` object

@@ -18,7 +18,7 @@ use std::fmt::Display;
 
 use super::SchemaType;
 use crate::ast::{
-    EntityType, EntityUID, Expr, ExprKind, Name, RestrictedExpr, RestrictedExprError,
+    EntityType, EntityUID, Expr, ExprKind, Name, PolicyID, RestrictedExpr, RestrictedExprError,
 };
 use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
@@ -52,12 +52,12 @@ impl Display for EscapeKind {
 #[derive(Debug, Error)]
 pub enum JsonDeserializationError {
     /// Error thrown by the `serde_json` crate
-    #[error("{0}")]
+    #[error(transparent)]
     Serde(#[from] serde_json::Error),
     /// Contents of an escape failed to parse.
     /// Note that escape `__expr` is deprecated and once it is
     /// removed, `EscapeKind::Expr` will also be removed
-    #[error("failed to parse escape `{kind}`: {value}, errors: {errs}")]
+    #[error("failed to parse escape `{kind}` with value `{value}`: {errs}")]
     ParseEscape {
         /// Escape kind
         kind: EscapeKind,
@@ -73,7 +73,7 @@ pub enum JsonDeserializationError {
     #[error(transparent)]
     FailedExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
     /// A field that needs to be a literal entity reference, was some other JSON value
-    #[error("{ctx}, expected a literal entity reference, but got: {got}")]
+    #[error("{ctx}, expected a literal entity reference, but got `{got}`")]
     ExpectedLiteralEntityRef {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -81,7 +81,7 @@ pub enum JsonDeserializationError {
         got: Box<Expr>,
     },
     /// A field that needs to be an extension value, was some other JSON value
-    #[error("{ctx}, expected an extension value, but got: {got}")]
+    #[error("{ctx}, expected an extension value, but got `{got}`")]
     ExpectedExtnValue {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -119,8 +119,8 @@ pub enum JsonDeserializationError {
         &.uid.entity_type(),
         match .suggested_types.as_slice() {
             [] => String::new(),
-            [ty] => format!("; did you mean {ty}?"),
-            tys => format!("; did you mean one of {:?}?", tys.iter().map(ToString::to_string).collect::<Vec<String>>())
+            [ty] => format!(". Did you mean `{ty}`?"),
+            tys => format!(". Did you mean one of {:?}?", tys.iter().map(ToString::to_string).collect::<Vec<String>>())
         }
     )]
     UnexpectedEntityType {
@@ -145,7 +145,7 @@ pub enum JsonDeserializationError {
     },
     /// During schema-based parsing, encountered this attribute on this entity, but that
     /// attribute shouldn't exist on entities of this type
-    #[error("attribute {:?} on `{uid}` shouldn't exist according to the schema", &.attr)]
+    #[error("attribute `{attr}` on `{uid}` should not exist according to the schema")]
     UnexpectedEntityAttr {
         /// Entity that had the unexpected attribute
         uid: EntityUID,
@@ -154,7 +154,7 @@ pub enum JsonDeserializationError {
     },
     /// During schema-based parsing, encountered this attribute on a record, but
     /// that attribute shouldn't exist on that record
-    #[error("{ctx}, record attribute {record_attr:?} shouldn't exist according to the schema")]
+    #[error("{ctx}, record attribute `{record_attr}` should not exist according to the schema")]
     UnexpectedRecordAttr {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -163,7 +163,7 @@ pub enum JsonDeserializationError {
     },
     /// During schema-based parsing, didn't encounter this attribute of an
     /// entity, but that attribute should have existed
-    #[error("expected entity `{uid}` to have an attribute {attr:?}, but it doesn't")]
+    #[error("expected entity `{uid}` to have an attribute `{attr}`, but it does not")]
     MissingRequiredEntityAttr {
         /// Entity that is missing a required attribute
         uid: EntityUID,
@@ -172,7 +172,7 @@ pub enum JsonDeserializationError {
     },
     /// During schema-based parsing, didn't encounter this attribute of a
     /// record, but that attribute should have existed
-    #[error("{ctx}, expected the record to have an attribute {record_attr:?}, but it doesn't")]
+    #[error("{ctx}, expected the record to have an attribute `{record_attr}`, but it does not")]
     MissingRequiredRecordAttr {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -201,6 +201,14 @@ pub enum JsonDeserializationError {
         /// Second element type which was found
         ty2: Box<SchemaType>,
     },
+    /// The same key appears two or more times in a single record literal
+    #[error("{ctx}, duplicate key `{key}` in record literal")]
+    DuplicateKeyInRecordLiteral {
+        /// Context of this error
+        ctx: Box<JsonDeserializationErrorContext>,
+        /// The key that appeared two or more times
+        key: SmolStr,
+    },
     /// During schema-based parsing, found a parent of a type that's not allowed
     /// for that entity
     #[error(
@@ -220,33 +228,33 @@ pub enum JsonDeserializationError {
 #[derive(Debug, Error)]
 pub enum JsonSerializationError {
     /// Error thrown by `serde_json`
-    #[error("{0}")]
+    #[error(transparent)]
     Serde(#[from] serde_json::Error),
     /// Extension-function calls with 0 arguments are not currently supported in
     /// our JSON format.
-    #[error("extension-function calls with 0 arguments are not currently supported in our JSON format. found call of {func}")]
+    #[error("unsupported call to `{func}`. Extension function calls with 0 arguments are not currently supported in our JSON format")]
     ExtnCall0Arguments {
         /// Name of the function which was called with 0 arguments
         func: Name,
     },
     /// Extension-function calls with 2 or more arguments are not currently
     /// supported in our JSON format.
-    #[error("extension-function calls with 2 or more arguments are not currently supported in our JSON format. found call of {func}")]
+    #[error("unsupported call to `{func}`. Extension function calls with 2 or more arguments are not currently supported in our JSON format")]
     ExtnCall2OrMoreArguments {
         /// Name of the function which was called with 2 or more arguments
         func: Name,
     },
     /// Encountered a `Record` which can't be serialized to JSON because it
     /// contains a key which is reserved as a JSON escape.
-    #[error("record uses reserved key: {key}")]
+    #[error("record uses reserved key `{key}`")]
     ReservedKey {
         /// Reserved key which was used by the `Record`
         key: SmolStr,
     },
     /// Encountered an `ExprKind` which we didn't expect. Either a case is
-    /// missing in `JSONValue::from_expr()`, or an internal invariant was
+    /// missing in `CedarValueJson::from_expr()`, or an internal invariant was
     /// violated and there is a non-restricted expression in `RestrictedExpr`
-    #[error("unexpected restricted expression: {kind:?}")]
+    #[error("unexpected restricted expression `{kind:?}`")]
     UnexpectedRestrictedExprKind {
         /// `ExprKind` which we didn't expect to find
         kind: ExprKind,
@@ -273,15 +281,21 @@ pub enum JsonDeserializationErrorContext {
     EntityUid,
     /// The error occurred while deserializing the `Context`.
     Context,
+    /// The error occurred while deserializing a policy in JSON (EST) form.
+    Policy {
+        /// ID of the policy we were deserializing
+        id: PolicyID,
+    },
 }
 
 impl std::fmt::Display for JsonDeserializationErrorContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::EntityAttribute { uid, attr } => write!(f, "in attribute {attr:?} on {uid}"),
-            Self::EntityParents { uid } => write!(f, "in parents field of {uid}"),
+            Self::EntityAttribute { uid, attr } => write!(f, "in attribute `{attr}` on `{uid}`"),
+            Self::EntityParents { uid } => write!(f, "in parents field of `{uid}`"),
             Self::EntityUid => write!(f, "in uid field of <unknown entity>"),
             Self::Context => write!(f, "while parsing context"),
+            Self::Policy { id } => write!(f, "while parsing JSON policy `{id}`"),
         }
     }
 }

@@ -25,9 +25,13 @@ use crate::{
     Authorizer, Context, Decision, Entities, EntityUid, ParseErrors, Policy, PolicySet, Request,
     Response, Schema, SlotId, Template,
 };
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use serde_with::MapPreventDuplicates;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
+use thiserror::Error;
 
 thread_local!(
     /// Per-thread authorizer instance, initialized on first use
@@ -136,12 +140,14 @@ enum AuthorizationAnswer {
     Success { response: InterfaceResponse },
 }
 
+#[serde_as]
 #[derive(Debug, Serialize, Deserialize)]
 struct AuthorizationCall {
     principal: Option<serde_json::Value>,
     action: serde_json::Value,
     resource: Option<serde_json::Value>,
-    context: serde_json::Value,
+    #[serde_as(as = "MapPreventDuplicates<_, _>")]
+    context: HashMap<String, serde_json::Value>,
     /// Optional schema in JSON format.
     /// If present, this will inform the parsing: for instance, it will allow
     /// `__entity` and `__extn` escapes to be implicit, and it will error if
@@ -175,7 +181,9 @@ impl AuthorizationCall {
             None => None,
         };
 
-        let context = Context::from_json_value(self.context, schema.as_ref().map(|s| (s, &action)))
+        let context = serde_json::to_value(self.context)
+            .map_err(|e| [format!("Error encoding the context as JSON: {e}")])?;
+        let context = Context::from_json_value(context, schema.as_ref().map(|s| (s, &action)))
             .map_err(|e| [e.to_string()])?;
         let q = Request::new(principal, Some(action), resource, context);
         let (policies, entities) = self.slice.try_into(schema.as_ref())?;
@@ -186,13 +194,13 @@ impl AuthorizationCall {
 ///
 /// Entity UID as strings.
 ///
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct EntityUIDStrings {
     ty: String,
     eid: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Link {
     slot: String,
     value: EntityUIDStrings,
@@ -208,10 +216,50 @@ struct TemplateLink {
 
     /// List of strings to fill in all slots in policy template "template_id".
     /// (slot, String)
-    instantiations: Vec<Link>,
+    instantiations: Links,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "Vec<Link>")]
+#[serde(into = "Vec<Link>")]
+struct Links(Vec<Link>);
+
+/// Error returned for duplicate link ids in a template instantiation
+#[derive(Debug, Clone, Error)]
+pub enum DuplicateLinkError {
+    /// Duplicate instantiations for the same slot
+    #[error("duplicate instantiations of the slot(s): {}", .0.iter().map(|s| format!("`{s}`")).join(", "))]
+    Duplicates(Vec<String>),
+}
+
+impl TryFrom<Vec<Link>> for Links {
+    type Error = DuplicateLinkError;
+
+    fn try_from(links: Vec<Link>) -> Result<Self, Self::Error> {
+        let mut slots = links.iter().map(|link| &link.slot).collect::<Vec<_>>();
+        slots.sort();
+        let duplicates = slots
+            .into_iter()
+            .dedup_with_count()
+            .filter_map(|(count, slot)| if count == 1 { None } else { Some(slot) })
+            .cloned()
+            .collect::<Vec<_>>();
+        if duplicates.is_empty() {
+            Ok(Self(links))
+        } else {
+            Err(DuplicateLinkError::Duplicates(duplicates))
+        }
+    }
+}
+
+impl From<Links> for Vec<Link> {
+    fn from(value: Links) -> Self {
+        value.0
+    }
 }
 
 /// policies must either be a single policy per entry, or only one entry with more than one policy
+#[serde_as]
 #[derive(Debug, Serialize, Deserialize)]
 struct RecvdSlice {
     policies: PolicySpecification,
@@ -220,6 +268,7 @@ struct RecvdSlice {
     entities: serde_json::Value,
 
     /// Optional template policies.
+    #[serde_as(as = "Option<MapPreventDuplicates<_, _>>")]
     templates: Option<HashMap<String, String>>,
 
     /// Optional template instantiations.
@@ -228,62 +277,61 @@ struct RecvdSlice {
     template_instantiations: Option<Vec<TemplateLink>>,
 }
 
+fn parse_instantiation(v: &Link) -> Result<(SlotId, EntityUid), Vec<String>> {
+    let slot = match v.slot.as_str() {
+        "?principal" => SlotId::principal(),
+        "?resource" => SlotId::resource(),
+        _ => {
+            return Err(vec![
+                "Slot must by \"?principal\" or \"?resource\"".to_string()
+            ]);
+        }
+    };
+    let type_name = EntityTypeName::from_str(v.value.ty.as_str());
+    let eid = match EntityId::from_str(v.value.eid.as_str()) {
+        Ok(eid) => eid,
+        Err(err) => match err {},
+    };
+    match type_name {
+        Ok(type_name) => {
+            let entity_uid = EntityUid::from_type_name_and_id(type_name, eid);
+            Ok((slot, entity_uid))
+        }
+        Err(e) => Err(e.errors_as_strings()),
+    }
+}
+
+fn parse_instantiations(
+    policies: &mut PolicySet,
+    instantiation: TemplateLink,
+) -> Result<(), Vec<String>> {
+    let template_id = PolicyId::from_str(instantiation.template_id.as_str());
+    let instance_id = PolicyId::from_str(instantiation.result_policy_id.as_str());
+    match (template_id, instance_id) {
+        (Ok(_), Err(e)) | (Err(e), Ok(_)) => Err(e.errors_as_strings()),
+        (Err(mut e1), Err(mut e2)) => {
+            e1.0.append(&mut e2.0);
+            Err(ParseErrors(e1.0).errors_as_strings())
+        }
+        (Ok(template_id), Ok(instance_id)) => {
+            let mut vals = HashMap::new();
+            for i in instantiation.instantiations.0 {
+                match parse_instantiation(&i) {
+                    Err(e) => return Err(e),
+                    Ok(val) => vals.insert(val.0, val.1),
+                };
+            }
+            match policies.link(template_id, instance_id, vals) {
+                Ok(_) => Ok(()),
+                Err(e) => Err(vec![format!("Error instantiating template: {e}")]),
+            }
+        }
+    }
+}
+
 impl RecvdSlice {
     #[allow(clippy::too_many_lines)]
     fn try_into(self, schema: Option<&Schema>) -> Result<(PolicySet, Entities), Vec<String>> {
-        fn parse_instantiation(v: &Link) -> Result<(SlotId, EntityUid), Vec<String>> {
-            let slot = match v.slot.as_str() {
-                "?principal" => SlotId::principal(),
-                "?resource" => SlotId::resource(),
-                _ => {
-                    return Err(vec![
-                        "Slot must by \"?principal\" or \"?resource\"".to_string()
-                    ]);
-                }
-            };
-            let type_name = EntityTypeName::from_str(v.value.ty.as_str());
-            let eid = EntityId::from_str(v.value.eid.as_str());
-            match (type_name, eid) {
-                (Ok(type_name), Ok(eid)) => {
-                    let entity_uid = EntityUid::from_type_name_and_id(type_name, eid);
-                    Ok((slot, entity_uid))
-                }
-                (Ok(_), Err(e)) | (Err(e), Ok(_)) => Err(e.errors_as_strings()),
-                (Err(mut e1), Err(mut e2)) => {
-                    e1.0.append(&mut e2.0);
-                    Err(ParseErrors(e1.0).errors_as_strings())
-                }
-            }
-        }
-
-        fn parse_instantiations(
-            policies: &mut PolicySet,
-            instantiation: TemplateLink,
-        ) -> Result<(), Vec<String>> {
-            let template_id = PolicyId::from_str(instantiation.template_id.as_str());
-            let instance_id = PolicyId::from_str(instantiation.result_policy_id.as_str());
-            match (template_id, instance_id) {
-                (Ok(_), Err(e)) | (Err(e), Ok(_)) => Err(e.errors_as_strings()),
-                (Err(mut e1), Err(mut e2)) => {
-                    e1.0.append(&mut e2.0);
-                    Err(ParseErrors(e1.0).errors_as_strings())
-                }
-                (Ok(template_id), Ok(instance_id)) => {
-                    let mut vals = HashMap::new();
-                    for i in instantiation.instantiations {
-                        match parse_instantiation(&i) {
-                            Err(e) => return Err(e),
-                            Ok(val) => vals.insert(val.0, val.1),
-                        };
-                    }
-                    match policies.link(template_id, instance_id, vals) {
-                        Ok(_) => Ok(()),
-                        Err(e) => Err(vec![format!("Error instantiating template: {e}")]),
-                    }
-                }
-            }
-        }
-
         let Self {
             policies,
             entities,
@@ -353,11 +401,11 @@ fn parse_policy_set_from_individual_policies(
             Ok(p) => match policy_set.add(p) {
                 Ok(_) => {}
                 Err(err) => {
-                    errs.push(format!("couldn't add policy to set due to error: {err:?}"));
+                    errs.push(format!("couldn't add policy to set due to error: {err}"));
                 }
             },
             Err(pes) => errs.extend(
-                std::iter::once(format!("couldn't parse policy with id {id}"))
+                std::iter::once(format!("couldn't parse policy with id `{id}`"))
                     .chain(pes.errors_as_strings().into_iter()),
             ),
         }
@@ -369,11 +417,11 @@ fn parse_policy_set_from_individual_policies(
                 Ok(p) => match policy_set.add_template(p) {
                     Ok(_) => {}
                     Err(err) => {
-                        errs.push(format!("couldn't add policy to set due to error: {err:?}"));
+                        errs.push(format!("couldn't add policy to set due to error: {err}"));
                     }
                 },
                 Err(pes) => errs.extend(
-                    std::iter::once(format!("couldn't parse policy with id {id}"))
+                    std::iter::once(format!("couldn't parse policy with id `{id}`"))
                         .chain(pes.errors_as_strings().into_iter()),
                 ),
             }
@@ -387,10 +435,12 @@ fn parse_policy_set_from_individual_policies(
     }
 }
 
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::EntityUid;
+    use crate::{frontend::utils::assert_is_failure, EntityUid};
     use std::collections::HashMap;
 
     #[test]
@@ -438,7 +488,11 @@ mod test {
 
     #[test]
     fn test_failure_on_invalid_syntax() {
-        assert_is_failure(&json_is_authorized("iefjieoafiaeosij"));
+        assert_is_failure(
+            &json_is_authorized("iefjieoafiaeosij"),
+            true,
+            "expected value",
+        );
     }
 
     #[test]
@@ -691,6 +745,133 @@ mod test {
         assert_is_authorized(json_is_authorized(call));
     }
 
+    #[test]
+    fn test_authorized_fails_on_policy_collision_with_template() {
+        let call = r#"{
+            "principal" : "User::\"alice\"",
+            "action" : "Photo::\"view\"",
+            "resource" : "Photo::\"door\"",
+            "context" : {},
+            "slice" : {
+                "policies" : { "ID0": "permit(principal, action, resource);" },
+                "entities" : [],
+                "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
+                "template_instantiations" : []
+            }
+        }"#;
+        assert_is_failure(
+            &json_is_authorized(call),
+            false,
+            "couldn't add policy to set due to error: duplicate template or policy id `ID0`",
+        );
+    }
+
+    #[test]
+    fn test_authorized_fails_on_duplicate_instantiations_ids() {
+        let call = r#"{
+            "principal" : "User::\"alice\"",
+            "action" : "Photo::\"view\"",
+            "resource" : "Photo::\"door\"",
+            "context" : {},
+            "slice" : {
+                "policies" : {},
+                "entities" : [],
+                "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
+                "template_instantiations" : [
+                    {
+                        "template_id" : "ID0",
+                        "result_policy_id" : "ID1",
+                        "instantiations" : [
+                            {
+                                "slot": "?principal",
+                                "value": { "ty" : "User", "eid" : "alice" }
+                            }
+                        ]
+                    },
+                    {
+                        "template_id" : "ID0",
+                        "result_policy_id" : "ID1",
+                        "instantiations" : [
+                            {
+                                "slot": "?principal",
+                                "value": { "ty" : "User", "eid" : "alice" }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }"#;
+        assert_is_failure(
+            &json_is_authorized(call),
+            false,
+            "Error instantiating template: unable to link template: template-linked policy id `ID1` conflicts with an existing policy id",
+        );
+    }
+
+    #[test]
+    fn test_authorized_fails_on_template_instantiation_collision_with_template() {
+        let call = r#"{
+            "principal" : "User::\"alice\"",
+            "action" : "Photo::\"view\"",
+            "resource" : "Photo::\"door\"",
+            "context" : {},
+            "slice" : {
+                "policies" : {},
+                "entities" : [],
+                "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
+                "template_instantiations" : [
+                    {
+                        "template_id" : "ID0",
+                        "result_policy_id" : "ID0",
+                        "instantiations" : [
+                            {
+                                "slot": "?principal",
+                                "value": { "ty" : "User", "eid" : "alice" }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }"#;
+        assert_is_failure(
+            &json_is_authorized(call),
+            false,
+            "Error instantiating template: unable to link template: template-linked policy id `ID0` conflicts with an existing policy id",
+        );
+    }
+
+    #[test]
+    fn test_authorized_fails_on_template_instantiation_collision_with_policy() {
+        let call = r#"{
+            "principal" : "User::\"alice\"",
+            "action" : "Photo::\"view\"",
+            "resource" : "Photo::\"door\"",
+            "context" : {},
+            "slice" : {
+                "policies" : { "ID1": "permit(principal, action, resource);" },
+                "entities" : [],
+                "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
+                "template_instantiations" : [
+                    {
+                        "template_id" : "ID0",
+                        "result_policy_id" : "ID1",
+                        "instantiations" : [
+                            {
+                                "slot": "?principal",
+                                "value": { "ty" : "User", "eid" : "alice" }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }"#;
+        assert_is_failure(
+            &json_is_authorized(call),
+            false,
+            "Error instantiating template: unable to link template: template-linked policy id `ID1` conflicts with an existing policy id",
+        );
+    }
+
     fn assert_is_authorized(result: InterfaceResult) {
         match result {
             InterfaceResult::Success { result } => {
@@ -733,12 +914,221 @@ mod test {
         }
     }
 
-    fn assert_is_failure(result: &InterfaceResult) {
-        match result {
-            InterfaceResult::Success { .. } => {
-                panic!("Expected a failing response, not {result:?}")
+    #[test]
+    fn test_authorized_fails_on_duplicate_policy_ids() {
+        let call = r#"{
+            "principal" : "User::\"alice\"",
+            "action" : "Photo::\"view\"",
+            "resource" : "Photo::\"door\"",
+            "context" : {},
+            "slice" : {
+                "policies" : {
+                  "ID0": "permit(principal, action, resource);",
+                  "ID0": "permit(principal, action, resource);"
+                },
+                "entities" : [],
+                "templates" : {},
+                "template_instantiations" : [ ]
             }
-            InterfaceResult::Failure { .. } => {}
-        }
+        }"#;
+        assert_is_failure(&json_is_authorized(call), true, "no duplicate IDs");
+    }
+
+    #[test]
+    fn test_authorized_fails_on_duplicate_template_ids() {
+        let call = r#"{
+            "principal" : "User::\"alice\"",
+            "action" : "Photo::\"view\"",
+            "resource" : "Photo::\"door\"",
+            "context" : {},
+            "slice" : {
+                "policies" : {},
+                "entities" : [],
+                "templates" : {
+                    "ID0": "permit(principal == ?principal, action, resource);",
+                    "ID0": "permit(principal == ?principal, action, resource);"
+                },
+                "template_instantiations" : [ ]
+            }
+        }"#;
+        assert_is_failure(&json_is_authorized(call), true, "found duplicate key");
+    }
+
+    #[test]
+    fn test_authorized_fails_on_duplicate_slot_instantiation1() {
+        let call = r#"{
+            "principal" : "User::\"alice\"",
+            "action" : "Photo::\"view\"",
+            "resource" : "Photo::\"door\"",
+            "context" : {},
+            "slice" : {
+                "policies" : {},
+                "entities" : [],
+                "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
+                "template_instantiations" : [
+                    {
+                        "template_id" : "ID0",
+                        "result_policy_id" : "ID1",
+                        "instantiations" : [
+                            {
+                                "slot": "?principal",
+                                "value": { "ty" : "User", "eid" : "alice" }
+                            },
+                            {
+                                "slot": "?principal",
+                                "value": { "ty" : "User", "eid" : "alice" }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }"#;
+        assert_is_failure(
+            &json_is_authorized(call),
+            true,
+            "duplicate instantiations of the slot(s): `?principal`",
+        );
+    }
+
+    #[test]
+    fn test_authorized_fails_on_duplicate_slot_instantiation2() {
+        let call = r#"{
+            "principal" : "User::\"alice\"",
+            "action" : "Photo::\"view\"",
+            "resource" : "Photo::\"door\"",
+            "context" : {},
+            "slice" : {
+                "policies" : {},
+                "entities" : [],
+                "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
+                "template_instantiations" : [
+                    {
+                        "template_id" : "ID0",
+                        "result_policy_id" : "ID1",
+                        "instantiations" : [
+                            {
+                                "slot": "?principal",
+                                "value": { "ty" : "User", "eid" : "alice" }
+                            },
+                            {
+                                "slot" : "?resource",
+                                "value" : { "ty" : "Box", "eid" : "box" }
+                            },
+                            {
+                                "slot": "?principal",
+                                "value": { "ty" : "User", "eid" : "alice" }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }"#;
+        assert_is_failure(
+            &json_is_authorized(call),
+            true,
+            "duplicate instantiations of the slot(s): `?principal`",
+        );
+    }
+
+    #[test]
+    fn test_authorized_fails_on_duplicate_slot_instantiation3() {
+        let call = r#"{
+            "principal" : "User::\"alice\"",
+            "action" : "Photo::\"view\"",
+            "resource" : "Photo::\"door\"",
+            "context" : {},
+            "slice" : {
+                "policies" : {},
+                "entities" : [],
+                "templates" : { "ID0": "permit(principal == ?principal, action, resource);" },
+                "template_instantiations" : [
+                    {
+                        "template_id" : "ID0",
+                        "result_policy_id" : "ID1",
+                        "instantiations" : [
+                            {
+                                "slot": "?principal",
+                                "value": { "ty" : "User", "eid" : "alice" }
+                            },
+                            {
+                                "slot" : "?resource",
+                                "value" : { "ty" : "Box", "eid" : "box" }
+                            },
+                            {
+                                "slot": "?principal",
+                                "value": { "ty" : "Team", "eid" : "bob" }
+                            },
+                            {
+                                "slot" : "?resource",
+                                "value" : { "ty" : "Box", "eid" : "box2" }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }"#;
+        assert_is_failure(
+            &json_is_authorized(call),
+            true,
+            "duplicate instantiations of the slot(s): `?principal`, `?resource`",
+        );
+    }
+
+    #[test]
+    fn test_authorized_fails_duplicate_entity_uid() {
+        let call = r#"{
+            "principal" : "User::\"alice\"",
+            "action" : "Photo::\"view\"",
+            "resource" : "Photo::\"door\"",
+            "context" : {},
+            "slice" : {
+                "policies" : {},
+                "entities" : [
+                    { 
+                        "uid": {
+                            "type" : "User",
+                            "id" : "alice"
+                        },
+                        "attrs": {}, 
+                        "parents": [] 
+                    },
+                    { 
+                        "uid": {
+                            "type" : "User",
+                            "id" : "alice"
+                        },
+                        "attrs": {}, 
+                        "parents": [] 
+                    }
+                ],
+                "templates" : {},
+                "template_instantiations" : []
+            }
+        }"#;
+        assert_is_failure(
+            &json_is_authorized(call),
+            false,
+            r#"duplicate entity entry `User::"alice"`"#,
+        );
+    }
+
+    #[test]
+    fn test_authorized_fails_duplicate_context_key() {
+        let call = r#"{
+            "principal" : "User::\"alice\"",
+            "action" : "Photo::\"view\"",
+            "resource" : "Photo::\"door\"",
+            "context" : {
+                "is_authenticated": true,
+                "is_authenticated": false
+            },
+            "slice" : {
+                "policies" : {},
+                "entities" : [],
+                "templates" : {},
+                "template_instantiations" : []
+            }
+        }"#;
+        assert_is_failure(&json_is_authorized(call), true, "found duplicate key");
     }
 }

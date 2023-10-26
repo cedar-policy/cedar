@@ -14,14 +14,16 @@
  * limitations under the License.
  */
 
-use crate::ast::{BorrowedRestrictedExpr, EntityUID, ExprKind, RestrictedExpr};
 use crate::entities::{ContextJsonParser, JsonDeserializationError, NullContextSchema};
 use crate::extensions::Extensions;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::sync::Arc;
 
-use super::{Expr, Literal, PartialValue, Value, Var};
+use super::{
+    BorrowedRestrictedExpr, EntityUID, Expr, ExprConstructionError, ExprKind, Literal,
+    PartialValue, RestrictedExpr, Value, Var,
+};
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -153,6 +155,7 @@ impl std::fmt::Display for Request {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Context {
     /// an `Expr::Record` that qualifies as a "restricted expression"
+    // INVARIANT: `context` must be a `Record`
     #[serde(flatten)]
     context: RestrictedExpr,
 }
@@ -160,21 +163,32 @@ pub struct Context {
 impl Context {
     /// Create an empty `Context`
     pub fn empty() -> Self {
-        Self::from_pairs([])
+        // PANIC SAFETY: empty set of keys cannot contain a duplicate key
+        #[allow(clippy::expect_used)]
+        Self::from_pairs([]).expect("empty set of keys cannot contain a duplicate key")
     }
 
-    /// Create a `Context` from a `RestrictedExpr`, which must be a `Record`
-    pub fn from_expr(expr: RestrictedExpr) -> Self {
-        debug_assert!(matches!(expr.expr_kind(), ExprKind::Record { .. }));
-        Self { context: expr }
+    /// Create a `Context` from a `RestrictedExpr`, which must be a `Record`.
+    /// If it is not a `Record`, then this function returns `Err` (returning
+    /// ownership of the non-record expression), otherwise it returns `Ok` of
+    /// a context for that record.
+    pub fn from_expr(expr: RestrictedExpr) -> Result<Self, RestrictedExpr> {
+        match expr.expr_kind() {
+            // INVARIANT: `context` must be a `Record`, which is guaranteed by the match case.
+            ExprKind::Record { .. } => Ok(Self { context: expr }),
+            _ => Err(expr),
+        }
     }
 
     /// Create a `Context` from a map of key to `RestrictedExpr`, or a Vec of
     /// `(key, RestrictedExpr)` pairs, or any other iterator of `(key, RestrictedExpr)` pairs
-    pub fn from_pairs(pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>) -> Self {
-        Self {
-            context: RestrictedExpr::record(pairs),
-        }
+    // INVARIANT: always constructs a record
+    pub fn from_pairs(
+        pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
+    ) -> Result<Self, ExprConstructionError> {
+        Ok(Self {
+            context: RestrictedExpr::record(pairs)?,
+        })
     }
 
     /// Create a `Context` from a string containing JSON (which must be a JSON
@@ -184,6 +198,7 @@ impl Context {
     ///
     /// For schema-based parsing, use `ContextJsonParser`.
     pub fn from_json_str(json: &str) -> Result<Self, JsonDeserializationError> {
+        // INVARIANT `.from_json_str` always produces an expression of variant `Record`
         ContextJsonParser::new(None::<&NullContextSchema>, Extensions::all_available())
             .from_json_str(json)
     }
@@ -195,6 +210,7 @@ impl Context {
     ///
     /// For schema-based parsing, use `ContextJsonParser`.
     pub fn from_json_value(json: serde_json::Value) -> Result<Self, JsonDeserializationError> {
+        // INVARIANT `.from_json_value` always produces an expression of variant `Record`
         ContextJsonParser::new(None::<&NullContextSchema>, Extensions::all_available())
             .from_json_value(json)
     }
@@ -206,14 +222,17 @@ impl Context {
     ///
     /// For schema-based parsing, use `ContextJsonParser`.
     pub fn from_json_file(json: impl std::io::Read) -> Result<Self, JsonDeserializationError> {
+        // INVARIANT `.from_json_file` always produces an expression of variant `Record`
         ContextJsonParser::new(None::<&NullContextSchema>, Extensions::all_available())
             .from_json_file(json)
     }
 
     /// Iterate over the (key, value) pairs in the `Context`
     pub fn iter(&self) -> impl Iterator<Item = (&str, BorrowedRestrictedExpr<'_>)> {
+        // PANIC SAFETY invariant on `self.context` ensures that it is a Record
+        #[allow(clippy::panic)]
         match self.context.as_ref().expr_kind() {
-            ExprKind::Record { pairs } => pairs
+            ExprKind::Record(map) => map
                 .iter()
                 .map(|(k, v)| (k.as_str(), BorrowedRestrictedExpr::new_unchecked(v))), // given that the invariant holds for `self.context`, it will hold here
             e => panic!("internal invariant violation: expected Expr::Record, got {e:?}"),
@@ -236,5 +255,15 @@ impl std::default::Default for Context {
 impl std::fmt::Display for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.context)
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    #[test]
+    fn test_json_from_str_non_record() {
+        let src = "1";
+        assert!(super::Context::from_json_str(src).is_err());
     }
 }
