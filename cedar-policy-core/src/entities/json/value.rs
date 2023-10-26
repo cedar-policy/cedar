@@ -617,7 +617,7 @@ pub enum EntityUidJson {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum ExtnValueJson {
-    /// Explicit `__extn` escape; see notes on JSONValue::ExtnEscape
+    /// Explicit `__extn` escape; see notes on `CedarValueJson::ExtnEscape`
     ExplicitExtnEscape {
         /// JSON object containing the extension-constructor call
         __extn: FnAndArg,
