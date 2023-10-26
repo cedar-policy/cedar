@@ -2863,7 +2863,12 @@ impl RequestBuilder {
 
     /// Create the [`Request`]
     pub fn build(self) -> Request {
-        Request(ast::Request::new_with_unknowns(self.principal, self.action, self.resource, self.context))
+        Request(ast::Request::new_with_unknowns(
+            self.principal,
+            self.action,
+            self.resource,
+            self.context,
+        ))
     }
 }
 
