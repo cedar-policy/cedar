@@ -20,7 +20,6 @@
 // to add a separate test specifically for README examples by introducing a
 // private, empty, and unused function with `#[doc = include_str!("../README.md")]`.
 #![doc = include_str!("../README.md")]
-
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, clippy::pedantic, clippy::nursery)]
 #![deny(
