@@ -39,3 +39,10 @@ pub mod frontend;
 
 #[cfg(feature = "integration_testing")]
 pub mod integration_testing;
+
+/// Includes README.md as the documentation for this unused empty function so
+/// that the example usage in the README is executed as a doctest,
+/// protecting against accidental breakage of the example.
+#[doc = include_str!("../README.md")]
+#[allow(dead_code)]
+fn readme_as_doc_test() {}
