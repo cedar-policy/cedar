@@ -620,8 +620,11 @@ pub enum EntityUidJson {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum ExtnValueJson {
-    /// This was removed in 3.0 as is here to give nice error messages
-    ExplicitExprEscape { __expr: String },
+    /// This was removed in 3.0 and is here to give nice error messages
+    ExplicitExprEscape {
+        /// The contents of the `__expr`` escape
+        __expr: String,
+    },
     /// Explicit `__extn` escape; see notes on `CedarValueJson::ExtnEscape`
     ExplicitExtnEscape {
         /// JSON object containing the extension-constructor call
