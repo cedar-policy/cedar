@@ -40,8 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ip("192.168.0.1/24") == ip("192.168.0.3/24")` was previously `true` and is now
   `false`. The behavior of equality on single IP addresses is unchanged, and so is
   the behavior of `.isInRange()`.
-- Standardize on duplicates being errors instead of last-write-wins in the JSON-based `is_authorized` APIs.
+- Standardize on duplicates being errors instead of last-write-wins in the
+  JSON-based APIs in the `frontend` module.
 - `<EntityId as FromStr>::Error` is now `Infallible` instead of `ParseErrors`.
+- Improve the `Display` impls for `Policy` and `PolicySet`, and add a `Display`
+  impl for `Template`.  The displayed representations now more closely match the
+  original input, whether the input was in string or JSON form.
 
 ## [2.4.2] - 2023-10-23
 
