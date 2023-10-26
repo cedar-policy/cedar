@@ -484,6 +484,9 @@ impl<'e> ValueParser<'e> {
         ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
     ) -> Result<RestrictedExpr, JsonDeserializationError> {
         match extnjson {
+            ExtnValueJson::ExplicitExprEscape { __expr } => {
+                Err(JsonDeserializationError::ExprTag(Box::new(ctx())))
+            }
             ExtnValueJson::ExplicitExtnEscape { __extn }
             | ExtnValueJson::ImplicitExtnEscape(__extn) => {
                 // reuse the same logic that parses CedarValueJson
@@ -617,6 +620,8 @@ pub enum EntityUidJson {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum ExtnValueJson {
+    /// This was removed in 3.0 as is here to give nice error messages
+    ExplicitExprEscape { __expr: String },
     /// Explicit `__extn` escape; see notes on `CedarValueJson::ExtnEscape`
     ExplicitExtnEscape {
         /// JSON object containing the extension-constructor call

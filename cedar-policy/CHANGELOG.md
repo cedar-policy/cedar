@@ -21,7 +21,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Removed `__expr` escape from Cedar JSON formats
-<<<<<<< HEAD
 - Rename `cedar_policy_core::est::EstToAstError` to `cedar_policy_core::est::FromJsonError`.
 - Rename `cedar_policy_core::entities::JsonDeserializationError::ExtensionsError` to `cedar_policy_core::entities::JsonDeserializationError::FailedExtensionsFunctionLookup`.
 - Rename variants in `cedar_policy::SchemaError`.

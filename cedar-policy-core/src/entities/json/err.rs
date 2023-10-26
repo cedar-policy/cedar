@@ -76,7 +76,7 @@ pub enum JsonDeserializationError {
         got: Box<Either<serde_json::Value, Expr>>,
     },
     /// A field that needs to be an extension value, was some other JSON value
-    #[error("{ctx}, expected an extension value, but got `{got}`")]
+    #[error("{ctx}, expected an extension value, but got `{}`", display_json_value(.got.as_ref()))]
     ExpectedExtnValue {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
