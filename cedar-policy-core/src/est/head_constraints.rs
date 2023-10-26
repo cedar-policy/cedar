@@ -201,6 +201,127 @@ impl ActionConstraint {
     }
 }
 
+impl std::fmt::Display for PrincipalConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::All => write!(f, "principal"),
+            Self::Eq(ec) => {
+                write!(f, "principal ")?;
+                std::fmt::Display::fmt(ec, f)?;
+                Ok(())
+            }
+            Self::In(ic) => {
+                write!(f, "principal ")?;
+                std::fmt::Display::fmt(ic, f)?;
+                Ok(())
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for ActionConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::All => write!(f, "action"),
+            Self::Eq(ec) => {
+                write!(f, "action ")?;
+                std::fmt::Display::fmt(ec, f)?;
+                Ok(())
+            }
+            Self::In(aic) => {
+                write!(f, "action ")?;
+                std::fmt::Display::fmt(aic, f)?;
+                Ok(())
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for ResourceConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::All => write!(f, "resource"),
+            Self::Eq(ec) => {
+                write!(f, "resource ")?;
+                std::fmt::Display::fmt(ec, f)?;
+                Ok(())
+            }
+            Self::In(ic) => {
+                write!(f, "resource ")?;
+                std::fmt::Display::fmt(ic, f)?;
+                Ok(())
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for EqConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Entity { entity } => {
+                match entity
+                    .clone()
+                    .into_euid(|| JsonDeserializationErrorContext::EntityUid)
+                {
+                    Ok(euid) => write!(f, "== {euid}"),
+                    Err(e) => write!(f, "== (invalid entity uid: {e})"),
+                }
+            }
+            Self::Slot { slot } => write!(f, "== {slot}"),
+        }
+    }
+}
+
+impl std::fmt::Display for PrincipalOrResourceInConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Entity { entity } => {
+                match entity
+                    .clone()
+                    .into_euid(|| JsonDeserializationErrorContext::EntityUid)
+                {
+                    Ok(euid) => write!(f, "in {euid}"),
+                    Err(e) => write!(f, "in (invalid entity uid: {e})"),
+                }
+            }
+            Self::Slot { slot } => write!(f, "in {slot}"),
+        }
+    }
+}
+
+impl std::fmt::Display for ActionInConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Single { entity } => {
+                match entity
+                    .clone()
+                    .into_euid(|| JsonDeserializationErrorContext::EntityUid)
+                {
+                    Ok(euid) => write!(f, "in {euid}"),
+                    Err(e) => write!(f, "in (invalid entity uid: {e})"),
+                }
+            }
+            Self::Set { entities } => {
+                write!(f, "in [")?;
+                for (i, entity) in entities.iter().enumerate() {
+                    match entity
+                        .clone()
+                        .into_euid(|| JsonDeserializationErrorContext::EntityUid)
+                    {
+                        Ok(euid) => write!(f, "{euid}"),
+                        Err(e) => write!(f, "(invalid entity uid: {e})"),
+                    }?;
+                    if i < (entities.len() - 1) {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, "]")?;
+                Ok(())
+            }
+        }
+    }
+}
+
 impl From<ast::PrincipalConstraint> for PrincipalConstraint {
     fn from(constraint: ast::PrincipalConstraint) -> PrincipalConstraint {
         constraint.constraint.into()
