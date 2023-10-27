@@ -448,12 +448,23 @@ mod test {
         let entities = serde_json::json!(
             [
                 {
-                    "uid": { "__expr": "user::\"alice\"" },
+                    "uid" : {
+                        "type" : "user",
+                        "id" : "alice"
+                    },
                     "attrs": { "foo": "bar" },
-                    "parents": [{ "__expr": "user::\"bob\"" }]
+                    "parents" : [
+                        {
+                            "type" : "user",
+                            "id" : "bob"
+                        }
+                    ]
                 },
                 {
-                    "uid": { "__expr": "user::\"bob\"" },
+                    "uid" : {
+                        "type" : "user",
+                        "id" : "bob"
+                    },
                     "attrs": {},
                     "parents": []
                 }
@@ -498,15 +509,25 @@ mod test {
     #[test]
     fn test_not_authorized_on_empty_slice() {
         let call = r#"
-            { "principal": "User::\"alice\""
-            , "action" : "Photo::\"view\""
-            , "resource" : "Photo::\"door\""
-            , "context" : {}
-            , "slice" : {
-                  "policies" : {}
-                , "entities" : []
+        {
+            "principal": {
+             "type": "User",
+             "id": "alice"
+            },
+            "action": {
+             "type": "Photo",
+             "id": "view"
+            },
+            "resource": {
+             "type": "Photo",
+             "id": "door"
+            },
+            "context": {},
+            "slice": {
+             "policies": {},
+             "entities": []
             }
-         }
+           }
         "#;
 
         assert_is_not_authorized(json_is_authorized(call));
@@ -515,17 +536,27 @@ mod test {
     #[test]
     fn test_authorized_on_simple_slice() {
         let call = r#"
-            { "principal": "User::\"alice\""
-            , "action" : "Photo::\"view\""
-            , "resource" : "Photo::\"door\""
-            , "context" : {}
-            , "slice" : {
-                  "policies" : {
-                    "ID1": "permit(principal == User::\"alice\", action, resource);"
-                  }
-                , "entities" : []
+        {
+            "principal": {
+             "type": "User",
+             "id": "alice"
+            },
+            "action": {
+             "type": "Photo",
+             "id": "view"
+            },
+            "resource": {
+             "type": "Photo",
+             "id": "door"
+            },
+            "context": {},
+            "slice": {
+             "policies": {
+              "ID1": "permit(principal == User::\"alice\", action, resource);"
+             },
+             "entities": []
             }
-         }
+           }
         "#;
 
         assert_is_authorized(json_is_authorized(call));
@@ -534,15 +565,25 @@ mod test {
     #[test]
     fn test_authorized_on_simple_slice_with_string_policies() {
         let call = r#"
-	             { "principal": "User::\"alice\""
-	             , "action" : "Photo::\"view\""
-	             , "resource" : "Photo::\"door\""
-	             , "context" : {}
-	             , "slice" : {
-	                   "policies" : "permit(principal == User::\"alice\", action, resource);"
-	                 , "entities" : []
-	             }
-	          }
+        {
+            "principal": {
+             "type": "User",
+             "id": "alice"
+            },
+            "action": {
+             "type": "Photo",
+             "id": "view"
+            },
+            "resource": {
+             "type": "Photo",
+             "id": "door"
+            },
+            "context": {},
+            "slice": {
+             "policies": "permit(principal == User::\"alice\", action, resource);",
+             "entities": []
+            }
+           }
 	         "#;
 
         assert_is_authorized(json_is_authorized(call));
@@ -551,18 +592,30 @@ mod test {
     #[test]
     fn test_authorized_on_simple_slice_with_context() {
         let call = r#"
-            { "principal": "User::\"alice\""
-            , "action" : "Photo::\"view\""
-            , "resource" : "Photo::\"door\""
-            , "context" : {
-                "is_authenticated": true,
-                "source_ip": { "__expr": "ip(\"222.222.222.222\")" }
+        {
+            "principal": {
+             "type": "User",
+             "id": "alice"
+            },
+            "action": {
+             "type": "Photo",
+             "id": "view"
+            },
+            "resource": {
+             "type": "Photo",
+             "id": "door"
+            },
+            "context": {
+             "is_authenticated": true,
+             "source_ip": {
+                "__extn" : { "fn" : "ip", "arg" : "222.222.222.222" }
+             }
+            },
+            "slice": {
+             "policies": "permit(principal == User::\"alice\", action, resource) when { context.is_authenticated && context.source_ip.isInRange(ip(\"222.222.222.0/24\")) };",
+             "entities": []
             }
-            , "slice" : {
-                  "policies" : "permit(principal == User::\"alice\", action, resource) when { context.is_authenticated && context.source_ip.isInRange(ip(\"222.222.222.0/24\")) };"
-                , "entities" : []
-            }
-            }
+           }
         "#;
 
         assert_is_authorized(json_is_authorized(call));
@@ -571,33 +624,70 @@ mod test {
     #[test]
     fn test_authorized_on_simple_slice_with_attrs_and_parents() {
         let call = r#"
-            { "principal": "User::\"alice\""
-            , "action" : "Photo::\"view\""
-            , "resource" : "Photo::\"door\""
-            , "context" : {}
-            , "slice" : {
-                  "policies" : "permit(principal, action, resource in Folder::\"house\") when { resource.owner == principal };"
-                , "entities" : [
-                    {
-                        "uid": { "__expr": "User::\"alice\"" },
-                        "attrs": {},
-                        "parents": []
-                    },
-                    {
-                        "uid": { "__expr": "Photo::\"door\"" },
-                        "attrs": {
-                            "owner": { "__expr": "User::\"alice\"" }
-                        },
-                        "parents": [{ "__expr": "Folder::\"house\"" }]
-                    },
-                    {
-                        "uid": { "__expr": "Folder::\"house\"" },
-                        "attrs": {},
-                        "parents": []
-                    }
-                ]
+        {
+            "principal": {
+             "type": "User",
+             "id": "alice"
+            },
+            "action": {
+             "type": "Photo",
+             "id": "view"
+            },
+            "resource": {
+             "type": "Photo",
+             "id": "door"
+            },
+            "context": {},
+            "slice": {
+             "policies": "permit(principal, action, resource in Folder::\"house\") when { resource.owner == principal };",
+             "entities": [
+              {
+               "uid": {
+                "__entity": {
+                 "type": "User",
+                 "id": "alice"
+                }
+               },
+               "attrs": {},
+               "parents": []
+              },
+              {
+               "uid": {
+                "__entity": {
+                 "type": "Photo",
+                 "id": "door"
+                }
+               },
+               "attrs": {
+                "owner": {
+                 "__entity": {
+                  "type": "User",
+                  "id": "alice"
+                 }
+                }
+               },
+               "parents": [
+                {
+                 "__entity": {
+                  "type": "Folder",
+                  "id": "house"
+                 }
+                }
+               ]
+              },
+              {
+               "uid": {
+                "__entity": {
+                 "type": "Folder",
+                 "id": "house"
+                }
+               },
+               "attrs": {},
+               "parents": []
+              }
+             ]
             }
-            }
+           }
         "#;
 
         assert_is_authorized(json_is_authorized(call));
@@ -606,19 +696,29 @@ mod test {
     #[test]
     fn test_authorized_on_multi_policy_slice() {
         let call = r#"
-	             { "principal": "User::\"alice\""
-	             , "action" : "Photo::\"view\""
-	             , "resource" : "Photo::\"door\""
-	             , "context" : {}
-	             , "slice" : {
-	                   "policies" : {
-	                     "ID0": "permit(principal == User::\"jerry\", action, resource == Photo::\"doorx\");",
-	                     "ID1": "permit(principal == User::\"tom\", action, resource == Photo::\"doory\");",
-	                     "ID2": "permit(principal == User::\"alice\", action, resource == Photo::\"door\");"
-	                   }
-	                 , "entities" : []
-	             }
-	          }
+        {
+            "principal": {
+             "type": "User",
+             "id": "alice"
+            },
+            "action": {
+             "type": "Photo",
+             "id": "view"
+            },
+            "resource": {
+             "type": "Photo",
+             "id": "door"
+            },
+            "context": {},
+            "slice": {
+             "policies": {
+              "ID0": "permit(principal == User::\"jerry\", action, resource == Photo::\"doorx\");",
+              "ID1": "permit(principal == User::\"tom\", action, resource == Photo::\"doory\");",
+              "ID2": "permit(principal == User::\"alice\", action, resource == Photo::\"door\");"
+             },
+             "entities": []
+            }
+           }
 	         "#;
         assert_is_authorized(json_is_authorized(call));
     }
@@ -626,15 +726,70 @@ mod test {
     #[test]
     fn test_authorized_on_multi_policy_slice_with_string_policies() {
         let call = r#"
-	             { "principal": "User::\"alice\""
-	             , "action" : "Photo::\"view\""
-	             , "resource" : "Photo::\"door\""
-	             , "context" : {}
-	             , "slice" : {
-	                   "policies" : "permit(principal == User::\"jerry\", action, resource == Photo::\"doorx\");permit(principal == User::\"tom\", action, resource == Photo::\"doory\");permit(principal == User::\"alice\", action, resource == Photo::\"door\");"
-	                 , "entities" : []
-	             }
-	          }
+        {
+            "principal": {
+             "type": "User",
+             "id": "alice"
+            },
+            "action": {
+             "type": "Photo",
+             "id": "view"
+            },
+            "resource": {
+             "type": "Photo",
+             "id": "door"
+            },
+            "context": {},
+            "slice": {
+             "policies": "permit(principal, action, resource in Folder::\"house\") when { resource.owner == principal };",
+             "entities": [
+              {
+               "uid": {
+                "__entity": {
+                 "type": "User",
+                 "id": "alice"
+                }
+               },
+               "attrs": {},
+               "parents": []
+              },
+              {
+               "uid": {
+                "__entity": {
+                 "type": "Photo",
+                 "id": "door"
+                }
+               },
+               "attrs": {
+                "owner": {
+                 "__entity": {
+                  "type": "User",
+                  "id": "alice"
+                 }
+                }
+               },
+               "parents": [
+                {
+                 "__entity": {
+                  "type": "Folder",
+                  "id": "house"
+                 }
+                }
+               ]
+              },
+              {
+               "uid": {
+                "__entity": {
+                 "type": "Folder",
+                 "id": "house"
+                }
+               },
+               "attrs": {},
+               "parents": []
+              }
+             ]
+            }
+           }
 	         "#;
         assert_is_authorized(json_is_authorized(call));
     }
@@ -642,18 +797,28 @@ mod test {
     #[test]
     fn test_authorized_on_multi_policy_slice_denies_when_expected() {
         let call = r#"
-	             { "principal": "User::\"alice\""
-	             , "action" : "Photo::\"view\""
-	             , "resource" : "Photo::\"door\""
-	             , "context" : {}
-	             , "slice" : {
-	                   "policies" : {
-	                     "ID0": "permit(principal, action, resource);",
-	                     "ID1": "forbid(principal == User::\"alice\", action, resource == Photo::\"door\");"
-	                   }
-	                 , "entities" : []
-	             }
-	          }
+        {
+            "principal": {
+             "type": "User",
+             "id": "alice"
+            },
+            "action": {
+             "type": "Photo",
+             "id": "view"
+            },
+            "resource": {
+             "type": "Photo",
+             "id": "door"
+            },
+            "context": {},
+            "slice": {
+             "policies": {
+              "ID0": "permit(principal, action, resource);",
+              "ID1": "forbid(principal == User::\"alice\", action, resource == Photo::\"door\");"
+             },
+             "entities": []
+            }
+           }
 	         "#;
         assert_is_not_authorized(json_is_authorized(call));
     }
@@ -661,15 +826,25 @@ mod test {
     #[test]
     fn test_authorized_on_multi_policy_slice_with_string_policies_denies_when_expected() {
         let call = r#"
-	             { "principal": "User::\"alice\""
-	             , "action" : "Photo::\"view\""
-	             , "resource" : "Photo::\"door\""
-	             , "context" : {}
-	             , "slice" : {
-	                   "policies": "permit(principal, action, resource);forbid(principal == User::\"alice\", action, resource);"
-	                 , "entities" : []
-	             }
-	          }
+        {
+            "principal": {
+             "type": "User",
+             "id": "alice"
+            },
+            "action": {
+             "type": "Photo",
+             "id": "view"
+            },
+            "resource": {
+             "type": "Photo",
+             "id": "door"
+            },
+            "context": {},
+            "slice": {
+             "policies": "permit(principal, action, resource);forbid(principal == User::\"alice\", action, resource);",
+             "entities": []
+            }
+           }
 	         "#;
 
         assert_is_not_authorized(json_is_authorized(call));
@@ -678,16 +853,26 @@ mod test {
     #[test]
     fn test_authorized_with_template_as_policy_should_fail() {
         let call = r#"
-	             { "principal": "User::\"alice\""
-	             , "action" : "Photo::\"view\""
-	             , "resource" : "Photo::\"door\""
-	             , "context" : {}
-	             , "slice" : {
-	                   "policies" : "permit(principal == ?principal, action, resource);"
-	                 , "entities" : []
-                     , "templates" : {}
-	             }
-	          }
+        {
+            "principal": {
+             "type": "User",
+             "id": "alice"
+            },
+            "action": {
+             "type": "Photo",
+             "id": "view"
+            },
+            "resource": {
+             "type": "Photo",
+             "id": "door"
+            },
+            "context": {},
+            "slice": {
+             "policies": "permit(principal == ?principal, action, resource);",
+             "entities": [],
+             "templates": {}
+            }
+           }
 	         "#;
         assert_is_not_authorized(json_is_authorized(call));
     }
@@ -695,18 +880,28 @@ mod test {
     #[test]
     fn test_authorized_with_template_should_fail() {
         let call = r#"
-	             { "principal": "User::\"alice\""
-	             , "action" : "Photo::\"view\""
-	             , "resource" : "Photo::\"door\""
-	             , "context" : {}
-	             , "slice" : {
-	                   "policies" : {}
-	                 , "entities" : []
-                     , "templates" : {
-                        "ID0": "permit(principal == ?principal, action, resource);"
-                      }
-	             }
-	          }
+        {
+            "principal": {
+             "type": "User",
+             "id": "alice"
+            },
+            "action": {
+             "type": "Photo",
+             "id": "view"
+            },
+            "resource": {
+             "type": "Photo",
+             "id": "door"
+            },
+            "context": {},
+            "slice": {
+             "policies": {},
+             "entities": [],
+             "templates": {
+              "ID0": "permit(principal == ?principal, action, resource);"
+             }
+            }
+           }
 	         "#;
         assert_is_not_authorized(json_is_authorized(call));
     }
@@ -714,33 +909,43 @@ mod test {
     #[test]
     fn test_authorized_with_template_instantiation() {
         let call = r#"
-	             { "principal": "User::\"alice\""
-	             , "action" : "Photo::\"view\""
-	             , "resource" : "Photo::\"door\""
-	             , "context" : {}
-	             , "slice" : {
-	                   "policies" : {}
-	                 , "entities" : []
-                     , "templates" : {
-                        "ID0": "permit(principal == ?principal, action, resource);"
-                      }
-                     , "template_instantiations" : [
-                        {
-                            "template_id" : "ID0",
-                            "result_policy_id" : "ID0_User_alice",
-                            "instantiations" : [
-                                {
-                                    "slot": "?principal",
-                                    "value": {
-                                        "ty" : "User",
-                                        "eid" : "alice"
-                                    }
-                                }
-                            ]
-                        }
-                     ]
-	             }
-	          }
+        {
+            "principal": {
+             "type": "User",
+             "id": "alice"
+            },
+            "action": {
+             "type": "Photo",
+             "id": "view"
+            },
+            "resource": {
+             "type": "Photo",
+             "id": "door"
+            },
+            "context": {},
+            "slice": {
+             "policies": {},
+             "entities": [],
+             "templates": {
+              "ID0": "permit(principal == ?principal, action, resource);"
+             },
+             "template_instantiations": [
+              {
+               "template_id": "ID0",
+               "result_policy_id": "ID0_User_alice",
+               "instantiations": [
+                {
+                 "slot": "?principal",
+                 "value": {
+                  "ty": "User",
+                  "eid": "alice"
+                 }
+                }
+               ]
+              }
+             ]
+            }
+           }
 	         "#;
         assert_is_authorized(json_is_authorized(call));
     }
@@ -748,9 +953,18 @@ mod test {
     #[test]
     fn test_authorized_fails_on_policy_collision_with_template() {
         let call = r#"{
-            "principal" : "User::\"alice\"",
-            "action" : "Photo::\"view\"",
-            "resource" : "Photo::\"door\"",
+            "principal" : {
+                "type" : "User",
+                "id" : "alice"
+            },
+            "action" : {
+                "type" : "Action",
+                "id" : "view"
+            },
+            "resource" : {
+                "type" : "Photo",
+                "id" : "door"
+            },
             "context" : {},
             "slice" : {
                 "policies" : { "ID0": "permit(principal, action, resource);" },
@@ -769,9 +983,18 @@ mod test {
     #[test]
     fn test_authorized_fails_on_duplicate_instantiations_ids() {
         let call = r#"{
-            "principal" : "User::\"alice\"",
-            "action" : "Photo::\"view\"",
-            "resource" : "Photo::\"door\"",
+            "principal" : {
+                "type" : "User",
+                "id" : "alice"
+            },
+            "action" : {
+                "type" : "Action",
+                "id" : "view"
+            },
+            "resource" : {
+                "type" : "Photo",
+                "id" : "door"
+            },
             "context" : {},
             "slice" : {
                 "policies" : {},
@@ -811,9 +1034,18 @@ mod test {
     #[test]
     fn test_authorized_fails_on_template_instantiation_collision_with_template() {
         let call = r#"{
-            "principal" : "User::\"alice\"",
-            "action" : "Photo::\"view\"",
-            "resource" : "Photo::\"door\"",
+            "principal" : {
+                "type" : "User",
+                "id" : "alice"
+            },
+            "action" : {
+                "type" : "Action",
+                "id" : "view"
+            },
+            "resource" : {
+                "type" : "Photo",
+                "id" : "door"
+            },
             "context" : {},
             "slice" : {
                 "policies" : {},
@@ -843,9 +1075,18 @@ mod test {
     #[test]
     fn test_authorized_fails_on_template_instantiation_collision_with_policy() {
         let call = r#"{
-            "principal" : "User::\"alice\"",
-            "action" : "Photo::\"view\"",
-            "resource" : "Photo::\"door\"",
+            "principal" : {
+                "type" : "User",
+                "id" : "alice"
+            },
+            "action" : {
+                "type" : "Action",
+                "id" : "view"
+            },
+            "resource" : {
+                "type" : "Photo",
+                "id" : "door"
+            },
             "context" : {},
             "slice" : {
                 "policies" : { "ID1": "permit(principal, action, resource);" },
@@ -1077,9 +1318,18 @@ mod test {
     #[test]
     fn test_authorized_fails_duplicate_entity_uid() {
         let call = r#"{
-            "principal" : "User::\"alice\"",
-            "action" : "Photo::\"view\"",
-            "resource" : "Photo::\"door\"",
+            "principal" : {
+                "type" : "User",
+                "id" : "alice"
+            },
+            "action" : {
+                "type" : "Photo",
+                "id" : "view"
+            },
+            "resource" : {
+                "type" : "Photo",
+                "id" : "door"
+            },
             "context" : {},
             "slice" : {
                 "policies" : {},
@@ -1115,9 +1365,18 @@ mod test {
     #[test]
     fn test_authorized_fails_duplicate_context_key() {
         let call = r#"{
-            "principal" : "User::\"alice\"",
-            "action" : "Photo::\"view\"",
-            "resource" : "Photo::\"door\"",
+            "principal" : {
+                "type" : "User",
+                "id" : "alice"
+            },
+            "action" : {
+                "type" : "Photo",
+                "id" : "view"
+            },
+            "resource" : {
+                "type" : "Photo",
+                "id" : "door"
+            },
             "context" : {
                 "is_authenticated": true,
                 "is_authenticated": false

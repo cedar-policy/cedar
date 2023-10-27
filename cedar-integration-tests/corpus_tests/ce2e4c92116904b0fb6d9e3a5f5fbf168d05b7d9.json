@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "C2z::a::\"\\u{2}\\u{2}\\0\\u{2}\\u{2}\\0\"",
-      "action": "C2z::Action::\"action\"",
-      "resource": "C2z::a::\"\"",
+      "principal": {
+        "type": "C2z::a",
+        "id": "\u0002\u0002\u0000\u0002\u0002\u0000"
+      },
+      "resource": {
+        "type": "C2z::a",
+        "id": ""
+      },
+      "action": {
+        "type": "C2z::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -16,9 +25,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "C2z::a::\"\"",
-      "action": "C2z::Action::\"action\"",
-      "resource": "C2z::a::\"\"",
+      "principal": {
+        "type": "C2z::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "C2z::a",
+        "id": ""
+      },
+      "action": {
+        "type": "C2z::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -28,9 +46,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "C2z::a::\"\"",
-      "action": "C2z::Action::\"action\"",
-      "resource": "C2z::a::\"\"",
+      "principal": {
+        "type": "C2z::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "C2z::a",
+        "id": ""
+      },
+      "action": {
+        "type": "C2z::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -40,9 +67,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "C2z::a::\"\"",
-      "action": "C2z::Action::\"action\"",
-      "resource": "C2z::a::\"\"",
+      "principal": {
+        "type": "C2z::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "C2z::a",
+        "id": ""
+      },
+      "action": {
+        "type": "C2z::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -52,9 +88,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "C2z::a::\"\"",
-      "action": "C2z::Action::\"action\"",
-      "resource": "C2z::a::\"\"",
+      "principal": {
+        "type": "C2z::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "C2z::a",
+        "id": ""
+      },
+      "action": {
+        "type": "C2z::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -64,9 +109,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "C2z::a::\"\"",
-      "action": "C2z::Action::\"action\"",
-      "resource": "C2z::a::\"\"",
+      "principal": {
+        "type": "C2z::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "C2z::a",
+        "id": ""
+      },
+      "action": {
+        "type": "C2z::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -76,9 +130,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "C2z::a::\"\"",
-      "action": "C2z::Action::\"action\"",
-      "resource": "C2z::a::\"\"",
+      "principal": {
+        "type": "C2z::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "C2z::a",
+        "id": ""
+      },
+      "action": {
+        "type": "C2z::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -88,9 +151,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "C2z::a::\"\"",
-      "action": "C2z::Action::\"action\"",
-      "resource": "C2z::a::\"\"",
+      "principal": {
+        "type": "C2z::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "C2z::a",
+        "id": ""
+      },
+      "action": {
+        "type": "C2z::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [

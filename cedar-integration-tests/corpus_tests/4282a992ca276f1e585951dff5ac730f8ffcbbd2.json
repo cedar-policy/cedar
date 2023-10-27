@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "CRRRRRRSxxx::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "CRRRRRRSxxx::\"\"",
+      "principal": {
+        "type": "CRRRRRRSxxx",
+        "id": ""
+      },
+      "resource": {
+        "type": "CRRRRRRSxxx",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "O": false,
         "Z00cx": {
@@ -23,9 +32,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "CRRRRRRSxxx::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "CRRRRRRSxxx::\"\"",
+      "principal": {
+        "type": "CRRRRRRSxxx",
+        "id": ""
+      },
+      "resource": {
+        "type": "CRRRRRRSxxx",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "O": false,
         "Z00cx": {
@@ -40,9 +58,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "CRRRRRRSxxx::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "CRRRRRRSxxx::\"\"",
+      "principal": {
+        "type": "CRRRRRRSxxx",
+        "id": ""
+      },
+      "resource": {
+        "type": "CRRRRRRSxxx",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "O": false,
         "Z00cx": {
@@ -57,9 +84,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "CRRRRRRSxxx::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "CRRRRRRSxxx::\"\"",
+      "principal": {
+        "type": "CRRRRRRSxxx",
+        "id": ""
+      },
+      "resource": {
+        "type": "CRRRRRRSxxx",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "O": false,
         "Z00cx": {
@@ -74,9 +110,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "CRRRRRRSxxx::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "CRRRRRRSxxx::\"\"",
+      "principal": {
+        "type": "CRRRRRRSxxx",
+        "id": ""
+      },
+      "resource": {
+        "type": "CRRRRRRSxxx",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "O": false,
         "Z00cx": {
@@ -91,9 +136,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "CRRRRRRSxxx::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "CRRRRRRSxxx::\"\"",
+      "principal": {
+        "type": "CRRRRRRSxxx",
+        "id": ""
+      },
+      "resource": {
+        "type": "CRRRRRRSxxx",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "O": false,
         "Z00cx": {
@@ -108,9 +162,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "CRRRRRRSxxx::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "CRRRRRRSxxx::\"\"",
+      "principal": {
+        "type": "CRRRRRRSxxx",
+        "id": ""
+      },
+      "resource": {
+        "type": "CRRRRRRSxxx",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "O": false,
         "Z00cx": {
@@ -125,9 +188,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "CRRRRRRSxxx::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "CRRRRRRSxxx::\"\"",
+      "principal": {
+        "type": "CRRRRRRSxxx",
+        "id": ""
+      },
+      "resource": {
+        "type": "CRRRRRRSxxx",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "O": false,
         "Z00cx": {

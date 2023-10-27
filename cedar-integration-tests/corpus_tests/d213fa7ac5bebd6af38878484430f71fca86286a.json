@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "C22::a::\"a\"",
-      "action": "C22::Action::\"action\"",
-      "resource": "C22::a::\"a\"",
+      "principal": {
+        "type": "C22::a",
+        "id": "a"
+      },
+      "resource": {
+        "type": "C22::a",
+        "id": "a"
+      },
+      "action": {
+        "type": "C22::Action",
+        "id": "action"
+      },
       "context": {
         "A00Y21RRRRRRS2": false
       },
@@ -20,9 +29,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "C22::a::\"a\"",
-      "action": "C22::Action::\"action\"",
-      "resource": "C22::a::\"a\"",
+      "principal": {
+        "type": "C22::a",
+        "id": "a"
+      },
+      "resource": {
+        "type": "C22::a",
+        "id": "a"
+      },
+      "action": {
+        "type": "C22::Action",
+        "id": "action"
+      },
       "context": {
         "A00Y21RRRRRRS2": false
       },
@@ -34,9 +52,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "C22::a::\"a\"",
-      "action": "C22::Action::\"action\"",
-      "resource": "C22::a::\"a\"",
+      "principal": {
+        "type": "C22::a",
+        "id": "a"
+      },
+      "resource": {
+        "type": "C22::a",
+        "id": "a"
+      },
+      "action": {
+        "type": "C22::Action",
+        "id": "action"
+      },
       "context": {
         "A00Y21RRRRRRS2": false
       },
@@ -48,9 +75,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "C22::a::\"a\"",
-      "action": "C22::Action::\"action\"",
-      "resource": "C22::a::\"a\"",
+      "principal": {
+        "type": "C22::a",
+        "id": "a"
+      },
+      "resource": {
+        "type": "C22::a",
+        "id": "a"
+      },
+      "action": {
+        "type": "C22::Action",
+        "id": "action"
+      },
       "context": {
         "A00Y21RRRRRRS2": false
       },
@@ -62,9 +98,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "C22::a::\"a\"",
-      "action": "C22::Action::\"action\"",
-      "resource": "C22::a::\"a\"",
+      "principal": {
+        "type": "C22::a",
+        "id": "a"
+      },
+      "resource": {
+        "type": "C22::a",
+        "id": "a"
+      },
+      "action": {
+        "type": "C22::Action",
+        "id": "action"
+      },
       "context": {
         "A00Y21RRRRRRS2": false
       },
@@ -76,9 +121,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "C22::a::\"a\"",
-      "action": "C22::Action::\"action\"",
-      "resource": "C22::a::\"a\"",
+      "principal": {
+        "type": "C22::a",
+        "id": "a"
+      },
+      "resource": {
+        "type": "C22::a",
+        "id": "a"
+      },
+      "action": {
+        "type": "C22::Action",
+        "id": "action"
+      },
       "context": {
         "A00Y21RRRRRRS2": false
       },
@@ -90,9 +144,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "C22::a::\"a\"",
-      "action": "C22::Action::\"action\"",
-      "resource": "C22::a::\"a\"",
+      "principal": {
+        "type": "C22::a",
+        "id": "a"
+      },
+      "resource": {
+        "type": "C22::a",
+        "id": "a"
+      },
+      "action": {
+        "type": "C22::Action",
+        "id": "action"
+      },
       "context": {
         "A00Y21RRRRRRS2": false
       },
@@ -104,9 +167,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "C22::a::\"a\"",
-      "action": "C22::Action::\"action\"",
-      "resource": "C22::a::\"a\"",
+      "principal": {
+        "type": "C22::a",
+        "id": "a"
+      },
+      "resource": {
+        "type": "C22::a",
+        "id": "a"
+      },
+      "action": {
+        "type": "C22::Action",
+        "id": "action"
+      },
       "context": {
         "A00Y21RRRRRRS2": false
       },

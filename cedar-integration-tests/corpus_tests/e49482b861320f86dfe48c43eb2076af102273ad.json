@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "W0N00::v::a::\"\"",
-      "action": "W0N00::v::Action::\"action\"",
-      "resource": "W0N00::v::a::\"\"",
+      "principal": {
+        "type": "W0N00::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "W0N00::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "W0N00::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -18,9 +27,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "W0N00::v::a::\"\"",
-      "action": "W0N00::v::Action::\"action\"",
-      "resource": "W0N00::v::a::\"\"",
+      "principal": {
+        "type": "W0N00::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "W0N00::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "W0N00::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -30,9 +48,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "W0N00::v::a::\"\"",
-      "action": "W0N00::v::Action::\"action\"",
-      "resource": "W0N00::v::a::\"\"",
+      "principal": {
+        "type": "W0N00::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "W0N00::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "W0N00::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -42,9 +69,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "W0N00::v::a::\"\"",
-      "action": "W0N00::v::Action::\"action\"",
-      "resource": "W0N00::v::a::\"\"",
+      "principal": {
+        "type": "W0N00::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "W0N00::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "W0N00::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -54,9 +90,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "W0N00::v::a::\"\"",
-      "action": "W0N00::v::Action::\"action\"",
-      "resource": "W0N00::v::a::\"\"",
+      "principal": {
+        "type": "W0N00::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "W0N00::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "W0N00::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -66,9 +111,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "W0N00::v::a::\"\"",
-      "action": "W0N00::v::Action::\"action\"",
-      "resource": "W0N00::v::a::\"\"",
+      "principal": {
+        "type": "W0N00::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "W0N00::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "W0N00::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -78,9 +132,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "W0N00::v::a::\"\"",
-      "action": "W0N00::v::Action::\"action\"",
-      "resource": "W0N00::v::a::\"\"",
+      "principal": {
+        "type": "W0N00::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "W0N00::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "W0N00::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -90,9 +153,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "W0N00::v::a::\"\"",
-      "action": "W0N00::v::Action::\"action\"",
-      "resource": "W0N00::v::a::\"\"",
+      "principal": {
+        "type": "W0N00::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "W0N00::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "W0N00::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [

@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "Gjxxxxjjj::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "Gjxxxxjjj::\"\"",
+      "principal": {
+        "type": "Gjxxxxjjj",
+        "id": ""
+      },
+      "resource": {
+        "type": "Gjxxxxjjj",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "WjxiG777x7A33xx0": ""
       },
@@ -20,9 +29,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "Gjxxxxjjj::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "Gjxxxxjjj::\"\"",
+      "principal": {
+        "type": "Gjxxxxjjj",
+        "id": ""
+      },
+      "resource": {
+        "type": "Gjxxxxjjj",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "WjxiG777x7A33xx0": ""
       },
@@ -34,9 +52,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "Gjxxxxjjj::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "Gjxxxxjjj::\"\"",
+      "principal": {
+        "type": "Gjxxxxjjj",
+        "id": ""
+      },
+      "resource": {
+        "type": "Gjxxxxjjj",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "WjxiG777x7A33xx0": ""
       },
@@ -48,9 +75,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "Gjxxxxjjj::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "Gjxxxxjjj::\"\"",
+      "principal": {
+        "type": "Gjxxxxjjj",
+        "id": ""
+      },
+      "resource": {
+        "type": "Gjxxxxjjj",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "WjxiG777x7A33xx0": ""
       },
@@ -62,9 +98,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "Gjxxxxjjj::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "Gjxxxxjjj::\"\"",
+      "principal": {
+        "type": "Gjxxxxjjj",
+        "id": ""
+      },
+      "resource": {
+        "type": "Gjxxxxjjj",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "WjxiG777x7A33xx0": ""
       },
@@ -76,9 +121,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "Gjxxxxjjj::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "Gjxxxxjjj::\"\"",
+      "principal": {
+        "type": "Gjxxxxjjj",
+        "id": ""
+      },
+      "resource": {
+        "type": "Gjxxxxjjj",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "WjxiG777x7A33xx0": ""
       },
@@ -90,9 +144,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "Gjxxxxjjj::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "Gjxxxxjjj::\"\"",
+      "principal": {
+        "type": "Gjxxxxjjj",
+        "id": ""
+      },
+      "resource": {
+        "type": "Gjxxxxjjj",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "WjxiG777x7A33xx0": ""
       },
@@ -104,9 +167,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "Gjxxxxjjj::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "Gjxxxxjjj::\"\"",
+      "principal": {
+        "type": "Gjxxxxjjj",
+        "id": ""
+      },
+      "resource": {
+        "type": "Gjxxxxjjj",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "WjxiG777x7A33xx0": ""
       },

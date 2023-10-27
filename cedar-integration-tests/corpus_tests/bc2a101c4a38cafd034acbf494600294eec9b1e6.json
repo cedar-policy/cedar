@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "q::a::\"\"",
-      "action": "q::Action::\"f\\u{6}\"",
-      "resource": "q::a::\"\"",
+      "principal": {
+        "type": "q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "q::Action",
+        "id": "f\u0006"
+      },
       "context": {
         "G": {
           "ff\u0006": {
@@ -24,9 +33,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "q::a::\"\"",
-      "action": "q::Action::\"f\\u{6}\"",
-      "resource": "q::a::\"\"",
+      "principal": {
+        "type": "q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "q::Action",
+        "id": "f\u0006"
+      },
       "context": {
         "G": {
           "ff\u0006": {
@@ -42,9 +60,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "q::a::\"\"",
-      "action": "q::Action::\"f\\u{6}\"",
-      "resource": "q::a::\"\"",
+      "principal": {
+        "type": "q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "q::Action",
+        "id": "f\u0006"
+      },
       "context": {
         "G": {
           "ff\u0006": {
@@ -60,9 +87,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "q::a::\"\"",
-      "action": "q::Action::\"f\\u{6}\"",
-      "resource": "q::a::\"\"",
+      "principal": {
+        "type": "q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "q::Action",
+        "id": "f\u0006"
+      },
       "context": {
         "G": {
           "ff\u0006": {
@@ -78,9 +114,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "q::a::\"\"",
-      "action": "q::Action::\"f\\u{6}\"",
-      "resource": "q::a::\"\"",
+      "principal": {
+        "type": "q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "q::Action",
+        "id": "f\u0006"
+      },
       "context": {
         "G": {
           "ff\u0006": {
@@ -96,9 +141,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "q::a::\"\"",
-      "action": "q::Action::\"f\\u{6}\"",
-      "resource": "q::a::\"\"",
+      "principal": {
+        "type": "q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "q::Action",
+        "id": "f\u0006"
+      },
       "context": {
         "G": {
           "ff\u0006": {
@@ -114,9 +168,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "q::a::\"\"",
-      "action": "q::Action::\"f\\u{6}\"",
-      "resource": "q::a::\"\"",
+      "principal": {
+        "type": "q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "q::Action",
+        "id": "f\u0006"
+      },
       "context": {
         "G": {
           "ff\u0006": {
@@ -132,9 +195,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "q::a::\"\"",
-      "action": "q::Action::\"f\\u{6}\"",
-      "resource": "q::a::\"\"",
+      "principal": {
+        "type": "q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "q::Action",
+        "id": "f\u0006"
+      },
       "context": {
         "G": {
           "ff\u0006": {

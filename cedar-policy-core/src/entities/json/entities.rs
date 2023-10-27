@@ -409,9 +409,9 @@ impl EntityJson {
     }
 }
 
-#[cfg(test)]
 // PANIC SAFETY unit test code
 #[allow(clippy::panic)]
+#[cfg(test)]
 mod test {
     use super::*;
     use cool_asserts::assert_matches;
@@ -443,5 +443,16 @@ mod test {
         assert_matches!(e, Err(EntitiesError::Duplicate(euid)) => {
           assert_eq!(bad_euid, euid, r#"Returned euid should be User::"alice""#);
         });
+    }
+
+    #[test]
+    fn simple() {
+        let test = serde_json::json!({
+            "uid" : { "type" : "A", "id" : "b" },
+            "attrs" : {},
+            "parents" : []
+        });
+        let x: Result<EntityJson, _> = serde_json::from_value(test);
+        x.unwrap();
     }
 }

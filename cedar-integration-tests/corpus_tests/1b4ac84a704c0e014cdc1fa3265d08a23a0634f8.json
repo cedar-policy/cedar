@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "Khhzhhhk::\".\"",
-      "action": "Action::\"action\"",
-      "resource": "Khhzhhhk::\".\"",
+      "principal": {
+        "type": "Khhzhhhk",
+        "id": "."
+      },
+      "resource": {
+        "type": "Khhzhhhk",
+        "id": "."
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Akkkk0": []
       },
@@ -20,9 +29,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "Khhzhhhk::\".\"",
-      "action": "Action::\"action\"",
-      "resource": "Khhzhhhk::\".\"",
+      "principal": {
+        "type": "Khhzhhhk",
+        "id": "."
+      },
+      "resource": {
+        "type": "Khhzhhhk",
+        "id": "."
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Akkkk0": []
       },
@@ -34,9 +52,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "Khhzhhhk::\".\"",
-      "action": "Action::\"action\"",
-      "resource": "Khhzhhhk::\".\"",
+      "principal": {
+        "type": "Khhzhhhk",
+        "id": "."
+      },
+      "resource": {
+        "type": "Khhzhhhk",
+        "id": "."
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Akkkk0": []
       },
@@ -48,9 +75,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "Khhzhhhk::\".\"",
-      "action": "Action::\"action\"",
-      "resource": "Khhzhhhk::\".\"",
+      "principal": {
+        "type": "Khhzhhhk",
+        "id": "."
+      },
+      "resource": {
+        "type": "Khhzhhhk",
+        "id": "."
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Akkkk0": []
       },
@@ -62,9 +98,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "Khhzhhhk::\".\"",
-      "action": "Action::\"action\"",
-      "resource": "Khhzhhhk::\".\"",
+      "principal": {
+        "type": "Khhzhhhk",
+        "id": "."
+      },
+      "resource": {
+        "type": "Khhzhhhk",
+        "id": "."
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Akkkk0": []
       },
@@ -76,9 +121,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "Khhzhhhk::\".\"",
-      "action": "Action::\"action\"",
-      "resource": "Khhzhhhk::\".\"",
+      "principal": {
+        "type": "Khhzhhhk",
+        "id": "."
+      },
+      "resource": {
+        "type": "Khhzhhhk",
+        "id": "."
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Akkkk0": []
       },
@@ -90,9 +144,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "Khhzhhhk::\".\"",
-      "action": "Action::\"action\"",
-      "resource": "Khhzhhhk::\".\"",
+      "principal": {
+        "type": "Khhzhhhk",
+        "id": "."
+      },
+      "resource": {
+        "type": "Khhzhhhk",
+        "id": "."
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Akkkk0": []
       },
@@ -104,9 +167,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "Khhzhhhk::\".\"",
-      "action": "Action::\"action\"",
-      "resource": "Khhzhhhk::\".\"",
+      "principal": {
+        "type": "Khhzhhhk",
+        "id": "."
+      },
+      "resource": {
+        "type": "Khhzhhhk",
+        "id": "."
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Akkkk0": []
       },

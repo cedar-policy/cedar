@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "K::a::\"\\0j\\0\\u{8}\"",
-      "action": "K::Action::\"action\"",
-      "resource": "K::a::\"\\0\"",
+      "principal": {
+        "type": "K::a",
+        "id": "\u0000j\u0000\b"
+      },
+      "resource": {
+        "type": "K::a",
+        "id": "\u0000"
+      },
+      "action": {
+        "type": "K::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -16,9 +25,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "K::a::\"\\0\"",
-      "action": "K::Action::\"action\"",
-      "resource": "K::a::\"\\0\"",
+      "principal": {
+        "type": "K::a",
+        "id": "\u0000"
+      },
+      "resource": {
+        "type": "K::a",
+        "id": "\u0000"
+      },
+      "action": {
+        "type": "K::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -26,9 +44,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "K::a::\"\\0j\\0\\u{8}\"",
-      "action": "K::Action::\"action\"",
-      "resource": "K::a::\"\\0j\\0\\u{8}\"",
+      "principal": {
+        "type": "K::a",
+        "id": "\u0000j\u0000\b"
+      },
+      "resource": {
+        "type": "K::a",
+        "id": "\u0000j\u0000\b"
+      },
+      "action": {
+        "type": "K::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -38,9 +65,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "K::a::\"\\0j\\0\\u{8}\"",
-      "action": "K::Action::\"action\"",
-      "resource": "K::a::\"\\0j\\0\\u{8}\"",
+      "principal": {
+        "type": "K::a",
+        "id": "\u0000j\u0000\b"
+      },
+      "resource": {
+        "type": "K::a",
+        "id": "\u0000j\u0000\b"
+      },
+      "action": {
+        "type": "K::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -50,9 +86,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "K::a::\"\\0j\\0\\u{8}\"",
-      "action": "K::Action::\"action\"",
-      "resource": "K::a::\"\\0j\\0\\u{8}\"",
+      "principal": {
+        "type": "K::a",
+        "id": "\u0000j\u0000\b"
+      },
+      "resource": {
+        "type": "K::a",
+        "id": "\u0000j\u0000\b"
+      },
+      "action": {
+        "type": "K::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -62,9 +107,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "K::a::\"\\0j\\0\\u{8}\"",
-      "action": "K::Action::\"action\"",
-      "resource": "K::a::\"\\0j\\0\\u{8}\"",
+      "principal": {
+        "type": "K::a",
+        "id": "\u0000j\u0000\b"
+      },
+      "resource": {
+        "type": "K::a",
+        "id": "\u0000j\u0000\b"
+      },
+      "action": {
+        "type": "K::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -74,9 +128,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "K::a::\"\\0j\\0\\u{8}\"",
-      "action": "K::Action::\"action\"",
-      "resource": "K::a::\"\\0j\\0\\u{8}\"",
+      "principal": {
+        "type": "K::a",
+        "id": "\u0000j\u0000\b"
+      },
+      "resource": {
+        "type": "K::a",
+        "id": "\u0000j\u0000\b"
+      },
+      "action": {
+        "type": "K::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -86,9 +149,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "K::a::\"\\0j\\0\\u{8}\"",
-      "action": "K::Action::\"action\"",
-      "resource": "K::a::\"\\0j\\0\\u{8}\"",
+      "principal": {
+        "type": "K::a",
+        "id": "\u0000j\u0000\b"
+      },
+      "resource": {
+        "type": "K::a",
+        "id": "\u0000j\u0000\b"
+      },
+      "action": {
+        "type": "K::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [

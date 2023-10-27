@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "r::r::r00::B::a::\"\"",
-      "action": "r::r::r00::B::Action::\"\"",
-      "resource": "r::r::r00::B::a::\"\"",
+      "principal": {
+        "type": "r::r::r00::B::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::r::r00::B::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::r::r00::B::Action",
+        "id": ""
+      },
       "context": {
         "Wjjjjjux2": {
           "__entity": {
@@ -25,9 +34,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "r::r::r00::B::a::\"\"",
-      "action": "r::r::r00::B::Action::\"\"",
-      "resource": "r::r::r00::B::a::\"\"",
+      "principal": {
+        "type": "r::r::r00::B::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::r::r00::B::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::r::r00::B::Action",
+        "id": ""
+      },
       "context": {
         "Wjjjjjux2": {
           "__entity": {
@@ -44,9 +62,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "r::r::r00::B::a::\"\"",
-      "action": "r::r::r00::B::Action::\"\"",
-      "resource": "r::r::r00::B::a::\"\"",
+      "principal": {
+        "type": "r::r::r00::B::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::r::r00::B::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::r::r00::B::Action",
+        "id": ""
+      },
       "context": {
         "Wjjjjjux2": {
           "__entity": {
@@ -63,9 +90,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "r::r::r00::B::a::\"\"",
-      "action": "r::r::r00::B::Action::\"\"",
-      "resource": "r::r::r00::B::a::\"\"",
+      "principal": {
+        "type": "r::r::r00::B::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::r::r00::B::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::r::r00::B::Action",
+        "id": ""
+      },
       "context": {
         "Wjjjjjux2": {
           "__entity": {
@@ -82,9 +118,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "r::r::r00::B::a::\"\"",
-      "action": "r::r::r00::B::Action::\"\"",
-      "resource": "r::r::r00::B::a::\"\"",
+      "principal": {
+        "type": "r::r::r00::B::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::r::r00::B::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::r::r00::B::Action",
+        "id": ""
+      },
       "context": {
         "Wjjjjjux2": {
           "__entity": {
@@ -101,9 +146,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "r::r::r00::B::a::\"\"",
-      "action": "r::r::r00::B::Action::\"\"",
-      "resource": "r::r::r00::B::a::\"\"",
+      "principal": {
+        "type": "r::r::r00::B::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::r::r00::B::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::r::r00::B::Action",
+        "id": ""
+      },
       "context": {
         "Wjjjjjux2": {
           "__entity": {
@@ -120,9 +174,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "r::r::r00::B::a::\"\"",
-      "action": "r::r::r00::B::Action::\"\"",
-      "resource": "r::r::r00::B::a::\"\"",
+      "principal": {
+        "type": "r::r::r00::B::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::r::r00::B::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::r::r00::B::Action",
+        "id": ""
+      },
       "context": {
         "Wjjjjjux2": {
           "__entity": {
@@ -139,9 +202,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "r::r::r00::B::a::\"\"",
-      "action": "r::r::r00::B::Action::\"\"",
-      "resource": "r::r::r00::B::a::\"\"",
+      "principal": {
+        "type": "r::r::r00::B::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::r::r00::B::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::r::r00::B::Action",
+        "id": ""
+      },
       "context": {
         "Wjjjjjux2": {
           "__entity": {
