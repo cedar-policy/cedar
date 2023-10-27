@@ -191,15 +191,6 @@ impl Entity {
                 .map(EvalResult::from),
         )
     }
-
-    /// Validate this `Entity` against the given `schema`.
-    ///
-    /// If the entity does not conform to the `schema`, an error is returned.
-    pub fn validate(&self, schema: &Schema) -> Result<(), impl std::error::Error> {
-        let schema = cedar_policy_validator::CoreSchema::new(&schema.0);
-        let checker = EntitySchemaConformanceChecker::new(&schema, Extensions::all_available());
-        checker.validate_entity(&self.0)
-    }
 }
 
 impl std::fmt::Display for Entity {
