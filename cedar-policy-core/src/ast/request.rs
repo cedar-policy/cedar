@@ -94,7 +94,7 @@ impl Request {
         }
     }
 
-    /// Create a new request with potentially unknown (for partial eval) head variables
+    /// Create a new `Request` with potentially unknown (for partial eval) variables
     pub fn new_with_unknowns(
         principal: EntityUIDEntry,
         action: EntityUIDEntry,
@@ -107,6 +107,36 @@ impl Request {
             resource,
             context,
         }
+    }
+
+    /// Create a new `Request` and validate that it complies with the given `schema`
+    pub fn new_with_validation<S: RequestSchema>(
+        principal: EntityUID,
+        action: EntityUID,
+        resource: EntityUID,
+        context: Context,
+        schema: &S,
+        extensions: Extensions<'_>,
+    ) -> Result<Self, S::Error> {
+        let req = Self::new(principal, action, resource, context);
+        schema.validate_request(&req, extensions)?;
+        Ok(req)
+    }
+
+    /// Create a new `Request` with potentially unknown (for partial eval)
+    /// variables, and validate that it complies with the given `schema` (at
+    /// least to the extent that we can validate with the given information)
+    pub fn new_with_unknowns_and_validation<S: RequestSchema>(
+        principal: EntityUIDEntry,
+        action: EntityUIDEntry,
+        resource: EntityUIDEntry,
+        context: Option<Context>,
+        schema: &S,
+        extensions: Extensions<'_>,
+    ) -> Result<Self, S::Error> {
+        let req = Self::new_with_unknowns(principal, action, resource, context);
+        schema.validate_request(&req, extensions)?;
+        Ok(req)
     }
 
     /// Get the principal associated with the request
@@ -260,6 +290,18 @@ impl std::fmt::Display for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.context)
     }
+}
+
+/// Trait for schemas capable of validating `Request`s
+pub trait RequestSchema {
+    /// Error type returned when a request fails validation
+    type Error: std::error::Error;
+    /// Validate the given `request`, returning `Err` if it fails validation
+    fn validate_request<'a>(
+        &self,
+        request: &Request,
+        extensions: Extensions<'a>,
+    ) -> Result<(), Self::Error>;
 }
 
 #[cfg(test)]

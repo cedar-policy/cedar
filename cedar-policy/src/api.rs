@@ -38,6 +38,7 @@ use cedar_policy_core::parser;
 pub use cedar_policy_core::parser::err::ParseErrors;
 use cedar_policy_core::parser::SourceInfo;
 use cedar_policy_core::FromNormalizedStr;
+use cedar_policy_validator::RequestValidationError; // this type is unsuitable for `pub use` because it contains internal types like `EntityUID` and `EntityType`
 pub use cedar_policy_validator::{
     TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
 };
@@ -2866,28 +2867,31 @@ impl FromStr for RestrictedExpression {
 /// for partial evaluation.
 #[cfg(feature = "partial-eval")]
 #[derive(Debug)]
-pub struct RequestBuilder {
+pub struct RequestBuilder<'a> {
     principal: ast::EntityUIDEntry,
     action: ast::EntityUIDEntry,
     resource: ast::EntityUIDEntry,
     /// Here, `None` means unknown
     context: Option<ast::Context>,
+    /// Here, `None` means no request validation is performed
+    schema: Option<&'a Schema>,
 }
 
 #[cfg(feature = "partial-eval")]
-impl Default for RequestBuilder {
+impl<'a> Default for RequestBuilder<'a> {
     fn default() -> Self {
         Self {
             principal: ast::EntityUIDEntry::Unknown,
             action: ast::EntityUIDEntry::Unknown,
             resource: ast::EntityUIDEntry::Unknown,
             context: None,
+            schema: None,
         }
     }
 }
 
 #[cfg(feature = "partial-eval")]
-impl RequestBuilder {
+impl<'a> RequestBuilder<'a> {
     /// Set the principal.
     ///
     /// Note that you can create the `EntityUid` using `.parse()` on any
@@ -2959,14 +2963,32 @@ impl RequestBuilder {
         }
     }
 
+    /// Set the schema. If present, this will be used for request validation.
+    pub fn schema(self, schema: &'a Schema) -> Self {
+        Self {
+            schema: Some(schema),
+            ..self
+        }
+    }
+
     /// Create the [`Request`]
-    pub fn build(self) -> Request {
-        Request(ast::Request::new_with_unknowns(
-            self.principal,
-            self.action,
-            self.resource,
-            self.context,
-        ))
+    pub fn build(self) -> Result<Request, RequestValidationError> {
+        match self.schema {
+            None => Ok(Request(ast::Request::new_with_unknowns(
+                self.principal,
+                self.action,
+                self.resource,
+                self.context,
+            ))),
+            Some(schema) => Ok(Request(ast::Request::new_with_unknowns_and_validation(
+                self.principal,
+                self.action,
+                self.resource,
+                self.context,
+                &cedar_policy_validator::CoreSchema::new(&schema.0),
+                Extensions::all_available(),
+            )?)),
+        }
     }
 }
 
@@ -2978,7 +3000,7 @@ pub struct Request(pub(crate) ast::Request);
 impl Request {
     /// Create a [`RequestBuilder`]
     #[cfg(feature = "partial-eval")]
-    pub fn builder() -> RequestBuilder {
+    pub fn builder<'a>() -> RequestBuilder<'a> {
         RequestBuilder::default()
     }
 
@@ -3010,6 +3032,44 @@ impl Request {
             None => ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")),
         };
         Self(ast::Request::new(p, a, r, context.0))
+    }
+
+    /// Create a Request, validating that it complies with the given `Schema`.
+    ///
+    /// Note that you can create the `EntityUid`s using `.parse()` on any
+    /// string (via the `FromStr` implementation for `EntityUid`).
+    /// The principal, action, and resource fields are optional to support
+    /// the case where these fields do not contribute to authorization
+    /// decisions (e.g., because they are not used in your policies).
+    /// If any of the fields are `None`, we will automatically generate
+    /// a unique entity UID that is not equal to any UID in the store.
+    pub fn new_with_validation(
+        principal: Option<EntityUid>,
+        action: Option<EntityUid>,
+        resource: Option<EntityUid>,
+        context: Context,
+        schema: &Schema,
+    ) -> Result<Self, RequestValidationError> {
+        let p = match principal {
+            Some(p) => p.0,
+            None => ast::EntityUID::unspecified_from_eid(ast::Eid::new("principal")),
+        };
+        let a = match action {
+            Some(a) => a.0,
+            None => ast::EntityUID::unspecified_from_eid(ast::Eid::new("action")),
+        };
+        let r = match resource {
+            Some(r) => r.0,
+            None => ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")),
+        };
+        Ok(Self(ast::Request::new_with_validation(
+            p,
+            a,
+            r,
+            context.0,
+            &cedar_policy_validator::CoreSchema::new(&schema.0),
+            Extensions::all_available(),
+        )?))
     }
 
     /// Get the principal component of the request. Returns `None` if the principal is

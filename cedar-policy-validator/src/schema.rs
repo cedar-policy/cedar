@@ -32,9 +32,9 @@ use cedar_policy_core::{
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
+use thiserror::Error;
 
 use super::NamespaceDefinition;
-use crate::types::OpenTag;
 use crate::{
     err::*,
     types::{Attributes, EntityRecordKind, Type},
@@ -530,21 +530,16 @@ impl ValidatorSchema {
         &self,
         action: &EntityUID,
     ) -> Option<impl cedar_policy_core::entities::ContextSchema> {
-        self.get_action_id(action).map(|action_id| {
-            // The invariant on `ContextSchema` requires that the inner type is
-            // representable as a schema type. Here we build a closed record
-            // type, which are representable as long as their values are
-            // representable. The values are representable because they are
-            // taken from the context of a `ValidatorActionId` which was
-            // constructed directly from a schema.
-            ContextSchema(crate::types::Type::record_with_attributes(
-                action_id
-                    .context
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone())),
-                OpenTag::ClosedAttributes,
-            ))
-        })
+        let ty = self
+            .get_action_id(action)
+            .map(ValidatorActionId::context_type);
+        // The invariant on `ContextSchema` requires that the inner type is
+        // representable as a schema type. `ValidatorActionId::context_type`
+        // always returns a closed record type, which are representable as long
+        // as their values are representable. The values are representable
+        // because they are taken from the context of a `ValidatorActionId`
+        // which was constructed directly from a schema.
+        ty.map(ContextSchema)
     }
 
     /// Invert the action hierarchy to get the ancestor relation expected for
@@ -712,6 +707,150 @@ impl cedar_policy_core::entities::EntityTypeDescription for EntityTypeDescriptio
     fn allowed_parent_types(&self) -> Arc<HashSet<cedar_policy_core::ast::EntityType>> {
         Arc::clone(&self.allowed_parent_types)
     }
+}
+
+impl<'a> cedar_policy_core::ast::RequestSchema for CoreSchema<'a> {
+    type Error = RequestValidationError;
+    fn validate_request<'e>(
+        &self,
+        request: &cedar_policy_core::ast::Request,
+        extensions: Extensions<'e>,
+    ) -> std::result::Result<(), Self::Error> {
+        use cedar_policy_core::ast::EntityUIDEntry;
+        // first check that principal and resource are of types that exist in
+        // the schema, or unspecified.
+        // we can do this check even if action is unknown.
+        if let EntityUIDEntry::Concrete(principal) = request.principal() {
+            match principal.entity_type() {
+                EntityType::Concrete(name) => {
+                    if !self.schema.entity_types.contains_key(name) {
+                        return Err(RequestValidationError::UndeclaredPrincipalType {
+                            principal_ty: principal.entity_type().clone(),
+                        });
+                    }
+                }
+                EntityType::Unspecified => {} // unspecified principal is allowed, unless we find it is not allowed for this action, which we will check below
+            }
+        }
+        if let EntityUIDEntry::Concrete(resource) = request.resource() {
+            match resource.entity_type() {
+                EntityType::Concrete(name) => {
+                    if !self.schema.entity_types.contains_key(name) {
+                        return Err(RequestValidationError::UndeclaredResourceType {
+                            resource_ty: resource.entity_type().clone(),
+                        });
+                    }
+                }
+                EntityType::Unspecified => {} // unspecified resource is allowed, unless we find it is not allowed for this action, which we will check below
+            }
+        }
+
+        // the remaining checks require knowing about the action.
+        match request.action() {
+            EntityUIDEntry::Concrete(action) => {
+                let validator_action_id = self.schema.get_action_id(&*action).ok_or_else(|| {
+                    RequestValidationError::UndeclaredAction {
+                        action: Arc::clone(action),
+                    }
+                })?;
+                if let EntityUIDEntry::Concrete(principal) = request.principal() {
+                    if !validator_action_id
+                        .applies_to
+                        .is_applicable_principal_type(principal.entity_type())
+                    {
+                        return Err(RequestValidationError::InvalidPrincipalType {
+                            principal_ty: principal.entity_type().clone(),
+                            action: Arc::clone(action),
+                        });
+                    }
+                }
+                if let EntityUIDEntry::Concrete(resource) = request.resource() {
+                    if !validator_action_id
+                        .applies_to
+                        .is_applicable_resource_type(resource.entity_type())
+                    {
+                        return Err(RequestValidationError::InvalidResourceType {
+                            resource_ty: resource.entity_type().clone(),
+                            action: Arc::clone(action),
+                        });
+                    }
+                }
+                if let Some(context) = request.context() {
+                    let actual_context_ty = cedar_policy_core::entities::type_of_restricted_expr(
+                        context.as_ref().as_borrowed(),
+                        extensions,
+                    )?;
+                    let expected_context_ty = validator_action_id.context_type();
+                    if !expected_context_ty.is_consistent_with(&actual_context_ty) {
+                        return Err(RequestValidationError::InvalidContext {
+                            context: context.clone(),
+                            action: Arc::clone(action),
+                        });
+                    }
+                }
+            }
+            EntityUIDEntry::Unknown => {
+                // We could hypothetically ensure that the concrete parts of the
+                // request are valid for _some_ action, but this is probably more
+                // expensive than we want for this validation step.
+                // Instead, we just let the above checks (that principal and
+                // resource are of types that at least _exist_ in the schema)
+                // suffice.
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum RequestValidationError {
+    /// Request action is not declared in the schema
+    #[error("request's action `{action}` is not declared in the schema")]
+    UndeclaredAction {
+        /// Action which was not declared in the schema
+        action: Arc<EntityUID>,
+    },
+    /// Request principal is of a type not declared in the schema
+    #[error("principal type `{principal_ty}` is not declared in the schema")]
+    UndeclaredPrincipalType {
+        /// Principal type which was not declared in the schema
+        principal_ty: EntityType,
+    },
+    /// Request resource is of a type not declared in the schema
+    #[error("resource type `{resource_ty}` is not declared in the schema")]
+    UndeclaredResourceType {
+        /// Resource type which was not declared in the schema
+        resource_ty: EntityType,
+    },
+    /// Request principal is of a type that is declared in the schema, but is
+    /// not valid for the request action
+    #[error("principal type `{principal_ty}` is not valid for `{action}`")]
+    InvalidPrincipalType {
+        /// Principal type which is not valid
+        principal_ty: EntityType,
+        /// Action which it is not valid for
+        action: Arc<EntityUID>,
+    },
+    /// Request resource is of a type that is declared in the schema, but is
+    /// not valid for the request action
+    #[error("resource type `{resource_ty}` is not valid for `{action}`")]
+    InvalidResourceType {
+        /// Resource type which is not valid
+        resource_ty: EntityType,
+        /// Action which it is not valid for
+        action: Arc<EntityUID>,
+    },
+    /// Context does not comply with the shape specified for the request action
+    #[error("context `{context}` is not valid for `{action}`")]
+    InvalidContext {
+        /// Context which is not valid
+        context: cedar_policy_core::ast::Context,
+        /// Action which it is not valid for
+        action: Arc<EntityUID>,
+    },
+    /// Error getting the type of the `Context`
+    #[error("error while computing the type of the request context: {0}")]
+    TypeOfContext(#[from] cedar_policy_core::entities::TypeOfRestrictedExprError),
 }
 
 /// Struct which carries enough information that it can impl Core's
