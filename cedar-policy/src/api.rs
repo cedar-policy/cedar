@@ -3679,7 +3679,7 @@ mod head_constraints_tests {
         let p = Policy::from_str("permit(principal is T,action,resource);").unwrap();
         assert_eq!(
             p.principal_constraint(),
-            PrincipalConstraint::Is(EntityTypeName::from_str("T").unwrap(), Some(euid.clone()))
+            PrincipalConstraint::Is(EntityTypeName::from_str("T").unwrap(), None)
         );
         let p = Policy::from_str("permit(principal is T in T::\"a\",action,resource);").unwrap();
         assert_eq!(
@@ -3728,15 +3728,17 @@ mod head_constraints_tests {
             p.resource_constraint(),
             ResourceConstraint::In(euid.clone())
         );
-        let p = Policy::from_str("permit(principal,action,resource is T);").unwrap();
+        let p = Policy::from_str("permit(principal,action,resource is NN::N::T);").unwrap();
         assert_eq!(
             p.resource_constraint(),
-            ResourceConstraint::Is(EntityTypeName::from_str("T").unwrap(), Some(euid.clone()))
+            ResourceConstraint::Is(EntityTypeName::from_str("NN::N::T").unwrap(), None)
         );
-        let p = Policy::from_str("permit(principal,action,resource is T in T::\"a\");").unwrap();
+        let p =
+            Policy::from_str("permit(principal,action,resource is NN::N::T in NN::N::T::\"a\");")
+                .unwrap();
         assert_eq!(
             p.resource_constraint(),
-            ResourceConstraint::Is(EntityTypeName::from_str("T").unwrap(), Some(euid))
+            ResourceConstraint::Is(EntityTypeName::from_str("NN::N::T").unwrap(), Some(euid))
         );
     }
 
@@ -3793,7 +3795,7 @@ mod head_constraints_tests {
             p.principal_constraint(),
             PrincipalConstraint::Is(EntityTypeName::from_str("T").unwrap(), None)
         );
-        let p = link("permit(principal is T in ?resource,action,resource);", map);
+        let p = link("permit(principal is T in ?principal,action,resource);", map);
         assert_eq!(
             p.principal_constraint(),
             PrincipalConstraint::Is(EntityTypeName::from_str("T").unwrap(), Some(euid.clone()))

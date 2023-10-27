@@ -3667,6 +3667,26 @@ mod tests {
                     Expr::val(true),
                 ),
             ),
+            (
+                r#"principal is A::B::C::User"#,
+                Expr::is_type(
+                    Expr::var(ast::Var::Principal),
+                    "A::B::C::User".parse().unwrap(),
+                ),
+            ),
+            (
+                r#"principal is A::B::C::User in Group::"friends""#,
+                Expr::and(
+                    Expr::is_type(
+                        Expr::var(ast::Var::Principal),
+                        "A::B::C::User".parse().unwrap(),
+                    ),
+                    Expr::is_in(
+                        Expr::var(ast::Var::Principal),
+                        Expr::val(r#"Group::"friends""#.parse::<EntityUID>().unwrap()),
+                    ),
+                ),
+            ),
         ] {
             let e = parse_expr(es).unwrap();
             assert!(
@@ -3688,9 +3708,24 @@ mod tests {
                 ResourceConstraint::any(),
             ),
             (
+                r#"permit(principal is A::User, action, resource);"#,
+                PrincipalConstraint::is_type("A::User".parse().unwrap(), None),
+                ActionConstraint::any(),
+                ResourceConstraint::any(),
+            ),
+            (
                 r#"permit(principal is User in Group::"thing", action, resource);"#,
                 PrincipalConstraint::is_type(
                     "User".parse().unwrap(),
+                    Some(r#"Group::"thing""#.parse().unwrap()),
+                ),
+                ActionConstraint::any(),
+                ResourceConstraint::any(),
+            ),
+            (
+                r#"permit(principal is A::User in Group::"thing", action, resource);"#,
+                PrincipalConstraint::is_type(
+                    "A::User".parse().unwrap(),
                     Some(r#"Group::"thing""#.parse().unwrap()),
                 ),
                 ActionConstraint::any(),
