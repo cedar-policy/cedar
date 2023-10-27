@@ -4642,7 +4642,7 @@ mod ancestors_tests {
     }
 }
 
-/// These tests are for `Entity::validate()`.
+/// A few tests of validating entities.
 /// Many other validation-related tests are in the separate module focusing on
 /// schema-based parsing.
 #[cfg(test)]
@@ -4692,6 +4692,11 @@ mod entity_validate_tests {
         }}
         ))
         .expect("should be a valid schema")
+    }
+
+    fn validate_entity(entity: Entity, schema: &Schema) -> Result<(), entities::EntitiesError> {
+        let _ = Entities::from_entities([entity], Some(schema))?;
+        Ok(())
     }
 
     #[test]
@@ -4748,7 +4753,7 @@ mod entity_validate_tests {
             ]),
             HashSet::new(),
         );
-        entity.validate(&schema()).unwrap();
+        validate_entity(entity, &schema()).unwrap();
     }
 
     #[test]
@@ -4806,7 +4811,7 @@ mod entity_validate_tests {
             ]),
             HashSet::from_iter([EntityUid::from_strs("Manager", "jane")]),
         );
-        match entity.validate(&schema) {
+        match validate_entity(entity, &schema) {
             Ok(_) => panic!("expected an error due to extraneous parent"),
             Err(e) => {
                 assert!(
@@ -4867,7 +4872,7 @@ mod entity_validate_tests {
             ]),
             HashSet::new(),
         );
-        match entity.validate(&schema) {
+        match validate_entity(entity, &schema) {
             Ok(_) => panic!("expected an error due to missing attribute `numDirectReports`"),
             Err(e) => {
                 assert!(
@@ -4930,7 +4935,7 @@ mod entity_validate_tests {
             ]),
             HashSet::new(),
         );
-        match entity.validate(&schema) {
+        match validate_entity(entity, &schema) {
             Ok(_) => panic!("expected an error due to extraneous attribute"),
             Err(e) => {
                 assert!(
@@ -4945,7 +4950,7 @@ mod entity_validate_tests {
             HashMap::new(),
             HashSet::new(),
         );
-        match entity.validate(&schema) {
+        match validate_entity(entity, &schema) {
             Ok(_) => panic!("expected an error due to unexpected entity type"),
             Err(e) => {
                 assert!(
