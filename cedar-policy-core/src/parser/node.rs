@@ -195,8 +195,8 @@ impl<N: Error> Error for ASTNode<N> {
         self.node.source()
     }
 
+    #[allow(deprecated)]
     fn description(&self) -> &str {
-        #[allow(deprecated)]
         self.node.description()
     }
 

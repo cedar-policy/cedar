@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
-      "action": "LYY::Qml::Edxl::Kxx0xxx::Action::\"action\"",
-      "resource": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "principal": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::a",
+        "id": "zz"
+      },
+      "resource": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::a",
+        "id": "zz"
+      },
+      "action": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -18,9 +27,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
-      "action": "LYY::Qml::Edxl::Kxx0xxx::Action::\"action\"",
-      "resource": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "principal": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::a",
+        "id": "zz"
+      },
+      "resource": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::a",
+        "id": "zz"
+      },
+      "action": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -30,9 +48,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
-      "action": "LYY::Qml::Edxl::Kxx0xxx::Action::\"action\"",
-      "resource": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "principal": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::a",
+        "id": "zz"
+      },
+      "resource": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::a",
+        "id": "zz"
+      },
+      "action": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -42,9 +69,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
-      "action": "LYY::Qml::Edxl::Kxx0xxx::Action::\"action\"",
-      "resource": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "principal": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::a",
+        "id": "zz"
+      },
+      "resource": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::a",
+        "id": "zz"
+      },
+      "action": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -54,9 +90,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
-      "action": "LYY::Qml::Edxl::Kxx0xxx::Action::\"action\"",
-      "resource": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "principal": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::a",
+        "id": "zz"
+      },
+      "resource": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::a",
+        "id": "zz"
+      },
+      "action": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -66,9 +111,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
-      "action": "LYY::Qml::Edxl::Kxx0xxx::Action::\"action\"",
-      "resource": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "principal": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::a",
+        "id": "zz"
+      },
+      "resource": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::a",
+        "id": "zz"
+      },
+      "action": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -78,9 +132,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
-      "action": "LYY::Qml::Edxl::Kxx0xxx::Action::\"action\"",
-      "resource": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "principal": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::a",
+        "id": "zz"
+      },
+      "resource": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::a",
+        "id": "zz"
+      },
+      "action": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -90,9 +153,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
-      "action": "LYY::Qml::Edxl::Kxx0xxx::Action::\"action\"",
-      "resource": "LYY::Qml::Edxl::Kxx0xxx::a::\"zz\"",
+      "principal": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::a",
+        "id": "zz"
+      },
+      "resource": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::a",
+        "id": "zz"
+      },
+      "action": {
+        "type": "LYY::Qml::Edxl::Kxx0xxx::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [

@@ -19,12 +19,13 @@ use super::{
     JsonSerializationError, SchemaType,
 };
 use crate::ast::{
-    BorrowedRestrictedExpr, Eid, EntityUID, Expr, ExprConstructionError, ExprKind, Literal, Name,
+    BorrowedRestrictedExpr, Eid, EntityUID, ExprConstructionError, ExprKind, Literal, Name,
     RestrictedExpr,
 };
 use crate::entities::EscapeKind;
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use crate::FromNormalizedStr;
+use either::Either;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
@@ -34,35 +35,22 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 /// Many Cedar values have a natural one-to-one mapping to and from JSON values.
 /// Cedar values of some types, like entity references or extension values,
 /// cannot easily be represented in JSON and thus are represented using the
-/// `__expr`, `__entity`, or `__extn` escapes.
+/// `__entity`, or `__extn` escapes.
 ///
 /// For example, this is the JSON format for attribute values expected by
 /// `EntityJsonParser`, when schema-based parsing is not used.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum CedarValueJson {
-    /// Special JSON object with single reserved "__expr" key:
-    /// interpret the following string as a (restricted) Cedar expression.
-    /// Some escape (this or the following ones) is necessary for extension
-    /// values and entity references, but this `__expr` escape could also be
-    /// used for any other values.
-    ///
-    /// `__expr` is deprecated (starting with the 1.2 release) and will be
-    /// removed in favor of `__entity` and `__extn`, which together cover all of
-    /// the use-cases where `__expr` would have been necessary.
-    //
-    // listed before `Record` so that it takes priority: otherwise, the escape
-    // would be interpreted as a Record with a key "__expr". see docs on
-    // `serde(untagged)`
+    /// The `__expr` escape has been removed, but is still reserved in order to throw meaningful errors.
     ExprEscape {
-        /// String to interpret as a (restricted) Cedar expression
+        /// Contents, will be ignored and an error is thrown when attempting to parse this
         __expr: SmolStr,
     },
     /// Special JSON object with single reserved "__entity" key:
     /// the following item should be a JSON object of the form
     /// `{ "type": "xxx", "id": "yyy" }`.
-    /// Some escape (this or `__expr`, which is deprecated) is necessary for
-    /// entity references.
+    /// This escape is necessary for entity references.
     //
     // listed before `Record` so that it takes priority: otherwise, the escape
     // would be interpreted as a Record with a key "__entity". see docs on
@@ -74,8 +62,7 @@ pub enum CedarValueJson {
     /// Special JSON object with single reserved "__extn" key:
     /// the following item should be a JSON object of the form
     /// `{ "fn": "xxx", "arg": "yyy" }`.
-    /// Some escape (this or `__expr`, which is deprecated) is necessary for
-    /// extension values.
+    /// This escape is necessary for extension values.
     //
     // listed before `Record` so that it takes priority: otherwise, the escape
     // would be interpreted as a Record with a key "__extn". see docs on
@@ -236,17 +223,6 @@ impl CedarValueJson {
                     }
                 }
             })?),
-            Self::ExprEscape { __expr: expr } => {
-                use crate::parser;
-                let expr: Expr = parser::parse_expr(&expr).map_err(|errs| {
-                    JsonDeserializationError::ParseEscape {
-                        kind: EscapeKind::Expr,
-                        value: expr.to_string(),
-                        errs,
-                    }
-                })?;
-                Ok(RestrictedExpr::new(expr)?)
-            }
             Self::EntityEscape { __entity: entity } => Ok(RestrictedExpr::val(
                 EntityUID::try_from(entity.clone()).map_err(|errs| {
                     JsonDeserializationError::ParseEscape {
@@ -258,6 +234,9 @@ impl CedarValueJson {
                 })?,
             )),
             Self::ExtnEscape { __extn: extn } => extn.into_expr(ctx),
+            Self::ExprEscape { .. } => Err(JsonDeserializationError::ExprTag(Box::new(
+                JsonDeserializationErrorContext::Context,
+            ))),
         }
     }
 
@@ -506,16 +485,7 @@ impl<'e> ValueParser<'e> {
     ) -> Result<RestrictedExpr, JsonDeserializationError> {
         match extnjson {
             ExtnValueJson::ExplicitExprEscape { __expr } => {
-                // reuse the same logic that parses CedarValueJson
-                let jvalue = CedarValueJson::ExprEscape { __expr };
-                let expr = jvalue.into_expr(ctx.clone())?;
-                match expr.expr_kind() {
-                    ExprKind::ExtensionFunctionApp { .. } => Ok(expr),
-                    _ => Err(JsonDeserializationError::ExpectedExtnValue {
-                        ctx: Box::new(ctx()),
-                        got: Box::new(expr.clone().into()),
-                    }),
-                }
+                Err(JsonDeserializationError::ExprTag(Box::new(ctx())))
             }
             ExtnValueJson::ExplicitExtnEscape { __extn }
             | ExtnValueJson::ImplicitExtnEscape(__extn) => {
@@ -526,7 +496,7 @@ impl<'e> ValueParser<'e> {
                     ExprKind::ExtensionFunctionApp { .. } => Ok(expr),
                     _ => Err(JsonDeserializationError::ExpectedExtnValue {
                         ctx: Box::new(ctx()),
-                        got: Box::new(expr.clone().into()),
+                        got: Box::new(Either::Right(expr.clone().into())),
                     }),
                 }
             }
@@ -626,28 +596,23 @@ impl<'e> ValueParser<'e> {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum EntityUidJson {
-    /// Explicit `__expr` escape; see notes on `CedarValueJson::ExprEscape`.
-    ///
-    /// Deprecated since the 1.2 release; use
-    /// `{ "__entity": { "type": "...", "id": "..." } }` instead.
+    /// Explicit `__expr` syntax.
+    /// This is no longer supported and is only here for generating nice error messages.
     ExplicitExprEscape {
-        /// String to interpret as a (restricted) Cedar expression.
-        /// In this case, it must evaluate to an entity reference.
-        __expr: SmolStr,
+        /// Contents are ignored.
+        __expr: String,
     },
     /// Explicit `__entity` escape; see notes on `CedarValueJson::EntityEscape`
     ExplicitEntityEscape {
         /// JSON object containing the entity type and ID
         __entity: TypeAndId,
     },
-    /// Implicit `__expr` escape, in which case we'll just see a JSON string.
-    ///
-    /// Deprecated since the 1.2 release; use
-    /// `{ "type": "...", "id": "..." }` instead.
-    ImplicitExprEscape(SmolStr),
     /// Implicit `__entity` escape, in which case we'll see just the TypeAndId
     /// structure
     ImplicitEntityEscape(TypeAndId),
+
+    /// Implicit catch-all case for error handling
+    FoundValue(serde_json::Value),
 }
 
 /// Serde JSON format for Cedar values where we know we're expecting an
@@ -655,14 +620,10 @@ pub enum EntityUidJson {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum ExtnValueJson {
-    /// Explicit `__expr` escape; see notes on `CedarValueJson::ExprEscape`.
-    ///
-    /// Deprecated since the 1.2 release; use
-    /// `{ "__extn": { "fn": "...", "arg": "..." } }` instead.
+    /// This was removed in 3.0 and is here to give nice error messages
     ExplicitExprEscape {
-        /// String to interpret as a (restricted) Cedar expression.
-        /// In this case, it must evaluate to an extension value.
-        __expr: SmolStr,
+        /// The contents of the `__expr`` escape
+        __expr: String,
     },
     /// Explicit `__extn` escape; see notes on `CedarValueJson::ExtnEscape`
     ExplicitExtnEscape {
@@ -696,46 +657,7 @@ impl EntityUidJson {
         self,
         ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
     ) -> Result<EntityUID, JsonDeserializationError> {
-        let is_implicit_expr = matches!(self, Self::ImplicitExprEscape(_));
         match self {
-            Self::ExplicitExprEscape { __expr } | Self::ImplicitExprEscape(__expr) => {
-                // reuse the same logic that parses CedarValueJson
-                let jvalue = CedarValueJson::ExprEscape {
-                    __expr: __expr.clone(),
-                };
-                let expr = jvalue.into_expr(ctx.clone()).map_err(|e| {
-                    if is_implicit_expr {
-                        // in this case, the user provided a string that wasn't
-                        // an appropriate entity reference.
-                        // Perhaps they didn't realize they needed to provide an
-                        // entity reference at all, or perhaps they just had an
-                        // entity syntax error.
-                        // We'll give them the `ExpectedLiteralEntityRef` error
-                        // message instead of the `ExprParseError` error message,
-                        // as it's likely to be more helpful in my opinion
-                        // PANIC SAFETY: Every `String` can be turned into a restricted expression
-                        #[allow(clippy::unwrap_used)]
-                        JsonDeserializationError::ExpectedLiteralEntityRef {
-                            ctx: Box::new(ctx()),
-                            got: Box::new(
-                                CedarValueJson::String(__expr)
-                                    .into_expr(ctx.clone())
-                                    .unwrap()
-                                    .into(),
-                            ),
-                        }
-                    } else {
-                        e
-                    }
-                })?;
-                match expr.expr_kind() {
-                    ExprKind::Lit(Literal::EntityUID(euid)) => Ok((**euid).clone()),
-                    _ => Err(JsonDeserializationError::ExpectedLiteralEntityRef {
-                        ctx: Box::new(ctx()),
-                        got: Box::new(expr.clone().into()),
-                    }),
-                }
-            }
             Self::ExplicitEntityEscape { __entity } | Self::ImplicitEntityEscape(__entity) => {
                 // reuse the same logic that parses CedarValueJson
                 let jvalue = CedarValueJson::EntityEscape { __entity };
@@ -744,9 +666,16 @@ impl EntityUidJson {
                     ExprKind::Lit(Literal::EntityUID(euid)) => Ok((**euid).clone()),
                     _ => Err(JsonDeserializationError::ExpectedLiteralEntityRef {
                         ctx: Box::new(ctx()),
-                        got: Box::new(expr.clone().into()),
+                        got: Box::new(Either::Right(expr.clone().into())),
                     }),
                 }
+            }
+            Self::FoundValue(v) => Err(JsonDeserializationError::ExpectedLiteralEntityRef {
+                ctx: Box::new(ctx()),
+                got: Box::new(Either::Left(v)),
+            }),
+            Self::ExplicitExprEscape { __expr } => {
+                Err(JsonDeserializationError::ExprTag(Box::new(ctx())))
             }
         }
     }

@@ -1,77 +1,138 @@
 {
-    "policies": "tests/multi/policies_5.cedar",
-    "entities": "sample-data/sandbox_b/entities.json",
-    "schema": "sample-data/sandbox_b/schema.cedarschema.json",
-    "should_validate": true,
-    "queries": [
-        {
-            "desc": "stacey should be able to view photos in alice_vacation",
-            "principal": "User::\"stacey\"",
-            "action": "Action::\"view\"",
-            "resource": "Photo::\"vacation.jpg\"",
-            "context": {
-                "authenticated": true
-            },
-            "decision": "Allow",
-            "reasons": ["policy0"],
-            "errors": []
-        },
-        {
-            "desc": "an unspecified user should not be able to view photos in alice_vacation",
-            "action": "Action::\"view\"",
-            "resource": "Photo::\"vacation.jpg\"",
-            "context": {
-                "authenticated": true
-            },
-            "decision": "Deny",
-            "reasons": [],
-            "errors": ["error occurred while evaluating policy `policy0`: cannot access attribute `department` of unspecified entity", "error occurred while evaluating policy `policy2`: cannot access attribute `jobLevel` of unspecified entity"]
-        },
-        {
-            "desc": "a request with unspecified entities should be implicitly denied",
-            "principal": "User::\"alice\"",
-            "action": "Action::\"comment\"",
-            "resource": "Photo::\"photo_2.jpg\"",
-            "context": {
-                "authenticated": true
-            },
-            "decision": "Deny",
-            "reasons": [],
-            "errors": []
-        },
-        {
-            "desc": "a request with unspecified entities and an unauthenticated context should be denied with a reason",
-            "action": "Action::\"view\"",
-            "resource": "Photo::\"photo_2.jpg\"",
-            "context": {
-                "authenticated": false
-            },
-            "decision": "Deny",
-            "reasons": ["policy1"],
-            "errors": ["error occurred while evaluating policy `policy2`: cannot access attribute `jobLevel` of unspecified entity"]
-        },
-        {
-            "desc": "giuseppe should be able to read any file",
-            "action": "Action::\"view\"",
-            "principal": "User::\"giuseppe\"",
-            "resource": "Photo::\"sales_projections.jpg\"",
-            "context": {
-                "authenticated": true
-            },
-            "decision": "Allow",
-            "reasons": ["policy2"],
-            "errors": []
-        },
-        {
-            "desc": "giuseppe should be able to read an unspecified file",
-            "action": "Action::\"view\"",
-            "principal": "User::\"giuseppe\"",
-            "context": {
-                "authenticated": true
-            },
-            "decision": "Allow",
-            "reasons": ["policy2"],
-            "errors": []
-        }
-    ]
+  "schema": "sample-data/sandbox_b/schema.cedarschema.json",
+  "policies": "tests/multi/policies_5.cedar",
+  "should_validate": true,
+  "entities": "sample-data/sandbox_b/entities.json",
+  "queries": [
+    {
+      "desc": "stacey should be able to view photos in alice_vacation",
+      "principal": {
+        "type": "User",
+        "id": "stacey"
+      },
+      "resource": {
+        "type": "Photo",
+        "id": "vacation.jpg"
+      },
+      "action": {
+        "type": "Action",
+        "id": "view"
+      },
+      "context": {
+        "authenticated": true
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "an unspecified user should not be able to view photos in alice_vacation",
+      "principal": null,
+      "resource": {
+        "type": "Photo",
+        "id": "vacation.jpg"
+      },
+      "action": {
+        "type": "Action",
+        "id": "view"
+      },
+      "context": {
+        "authenticated": true
+      },
+      "decision": "Deny",
+      "reasons": [],
+      "errors": [
+        "error occurred while evaluating policy `policy0`: cannot access attribute `department` of unspecified entity",
+        "error occurred while evaluating policy `policy2`: cannot access attribute `jobLevel` of unspecified entity"
+      ]
+    },
+    {
+      "desc": "a request with unspecified entities should be implicitly denied",
+      "principal": {
+        "type": "User",
+        "id": "alice"
+      },
+      "resource": {
+        "type": "Photo",
+        "id": "photo_2.jpg"
+      },
+      "action": {
+        "type": "Action",
+        "id": "comment"
+      },
+      "context": {
+        "authenticated": true
+      },
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "a request with unspecified entities and an unauthenticated context should be denied with a reason",
+      "principal": null,
+      "resource": {
+        "type": "Photo",
+        "id": "photo_2.jpg"
+      },
+      "action": {
+        "type": "Action",
+        "id": "view"
+      },
+      "context": {
+        "authenticated": false
+      },
+      "decision": "Deny",
+      "reasons": [
+        "policy1"
+      ],
+      "errors": [
+        "error occurred while evaluating policy `policy2`: cannot access attribute `jobLevel` of unspecified entity"
+      ]
+    },
+    {
+      "desc": "giuseppe should be able to read any file",
+      "principal": {
+        "type": "User",
+        "id": "giuseppe"
+      },
+      "resource": {
+        "type": "Photo",
+        "id": "sales_projections.jpg"
+      },
+      "action": {
+        "type": "Action",
+        "id": "view"
+      },
+      "context": {
+        "authenticated": true
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy2"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "giuseppe should be able to read an unspecified file",
+      "principal": {
+        "type": "User",
+        "id": "giuseppe"
+      },
+      "resource": null,
+      "action": {
+        "type": "Action",
+        "id": "view"
+      },
+      "context": {
+        "authenticated": true
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy2"
+      ],
+      "errors": []
+    }
+  ]
 }

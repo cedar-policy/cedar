@@ -155,7 +155,8 @@ impl std::fmt::Display for Request {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Context {
     /// an `Expr::Record` that qualifies as a "restricted expression"
-    // INVARIANT: `context` must be a `Record`
+    /// INVARIANT: This must be of the variant `Record`
+    /// TODO: This should be refactored if possible to require this runtime invariant
     #[serde(flatten)]
     context: RestrictedExpr,
 }
@@ -186,6 +187,7 @@ impl Context {
     pub fn from_pairs(
         pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
     ) -> Result<Self, ExprConstructionError> {
+        // INVARIANT this always constructs a record
         Ok(Self {
             context: RestrictedExpr::record(pairs)?,
         })
@@ -228,6 +230,8 @@ impl Context {
     }
 
     /// Iterate over the (key, value) pairs in the `Context`
+    // PANIC SAFETY: This is safe due to the invariant on `self.context`, `self.context` must always be a record
+    #[allow(clippy::panic)]
     pub fn iter(&self) -> impl Iterator<Item = (&str, BorrowedRestrictedExpr<'_>)> {
         // PANIC SAFETY invariant on `self.context` ensures that it is a Record
         #[allow(clippy::panic)]

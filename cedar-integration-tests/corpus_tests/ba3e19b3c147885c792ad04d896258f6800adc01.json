@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "D655zz::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "D655zz::\"\"",
+      "principal": {
+        "type": "D655zz",
+        "id": ""
+      },
+      "resource": {
+        "type": "D655zz",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [
@@ -18,9 +27,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "D655zz::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "D655zz::\"\"",
+      "principal": {
+        "type": "D655zz",
+        "id": ""
+      },
+      "resource": {
+        "type": "D655zz",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [
@@ -30,9 +48,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "D655zz::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "D655zz::\"\"",
+      "principal": {
+        "type": "D655zz",
+        "id": ""
+      },
+      "resource": {
+        "type": "D655zz",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [
@@ -42,9 +69,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "D655zz::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "D655zz::\"\"",
+      "principal": {
+        "type": "D655zz",
+        "id": ""
+      },
+      "resource": {
+        "type": "D655zz",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [
@@ -54,9 +90,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "D655zz::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "D655zz::\"\"",
+      "principal": {
+        "type": "D655zz",
+        "id": ""
+      },
+      "resource": {
+        "type": "D655zz",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [
@@ -66,9 +111,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "D655zz::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "D655zz::\"\"",
+      "principal": {
+        "type": "D655zz",
+        "id": ""
+      },
+      "resource": {
+        "type": "D655zz",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [
@@ -78,9 +132,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "D655zz::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "D655zz::\"\"",
+      "principal": {
+        "type": "D655zz",
+        "id": ""
+      },
+      "resource": {
+        "type": "D655zz",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [
@@ -90,9 +153,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "D655zz::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "D655zz::\"\"",
+      "principal": {
+        "type": "D655zz",
+        "id": ""
+      },
+      "resource": {
+        "type": "D655zz",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [

@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "v::Qx::OMRR::a::\"\"",
-      "action": "v::Qx::OMRR::Action::\"action\"",
-      "resource": "v::Qx::OMRR::a::\"\"",
+      "principal": {
+        "type": "v::Qx::OMRR::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "v::Qx::OMRR::a",
+        "id": ""
+      },
+      "action": {
+        "type": "v::Qx::OMRR::Action",
+        "id": "action"
+      },
       "context": {
         "fpvc5xxxx00000": "",
         "v": "",
@@ -22,9 +31,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "v::Qx::OMRR::a::\"\"",
-      "action": "v::Qx::OMRR::Action::\"action\"",
-      "resource": "v::Qx::OMRR::a::\"\"",
+      "principal": {
+        "type": "v::Qx::OMRR::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "v::Qx::OMRR::a",
+        "id": ""
+      },
+      "action": {
+        "type": "v::Qx::OMRR::Action",
+        "id": "action"
+      },
       "context": {
         "fpvc5xxxx00000": "",
         "v": "",
@@ -38,9 +56,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "v::Qx::OMRR::a::\"\"",
-      "action": "v::Qx::OMRR::Action::\"action\"",
-      "resource": "v::Qx::OMRR::a::\"\"",
+      "principal": {
+        "type": "v::Qx::OMRR::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "v::Qx::OMRR::a",
+        "id": ""
+      },
+      "action": {
+        "type": "v::Qx::OMRR::Action",
+        "id": "action"
+      },
       "context": {
         "fpvc5xxxx00000": "",
         "v": "",
@@ -54,9 +81,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "v::Qx::OMRR::a::\"\"",
-      "action": "v::Qx::OMRR::Action::\"action\"",
-      "resource": "v::Qx::OMRR::a::\"\"",
+      "principal": {
+        "type": "v::Qx::OMRR::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "v::Qx::OMRR::a",
+        "id": ""
+      },
+      "action": {
+        "type": "v::Qx::OMRR::Action",
+        "id": "action"
+      },
       "context": {
         "fpvc5xxxx00000": "",
         "v": "",
@@ -70,9 +106,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "v::Qx::OMRR::a::\"\"",
-      "action": "v::Qx::OMRR::Action::\"action\"",
-      "resource": "v::Qx::OMRR::a::\"\"",
+      "principal": {
+        "type": "v::Qx::OMRR::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "v::Qx::OMRR::a",
+        "id": ""
+      },
+      "action": {
+        "type": "v::Qx::OMRR::Action",
+        "id": "action"
+      },
       "context": {
         "fpvc5xxxx00000": "",
         "v": "",
@@ -86,9 +131,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "v::Qx::OMRR::a::\"\"",
-      "action": "v::Qx::OMRR::Action::\"action\"",
-      "resource": "v::Qx::OMRR::a::\"\"",
+      "principal": {
+        "type": "v::Qx::OMRR::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "v::Qx::OMRR::a",
+        "id": ""
+      },
+      "action": {
+        "type": "v::Qx::OMRR::Action",
+        "id": "action"
+      },
       "context": {
         "fpvc5xxxx00000": "",
         "v": "",
@@ -102,9 +156,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "v::Qx::OMRR::a::\"\"",
-      "action": "v::Qx::OMRR::Action::\"action\"",
-      "resource": "v::Qx::OMRR::a::\"\"",
+      "principal": {
+        "type": "v::Qx::OMRR::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "v::Qx::OMRR::a",
+        "id": ""
+      },
+      "action": {
+        "type": "v::Qx::OMRR::Action",
+        "id": "action"
+      },
       "context": {
         "fpvc5xxxx00000": "",
         "v": "",
@@ -118,9 +181,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "v::Qx::OMRR::a::\"\"",
-      "action": "v::Qx::OMRR::Action::\"action\"",
-      "resource": "v::Qx::OMRR::a::\"\"",
+      "principal": {
+        "type": "v::Qx::OMRR::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "v::Qx::OMRR::a",
+        "id": ""
+      },
+      "action": {
+        "type": "v::Qx::OMRR::Action",
+        "id": "action"
+      },
       "context": {
         "fpvc5xxxx00000": "",
         "v": "",

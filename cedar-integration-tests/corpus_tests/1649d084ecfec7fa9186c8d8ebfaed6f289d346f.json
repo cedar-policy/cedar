@@ -7,8 +7,11 @@
     {
       "desc": "Query 0",
       "principal": null,
-      "action": "Action::\"sun_misc_P\"",
       "resource": null,
+      "action": {
+        "type": "Action",
+        "id": "sun_misc_P"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -19,8 +22,11 @@
     {
       "desc": "Query 1",
       "principal": null,
-      "action": "Action::\"sun_misc_P\"",
       "resource": null,
+      "action": {
+        "type": "Action",
+        "id": "sun_misc_P"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -31,8 +37,11 @@
     {
       "desc": "Query 2",
       "principal": null,
-      "action": "Action::\"sun_misc_P\"",
       "resource": null,
+      "action": {
+        "type": "Action",
+        "id": "sun_misc_P"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -43,8 +52,11 @@
     {
       "desc": "Query 3",
       "principal": null,
-      "action": "Action::\"sun_misc_P\"",
       "resource": null,
+      "action": {
+        "type": "Action",
+        "id": "sun_misc_P"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -55,8 +67,11 @@
     {
       "desc": "Query 4",
       "principal": null,
-      "action": "Action::\"sun_misc_P\"",
       "resource": null,
+      "action": {
+        "type": "Action",
+        "id": "sun_misc_P"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -67,8 +82,11 @@
     {
       "desc": "Query 5",
       "principal": null,
-      "action": "Action::\"sun_misc_P\"",
       "resource": null,
+      "action": {
+        "type": "Action",
+        "id": "sun_misc_P"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -79,8 +97,11 @@
     {
       "desc": "Query 6",
       "principal": null,
-      "action": "Action::\"sun_misc_P\"",
       "resource": null,
+      "action": {
+        "type": "Action",
+        "id": "sun_misc_P"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -91,8 +112,11 @@
     {
       "desc": "Query 7",
       "principal": null,
-      "action": "Action::\"sun_misc_P\"",
       "resource": null,
+      "action": {
+        "type": "Action",
+        "id": "sun_misc_P"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [

@@ -484,17 +484,53 @@ pub enum TCComputation {
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 #[cfg(test)]
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
 mod json_parsing_tests {
+
     use super::*;
     use crate::{extensions::Extensions, transitive_closure::TcError};
     use cool_asserts::assert_matches;
+
+    #[test]
+    fn simple_json_parse1() {
+        let v = serde_json::json!(
+            [
+                {
+                    "uid" : { "type" : "A", "id" : "b"},
+                    "attrs" : {},
+                    "parents" : [ { "type" : "A", "id" : "c" }]
+                }
+            ]
+        );
+        let parser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        parser.from_json_value(v).unwrap();
+    }
 
     #[test]
     fn enforces_tc_fail_cycle_almost() {
         let parser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new = serde_json::json!([
-            {"uid":{"__expr":"Test::\"george\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"george\"", "Test::\"janet\""]}]);
+            {
+                "uid" : {
+                    "type" : "Test",
+                    "id" : "george"
+                },
+                "attrs" : { "foo" : 3},
+                "parents" : [
+                    {
+                        "type" : "Test",
+                        "id" : "george"
+                    },
+                    {
+                        "type" : "Test",
+                        "id" : "janet"
+                    }
+                ]
+            }
+        ]);
 
         let stream = parser
             .iter_from_json_value(new)
@@ -523,7 +559,20 @@ mod json_parsing_tests {
         let parser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new = serde_json::json!([
-            {"uid":{"__expr":"Test::\"george\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"henry\""]}]);
+            {
+                "uid" : {
+                    "type" : "Test",
+                    "id" : "george"
+                },
+                "attrs" : { "foo" : 3 },
+                "parents" : [
+                    {
+                        "type" : "Test",
+                        "id" : "henry"
+                    }
+                ]
+            }
+        ]);
 
         let stream = parser
             .iter_from_json_value(new)
@@ -551,7 +600,20 @@ mod json_parsing_tests {
         let parser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new = serde_json::json!([
-            {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"alice\""]}]);
+            {
+                "uid" : {
+                    "type" : "Test",
+                    "id" : "jeff",
+                },
+                "attrs" : { "foo" : 3 },
+                "parents" : [
+                    {
+                        "type" : "Test",
+                        "id" : "alice"
+                    }
+                ]
+            }
+        ]);
 
         let stream = parser
             .iter_from_json_value(new)
@@ -579,7 +641,24 @@ mod json_parsing_tests {
         let parser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new = serde_json::json!([
-            {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"alice\"", "Test::\"bob\""]}]);
+            {
+                "uid" : {
+                    "type" : "Test",
+                    "id" : "jeff"
+                },
+                "attrs" : { "foo" : 3 },
+                "parents" : [
+                    {
+                        "type" : "Test",
+                        "id" : "alice"
+                    },
+                    {
+                        "type" : "Test",
+                        "id" : "bob"
+                    }
+                ]
+            }
+        ]);
 
         let stream = parser
             .iter_from_json_value(new)
@@ -603,7 +682,20 @@ mod json_parsing_tests {
         let parser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new = serde_json::json!([
-            {"uid":{"__expr":"Test::\"george\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"henry\""] }]);
+            {
+                "uid" : {
+                    "type" : "Test",
+                    "id" : "george"
+                },
+                "attrs" : { "foo" : 3},
+                "parents" : [
+                    {
+                        "type" : "Test",
+                        "id" : "henry"
+                    }
+                ]
+            }
+        ]);
 
         let stream = parser
             .iter_from_json_value(new)
@@ -625,7 +717,22 @@ mod json_parsing_tests {
         let parser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new = serde_json::json!([
-            {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"alice\""]}]);
+            {
+                "uid" : {
+                    "type" : "Test",
+                    "id" : "jeff"
+                },
+                "attrs" : {
+                    "foo" : 3
+                },
+                "parents" : [
+                    {
+                        "type" : "Test",
+                        "id" : "alice"
+                    }
+                ]
+            }
+        ]);
 
         let stream = parser
             .iter_from_json_value(new)
@@ -646,7 +753,22 @@ mod json_parsing_tests {
         let parser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new = serde_json::json!([
-            {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : { "foo" : 3 }, "parents" : ["Test::\"susan\""]}]);
+            {
+                "uid" : {
+                    "type" : "Test",
+                    "id" : "jeff"
+                },
+                "attrs" : {
+                    "foo" : 3
+                },
+                "parents" : [
+                    {
+                        "type" : "Test",
+                        "id" : "susan"
+                    }
+                ]
+            }
+        ]);
 
         let stream = parser
             .iter_from_json_value(new)
@@ -669,8 +791,8 @@ mod json_parsing_tests {
         let parser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new = serde_json::json!([
-            {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : {}, "parents" : []},
-            {"uid":{"__expr":"Test::\"jeff\""}, "attrs" : {}, "parents" : []}]);
+            {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : []},
+            {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : []}]);
 
         let stream = parser
             .iter_from_json_value(new)
@@ -693,8 +815,7 @@ mod json_parsing_tests {
     fn add_duplicates_fail1() {
         let parser: EntityJsonParser<'_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        let new =
-            serde_json::json!([{"uid":{"__expr":"Test::\"alice\""}, "attrs" : {}, "parents" : []}]);
+        let new = serde_json::json!([{"uid": { "type" : "Test", "id" : "alice"}, "attrs" : {}, "parents" : []}]);
         let stream = parser
             .iter_from_json_value(new)
             .unwrap()
@@ -712,26 +833,43 @@ mod json_parsing_tests {
         }
     }
 
+    #[test]
+    fn simple_entities_correct() {
+        let parser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        simple_entities(&parser);
+    }
+
     fn simple_entities(parser: &EntityJsonParser<'_>) -> Entities {
         let json = serde_json::json!(
             [
                 {
-                    "uid" : { "__expr" : "Test::\"alice\"" },
+                    "uid" : { "type" : "Test", "id": "alice" },
                     "attrs" : { "bar" : 2},
-                    "parents" : ["Test::\"bob\""]
+                    "parents" : [
+                        {
+                            "type" : "Test",
+                            "id" : "bob"
+                        }
+                    ]
                 },
                 {
-                    "uid" : { "__expr" : "Test::\"janet\"" },
+                    "uid" : { "type" : "Test", "id" : "janet"},
                     "attrs" : { "bar" : 2},
-                    "parents" : ["Test::\"george\""]
+                    "parents" : [
+                        {
+                            "type" : "Test",
+                            "id" : "george"
+                        }
+                    ]
                 },
                 {
-                    "uid" : { "__expr" : "Test::\"bob\"" },
+                    "uid" : { "type" : "Test", "id" : "bob"},
                     "attrs" : {},
                     "parents" : []
                 },
                 {
-                    "uid" : { "__expr" : "Test::\"henry\"" },
+                    "uid" : { "type" : "Test", "id" : "henry"},
                     "attrs" : {},
                     "parents" : []
                 },
@@ -759,21 +897,36 @@ mod json_parsing_tests {
         let json = serde_json::json!(
             [
             {
-                "uid": { "__expr": "test_entity_type::\"alice\"" },
+                "uid" : {
+                    "type" : "test_entity_type",
+                    "id" : "alice"
+                },
                 "attrs": {},
                 "parents": [
-                { "__expr": "test_entity_type::\"jane\"" }
+                {
+                    "type" : "test_entity_type",
+                    "id" : "jane"
+                }
                 ]
             },
             {
-                "uid": { "__expr": "test_entity_type::\"jane\"" },
+                "uid" : {
+                    "type" : "test_entity_type",
+                    "id" : "jane"
+                },
                 "attrs": {},
                 "parents": [
-                { "__expr": "test_entity_type::\"bob\"" }
+                {
+                    "type" : "test_entity_type",
+                    "id" : "bob",
+                }
                 ]
             },
             {
-                "uid": { "__expr": "test_entity_type::\"bob\"" },
+                "uid" : {
+                    "type" : "test_entity_type",
+                    "id" : "bob"
+                },
                 "attrs": {},
                 "parents": []
             }
@@ -799,24 +952,38 @@ mod json_parsing_tests {
     #[test]
     fn basic() {
         // Alice -> Jane -> Bob
-        let json = serde_json::json!(
-            [
+        let json = serde_json::json!([
             {
-                "uid": { "__expr": "test_entity_type::\"alice\"" },
+                "uid" : {
+                    "type" : "test_entity_type",
+                    "id" : "alice"
+                },
                 "attrs": {},
                 "parents": [
-                { "__expr": "test_entity_type::\"jane\"" }
+                    {
+                        "type" : "test_entity_type",
+                        "id" : "jane"
+                    }
                 ]
             },
             {
-                "uid": { "__expr": "test_entity_type::\"jane\"" },
+                "uid" : {
+                    "type" : "test_entity_type",
+                    "id" : "jane"
+                },
                 "attrs": {},
                 "parents": [
-                { "__expr": "test_entity_type::\"bob\"" }
+                    {
+                        "type" : "test_entity_type",
+                        "id" : "bob"
+                    }
                 ]
             },
             {
-                "uid": { "__expr": "test_entity_type::\"bob\"" },
+                "uid" : {
+                    "type" : "test_entity_type",
+                    "id" : "bob"
+                },
                 "attrs": {},
                 "parents": []
             }
@@ -843,34 +1010,201 @@ mod json_parsing_tests {
         )
     }
 
+    #[test]
+    fn no_expr_escapes1() {
+        let json = serde_json::json!(
+        [
+        {
+            "uid" : r#"test_entity_type::"Alice""#,
+            "attrs": {
+                "bacon": "eggs",
+                "pancakes": [1, 2, 3],
+                "waffles": { "key": "value" },
+                "toast" : { "__extn" : { "fn" : "decimal", "arg" : "33.47" }},
+                "12345": { "__entity": { "type": "test_entity_type", "id": "bob" } },
+                "a b c": { "__extn": { "fn": "ip", "arg": "222.222.222.0/24" } }
+            },
+            "parents": [
+                { "__entity": { "type" : "test_entity_type", "id" : "bob"} },
+                { "__entity": { "type": "test_entity_type", "id": "catherine" } }
+            ]
+        },
+        ]);
+        let eparser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let error = eparser.from_json_value(json).err().unwrap().to_string();
+        assert!(
+            error.contains("in uid field of <unknown entity>, expected a literal entity reference"),
+            "{}",
+            error
+        );
+    }
+
+    #[test]
+    fn no_expr_escapes2() {
+        let json = serde_json::json!(
+        [
+        {
+            "uid" : {
+                "__expr" :
+                    r#"test_entity_type::"Alice""#
+            },
+            "attrs": {
+                "bacon": "eggs",
+                "pancakes": [1, 2, 3],
+                "waffles": { "key": "value" },
+                "toast" : { "__extn" : { "fn" : "decimal", "arg" : "33.47" }},
+                "12345": { "__entity": { "type": "test_entity_type", "id": "bob" } },
+                "a b c": { "__extn": { "fn": "ip", "arg": "222.222.222.0/24" } }
+            },
+            "parents": [
+                { "__entity": { "type" : "test_entity_type", "id" : "bob"} },
+                { "__entity": { "type": "test_entity_type", "id": "catherine" } }
+            ]
+        }
+        ]);
+        let eparser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let error = eparser.from_json_value(json).err().unwrap().to_string();
+        assert!(
+            error.contains("in uid field of <unknown entity>, invalid escape. The `__expr` escape is no longer supported"),
+            "{}",
+            error
+        );
+    }
+
+    #[test]
+    fn no_expr_escapes3() {
+        let json = serde_json::json!(
+        [
+        {
+            "uid" : {
+                "type" : "test_entity_type",
+                "id" : "Alice"
+            },
+            "attrs": {
+                "bacon": "eggs",
+                "pancakes": { "__expr" : "[1,2,3]" },
+                "waffles": { "key": "value" },
+                "toast" : { "__extn" : { "fn" : "decimal", "arg" : "33.47" }},
+                "12345": { "__entity": { "type": "test_entity_type", "id": "bob" } },
+                "a b c": { "__extn": { "fn": "ip", "arg": "222.222.222.0/24" } }
+            },
+            "parents": [
+                { "__entity": { "type" : "test_entity_type", "id" : "bob"} },
+                { "__entity": { "type": "test_entity_type", "id": "catherine" } }
+            ]
+        }
+        ]);
+        let eparser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let error = eparser.from_json_value(json).err().unwrap().to_string();
+        assert!(
+            error.contains("`__expr` escape is no longer supported"),
+            "Actual error message was: {}",
+            error
+        );
+    }
+
+    #[test]
+    fn no_expr_escapes4() {
+        let json = serde_json::json!(
+        [
+        {
+            "uid" : {
+                "type" : "test_entity_type",
+                "id" : "Alice"
+            },
+            "attrs": {
+                "bacon": "eggs",
+                "waffles": { "key": "value" },
+                "12345": { "__entity": { "type": "test_entity_type", "id": "bob" } },
+                "a b c": { "__extn": { "fn": "ip", "arg": "222.222.222.0/24" } }
+            },
+            "parents": [
+                { "__expr": "test_entity_type::\"Alice\"" },
+                { "__entity": { "type": "test_entity_type", "id": "catherine" } }
+            ]
+        }
+        ]);
+        let eparser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let error = eparser.from_json_value(json).err().unwrap().to_string();
+        assert!(
+            error.contains(r#"in parents field of `test_entity_type::"Alice"`, invalid escape. The `__expr` escape is no longer supported"#),
+            "Actual error message was: {}",
+            error
+        );
+    }
+
+    #[test]
+    fn no_expr_escapes5() {
+        let json = serde_json::json!(
+        [
+        {
+            "uid" : {
+                "type" : "test_entity_type",
+                "id" : "Alice"
+            },
+            "attrs": {
+                "bacon": "eggs",
+                "waffles": { "key": "value" },
+                "12345": { "__entity": { "type": "test_entity_type", "id": "bob" } },
+                "a b c": { "__extn": { "fn": "ip", "arg": "222.222.222.0/24" } }
+            },
+            "parents": [
+                "test_entity_type::\"bob\"",
+                { "__entity": { "type": "test_entity_type", "id": "catherine" } }
+            ]
+        }
+        ]);
+        let eparser: EntityJsonParser<'_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let error = eparser.from_json_value(json).err().unwrap().to_string();
+        assert!(
+            error.contains(r#"in parents field of `test_entity_type::"Alice"`, expected a literal entity reference"#),
+            "Actual error message was: {}",
+            error
+        );
+    }
+
     #[cfg(feature = "ipaddr")]
-    /// this one uses `__expr`, `__entity`, and `__extn` escapes, in various positions
+    /// this one uses `__entity` and `__extn` escapes, in various positions
     #[test]
     fn more_escapes() {
         let json = serde_json::json!(
             [
             {
-                "uid": { "__entity": { "type": "test_entity_type", "id": "alice" } },
+                "uid" : {
+                    "type" : "test_entity_type",
+                    "id" : "alice"
+                },
                 "attrs": {
                     "bacon": "eggs",
                     "pancakes": [1, 2, 3],
                     "waffles": { "key": "value" },
-                    "toast": { "__expr": "decimal(\"33.47\")" },
+                    "toast" : { "__extn" : { "fn" : "decimal", "arg" : "33.47" }},
                     "12345": { "__entity": { "type": "test_entity_type", "id": "bob" } },
                     "a b c": { "__extn": { "fn": "ip", "arg": "222.222.222.0/24" } }
                 },
                 "parents": [
-                    { "__expr": "test_entity_type::\"bob\"" },
+                    { "__entity": { "type" : "test_entity_type", "id" : "bob"} },
                     { "__entity": { "type": "test_entity_type", "id": "catherine" } }
                 ]
             },
             {
-                "uid": { "__expr": "test_entity_type::\"bob\"" },
+                "uid" : {
+                    "type" : "test_entity_type",
+                    "id" : "bob"
+                },
                 "attrs": {},
                 "parents": []
             },
             {
-                "uid": { "__expr": "test_entity_type::\"catherine\"" },
+                "uid" : {
+                    "type" : "test_entity_type",
+                    "id" : "catherine"
+                },
                 "attrs": {},
                 "parents": []
             }
@@ -919,17 +1253,16 @@ mod json_parsing_tests {
 
     #[test]
     fn implicit_and_explicit_escapes() {
-        // this one tests the implicit and explicit forms of `__expr` and `__entity` escapes
+        // this one tests the implicit and explicit forms of `__entity` escapes
         // for the `uid` and `parents` fields
         let json = serde_json::json!(
             [
             {
-                "uid": { "__expr": "test_entity_type::\"alice\"" },
+                "uid": { "type" : "test_entity_type", "id" : "alice" },
                 "attrs": {},
                 "parents": [
-                    { "__expr": "test_entity_type::\"bob\"" },
+                    { "type" : "test_entity_type", "id" : "bob" },
                     { "__entity": { "type": "test_entity_type", "id": "charles" } },
-                    "test_entity_type::\"darwin\"",
                     { "type": "test_entity_type", "id": "elaine" }
                 ]
             },
@@ -939,9 +1272,12 @@ mod json_parsing_tests {
                 "parents": []
             },
             {
-                "uid": "test_entity_type::\"charles\"",
-                "attrs": {},
-                "parents": []
+                "uid" : {
+                    "type" : "test_entity_type",
+                    "id" : "charles"
+                },
+                "attrs" : {},
+                "parents" : []
             },
             {
                 "uid": { "type": "test_entity_type", "id": "darwin" },
@@ -951,7 +1287,12 @@ mod json_parsing_tests {
             {
                 "uid": { "type": "test_entity_type", "id": "elaine" },
                 "attrs": {},
-                "parents": [ "test_entity_type::\"darwin\"" ]
+                "parents" : [
+                    {
+                        "type" : "test_entity_type",
+                        "id" : "darwin"
+                    }
+                ]
             }
             ]
         );
@@ -997,6 +1338,7 @@ mod json_parsing_tests {
         let err = eparser
             .from_json_value(json)
             .expect_err("should be an invalid uid field");
+
         match err {
             EntitiesError::Deserialization(err) => {
                 assert!(
@@ -1024,7 +1366,7 @@ mod json_parsing_tests {
         match err {
             EntitiesError::Deserialization(err) => assert!(
                 err.to_string()
-                    .contains(r#"expected a literal entity reference, but got `"hello"`"#),
+                    .contains(r#"expected a literal entity reference, but got `"\"hello\""`"#),
                 "actual error message was {err}"
             ),
             _ => panic!("expected deserialization error, got a different error: {err}"),
@@ -1043,9 +1385,13 @@ mod json_parsing_tests {
             .from_json_value(json)
             .expect_err("should be an invalid uid field");
         match err {
-            EntitiesError::Deserialization(err) => assert!(err
-                .to_string()
-                .contains("did not match any variant of untagged enum")),
+            EntitiesError::Deserialization(err) => assert!(
+                err.to_string().contains(
+                    r#"expected a literal entity reference, but got `{"spam":"eggs","type":"foo"}`"#
+                ),
+                "Actual error message was: {}",
+                err
+            ),
             _ => panic!("expected deserialization error, got a different error: {err}"),
         }
 
@@ -1084,9 +1430,12 @@ mod json_parsing_tests {
             .from_json_value(json)
             .expect_err("should be an invalid parents field");
         match err {
-            EntitiesError::Deserialization(err) => assert!(err
-                .to_string()
-                .contains("did not match any variant of untagged enum")),
+            EntitiesError::Deserialization(err) => assert!(
+                err.to_string()
+                    .contains(r#"in parents field of `foo::"bar"`, expected a literal entity reference, but got `"foo::\"help\""`"#),
+                "actual error was: {}",
+                err
+            ),
             _ => panic!("expected deserialization error, got a different error: {err}"),
         }
     }
@@ -1304,6 +1653,8 @@ mod json_parsing_tests {
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 #[cfg(test)]
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
 mod entities_tests {
     use super::*;
 
@@ -1378,6 +1729,8 @@ mod entities_tests {
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 #[cfg(test)]
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
 mod schema_based_parsing_tests {
     use super::*;
     use crate::extensions::Extensions;

@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "a::\"afny\\u{2}\\u{2}\\u{2}\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"afny\\u{2}\\u{2}\\u{2}\"",
+      "principal": {
+        "type": "a",
+        "id": "afny\u0002\u0002\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": "afny\u0002\u0002\u0002"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "r": false
       },
@@ -20,9 +29,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "a::\"afny\\u{2}\\u{2}\\u{2}\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"afny\\u{2}\\u{2}\\u{2}\"",
+      "principal": {
+        "type": "a",
+        "id": "afny\u0002\u0002\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": "afny\u0002\u0002\u0002"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "r": false
       },
@@ -34,9 +52,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "a::\"afny\\u{2}\\u{2}\\u{2}\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"afny\\u{2}\\u{2}\\u{2}\"",
+      "principal": {
+        "type": "a",
+        "id": "afny\u0002\u0002\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": "afny\u0002\u0002\u0002"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "r": false
       },
@@ -48,9 +75,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "a::\"afny\\u{2}\\u{2}\\u{2}\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"afny\\u{2}\\u{2}\\u{2}\"",
+      "principal": {
+        "type": "a",
+        "id": "afny\u0002\u0002\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": "afny\u0002\u0002\u0002"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "r": false
       },
@@ -62,9 +98,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "a::\"afny\\u{2}\\u{2}\\u{2}\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"afny\\u{2}\\u{2}\\u{2}\"",
+      "principal": {
+        "type": "a",
+        "id": "afny\u0002\u0002\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": "afny\u0002\u0002\u0002"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "r": false
       },
@@ -76,9 +121,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "a::\"afny\\u{2}\\u{2}\\u{2}\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"afny\\u{2}\\u{2}\\u{2}\"",
+      "principal": {
+        "type": "a",
+        "id": "afny\u0002\u0002\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": "afny\u0002\u0002\u0002"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "r": false
       },
@@ -90,9 +144,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "a::\"afny\\u{2}\\u{2}\\u{2}\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"afny\\u{2}\\u{2}\\u{2}\"",
+      "principal": {
+        "type": "a",
+        "id": "afny\u0002\u0002\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": "afny\u0002\u0002\u0002"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "r": false
       },
@@ -104,9 +167,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "a::\"afny\\u{2}\\u{2}\\u{2}\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"afny\\u{2}\\u{2}\\u{2}\"",
+      "principal": {
+        "type": "a",
+        "id": "afny\u0002\u0002\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": "afny\u0002\u0002\u0002"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "r": false
       },

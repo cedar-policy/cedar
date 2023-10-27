@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "zxxjjjjjj::Gxtxxxx9x::a::\"\"",
-      "action": "zxxjjjjjj::Gxtxxxx9x::Action::\"action\"",
-      "resource": "zxxjjjjjj::Gxtxxxx9x::a::\"\"",
+      "principal": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::a",
+        "id": ""
+      },
+      "action": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::Action",
+        "id": "action"
+      },
       "context": {
         "Wxt70000000000": ""
       },
@@ -20,9 +29,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "zxxjjjjjj::Gxtxxxx9x::a::\"\"",
-      "action": "zxxjjjjjj::Gxtxxxx9x::Action::\"action\"",
-      "resource": "zxxjjjjjj::Gxtxxxx9x::a::\"\"",
+      "principal": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::a",
+        "id": ""
+      },
+      "action": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::Action",
+        "id": "action"
+      },
       "context": {
         "Wxt70000000000": ""
       },
@@ -34,9 +52,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "zxxjjjjjj::Gxtxxxx9x::a::\"\"",
-      "action": "zxxjjjjjj::Gxtxxxx9x::Action::\"action\"",
-      "resource": "zxxjjjjjj::Gxtxxxx9x::a::\"\"",
+      "principal": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::a",
+        "id": ""
+      },
+      "action": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::Action",
+        "id": "action"
+      },
       "context": {
         "Wxt70000000000": ""
       },
@@ -48,9 +75,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "zxxjjjjjj::Gxtxxxx9x::a::\"\"",
-      "action": "zxxjjjjjj::Gxtxxxx9x::Action::\"action\"",
-      "resource": "zxxjjjjjj::Gxtxxxx9x::a::\"\"",
+      "principal": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::a",
+        "id": ""
+      },
+      "action": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::Action",
+        "id": "action"
+      },
       "context": {
         "Wxt70000000000": ""
       },
@@ -62,9 +98,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "zxxjjjjjj::Gxtxxxx9x::a::\"\"",
-      "action": "zxxjjjjjj::Gxtxxxx9x::Action::\"action\"",
-      "resource": "zxxjjjjjj::Gxtxxxx9x::a::\"\"",
+      "principal": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::a",
+        "id": ""
+      },
+      "action": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::Action",
+        "id": "action"
+      },
       "context": {
         "Wxt70000000000": ""
       },
@@ -76,9 +121,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "zxxjjjjjj::Gxtxxxx9x::a::\"\"",
-      "action": "zxxjjjjjj::Gxtxxxx9x::Action::\"action\"",
-      "resource": "zxxjjjjjj::Gxtxxxx9x::a::\"\"",
+      "principal": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::a",
+        "id": ""
+      },
+      "action": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::Action",
+        "id": "action"
+      },
       "context": {
         "Wxt70000000000": ""
       },
@@ -90,9 +144,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "zxxjjjjjj::Gxtxxxx9x::a::\"\"",
-      "action": "zxxjjjjjj::Gxtxxxx9x::Action::\"action\"",
-      "resource": "zxxjjjjjj::Gxtxxxx9x::a::\"\"",
+      "principal": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::a",
+        "id": ""
+      },
+      "action": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::Action",
+        "id": "action"
+      },
       "context": {
         "Wxt70000000000": ""
       },
@@ -104,9 +167,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "zxxjjjjjj::Gxtxxxx9x::a::\"\"",
-      "action": "zxxjjjjjj::Gxtxxxx9x::Action::\"action\"",
-      "resource": "zxxjjjjjj::Gxtxxxx9x::a::\"\"",
+      "principal": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::a",
+        "id": ""
+      },
+      "action": {
+        "type": "zxxjjjjjj::Gxtxxxx9x::Action",
+        "id": "action"
+      },
       "context": {
         "Wxt70000000000": ""
       },

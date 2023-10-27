@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "R::AJHH::A::\"\"",
-      "action": "R::AJHH::Action::\"\"",
-      "resource": "R::AJHH::A::\"\"",
+      "principal": {
+        "type": "R::AJHH::A",
+        "id": ""
+      },
+      "resource": {
+        "type": "R::AJHH::A",
+        "id": ""
+      },
+      "action": {
+        "type": "R::AJHH::Action",
+        "id": ""
+      },
       "context": {
         "xmljjj000": ""
       },
@@ -20,9 +29,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "R::AJHH::A::\"\"",
-      "action": "R::AJHH::Action::\"\"",
-      "resource": "R::AJHH::A::\"\"",
+      "principal": {
+        "type": "R::AJHH::A",
+        "id": ""
+      },
+      "resource": {
+        "type": "R::AJHH::A",
+        "id": ""
+      },
+      "action": {
+        "type": "R::AJHH::Action",
+        "id": ""
+      },
       "context": {
         "xmljjj000": ""
       },
@@ -34,9 +52,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "R::AJHH::A::\"\"",
-      "action": "R::AJHH::Action::\"\"",
-      "resource": "R::AJHH::A::\"\"",
+      "principal": {
+        "type": "R::AJHH::A",
+        "id": ""
+      },
+      "resource": {
+        "type": "R::AJHH::A",
+        "id": ""
+      },
+      "action": {
+        "type": "R::AJHH::Action",
+        "id": ""
+      },
       "context": {
         "xmljjj000": ""
       },
@@ -48,9 +75,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "R::AJHH::A::\"\"",
-      "action": "R::AJHH::Action::\"\"",
-      "resource": "R::AJHH::A::\"\"",
+      "principal": {
+        "type": "R::AJHH::A",
+        "id": ""
+      },
+      "resource": {
+        "type": "R::AJHH::A",
+        "id": ""
+      },
+      "action": {
+        "type": "R::AJHH::Action",
+        "id": ""
+      },
       "context": {
         "xmljjj000": ""
       },
@@ -62,9 +98,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "R::AJHH::A::\"\"",
-      "action": "R::AJHH::Action::\"\"",
-      "resource": "R::AJHH::A::\"\"",
+      "principal": {
+        "type": "R::AJHH::A",
+        "id": ""
+      },
+      "resource": {
+        "type": "R::AJHH::A",
+        "id": ""
+      },
+      "action": {
+        "type": "R::AJHH::Action",
+        "id": ""
+      },
       "context": {
         "xmljjj000": ""
       },
@@ -76,9 +121,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "R::AJHH::A::\"\"",
-      "action": "R::AJHH::Action::\"\"",
-      "resource": "R::AJHH::A::\"\"",
+      "principal": {
+        "type": "R::AJHH::A",
+        "id": ""
+      },
+      "resource": {
+        "type": "R::AJHH::A",
+        "id": ""
+      },
+      "action": {
+        "type": "R::AJHH::Action",
+        "id": ""
+      },
       "context": {
         "xmljjj000": ""
       },
@@ -90,9 +144,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "R::AJHH::A::\"\"",
-      "action": "R::AJHH::Action::\"\"",
-      "resource": "R::AJHH::A::\"\"",
+      "principal": {
+        "type": "R::AJHH::A",
+        "id": ""
+      },
+      "resource": {
+        "type": "R::AJHH::A",
+        "id": ""
+      },
+      "action": {
+        "type": "R::AJHH::Action",
+        "id": ""
+      },
       "context": {
         "xmljjj000": ""
       },
@@ -104,9 +167,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "R::AJHH::A::\"\"",
-      "action": "R::AJHH::Action::\"\"",
-      "resource": "R::AJHH::A::\"\"",
+      "principal": {
+        "type": "R::AJHH::A",
+        "id": ""
+      },
+      "resource": {
+        "type": "R::AJHH::A",
+        "id": ""
+      },
+      "action": {
+        "type": "R::AJHH::Action",
+        "id": ""
+      },
       "context": {
         "xmljjj000": ""
       },

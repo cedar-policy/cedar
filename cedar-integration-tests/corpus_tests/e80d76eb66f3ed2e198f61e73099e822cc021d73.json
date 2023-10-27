@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "G::lm7::r::a::\"\"",
-      "action": "G::lm7::r::Action::\"action\"",
-      "resource": "G::lm7::r::a::\"\"",
+      "principal": {
+        "type": "G::lm7::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "G::lm7::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "G::lm7::r::Action",
+        "id": "action"
+      },
       "context": {
         "KjLjjjjxx": false
       },
@@ -20,9 +29,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "G::lm7::r::a::\"\"",
-      "action": "G::lm7::r::Action::\"action\"",
-      "resource": "G::lm7::r::a::\"\"",
+      "principal": {
+        "type": "G::lm7::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "G::lm7::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "G::lm7::r::Action",
+        "id": "action"
+      },
       "context": {
         "KjLjjjjxx": false
       },
@@ -34,9 +52,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "G::lm7::r::a::\"\"",
-      "action": "G::lm7::r::Action::\"action\"",
-      "resource": "G::lm7::r::a::\"\"",
+      "principal": {
+        "type": "G::lm7::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "G::lm7::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "G::lm7::r::Action",
+        "id": "action"
+      },
       "context": {
         "KjLjjjjxx": false
       },
@@ -48,9 +75,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "G::lm7::r::a::\"\"",
-      "action": "G::lm7::r::Action::\"action\"",
-      "resource": "G::lm7::r::a::\"\"",
+      "principal": {
+        "type": "G::lm7::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "G::lm7::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "G::lm7::r::Action",
+        "id": "action"
+      },
       "context": {
         "KjLjjjjxx": false
       },
@@ -62,9 +98,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "G::lm7::r::a::\"\"",
-      "action": "G::lm7::r::Action::\"action\"",
-      "resource": "G::lm7::r::a::\"\"",
+      "principal": {
+        "type": "G::lm7::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "G::lm7::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "G::lm7::r::Action",
+        "id": "action"
+      },
       "context": {
         "KjLjjjjxx": false
       },
@@ -76,9 +121,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "G::lm7::r::a::\"\"",
-      "action": "G::lm7::r::Action::\"action\"",
-      "resource": "G::lm7::r::a::\"\"",
+      "principal": {
+        "type": "G::lm7::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "G::lm7::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "G::lm7::r::Action",
+        "id": "action"
+      },
       "context": {
         "KjLjjjjxx": false
       },
@@ -90,9 +144,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "G::lm7::r::a::\"\"",
-      "action": "G::lm7::r::Action::\"action\"",
-      "resource": "G::lm7::r::a::\"\"",
+      "principal": {
+        "type": "G::lm7::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "G::lm7::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "G::lm7::r::Action",
+        "id": "action"
+      },
       "context": {
         "KjLjjjjxx": false
       },
@@ -104,9 +167,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "G::lm7::r::a::\"\"",
-      "action": "G::lm7::r::Action::\"action\"",
-      "resource": "G::lm7::r::a::\"\"",
+      "principal": {
+        "type": "G::lm7::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "G::lm7::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "G::lm7::r::Action",
+        "id": "action"
+      },
       "context": {
         "KjLjjjjxx": false
       },
