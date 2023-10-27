@@ -102,6 +102,10 @@ fn run_link_test(
     assert_eq!(output, expected);
 }
 
+// PANIC SAFETY: this is all test code
+#[allow(clippy::expect_used)]
+// PANIC SAFETY: this is all test code
+#[allow(clippy::unwrap_used)]
 fn run_format_test(policies_file: &str) {
     let format_cmd = assert_cmd::Command::cargo_bin("cedar")
         .expect("bin exists")

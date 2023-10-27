@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "A::a::\"\"",
-      "action": "A::Action::\"action\"",
-      "resource": "A::a::\"\"",
+      "principal": {
+        "type": "A::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "A::a",
+        "id": ""
+      },
+      "action": {
+        "type": "A::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -18,9 +27,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "A::a::\"j\"",
-      "action": "A::Action::\"action\"",
-      "resource": "A::a::\"j\"",
+      "principal": {
+        "type": "A::a",
+        "id": "j"
+      },
+      "resource": {
+        "type": "A::a",
+        "id": "j"
+      },
+      "action": {
+        "type": "A::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -28,9 +46,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "A::a::\"\"",
-      "action": "A::Action::\"action\"",
-      "resource": "A::a::\"\"",
+      "principal": {
+        "type": "A::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "A::a",
+        "id": ""
+      },
+      "action": {
+        "type": "A::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -40,9 +67,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "A::a::\"\"",
-      "action": "A::Action::\"action\"",
-      "resource": "A::a::\"\"",
+      "principal": {
+        "type": "A::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "A::a",
+        "id": ""
+      },
+      "action": {
+        "type": "A::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -52,9 +88,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "A::a::\"\"",
-      "action": "A::Action::\"action\"",
-      "resource": "A::a::\"\"",
+      "principal": {
+        "type": "A::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "A::a",
+        "id": ""
+      },
+      "action": {
+        "type": "A::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -64,9 +109,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "A::a::\"\"",
-      "action": "A::Action::\"action\"",
-      "resource": "A::a::\"\"",
+      "principal": {
+        "type": "A::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "A::a",
+        "id": ""
+      },
+      "action": {
+        "type": "A::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -76,9 +130,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "A::a::\"\"",
-      "action": "A::Action::\"action\"",
-      "resource": "A::a::\"\"",
+      "principal": {
+        "type": "A::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "A::a",
+        "id": ""
+      },
+      "action": {
+        "type": "A::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -88,9 +151,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "A::a::\"\"",
-      "action": "A::Action::\"action\"",
-      "resource": "A::a::\"\"",
+      "principal": {
+        "type": "A::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "A::a",
+        "id": ""
+      },
+      "action": {
+        "type": "A::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [

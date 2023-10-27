@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "v::xd::x::v::a::\"f~\\0ff\\0\"",
-      "action": "v::xd::x::v::Action::\"action\"",
-      "resource": "v::xd::x::v::a::\"f~\\0ff\\0\"",
+      "principal": {
+        "type": "v::xd::x::v::a",
+        "id": "f~\u0000ff\u0000"
+      },
+      "resource": {
+        "type": "v::xd::x::v::a",
+        "id": "f~\u0000ff\u0000"
+      },
+      "action": {
+        "type": "v::xd::x::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -18,9 +27,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "v::xd::x::v::a::\"f~\\0ff\\0\"",
-      "action": "v::xd::x::v::Action::\"action\"",
-      "resource": "v::xd::x::v::a::\"f~\\0ff\\0\"",
+      "principal": {
+        "type": "v::xd::x::v::a",
+        "id": "f~\u0000ff\u0000"
+      },
+      "resource": {
+        "type": "v::xd::x::v::a",
+        "id": "f~\u0000ff\u0000"
+      },
+      "action": {
+        "type": "v::xd::x::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -30,9 +48,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "v::xd::x::v::a::\"f~\\0ff\\0\"",
-      "action": "v::xd::x::v::Action::\"action\"",
-      "resource": "v::xd::x::v::a::\"f~\\0ff\\0\"",
+      "principal": {
+        "type": "v::xd::x::v::a",
+        "id": "f~\u0000ff\u0000"
+      },
+      "resource": {
+        "type": "v::xd::x::v::a",
+        "id": "f~\u0000ff\u0000"
+      },
+      "action": {
+        "type": "v::xd::x::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -42,9 +69,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "v::xd::x::v::a::\"f~\\0ff\\0\"",
-      "action": "v::xd::x::v::Action::\"action\"",
-      "resource": "v::xd::x::v::a::\"f~\\0ff\\0\"",
+      "principal": {
+        "type": "v::xd::x::v::a",
+        "id": "f~\u0000ff\u0000"
+      },
+      "resource": {
+        "type": "v::xd::x::v::a",
+        "id": "f~\u0000ff\u0000"
+      },
+      "action": {
+        "type": "v::xd::x::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -54,9 +90,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "v::xd::x::v::a::\"f~\\0ff\\0\"",
-      "action": "v::xd::x::v::Action::\"action\"",
-      "resource": "v::xd::x::v::a::\"f~\\0ff\\0\"",
+      "principal": {
+        "type": "v::xd::x::v::a",
+        "id": "f~\u0000ff\u0000"
+      },
+      "resource": {
+        "type": "v::xd::x::v::a",
+        "id": "f~\u0000ff\u0000"
+      },
+      "action": {
+        "type": "v::xd::x::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -66,9 +111,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "v::xd::x::v::a::\"f~\\0ff\\0\"",
-      "action": "v::xd::x::v::Action::\"action\"",
-      "resource": "v::xd::x::v::a::\"f~\\0ff\\0\"",
+      "principal": {
+        "type": "v::xd::x::v::a",
+        "id": "f~\u0000ff\u0000"
+      },
+      "resource": {
+        "type": "v::xd::x::v::a",
+        "id": "f~\u0000ff\u0000"
+      },
+      "action": {
+        "type": "v::xd::x::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -78,9 +132,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "v::xd::x::v::a::\"f~\\0ff\\0\"",
-      "action": "v::xd::x::v::Action::\"action\"",
-      "resource": "v::xd::x::v::a::\"f~\\0ff\\0\"",
+      "principal": {
+        "type": "v::xd::x::v::a",
+        "id": "f~\u0000ff\u0000"
+      },
+      "resource": {
+        "type": "v::xd::x::v::a",
+        "id": "f~\u0000ff\u0000"
+      },
+      "action": {
+        "type": "v::xd::x::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -90,9 +153,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "v::xd::x::v::a::\"f~\\0ff\\0\"",
-      "action": "v::xd::x::v::Action::\"action\"",
-      "resource": "v::xd::x::v::a::\"f~\\0ff\\0\"",
+      "principal": {
+        "type": "v::xd::x::v::a",
+        "id": "f~\u0000ff\u0000"
+      },
+      "resource": {
+        "type": "v::xd::x::v::a",
+        "id": "f~\u0000ff\u0000"
+      },
+      "action": {
+        "type": "v::xd::x::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [

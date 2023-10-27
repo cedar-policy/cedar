@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "F1200sww::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "F1200sww::\"\"",
+      "principal": {
+        "type": "F1200sww",
+        "id": ""
+      },
+      "resource": {
+        "type": "F1200sww",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "s0000": ""
       },
@@ -20,9 +29,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "F1200sww::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "F1200sww::\"\"",
+      "principal": {
+        "type": "F1200sww",
+        "id": ""
+      },
+      "resource": {
+        "type": "F1200sww",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "s0000": ""
       },
@@ -34,9 +52,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "F1200sww::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "F1200sww::\"\"",
+      "principal": {
+        "type": "F1200sww",
+        "id": ""
+      },
+      "resource": {
+        "type": "F1200sww",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "s0000": ""
       },
@@ -48,9 +75,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "F1200sww::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "F1200sww::\"\"",
+      "principal": {
+        "type": "F1200sww",
+        "id": ""
+      },
+      "resource": {
+        "type": "F1200sww",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "s0000": ""
       },
@@ -62,9 +98,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "F1200sww::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "F1200sww::\"\"",
+      "principal": {
+        "type": "F1200sww",
+        "id": ""
+      },
+      "resource": {
+        "type": "F1200sww",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "s0000": ""
       },
@@ -76,9 +121,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "F1200sww::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "F1200sww::\"\"",
+      "principal": {
+        "type": "F1200sww",
+        "id": ""
+      },
+      "resource": {
+        "type": "F1200sww",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "s0000": ""
       },
@@ -90,9 +144,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "F1200sww::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "F1200sww::\"\"",
+      "principal": {
+        "type": "F1200sww",
+        "id": ""
+      },
+      "resource": {
+        "type": "F1200sww",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "s0000": ""
       },
@@ -104,9 +167,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "F1200sww::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "F1200sww::\"\"",
+      "principal": {
+        "type": "F1200sww",
+        "id": ""
+      },
+      "resource": {
+        "type": "F1200sww",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "s0000": ""
       },

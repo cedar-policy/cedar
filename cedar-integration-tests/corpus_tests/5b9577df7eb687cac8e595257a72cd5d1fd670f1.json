@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "a::\"RRRR\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"RRRR\"",
+      "principal": {
+        "type": "a",
+        "id": "RRRR"
+      },
+      "resource": {
+        "type": "a",
+        "id": "RRRR"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -16,9 +25,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "a::\"RRRR\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"RRRR\"",
+      "principal": {
+        "type": "a",
+        "id": "RRRR"
+      },
+      "resource": {
+        "type": "a",
+        "id": "RRRR"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -26,9 +44,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "a::\"RRRR\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"RRRR\"",
+      "principal": {
+        "type": "a",
+        "id": "RRRR"
+      },
+      "resource": {
+        "type": "a",
+        "id": "RRRR"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -36,9 +63,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "a::\"RRRR\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"RRRR\"",
+      "principal": {
+        "type": "a",
+        "id": "RRRR"
+      },
+      "resource": {
+        "type": "a",
+        "id": "RRRR"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -46,9 +82,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "a::\"RRRR\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"RRRR\"",
+      "principal": {
+        "type": "a",
+        "id": "RRRR"
+      },
+      "resource": {
+        "type": "a",
+        "id": "RRRR"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -56,9 +101,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "a::\"RRRR\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"RRRR\"",
+      "principal": {
+        "type": "a",
+        "id": "RRRR"
+      },
+      "resource": {
+        "type": "a",
+        "id": "RRRR"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -66,9 +120,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "a::\"RRRR\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"RRRR\"",
+      "principal": {
+        "type": "a",
+        "id": "RRRR"
+      },
+      "resource": {
+        "type": "a",
+        "id": "RRRR"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -76,9 +139,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "a::\"RRRR\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"RRRR\"",
+      "principal": {
+        "type": "a",
+        "id": "RRRR"
+      },
+      "resource": {
+        "type": "a",
+        "id": "RRRR"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],

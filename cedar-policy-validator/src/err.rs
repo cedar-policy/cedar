@@ -97,6 +97,8 @@ pub enum SchemaError {
     /// This error variant should only be used when `PermitAttributes` is enabled.
     #[error("action `{0}` has an attribute with unsupported JSON representation: {1}")]
     UnsupportedActionAttribute(EntityUID, String),
+    #[error("uses the `__expr` escape, which is no longer supported")]
+    ExprEscapeUsed,
 }
 
 impl From<transitive_closure::TcError<EntityUID>> for SchemaError {

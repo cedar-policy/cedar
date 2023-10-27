@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "a::\"ff\\0\\0\\0&\\u{3}\\0\\0\\0\\0r\\0\\0\\u{3}\\0ff\\0\\0&(\\0R\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"ff\\0\\0\\0&\\u{3}\\0\\0\\0\\0r\\0\\0\\u{3}\\0ff\\0\\0&(\\0R\"",
+      "principal": {
+        "type": "a",
+        "id": "ff\u0000\u0000\u0000&\u0003\u0000\u0000\u0000\u0000r\u0000\u0000\u0003\u0000ff\u0000\u0000&(\u0000R"
+      },
+      "resource": {
+        "type": "a",
+        "id": "ff\u0000\u0000\u0000&\u0003\u0000\u0000\u0000\u0000r\u0000\u0000\u0003\u0000ff\u0000\u0000&(\u0000R"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -18,9 +27,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "a::\"ff\\0\\0\\0&\\u{3}\\0\\0\\0\\0r\\0\\0\\u{3}\\0ff\\0\\0&(\\0R\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"ff\\0\\0\\0&\\u{3}\\0\\0\\0\\0r\\0\\0\\u{3}\\0ff\\0\\0&(\\0R\"",
+      "principal": {
+        "type": "a",
+        "id": "ff\u0000\u0000\u0000&\u0003\u0000\u0000\u0000\u0000r\u0000\u0000\u0003\u0000ff\u0000\u0000&(\u0000R"
+      },
+      "resource": {
+        "type": "a",
+        "id": "ff\u0000\u0000\u0000&\u0003\u0000\u0000\u0000\u0000r\u0000\u0000\u0003\u0000ff\u0000\u0000&(\u0000R"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -30,9 +48,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "a::\"ff\\0\\0\\0&\\u{3}\\0\\0\\0\\0r\\0\\0\\u{3}\\0ff\\0\\0&(\\0R\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"ff\\0\\0\\0&\\u{3}\\0\\0\\0\\0r\\0\\0\\u{3}\\0ff\\0\\0&(\\0R\"",
+      "principal": {
+        "type": "a",
+        "id": "ff\u0000\u0000\u0000&\u0003\u0000\u0000\u0000\u0000r\u0000\u0000\u0003\u0000ff\u0000\u0000&(\u0000R"
+      },
+      "resource": {
+        "type": "a",
+        "id": "ff\u0000\u0000\u0000&\u0003\u0000\u0000\u0000\u0000r\u0000\u0000\u0003\u0000ff\u0000\u0000&(\u0000R"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -42,9 +69,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "a::\"ff\\0\\0\\0&\\u{3}\\0\\0\\0\\0r\\0\\0\\u{3}\\0ff\\0\\0&(\\0R\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"ff\\0\\0\\0&\\u{3}\\0\\0\\0\\0r\\0\\0\\u{3}\\0ff\\0\\0&(\\0R\"",
+      "principal": {
+        "type": "a",
+        "id": "ff\u0000\u0000\u0000&\u0003\u0000\u0000\u0000\u0000r\u0000\u0000\u0003\u0000ff\u0000\u0000&(\u0000R"
+      },
+      "resource": {
+        "type": "a",
+        "id": "ff\u0000\u0000\u0000&\u0003\u0000\u0000\u0000\u0000r\u0000\u0000\u0003\u0000ff\u0000\u0000&(\u0000R"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -54,9 +90,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "a::\"ff\\0\\0\\0&\\u{3}\\0\\0\\0\\0r\\0\\0\\u{3}\\0ff\\0\\0&(\\0R\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"ff\\0\\0\\0&\\u{3}\\0\\0\\0\\0r\\0\\0\\u{3}\\0ff\\0\\0&(\\0R\"",
+      "principal": {
+        "type": "a",
+        "id": "ff\u0000\u0000\u0000&\u0003\u0000\u0000\u0000\u0000r\u0000\u0000\u0003\u0000ff\u0000\u0000&(\u0000R"
+      },
+      "resource": {
+        "type": "a",
+        "id": "ff\u0000\u0000\u0000&\u0003\u0000\u0000\u0000\u0000r\u0000\u0000\u0003\u0000ff\u0000\u0000&(\u0000R"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -66,9 +111,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "a::\"ff\\0\\0\\0&\\u{3}\\0\\0\\0\\0r\\0\\0\\u{3}\\0ff\\0\\0&(\\0R\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"ff\\0\\0\\0&\\u{3}\\0\\0\\0\\0r\\0\\0\\u{3}\\0ff\\0\\0&(\\0R\"",
+      "principal": {
+        "type": "a",
+        "id": "ff\u0000\u0000\u0000&\u0003\u0000\u0000\u0000\u0000r\u0000\u0000\u0003\u0000ff\u0000\u0000&(\u0000R"
+      },
+      "resource": {
+        "type": "a",
+        "id": "ff\u0000\u0000\u0000&\u0003\u0000\u0000\u0000\u0000r\u0000\u0000\u0003\u0000ff\u0000\u0000&(\u0000R"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -78,9 +132,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "a::\"ff\\0\\0\\0&\\u{3}\\0\\0\\0\\0r\\0\\0\\u{3}\\0ff\\0\\0&(\\0R\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"ff\\0\\0\\0&\\u{3}\\0\\0\\0\\0r\\0\\0\\u{3}\\0ff\\0\\0&(\\0R\"",
+      "principal": {
+        "type": "a",
+        "id": "ff\u0000\u0000\u0000&\u0003\u0000\u0000\u0000\u0000r\u0000\u0000\u0003\u0000ff\u0000\u0000&(\u0000R"
+      },
+      "resource": {
+        "type": "a",
+        "id": "ff\u0000\u0000\u0000&\u0003\u0000\u0000\u0000\u0000r\u0000\u0000\u0003\u0000ff\u0000\u0000&(\u0000R"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -90,9 +153,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "a::\"ff\\0\\0\\0&\\u{3}\\0\\0\\0\\0r\\0\\0\\u{3}\\0ff\\0\\0&(\\0R\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"ff\\0\\0\\0&\\u{3}\\0\\0\\0\\0r\\0\\0\\u{3}\\0ff\\0\\0&(\\0R\"",
+      "principal": {
+        "type": "a",
+        "id": "ff\u0000\u0000\u0000&\u0003\u0000\u0000\u0000\u0000r\u0000\u0000\u0003\u0000ff\u0000\u0000&(\u0000R"
+      },
+      "resource": {
+        "type": "a",
+        "id": "ff\u0000\u0000\u0000&\u0003\u0000\u0000\u0000\u0000r\u0000\u0000\u0003\u0000ff\u0000\u0000&(\u0000R"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [

@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "G6660x6::r::a::\"\"",
-      "action": "G6660x6::r::Action::\"action\"",
-      "resource": "G6660x6::r::a::\"\"",
+      "principal": {
+        "type": "G6660x6::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "G6660x6::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "G6660x6::r::Action",
+        "id": "action"
+      },
       "context": {
         "b77750000000000": "",
         "sruyqcpv": ""
@@ -21,9 +30,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "G6660x6::r::a::\"\"",
-      "action": "G6660x6::r::Action::\"action\"",
-      "resource": "G6660x6::r::a::\"\"",
+      "principal": {
+        "type": "G6660x6::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "G6660x6::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "G6660x6::r::Action",
+        "id": "action"
+      },
       "context": {
         "b77750000000000": "",
         "sruyqcpv": ""
@@ -36,9 +54,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "G6660x6::r::a::\"\"",
-      "action": "G6660x6::r::Action::\"action\"",
-      "resource": "G6660x6::r::a::\"\"",
+      "principal": {
+        "type": "G6660x6::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "G6660x6::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "G6660x6::r::Action",
+        "id": "action"
+      },
       "context": {
         "b77750000000000": "",
         "sruyqcpv": ""
@@ -51,9 +78,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "G6660x6::r::a::\"\"",
-      "action": "G6660x6::r::Action::\"action\"",
-      "resource": "G6660x6::r::a::\"\"",
+      "principal": {
+        "type": "G6660x6::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "G6660x6::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "G6660x6::r::Action",
+        "id": "action"
+      },
       "context": {
         "b77750000000000": "",
         "sruyqcpv": ""
@@ -66,9 +102,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "G6660x6::r::a::\"\"",
-      "action": "G6660x6::r::Action::\"action\"",
-      "resource": "G6660x6::r::a::\"\"",
+      "principal": {
+        "type": "G6660x6::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "G6660x6::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "G6660x6::r::Action",
+        "id": "action"
+      },
       "context": {
         "b77750000000000": "",
         "sruyqcpv": ""
@@ -81,9 +126,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "G6660x6::r::a::\"\"",
-      "action": "G6660x6::r::Action::\"action\"",
-      "resource": "G6660x6::r::a::\"\"",
+      "principal": {
+        "type": "G6660x6::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "G6660x6::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "G6660x6::r::Action",
+        "id": "action"
+      },
       "context": {
         "b77750000000000": "",
         "sruyqcpv": ""
@@ -96,9 +150,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "G6660x6::r::a::\"\"",
-      "action": "G6660x6::r::Action::\"action\"",
-      "resource": "G6660x6::r::a::\"\"",
+      "principal": {
+        "type": "G6660x6::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "G6660x6::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "G6660x6::r::Action",
+        "id": "action"
+      },
       "context": {
         "b77750000000000": "",
         "sruyqcpv": ""
@@ -111,9 +174,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "G6660x6::r::a::\"\"",
-      "action": "G6660x6::r::Action::\"action\"",
-      "resource": "G6660x6::r::a::\"\"",
+      "principal": {
+        "type": "G6660x6::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "G6660x6::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "G6660x6::r::Action",
+        "id": "action"
+      },
       "context": {
         "b77750000000000": "",
         "sruyqcpv": ""

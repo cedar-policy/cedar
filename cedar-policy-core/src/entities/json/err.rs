@@ -22,16 +22,14 @@ use crate::ast::{
 };
 use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
+use either::Either;
+use itertools::Itertools;
 use smol_str::SmolStr;
 use thiserror::Error;
 
 /// Escape kind
 #[derive(Debug)]
 pub enum EscapeKind {
-    /// Escape `__expr`
-    /// Note that `__expr` is deprecated and once it is
-    /// removed, this variant will also be removed
-    Expr,
     /// Escape `__entity`
     Entity,
     /// Escape `__extn`
@@ -42,7 +40,6 @@ impl Display for EscapeKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Entity => write!(f, "__entity"),
-            Self::Expr => write!(f, "__expr"),
             Self::Extension => write!(f, "__extn"),
         }
     }
@@ -55,9 +52,7 @@ pub enum JsonDeserializationError {
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
     /// Contents of an escape failed to parse.
-    /// Note that escape `__expr` is deprecated and once it is
-    /// removed, `EscapeKind::Expr` will also be removed
-    #[error("failed to parse escape `{kind}` with value `{value}`: {errs}")]
+    #[error("failed to parse escape `{kind}`: {value}, errors: {errs}")]
     ParseEscape {
         /// Escape kind
         kind: EscapeKind,
@@ -73,20 +68,20 @@ pub enum JsonDeserializationError {
     #[error(transparent)]
     FailedExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
     /// A field that needs to be a literal entity reference, was some other JSON value
-    #[error("{ctx}, expected a literal entity reference, but got `{got}`")]
+    #[error("{ctx}, expected a literal entity reference, but got `{}`", display_json_value(.got.as_ref()))]
     ExpectedLiteralEntityRef {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
         /// the expression we got instead
-        got: Box<Expr>,
+        got: Box<Either<serde_json::Value, Expr>>,
     },
     /// A field that needs to be an extension value, was some other JSON value
-    #[error("{ctx}, expected an extension value, but got `{got}`")]
+    #[error("{ctx}, expected an extension value, but got `{}`", display_json_value(.got.as_ref()))]
     ExpectedExtnValue {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
         /// the expression we got instead
-        got: Box<Expr>,
+        got: Box<Either<serde_json::Value, Expr>>,
     },
     /// Contexts need to be records, but we got some other JSON value
     #[error("expected `context` to be a record, but got `{got}`")]
@@ -222,6 +217,9 @@ pub enum JsonDeserializationError {
         /// Parent type which was invalid
         parent_ty: Box<EntityType>, // boxed to avoid this variant being very large (and thus all JsonDeserializationErrors being large)
     },
+    /// Raised when a JsonValue contains the no longer supported `__expr` escape
+    #[error("{0}, invalid escape. The `__expr` escape is no longer supported")]
+    ExprTag(Box<JsonDeserializationErrorContext>),
 }
 
 /// Errors thrown during serialization to JSON
@@ -297,5 +295,28 @@ impl std::fmt::Display for JsonDeserializationErrorContext {
             Self::Context => write!(f, "while parsing context"),
             Self::Policy { id } => write!(f, "while parsing JSON policy `{id}`"),
         }
+    }
+}
+
+fn display_json_value(v: &Either<serde_json::Value, Expr>) -> String {
+    match v {
+        Either::Left(json) => display_value(json),
+        Either::Right(e) => e.to_string(),
+    }
+}
+
+fn display_value(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::Array(contents) => {
+            format!("[{}]", contents.iter().map(display_value).join(", "))
+        }
+        serde_json::Value::Object(map) => {
+            let mut v: Vec<_> = map.iter().collect();
+            // We sort the keys here so that our error messages are consistent and defined
+            v.sort_by_key(|p| p.0);
+            let display_kv = |kv: &(&String, &serde_json::Value)| format!("\"{}\":{}", kv.0, kv.1);
+            format!("{{{}}}", v.iter().map(display_kv).join(","))
+        }
+        other => other.to_string(),
     }
 }

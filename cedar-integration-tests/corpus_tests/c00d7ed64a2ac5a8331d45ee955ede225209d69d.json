@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "r::Q::Qxxxxxxxx33::a::\"\"",
-      "action": "r::Q::Qxxxxxxxx33::Action::\"action\"",
-      "resource": "r::Q::Qxxxxxxxx33::a::\"\"",
+      "principal": {
+        "type": "r::Q::Qxxxxxxxx33::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::Q::Qxxxxxxxx33::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::Q::Qxxxxxxxx33::Action",
+        "id": "action"
+      },
       "context": {
         "lbbW": {
           "__entity": {
@@ -25,9 +34,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "r::Q::Qxxxxxxxx33::a::\"\"",
-      "action": "r::Q::Qxxxxxxxx33::Action::\"action\"",
-      "resource": "r::Q::Qxxxxxxxx33::a::\"\"",
+      "principal": {
+        "type": "r::Q::Qxxxxxxxx33::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::Q::Qxxxxxxxx33::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::Q::Qxxxxxxxx33::Action",
+        "id": "action"
+      },
       "context": {
         "lbbW": {
           "__entity": {
@@ -44,9 +62,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "r::Q::Qxxxxxxxx33::a::\"\"",
-      "action": "r::Q::Qxxxxxxxx33::Action::\"action\"",
-      "resource": "r::Q::Qxxxxxxxx33::a::\"\"",
+      "principal": {
+        "type": "r::Q::Qxxxxxxxx33::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::Q::Qxxxxxxxx33::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::Q::Qxxxxxxxx33::Action",
+        "id": "action"
+      },
       "context": {
         "lbbW": {
           "__entity": {
@@ -63,9 +90,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "r::Q::Qxxxxxxxx33::a::\"\"",
-      "action": "r::Q::Qxxxxxxxx33::Action::\"action\"",
-      "resource": "r::Q::Qxxxxxxxx33::a::\"\"",
+      "principal": {
+        "type": "r::Q::Qxxxxxxxx33::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::Q::Qxxxxxxxx33::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::Q::Qxxxxxxxx33::Action",
+        "id": "action"
+      },
       "context": {
         "lbbW": {
           "__entity": {
@@ -82,9 +118,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "r::Q::Qxxxxxxxx33::a::\"\"",
-      "action": "r::Q::Qxxxxxxxx33::Action::\"action\"",
-      "resource": "r::Q::Qxxxxxxxx33::a::\"\"",
+      "principal": {
+        "type": "r::Q::Qxxxxxxxx33::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::Q::Qxxxxxxxx33::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::Q::Qxxxxxxxx33::Action",
+        "id": "action"
+      },
       "context": {
         "lbbW": {
           "__entity": {
@@ -101,9 +146,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "r::Q::Qxxxxxxxx33::a::\"\"",
-      "action": "r::Q::Qxxxxxxxx33::Action::\"action\"",
-      "resource": "r::Q::Qxxxxxxxx33::a::\"\"",
+      "principal": {
+        "type": "r::Q::Qxxxxxxxx33::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::Q::Qxxxxxxxx33::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::Q::Qxxxxxxxx33::Action",
+        "id": "action"
+      },
       "context": {
         "lbbW": {
           "__entity": {
@@ -120,9 +174,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "r::Q::Qxxxxxxxx33::a::\"\"",
-      "action": "r::Q::Qxxxxxxxx33::Action::\"action\"",
-      "resource": "r::Q::Qxxxxxxxx33::a::\"\"",
+      "principal": {
+        "type": "r::Q::Qxxxxxxxx33::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::Q::Qxxxxxxxx33::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::Q::Qxxxxxxxx33::Action",
+        "id": "action"
+      },
       "context": {
         "lbbW": {
           "__entity": {
@@ -139,9 +202,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "r::Q::Qxxxxxxxx33::a::\"\"",
-      "action": "r::Q::Qxxxxxxxx33::Action::\"action\"",
-      "resource": "r::Q::Qxxxxxxxx33::a::\"\"",
+      "principal": {
+        "type": "r::Q::Qxxxxxxxx33::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::Q::Qxxxxxxxx33::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::Q::Qxxxxxxxx33::Action",
+        "id": "action"
+      },
       "context": {
         "lbbW": {
           "__entity": {

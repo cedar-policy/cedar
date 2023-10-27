@@ -1114,6 +1114,10 @@ pub enum SchemaError {
     /// This error variant should only be used when `PermitAttributes` is enabled.
     #[error("action `{0}` has an attribute with unsupported JSON representation: {1}")]
     UnsupportedActionAttribute(EntityUid, String),
+    /// Error thrown when the schema contains the `__expr` escape.
+    /// Support for this escape form has been dropped.
+    #[error("schema contained the non-supported `__expr` escape.")]
+    ExprEscapeUsed,
 }
 
 /// Describes in what action context or entity type shape a schema parsing error
@@ -1201,6 +1205,7 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             cedar_policy_validator::SchemaError::UnsupportedActionAttribute(uid, escape_type) => {
                 Self::UnsupportedActionAttribute(EntityUid(uid), escape_type)
             }
+            cedar_policy_validator::SchemaError::ExprEscapeUsed => Self::ExprEscapeUsed,
         }
     }
 }
@@ -2804,66 +2809,96 @@ impl FromStr for RestrictedExpression {
 
 /// Builder for a [`Request`]
 ///
-/// Note that you can create the `EntityUid`s using `.parse()` on any
-/// string (via the `FromStr` implementation for `EntityUid`).
-/// The principal, action, and resource fields are optional to support
-/// the case where these fields do not contribute to authorization
-/// decisions (e.g., because they are not used in your policies).
-/// If any of the fields are `None`, we will automatically generate
-/// a unique entity UID that is not equal to any UID in the store.
-///
-/// The default for principal, action and resource fields is Unknown.
+/// The default for principal, action, resource, and context fields is Unknown
+/// for partial evaluation.
 #[cfg(feature = "partial-eval")]
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct RequestBuilder {
-    principal: Option<ast::EntityUIDEntry>,
-    action: Option<ast::EntityUIDEntry>,
-    resource: Option<ast::EntityUIDEntry>,
+    principal: ast::EntityUIDEntry,
+    action: ast::EntityUIDEntry,
+    resource: ast::EntityUIDEntry,
+    /// Here, `None` means unknown
     context: Option<ast::Context>,
 }
 
 #[cfg(feature = "partial-eval")]
+impl Default for RequestBuilder {
+    fn default() -> Self {
+        Self {
+            principal: ast::EntityUIDEntry::Unknown,
+            action: ast::EntityUIDEntry::Unknown,
+            resource: ast::EntityUIDEntry::Unknown,
+            context: None,
+        }
+    }
+}
+
+#[cfg(feature = "partial-eval")]
 impl RequestBuilder {
-    /// Set the principal
+    /// Set the principal.
+    ///
+    /// Note that you can create the `EntityUid` using `.parse()` on any
+    /// string (via the `FromStr` implementation for `EntityUid`).
+    ///
+    /// Here, passing `None` for `principal` indicates that `principal` does
+    /// not contribute to authorization decisions (e.g., because it is not
+    /// used in your policies).
+    /// This is different than Unknown for partial-evaluation purposes.
     pub fn principal(self, principal: Option<EntityUid>) -> Self {
         Self {
-            principal: Some(match principal {
+            principal: match principal {
                 Some(p) => ast::EntityUIDEntry::concrete(p.0),
                 None => ast::EntityUIDEntry::concrete(ast::EntityUID::unspecified_from_eid(
                     ast::Eid::new("principal"),
                 )),
-            }),
+            },
             ..self
         }
     }
 
-    /// Set the action
+    /// Set the action.
+    ///
+    /// Note that you can create the `EntityUid` using `.parse()` on any
+    /// string (via the `FromStr` implementation for `EntityUid`).
+    ///
+    /// Here, passing `None` for `action` indicates that `action` does
+    /// not contribute to authorization decisions (e.g., because it is not
+    /// used in your policies).
+    /// This is different than Unknown for partial-evaluation purposes.
     pub fn action(self, action: Option<EntityUid>) -> Self {
         Self {
-            action: Some(match action {
+            action: match action {
                 Some(a) => ast::EntityUIDEntry::concrete(a.0),
                 None => ast::EntityUIDEntry::concrete(ast::EntityUID::unspecified_from_eid(
                     ast::Eid::new("action"),
                 )),
-            }),
+            },
             ..self
         }
     }
 
-    /// Set the resource
+    /// Set the resource.
+    ///
+    /// Note that you can create the `EntityUid` using `.parse()` on any
+    /// string (via the `FromStr` implementation for `EntityUid`).
+    ///
+    /// Here, passing `None` for `resource` indicates that `resource` does
+    /// not contribute to authorization decisions (e.g., because it is not
+    /// used in your policies).
+    /// This is different than Unknown for partial-evaluation purposes.
     pub fn resource(self, resource: Option<EntityUid>) -> Self {
         Self {
-            resource: Some(match resource {
+            resource: match resource {
                 Some(r) => ast::EntityUIDEntry::concrete(r.0),
                 None => ast::EntityUIDEntry::concrete(ast::EntityUID::unspecified_from_eid(
                     ast::Eid::new("resource"),
                 )),
-            }),
+            },
             ..self
         }
     }
 
-    /// Set the context
+    /// Set the context.
     pub fn context(self, context: Context) -> Self {
         Self {
             context: Some(context.0),
@@ -2873,19 +2908,12 @@ impl RequestBuilder {
 
     /// Create the [`Request`]
     pub fn build(self) -> Request {
-        let p = match self.principal {
-            Some(p) => p,
-            None => ast::EntityUIDEntry::Unknown,
-        };
-        let a = match self.action {
-            Some(a) => a,
-            None => ast::EntityUIDEntry::Unknown,
-        };
-        let r = match self.resource {
-            Some(r) => r,
-            None => ast::EntityUIDEntry::Unknown,
-        };
-        Request(ast::Request::new_with_unknowns(p, a, r, self.context))
+        Request(ast::Request::new_with_unknowns(
+            self.principal,
+            self.action,
+            self.resource,
+            self.context,
+        ))
     }
 }
 

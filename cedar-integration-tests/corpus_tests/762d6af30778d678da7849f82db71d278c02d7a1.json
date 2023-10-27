@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "MYqs::\"\"",
-      "action": "Action::\"egi\"",
-      "resource": "MYqs::\"\"",
+      "principal": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "resource": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "egi"
+      },
       "context": {
         "r": "",
         "Ay": ""
@@ -21,9 +30,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "MYqs::\"\"",
-      "action": "Action::\"egi\"",
-      "resource": "MYqs::\"\"",
+      "principal": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "resource": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "egi"
+      },
       "context": {
         "r": "",
         "Ay": ""
@@ -36,9 +54,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "MYqs::\"\"",
-      "action": "Action::\"egi\"",
-      "resource": "MYqs::\"\"",
+      "principal": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "resource": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "egi"
+      },
       "context": {
         "r": "",
         "Ay": ""
@@ -51,9 +78,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "MYqs::\"\"",
-      "action": "Action::\"egi\"",
-      "resource": "MYqs::\"\"",
+      "principal": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "resource": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "egi"
+      },
       "context": {
         "r": "",
         "Ay": ""
@@ -66,9 +102,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "MYqs::\"\"",
-      "action": "Action::\"egi\"",
-      "resource": "MYqs::\"\"",
+      "principal": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "resource": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "egi"
+      },
       "context": {
         "r": "",
         "Ay": ""
@@ -81,9 +126,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "MYqs::\"\"",
-      "action": "Action::\"egi\"",
-      "resource": "MYqs::\"\"",
+      "principal": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "resource": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "egi"
+      },
       "context": {
         "r": "",
         "Ay": ""
@@ -96,9 +150,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "MYqs::\"\"",
-      "action": "Action::\"egi\"",
-      "resource": "MYqs::\"\"",
+      "principal": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "resource": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "egi"
+      },
       "context": {
         "r": "",
         "Ay": ""
@@ -111,9 +174,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "MYqs::\"\"",
-      "action": "Action::\"egi\"",
-      "resource": "MYqs::\"\"",
+      "principal": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "resource": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "egi"
+      },
       "context": {
         "r": "",
         "Ay": ""

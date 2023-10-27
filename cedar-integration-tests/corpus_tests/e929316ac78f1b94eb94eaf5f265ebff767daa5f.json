@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "a::\":::com/:::::::::\\0:\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\":::com/:::::::::\\0:\"",
+      "principal": {
+        "type": "a",
+        "id": ":::com/:::::::::\u0000:"
+      },
+      "resource": {
+        "type": "a",
+        "id": ":::com/:::::::::\u0000:"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "G": {
           "__entity": {
@@ -25,9 +34,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "a::\":::com/:::::::::\\0:\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\":::com/:::::::::\\0:\"",
+      "principal": {
+        "type": "a",
+        "id": ":::com/:::::::::\u0000:"
+      },
+      "resource": {
+        "type": "a",
+        "id": ":::com/:::::::::\u0000:"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "G": {
           "__entity": {
@@ -44,9 +62,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "a::\":::com/:::::::::\\0:\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\":::com/:::::::::\\0:\"",
+      "principal": {
+        "type": "a",
+        "id": ":::com/:::::::::\u0000:"
+      },
+      "resource": {
+        "type": "a",
+        "id": ":::com/:::::::::\u0000:"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "G": {
           "__entity": {
@@ -63,9 +90,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "a::\":::com/:::::::::\\0:\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\":::com/:::::::::\\0:\"",
+      "principal": {
+        "type": "a",
+        "id": ":::com/:::::::::\u0000:"
+      },
+      "resource": {
+        "type": "a",
+        "id": ":::com/:::::::::\u0000:"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "G": {
           "__entity": {
@@ -82,9 +118,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "a::\":::com/:::::::::\\0:\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\":::com/:::::::::\\0:\"",
+      "principal": {
+        "type": "a",
+        "id": ":::com/:::::::::\u0000:"
+      },
+      "resource": {
+        "type": "a",
+        "id": ":::com/:::::::::\u0000:"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "G": {
           "__entity": {
@@ -101,9 +146,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "a::\":::com/:::::::::\\0:\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\":::com/:::::::::\\0:\"",
+      "principal": {
+        "type": "a",
+        "id": ":::com/:::::::::\u0000:"
+      },
+      "resource": {
+        "type": "a",
+        "id": ":::com/:::::::::\u0000:"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "G": {
           "__entity": {
@@ -120,9 +174,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "a::\":::com/:::::::::\\0:\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\":::com/:::::::::\\0:\"",
+      "principal": {
+        "type": "a",
+        "id": ":::com/:::::::::\u0000:"
+      },
+      "resource": {
+        "type": "a",
+        "id": ":::com/:::::::::\u0000:"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "G": {
           "__entity": {
@@ -139,9 +202,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "a::\":::com/:::::::::\\0:\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\":::com/:::::::::\\0:\"",
+      "principal": {
+        "type": "a",
+        "id": ":::com/:::::::::\u0000:"
+      },
+      "resource": {
+        "type": "a",
+        "id": ":::com/:::::::::\u0000:"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "G": {
           "__entity": {

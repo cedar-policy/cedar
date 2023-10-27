@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "zow0ssssss::a::\"70\"",
-      "action": "zow0ssssss::Action::\"action\"",
-      "resource": "zow0ssssss::a::\"70\"",
+      "principal": {
+        "type": "zow0ssssss::a",
+        "id": "70"
+      },
+      "resource": {
+        "type": "zow0ssssss::a",
+        "id": "70"
+      },
+      "action": {
+        "type": "zow0ssssss::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -18,9 +27,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "zow0ssssss::a::\"70\"",
-      "action": "zow0ssssss::Action::\"action\"",
-      "resource": "zow0ssssss::a::\"70\"",
+      "principal": {
+        "type": "zow0ssssss::a",
+        "id": "70"
+      },
+      "resource": {
+        "type": "zow0ssssss::a",
+        "id": "70"
+      },
+      "action": {
+        "type": "zow0ssssss::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -30,9 +48,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "zow0ssssss::a::\"70\"",
-      "action": "zow0ssssss::Action::\"action\"",
-      "resource": "zow0ssssss::a::\"70\"",
+      "principal": {
+        "type": "zow0ssssss::a",
+        "id": "70"
+      },
+      "resource": {
+        "type": "zow0ssssss::a",
+        "id": "70"
+      },
+      "action": {
+        "type": "zow0ssssss::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -42,9 +69,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "zow0ssssss::a::\"70\"",
-      "action": "zow0ssssss::Action::\"action\"",
-      "resource": "zow0ssssss::a::\"70\"",
+      "principal": {
+        "type": "zow0ssssss::a",
+        "id": "70"
+      },
+      "resource": {
+        "type": "zow0ssssss::a",
+        "id": "70"
+      },
+      "action": {
+        "type": "zow0ssssss::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -54,9 +90,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "zow0ssssss::a::\"70\"",
-      "action": "zow0ssssss::Action::\"action\"",
-      "resource": "zow0ssssss::a::\"70\"",
+      "principal": {
+        "type": "zow0ssssss::a",
+        "id": "70"
+      },
+      "resource": {
+        "type": "zow0ssssss::a",
+        "id": "70"
+      },
+      "action": {
+        "type": "zow0ssssss::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -66,9 +111,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "zow0ssssss::a::\"70\"",
-      "action": "zow0ssssss::Action::\"action\"",
-      "resource": "zow0ssssss::a::\"70\"",
+      "principal": {
+        "type": "zow0ssssss::a",
+        "id": "70"
+      },
+      "resource": {
+        "type": "zow0ssssss::a",
+        "id": "70"
+      },
+      "action": {
+        "type": "zow0ssssss::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -78,9 +132,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "zow0ssssss::a::\"70\"",
-      "action": "zow0ssssss::Action::\"action\"",
-      "resource": "zow0ssssss::a::\"70\"",
+      "principal": {
+        "type": "zow0ssssss::a",
+        "id": "70"
+      },
+      "resource": {
+        "type": "zow0ssssss::a",
+        "id": "70"
+      },
+      "action": {
+        "type": "zow0ssssss::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -90,9 +153,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "zow0ssssss::a::\"70\"",
-      "action": "zow0ssssss::Action::\"action\"",
-      "resource": "zow0ssssss::a::\"70\"",
+      "principal": {
+        "type": "zow0ssssss::a",
+        "id": "70"
+      },
+      "resource": {
+        "type": "zow0ssssss::a",
+        "id": "70"
+      },
+      "action": {
+        "type": "zow0ssssss::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
