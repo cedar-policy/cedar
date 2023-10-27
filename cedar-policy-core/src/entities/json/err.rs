@@ -18,7 +18,7 @@ use std::fmt::Display;
 
 use super::SchemaType;
 use crate::ast::{
-    EntityType, EntityUID, Expr, ExprKind, Name, RestrictedExpr, RestrictedExprError,
+    EntityType, EntityUID, Expr, ExprKind, Name, PolicyID, RestrictedExpr, RestrictedExprError,
 };
 use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
@@ -201,6 +201,14 @@ pub enum JsonDeserializationError {
         /// Second element type which was found
         ty2: Box<SchemaType>,
     },
+    /// The same key appears two or more times in a single record literal
+    #[error("{ctx}, duplicate key `{key}` in record literal")]
+    DuplicateKeyInRecordLiteral {
+        /// Context of this error
+        ctx: Box<JsonDeserializationErrorContext>,
+        /// The key that appeared two or more times
+        key: SmolStr,
+    },
     /// During schema-based parsing, found a parent of a type that's not allowed
     /// for that entity
     #[error(
@@ -244,7 +252,7 @@ pub enum JsonSerializationError {
         key: SmolStr,
     },
     /// Encountered an `ExprKind` which we didn't expect. Either a case is
-    /// missing in `JSONValue::from_expr()`, or an internal invariant was
+    /// missing in `CedarValueJson::from_expr()`, or an internal invariant was
     /// violated and there is a non-restricted expression in `RestrictedExpr`
     #[error("unexpected restricted expression `{kind:?}`")]
     UnexpectedRestrictedExprKind {
@@ -273,6 +281,11 @@ pub enum JsonDeserializationErrorContext {
     EntityUid,
     /// The error occurred while deserializing the `Context`.
     Context,
+    /// The error occurred while deserializing a policy in JSON (EST) form.
+    Policy {
+        /// ID of the policy we were deserializing
+        id: PolicyID,
+    },
 }
 
 impl std::fmt::Display for JsonDeserializationErrorContext {
@@ -282,6 +295,7 @@ impl std::fmt::Display for JsonDeserializationErrorContext {
             Self::EntityParents { uid } => write!(f, "in parents field of `{uid}`"),
             Self::EntityUid => write!(f, "in uid field of <unknown entity>"),
             Self::Context => write!(f, "while parsing context"),
+            Self::Policy { id } => write!(f, "while parsing JSON policy `{id}`"),
         }
     }
 }

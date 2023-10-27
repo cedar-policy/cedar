@@ -150,7 +150,7 @@ fn heterogeneous_set() {
 #[test]
 fn record_typechecks() {
     assert_typechecks_empty_schema(
-        Expr::record([("foo".into(), Expr::val(1))]),
+        Expr::record([("foo".into(), Expr::val(1))]).unwrap(),
         Type::closed_record_with_required_attributes([("foo".into(), Type::singleton_long(1))]),
     )
 }
@@ -515,7 +515,7 @@ fn record_has_typechecks() {
         Type::singleton_boolean(false),
     );
     assert_typechecks_empty_schema(
-        Expr::has_attr(Expr::record([]), "attr".into()),
+        Expr::has_attr(Expr::record([]).unwrap(), "attr".into()),
         Type::singleton_boolean(false),
     );
     assert_typechecks_empty_schema(
@@ -599,7 +599,7 @@ fn has_typecheck_fails() {
 fn record_get_attr_typechecks() {
     let attr: SmolStr = "foo".into();
     assert_typechecks_empty_schema(
-        Expr::get_attr(Expr::record([(attr.clone(), Expr::val(1))]), attr),
+        Expr::get_attr(Expr::record([(attr.clone(), Expr::val(1))]).unwrap(), attr),
         Type::singleton_long(1),
     );
 }
@@ -609,8 +609,8 @@ fn record_get_attr_incompatible() {
     let attr: SmolStr = "foo".into();
     let if_expr = Expr::ite(
         Expr::less(Expr::val(1), Expr::val(0)),
-        Expr::record([(attr.clone(), Expr::val(true))]),
-        Expr::record([(attr.clone(), Expr::val(1))]),
+        Expr::record([(attr.clone(), Expr::val(true))]).unwrap(),
+        Expr::record([(attr.clone(), Expr::val(1))]).unwrap(),
     );
 
     assert_typecheck_fails_for_mode(
@@ -644,7 +644,7 @@ fn record_get_attr_lub_typecheck_fails() {
     let attr: SmolStr = "foo".into();
     let if_expr = Expr::ite(
         Expr::less(Expr::val(0), Expr::val(1)),
-        Expr::record([(attr.clone(), Expr::val(true))]),
+        Expr::record([(attr.clone(), Expr::val(true))]).unwrap(),
         Expr::val(1),
     );
     assert_typecheck_fails_empty_schema_without_type(
@@ -666,9 +666,9 @@ fn record_get_attr_lub_typecheck_fails() {
 fn record_get_attr_does_not_exist() {
     let attr: SmolStr = "foo".into();
     assert_typecheck_fails_empty_schema_without_type(
-        Expr::get_attr(Expr::record([]), attr.clone()),
+        Expr::get_attr(Expr::record([]).unwrap(), attr.clone()),
         vec![TypeError::unsafe_attribute_access(
-            Expr::get_attr(Expr::record([]), attr.clone()),
+            Expr::get_attr(Expr::record([]).unwrap(), attr.clone()),
             AttributeAccess::Other(vec![attr]),
             None,
             false,
@@ -681,8 +681,8 @@ fn record_get_attr_lub_does_not_exist() {
     let attr: SmolStr = "foo".into();
     let if_expr = Expr::ite(
         Expr::val(true),
-        Expr::record([]),
-        Expr::record([(attr.clone(), Expr::val(1))]),
+        Expr::record([]).unwrap(),
+        Expr::record([(attr.clone(), Expr::val(1))]).unwrap(),
     );
     assert_typecheck_fails_empty_schema_without_type(
         Expr::get_attr(if_expr.clone(), attr.clone()),
@@ -787,12 +787,12 @@ fn contains_typecheck_fails() {
     );
     assert_typecheck_fails_empty_schema(
         Expr::contains(
-            Expr::record([("foo".into(), Expr::val(1))]),
+            Expr::record([("foo".into(), Expr::val(1))]).unwrap(),
             Expr::val("foo"),
         ),
         Type::primitive_boolean(),
         vec![TypeError::expected_type(
-            Expr::record([("foo".into(), Expr::val(1))]),
+            Expr::record([("foo".into(), Expr::val(1))]).unwrap(),
             Type::any_set(),
             Type::closed_record_with_attributes([(
                 "foo".into(),

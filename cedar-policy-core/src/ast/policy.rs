@@ -1011,7 +1011,7 @@ impl PrincipalConstraint {
     /// Hierarchical constraint to Slot
     pub fn is_in_slot() -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_eq_slot(),
+            constraint: PrincipalOrResourceConstraint::is_in_slot(),
         }
     }
 

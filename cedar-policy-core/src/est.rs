@@ -25,7 +25,7 @@ pub use head_constraints::*;
 mod utils;
 
 use crate::ast;
-use crate::entities::EntityUidJSON;
+use crate::entities::EntityUidJson;
 use crate::parser::cst;
 use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::ASTNode;
@@ -73,7 +73,7 @@ impl Policy {
     /// `self` is an inline policy (in which case it is returned unchanged).
     pub fn link(
         self,
-        vals: &HashMap<ast::SlotId, EntityUidJSON>,
+        vals: &HashMap<ast::SlotId, EntityUidJson>,
     ) -> Result<Self, InstantiationError> {
         Ok(Policy {
             effect: self.effect,
@@ -96,7 +96,7 @@ impl Clause {
     /// an error if `vals` contains unused mappings.
     pub fn instantiate(
         self,
-        _vals: &HashMap<ast::SlotId, EntityUidJSON>,
+        _vals: &HashMap<ast::SlotId, EntityUidJson>,
     ) -> Result<Self, InstantiationError> {
         // currently, slots are not allowed in clauses
         Ok(self)
@@ -214,10 +214,14 @@ impl Policy {
         self,
         id: Option<ast::PolicyID>,
     ) -> Result<ast::Template, FromJsonError> {
+        let id = id.unwrap_or(ast::PolicyID::from_string("JSON policy"));
         let conditions = match self.conditions.len() {
             0 => ast::Expr::val(true),
             _ => {
-                let mut conditions = self.conditions.into_iter().map(ast::Expr::try_from);
+                let mut conditions = self
+                    .conditions
+                    .into_iter()
+                    .map(|cond| cond.try_into_ast(id.clone()));
                 // PANIC SAFETY checked above that `conditions` has at least 1 element
                 #[allow(clippy::expect_used)]
                 let first = conditions
@@ -228,7 +232,7 @@ impl Policy {
             }
         };
         Ok(ast::Template::new(
-            id.unwrap_or(ast::PolicyID::from_string("JSON policy")),
+            id,
             self.annotations.into_iter().collect(),
             self.effect,
             self.principal.try_into()?,
@@ -239,12 +243,12 @@ impl Policy {
     }
 }
 
-impl TryFrom<Clause> for ast::Expr {
-    type Error = FromJsonError;
-    fn try_from(clause: Clause) -> Result<ast::Expr, Self::Error> {
-        match clause {
-            Clause::When(expr) => expr.try_into(),
-            Clause::Unless(expr) => Ok(ast::Expr::not(expr.try_into()?)),
+impl Clause {
+    /// `id` is the ID of the policy the clause belongs to, used only for reporting errors
+    fn try_into_ast(self, id: ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
+        match self {
+            Clause::When(expr) => expr.try_into_ast(id),
+            Clause::Unless(expr) => Ok(ast::Expr::not(expr.try_into_ast(id)?)),
         }
     }
 }
@@ -289,6 +293,32 @@ impl From<ast::Expr> for Clause {
     }
 }
 
+impl std::fmt::Display for Policy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (k, v) in self.annotations.iter() {
+            writeln!(f, "@{k}(\"{}\") ", v.escape_debug())?;
+        }
+        write!(
+            f,
+            "{}({}, {}, {})",
+            self.effect, self.principal, self.action, self.resource
+        )?;
+        for condition in &self.conditions {
+            write!(f, " {condition}")?;
+        }
+        write!(f, ";")
+    }
+}
+
+impl std::fmt::Display for Clause {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::When(expr) => write!(f, "when {{ {expr} }}"),
+            Self::Unless(expr) => write!(f, "unless {{ {expr} }}"),
+        }
+    }
+}
+
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 #[cfg(test)]
@@ -298,7 +328,8 @@ mod test {
     use cool_asserts::assert_matches;
     use serde_json::json;
 
-    // helper function to just do EST data structure --> JSON --> EST data structure
+    /// helper function to just do EST data structure --> JSON --> EST data structure.
+    /// This roundtrip should be lossless for all policies.
     fn est_roundtrip(est: Policy) -> Policy {
         let json = serde_json::to_value(est).expect("failed to serialize to JSON");
         serde_json::from_value(json.clone()).unwrap_or_else(|e| {
@@ -309,7 +340,19 @@ mod test {
         })
     }
 
-    /// helper function to take EST-->AST-->EST for inline policies
+    /// helper function to take EST-->text-->CST-->EST, which directly tests the Display impl for EST.
+    /// This roundtrip should be lossless for all policies.
+    fn text_roundtrip(est: &Policy) -> Policy {
+        let text = est.to_string();
+        let cst = parser::text_to_cst::parse_policy(&text)
+            .expect("Failed to convert to CST")
+            .node
+            .expect("Node should not be empty");
+        cst.try_into().expect("Failed to convert to EST")
+    }
+
+    /// helper function to take EST-->AST-->EST for inline policies.
+    /// This roundtrip is not always lossless, because EST-->AST can be lossy.
     fn ast_roundtrip(est: Policy) -> Policy {
         let ast = est
             .try_into_ast_policy(None)
@@ -317,7 +360,8 @@ mod test {
         ast.try_into().expect("Failed to convert to EST")
     }
 
-    /// helper function to take EST-->AST-->EST for templates
+    /// helper function to take EST-->AST-->EST for templates.
+    /// This roundtrip is not always lossless, because EST-->AST can be lossy.
     fn ast_roundtrip_template(est: Policy) -> Policy {
         let ast = est
             .try_into_ast_template(None)
@@ -325,7 +369,8 @@ mod test {
         ast.try_into().expect("Failed to convert to EST")
     }
 
-    /// helper function to take EST-->AST-->text-->CST-->EST for inline policies
+    /// helper function to take EST-->AST-->text-->CST-->EST for inline policies.
+    /// This roundtrip is not always lossless, because EST-->AST can be lossy.
     fn circular_roundtrip(est: Policy) -> Policy {
         let ast = est
             .try_into_ast_policy(None)
@@ -338,7 +383,8 @@ mod test {
         cst.try_into().expect("Failed to convert to EST")
     }
 
-    /// helper function to take EST-->AST-->text-->CST-->EST for templates
+    /// helper function to take EST-->AST-->text-->CST-->EST for templates.
+    /// This roundtrip is not always lossless, because EST-->AST can be lossy.
     fn circular_roundtrip_template(est: Policy) -> Policy {
         let ast = est
             .try_into_ast_template(None)
@@ -382,7 +428,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         // during the lossy transform to AST, the only difference for this policy is that
@@ -466,7 +514,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         // during the lossy transform to AST, the only difference for this policy is that
@@ -555,7 +605,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         // during the lossy transform to AST, the only difference for this policy is that
@@ -643,7 +695,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         // during the lossy transform to AST, the only difference for this policy is that
@@ -750,7 +804,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         assert_eq!(ast_roundtrip(est.clone()), est);
@@ -799,7 +855,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         // during the lossy transform to AST, the only difference for this policy is that
@@ -897,7 +955,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         assert_eq!(ast_roundtrip(est.clone()), est);
@@ -962,7 +1022,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         assert_eq!(ast_roundtrip(est.clone()), est);
@@ -1017,7 +1079,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         assert_eq!(ast_roundtrip(est.clone()), est);
@@ -1072,7 +1136,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         assert_eq!(ast_roundtrip(est.clone()), est);
@@ -1135,7 +1201,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         assert_eq!(ast_roundtrip(est.clone()), est);
@@ -1193,7 +1261,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         assert_eq!(ast_roundtrip(est.clone()), est);
@@ -1262,7 +1332,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         assert_eq!(ast_roundtrip(est.clone()), est);
@@ -1338,7 +1410,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         // during the lossy transform to AST, the only difference for this policy is that
@@ -1468,7 +1542,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         assert_eq!(ast_roundtrip(est.clone()), est);
@@ -1531,7 +1607,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         assert_eq!(ast_roundtrip(est.clone()), est);
@@ -1639,7 +1717,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         // during the lossy transform to AST, the `>` and `>=` ops are desugared to `<` and
@@ -1818,7 +1898,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         assert_eq!(ast_roundtrip(est.clone()), est);
@@ -1938,7 +2020,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         assert_eq!(ast_roundtrip(est.clone()), est);
@@ -2020,7 +2104,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         assert_eq!(ast_roundtrip(est.clone()), est);
@@ -2086,7 +2172,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         assert_eq!(ast_roundtrip(est.clone()), est);
@@ -2152,7 +2240,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         assert_eq!(ast_roundtrip(est.clone()), est);
@@ -2229,7 +2319,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         // during the lossy transform to AST, the multiple clauses on this policy are
@@ -2337,7 +2429,7 @@ mod test {
             .clone()
             .link(&HashMap::from_iter([(
                 ast::SlotId::principal(),
-                EntityUidJSON::new("XYZCorp::User", "12UA45"),
+                EntityUidJson::new("XYZCorp::User", "12UA45"),
             )]))
             .expect_err("didn't fill all the slots");
         assert_eq!(
@@ -2350,9 +2442,9 @@ mod test {
             .link(&HashMap::from_iter([
                 (
                     ast::SlotId::principal(),
-                    EntityUidJSON::new("XYZCorp::User", "12UA45"),
+                    EntityUidJson::new("XYZCorp::User", "12UA45"),
                 ),
-                (ast::SlotId::resource(), EntityUidJSON::new("Folder", "abc")),
+                (ast::SlotId::resource(), EntityUidJson::new("Folder", "abc")),
             ]))
             .expect("did fill all the slots");
         let expected_json = json!(
@@ -2447,7 +2539,9 @@ mod test {
             serde_json::to_string_pretty(&est).unwrap()
         );
         let old_est = est.clone();
-        let est = est_roundtrip(est);
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
         // during the lossy transform to AST, the only difference for this policy is that

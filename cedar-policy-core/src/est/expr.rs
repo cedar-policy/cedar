@@ -17,12 +17,17 @@
 use super::utils::unwrap_or_clone;
 use super::FromJsonError;
 use crate::ast;
-use crate::entities::{EscapeKind, JSONValue, JsonDeserializationError, TypeAndId};
+use crate::entities::{
+    CedarValueJson, EscapeKind, FnAndArg, JsonDeserializationError,
+    JsonDeserializationErrorContext, TypeAndId,
+};
+use crate::extensions::Extensions;
 use crate::parser::cst::{self, Ident};
 use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::unescape;
 use crate::parser::ASTNode;
 use either::Either;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::HashMap;
@@ -48,7 +53,7 @@ pub enum Expr {
 pub enum ExprNoExt {
     /// Literal value (including anything that's legal to express in the
     /// attribute-value JSON format)
-    Value(JSONValue),
+    Value(CedarValueJson),
     /// Var
     Var(ast::Var),
     /// Template slot
@@ -245,8 +250,9 @@ pub struct ExtFuncCall {
     /// For example, for `a.isInRange(b)`, the first argument is `a` and the
     /// second argument is `b`.
     ///
-    /// This map should only ever have one k-v pair, but we make it a map in
-    /// order to get the correct JSON structure we want.
+    /// INVARIANT: This map should always have exactly one k-v pair (not more or
+    /// less), but we make it a map in order to get the correct JSON structure
+    /// we want.
     #[serde(flatten)]
     call: HashMap<SmolStr, Vec<Expr>>,
 }
@@ -254,7 +260,7 @@ pub struct ExtFuncCall {
 #[allow(clippy::should_implement_trait)] // the names of arithmetic constructors alias with those of certain trait methods such as `add` of `std::ops::Add`
 impl Expr {
     /// literal
-    pub fn lit(lit: JSONValue) -> Self {
+    pub fn lit(lit: CedarValueJson) -> Self {
         Expr::ExprNoExt(ExprNoExt::Value(lit))
     }
 
@@ -456,75 +462,78 @@ impl Expr {
     /// Consume the `Expr`, producing a string literal if it was a string literal, otherwise returns the literal in the `Err` variant.
     pub fn into_string_literal(self) -> Result<SmolStr, Self> {
         match self {
-            Expr::ExprNoExt(ExprNoExt::Value(JSONValue::String(s))) => Ok(s),
+            Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::String(s))) => Ok(s),
             _ => Err(self),
         }
     }
 }
 
-impl TryFrom<Expr> for ast::Expr {
-    type Error = FromJsonError;
-    fn try_from(expr: Expr) -> Result<ast::Expr, Self::Error> {
-        match expr {
-            Expr::ExprNoExt(ExprNoExt::Value(jsonvalue)) => {
-                jsonvalue.into_expr().map(Into::into).map_err(Into::into)
-            }
+impl Expr {
+    /// Attempt to convert this `est::Expr` into an `ast::Expr`
+    ///
+    /// `id`: the ID of the policy this `Expr` belongs to, used only for reporting errors
+    pub fn try_into_ast(self, id: ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
+        match self {
+            Expr::ExprNoExt(ExprNoExt::Value(jsonvalue)) => jsonvalue
+                .into_expr(|| JsonDeserializationErrorContext::Policy { id: id.clone() })
+                .map(Into::into)
+                .map_err(Into::into),
             Expr::ExprNoExt(ExprNoExt::Var(var)) => Ok(ast::Expr::var(var)),
             Expr::ExprNoExt(ExprNoExt::Slot(slot)) => Ok(ast::Expr::slot(slot)),
             Expr::ExprNoExt(ExprNoExt::Unknown { name }) => Ok(ast::Expr::unknown(name)),
             Expr::ExprNoExt(ExprNoExt::Not { arg }) => {
-                Ok(ast::Expr::not((*arg).clone().try_into()?))
+                Ok(ast::Expr::not((*arg).clone().try_into_ast(id)?))
             }
             Expr::ExprNoExt(ExprNoExt::Neg { arg }) => {
-                Ok(ast::Expr::neg((*arg).clone().try_into()?))
+                Ok(ast::Expr::neg((*arg).clone().try_into_ast(id)?))
             }
             Expr::ExprNoExt(ExprNoExt::Eq { left, right }) => Ok(ast::Expr::is_eq(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::NotEq { left, right }) => Ok(ast::Expr::noteq(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::In { left, right }) => Ok(ast::Expr::is_in(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Less { left, right }) => Ok(ast::Expr::less(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::LessEq { left, right }) => Ok(ast::Expr::lesseq(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Greater { left, right }) => Ok(ast::Expr::greater(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::GreaterEq { left, right }) => Ok(ast::Expr::greatereq(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::And { left, right }) => Ok(ast::Expr::and(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Or { left, right }) => Ok(ast::Expr::or(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Add { left, right }) => Ok(ast::Expr::add(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Sub { left, right }) => Ok(ast::Expr::sub(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Mul { left, right }) => {
-                let left: ast::Expr = (*left).clone().try_into()?;
-                let right: ast::Expr = (*right).clone().try_into()?;
+                let left: ast::Expr = (*left).clone().try_into_ast(id.clone())?;
+                let right: ast::Expr = (*right).clone().try_into_ast(id)?;
                 let left_c = match left.expr_kind() {
                     ast::ExprKind::Lit(ast::Literal::Long(c)) => Some(c),
                     _ => None,
@@ -536,34 +545,34 @@ impl TryFrom<Expr> for ast::Expr {
                 match (left_c, right_c) {
                     (_, Some(c)) => Ok(ast::Expr::mul(left, *c)),
                     (Some(c), _) => Ok(ast::Expr::mul(right, *c)),
-                    (None, None) => Err(Self::Error::MultiplicationByNonConstant {
+                    (None, None) => Err(FromJsonError::MultiplicationByNonConstant {
                         arg1: left,
                         arg2: right,
                     })?,
                 }
             }
             Expr::ExprNoExt(ExprNoExt::Contains { left, right }) => Ok(ast::Expr::contains(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::ContainsAll { left, right }) => Ok(ast::Expr::contains_all(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::ContainsAny { left, right }) => Ok(ast::Expr::contains_any(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::GetAttr { left, attr }) => {
-                Ok(ast::Expr::get_attr((*left).clone().try_into()?, attr))
+                Ok(ast::Expr::get_attr((*left).clone().try_into_ast(id)?, attr))
             }
             Expr::ExprNoExt(ExprNoExt::HasAttr { left, attr }) => {
-                Ok(ast::Expr::has_attr((*left).clone().try_into()?, attr))
+                Ok(ast::Expr::has_attr((*left).clone().try_into_ast(id)?, attr))
             }
             Expr::ExprNoExt(ExprNoExt::Like { left, pattern }) => {
                 match unescape::to_pattern(&pattern) {
-                    Ok(pattern) => Ok(ast::Expr::like((*left).clone().try_into()?, pattern)),
-                    Err(errs) => Err(Self::Error::UnescapeError(errs)),
+                    Ok(pattern) => Ok(ast::Expr::like((*left).clone().try_into_ast(id)?, pattern)),
+                    Err(errs) => Err(FromJsonError::UnescapeError(errs)),
                 }
             }
             Expr::ExprNoExt(ExprNoExt::If {
@@ -571,24 +580,29 @@ impl TryFrom<Expr> for ast::Expr {
                 then_expr,
                 else_expr,
             }) => Ok(ast::Expr::ite(
-                (*cond_expr).clone().try_into()?,
-                (*then_expr).clone().try_into()?,
-                (*else_expr).clone().try_into()?,
+                (*cond_expr).clone().try_into_ast(id.clone())?,
+                (*then_expr).clone().try_into_ast(id.clone())?,
+                (*else_expr).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Set(elements)) => Ok(ast::Expr::set(
                 elements
                     .into_iter()
-                    .map(|el| el.try_into())
-                    .collect::<Result<Vec<_>, Self::Error>>()?,
+                    .map(|el| el.try_into_ast(id.clone()))
+                    .collect::<Result<Vec<_>, FromJsonError>>()?,
             )),
-            Expr::ExprNoExt(ExprNoExt::Record(map)) => Ok(ast::Expr::record(
-                map.into_iter()
-                    .map(|(k, v)| Ok((k, v.try_into()?)))
-                    .collect::<Result<HashMap<SmolStr, _>, Self::Error>>()?,
-            )),
+            Expr::ExprNoExt(ExprNoExt::Record(map)) => {
+                // PANIC SAFETY: can't have duplicate keys here because the input was already a HashMap
+                #[allow(clippy::expect_used)]
+                Ok(ast::Expr::record(
+                    map.into_iter()
+                        .map(|(k, v)| Ok((k, v.try_into_ast(id.clone())?)))
+                        .collect::<Result<HashMap<SmolStr, _>, FromJsonError>>()?,
+                )
+                .expect("can't have duplicate keys here because the input was already a HashMap"))
+            }
             Expr::ExtFuncCall(ExtFuncCall { call }) => {
                 match call.len() {
-                    0 => Err(Self::Error::MissingOperator),
+                    0 => Err(FromJsonError::MissingOperator),
                     1 => {
                         // PANIC SAFETY checked that `call.len() == 1`
                         #[allow(clippy::expect_used)]
@@ -606,11 +620,11 @@ impl TryFrom<Expr> for ast::Expr {
                         Ok(ast::Expr::call_extension_fn(
                             fn_name,
                             args.into_iter()
-                                .map(TryInto::try_into)
+                                .map(|arg| arg.try_into_ast(id.clone()))
                                 .collect::<Result<_, _>>()?,
                         ))
                     }
-                    _ => Err(Self::Error::MultipleOperators {
+                    _ => Err(FromJsonError::MultipleOperators {
                         ops: call.into_keys().collect(),
                     }),
                 }
@@ -665,7 +679,7 @@ impl From<ast::Expr> for Expr {
             }
             ast::ExprKind::MulByConst { arg, constant } => Expr::mul(
                 unwrap_or_clone(arg).into(),
-                Expr::lit(JSONValue::Long(constant)),
+                Expr::lit(CedarValueJson::Long(constant)),
             ),
             ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let args = unwrap_or_clone(args).into_iter().map(Into::into).collect();
@@ -683,8 +697,8 @@ impl From<ast::Expr> for Expr {
             ast::ExprKind::Set(set) => {
                 Expr::set(unwrap_or_clone(set).into_iter().map(Into::into).collect())
             }
-            ast::ExprKind::Record { pairs } => Expr::record(
-                unwrap_or_clone(pairs)
+            ast::ExprKind::Record(map) => Expr::record(
+                unwrap_or_clone(map)
                     .into_iter()
                     .map(|(k, v)| (k, v.into()))
                     .collect(),
@@ -695,7 +709,7 @@ impl From<ast::Expr> for Expr {
 
 impl From<ast::Literal> for Expr {
     fn from(lit: ast::Literal) -> Expr {
-        Expr::lit(JSONValue::from_lit(lit))
+        Expr::lit(CedarValueJson::from_lit(lit))
     }
 }
 
@@ -1007,11 +1021,13 @@ impl TryFrom<cst::Unary> for Expr {
             Some(cst::NegOp::Dash(0)) => Ok(inner),
             Some(cst::NegOp::Dash(mut num_dashes)) => {
                 let inner = match inner {
-                    Expr::ExprNoExt(ExprNoExt::Value(JSONValue::Long(n))) if n != std::i64::MIN => {
+                    Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(n)))
+                        if n != std::i64::MIN =>
+                    {
                         // collapse the negated literal into a single negative literal.
                         // Important for multiplication-by-constant to allow multiplication by negative constants.
                         num_dashes -= 1;
-                        Expr::lit(JSONValue::Long(-n))
+                        Expr::lit(CedarValueJson::Long(-n))
                     }
                     _ => inner,
                 };
@@ -1064,7 +1080,7 @@ fn interpret_primary(p: cst::Primary) -> Result<Either<ast::Name, Expr>, ParseEr
 
                 match (maybe_name, maybe_eid) {
                     (Some(name), Some(eid)) => {
-                        Ok(Either::Right(Expr::lit(JSONValue::EntityEscape {
+                        Ok(Either::Right(Expr::lit(CedarValueJson::EntityEscape {
                             __entity: TypeAndId::from(ast::EntityUID::from_components(
                                 name,
                                 ast::Eid::new(eid.clone()),
@@ -1291,15 +1307,14 @@ impl TryFrom<cst::Literal> for Expr {
     type Error = ParseErrors;
     fn try_from(lit: cst::Literal) -> Result<Expr, ParseErrors> {
         match lit {
-            cst::Literal::True => Ok(Expr::lit(JSONValue::Bool(true))),
-            cst::Literal::False => Ok(Expr::lit(JSONValue::Bool(false))),
-            cst::Literal::Num(n) => {
-                Ok(Expr::lit(JSONValue::Long(n.try_into().map_err(|_| {
-                    ParseError::ToAST(ToASTError::IntegerLiteralTooLarge(n))
-                })?)))
-            }
+            cst::Literal::True => Ok(Expr::lit(CedarValueJson::Bool(true))),
+            cst::Literal::False => Ok(Expr::lit(CedarValueJson::Bool(false))),
+            cst::Literal::Num(n) => Ok(Expr::lit(CedarValueJson::Long(
+                n.try_into()
+                    .map_err(|_| ParseError::ToAST(ToASTError::IntegerLiteralTooLarge(n)))?,
+            ))),
             cst::Literal::Str(ASTNode { node, .. }) => match node {
-                Some(cst::Str::String(s)) => Ok(Expr::lit(JSONValue::String(s))),
+                Some(cst::Str::String(s)) => Ok(Expr::lit(CedarValueJson::String(s))),
                 Some(cst::Str::Invalid(invalid_str)) => Err(ParseError::ToAST(
                     ToASTError::InvalidString(invalid_str.to_string()),
                 )
@@ -1391,5 +1406,293 @@ mod test {
                 }
             }
         }
+    }
+}
+
+impl std::fmt::Display for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ExprNoExt(e) => write!(f, "{e}"),
+            Self::ExtFuncCall(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+fn display_cedarvaluejson(f: &mut std::fmt::Formatter<'_>, v: &CedarValueJson) -> std::fmt::Result {
+    match v {
+        // Add parentheses around negative numeric literals otherwise
+        // round-tripping fuzzer fails for expressions like `(-1)["a"]`.
+        CedarValueJson::Long(n) if *n < 0 => write!(f, "({n})"),
+        CedarValueJson::Long(n) => write!(f, "{n}"),
+        CedarValueJson::Bool(b) => write!(f, "{b}"),
+        CedarValueJson::String(s) => write!(f, "\"{}\"", s.escape_debug()),
+        CedarValueJson::EntityEscape { __entity } => {
+            match ast::EntityUID::try_from(__entity.clone()) {
+                Ok(euid) => write!(f, "{euid}"),
+                Err(e) => write!(f, "(invalid entity uid: {})", e),
+            }
+        }
+        CedarValueJson::ExprEscape { __expr } => write!(f, "({__expr})"),
+        CedarValueJson::ExtnEscape {
+            __extn: FnAndArg { ext_fn, arg },
+        } => {
+            // search for the name and callstyle
+            let style = Extensions::all_available().all_funcs().find_map(|f| {
+                if &f.name().to_string() == ext_fn {
+                    Some(f.style())
+                } else {
+                    None
+                }
+            });
+            match style {
+                Some(ast::CallStyle::MethodStyle) => {
+                    display_cedarvaluejson(f, &arg)?;
+                    write!(f, ".{ext_fn}()")?;
+                    Ok(())
+                }
+                Some(ast::CallStyle::FunctionStyle) | None => {
+                    write!(f, "{ext_fn}(")?;
+                    display_cedarvaluejson(f, &arg)?;
+                    write!(f, ")")?;
+                    Ok(())
+                }
+            }
+        }
+        CedarValueJson::Set(v) => {
+            write!(f, "[")?;
+            for (i, val) in v.iter().enumerate() {
+                display_cedarvaluejson(f, val)?;
+                if i < (v.len() - 1) {
+                    write!(f, ", ")?;
+                }
+            }
+            write!(f, "]")?;
+            Ok(())
+        }
+        CedarValueJson::Record(m) => {
+            write!(f, "{{")?;
+            for (i, (k, v)) in m.iter().enumerate() {
+                write!(f, "\"{}\": ", k.escape_debug())?;
+                display_cedarvaluejson(f, v)?;
+                if i < (m.len() - 1) {
+                    write!(f, ", ")?;
+                }
+            }
+            write!(f, "}}")?;
+            Ok(())
+        }
+    }
+}
+
+impl std::fmt::Display for ExprNoExt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self {
+            ExprNoExt::Value(v) => display_cedarvaluejson(f, v),
+            ExprNoExt::Var(v) => write!(f, "{v}"),
+            ExprNoExt::Slot(id) => write!(f, "{id}"),
+            ExprNoExt::Unknown { name } => write!(f, "unknown(\"{}\")", name.escape_debug()),
+            ExprNoExt::Not { arg } => write!(f, "!{}", maybe_with_parens(arg)),
+            ExprNoExt::Neg { arg } => {
+                // Always add parentheses instead of calling
+                // `maybe_with_parens`.
+                // This makes sure that we always get a negation operation back
+                // (as opposed to e.g., a negative number) when parsing the
+                // printed form, thus preserving the round-tripping property.
+                write!(f, "-({arg})")
+            }
+            ExprNoExt::Eq { left, right } => write!(
+                f,
+                "{} == {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::NotEq { left, right } => write!(
+                f,
+                "{} != {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::In { left, right } => write!(
+                f,
+                "{} in {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::Less { left, right } => write!(
+                f,
+                "{} < {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::LessEq { left, right } => write!(
+                f,
+                "{} <= {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::Greater { left, right } => write!(
+                f,
+                "{} > {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::GreaterEq { left, right } => write!(
+                f,
+                "{} >= {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::And { left, right } => write!(
+                f,
+                "{} && {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::Or { left, right } => write!(
+                f,
+                "{} || {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::Add { left, right } => write!(
+                f,
+                "{} + {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::Sub { left, right } => write!(
+                f,
+                "{} - {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::Mul { left, right } => write!(
+                f,
+                "{} * {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::Contains { left, right } => {
+                write!(f, "{}.contains({right})", maybe_with_parens(left))
+            }
+            ExprNoExt::ContainsAll { left, right } => {
+                write!(f, "{}.containsAll({right})", maybe_with_parens(left))
+            }
+            ExprNoExt::ContainsAny { left, right } => {
+                write!(f, "{}.containsAny({right})", maybe_with_parens(left))
+            }
+            ExprNoExt::GetAttr { left, attr } => write!(
+                f,
+                "{}[\"{}\"]",
+                maybe_with_parens(left),
+                attr.escape_debug()
+            ),
+            ExprNoExt::HasAttr { left, attr } => write!(
+                f,
+                "{} has \"{}\"",
+                maybe_with_parens(left),
+                attr.escape_debug()
+            ),
+            ExprNoExt::Like { left, pattern } => {
+                write!(f, "{} like \"{}\"", maybe_with_parens(left), pattern) // intentionally not using .escape_debug() for pattern
+            }
+            ExprNoExt::If {
+                cond_expr,
+                then_expr,
+                else_expr,
+            } => write!(
+                f,
+                "if {} then {} else {}",
+                maybe_with_parens(cond_expr),
+                maybe_with_parens(then_expr),
+                maybe_with_parens(else_expr)
+            ),
+            ExprNoExt::Set(v) => write!(f, "[{}]", v.iter().join(", ")),
+            ExprNoExt::Record(m) => write!(
+                f,
+                "{{{}}}",
+                m.iter()
+                    .map(|(k, v)| format!("\"{}\": {}", k.escape_debug(), v))
+                    .join(", ")
+            ),
+        }
+    }
+}
+
+impl std::fmt::Display for ExtFuncCall {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // PANIC SAFETY: safe due to INVARIANT on `ExtFuncCall`
+        #[allow(clippy::unreachable)]
+        let Some((fn_name, args)) = self.call.iter().next() else {
+            unreachable!("invariant violated: empty ExtFuncCall")
+        };
+        // search for the name and callstyle
+        let style = Extensions::all_available().all_funcs().find_map(|ext_fn| {
+            if &ext_fn.name().to_string() == fn_name {
+                Some(ext_fn.style())
+            } else {
+                None
+            }
+        });
+        match (style, args.iter().next()) {
+            (Some(ast::CallStyle::MethodStyle), Some(receiver)) => {
+                write!(
+                    f,
+                    "{}.{}({})",
+                    maybe_with_parens(receiver),
+                    fn_name,
+                    args.iter().skip(1).join(", ")
+                )
+            }
+            (_, _) => {
+                write!(f, "{}({})", fn_name, args.iter().join(", "))
+            }
+        }
+    }
+}
+
+/// returns the `Display` representation of the Expr, adding parens around
+/// the entire string if necessary.
+/// E.g., won't add parens for constants or `principal` etc, but will for things
+/// like `(2 < 5)`.
+/// When in doubt, add the parens.
+fn maybe_with_parens(expr: &Expr) -> String {
+    match expr {
+        Expr::ExprNoExt(ExprNoExt::Value(_)) => expr.to_string(),
+        Expr::ExprNoExt(ExprNoExt::Var(_)) => expr.to_string(),
+        Expr::ExprNoExt(ExprNoExt::Slot(_)) => expr.to_string(),
+        Expr::ExprNoExt(ExprNoExt::Unknown { .. }) => expr.to_string(),
+        Expr::ExprNoExt(ExprNoExt::Not { .. }) => {
+            // we want parens here because things like parse((!x).y)
+            // would be printed into !x.y which has a different meaning
+            format!("({expr})")
+        }
+        Expr::ExprNoExt(ExprNoExt::Neg { .. }) => {
+            // we want parens here because things like parse((-x).y)
+            // would be printed into -x.y which has a different meaning
+            format!("({expr})")
+        }
+        Expr::ExprNoExt(ExprNoExt::Eq { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::NotEq { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::In { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Less { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::LessEq { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Greater { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::GreaterEq { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::And { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Or { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Add { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Sub { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Mul { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Contains { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::ContainsAll { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::ContainsAny { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::GetAttr { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::HasAttr { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Like { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::If { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Set(_)) => expr.to_string(),
+        Expr::ExprNoExt(ExprNoExt::Record(_)) => expr.to_string(),
+        Expr::ExtFuncCall { .. } => format!("({expr})"),
     }
 }

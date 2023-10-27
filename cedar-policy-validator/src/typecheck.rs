@@ -1388,11 +1388,11 @@ impl<'a> Typechecker<'a> {
 
             // For records, each (attribute, value) pair in the initializer need
             // to be individually accounted for in the record type.
-            ExprKind::Record { pairs } => {
+            ExprKind::Record(map) => {
                 // Typecheck each attribute initializer expression individually.
-                let record_attr_tys = pairs
-                    .iter()
-                    .map(|(_, value)| self.typecheck(request_env, prior_eff, value, type_errors));
+                let record_attr_tys = map
+                    .values()
+                    .map(|value| self.typecheck(request_env, prior_eff, value, type_errors));
                 // This will cause the return value to be `TypecheckFail` if any
                 // of the attributes did not typecheck.
                 TypecheckAnswer::sequence_all_then_typecheck(
@@ -1408,34 +1408,28 @@ impl<'a> Typechecker<'a> {
                             .iter()
                             .map(|e| e.data().clone())
                             .collect::<Option<Vec<_>>>();
-                        let t = pairs
-                            .iter()
-                            .map(|(attr, _)| attr.clone())
-                            .zip(record_attr_expr_tys);
-                        match record_attr_tys {
-                            Some(record_attr_tys) => {
-                                // Given the attribute types which we know know
-                                // exist, we pair them with the corresponding
-                                // attribute names to get a record type.
-                                let record_attrs = pairs.iter().map(|(id, _)| id.clone());
-                                let record_type_entries =
-                                    std::iter::zip(record_attrs, record_attr_tys);
-                                TypecheckAnswer::success(
-                                    ExprBuilder::with_data(Some(
-                                        Type::record_with_required_attributes(
-                                            record_type_entries,
-                                            OpenTag::ClosedAttributes,
-                                        ),
-                                    ))
-                                    .with_same_source_info(e)
-                                    .record(t),
-                                )
-                            }
-                            None => TypecheckAnswer::fail(
-                                ExprBuilder::with_data(None)
-                                    .with_same_source_info(e)
-                                    .record(t),
-                            ),
+                        let ty = record_attr_tys.map(|record_attr_tys| {
+                            // Given the attribute types which we know know
+                            // exist, we pair them with the corresponding
+                            // attribute names to get a record type.
+                            let record_attrs = map.keys().cloned();
+                            let record_type_entries = std::iter::zip(record_attrs, record_attr_tys);
+                            Type::record_with_required_attributes(
+                                record_type_entries,
+                                OpenTag::ClosedAttributes,
+                            )
+                        });
+                        let is_success = ty.is_some();
+                        // PANIC SAFETY: can't have duplicate keys because the keys are the same as those in `map` which was already a BTreeMap
+                        #[allow(clippy::expect_used)]
+                        let expr = ExprBuilder::with_data(ty)
+                            .with_same_source_info(e)
+                            .record(map.keys().cloned().zip(record_attr_expr_tys))
+                            .expect("this can't have duplicate keys because the keys are the same as those in `map` which was already a BTreeMap");
+                        if is_success {
+                            TypecheckAnswer::success(expr)
+                        } else {
+                            TypecheckAnswer::fail(expr)
                         }
                     },
                 )

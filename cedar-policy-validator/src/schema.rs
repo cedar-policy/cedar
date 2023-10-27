@@ -23,9 +23,10 @@
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::sync::Arc;
 
+use cedar_policy_core::entities::JsonDeserializationErrorContext;
 use cedar_policy_core::{
     ast::{Eid, Entity, EntityType, EntityUID, Id, Name, RestrictedExpr},
-    entities::{Entities, JSONValue, TCComputation},
+    entities::{CedarValueJson, Entities, TCComputation},
     parser::err::ParseErrors,
     transitive_closure::{compute_tc, TCNode},
     FromNormalizedStr,
@@ -337,17 +338,17 @@ impl ValidatorNamespaceDef {
         })
     }
 
-    // Helper to get types from JSONValues. Currently doesn't support all
-    // JSONValue types. Note: If this function is extended to cover move
-    // `JSONValue`s, we must update `convert_attr_jsonval_map_to_attributes` to
+    // Helper to get types from `CedarValueJson`s. Currently doesn't support all
+    // `CedarValueJson` types. Note: If this function is extended to cover move
+    // `CedarValueJson`s, we must update `convert_attr_jsonval_map_to_attributes` to
     // handle errors that may occur when parsing these values. This will require
     // a breaking change in the `SchemaError` type in the public API.
-    fn jsonval_to_type_helper(v: &JSONValue, action_id: &EntityUID) -> Result<Type> {
+    fn jsonval_to_type_helper(v: &CedarValueJson, action_id: &EntityUID) -> Result<Type> {
         match v {
-            JSONValue::Bool(_) => Ok(Type::primitive_boolean()),
-            JSONValue::Long(_) => Ok(Type::long_max_bounds()),
-            JSONValue::String(_) => Ok(Type::primitive_string()),
-            JSONValue::Record(r) => {
+            CedarValueJson::Bool(_) => Ok(Type::primitive_boolean()),
+            CedarValueJson::Long(_) => Ok(Type::long_max_bounds()),
+            CedarValueJson::String(_) => Ok(Type::primitive_string()),
+            CedarValueJson::Record(r) => {
                 let mut required_attrs: HashMap<SmolStr, Type> = HashMap::new();
                 for (k, v_prime) in r {
                     let t = Self::jsonval_to_type_helper(v_prime, action_id);
@@ -361,7 +362,7 @@ impl ValidatorNamespaceDef {
                     OpenTag::ClosedAttributes,
                 ))
             }
-            JSONValue::Set(v) => match v.get(0) {
+            CedarValueJson::Set(v) => match v.get(0) {
                 //sets with elements of different types will be rejected elsewhere
                 None => Err(SchemaError::ActionAttributesContainEmptySet(
                     action_id.clone(),
@@ -376,26 +377,30 @@ impl ValidatorNamespaceDef {
                     }
                 }
             },
-            JSONValue::EntityEscape { __entity: _ } => {
+            CedarValueJson::EntityEscape { __entity: _ } => {
                 Err(SchemaError::UnsupportedActionAttribute(
                     action_id.clone(),
                     "entity escape (`__entity`)".to_owned(),
                 ))
             }
-            JSONValue::ExprEscape { __expr: _ } => Err(SchemaError::UnsupportedActionAttribute(
-                action_id.clone(),
-                "expression escape (`__expr`)".to_owned(),
-            )),
-            JSONValue::ExtnEscape { __extn: _ } => Err(SchemaError::UnsupportedActionAttribute(
-                action_id.clone(),
-                "extension function escape (`__extn`)".to_owned(),
-            )),
+            CedarValueJson::ExprEscape { __expr: _ } => {
+                Err(SchemaError::UnsupportedActionAttribute(
+                    action_id.clone(),
+                    "expression escape (`__expr`)".to_owned(),
+                ))
+            }
+            CedarValueJson::ExtnEscape { __extn: _ } => {
+                Err(SchemaError::UnsupportedActionAttribute(
+                    action_id.clone(),
+                    "extension function escape (`__extn`)".to_owned(),
+                ))
+            }
         }
     }
 
     //Convert jsonval map to attributes
     fn convert_attr_jsonval_map_to_attributes(
-        m: HashMap<SmolStr, JSONValue>,
+        m: HashMap<SmolStr, CedarValueJson>,
         action_id: &EntityUID,
     ) -> Result<(Attributes, HashMap<SmolStr, RestrictedExpr>)> {
         let mut attr_types: HashMap<SmolStr, Type> = HashMap::new();
@@ -408,7 +413,7 @@ impl ValidatorNamespaceDef {
                 Err(e) => return Err(e),
             };
 
-            // As an artifact of the limited `JSONValue` variants accepted by
+            // As an artifact of the limited `CedarValueJson` variants accepted by
             // `Self::jsonval_to_type_helper`, we know that this function will
             // never error. Also note that this is only ever executed when
             // action attributes are enabled, but they cannot be enabled when
@@ -418,7 +423,7 @@ impl ValidatorNamespaceDef {
             // `non_exhaustive`, so any new variants are a breaking change.
             // PANIC SAFETY: see above
             #[allow(clippy::expect_used)]
-            let e = v.into_expr().expect("`Self::jsonval_to_type_helper` will always return `Err` for a `JSONValue` that might make `into_expr` return `Err`");
+            let e = v.into_expr(|| JsonDeserializationErrorContext::EntityAttribute { uid: action_id.clone(), attr: k.clone() }).expect("`Self::jsonval_to_type_helper` will always return `Err` for a `CedarValueJson` that might make `into_expr` return `Err`");
             attr_values.insert(k.clone(), e);
         }
         Ok((

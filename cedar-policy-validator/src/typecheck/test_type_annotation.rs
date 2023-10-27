@@ -121,7 +121,8 @@ fn expr_typechecks_with_correct_annotation() {
         &Expr::record([
             ("foo".into(), Expr::val(1)),
             ("bar".into(), Expr::val(false)),
-        ]),
+        ])
+        .unwrap(),
         &ExprBuilder::with_data(Some(Type::closed_record_with_required_attributes([
             ("foo".into(), Type::singleton_long(1)),
             ("bar".into(), Type::singleton_boolean(false)),
@@ -135,7 +136,8 @@ fn expr_typechecks_with_correct_annotation() {
                 "bar".into(),
                 ExprBuilder::with_data(Some(Type::singleton_boolean(false))).val(false),
             ),
-        ]),
+        ])
+        .unwrap(),
     );
     with_typechecker_from_schema(
         serde_json::from_value::<SchemaFragment>(

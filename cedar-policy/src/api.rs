@@ -23,7 +23,7 @@
 pub use ast::Effect;
 pub use authorizer::Decision;
 use cedar_policy_core::ast;
-use cedar_policy_core::ast::RestrictedExprError;
+use cedar_policy_core::ast::{ExprConstructionError, RestrictedExprError};
 use cedar_policy_core::authorizer;
 pub use cedar_policy_core::authorizer::AuthorizationError;
 use cedar_policy_core::entities;
@@ -41,10 +41,12 @@ use cedar_policy_core::FromNormalizedStr;
 pub use cedar_policy_validator::{
     TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
 };
+use itertools::Itertools;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::convert::Infallible;
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -1372,7 +1374,7 @@ impl<'a> From<cedar_policy_validator::ValidationWarning<'a>> for ValidationWarni
 pub struct EntityId(ast::Eid);
 
 impl FromStr for EntityId {
-    type Err = ParseErrors;
+    type Err = Infallible;
     fn from_str(eid_str: &str) -> Result<Self, Self::Err> {
         Ok(Self(ast::Eid::new(eid_str)))
     }
@@ -1535,7 +1537,7 @@ impl EntityUid {
     /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
     /// ```
     pub fn from_json(json: serde_json::Value) -> Result<Self, impl std::error::Error> {
-        let parsed: entities::EntityUidJSON = serde_json::from_value(json)?;
+        let parsed: entities::EntityUidJson = serde_json::from_value(json)?;
         // INVARIANT: There is no way to write down the unspecified entityuid
         Ok::<Self, entities::JsonDeserializationError>(Self(
             parsed.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
@@ -1791,7 +1793,7 @@ impl PolicySet {
             .ast
             .get_linked_policies(&ast::PolicyID::from_string(template_id.to_string()))
         {
-            Ok(v) => Ok(v.map(|id| PolicyId::ref_cast(id))),
+            Ok(v) => Ok(v.map(PolicyId::ref_cast)),
             Err(_) => Err(PolicySetError::TemplateNonexistentError(template_id)),
         }
     }
@@ -1972,7 +1974,8 @@ impl PolicySet {
 
 impl std::fmt::Display for PolicySet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.ast)
+        // prefer to display the lossless format
+        write!(f, "{}", self.policies().map(|p| &p.lossless).join("\n"))
     }
 }
 
@@ -2144,6 +2147,13 @@ impl Template {
             ast,
             lossless: LosslessPolicy::policy_or_template_text(text),
         }
+    }
+}
+
+impl std::fmt::Display for Template {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // prefer to display the lossless format
+        self.lossless.fmt(f)
     }
 }
 
@@ -2417,7 +2427,7 @@ impl Policy {
     /// use cedar_policy::{Policy, PolicyId};
     /// use std::str::FromStr;
     ///
-    /// let data : serde_json::Value = serde_json::json!(
+    /// let json: serde_json::Value = serde_json::json!(
     ///        {
     ///            "effect":"permit",
     ///            "principal":{
@@ -2463,7 +2473,7 @@ impl Policy {
     ///            ]
     ///        }
     /// );
-    /// let policy = Policy::from_json(None, data).unwrap();
+    /// let json_policy = Policy::from_json(None, json).unwrap();
     /// let src = r#"
     ///   permit(
     ///     principal == User::"bob",
@@ -2471,8 +2481,8 @@ impl Policy {
     ///     resource == Album::"trip"
     ///   )
     ///   when { principal.age > 18 };"#;
-    /// let expected_output = Policy::parse(None, src).unwrap();
-    /// assert_eq!(policy.to_string(), expected_output.to_string());
+    /// let text_policy = Policy::parse(None, src).unwrap();
+    /// assert_eq!(json_policy.to_json().unwrap(), text_policy.to_json().unwrap());
     /// ```
     pub fn from_json(
         id: Option<PolicyId>,
@@ -2488,7 +2498,7 @@ impl Policy {
 
     /// Get the JSON representation of this `Policy`.
     ///  ```
-    /// use cedar_policy::Policy;
+    /// # use cedar_policy::Policy;
     /// let src = r#"
     ///   permit(
     ///     principal == User::"bob",
@@ -2496,13 +2506,13 @@ impl Policy {
     ///     resource == Album::"trip"
     ///   )
     ///   when { principal.age > 18 };"#;
-
+    ///
     /// let policy = Policy::parse(None, src).unwrap();
     /// println!("{}", policy);
     /// // convert the policy to JSON
     /// let json = policy.to_json().unwrap();
     /// println!("{}", json);
-    /// assert_eq!(policy.to_string(), Policy::from_json(None, json).unwrap().to_string());
+    /// assert_eq!(json, Policy::from_json(None, json.clone()).unwrap().to_json().unwrap());
     /// ```
     pub fn to_json(&self) -> Result<serde_json::Value, impl std::error::Error> {
         let est = self.lossless.est()?;
@@ -2527,7 +2537,8 @@ impl Policy {
 
 impl std::fmt::Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.ast.fmt(f)
+        // prefer to display the lossless format
+        self.lossless.fmt(f)
     }
 }
 
@@ -2594,7 +2605,7 @@ impl LosslessPolicy {
     ) -> Result<Self, est::InstantiationError> {
         match self {
             Self::Est(est) => {
-                let unwrapped_est_vals: HashMap<ast::SlotId, entities::EntityUidJSON> =
+                let unwrapped_est_vals: HashMap<ast::SlotId, entities::EntityUidJson> =
                     vals.into_iter().map(|(k, v)| (k, v.into())).collect();
                 Ok(Self::Est(est.link(&unwrapped_est_vals)?))
             }
@@ -2605,6 +2616,29 @@ impl LosslessPolicy {
                 );
                 let slots = vals.into_iter().map(|(k, v)| (k, v.clone())).collect();
                 Ok(Self::Text { text, slots })
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for LosslessPolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Est(est) => write!(f, "{est}"),
+            Self::Text { text, slots } => {
+                if slots.is_empty() {
+                    write!(f, "{text}")
+                } else {
+                    // need to replace placeholders according to `slots`.
+                    // just find-and-replace wouldn't be safe/perfect, we
+                    // want to use the actual parser; right now we reuse
+                    // another implementation by just converting to EST and
+                    // printing that
+                    match self.est() {
+                        Ok(est) => write!(f, "{est}"),
+                        Err(e) => write!(f, "<invalid linked policy: {e}>"),
+                    }
+                }
             }
         }
     }
@@ -2646,10 +2680,14 @@ impl Expression {
     }
 
     /// Create an expression representing a record.
-    pub fn new_record(fields: impl IntoIterator<Item = (String, Self)>) -> Self {
-        Self(ast::Expr::record(
+    ///
+    /// Error if any key appears two or more times in `fields`.
+    pub fn new_record(
+        fields: impl IntoIterator<Item = (String, Self)>,
+    ) -> Result<Self, ExprConstructionError> {
+        Ok(Self(ast::Expr::record(
             fields.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
-        ))
+        )?))
     }
 
     /// Create an expression representing a Set.
@@ -2703,10 +2741,14 @@ impl RestrictedExpression {
     }
 
     /// Create an expression representing a record.
-    pub fn new_record(fields: impl IntoIterator<Item = (String, Self)>) -> Self {
-        Self(ast::RestrictedExpr::record(
+    ///
+    /// Error if any key appears two or more times in `fields`.
+    pub fn new_record(
+        fields: impl IntoIterator<Item = (String, Self)>,
+    ) -> Result<Self, ExprConstructionError> {
+        Ok(Self(ast::RestrictedExpr::record(
             fields.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
-        ))
+        )?))
     }
 
     /// Create an expression representing a Set.
@@ -2932,7 +2974,7 @@ impl Context {
     /// let mut groups: HashMap<String, RestrictedExpression> = HashMap::new();
     /// groups.insert("key".to_string(), RestrictedExpression::from_str(&data.to_string()).unwrap());
     /// groups.insert("age".to_string(), RestrictedExpression::from_str("18").unwrap());
-    /// let context = Context::from_pairs(groups);
+    /// let context = Context::from_pairs(groups).unwrap();
     /// # // create a request
     /// # let p_eid = EntityId::from_str("alice").unwrap();
     /// # let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
@@ -2946,10 +2988,12 @@ impl Context {
     /// # let r = EntityUid::from_type_name_and_id(r_name, r_eid);
     /// let request: Request = Request::new(Some(p), Some(a), Some(r), context);
     /// ```
-    pub fn from_pairs(pairs: impl IntoIterator<Item = (String, RestrictedExpression)>) -> Self {
-        Self(ast::Context::from_pairs(
+    pub fn from_pairs(
+        pairs: impl IntoIterator<Item = (String, RestrictedExpression)>,
+    ) -> Result<Self, ExprConstructionError> {
+        Ok(Self(ast::Context::from_pairs(
             pairs.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
-        ))
+        )?))
     }
 
     /// Create a `Context` from a string containing JSON (which must be a JSON
@@ -3492,9 +3536,8 @@ permit(principal ==  A :: B
         // but this should be accepted in an actual policy
         let policy_str = "permit(principal == ".to_string() + euid_str + ", action, resource);";
         let policy = Policy::from_str(&policy_str).expect("Should parse; see RFC 9");
-        let parsed_euid = match policy.principal_constraint() {
-            PrincipalConstraint::Eq(euid) => euid,
-            _ => panic!("Expected an Eq constraint"),
+        let PrincipalConstraint::Eq(parsed_euid) = policy.principal_constraint() else {
+            panic!("Expected an Eq constraint");
         };
         // the escape was interpreted:
         //   the EntityId has both single-quote characters (but no backslash characters)
@@ -3510,9 +3553,8 @@ permit(principal ==  A :: B
         // but this should be accepted in an actual policy
         let policy_str = "permit(principal == ".to_string() + euid_str + ", action, resource);";
         let policy = Policy::from_str(&policy_str).expect("Should parse; see RFC 9");
-        let parsed_euid = match policy.principal_constraint() {
-            PrincipalConstraint::Eq(euid) => euid,
-            _ => panic!("Expected an Eq constraint"),
+        let PrincipalConstraint::Eq(parsed_euid) = policy.principal_constraint() else {
+            panic!("Expected an Eq constraint");
         };
         assert_eq!(parsed_euid.id().as_ref(), "hi");
         assert_eq!(parsed_euid.type_name().to_string(), "A::B::C::D::E"); // expect to have been normalized
@@ -3745,7 +3787,7 @@ mod policy_set_tests {
         match r {
             Ok(_) => panic!("Should have failed due to conflict"),
             Err(PolicySetError::LinkingError(LinkingError::PolicyIdConflict { id })) => {
-                assert_eq!(id, ast::PolicyID::from_string("id"))
+                assert_eq!(id, ast::PolicyID::from_string("id"));
             }
             Err(e) => panic!("Incorrect error: {e}"),
         };
@@ -3961,7 +4003,7 @@ mod policy_set_tests {
         );
 
         //Unlink first, then remove
-        let result = pset.unlink(linked_policy_id.clone());
+        let result = pset.unlink(linked_policy_id);
         assert_matches!(result, Ok(_));
         pset.remove_template(PolicyId::from_str("t").unwrap())
             .expect("Failed to remove policy template");
@@ -4162,7 +4204,7 @@ mod policy_set_tests {
             }
         );
 
-        let result = pset.unlink(linked_policy_id.clone());
+        let result = pset.unlink(linked_policy_id);
         assert_matches!(result, Err(PolicySetError::LinkNonexistentError(_)));
     }
 
@@ -4189,8 +4231,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             1
         );
         let result = pset.unlink(linked_policy_id.clone());
@@ -4199,8 +4240,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             0
         );
         let result = pset.unlink(linked_policy_id.clone());
@@ -4215,8 +4255,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             1
         );
         pset.link(
@@ -4228,8 +4267,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             2
         );
 
@@ -4256,8 +4294,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template2").unwrap())
                 .unwrap()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             0
         );
 
@@ -4265,8 +4302,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             2
         );
 
@@ -4326,19 +4362,17 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             2
         );
 
         //unlink one policy, template count 1
-        let result = pset.unlink(linked_policy_id.clone());
+        let result = pset.unlink(linked_policy_id);
         assert_matches!(result, Ok(_));
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             1
         );
 
@@ -4360,8 +4394,7 @@ mod policy_set_tests {
         assert_eq!(
             pset.get_linked_policies(PolicyId::from_str("template").unwrap())
                 .unwrap()
-                .collect::<Vec<_>>()
-                .len(),
+                .count(),
             0
         );
 
@@ -4377,7 +4410,7 @@ mod policy_set_tests {
                 .err()
                 .unwrap(),
             PolicySetError::TemplateNonexistentError(_)
-        )
+        );
     }
 }
 
@@ -5584,5 +5617,33 @@ mod schema_based_parsing_tests {
             ])
             .unwrap()
         );
+    }
+
+    #[test]
+    fn entities_duplicates_fail() {
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "User",
+                    "id" : "alice"
+                },
+                "attrs" : {},
+                "parents": []
+            },
+            {
+                "uid" : {
+                    "type" : "User",
+                    "id" : "alice"
+                },
+                "attrs" : {},
+                "parents": []
+            }
+        ]);
+        let r = Entities::from_json_value(json, None).err().unwrap();
+        let expected_euid: cedar_policy_core::ast::EntityUID = r#"User::"alice""#.parse().unwrap();
+        match r {
+            EntitiesError::Duplicate(euid) => assert_eq!(euid, expected_euid),
+            e => panic!("Wrong error. Expected `Duplicate`, got: {e:?}"),
+        }
     }
 }

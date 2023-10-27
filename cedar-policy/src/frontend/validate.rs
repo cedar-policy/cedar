@@ -470,4 +470,18 @@ mod test {
             }
         }
     }
+
+    #[test]
+    fn test_validate_fails_on_duplicate_policy_id() {
+        let call_json = r#"{
+            "schema": { "": { "entityTypes": {}, "actions": {} } },
+            "policySet": {
+              "ID0": "permit(principal, action, resource);",
+              "ID0": "permit(principal, action, resource);"
+            }
+        }"#
+        .to_string();
+        let result = json_validate(&call_json);
+        assert_is_failure(&result, true, "no duplicate IDs");
+    }
 }

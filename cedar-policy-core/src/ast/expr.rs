@@ -16,15 +16,12 @@
 
 use crate::{
     ast::*,
-    extensions::Extensions,
     parser::{err::ParseErrors, SourceInfo},
 };
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::{
-    collections::HashMap,
-    collections::HashSet,
+    collections::{btree_map, BTreeMap, HashMap},
     hash::{Hash, Hasher},
     mem,
     sync::Arc,
@@ -155,11 +152,7 @@ pub enum ExprKind<T = ()> {
     // evaluated into `Value`s
     Set(Arc<Vec<Expr<T>>>),
     /// Anonymous record (whose elements may be arbitrary expressions)
-    /// This is a `Vec` for the same reason as above.
-    Record {
-        /// key/value pairs
-        pairs: Arc<Vec<(SmolStr, Expr<T>)>>,
-    },
+    Record(Arc<BTreeMap<SmolStr, Expr<T>>>),
 }
 
 impl From<Value> for Expr {
@@ -167,13 +160,14 @@ impl From<Value> for Expr {
         match v {
             Value::Lit(l) => Expr::val(l),
             Value::Set(s) => Expr::set(s.iter().map(|v| Expr::from(v.clone()))),
+            // PANIC SAFETY: cannot have duplicate key because the input was already a BTreeMap
+            #[allow(clippy::expect_used)]
             Value::Record(fields) => Expr::record(
-                fields
-                    .as_ref()
-                    .clone()
+                unwrap_or_clone(fields)
                     .into_iter()
                     .map(|(k, v)| (k, Expr::from(v))),
-            ),
+            )
+            .expect("cannot have duplicate key because the input was already a BTreeMap"),
             Value::ExtensionValue(ev) => ev.as_ref().clone().into(),
         }
     }
@@ -276,15 +270,7 @@ impl<T> Expr<T> {
             ExprKind::Unknown { .. } => true,
             ExprKind::Set(_) => true,
             ExprKind::Var(_) => true,
-            ExprKind::Record { pairs } => {
-                // We need to ensure there are no duplicate keys in the expression
-                let uniq_keys = pairs
-                    .as_ref()
-                    .iter()
-                    .map(|(key, _)| key)
-                    .collect::<HashSet<_>>();
-                pairs.len() == uniq_keys.len()
-            }
+            ExprKind::Record(_) => true,
             _ => false,
         })
     }
@@ -421,8 +407,21 @@ impl Expr {
     }
 
     /// Create an `Expr` which evaluates to a Record with the given (key, value) pairs.
-    pub fn record(pairs: impl IntoIterator<Item = (SmolStr, Expr)>) -> Self {
+    pub fn record(
+        pairs: impl IntoIterator<Item = (SmolStr, Expr)>,
+    ) -> Result<Self, ExprConstructionError> {
         ExprBuilder::new().record(pairs)
+    }
+
+    /// Create an `Expr` which evaluates to a Record with the given key-value mapping.
+    ///
+    /// If you have an iterator of pairs, generally prefer calling
+    /// `Expr::record()` instead of `.collect()`-ing yourself and calling this,
+    /// potentially for efficiency reasons but also because `Expr::record()`
+    /// will properly handle duplicate keys but your own `.collect()` will not
+    /// (by default).
+    pub fn record_arc(map: Arc<BTreeMap<SmolStr, Expr>>) -> Self {
+        ExprBuilder::new().record_arc(map)
     }
 
     /// Create an `Expr` which calls the extension function with the given
@@ -556,12 +555,15 @@ impl Expr {
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(Expr::set(members))
             }
-            ExprKind::Record { pairs } => {
-                let pairs = pairs
+            ExprKind::Record(map) => {
+                let map = map
                     .iter()
                     .map(|(name, e)| Ok((name.clone(), e.substitute(definitions)?)))
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(Expr::record(pairs))
+                    .collect::<Result<BTreeMap<_, _>, _>>()?;
+                // PANIC SAFETY: cannot have a duplicate key because the input was already a BTreeMap
+                #[allow(clippy::expect_used)]
+                Ok(Expr::record(map)
+                    .expect("cannot have a duplicate key because the input was already a BTreeMap"))
             }
             ExprKind::MulByConst { arg, constant } => {
                 Ok(Expr::mul(arg.substitute(definitions)?, *constant))
@@ -572,194 +574,10 @@ impl Expr {
 
 impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.expr_kind {
-            // Add parenthesis around negative numeric literals otherwise
-            // round-tripping fuzzer fails for expressions like `(-1)["a"]`.
-            ExprKind::Lit(Literal::Long(n)) if *n < 0 => write!(f, "({})", n),
-            ExprKind::Lit(l) => write!(f, "{}", l),
-            ExprKind::Var(v) => write!(f, "{}", v),
-            ExprKind::Unknown {
-                name,
-                type_annotation,
-            } => match type_annotation.as_ref() {
-                Some(type_annotation) => write!(f, "unknown({name:?}:{type_annotation})"),
-                None => write!(f, "unknown({name})"),
-            },
-            ExprKind::Slot(id) => write!(f, "{id}"),
-            ExprKind::If {
-                test_expr,
-                then_expr,
-                else_expr,
-            } => write!(
-                f,
-                "if {} then {} else {}",
-                maybe_with_parens(test_expr),
-                maybe_with_parens(then_expr),
-                maybe_with_parens(else_expr)
-            ),
-            ExprKind::And { left, right } => write!(
-                f,
-                "{} && {}",
-                maybe_with_parens(left),
-                maybe_with_parens(right)
-            ),
-            ExprKind::Or { left, right } => write!(
-                f,
-                "{} || {}",
-                maybe_with_parens(left),
-                maybe_with_parens(right)
-            ),
-            ExprKind::UnaryApp { op, arg } => match op {
-                UnaryOp::Not => write!(f, "!{}", maybe_with_parens(arg)),
-                // Always add parentheses instead of calling
-                // `maybe_with_parens`.
-                // This makes sure that we always get a negation operation back
-                // (as opposed to e.g., a negative number) when parsing the
-                // printed form, thus preserving the round-tripping property.
-                UnaryOp::Neg => write!(f, "-({})", arg),
-            },
-            ExprKind::BinaryApp { op, arg1, arg2 } => match op {
-                BinaryOp::Eq => write!(
-                    f,
-                    "{} == {}",
-                    maybe_with_parens(arg1),
-                    maybe_with_parens(arg2),
-                ),
-                BinaryOp::Less => write!(
-                    f,
-                    "{} < {}",
-                    maybe_with_parens(arg1),
-                    maybe_with_parens(arg2),
-                ),
-                BinaryOp::LessEq => write!(
-                    f,
-                    "{} <= {}",
-                    maybe_with_parens(arg1),
-                    maybe_with_parens(arg2),
-                ),
-                BinaryOp::Add => write!(
-                    f,
-                    "{} + {}",
-                    maybe_with_parens(arg1),
-                    maybe_with_parens(arg2),
-                ),
-                BinaryOp::Sub => write!(
-                    f,
-                    "{} - {}",
-                    maybe_with_parens(arg1),
-                    maybe_with_parens(arg2),
-                ),
-                BinaryOp::In => write!(
-                    f,
-                    "{} in {}",
-                    maybe_with_parens(arg1),
-                    maybe_with_parens(arg2),
-                ),
-                BinaryOp::Contains => {
-                    write!(f, "{}.contains({})", maybe_with_parens(arg1), &arg2)
-                }
-                BinaryOp::ContainsAll => {
-                    write!(f, "{}.containsAll({})", maybe_with_parens(arg1), &arg2)
-                }
-                BinaryOp::ContainsAny => {
-                    write!(f, "{}.containsAny({})", maybe_with_parens(arg1), &arg2)
-                }
-            },
-            ExprKind::MulByConst { arg, constant } => {
-                write!(f, "{} * {}", maybe_with_parens(arg), constant)
-            }
-            ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                // search for the name and callstyle
-                let style = Extensions::all_available().all_funcs().find_map(|f| {
-                    if f.name() == fn_name {
-                        Some(f.style())
-                    } else {
-                        None
-                    }
-                });
-                // PANIC SAFETY Args list must be non empty by INVARIANT (MethodStyleArgs)
-                #[allow(clippy::indexing_slicing)]
-                if matches!(style, Some(CallStyle::MethodStyle)) && !args.is_empty() {
-                    write!(
-                        f,
-                        "{}.{}({})",
-                        maybe_with_parens(&args[0]),
-                        fn_name,
-                        args[1..].iter().join(", ")
-                    )
-                } else {
-                    // This case can only be reached for a manually constructed AST.
-                    // In order to reach this case, either the function name `fn_name`
-                    // is not in the list of available extension functions, or this
-                    // is a method-style function call with zero arguments. Both of
-                    // these cases can be displayed, but neither will parse. The
-                    // resulting `ParseError` will be `NotAFunction`.
-                    write!(f, "{}({})", fn_name, args.iter().join(", "))
-                }
-            }
-            ExprKind::GetAttr { expr, attr } => write!(
-                f,
-                "{}[\"{}\"]",
-                maybe_with_parens(expr),
-                attr.escape_debug()
-            ),
-            ExprKind::HasAttr { expr, attr } => {
-                write!(
-                    f,
-                    "{} has \"{}\"",
-                    maybe_with_parens(expr),
-                    attr.escape_debug()
-                )
-            }
-            ExprKind::Like { expr, pattern } => {
-                // during parsing we convert \* in the pattern into \u{0000},
-                // so when printing we need to convert back
-                write!(f, "{} like \"{}\"", maybe_with_parens(expr), pattern,)
-            }
-            ExprKind::Set(v) => write!(f, "[{}]", v.iter().join(", ")),
-            ExprKind::Record { pairs } => write!(
-                f,
-                "{{{}}}",
-                pairs
-                    .iter()
-                    .map(|(k, v)| format!("\"{}\": {}", k.escape_debug(), v))
-                    .join(", ")
-            ),
-        }
-    }
-}
-
-/// returns the `Display` representation of the Expr, adding parens around the
-/// entire Expr if necessary.
-/// E.g., won't add parens for constants or `principal` etc, but will for things
-/// like `(2 < 5)`.
-/// When in doubt, add the parens.
-fn maybe_with_parens(expr: &Expr) -> String {
-    match expr.expr_kind {
-        ExprKind::Lit(_) => expr.to_string(),
-        ExprKind::Var(_) => expr.to_string(),
-        ExprKind::Unknown { .. } => expr.to_string(),
-        ExprKind::Slot(_) => expr.to_string(),
-        ExprKind::If { .. } => format!("({})", expr),
-        ExprKind::And { .. } => format!("({})", expr),
-        ExprKind::Or { .. } => format!("({})", expr),
-        ExprKind::UnaryApp {
-            op: UnaryOp::Not | UnaryOp::Neg,
-            ..
-        } => {
-            // we want parens here because things like parse((!x).y)
-            // would be printed into !x.y which has a different meaning,
-            // albeit being semantically incorrect.
-            format!("({})", expr)
-        }
-        ExprKind::BinaryApp { .. } => format!("({})", expr),
-        ExprKind::MulByConst { .. } => format!("({})", expr),
-        ExprKind::ExtensionFunctionApp { .. } => format!("({})", expr),
-        ExprKind::GetAttr { .. } => format!("({})", expr),
-        ExprKind::HasAttr { .. } => format!("({})", expr),
-        ExprKind::Like { .. } => format!("({})", expr),
-        ExprKind::Set { .. } => expr.to_string(),
-        ExprKind::Record { .. } => expr.to_string(),
+        // To avoid code duplication between pretty-printers for AST Expr and EST Expr,
+        // we just convert to EST and use the EST pretty-printer.
+        // Note that converting AST->EST is lossless and infallible.
+        write!(f, "{}", crate::est::Expr::from(self.clone()))
     }
 }
 
@@ -1052,10 +870,34 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an `Expr` which evaluates to a Record with the given (key, value) pairs.
-    pub fn record(self, pairs: impl IntoIterator<Item = (SmolStr, Expr<T>)>) -> Expr<T> {
-        self.with_expr_kind(ExprKind::Record {
-            pairs: Arc::new(pairs.into_iter().collect()),
-        })
+    pub fn record(
+        self,
+        pairs: impl IntoIterator<Item = (SmolStr, Expr<T>)>,
+    ) -> Result<Expr<T>, ExprConstructionError> {
+        let mut map = BTreeMap::new();
+        for (k, v) in pairs {
+            match map.entry(k) {
+                btree_map::Entry::Occupied(oentry) => {
+                    return Err(ExprConstructionError::DuplicateKeyInRecordLiteral {
+                        key: oentry.key().clone(),
+                    });
+                }
+                btree_map::Entry::Vacant(ventry) => {
+                    ventry.insert(v);
+                }
+            }
+        }
+        Ok(self.with_expr_kind(ExprKind::Record(Arc::new(map))))
+    }
+
+    /// Create an `Expr` which evalutes to a Record with the given key-value mapping.
+    ///
+    /// If you have an iterator of pairs, generally prefer calling `.record()`
+    /// instead of `.collect()`-ing yourself and calling this, potentially for
+    /// efficiency reasons but also because `.record()` will properly handle
+    /// duplicate keys but your own `.collect()` will not (by default).
+    pub fn record_arc(self, map: Arc<BTreeMap<SmolStr, Expr<T>>>) -> Expr<T> {
+        self.with_expr_kind(ExprKind::Record(map))
     }
 
     /// Create an `Expr` which calls the extension function with the given
@@ -1149,6 +991,17 @@ impl<T: Clone> ExprBuilder<T> {
                 .or(acc, next)
         })
     }
+}
+
+/// Errors when constructing an `Expr`
+#[derive(Debug, PartialEq, Error)]
+pub enum ExprConstructionError {
+    /// A key occurred twice (or more) in a record literal
+    #[error("duplicate key `{key}` in record literal")]
+    DuplicateKeyInRecordLiteral {
+        /// The key which occurred twice (or more) in the record literal
+        key: SmolStr,
+    },
 }
 
 /// A new type wrapper around `Expr` that provides `Eq` and `Hash`
@@ -1281,10 +1134,13 @@ impl<T> Expr<T> {
                 .iter()
                 .zip(elems1.iter())
                 .all(|(e, e1)| e.eq_shape(e1)),
-            (Record { pairs }, Record { pairs: pairs1 }) => pairs
-                .iter()
-                .zip(pairs1.iter())
-                .all(|((a, e), (a1, e1))| a == a1 && e.eq_shape(e1)),
+            (Record(map), Record(map1)) => {
+                map.len() == map1.len()
+                    && map
+                        .iter()
+                        .zip(map1.iter()) // relying on BTreeMap producing an iterator sorted by key
+                        .all(|((a, e), (a1, e1))| a == a1 && e.eq_shape(e1))
+            }
             _ => false,
         }
     }
@@ -1363,9 +1219,9 @@ impl<T> Expr<T> {
                     e.hash_shape(state);
                 })
             }
-            ExprKind::Record { pairs } => {
-                state.write_usize(pairs.len());
-                pairs.iter().for_each(|(s, a)| {
+            ExprKind::Record(map) => {
+                state.write_usize(map.len());
+                map.iter().for_each(|(s, a)| {
                     s.hash(state);
                     a.hash_shape(state);
                 });
@@ -1438,6 +1294,7 @@ impl std::fmt::Display for Var {
 
 #[cfg(test)]
 mod test {
+    use itertools::Itertools;
     use std::{
         collections::{hash_map::DefaultHasher, HashSet},
         sync::Arc,
@@ -1553,6 +1410,16 @@ mod test {
             vec![PatternElem::Char('\\'), PatternElem::Char('*')],
         );
         assert_eq!(format!("{e}"), r#""a" like "\\\*""#);
+    }
+
+    #[test]
+    fn has_display() {
+        // `\0` escaped form is `\0`.
+        let e = Expr::has_attr(Expr::val("a"), "\0".into());
+        assert_eq!(format!("{e}"), r#""a" has "\0""#);
+        // `\`'s escaped form is `\\`
+        let e = Expr::has_attr(Expr::val("a"), r#"\"#.into());
+        assert_eq!(format!("{e}"), r#""a" has "\\""#);
     }
 
     #[test]
@@ -1707,8 +1574,10 @@ mod test {
                 Expr::set([Expr::val(1)]),
             ),
             (
-                ExprBuilder::with_data(1).record([("foo".into(), temp.clone())]),
-                Expr::record([("foo".into(), Expr::val(1))]),
+                ExprBuilder::with_data(1)
+                    .record([("foo".into(), temp.clone())])
+                    .unwrap(),
+                Expr::record([("foo".into(), Expr::val(1))]).unwrap(),
             ),
             (
                 ExprBuilder::with_data(1)
