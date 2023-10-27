@@ -3668,11 +3668,7 @@ mod tests {
                 ),
             ),
         ] {
-            let mut errs = ParseErrors::new();
-            let e = text_to_cst::parse_expr(es)
-                .expect("should construct a CST")
-                .to_expr(&mut errs)
-                .expect("should convert to AST");
+            let e = parse_expr(es).unwrap();
             assert!(
                 e.eq_shape(&expr),
                 "{:?} and {:?} should have the same shape.",
@@ -3684,7 +3680,6 @@ mod tests {
 
     #[test]
     fn is_scope() {
-        let id = ast::PolicyID::from_string("id");
         for (src, p, a, r) in [
             (
                 r#"permit(principal is User, action, resource);"#,
@@ -3698,6 +3693,12 @@ mod tests {
                     "User".parse().unwrap(),
                     Some(r#"Group::"thing""#.parse().unwrap()),
                 ),
+                ActionConstraint::any(),
+                ResourceConstraint::any(),
+            ),
+            (
+                r#"permit(principal is User in ?principal, action, resource);"#,
+                PrincipalConstraint::is_type_in_slot("User".parse().unwrap()),
                 ActionConstraint::any(),
                 ResourceConstraint::any(),
             ),
@@ -3716,15 +3717,93 @@ mod tests {
                     Some(r#"Folder::"inner""#.parse().unwrap()),
                 ),
             ),
+            (
+                r#"permit(principal, action, resource is Folder in ?resource);"#,
+                PrincipalConstraint::any(),
+                ActionConstraint::any(),
+                ResourceConstraint::is_type_in_slot("Folder".parse().unwrap()),
+            ),
         ] {
-            let mut errs = ParseErrors::new();
-            let policy = text_to_cst::parse_policy(src)
-                .expect("should parse")
-                .to_policy(id.clone(), &mut errs)
-                .expect("should be valid");
+            let policy = parse_policy_template(None, src).unwrap();
             assert_eq!(policy.principal_constraint(), &p);
             assert_eq!(policy.action_constraint(), &a);
             assert_eq!(policy.resource_constraint(), &r);
+        }
+    }
+
+    #[test]
+    fn is_err() {
+        let invalid_is_policies = [
+            (
+                r#"permit(principal in Group::"friends" is User, action, resource);"#,
+                "expected a entity uid or template slot",
+            ),
+            (
+                r#"permit(principal, action, resource in Folder::"folder" is File);"#,
+                "expected a entity uid or template slot",
+            ),
+            (
+                r#"permit(principal is User == User::"Alice", action, resource);"#,
+                "`is` cannot appear in the scope at the same time as `==`",
+            ),
+            (
+                r#"permit(principal, action, resource is Doc == Doc::"a");"#,
+                "`is` cannot appear in the scope at the same time as `==`",
+            ),
+            (
+                r#"permit(principal is User::"alice", action, resource);"#,
+                r#"unexpected token `"alice"`"#,
+            ),
+            (
+                r#"permit(principal, action, resource is File::"f");"#,
+                r#"unexpected token `"f"`"#,
+            ),
+            (
+                r#"permit(principal is User in 1, action, resource);"#,
+                "expected a entity uid or template slot, found a `literal` statement",
+            ),
+            (
+                r#"permit(principal, action, resource is File in 1);"#,
+                "expected a entity uid or template slot, found a `literal` statement",
+            ),
+            (
+                r#"permit(principal is 1, action, resource);"#,
+                "unexpected token `1`",
+            ),
+            (
+                r#"permit(principal, action, resource is 1);"#,
+                "unexpected token `1`",
+            ),
+            (
+                r#"permit(principal, action is Action, resource);"#,
+                "`is` cannot appear in the action scope",
+            ),
+            (
+                r#"permit(principal, action is Action in Action::"A", resource);"#,
+                "`is` cannot appear in the action scope",
+            ),
+            (
+                r#"permit(principal is User in ?resource, action, resource);"#,
+                "expected a entity uid or template slot",
+            ),
+            (
+                r#"permit(principal, action, resource is Folder in ?principal);"#,
+                "expected a entity uid or template slot",
+            ),
+            (
+                r#"permit(principal, action, resource) when { principal is 1 };"#,
+                "unexpected token `1`",
+            ),
+        ];
+        for (p_src, expected) in invalid_is_policies {
+            let err = parse_policy_template(None, p_src).unwrap_err().to_string();
+
+            assert!(
+                err.contains(expected),
+                "expected error containing `{}`, saw `{}`",
+                expected,
+                err
+            );
         }
     }
 }

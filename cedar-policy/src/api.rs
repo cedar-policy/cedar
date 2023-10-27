@@ -5559,18 +5559,4 @@ mod schema_based_parsing_tests {
             e => panic!("Wrong error. Expected `Duplicate`, got: {e:?}"),
         }
     }
-
-    #[test]
-    fn test_to_est() {
-        let p = Policy::parse(
-            None,
-            r#"permit(principal,action,resource) when { principal is User in Group::"friends" };"#,
-        )
-        .unwrap();
-        println!("{}", p.to_string());
-        let json = p.to_json().unwrap();
-        println!("{}", json);
-        let p2 = Policy::from_json(None, json).unwrap();
-        println!("{}", p2.to_string());
-    }
 }
