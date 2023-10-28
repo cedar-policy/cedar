@@ -100,20 +100,15 @@ impl IPAddr {
     /// Return true if this is a loopback address
     fn is_loopback(&self) -> bool {
         // Loopback addresses are "127.0.0.0/8" for IpV4 and "::1" for IpV6
-        // Unlike the implementation of `is_multicast`, we don't need to test prefix
-        // The reason for IpV6 is obvious: There's only one loopback address
-        // The reason for IpV4 is that provided the truncated ip address is a loopback address, its prefix cannot be less than 8 because otherwise its more significant byte cannot be 127
-        self.addr.is_loopback()
+        // If `addr` is a loopback address, its prefix is `127` or `1`
+        // We need to just make sure the prefix is greater than or equal to `8` or `128`
+        self.addr.is_loopback() && self.prefix >= if self.is_ipv4() { 8 } else { PREFIX_MAX_LEN_V6 }
     }
 
     /// Return true if this is a multicast address
     fn is_multicast(&self) -> bool {
         // Multicast addresses are "224.0.0.0/4" for IpV4 and "ff00::/8" for IpV6
-        // If an ip range's addresses are multicast addresses, calling
-        // `is_in_range()` over it and its associated net above should evaluate
-        // to true
-        // The implementation uses the property that if `ip1/prefix1` is in range
-        // `ip2/prefix2`, then `ip1` is in `ip2/prefix2` and `prefix1 >= prefix2`
+        // Following the same reasoning as `is_loopback`
         self.addr.is_multicast() && self.prefix >= if self.is_ipv4() { 4 } else { 8 }
     }
 
@@ -167,7 +162,9 @@ fn parse_prefix(s: &str, max: u8, max_len: u8) -> Result<u8, String> {
         .parse()
         .map_err(|err| format!("error parsing prefix from the string `{s}`: {err}"))?;
     if res > max {
-        return Err(format!("error parsing prefix: {res} is larger than the limit {max}"));
+        return Err(format!(
+            "error parsing prefix: {res} is larger than the limit {max}"
+        ));
     }
     Ok(res)
 }
