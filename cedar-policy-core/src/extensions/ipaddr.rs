@@ -167,7 +167,7 @@ fn parse_prefix(s: &str, max: u8, max_len: u8) -> Result<u8, String> {
         .parse()
         .map_err(|err| format!("error parsing prefix from the string `{s}`: {err}"))?;
     if res > max {
-        return Err(format!("error parsing prefix: too large"));
+        return Err(format!("error parsing prefix: {res} is larger than the limit {max}"));
     }
     Ok(res)
 }
