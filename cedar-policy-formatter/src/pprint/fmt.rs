@@ -179,6 +179,7 @@ mod tests {
         let pairs = vec![
             ("test.cedar", "test_formatted.cedar"),
             ("policies.cedar", "policies_formatted.cedar"),
+            ("is_policies.cedar", "is_policies_formatted.cedar"),
         ];
         for (pf, ef) in pairs {
             // editors or cargo run try to append a newline at the end of files
