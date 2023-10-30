@@ -100,8 +100,8 @@ impl IPAddr {
     /// Return true if this is a loopback address
     fn is_loopback(&self) -> bool {
         // Loopback addresses are "127.0.0.0/8" for IpV4 and "::1" for IpV6
-        // If `addr` is a loopback address, its prefix is `127` or `1`
-        // We need to just make sure the prefix is greater than or equal to `8` or `128`
+        // If `addr` is a loopback address, its prefix is `0x7f` or `0x00000000000000000000000000000001`
+        // We need to just make sure the prefix length (i.e., `prefix`) is greater than or equal to `8` or `128`
         self.addr.is_loopback() && self.prefix >= if self.is_ipv4() { 8 } else { PREFIX_MAX_LEN_V6 }
     }
 
@@ -756,6 +756,13 @@ mod tests {
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isLoopback").expect("should be a valid identifier"),
                 vec![ip("::2")]
+            )),
+            Ok(Value::from(false))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isLoopback").expect("should be a valid identifier"),
+                vec![ip("127.255.200.200/0")]
             )),
             Ok(Value::from(false))
         );
