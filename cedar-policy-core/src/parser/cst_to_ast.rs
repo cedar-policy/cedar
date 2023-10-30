@@ -532,15 +532,13 @@ impl ASTNode<Option<cst::VariableDef>> {
                     None
                 }
             }
+        } else if let Some(entity_type) = &vardef.entity_type {
+            Some(PrincipalOrResourceConstraint::Is(
+                entity_type.to_name(errs)?,
+                None,
+            ))
         } else {
-            if let Some(entity_type) = &vardef.entity_type {
-                Some(PrincipalOrResourceConstraint::Is(
-                    entity_type.to_name(errs)?,
-                    None,
-                ))
-            } else {
-                Some(PrincipalOrResourceConstraint::Any)
-            }
+            Some(PrincipalOrResourceConstraint::Any)
         }?;
         match var {
             ast::Var::Principal => {

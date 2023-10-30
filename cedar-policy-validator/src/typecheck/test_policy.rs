@@ -524,6 +524,88 @@ fn entity_lub_cant_have_undeclared_attribute() {
 }
 
 #[test]
+fn is_typechecks_singleton() {
+    assert_policy_typechecks_simple_schema(
+        parse_policy(None, r#"permit(principal is User, action, resource);"#).unwrap(),
+    );
+    assert_policy_typechecks_simple_schema(
+        parse_policy(None, r#"permit(principal is Group, action, resource);"#).unwrap(),
+    );
+    assert_policy_typechecks_simple_schema(
+        parse_policy(None, r#"permit(principal, action, resource is Photo);"#).unwrap(),
+    );
+    assert_policy_typechecks_simple_schema(
+        parse_policy(None, r#"permit(principal, action, resource is Group);"#).unwrap(),
+    );
+}
+
+#[test]
+fn is_impossible() {
+    let p = parse_policy(None, r#"permit(principal is Photo, action, resource);"#).unwrap();
+    assert_policy_typecheck_fails_simple_schema(
+        p.clone(),
+        vec![TypeError::impossible_policy(p.condition())],
+    );
+    let p = parse_policy(None, r#"permit(principal, action, resource is User);"#).unwrap();
+    assert_policy_typecheck_fails_simple_schema(
+        p.clone(),
+        vec![TypeError::impossible_policy(p.condition())],
+    );
+}
+
+#[test]
+fn is_entity_lub() {
+    assert_policy_typechecks_permissive_simple_schema(
+        parse_policy(
+            None,
+            r#"
+            permit(principal, action, resource) when {
+                (if principal.name == "foo" then principal else resource) is User
+            };
+        "#,
+        )
+        .unwrap(),
+    );
+    let p = parse_policy(
+        None,
+        r#"
+            permit(principal, action, resource) when {
+                (if principal.name == "foo" then principal else resource) is Album
+            };
+        "#,
+    )
+    .unwrap();
+    assert_policy_typecheck_permissive_fails_simple_schema(
+        p.clone(),
+        vec![TypeError::impossible_policy(p.condition())],
+    );
+}
+
+#[test]
+fn is_action() {
+    assert_policy_typechecks_simple_schema(
+        parse_policy(
+            None,
+            r#"
+            permit(principal, action, resource) when { action is Action };
+        "#,
+        )
+        .unwrap(),
+    );
+    let p = parse_policy(
+        None,
+        r#"
+            permit(principal, action, resource) when { action is User};
+        "#,
+    )
+    .unwrap();
+    assert_policy_typecheck_fails_simple_schema(
+        p.clone(),
+        vec![TypeError::impossible_policy(p.condition())],
+    );
+}
+
+#[test]
 fn entity_record_lub_is_none() {
     assert_policy_typecheck_fails_simple_schema(parse_policy(
             Some("0".to_string()),
