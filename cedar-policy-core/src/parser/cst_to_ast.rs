@@ -523,9 +523,9 @@ impl ASTNode<Option<cst::VariableDef>> {
                     None
                 }
                 (cst::RelOp::In, None) => Some(PrincipalOrResourceConstraint::In(eref)),
-                (cst::RelOp::In, Some(entity_type)) => Some(PrincipalOrResourceConstraint::Is(
+                (cst::RelOp::In, Some(entity_type)) => Some(PrincipalOrResourceConstraint::IsIn(
                     entity_type.to_name(errs)?,
-                    Some(eref),
+                    eref,
                 )),
                 (op, _) => {
                     errs.push(ToASTError::InvalidConstraintOperator(*op).into());
@@ -535,7 +535,6 @@ impl ASTNode<Option<cst::VariableDef>> {
         } else if let Some(entity_type) = &vardef.entity_type {
             Some(PrincipalOrResourceConstraint::Is(
                 entity_type.to_name(errs)?,
-                None,
             ))
         } else {
             Some(PrincipalOrResourceConstraint::Any)
@@ -3701,30 +3700,30 @@ mod tests {
         for (src, p, a, r) in [
             (
                 r#"permit(principal is User, action, resource);"#,
-                PrincipalConstraint::is_type("User".parse().unwrap(), None),
+                PrincipalConstraint::is_type("User".parse().unwrap()),
                 ActionConstraint::any(),
                 ResourceConstraint::any(),
             ),
             (
                 r#"permit(principal is A::User, action, resource);"#,
-                PrincipalConstraint::is_type("A::User".parse().unwrap(), None),
+                PrincipalConstraint::is_type("A::User".parse().unwrap()),
                 ActionConstraint::any(),
                 ResourceConstraint::any(),
             ),
             (
                 r#"permit(principal is User in Group::"thing", action, resource);"#,
-                PrincipalConstraint::is_type(
+                PrincipalConstraint::is_type_in(
                     "User".parse().unwrap(),
-                    Some(r#"Group::"thing""#.parse().unwrap()),
+                    r#"Group::"thing""#.parse().unwrap(),
                 ),
                 ActionConstraint::any(),
                 ResourceConstraint::any(),
             ),
             (
                 r#"permit(principal is A::User in Group::"thing", action, resource);"#,
-                PrincipalConstraint::is_type(
+                PrincipalConstraint::is_type_in(
                     "A::User".parse().unwrap(),
-                    Some(r#"Group::"thing""#.parse().unwrap()),
+                    r#"Group::"thing""#.parse().unwrap(),
                 ),
                 ActionConstraint::any(),
                 ResourceConstraint::any(),
@@ -3739,15 +3738,15 @@ mod tests {
                 r#"permit(principal, action, resource is Folder);"#,
                 PrincipalConstraint::any(),
                 ActionConstraint::any(),
-                ResourceConstraint::is_type("Folder".parse().unwrap(), None),
+                ResourceConstraint::is_type("Folder".parse().unwrap()),
             ),
             (
                 r#"permit(principal, action, resource is Folder in Folder::"inner");"#,
                 PrincipalConstraint::any(),
                 ActionConstraint::any(),
-                ResourceConstraint::is_type(
+                ResourceConstraint::is_type_in(
                     "Folder".parse().unwrap(),
-                    Some(r#"Folder::"inner""#.parse().unwrap()),
+                    r#"Folder::"inner""#.parse().unwrap(),
                 ),
             ),
             (

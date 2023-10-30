@@ -442,10 +442,10 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
                     slot: ast::SlotId::principal(),
                 })
             }
-            ast::PrincipalOrResourceConstraint::Is(entity_type, euid) => {
+            ast::PrincipalOrResourceConstraint::IsIn(entity_type, euid) => {
                 PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
                     entity_type: entity_type.to_string().into(),
-                    in_entity: euid.map(|euid| match euid {
+                    in_entity: Some(match euid {
                         ast::EntityReference::EUID(e) => PrincipalOrResourceInConstraint::Entity {
                             entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                         },
@@ -453,6 +453,12 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
                             slot: ast::SlotId::principal(),
                         },
                     }),
+                })
+            }
+            ast::PrincipalOrResourceConstraint::Is(entity_type) => {
+                PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                    entity_type: entity_type.to_string().into(),
+                    in_entity: None,
                 })
             }
         }
@@ -483,10 +489,10 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
                     slot: ast::SlotId::resource(),
                 })
             }
-            ast::PrincipalOrResourceConstraint::Is(entity_type, euid) => {
+            ast::PrincipalOrResourceConstraint::IsIn(entity_type, euid) => {
                 ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
                     entity_type: entity_type.to_string().into(),
-                    in_entity: euid.map(|euid| match euid {
+                    in_entity: Some(match euid {
                         ast::EntityReference::EUID(e) => PrincipalOrResourceInConstraint::Entity {
                             entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                         },
@@ -494,6 +500,12 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
                             slot: ast::SlotId::resource(),
                         },
                     }),
+                })
+            }
+            ast::PrincipalOrResourceConstraint::Is(entity_type) => {
+                ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                    entity_type: entity_type.to_string().into(),
+                    in_entity: None,
                 })
             }
         }
@@ -542,14 +554,11 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
                 .map_err(Self::Error::InvalidEntityType)
                 .and_then(|entity_type| {
                     Ok(match in_entity {
-                        None => ast::PrincipalOrResourceConstraint::is_type(entity_type, None),
+                        None => ast::PrincipalOrResourceConstraint::is_type(entity_type),
                         Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
-                            ast::PrincipalOrResourceConstraint::is_type(
+                            ast::PrincipalOrResourceConstraint::is_type_in(
                                 entity_type,
-                                Some(
-                                    entity
-                                        .into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
-                                ),
+                                entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
                             )
                         }
                         Some(PrincipalOrResourceInConstraint::Slot { .. }) => {
@@ -603,14 +612,11 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
                 .map_err(Self::Error::InvalidEntityType)
                 .and_then(|entity_type| {
                     Ok(match in_entity {
-                        None => ast::PrincipalOrResourceConstraint::is_type(entity_type, None),
+                        None => ast::PrincipalOrResourceConstraint::is_type(entity_type),
                         Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
-                            ast::PrincipalOrResourceConstraint::is_type(
+                            ast::PrincipalOrResourceConstraint::is_type_in(
                                 entity_type,
-                                Some(
-                                    entity
-                                        .into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
-                                ),
+                                entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
                             )
                         }
                         Some(PrincipalOrResourceInConstraint::Slot { .. }) => {
