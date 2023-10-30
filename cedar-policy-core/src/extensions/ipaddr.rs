@@ -121,7 +121,7 @@ impl IPAddr {
                         .checked_shl((PREFIX_MAX_LEN_V4 - prefix).into())
                         .unwrap_or(0)
                 };
-                let hostmask = |prefix: u8| u32::MAX.checked_shr(prefix as u32).unwrap_or(0);
+                let hostmask = |prefix: u8| u32::MAX.checked_shr(prefix.into()).unwrap_or(0);
 
                 let self_network = u32::from(*self_v4) & netmask(self.prefix);
                 let other_network = u32::from(*other_v4) & netmask(other.prefix);
@@ -135,7 +135,7 @@ impl IPAddr {
                         .checked_shl((PREFIX_MAX_LEN_V6 - prefix).into())
                         .unwrap_or(0)
                 };
-                let hostmask = |prefix: u8| u128::MAX.checked_shr(prefix as u32).unwrap_or(0);
+                let hostmask = |prefix: u8| u128::MAX.checked_shr(prefix.into()).unwrap_or(0);
 
                 let self_network = u128::from(*self_v6) & netmask(self.prefix);
                 let other_network = u128::from(*other_v6) & netmask(other.prefix);
