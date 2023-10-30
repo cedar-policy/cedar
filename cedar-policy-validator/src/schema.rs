@@ -26,6 +26,7 @@ use std::sync::Arc;
 use cedar_policy_core::{
     ast::{Entity, EntityType, EntityUID, Id, Name},
     entities::{Entities, TCComputation},
+    extensions::Extensions,
     transitive_closure::compute_tc,
 };
 use serde::{Deserialize, Serialize};
@@ -546,7 +547,8 @@ impl ValidatorSchema {
         })
     }
 
-    /// Construct an `Entity` object for each action in the schema
+    /// Invert the action hierarchy to get the ancestor relation expected for
+    /// the `Entity` datatype instead of descendants as stored by the schema.
     fn action_entities_iter(&self) -> impl Iterator<Item = cedar_policy_core::ast::Entity> + '_ {
         // We could store the un-inverted `memberOf` relation for each action,
         // but I [john-h-kastner-aws] judge that the current implementation is
@@ -571,12 +573,13 @@ impl ValidatorSchema {
         })
     }
 
-    /// Invert the action hierarchy to get the ancestor relation expected for
-    /// the `Entity` datatype instead of descendant as stored by the schema.
+    /// Construct an `Entity` object for each action in the schema
     pub fn action_entities(&self) -> cedar_policy_core::entities::Result<Entities> {
         Entities::from_entities(
             self.action_entities_iter(),
+            None::<&cedar_policy_core::entities::NoEntitiesSchema>, // we don't want to tell `Entities::from_entities()` to add the schema's action entities, that would infinitely recurse
             TCComputation::AssumeAlreadyComputed,
+            Extensions::all_available(),
         )
     }
 }
@@ -607,6 +610,7 @@ impl<'a> CoreSchema<'a> {
 
 impl<'a> cedar_policy_core::entities::Schema for CoreSchema<'a> {
     type EntityTypeDescription = EntityTypeDescription;
+    type ActionEntityIterator = Vec<Arc<Entity>>;
 
     fn entity_type(
         &self,
@@ -635,6 +639,10 @@ impl<'a> cedar_policy_core::entities::Schema for CoreSchema<'a> {
                 None
             }
         }))
+    }
+
+    fn action_entities(&self) -> Self::ActionEntityIterator {
+        self.actions.values().map(Arc::clone).collect()
     }
 }
 

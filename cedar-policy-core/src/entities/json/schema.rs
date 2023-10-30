@@ -9,6 +9,9 @@ pub trait Schema {
     /// Type returned by `entity_type()`. Must implement the `EntityTypeDescription` trait
     type EntityTypeDescription: EntityTypeDescription;
 
+    /// Type returned by `action_entities()`
+    type ActionEntityIterator: IntoIterator<Item = Arc<Entity>>;
+
     /// Get an `EntityTypeDescription` for the given entity type, or `None` if that
     /// entity type is not declared in the schema (in which case entities of that
     /// type should not appear in the JSON data).
@@ -25,6 +28,9 @@ pub trait Schema {
         &'a self,
         basename: &'a Id,
     ) -> Box<dyn Iterator<Item = EntityType> + 'a>;
+
+    /// Get all the actions declared in the schema
+    fn action_entities(&self) -> Self::ActionEntityIterator;
 }
 
 /// Simple type that implements `Schema` by expecting no entities to exist at all
@@ -32,6 +38,7 @@ pub trait Schema {
 pub struct NoEntitiesSchema;
 impl Schema for NoEntitiesSchema {
     type EntityTypeDescription = NullEntityTypeDescription;
+    type ActionEntityIterator = std::iter::Empty<Arc<Entity>>;
     fn entity_type(&self, _entity_type: &EntityType) -> Option<NullEntityTypeDescription> {
         None
     }
@@ -44,15 +51,25 @@ impl Schema for NoEntitiesSchema {
     ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
         Box::new(std::iter::empty())
     }
+    fn action_entities(&self) -> std::iter::Empty<Arc<Entity>> {
+        std::iter::empty()
+    }
 }
 
 /// Simple type that implements `Schema` by allowing entities of all types to
 /// exist, and allowing all actions to exist, but expecting no attributes or
-/// parents on any entity (action or otherwise)
+/// parents on any entity (action or otherwise).
+///
+/// This type returns an empty iterator for `action_entities()`, which is kind
+/// of inconsistent with its behavior on `action()`. But it works out -- the
+/// result is that, in `EntityJsonParser`, all actions encountered in JSON data
+/// are allowed to exist without error, but no additional actions from the
+/// schema are added.
 #[derive(Debug, Clone)]
 pub struct AllEntitiesNoAttrsSchema;
 impl Schema for AllEntitiesNoAttrsSchema {
     type EntityTypeDescription = NullEntityTypeDescription;
+    type ActionEntityIterator = std::iter::Empty<Arc<Entity>>;
     fn entity_type(&self, entity_type: &EntityType) -> Option<NullEntityTypeDescription> {
         Some(NullEntityTypeDescription {
             ty: entity_type.clone(),
@@ -72,6 +89,9 @@ impl Schema for AllEntitiesNoAttrsSchema {
         Box::new(std::iter::once(EntityType::Concrete(
             Name::unqualified_name(basename.clone()),
         )))
+    }
+    fn action_entities(&self) -> std::iter::Empty<Arc<Entity>> {
+        std::iter::empty()
     }
 }
 

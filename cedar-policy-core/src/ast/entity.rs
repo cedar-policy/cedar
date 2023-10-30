@@ -280,10 +280,11 @@ impl Entity {
         &self.attrs
     }
 
-    /// Read-only access the internal `ancestors` hashset.
-    /// This function is available only inside Core.
-    pub(crate) fn ancestors_set(&self) -> &HashSet<EntityUID> {
-        &self.ancestors
+    /// Test if two `Entity` objects are deep/structurally equal.
+    /// That is, not only do they have the same UID, but also the same
+    /// attributes, attribute values, and ancestors.
+    pub(crate) fn deep_eq(&self, other: &Self) -> bool {
+        self.uid == other.uid && self.attrs == other.attrs && self.ancestors == other.ancestors
     }
 
     /// Set the given attribute to the given value.

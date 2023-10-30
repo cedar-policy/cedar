@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed `__expr` escape from Cedar JSON formats
 - Rename `cedar_policy_core::est::EstToAstError` to `cedar_policy_core::est::FromJsonError`.
-- Rename `cedar_policy_core::entities::JsonDeserializationError::ExtensionsError` to `cedar_policy_core::entities::JsonDeserializationError::FailedExtensionsFunctionLookup`.
+- Rename `cedar_policy_core::entities::JsonDeserializationError::ExtensionsError` to `cedar_policy_core::entities::JsonDeserializationError::ExtensionFunctionLookup`.
 - Rename variants in `cedar_policy::SchemaError`.
 - `Diagnostics::errors()` now returns an iterator over `AuthorizationError`s.
 - `Response::new()` now expects a `Vec<AuthorizationError>` as its third argument.
@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Implement [RFC 20](https://github.com/cedar-policy/rfcs/blob/main/text/0020-unique-record-keys.md),
   disallowing duplicate keys in record values (including record literals in policies, request `context`,
   and records in entity attributes).
+- `Entities::from_*()` methods now automatically add action entities present in the `schema`
+  to the constructed `Entities`, if a `schema` is provided.
+- `Entities::from_*()` methods now validate the entities against the `schema`, if a `schema`
+  is provided.
+- `Entities::from_entities()` and `Entities::add_entities()` now take an optional schema argument.
 - Change the semantics of equality for IP ranges. For example,
   `ip("192.168.0.1/24") == ip("192.168.0.3/24")` was previously `true` and is now
   `false`. The behavior of equality on single IP addresses is unchanged, and so is

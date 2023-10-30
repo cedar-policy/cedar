@@ -26,9 +26,9 @@ use cedar_policy_core::ast;
 use cedar_policy_core::ast::{ExprConstructionError, RestrictedExprError};
 use cedar_policy_core::authorizer;
 pub use cedar_policy_core::authorizer::AuthorizationError;
-use cedar_policy_core::entities;
-use cedar_policy_core::entities::JsonDeserializationErrorContext;
-use cedar_policy_core::entities::{ContextSchema, Dereference, JsonDeserializationError};
+use cedar_policy_core::entities::{
+    self, ContextSchema, Dereference, JsonDeserializationError, JsonDeserializationErrorContext,
+};
 use cedar_policy_core::est;
 pub use cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind};
 use cedar_policy_core::evaluator::{Evaluator, RestrictedEvaluator};
@@ -246,111 +246,178 @@ impl Entities {
     }
 
     /// Create an `Entities` object with the given entities.
-    /// It will error if the entities cannot be read or if the entities hierarchy is cyclic
+    ///
+    /// `schema` represents a source of `Action` entities, which will be added
+    /// to the entities provided.
+    /// (If any `Action` entities are present in the provided entities, and a
+    /// `schema` is also provided, each `Action` entity in the provided entities
+    /// must exactly match its definition in the schema or an error is
+    /// returned.)
+    ///
+    /// If a `schema` is present, this function will also ensure that the
+    /// produced entities fully conform to the `schema` -- for instance, it will
+    /// error if attributes have the wrong types (e.g., string instead of
+    /// integer), or if required attributes are missing or superfluous
+    /// attributes are provided.
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
+        schema: Option<&Schema>,
     ) -> Result<Self, entities::EntitiesError> {
         entities::Entities::from_entities(
             entities.into_iter().map(|e| e.0),
+            schema
+                .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
+                .as_ref(),
             entities::TCComputation::ComputeNow,
+            Extensions::all_available(),
         )
         .map(Entities)
     }
 
-    /// Add all of the [`Entity`]s in the collection to this [`Entities`] structure, re-computing the transitive closure
-    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    /// Add all of the [`Entity`]s in the collection to this [`Entities`]
+    /// structure, re-computing the transitive closure.
+    ///
+    /// If a `schema` is provided, this method will ensure that the added
+    /// entities fully conform to the schema -- for instance, it will error if
+    /// attributes have the wrong types (e.g., string instead of integer), or if
+    /// required attributes are missing or superfluous attributes are provided.
+    /// (This method will not add action entities from the `schema`.)
+    ///
+    /// Re-computing the transitive closure can be expensive, so it is advised
+    /// to not call this method in a loop.
     pub fn add_entities(
         self,
         entities: impl IntoIterator<Item = Entity>,
+        schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
-        Ok(Self(self.0.add_entities(
-            entities.into_iter().map(|e| e.0),
-            entities::TCComputation::ComputeNow,
-        )?))
+        Ok(Self(
+            self.0.add_entities(
+                entities.into_iter().map(|e| e.0),
+                schema
+                    .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
+                    .as_ref(),
+                entities::TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )?,
+        ))
     }
 
-    /// Parse an entities JSON file (in [&str] form) and add them into this [`Entities`] structure, re-computing the transitive closure
+    /// Parse an entities JSON file (in [&str] form) and add them into this
+    /// [`Entities`] structure, re-computing the transitive closure
     ///
     /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
-    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    /// will allow `__entity` and `__extn` escapes to be implicit.
+    /// This method will also ensure that the added entities fully conform to the
+    /// schema -- for instance, it will error if attributes have the wrong types
+    /// (e.g., string instead of integer), or if required attributes are missing
+    /// or superfluous attributes are provided.
+    /// (This method will not add action entities from the `schema`.)
+    ///
+    /// Re-computing the transitive closure can be expensive, so it is advised
+    /// to not call this method in a loop.
     pub fn add_entities_from_json_str(
         self,
         json: &str,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            schema.as_ref(),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
-        let new_entities = eparser
-            .iter_from_json_str(json)?
-            .collect::<Result<Vec<_>, _>>()?;
+        let new_entities = eparser.iter_from_json_str(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
+            schema.as_ref(),
             entities::TCComputation::ComputeNow,
+            Extensions::all_available(),
         )?))
     }
 
-    /// Parse an entities JSON file (in [`serde_json::Value`] form) and add them into this [`Entities`] structure, re-computing the transitive closure
+    /// Parse an entities JSON file (in [`serde_json::Value`] form) and add them
+    /// into this [`Entities`] structure, re-computing the transitive closure
     ///
     /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// will allow `__entity` and `__extn` escapes to be implicit.
+    /// This method will also ensure that the added entities fully conform to the
+    /// schema -- for instance, it will error if attributes have the wrong types
+    /// (e.g., string instead of integer), or if required attributes are missing
+    /// or superfluous attributes are provided.
+    /// (This method will not add action entities from the `schema`.)
     ///
-    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    /// Re-computing the transitive closure can be expensive, so it is advised
+    /// to not call this method in a loop.
     pub fn add_entities_from_json_value(
         self,
         json: serde_json::Value,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            schema.as_ref(),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
-        let new_entities = eparser
-            .iter_from_json_value(json)?
-            .collect::<Result<Vec<_>, _>>()?;
+        let new_entities = eparser.iter_from_json_value(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
+            schema.as_ref(),
             entities::TCComputation::ComputeNow,
+            Extensions::all_available(),
         )?))
     }
 
-    /// Parse an entities JSON file (in [`std::io::Read`] form) and add them into this [`Entities`] structure, re-computing the transitive closure
+    /// Parse an entities JSON file (in [`std::io::Read`] form) and add them
+    /// into this [`Entities`] structure, re-computing the transitive closure
     ///
     /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// will allow `__entity` and `__extn` escapes to be implicit.
+    /// This method will also ensure that the added entities fully conform to the
+    /// schema -- for instance, it will error if attributes have the wrong types
+    /// (e.g., string instead of integer), or if required attributes are missing
+    /// or superfluous attributes are provided.
+    /// (This method will not add action entities from the `schema`.)
     ///
-    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    /// Re-computing the transitive closure can be expensive, so it is advised
+    /// to not call this method in a loop.
     pub fn add_entities_from_json_file(
         self,
         json: impl std::io::Read,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            schema.as_ref(),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
-        let new_entities = eparser
-            .iter_from_json_file(json)?
-            .collect::<Result<Vec<_>, _>>()?;
+        let new_entities = eparser.iter_from_json_file(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
+            schema.as_ref(),
             entities::TCComputation::ComputeNow,
+            Extensions::all_available(),
         )?))
     }
 
     /// Parse an entities JSON file (in `&str` form) into an `Entities` object
     ///
-    /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// `schema` represents a source of `Action` entities, which will be added
+    /// to the entities parsed from JSON.
+    /// (If any `Action` entities are present in the JSON, and a `schema` is
+    /// also provided, each `Action` entity in the JSON must exactly match its
+    /// definition in the schema or an error is returned.)
+    ///
+    /// If a `schema` is present, this will also inform the parsing: for
+    /// instance, it will allow `__entity` and `__extn` escapes to be implicit.
+    ///
+    /// Finally, if a `schema` is present, this function will ensure
+    /// that the produced entities fully conform to the `schema` -- for
+    /// instance, it will error if attributes have the wrong types (e.g., string
+    /// instead of integer), or if required attributes are missing or
+    /// superfluous attributes are provided.
+    ///
     /// ```
     /// use std::collections::HashMap;
     /// use std::str::FromStr;
@@ -385,8 +452,9 @@ impl Entities {
         json: &str,
         schema: Option<&Schema>,
     ) -> Result<Self, entities::EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            schema.as_ref(),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
@@ -396,9 +464,21 @@ impl Entities {
     /// Parse an entities JSON file (in `serde_json::Value` form) into an
     /// `Entities` object
     ///
-    /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// `schema` represents a source of `Action` entities, which will be added
+    /// to the entities parsed from JSON.
+    /// (If any `Action` entities are present in the JSON, and a `schema` is
+    /// also provided, each `Action` entity in the JSON must exactly match its
+    /// definition in the schema or an error is returned.)
+    ///
+    /// If a `schema` is present, this will also inform the parsing: for
+    /// instance, it will allow `__entity` and `__extn` escapes to be implicit.
+    ///
+    /// Finally, if a `schema` is present, this function will ensure
+    /// that the produced entities fully conform to the `schema` -- for
+    /// instance, it will error if attributes have the wrong types (e.g., string
+    /// instead of integer), or if required attributes are missing or
+    /// superfluous attributes are provided.
+    ///
     /// ```
     /// use std::collections::HashMap;
     /// use std::str::FromStr;
@@ -426,8 +506,9 @@ impl Entities {
         json: serde_json::Value,
         schema: Option<&Schema>,
     ) -> Result<Self, entities::EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            schema.as_ref(),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
@@ -437,15 +518,27 @@ impl Entities {
     /// Parse an entities JSON file (in `std::io::Read` form) into an `Entities`
     /// object
     ///
-    /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// `schema` represents a source of `Action` entities, which will be added
+    /// to the entities parsed from JSON.
+    /// (If any `Action` entities are present in the JSON, and a `schema` is
+    /// also provided, each `Action` entity in the JSON must exactly match its
+    /// definition in the schema or an error is returned.)
+    ///
+    /// If a `schema` is present, this will also inform the parsing: for
+    /// instance, it will allow `__entity` and `__extn` escapes to be implicit.
+    ///
+    /// Finally, if a `schema` is present, this function will ensure
+    /// that the produced entities fully conform to the `schema` -- for
+    /// instance, it will error if attributes have the wrong types (e.g., string
+    /// instead of integer), or if required attributes are missing or
+    /// superfluous attributes are provided.
     pub fn from_json_file(
         json: impl std::io::Read,
         schema: Option<&Schema>,
     ) -> Result<Self, entities::EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            schema.as_ref(),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
@@ -4568,11 +4661,331 @@ mod ancestors_tests {
             HashMap::new(),
             std::iter::once(b_euid.clone()).collect(),
         );
-        let es = Entities::from_entities([a, b, c]).unwrap();
+        let es = Entities::from_entities([a, b, c], None).unwrap();
         let ans = es.ancestors(&c_euid).unwrap().collect::<HashSet<_>>();
         assert_eq!(ans.len(), 2);
         assert!(ans.contains(&b_euid));
         assert!(ans.contains(&a_euid));
+    }
+}
+
+/// A few tests of validating entities.
+/// Many other validation-related tests are in the separate module focusing on
+/// schema-based parsing.
+#[cfg(test)]
+mod entity_validate_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn schema() -> Schema {
+        Schema::from_json_value(json!(
+        {"": {
+            "entityTypes": {
+                "Employee": {
+                    "memberOfTypes": [],
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "isFullTime": { "type": "Boolean" },
+                            "numDirectReports": { "type": "Long" },
+                            "department": { "type": "String" },
+                            "manager": { "type": "Entity", "name": "Employee" },
+                            "hr_contacts": { "type": "Set", "element": {
+                                "type": "Entity", "name": "HR" } },
+                            "json_blob": { "type": "Record", "attributes": {
+                                "inner1": { "type": "Boolean" },
+                                "inner2": { "type": "String" },
+                                "inner3": { "type": "Record", "attributes": {
+                                    "innerinner": { "type": "Entity", "name": "Employee" }
+                                }}
+                            }},
+                            "home_ip": { "type": "Extension", "name": "ipaddr" },
+                            "work_ip": { "type": "Extension", "name": "ipaddr" },
+                            "trust_score": { "type": "Extension", "name": "decimal" },
+                            "tricky": { "type": "Record", "attributes": {
+                                "type": { "type": "String" },
+                                "id": { "type": "String" }
+                            }}
+                        }
+                    }
+                },
+                "HR": {
+                    "memberOfTypes": []
+                }
+            },
+            "actions": {
+                "view": { }
+            }
+        }}
+        ))
+        .expect("should be a valid schema")
+    }
+
+    fn validate_entity(entity: Entity, schema: &Schema) -> Result<(), entities::EntitiesError> {
+        let _ = Entities::from_entities([entity], Some(schema))?;
+        Ok(())
+    }
+
+    #[test]
+    fn valid_entity() {
+        let entity = Entity::new(
+            EntityUid::from_strs("Employee", "123"),
+            HashMap::from_iter([
+                ("isFullTime".into(), RestrictedExpression::new_bool(false)),
+                ("numDirectReports".into(), RestrictedExpression::new_long(3)),
+                (
+                    "department".into(),
+                    RestrictedExpression::new_string("Sales".into()),
+                ),
+                (
+                    "manager".into(),
+                    RestrictedExpression::from_str(r#"Employee::"456""#).unwrap(),
+                ),
+                ("hr_contacts".into(), RestrictedExpression::new_set([])),
+                (
+                    "json_blob".into(),
+                    RestrictedExpression::new_record([
+                        ("inner1".into(), RestrictedExpression::new_bool(false)),
+                        (
+                            "inner2".into(),
+                            RestrictedExpression::new_string("foo".into()),
+                        ),
+                        (
+                            "inner3".into(),
+                            RestrictedExpression::new_record([(
+                                "innerinner".into(),
+                                RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap(),
+                            )])
+                            .unwrap(),
+                        ),
+                    ])
+                    .unwrap(),
+                ),
+                (
+                    "home_ip".into(),
+                    RestrictedExpression::from_str(r#"ip("10.20.30.40")"#).unwrap(),
+                ),
+                (
+                    "work_ip".into(),
+                    RestrictedExpression::from_str(r#"ip("10.50.60.70")"#).unwrap(),
+                ),
+                (
+                    "trust_score".into(),
+                    RestrictedExpression::from_str(r#"decimal("36.53")"#).unwrap(),
+                ),
+                (
+                    "tricky".into(),
+                    RestrictedExpression::from_str(r#"{ type: "foo", id: "bar" }"#).unwrap(),
+                ),
+            ]),
+            HashSet::new(),
+        );
+        validate_entity(entity, &schema()).unwrap();
+    }
+
+    #[test]
+    fn invalid_entities() {
+        let schema = schema();
+        let entity = Entity::new(
+            EntityUid::from_strs("Employee", "123"),
+            HashMap::from_iter([
+                ("isFullTime".into(), RestrictedExpression::new_bool(false)),
+                ("numDirectReports".into(), RestrictedExpression::new_long(3)),
+                (
+                    "department".into(),
+                    RestrictedExpression::new_string("Sales".into()),
+                ),
+                (
+                    "manager".into(),
+                    RestrictedExpression::from_str(r#"Employee::"456""#).unwrap(),
+                ),
+                ("hr_contacts".into(), RestrictedExpression::new_set([])),
+                (
+                    "json_blob".into(),
+                    RestrictedExpression::new_record([
+                        ("inner1".into(), RestrictedExpression::new_bool(false)),
+                        (
+                            "inner2".into(),
+                            RestrictedExpression::new_string("foo".into()),
+                        ),
+                        (
+                            "inner3".into(),
+                            RestrictedExpression::new_record([(
+                                "innerinner".into(),
+                                RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap(),
+                            )])
+                            .unwrap(),
+                        ),
+                    ])
+                    .unwrap(),
+                ),
+                (
+                    "home_ip".into(),
+                    RestrictedExpression::from_str(r#"ip("10.20.30.40")"#).unwrap(),
+                ),
+                (
+                    "work_ip".into(),
+                    RestrictedExpression::from_str(r#"ip("10.50.60.70")"#).unwrap(),
+                ),
+                (
+                    "trust_score".into(),
+                    RestrictedExpression::from_str(r#"decimal("36.53")"#).unwrap(),
+                ),
+                (
+                    "tricky".into(),
+                    RestrictedExpression::from_str(r#"{ type: "foo", id: "bar" }"#).unwrap(),
+                ),
+            ]),
+            HashSet::from_iter([EntityUid::from_strs("Manager", "jane")]),
+        );
+        match validate_entity(entity, &schema) {
+            Ok(_) => panic!("expected an error due to extraneous parent"),
+            Err(e) => {
+                assert!(
+                    e.to_string().contains(r#"`Employee::"123"` is not allowed to have an ancestor of type `Manager` according to the schema"#),
+                    "actual error message was {e}",
+                )
+            }
+        }
+
+        let entity = Entity::new(
+            EntityUid::from_strs("Employee", "123"),
+            HashMap::from_iter([
+                ("isFullTime".into(), RestrictedExpression::new_bool(false)),
+                (
+                    "department".into(),
+                    RestrictedExpression::new_string("Sales".into()),
+                ),
+                (
+                    "manager".into(),
+                    RestrictedExpression::from_str(r#"Employee::"456""#).unwrap(),
+                ),
+                ("hr_contacts".into(), RestrictedExpression::new_set([])),
+                (
+                    "json_blob".into(),
+                    RestrictedExpression::new_record([
+                        ("inner1".into(), RestrictedExpression::new_bool(false)),
+                        (
+                            "inner2".into(),
+                            RestrictedExpression::new_string("foo".into()),
+                        ),
+                        (
+                            "inner3".into(),
+                            RestrictedExpression::new_record([(
+                                "innerinner".into(),
+                                RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap(),
+                            )])
+                            .unwrap(),
+                        ),
+                    ])
+                    .unwrap(),
+                ),
+                (
+                    "home_ip".into(),
+                    RestrictedExpression::from_str(r#"ip("10.20.30.40")"#).unwrap(),
+                ),
+                (
+                    "work_ip".into(),
+                    RestrictedExpression::from_str(r#"ip("10.50.60.70")"#).unwrap(),
+                ),
+                (
+                    "trust_score".into(),
+                    RestrictedExpression::from_str(r#"decimal("36.53")"#).unwrap(),
+                ),
+                (
+                    "tricky".into(),
+                    RestrictedExpression::from_str(r#"{ type: "foo", id: "bar" }"#).unwrap(),
+                ),
+            ]),
+            HashSet::new(),
+        );
+        match validate_entity(entity, &schema) {
+            Ok(_) => panic!("expected an error due to missing attribute `numDirectReports`"),
+            Err(e) => {
+                assert!(
+                    e.to_string().contains(r#"expected entity `Employee::"123"` to have attribute `numDirectReports`, but it does not"#),
+                    "actual error message was {e}",
+                )
+            }
+        }
+
+        let entity = Entity::new(
+            EntityUid::from_strs("Employee", "123"),
+            HashMap::from_iter([
+                ("isFullTime".into(), RestrictedExpression::new_bool(false)),
+                ("extra".into(), RestrictedExpression::new_bool(true)),
+                ("numDirectReports".into(), RestrictedExpression::new_long(3)),
+                (
+                    "department".into(),
+                    RestrictedExpression::new_string("Sales".into()),
+                ),
+                (
+                    "manager".into(),
+                    RestrictedExpression::from_str(r#"Employee::"456""#).unwrap(),
+                ),
+                ("hr_contacts".into(), RestrictedExpression::new_set([])),
+                (
+                    "json_blob".into(),
+                    RestrictedExpression::new_record([
+                        ("inner1".into(), RestrictedExpression::new_bool(false)),
+                        (
+                            "inner2".into(),
+                            RestrictedExpression::new_string("foo".into()),
+                        ),
+                        (
+                            "inner3".into(),
+                            RestrictedExpression::new_record([(
+                                "innerinner".into(),
+                                RestrictedExpression::from_str(r#"Employee::"abc""#).unwrap(),
+                            )])
+                            .unwrap(),
+                        ),
+                    ])
+                    .unwrap(),
+                ),
+                (
+                    "home_ip".into(),
+                    RestrictedExpression::from_str(r#"ip("10.20.30.40")"#).unwrap(),
+                ),
+                (
+                    "work_ip".into(),
+                    RestrictedExpression::from_str(r#"ip("10.50.60.70")"#).unwrap(),
+                ),
+                (
+                    "trust_score".into(),
+                    RestrictedExpression::from_str(r#"decimal("36.53")"#).unwrap(),
+                ),
+                (
+                    "tricky".into(),
+                    RestrictedExpression::from_str(r#"{ type: "foo", id: "bar" }"#).unwrap(),
+                ),
+            ]),
+            HashSet::new(),
+        );
+        match validate_entity(entity, &schema) {
+            Ok(_) => panic!("expected an error due to extraneous attribute"),
+            Err(e) => {
+                assert!(
+                    e.to_string().contains(r#"attribute `extra` on `Employee::"123"` should not exist according to the schema"#),
+                    "actual error message was {e}",
+                )
+            }
+        }
+
+        let entity = Entity::new(
+            EntityUid::from_strs("Manager", "jane"),
+            HashMap::new(),
+            HashSet::new(),
+        );
+        match validate_entity(entity, &schema) {
+            Ok(_) => panic!("expected an error due to unexpected entity type"),
+            Err(e) => {
+                assert!(
+                    e.to_string().contains(r#"entity `Manager::"jane"` has type `Manager` which is not declared in the schema"#),
+                    "actual error message was {e}",
+                )
+            }
+        }
     }
 }
 
@@ -4712,7 +5125,8 @@ mod schema_based_parsing_tests {
         // but with schema-based parsing, we get these other types
         let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
-        assert_eq!(parsed.iter().count(), 1);
+        assert_eq!(parsed.iter().count(), 2); // Employee::"12UA45" and the one action
+        assert_eq!(parsed.iter().filter(|e| e.0.uid().is_action()).count(), 1);
         let parsed = parsed
             .get(&EntityUid::from_strs("Employee", "12UA45"))
             .expect("that should be the employee id");
@@ -5084,7 +5498,8 @@ mod schema_based_parsing_tests {
         );
         let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
-        assert_eq!(parsed.iter().count(), 1);
+        assert_eq!(parsed.iter().count(), 2); // XYZCorp::Employee::"12UA45" and one action
+        assert_eq!(parsed.iter().filter(|e| e.0.uid().is_action()).count(), 1);
         let parsed = parsed
             .get(&EntityUid::from_strs("XYZCorp::Employee", "12UA45"))
             .expect("that should be the employee type and id");
@@ -5165,7 +5580,8 @@ mod schema_based_parsing_tests {
         );
         let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
-        assert_eq!(parsed.iter().count(), 1);
+        assert_eq!(parsed.iter().count(), 2); // Employee::"12UA45" and one action
+        assert_eq!(parsed.iter().filter(|e| e.0.uid().is_action()).count(), 1);
 
         // "department" shouldn't be required
         let entitiesjson = json!(
@@ -5182,7 +5598,8 @@ mod schema_based_parsing_tests {
         );
         let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
-        assert_eq!(parsed.iter().count(), 1);
+        assert_eq!(parsed.iter().count(), 2); // Employee::"12UA45" and the one action
+        assert_eq!(parsed.iter().filter(|e| e.0.uid().is_action()).count(), 1);
     }
 
     /// Test that involves open entities
@@ -5495,29 +5912,32 @@ mod schema_based_parsing_tests {
 
         assert_eq!(
             action_entities,
-            Entities::from_entities([
-                Entity::new(a_euid.clone(), HashMap::new(), HashSet::new()),
-                Entity::new(
-                    b_euid.clone(),
-                    HashMap::new(),
-                    HashSet::from([a_euid.clone()])
-                ),
-                Entity::new(
-                    c_euid.clone(),
-                    HashMap::new(),
-                    HashSet::from([a_euid.clone()])
-                ),
-                Entity::new(
-                    d_euid.clone(),
-                    HashMap::new(),
-                    HashSet::from([a_euid.clone(), b_euid.clone(), c_euid.clone()])
-                ),
-                Entity::new(
-                    e_euid,
-                    HashMap::new(),
-                    HashSet::from([a_euid, b_euid, c_euid, d_euid])
-                ),
-            ])
+            Entities::from_entities(
+                [
+                    Entity::new(a_euid.clone(), HashMap::new(), HashSet::new()),
+                    Entity::new(
+                        b_euid.clone(),
+                        HashMap::new(),
+                        HashSet::from([a_euid.clone()])
+                    ),
+                    Entity::new(
+                        c_euid.clone(),
+                        HashMap::new(),
+                        HashSet::from([a_euid.clone()])
+                    ),
+                    Entity::new(
+                        d_euid.clone(),
+                        HashMap::new(),
+                        HashSet::from([a_euid.clone(), b_euid.clone(), c_euid.clone()])
+                    ),
+                    Entity::new(
+                        e_euid,
+                        HashMap::new(),
+                        HashSet::from([a_euid, b_euid, c_euid, d_euid])
+                    ),
+                ],
+                Some(&schema)
+            )
             .unwrap()
         );
     }
