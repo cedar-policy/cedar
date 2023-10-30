@@ -853,7 +853,7 @@ pub mod test {
     use super::*;
 
     use crate::{
-        entities::{EntityJsonParser, TCComputation},
+        entities::{EntityJsonParser, NoEntitiesSchema, TCComputation},
         parser::{self, parse_policyset},
         parser::{parse_expr, parse_policy_template},
     };
@@ -890,7 +890,9 @@ pub mod test {
                 Entity::with_uid(EntityUID::with_eid("test_action")),
                 Entity::with_uid(EntityUID::with_eid("test_resource")),
             ],
+            None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
+            Extensions::none(),
         )
         .expect("failed to create basic entities")
     }
@@ -943,7 +945,9 @@ pub mod test {
                 sibling,
                 unrelated,
             ],
+            None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
+            Extensions::all_available(),
         )
         .expect("Failed to create rich entities")
     }
@@ -3054,8 +3058,13 @@ pub mod test {
         let mut alice = Entity::with_uid(EntityUID::with_eid("Alice"));
         let parent = Entity::with_uid(EntityUID::with_eid("Friends"));
         alice.add_ancestor(parent.uid());
-        let entities = Entities::from_entities(vec![alice], TCComputation::AssumeAlreadyComputed)
-            .expect("failed to create basic entities");
+        let entities = Entities::from_entities(
+            vec![alice],
+            None::<&NoEntitiesSchema>,
+            TCComputation::AssumeAlreadyComputed,
+            Extensions::all_available(),
+        )
+        .expect("failed to create basic entities");
         let exts = Extensions::none();
         let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
         assert_eq!(
@@ -3592,7 +3601,7 @@ pub mod test {
     fn eval_and_or() -> Result<()> {
         use crate::parser;
         let request = basic_request();
-        let eparser: EntityJsonParser<'_> =
+        let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
         let exts = Extensions::none();
@@ -3705,7 +3714,7 @@ pub mod test {
     #[test]
     fn template_env_tests() {
         let request = basic_request();
-        let eparser: EntityJsonParser<'_> =
+        let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
         let exts = Extensions::none();
@@ -3762,7 +3771,7 @@ pub mod test {
             EntityUID::with_eid("r"),
             Context::empty(),
         );
-        let eparser: EntityJsonParser<'_> =
+        let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
         let exts = Extensions::none();

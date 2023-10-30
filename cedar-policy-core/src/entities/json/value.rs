@@ -15,21 +15,22 @@
  */
 
 use super::{
-    AttributeType, JsonDeserializationError, JsonDeserializationErrorContext,
-    JsonSerializationError, SchemaType,
+    JsonDeserializationError, JsonDeserializationErrorContext, JsonSerializationError, SchemaType,
 };
 use crate::ast::{
     BorrowedRestrictedExpr, Eid, EntityUID, ExprConstructionError, ExprKind, Literal, Name,
     RestrictedExpr,
 };
-use crate::entities::EscapeKind;
-use crate::extensions::{ExtensionFunctionLookupError, Extensions};
+use crate::entities::{
+    type_of_restricted_expr, EntitySchemaConformanceError, EscapeKind, TypeOfRestrictedExprError,
+};
+use crate::extensions::Extensions;
 use crate::FromNormalizedStr;
 use either::Either;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 /// The canonical JSON representation of a Cedar value.
 /// Many Cedar values have a natural one-to-one mapping to and from JSON values.
@@ -357,8 +358,9 @@ impl<'e> ValueParser<'e> {
 
     /// internal function that converts a Cedar value (in JSON) into a
     /// `RestrictedExpr`. Performs schema-based parsing if `expected_ty` is
-    /// provided.
-    pub fn val_into_rexpr(
+    /// provided. This does not mean that this function fully validates the
+    /// value against `expected_ty` -- it does not.
+    pub fn val_into_restricted_expr(
         &self,
         val: serde_json::Value,
         expected_ty: Option<&SchemaType>,
@@ -387,19 +389,42 @@ impl<'e> ValueParser<'e> {
                 serde_json::Value::Array(elements) => Ok(RestrictedExpr::set(
                     elements
                         .into_iter()
-                        .map(|element| self.val_into_rexpr(element, Some(element_ty), ctx.clone()))
+                        .map(|element| {
+                            self.val_into_restricted_expr(element, Some(element_ty), ctx.clone())
+                        })
                         .collect::<Result<Vec<RestrictedExpr>, JsonDeserializationError>>()?,
                 )),
-                _ => Err(JsonDeserializationError::TypeMismatch {
-                    ctx: Box::new(ctx()),
-                    expected: Box::new(expected_ty.clone()),
-                    actual: {
+                _ => {
+                    let expected = Box::new(expected_ty.clone());
+                    let actual = {
                         let jvalue: CedarValueJson = serde_json::from_value(val)?;
-                        Box::new(
-                            self.type_of_rexpr(jvalue.into_expr(ctx.clone())?.as_borrowed(), ctx)?,
+                        let ty = type_of_restricted_expr(
+                            jvalue.into_expr(ctx.clone())?.as_borrowed(),
+                            self.extensions,
                         )
-                    },
-                }),
+                        .map_err(|e| {
+                            type_of_restricted_expr_error_to_json_deserialization_error(e, ctx())
+                        })?;
+                        Box::new(ty)
+                    };
+                    match ctx() {
+                        JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
+                            Err(JsonDeserializationError::EntitySchemaConformance(
+                                EntitySchemaConformanceError::TypeMismatch {
+                                    uid,
+                                    attr,
+                                    expected,
+                                    actual,
+                                },
+                            ))
+                        }
+                        ctx => Err(JsonDeserializationError::TypeMismatch {
+                            ctx: Box::new(ctx),
+                            expected,
+                            actual,
+                        }),
+                    }
+                }
             },
             // The expected type is a record type. No special parsing rules
             // apply, but we need to parse the attribute values according to
@@ -417,7 +442,7 @@ impl<'e> ValueParser<'e> {
                         .filter_map(move |(k, expected_attr_ty)| {
                             match mut_actual_attrs.remove(k.as_str()) {
                                 Some(actual_attr) => {
-                                    match self.val_into_rexpr(actual_attr, Some(expected_attr_ty.schema_type()), ctx.clone()) {
+                                    match self.val_into_restricted_expr(actual_attr, Some(expected_attr_ty.schema_type()), ctx.clone()) {
                                         Ok(actual_attr) => Some(Ok((k.clone(), actual_attr))),
                                         Err(e) => Some(Err(e)),
                                     }
@@ -451,16 +476,37 @@ impl<'e> ValueParser<'e> {
                         }
                     })
                 }
-                _ => Err(JsonDeserializationError::TypeMismatch {
-                    ctx: Box::new(ctx()),
-                    expected: Box::new(expected_ty.clone()),
-                    actual: {
+                _ => {
+                    let expected = Box::new(expected_ty.clone());
+                    let actual = {
                         let jvalue: CedarValueJson = serde_json::from_value(val)?;
-                        Box::new(
-                            self.type_of_rexpr(jvalue.into_expr(ctx.clone())?.as_borrowed(), ctx)?,
+                        let ty = type_of_restricted_expr(
+                            jvalue.into_expr(ctx.clone())?.as_borrowed(),
+                            self.extensions,
                         )
-                    },
-                }),
+                        .map_err(|e| {
+                            type_of_restricted_expr_error_to_json_deserialization_error(e, ctx())
+                        })?;
+                        Box::new(ty)
+                    };
+                    match ctx() {
+                        JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
+                            Err(JsonDeserializationError::EntitySchemaConformance(
+                                EntitySchemaConformanceError::TypeMismatch {
+                                    uid,
+                                    attr,
+                                    expected,
+                                    actual,
+                                },
+                            ))
+                        }
+                        ctx => Err(JsonDeserializationError::TypeMismatch {
+                            ctx: Box::new(ctx),
+                            expected,
+                            actual,
+                        }),
+                    }
+                }
             },
             // The expected type is any other type, or we don't have an expected type.
             // No special parsing rules apply; we do ordinary, non-schema-based parsing.
@@ -502,7 +548,10 @@ impl<'e> ValueParser<'e> {
             }
             ExtnValueJson::ImplicitConstructor(val) => {
                 let arg = val.into_expr(ctx.clone())?;
-                let argty = self.type_of_rexpr(arg.as_borrowed(), ctx.clone())?;
+                let argty =
+                    type_of_restricted_expr(arg.as_borrowed(), self.extensions).map_err(|e| {
+                        type_of_restricted_expr_error_to_json_deserialization_error(e, ctx())
+                    })?;
                 let func = self
                     .extensions
                     .lookup_single_arg_constructor(
@@ -510,7 +559,11 @@ impl<'e> ValueParser<'e> {
                             name: expected_typename.clone(),
                         },
                         &argty,
-                    )?
+                    )
+                    .map_err(|err| JsonDeserializationError::ExtensionFunctionLookup {
+                        ctx: Box::new(ctx()),
+                        err,
+                    })?
                     .ok_or_else(|| JsonDeserializationError::MissingImpliedConstructor {
                         ctx: Box::new(ctx()),
                         return_type: Box::new(SchemaType::Extension {
@@ -525,69 +578,35 @@ impl<'e> ValueParser<'e> {
             }
         }
     }
+}
 
-    /// Get the `SchemaType` of a restricted expression.
-    ///
-    /// This isn't possible for general `Expr`s (without a Request, full schema,
-    /// etc), but is possible for restricted expressions, given the information
-    /// in `Extensions`.
-    pub fn type_of_rexpr(
-        &self,
-        rexpr: BorrowedRestrictedExpr<'_>,
-        ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
-    ) -> Result<SchemaType, JsonDeserializationError> {
-        match rexpr.expr_kind() {
-            ExprKind::Lit(Literal::Bool(_)) => Ok(SchemaType::Bool),
-            ExprKind::Lit(Literal::Long(_)) => Ok(SchemaType::Long),
-            ExprKind::Lit(Literal::String(_)) => Ok(SchemaType::String),
-            ExprKind::Lit(Literal::EntityUID(uid)) => Ok(SchemaType::Entity { ty: uid.entity_type().clone() }),
-            ExprKind::Set(elements) => {
-                let mut element_types = elements.iter().map(|el| {
-                    self.type_of_rexpr(BorrowedRestrictedExpr::new_unchecked(el), ctx.clone()) // assuming the invariant holds for the set as a whole, it will also hold for each element
-                });
-                match element_types.next() {
-                    None => Ok(SchemaType::EmptySet),
-                    Some(Err(e)) => Err(e),
-                    Some(Ok(element_ty)) => {
-                        let matches_element_ty = |ty: &Result<SchemaType, JsonDeserializationError>| matches!(ty, Ok(ty) if ty.is_consistent_with(&element_ty));
-                        let conflicting_ty = element_types.find(|ty| !matches_element_ty(ty));
-                        match conflicting_ty {
-                            None => Ok(SchemaType::Set { element_ty: Box::new(element_ty) }),
-                            Some(Ok(conflicting_ty)) =>
-                                Err(JsonDeserializationError::HeterogeneousSet {
-                                    ctx: Box::new(ctx()),
-                                    ty1: Box::new(element_ty),
-                                    ty2: Box::new(conflicting_ty),
-                                }),
-                            Some(Err(e)) => Err(e),
-                        }
-                    }
-                }
+fn type_of_restricted_expr_error_to_json_deserialization_error(
+    torerr: TypeOfRestrictedExprError,
+    ctx: JsonDeserializationErrorContext,
+) -> JsonDeserializationError {
+    match torerr {
+        TypeOfRestrictedExprError::HeterogeneousSet(err) => match ctx {
+            JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
+                JsonDeserializationError::EntitySchemaConformance(
+                    EntitySchemaConformanceError::HeterogeneousSet { uid, attr, err },
+                )
             }
-            ExprKind::Record(map) => {
-                Ok(SchemaType::Record { attrs: {
-                    map.iter().map(|(k, v)| {
-                        let attr_type = self.type_of_rexpr(
-                            BorrowedRestrictedExpr::new_unchecked(v), // assuming the invariant holds for the record as a whole, it will also hold for each attribute value
-                            ctx.clone(),
-                        )?;
-                        // we can't know if the attribute is required or optional,
-                        // but marking it optional is more flexible -- allows the
-                        // attribute type to `is_consistent_with()` more types
-                        Ok((k.clone(), AttributeType::optional(attr_type)))
-                    }).collect::<Result<HashMap<_,_>, JsonDeserializationError>>()?
-                }})
+            ctx => JsonDeserializationError::HeterogeneousSet {
+                ctx: Box::new(ctx),
+                err,
+            },
+        },
+        TypeOfRestrictedExprError::ExtensionFunctionLookup(err) => match ctx {
+            JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
+                JsonDeserializationError::EntitySchemaConformance(
+                    EntitySchemaConformanceError::ExtensionFunctionLookup { uid, attr, err },
+                )
             }
-            ExprKind::ExtensionFunctionApp { fn_name, .. } => {
-                let efunc = self.extensions.func(fn_name)?;
-                Ok(efunc.return_type().cloned().ok_or_else(|| ExtensionFunctionLookupError::HasNoType {
-                    name: efunc.name().clone()
-                })?)
-            }
-            // PANIC SAFETY. Unreachable by invariant on restricted expressions
-            #[allow(clippy::unreachable)]
-            expr => unreachable!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
-        }
+            ctx => JsonDeserializationError::ExtensionFunctionLookup {
+                ctx: Box::new(ctx),
+                err,
+            },
+        },
     }
 }
 
