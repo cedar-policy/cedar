@@ -556,7 +556,7 @@ impl Type {
                                 }
                                 None => {
                                     // attrs has the attribute, self_attrs does not.
-                                    // we require all attributes are declared in
+                                    // we require that all attributes are declared in
                                     // the schema (at least as optional).
                                     false
                                 }
