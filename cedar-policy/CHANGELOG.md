@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Experimental API `PolicySet::unknown_entities` to collect unknown entity UIDs from a `PartialResponse`.
 - `PolicySet::remove_static`, `PolicySet::remove_template` and `PolicySet::unlink` to remove policies from the policy set.
 - `PolicySet::get_linked_policies` to get the policies linked to a `Template`.
+- The `is` operation as described in [RFC 5](https://github.com/cedar-policy/rfcs/blob/main/text/0005-is-operator.md).
 
 ### Changed
 

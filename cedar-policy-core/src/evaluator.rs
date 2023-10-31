@@ -3321,6 +3321,26 @@ pub mod test {
         let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
         assert_eq!(
             eval.interpret_inline_policy(
+                &parse_expr(&format!(
+                    r#"principal is {}"#,
+                    EntityUID::test_entity_type()
+                ))
+                .expect("parsing error")
+            ),
+            Ok(Value::Lit(Literal::Bool(true)))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(&format!(
+                    r#"principal is N::S::{}"#,
+                    EntityUID::test_entity_type()
+                ))
+                .expect("parsing error")
+            ),
+            Ok(Value::Lit(Literal::Bool(false)))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(
                 &parse_expr(r#"User::"alice" is User"#).expect("parsing error")
             ),
             Ok(Value::Lit(Literal::Bool(true)))
@@ -3328,6 +3348,18 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#"User::"alice" is Group"#).expect("parsing error")
+            ),
+            Ok(Value::Lit(Literal::Bool(false)))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"N::S::User::"alice" is N::S::User"#).expect("parsing error")
+            ),
+            Ok(Value::Lit(Literal::Bool(true)))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"N::S::User::"alice" is User"#).expect("parsing error")
             ),
             Ok(Value::Lit(Literal::Bool(false)))
         );

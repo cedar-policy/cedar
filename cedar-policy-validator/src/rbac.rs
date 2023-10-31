@@ -1374,7 +1374,7 @@ mod test {
     }
 
     #[test]
-    fn validate_principal_err() {
+    fn validate_principal_is_err() {
         let (_, _, _, schema) = schema_with_single_principal_action_resource();
 
         let policy =
@@ -1464,7 +1464,7 @@ mod test {
     }
 
     #[test]
-    fn validate_resource_err() {
+    fn validate_resource_is_err() {
         let (_, _, _, schema) = schema_with_single_principal_action_resource();
 
         let policy =
@@ -1516,6 +1516,28 @@ mod test {
                 ValidationErrorKind::unrecognized_entity_type("faz".into(), Some("baz".into())),
                 ValidationErrorKind::unrecognized_entity_type("biz".into(), Some("baz".into())),
                 ValidationErrorKind::invalid_action_application(false, false),
+                ValidationErrorKind::TypeError(TypeErrorKind::ImpossiblePolicy)
+            ],
+        );
+    }
+
+    #[test]
+    fn is_unknown_entity_condition() {
+        let (_, _, _, schema) = schema_with_single_principal_action_resource();
+        let policy = parse_policy_template(
+            None,
+            r#"permit(principal, action, resource) when { resource is biz };"#,
+        )
+        .unwrap();
+
+        let validate = Validator::new(schema.clone());
+        assert_eq!(
+            validate
+                .validate_policy(&policy, ValidationMode::default())
+                .map(|e| { e.into_location_and_error_kind().1 })
+                .collect::<Vec<ValidationErrorKind>>(),
+            vec![
+                ValidationErrorKind::unrecognized_entity_type("biz".into(), Some("baz".into())),
                 ValidationErrorKind::TypeError(TypeErrorKind::ImpossiblePolicy)
             ],
         );
