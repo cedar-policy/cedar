@@ -200,9 +200,7 @@ impl ast::RequestSchema for ValidatorSchema {
                         context.as_ref().as_borrowed(),
                         extensions,
                     )?;
-                    println!("actual context ty is {actual_context_ty}");
                     let expected_context_ty = validator_action_id.context_type();
-                    println!("expected context ty is {expected_context_ty}");
                     if !expected_context_ty.is_consistent_with(&actual_context_ty) {
                         return Err(RequestValidationError::InvalidContext {
                             context: context.clone(),
