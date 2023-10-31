@@ -54,7 +54,8 @@ impl Doc for ASTNode<Option<VariableDef>> {
                         RcDoc::line()
                             .append(entity_type.to_doc(context)?)
                             .nest(context.config.indent_width),
-                    ),
+                    )
+                    .group(),
             ),
             None => Some(RcDoc::nil()),
         }?;
@@ -92,9 +93,6 @@ impl Doc for ASTNode<Option<VariableDef>> {
             }
             None => add_comment(var_doc, start_comment, RcDoc::nil())
                 .append(is_doc)
-                .append(get_leading_comment_doc_from_str(
-                    &end_comment.leading_comment,
-                ))
                 .append(get_trailing_comment_doc_from_str(
                     &end_comment.trailing_comment,
                 )),

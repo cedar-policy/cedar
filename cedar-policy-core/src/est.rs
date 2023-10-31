@@ -2741,7 +2741,9 @@ mod test {
                 serde_json::to_string_pretty(&est).unwrap()
             );
             let old_est = est.clone();
-            let est = est_roundtrip(est);
+            let roundtripped = est_roundtrip(est);
+            assert_eq!(&old_est, &roundtripped);
+            let est = text_roundtrip(&old_est);
             assert_eq!(&old_est, &est);
 
             let expected_json_after_roundtrip = json!(
@@ -2817,7 +2819,9 @@ mod test {
                 serde_json::to_string_pretty(&est).unwrap()
             );
             let old_est = est.clone();
-            let est = est_roundtrip(est);
+            let roundtripped = est_roundtrip(est);
+            assert_eq!(&old_est, &roundtripped);
+            let est = text_roundtrip(&old_est);
             assert_eq!(&old_est, &est);
 
             let expected_json_after_roundtrip = json!(
@@ -2894,7 +2898,9 @@ mod test {
                 serde_json::to_string_pretty(&est).unwrap()
             );
             let old_est = est.clone();
-            let est = est_roundtrip(est);
+            let roundtripped = est_roundtrip(est);
+            assert_eq!(&old_est, &roundtripped);
+            let est = text_roundtrip(&old_est);
             assert_eq!(&old_est, &est);
 
             let expected_json_after_roundtrip = json!(
@@ -2972,7 +2978,9 @@ mod test {
                 serde_json::to_string_pretty(&est).unwrap()
             );
             let old_est = est.clone();
-            let est = est_roundtrip(est);
+            let roundtripped = est_roundtrip(est);
+            assert_eq!(&old_est, &roundtripped);
+            let est = text_roundtrip(&old_est);
             assert_eq!(&old_est, &est);
 
             let expected_json_after_roundtrip = json!(
@@ -3062,7 +3070,9 @@ mod test {
                 serde_json::to_string_pretty(&est).unwrap()
             );
             let old_est = est.clone();
-            let est = est_roundtrip(est);
+            let roundtripped = est_roundtrip(est);
+            assert_eq!(&old_est, &roundtripped);
+            let est = text_roundtrip(&old_est);
             assert_eq!(&old_est, &est);
 
             assert_eq!(ast_roundtrip(est.clone()), est);
@@ -3113,7 +3123,9 @@ mod test {
                 serde_json::to_string_pretty(&est).unwrap()
             );
             let old_est = est.clone();
-            let est = est_roundtrip(est);
+            let roundtripped = est_roundtrip(est);
+            assert_eq!(&old_est, &roundtripped);
+            let est = text_roundtrip(&old_est);
             assert_eq!(&old_est, &est);
 
             let expected_json_after_roundtrip = json!(
@@ -3313,6 +3325,42 @@ mod test {
                         "op": "is",
                         "entity_type": "Doc",
                         "in": { "entity": { "type": "Folder", "id": "abc" } }
+                    },
+                    "conditions": [ ],
+                }
+            );
+            let linked_json = serde_json::to_value(linked).unwrap();
+            assert_eq!(
+                linked_json,
+                expected_json,
+                "\nExpected:\n{}\n\nActual:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json).unwrap(),
+                serde_json::to_string_pretty(&linked_json).unwrap(),
+            );
+        }
+
+        #[test]
+        fn instantiate_no_slot() {
+            let template = r#"permit(principal is User, action, resource is Doc);"#;
+            let cst = parser::text_to_cst::parse_policy(template)
+                .unwrap()
+                .node
+                .unwrap();
+            let est: Policy = cst.try_into().unwrap();
+            let linked = est.link(&HashMap::new()).unwrap();
+            let expected_json = json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "is",
+                        "entity_type": "User",
+                    },
+                    "action": {
+                        "op": "All"
+                    },
+                    "resource": {
+                        "op": "is",
+                        "entity_type": "Doc",
                     },
                     "conditions": [ ],
                 }
