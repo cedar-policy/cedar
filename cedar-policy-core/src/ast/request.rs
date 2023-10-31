@@ -182,7 +182,7 @@ impl std::fmt::Display for Request {
 }
 
 /// `Context` field of a `Request`
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Context {
     /// an `Expr::Record` that qualifies as a "restricted expression"
     /// INVARIANT: This must be of the variant `Record`

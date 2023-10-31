@@ -3067,7 +3067,7 @@ impl Request {
             a,
             r,
             context.0,
-            &cedar_policy_validator::CoreSchema::new(&schema.0),
+            &schema.0,
             Extensions::all_available(),
         )?))
     }
@@ -3339,12 +3339,11 @@ impl Context {
         schema: &Schema,
         action: &EntityUid,
     ) -> Result<impl ContextSchema, ContextJsonError> {
-        schema
-            .0
-            .get_context_schema(&action.0)
-            .ok_or_else(|| ContextJsonError::MissingAction {
+        cedar_policy_validator::context_schema_for_action(&schema.0, &action.0).ok_or_else(|| {
+            ContextJsonError::MissingAction {
                 action: action.clone(),
-            })
+            }
+        })
     }
 }
 

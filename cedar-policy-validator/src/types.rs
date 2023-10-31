@@ -556,9 +556,9 @@ impl Type {
                                 }
                                 None => {
                                     // attrs has the attribute, self_attrs does not.
-                                    // if required in attrs, incompatible.
-                                    // otherwise fine
-                                    !v.is_required()
+                                    // we require all attributes are declared in
+                                    // the schema (at least as optional).
+                                    false
                                 }
                             }
                         }) && self_attrs.iter().all(|(k, v)| {
