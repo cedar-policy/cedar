@@ -6,4 +6,6 @@ rustflags = [
     "-Dclippy::unreachable",
     "-Dclippy::indexing_slicing",
     "-Dclippy::panic",
+    "-Dwarnings",
+    "-Funsafe-code"
 ]
