@@ -1,5 +1,5 @@
 use crate::{ValidatorEntityType, ValidatorSchema};
-use cedar_policy_core::extensions::Extensions;
+use cedar_policy_core::extensions::{ExtensionFunctionLookupError, Extensions};
 use cedar_policy_core::{ast, entities};
 use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
@@ -196,12 +196,10 @@ impl ast::RequestSchema for ValidatorSchema {
                     }
                 }
                 if let Some(context) = request.context() {
-                    let actual_context_ty = entities::type_of_restricted_expr(
-                        context.as_ref().as_borrowed(),
-                        extensions,
-                    )?;
                     let expected_context_ty = validator_action_id.context_type();
-                    if !expected_context_ty.is_consistent_with(&actual_context_ty) {
+                    if !expected_context_ty
+                        .typecheck_restricted_expr(context.as_ref().as_borrowed(), extensions)?
+                    {
                         return Err(RequestValidationError::InvalidContext {
                             context: context.clone(),
                             action: Arc::clone(action),
@@ -279,9 +277,11 @@ pub enum RequestValidationError {
         /// Action which it is not valid for
         action: Arc<ast::EntityUID>,
     },
-    /// Error getting the type of the `Context`
-    #[error("error while computing the type of the request context: {0}")]
-    TypeOfContext(#[from] entities::TypeOfRestrictedExprError),
+    /// Error looking up an extension function, which may be necessary for
+    /// `Context`s that contain extension function calls -- not to actually
+    /// call the extension function, but to get metadata about it
+    #[error(transparent)]
+    ExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
 }
 
 /// Struct which carries enough information that it can impl Core's
@@ -796,8 +796,9 @@ mod test {
                 &schema(),
                 Extensions::all_available(),
             ),
-            Err(RequestValidationError::TypeOfContext(entities::TypeOfRestrictedExprError::HeterogeneousSet(err))) => {
-                assert!(err.to_string().contains("set elements have different types: bool and long"), "actual error message was {err}");
+            Err(RequestValidationError::InvalidContext { context, action }) => {
+                assert_eq!(context, context_with_heterogeneous_set);
+                assert_eq!(&*action, &ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap());
             }
         );
     }
