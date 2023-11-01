@@ -58,32 +58,32 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let entity_json = r#"
     [
         {
-            "uid": { "__expr" : "User::\"alice\"" },
+            "uid": { "type" : "User", "id": "alice"},
             "attrs": {},
-            "parents": [ { "__expr" : "UserGroup::\"jane_friends\"" } ]
+            "parents": [ { "__entity" : {"type": "UserGroup", "id": "jane_friends"}} ]
         },
         {
-            "uid": { "__expr" : "UserGroup::\"jane_friends\"" },
-            "attrs": {},
-            "parents": []
-        },
-        {
-            "uid": { "__expr" : "Action::\"view\"" },
+            "uid": {"type": "UserGroup", "id": "jane_friends"},
             "attrs": {},
             "parents": []
         },
         {
-            "uid": { "__expr" : "Photo::\"VacationPhoto94.jpg\"" },
+            "uid": {"type": "Action", "id": "view"},
             "attrs": {},
-            "parents": [ { "__expr" : "Album::\"jane_vacation\"" } ]
+            "parents": []
         },
         {
-            "uid": { "__expr" : "Album::\"jane_vacation\"" },
+            "uid": {"type": "Photo", "id": "VacationPhoto94.jpg"},
             "attrs": {},
-            "parents": [ { "__expr" : "Account::\"jane\"" } ]
+            "parents": [ { "__entity": {"type": "Album", "id": "jane_vacation"}} ]
         },
         {
-            "uid": { "__expr" : "Account::\"jane\"" },
+            "uid": {"type": "Album", "id": "jane_vacation"},
+            "attrs": {},
+            "parents": [ { "__entity" : {"type": "Account", "id": "jane"}} ]
+        },
+        {
+            "uid": {"type": "Account", "id": "jane"},
             "attrs": {},
             "parents": []
         }
