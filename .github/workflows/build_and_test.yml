@@ -15,9 +15,9 @@ jobs:
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: ./panic_safety.sh
       - run: cargo fmt --all --check
-      - run: cargo build --verbose --features "experimental"
-      - run: cargo build --verbose
-      - run: cargo doc --all-features
+      - run: RUSTFLAGS="-D warnings -F unsafe-code" cargo build --verbose --features "experimental"
+      - run: RUSTFLAGS="-D warnings -F unsafe-code" cargo build --verbose
+      - run: cargo doc --all-features --no-deps
       - run: cargo clippy --all-features
       - run: cargo test --verbose --features "experimental"
       - run: cargo test --verbose
