@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   original input, whether the input was in string or JSON form.
 
 ## [2.4.2] - 2023-10-23
+Cedar Language Version: 2.1.2
 
 ### Fixed
 
@@ -56,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and template-linked policy.
 
 ## [2.4.1] - 2023-10-12
+Cedar Language Version: 2.1.1
 
 ### Added
 
@@ -76,6 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `None` to `Request::new()`).
 
 ## [2.4.0] - 2023-09-21
+Cedar Language Version: 2.1.1
 
 ### Added
 
@@ -104,6 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Uses of deprecated `__expr` escapes from integration tests.
 
 ## [2.3.3] - 2023-08-29
+Cedar Language Version: 2.1.0
 
 ### Added
 
@@ -122,6 +126,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   correctly uses the default namespace.
 
 ## [2.3.2] - 2023-08-04
+Cedar Language Version: 2.1.0
 
 ### Changed
 
@@ -147,6 +152,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   continue using this feature you must enable the `partial-eval` feature flag.
 
 ## [2.3.1] - 2023-07-20
+Cedar Language Version: 2.1.0
 
 ### Fixed
 
@@ -154,6 +160,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with a policy id corresponding to a static policy.
 
 ## [2.3.0] - 2023-06-29
+Cedar Language Version: 2.1.0
 
 ### Changed
 
@@ -170,12 +177,14 @@ Cedar users was accepted due to the potential security ramifications; see
 discussion in the RFC.
 
 ## 2.2.0 - 2023-05-25
+Cedar Language Version: 2.0.0
 
 ### Added
 
 - `Entities::write_to_json` function to api.rs.
 
 ## 2.1.0 - 2023-05-23
+Cedar Language Version: 2.0.0
 
 ### Added
 
@@ -190,17 +199,20 @@ discussion in the RFC.
 - Resolve warning in `Cargo.toml` due to having both `license` and `license-file` metadata entries.
 
 ## 2.0.3 - 2023-05-17
+Cedar Language Version: 2.0.0
 
 ### Fixed
 
 - Update `Cargo.toml` metadata to correctly represent this crate as Apache-2.0 licensed.
 
 ## 2.0.2 - 2023-05-10
+Cedar Language Version: 2.0.0
 
 ## 2.0.1 - 2023-05-10
+Cedar Language Version: 2.0.0
 
 ## 2.0.0 - 2023-05-10
-
+Cedar Language Version: 2.0.0
 - Initial release of `cedar-policy`.
 
 [unreleased]: https://github.com/cedar-policy/cedar/compare/v2.4.2...main
