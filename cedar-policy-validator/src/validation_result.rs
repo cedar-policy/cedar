@@ -17,7 +17,7 @@
 use cedar_policy_core::{ast::PolicyID, parser::SourceInfo};
 use thiserror::Error;
 
-use crate::TypeErrorKind;
+use crate::{TypeErrorKind, ValidationWarning};
 
 /// Contains the result of policy validation. The result includes the list of of
 /// issues found by the validation and whether validation succeeds or fails.
@@ -26,12 +26,17 @@ use crate::TypeErrorKind;
 #[derive(Debug)]
 pub struct ValidationResult<'a> {
     validation_errors: Vec<ValidationError<'a>>,
+    validation_warnings: Vec<ValidationWarning<'a>>,
 }
 
 impl<'a> ValidationResult<'a> {
-    pub(crate) fn new(validation_errors: impl Iterator<Item = ValidationError<'a>>) -> Self {
+    pub fn new(
+        errors: impl IntoIterator<Item = ValidationError<'a>>,
+        warnings: impl IntoIterator<Item = ValidationWarning<'a>>,
+    ) -> Self {
         Self {
-            validation_errors: validation_errors.collect::<Vec<_>>(),
+            validation_errors: errors.into_iter().collect(),
+            validation_warnings: warnings.into_iter().collect(),
         }
     }
 
@@ -46,8 +51,21 @@ impl<'a> ValidationResult<'a> {
     }
 
     /// Get the list of errors found by the validator.
-    pub fn into_validation_errors(self) -> impl Iterator<Item = ValidationError<'a>> {
-        self.validation_errors.into_iter()
+    pub fn validation_warnings(&self) -> impl Iterator<Item = &ValidationWarning> {
+        self.validation_warnings.iter()
+    }
+
+    /// Get an iterator over the errors and warnings found by the validator.
+    pub fn into_errors_and_warnings(
+        self,
+    ) -> (
+        impl Iterator<Item = ValidationError<'a>>,
+        impl Iterator<Item = ValidationWarning<'a>>,
+    ) {
+        (
+            self.validation_errors.into_iter(),
+            self.validation_warnings.into_iter(),
+        )
     }
 }
 

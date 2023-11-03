@@ -1310,27 +1310,32 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
 #[derive(Debug)]
 pub struct ValidationResult<'a> {
     validation_errors: Vec<ValidationError<'a>>,
+    validation_warnings: Vec<ValidationWarning<'a>>,
 }
 
 impl<'a> ValidationResult<'a> {
-    /// True when validation passes. There are no fatal errors.
+    /// True when validation passes. There are no fatal errors, but there may be warnings. To
     pub fn validation_passed(&self) -> bool {
         self.validation_errors.is_empty()
     }
 
-    /// Get the list of errors found by the validator.
+    /// Get an iterator over the of errors found by the validator.
     pub fn validation_errors(&self) -> impl Iterator<Item = &ValidationError<'a>> {
         self.validation_errors.iter()
+    }
+
+    /// Get an iterator over the warnings found by the validator.
+    pub fn validation_warnings(&self) -> impl Iterator<Item = &ValidationWarning<'a>> {
+        self.validation_warnings.iter()
     }
 }
 
 impl<'a> From<cedar_policy_validator::ValidationResult<'a>> for ValidationResult<'a> {
     fn from(r: cedar_policy_validator::ValidationResult<'a>) -> Self {
+        let (errors, warnings) = r.into_errors_and_warnings();
         Self {
-            validation_errors: r
-                .into_validation_errors()
-                .map(ValidationError::from)
-                .collect(),
+            validation_errors: errors.map(ValidationError::from).collect(),
+            validation_warnings: warnings.map(ValidationWarning::from).collect(),
         }
     }
 }
