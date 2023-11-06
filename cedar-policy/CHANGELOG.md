@@ -47,6 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improve the `Display` impls for `Policy` and `PolicySet`, and add a `Display`
   impl for `Template`.  The displayed representations now more closely match the
   original input, whether the input was in string or JSON form.
+- `ValidationWarning::location` and `ValidationWarning::to_kind_and_location`
+  now return `&SourceLocation<'a>` instead of `&'a PolicyID`, matching
+  `ValidationError::location`.
 
 ### Fixed
 
