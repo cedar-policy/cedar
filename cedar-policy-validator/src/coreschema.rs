@@ -131,10 +131,10 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
 
 impl ast::RequestSchema for ValidatorSchema {
     type Error = RequestValidationError;
-    fn validate_request<'e>(
+    fn validate_request(
         &self,
         request: &ast::Request,
-        extensions: Extensions<'e>,
+        extensions: Extensions<'_>,
     ) -> std::result::Result<(), Self::Error> {
         use ast::EntityUIDEntry;
         // first check that principal and resource are of types that exist in

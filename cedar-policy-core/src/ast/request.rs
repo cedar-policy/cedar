@@ -286,10 +286,10 @@ pub trait RequestSchema {
     /// Error type returned when a request fails validation
     type Error: std::error::Error;
     /// Validate the given `request`, returning `Err` if it fails validation
-    fn validate_request<'a>(
+    fn validate_request(
         &self,
         request: &Request,
-        extensions: Extensions<'a>,
+        extensions: Extensions<'_>,
     ) -> Result<(), Self::Error>;
 }
 
@@ -298,10 +298,10 @@ pub trait RequestSchema {
 pub struct RequestSchemaAllPass;
 impl RequestSchema for RequestSchemaAllPass {
     type Error = std::convert::Infallible;
-    fn validate_request<'a>(
+    fn validate_request(
         &self,
         _request: &Request,
-        _extensions: Extensions<'a>,
+        _extensions: Extensions<'_>,
     ) -> Result<(), Self::Error> {
         Ok(())
     }
