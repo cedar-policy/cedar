@@ -47,6 +47,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   impl for `Template`.  The displayed representations now more closely match the
   original input, whether the input was in string or JSON form.
 
+### Fixed
+
+- Evaluation order of operand to `>` and `>=` (#112). They now evaluate left to right,
+  matching all other operators. This affects what error is reported when there is
+  an evaluation error in both operands, but does not otherwise change the result
+  of evaluation.
+
 ## [2.4.2] - 2023-10-23
 Cedar Language Version: 2.1.2
 
