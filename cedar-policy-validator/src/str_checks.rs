@@ -14,31 +14,32 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::ast::{Pattern, PolicyID, Template};
+use cedar_policy_core::ast::{Pattern, Template};
 use thiserror::Error;
 
 use crate::expr_iterator::expr_text;
 use crate::expr_iterator::TextKind;
+use crate::SourceLocation;
 use unicode_security::GeneralSecurityProfile;
 use unicode_security::MixedScript;
 
 /// Returned by the standalone `confusable_string_checker` function, which checks a policy set for potentially confusing/obfuscating text.
 #[derive(Debug, Clone)]
 pub struct ValidationWarning<'a> {
-    location: &'a PolicyID,
+    location: SourceLocation<'a>,
     kind: ValidationWarningKind,
 }
 
 impl<'a> ValidationWarning<'a> {
-    pub fn location(&self) -> &'a PolicyID {
-        self.location
+    pub fn location(&self) -> &SourceLocation<'a> {
+        &self.location
     }
 
     pub fn kind(&self) -> &ValidationWarningKind {
         &self.kind
     }
 
-    pub fn to_kind_and_location(self) -> (&'a PolicyID, ValidationWarningKind) {
+    pub fn to_kind_and_location(self) -> (SourceLocation<'a>, ValidationWarningKind) {
         (self.location, self.kind)
     }
 }
@@ -48,7 +49,8 @@ impl std::fmt::Display for ValidationWarning<'_> {
         write!(
             f,
             "validation warning on policy `{}`: {}",
-            self.location, self.kind
+            self.location.policy_id(),
+            self.kind
         )
     }
 }
@@ -81,19 +83,19 @@ pub fn confusable_string_checks<'a>(
     for policy in p {
         let e = policy.condition();
         for str in expr_text(&e) {
-            let warning = match str {
-                TextKind::String(s) => permissable_str(s),
-                TextKind::Identifier(i) => permissable_ident(i),
-                TextKind::Pattern(p) => {
+            let (loc, warning) = match str {
+                TextKind::String(l, s) => (l, permissable_str(s)),
+                TextKind::Identifier(l, i) => (l, permissable_ident(i)),
+                TextKind::Pattern(l, p) => {
                     let pat = Pattern::new(p.iter().copied());
                     let as_str = format!("{pat}");
-                    permissable_str(&as_str)
+                    (l, permissable_str(&as_str))
                 }
             };
 
             if let Some(w) = warning {
                 warnings.push(ValidationWarning {
-                    location: policy.id(),
+                    location: SourceLocation::new(policy.id(), loc.clone()),
                     kind: w,
                 })
             }
@@ -146,7 +148,10 @@ const BIDI_CHARS: [char; 9] = [
 mod test {
 
     use super::*;
-    use cedar_policy_core::{ast::PolicySet, parser::parse_policy};
+    use cedar_policy_core::{
+        ast::{PolicyID, PolicySet},
+        parser::{parse_policy, SourceInfo},
+    };
 
     #[test]
     fn strs() {
@@ -195,8 +200,10 @@ mod test {
             format!("{warning}"),
             "validation warning on policy `test`: identifier `say_һello` contains mixed scripts"
         );
-        assert_eq!(location, &PolicyID::from_string("test"));
-        assert_eq!(warning.clone().to_kind_and_location(), (location, kind));
+        assert_eq!(
+            location,
+            &SourceLocation::new(&PolicyID::from_string("test"), None)
+        );
     }
 
     #[test]
@@ -238,8 +245,10 @@ mod test {
             format!("{warning}"),
             "validation warning on policy `test`: string `\"*_һello\"` contains mixed scripts"
         );
-        assert_eq!(location, &PolicyID::from_string("test"));
-        assert_eq!(warning.clone().to_kind_and_location(), (location, kind));
+        assert_eq!(
+            location,
+            &SourceLocation::new(&PolicyID::from_string("test"), Some(SourceInfo(64..94))),
+        );
     }
 
     #[test]
@@ -264,7 +273,9 @@ mod test {
             ValidationWarningKind::BidiCharsInString(r#"user‮ ⁦&& principal.is_admin⁩ ⁦"#.to_string())
         );
         assert_eq!(format!("{warning}"), "validation warning on policy `test`: string `\"user‮ ⁦&& principal.is_admin⁩ ⁦\"` contains BIDI control characters");
-        assert_eq!(location, &PolicyID::from_string("test"));
-        assert_eq!(warning.clone().to_kind_and_location(), (location, kind));
+        assert_eq!(
+            location,
+            &SourceLocation::new(&PolicyID::from_string("test"), Some(SourceInfo(90..131)))
+        );
     }
 }

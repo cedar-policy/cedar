@@ -91,14 +91,14 @@ impl<'a> ValidationError<'a> {
 }
 
 /// Represents a location in Cedar policy source.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SourceLocation<'a> {
     policy_id: &'a PolicyID,
     source_info: Option<SourceInfo>,
 }
 
 impl<'a> SourceLocation<'a> {
-    fn new(policy_id: &'a PolicyID, source_info: Option<SourceInfo>) -> Self {
+    pub(crate) fn new(policy_id: &'a PolicyID, source_info: Option<SourceInfo>) -> Self {
         Self {
             policy_id,
             source_info,
