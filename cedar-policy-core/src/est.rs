@@ -30,10 +30,12 @@ use crate::parser::cst;
 use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::ASTNode;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 
 /// Serde JSON structure for policies and templates in the EST format
+#[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Policy {
@@ -50,6 +52,7 @@ pub struct Policy {
     /// annotations
     #[serde(default)]
     #[serde(skip_serializing_if = "HashMap::is_empty")]
+    #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
     annotations: HashMap<ast::Id, SmolStr>,
 }
 
@@ -1754,23 +1757,27 @@ mod test {
                                             }
                                         },
                                         "right": {
-                                            "<": {
-                                                "left": {
-                                                    "neg": {
-                                                        "arg": {
-                                                            "-": {
-                                                                "left": {
-                                                                    "Value": 23
-                                                                },
-                                                                "right": {
-                                                                    "Value": 1
+                                            "!": {
+                                                "arg":{
+                                                    "<=": {
+                                                        "left": {
+                                                            "Value": 4
+                                                        },
+                                                        "right": {
+                                                            "neg": {
+                                                                "arg": {
+                                                                    "-": {
+                                                                        "left": {
+                                                                            "Value": 23
+                                                                        },
+                                                                        "right": {
+                                                                            "Value": 1
+                                                                        }
+                                                                    }
                                                                 }
                                                             }
                                                         }
                                                     }
-                                                },
-                                                "right": {
-                                                    "Value": 4
                                                 }
                                             }
                                         }
@@ -1789,12 +1796,16 @@ mod test {
                                             }
                                         },
                                         "right": {
-                                            "<=": {
-                                                "left": {
-                                                    "Value": 1
-                                                },
-                                                "right": {
-                                                    "Value": 7
+                                            "!": {
+                                                "arg": {
+                                                    "<": {
+                                                        "left": {
+                                                            "Value": 7
+                                                        },
+                                                        "right": {
+                                                            "Value": 1
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -2702,6 +2713,106 @@ mod test {
                 ast::UnexpectedSlotError::Named(_)
             ))
         );
+    }
+
+    #[test]
+    fn record_duplicate_key() {
+        let bad = r#"
+            {
+                "effect": "permit",
+                "principal": { "op": "All" },
+                "action": { "op": "All" },
+                "resource": { "op": "All" },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "Record": {
+                                "foo": {"Value": 0},
+                                "foo": {"Value": 1}
+                            }
+                        }
+                    }
+                ]
+            }
+        "#;
+        let est: Result<Policy, _> = serde_json::from_str(bad);
+        assert_matches!(est, Err(_));
+    }
+
+    #[test]
+    fn value_record_duplicate_key() {
+        let bad = r#"
+            {
+                "effect": "permit",
+                "principal": { "op": "All" },
+                "action": { "op": "All" },
+                "resource": { "op": "All" },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "Value": {
+                                "foo": 0,
+                                "foo": 1
+                            }
+                        }
+                    }
+                ]
+            }
+        "#;
+        let est: Result<Policy, _> = serde_json::from_str(bad);
+        assert_matches!(est, Err(_));
+    }
+
+    #[test]
+    fn duplicate_annotations() {
+        let bad = r#"
+            {
+                "effect": "permit",
+                "principal": { "op": "All" },
+                "action": { "op": "All" },
+                "resource": { "op": "All" },
+                "conditions": [],
+                "annotations": {
+                    "foo": "bar",
+                    "foo": "baz"
+                }
+            }
+        "#;
+        let est: Result<Policy, _> = serde_json::from_str(bad);
+        assert_matches!(est, Err(_));
+    }
+
+    #[test]
+    fn extension_duplicate_keys() {
+        let bad = r#"
+            {
+                "effect": "permit",
+                "principal": { "op": "All" },
+                "action": { "op": "All" },
+                "resource": { "op": "All" },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "ip": [
+                                {
+                                    "Value": "222.222.222.0/24"
+                                }
+                            ],
+                            "ip": [
+                                {
+                                    "Value": "111.111.111.0/24"
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        "#;
+        let est: Result<Policy, _> = serde_json::from_str(bad);
+        assert_matches!(est, Err(_));
     }
 
     mod is_type {

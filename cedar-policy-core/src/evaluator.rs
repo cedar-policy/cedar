@@ -2469,6 +2469,49 @@ pub mod test {
     }
 
     #[test]
+    fn interpret_comparison_err_order() {
+        // Expressions are evaluated left to right, so the unexpected-string
+        // type error should be reported for all of the following. This tests a
+        // fix for incorrect evaluation order in `>` and `>=`.
+        let request = basic_request();
+        let entities = basic_entities();
+        let exts = Extensions::none();
+        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::greatereq(
+                Expr::add(Expr::val("a"), Expr::val("b")),
+                Expr::add(Expr::val(false), Expr::val(true))
+            )),
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+        );
+
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::greater(
+                Expr::add(Expr::val("a"), Expr::val("b")),
+                Expr::add(Expr::val(false), Expr::val(true))
+            )),
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+        );
+
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::lesseq(
+                Expr::add(Expr::val("a"), Expr::val("b")),
+                Expr::add(Expr::val(false), Expr::val(true))
+            )),
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+        );
+
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::less(
+                Expr::add(Expr::val("a"), Expr::val("b")),
+                Expr::add(Expr::val(false), Expr::val(true))
+            )),
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+        );
+    }
+
+    #[test]
     fn interpret_arithmetic() {
         let request = basic_request();
         let entities = basic_entities();

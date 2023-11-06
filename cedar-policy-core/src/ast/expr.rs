@@ -798,16 +798,6 @@ impl<T> ExprBuilder<T> {
         })
     }
 
-    /// Create a '>' expression. Arguments must evaluate to Long type
-    pub fn greater(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
-        self.less(e2, e1)
-    }
-
-    /// Create a '>=' expression. Arguments must evaluate to Long type
-    pub fn greatereq(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
-        self.lesseq(e2, e1)
-    }
-
     /// Create an 'add' expression. Arguments must evaluate to Long type
     pub fn add(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
@@ -1015,6 +1005,24 @@ impl<T: Clone> ExprBuilder<T> {
                 .with_maybe_source_info(self.source_info.clone())
                 .or(acc, next)
         })
+    }
+
+    /// Create a '>' expression. Arguments must evaluate to Long type
+    pub fn greater(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+        // e1 > e2 is defined as !(e1 <= e2)
+        let leq = Self::with_data(self.data.clone())
+            .with_maybe_source_info(self.source_info.clone())
+            .lesseq(e1, e2);
+        self.not(leq)
+    }
+
+    /// Create a '>=' expression. Arguments must evaluate to Long type
+    pub fn greatereq(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+        // e1 >= e2 is defined as !(e1 < e2)
+        let leq = Self::with_data(self.data.clone())
+            .with_maybe_source_info(self.source_info.clone())
+            .less(e1, e2);
+        self.not(leq)
     }
 }
 
