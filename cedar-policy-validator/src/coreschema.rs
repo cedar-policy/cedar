@@ -375,12 +375,12 @@ mod test {
     #[test]
     fn success_concrete_request_no_context() {
         assert_matches!(
-            ast::Request::new_with_validation(
+            ast::Request::new(
                 ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                 ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
                 ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
                 ast::Context::empty(),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Ok(_)
@@ -391,7 +391,7 @@ mod test {
     #[test]
     fn success_concrete_request_with_context() {
         assert_matches!(
-            ast::Request::new_with_validation(
+            ast::Request::new(
                 ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                 ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(),
                 ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
@@ -400,7 +400,7 @@ mod test {
                     ast::RestrictedExpr::val(true)
                 )])
                 .unwrap(),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Ok(_)
@@ -411,7 +411,7 @@ mod test {
     #[test]
     fn success_principal_unknown() {
         assert_matches!(
-            ast::Request::new_with_unknowns_and_validation(
+            ast::Request::new_with_unknowns(
                 ast::EntityUIDEntry::Unknown,
                 ast::EntityUIDEntry::concrete(
                     ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap()
@@ -420,7 +420,7 @@ mod test {
                     ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap()
                 ),
                 Some(ast::Context::empty()),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Ok(_)
@@ -431,7 +431,7 @@ mod test {
     #[test]
     fn success_action_unknown() {
         assert_matches!(
-            ast::Request::new_with_unknowns_and_validation(
+            ast::Request::new_with_unknowns(
                 ast::EntityUIDEntry::concrete(
                     ast::EntityUID::with_eid_and_type("User", "abc123").unwrap()
                 ),
@@ -440,7 +440,7 @@ mod test {
                     ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap()
                 ),
                 Some(ast::Context::empty()),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Ok(_)
@@ -451,7 +451,7 @@ mod test {
     #[test]
     fn success_resource_unknown() {
         assert_matches!(
-            ast::Request::new_with_unknowns_and_validation(
+            ast::Request::new_with_unknowns(
                 ast::EntityUIDEntry::concrete(
                     ast::EntityUID::with_eid_and_type("User", "abc123").unwrap()
                 ),
@@ -460,7 +460,7 @@ mod test {
                 ),
                 ast::EntityUIDEntry::Unknown,
                 Some(ast::Context::empty()),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Ok(_)
@@ -471,7 +471,7 @@ mod test {
     #[test]
     fn success_context_unknown() {
         assert_matches!(
-            ast::Request::new_with_unknowns_and_validation(
+            ast::Request::new_with_unknowns(
                 ast::EntityUIDEntry::concrete(
                     ast::EntityUID::with_eid_and_type("User", "abc123").unwrap()
                 ),
@@ -482,7 +482,7 @@ mod test {
                     ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap()
                 ),
                 None,
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Ok(_)
@@ -493,12 +493,12 @@ mod test {
     #[test]
     fn success_everything_unspecified() {
         assert_matches!(
-            ast::Request::new_with_unknowns_and_validation(
+            ast::Request::new_with_unknowns(
                 ast::EntityUIDEntry::Unknown,
                 ast::EntityUIDEntry::Unknown,
                 ast::EntityUIDEntry::Unknown,
                 None,
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Ok(_)
@@ -511,7 +511,7 @@ mod test {
     #[test]
     fn success_unknown_action_but_invalid_types() {
         assert_matches!(
-            ast::Request::new_with_unknowns_and_validation(
+            ast::Request::new_with_unknowns(
                 ast::EntityUIDEntry::concrete(
                     ast::EntityUID::with_eid_and_type("Album", "abc123").unwrap()
                 ),
@@ -520,7 +520,7 @@ mod test {
                     ast::EntityUID::with_eid_and_type("User", "alice").unwrap()
                 ),
                 None,
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Ok(_)
@@ -531,12 +531,12 @@ mod test {
     #[test]
     fn action_not_declared() {
         assert_matches!(
-            ast::Request::new_with_validation(
+            ast::Request::new(
                 ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                 ast::EntityUID::with_eid_and_type("Action", "destroy").unwrap(),
                 ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
                 ast::Context::empty(),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::UndeclaredAction { action }) => {
@@ -549,12 +549,12 @@ mod test {
     #[test]
     fn action_unspecified() {
         assert_matches!(
-            ast::Request::new_with_validation(
+            ast::Request::new(
                 ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                 ast::EntityUID::unspecified_from_eid(ast::Eid::new("blahblah")),
                 ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
                 ast::Context::empty(),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::UndeclaredAction { action }) => {
@@ -567,12 +567,12 @@ mod test {
     #[test]
     fn principal_type_not_declared() {
         assert_matches!(
-            ast::Request::new_with_validation(
+            ast::Request::new(
                 ast::EntityUID::with_eid_and_type("Foo", "abc123").unwrap(),
                 ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
                 ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
                 ast::Context::empty(),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::UndeclaredPrincipalType { principal_ty }) => {
@@ -585,12 +585,12 @@ mod test {
     #[test]
     fn principal_type_not_declared_action_unspecified() {
         assert_matches!(
-            ast::Request::new_with_validation(
+            ast::Request::new(
                 ast::EntityUID::with_eid_and_type("Foo", "abc123").unwrap(),
                 ast::EntityUID::unspecified_from_eid(ast::Eid::new("blahblah")),
                 ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
                 ast::Context::empty(),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::UndeclaredPrincipalType { principal_ty }) => {
@@ -603,12 +603,12 @@ mod test {
     #[test]
     fn principal_unspecified() {
         assert_matches!(
-            ast::Request::new_with_validation(
+            ast::Request::new(
                 ast::EntityUID::unspecified_from_eid(ast::Eid::new("principal")),
                 ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
                 ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
                 ast::Context::empty(),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::InvalidPrincipalType { principal_ty, .. }) => {
@@ -621,12 +621,12 @@ mod test {
     #[test]
     fn resource_type_not_declared() {
         assert_matches!(
-            ast::Request::new_with_validation(
+            ast::Request::new(
                 ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                 ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
                 ast::EntityUID::with_eid_and_type("Foo", "vacationphoto94.jpg").unwrap(),
                 ast::Context::empty(),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::UndeclaredResourceType { resource_ty }) => {
@@ -639,12 +639,12 @@ mod test {
     #[test]
     fn resource_type_not_declared_action_unspecified() {
         assert_matches!(
-            ast::Request::new_with_validation(
+            ast::Request::new(
                 ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                 ast::EntityUID::unspecified_from_eid(ast::Eid::new("blahblah")),
                 ast::EntityUID::with_eid_and_type("Foo", "vacationphoto94.jpg").unwrap(),
                 ast::Context::empty(),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::UndeclaredResourceType { resource_ty }) => {
@@ -657,12 +657,12 @@ mod test {
     #[test]
     fn resource_unspecified() {
         assert_matches!(
-            ast::Request::new_with_validation(
+            ast::Request::new(
                 ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                 ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
                 ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")),
                 ast::Context::empty(),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::InvalidResourceType { resource_ty, .. }) => {
@@ -675,12 +675,12 @@ mod test {
     #[test]
     fn principal_type_invalid() {
         assert_matches!(
-            ast::Request::new_with_validation(
+            ast::Request::new(
                 ast::EntityUID::with_eid_and_type("Album", "abc123").unwrap(),
                 ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
                 ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
                 ast::Context::empty(),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::InvalidPrincipalType { principal_ty, action }) => {
@@ -694,12 +694,12 @@ mod test {
     #[test]
     fn resource_type_invalid() {
         assert_matches!(
-            ast::Request::new_with_validation(
+            ast::Request::new(
                 ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                 ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
                 ast::EntityUID::with_eid_and_type("Group", "coders").unwrap(),
                 ast::Context::empty(),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::InvalidResourceType { resource_ty, action }) => {
@@ -713,12 +713,12 @@ mod test {
     #[test]
     fn context_missing_attribute() {
         assert_matches!(
-            ast::Request::new_with_validation(
+            ast::Request::new(
                 ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                 ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(),
                 ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
                 ast::Context::empty(),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::InvalidContext { context, action }) => {
@@ -737,12 +737,12 @@ mod test {
         ])
         .unwrap();
         assert_matches!(
-            ast::Request::new_with_validation(
+            ast::Request::new(
                 ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                 ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(),
                 ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
                 context_with_extra_attr.clone(),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::InvalidContext { context, action }) => {
@@ -761,12 +761,12 @@ mod test {
         )])
         .unwrap();
         assert_matches!(
-            ast::Request::new_with_validation(
+            ast::Request::new(
                 ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                 ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(),
                 ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
                 context_with_wrong_type_attr.clone(),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::InvalidContext { context, action }) => {
@@ -788,12 +788,12 @@ mod test {
         )])
         .unwrap();
         assert_matches!(
-            ast::Request::new_with_validation(
+            ast::Request::new(
                 ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                 ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(),
                 ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
                 context_with_heterogeneous_set.clone(),
-                &schema(),
+                Some(&schema()),
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::InvalidContext { context, action }) => {

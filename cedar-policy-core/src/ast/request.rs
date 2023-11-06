@@ -79,63 +79,52 @@ impl EntityUIDEntry {
 }
 
 impl Request {
-    /// Default constructor
-    pub fn new(
+    /// Default constructor.
+    ///
+    /// If `schema` is provided, this constructor validates that this `Request`
+    /// complies with the given `schema`.
+    pub fn new<S: RequestSchema>(
         principal: EntityUID,
         action: EntityUID,
         resource: EntityUID,
         context: Context,
-    ) -> Self {
-        Self {
+        schema: Option<&S>,
+        extensions: Extensions<'_>,
+    ) -> Result<Self, S::Error> {
+        let req = Self {
             principal: EntityUIDEntry::concrete(principal),
             action: EntityUIDEntry::concrete(action),
             resource: EntityUIDEntry::concrete(resource),
             context: Some(context),
+        };
+        if let Some(schema) = schema {
+            schema.validate_request(&req, extensions)?;
         }
+        Ok(req)
     }
 
-    /// Create a new `Request` with potentially unknown (for partial eval) variables
-    pub fn new_with_unknowns(
+    /// Create a new `Request` with potentially unknown (for partial eval) variables.
+    ///
+    /// If `schema` is provided, this constructor validates that this `Request`
+    /// complies with the given `schema` (at least to the extent that we can
+    /// validate with the given information)
+    pub fn new_with_unknowns<S: RequestSchema>(
         principal: EntityUIDEntry,
         action: EntityUIDEntry,
         resource: EntityUIDEntry,
         context: Option<Context>,
-    ) -> Self {
-        Self {
+        schema: Option<&S>,
+        extensions: Extensions<'_>,
+    ) -> Result<Self, S::Error> {
+        let req = Self {
             principal,
             action,
             resource,
             context,
+        };
+        if let Some(schema) = schema {
+            schema.validate_request(&req, extensions)?;
         }
-    }
-
-    /// Create a new `Request` and validate that it complies with the given `schema`
-    pub fn new_with_validation<S: RequestSchema>(
-        principal: EntityUID,
-        action: EntityUID,
-        resource: EntityUID,
-        context: Context,
-        schema: &S,
-        extensions: Extensions<'_>,
-    ) -> Result<Self, S::Error> {
-        let req = Self::new(principal, action, resource, context);
-        schema.validate_request(&req, extensions)?;
-        Ok(req)
-    }
-
-    /// Create a new `Request` with potentially unknown (for partial eval)
-    /// variables, and validate that it complies with the given `schema` (at
-    /// least to the extent that we can validate with the given information)
-    pub fn new_with_unknowns_and_validation<S: RequestSchema>(
-        principal: EntityUIDEntry,
-        action: EntityUIDEntry,
-        resource: EntityUIDEntry,
-        context: Option<Context>,
-        schema: &S,
-        extensions: Extensions<'_>,
-    ) -> Result<Self, S::Error> {
-        let req = Self::new_with_unknowns(principal, action, resource, context);
-        schema.validate_request(&req, extensions)?;
         Ok(req)
     }
 
@@ -302,6 +291,20 @@ pub trait RequestSchema {
         request: &Request,
         extensions: Extensions<'a>,
     ) -> Result<(), Self::Error>;
+}
+
+/// A `RequestSchema` that does no validation and always reports a passing result
+#[derive(Debug, Clone)]
+pub struct RequestSchemaAllPass;
+impl RequestSchema for RequestSchemaAllPass {
+    type Error = std::convert::Infallible;
+    fn validate_request<'a>(
+        &self,
+        _request: &Request,
+        _extensions: Extensions<'a>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
