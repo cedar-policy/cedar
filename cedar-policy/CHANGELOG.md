@@ -50,7 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 * Evaluation order of operand to `>` and `>=` (#112). They now evaluate left to right,
-  matching all other operators. This effects what error is reported when there is
+  matching all other operators. This affects what error is reported when there is
   an evaluation error in both operands, but does not otherwise change the result
   of evaluation.
 
