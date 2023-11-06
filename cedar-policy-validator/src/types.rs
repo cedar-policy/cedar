@@ -24,10 +24,11 @@ use std::{
     fmt::Display,
 };
 
-use cedar_policy_core::ast::{
-    BorrowedRestrictedExpr, EntityType, EntityUID, Expr, ExprShapeOnly, Name,
+use cedar_policy_core::{
+    ast::{BorrowedRestrictedExpr, EntityType, EntityUID, Expr, ExprShapeOnly, Name},
+    entities::{type_of_restricted_expr, TypeOfRestrictedExprError},
+    extensions::Extensions,
 };
-use cedar_policy_core::extensions::{ExtensionFunctionLookupError, Extensions};
 
 use crate::ValidationMode;
 
@@ -631,7 +632,7 @@ impl Type {
         &self,
         restricted_expr: BorrowedRestrictedExpr<'_>,
         extensions: Extensions<'_>,
-    ) -> Result<bool, ExtensionFunctionLookupError> {
+    ) -> Result<bool, TypeOfRestrictedExprError> {
         match self {
             Type::Never => Ok(false), // no expr has type Never
             Type::Primitive {
@@ -718,13 +719,32 @@ impl Type {
                 None => Ok(false),
             },
             Type::ExtensionType { name } => match restricted_expr.as_extn_fn_call() {
-                Some((fn_name, _)) => match extensions.func(fn_name)?.return_type() {
-                    Some(cedar_policy_core::entities::SchemaType::Extension {
-                        name: actual_name,
-                    }) => Ok(actual_name == name),
-                    _ => Ok(false),
-                },
-                None => Ok(false),
+                Some((fn_name, args)) => {
+                    let func = extensions.func(fn_name)?;
+                    match func.return_type() {
+                        Some(cedar_policy_core::entities::SchemaType::Extension {
+                            name: actual_name,
+                        }) => {
+                            if actual_name != name {
+                                return Ok(false);
+                            }
+                        }
+                        _ => return Ok(false),
+                    }
+                    for (actual_arg, expected_arg_ty) in args.zip(func.arg_types()) {
+                        match expected_arg_ty {
+                            None => {} // in this case, the docs on `.arg_types()` say that multiple types are allowed, we just approximate as saying you can pass any type to this argument
+                            Some(ty) => {
+                                if &type_of_restricted_expr(actual_arg, extensions)? != ty {
+                                    return Ok(false);
+                                }
+                            }
+                        }
+                    }
+                    // if we got here, then the return type and arg types typecheck
+                    Ok(true)
+                }
+                None => Ok(false), // no other kinds of restricted expr (other than fn calls) can produce extension-typed values
             },
         }
     }

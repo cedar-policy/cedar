@@ -1,5 +1,6 @@
 use crate::{ValidatorEntityType, ValidatorSchema};
-use cedar_policy_core::extensions::{ExtensionFunctionLookupError, Extensions};
+use cedar_policy_core::entities::TypeOfRestrictedExprError;
+use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::{ast, entities};
 use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
@@ -198,7 +199,8 @@ impl ast::RequestSchema for ValidatorSchema {
                 if let Some(context) = request.context() {
                     let expected_context_ty = validator_action_id.context_type();
                     if !expected_context_ty
-                        .typecheck_restricted_expr(context.as_ref().as_borrowed(), extensions)?
+                        .typecheck_restricted_expr(context.as_ref().as_borrowed(), extensions)
+                        .map_err(RequestValidationError::TypeOfContext)?
                     {
                         return Err(RequestValidationError::InvalidContext {
                             context: context.clone(),
@@ -277,11 +279,10 @@ pub enum RequestValidationError {
         /// Action which it is not valid for
         action: Arc<ast::EntityUID>,
     },
-    /// Error looking up an extension function, which may be necessary for
-    /// `Context`s that contain extension function calls -- not to actually
-    /// call the extension function, but to get metadata about it
-    #[error(transparent)]
-    ExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
+    /// Error computing the type of the `Context`; see the contained error type
+    /// for details about the kinds of errors that can occur
+    #[error("context is not valid: {0}")]
+    TypeOfContext(TypeOfRestrictedExprError),
 }
 
 /// Struct which carries enough information that it can impl Core's
