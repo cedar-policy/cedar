@@ -21,8 +21,8 @@ use crate::{TypeErrorKind, ValidationWarning};
 
 /// Contains the result of policy validation. The result includes the list of of
 /// issues found by the validation and whether validation succeeds or fails.
-/// Validation succeeds if there are no fatal errors.  There are currently no
-/// non-fatal warnings, so any issues found will cause validation to fail.
+/// Validation succeeds if there are no fatal errors. There may still be
+/// non-fatal warnings present when validation passes.
 #[derive(Debug)]
 pub struct ValidationResult<'a> {
     validation_errors: Vec<ValidationError<'a>>,
@@ -40,17 +40,18 @@ impl<'a> ValidationResult<'a> {
         }
     }
 
-    /// True when validation passes. There are no fatal errors.
+    /// True when validation passes. There are no errors, but there may be
+    /// non-fatal warnings.
     pub fn validation_passed(&self) -> bool {
         self.validation_errors.is_empty()
     }
 
-    /// Get the list of errors found by the validator.
+    /// Get an iterator over the errors found by the validator.
     pub fn validation_errors(&self) -> impl Iterator<Item = &ValidationError> {
         self.validation_errors.iter()
     }
 
-    /// Get the list of errors found by the validator.
+    /// Get an iterator over the warnings found by the validator.
     pub fn validation_warnings(&self) -> impl Iterator<Item = &ValidationWarning> {
         self.validation_warnings.iter()
     }

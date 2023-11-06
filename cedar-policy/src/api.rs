@@ -1305,8 +1305,8 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
 
 /// Contains the result of policy validation. The result includes the list of of
 /// issues found by the validation and whether validation succeeds or fails.
-/// Validation succeeds if there are no fatal errors.  There are currently no
-/// non-fatal warnings, so any issues found will cause validation to fail.
+/// Validation succeeds if there are no fatal errors. There may still be
+/// non-fatal warnings present when validation passes.
 #[derive(Debug)]
 pub struct ValidationResult<'a> {
     validation_errors: Vec<ValidationError<'a>>,
@@ -1314,7 +1314,8 @@ pub struct ValidationResult<'a> {
 }
 
 impl<'a> ValidationResult<'a> {
-    /// True when validation passes. There are no fatal errors, but there may be warnings. To
+    /// True when validation passes. There are no errors, but there may be
+    /// non-fatal warnings.
     pub fn validation_passed(&self) -> bool {
         self.validation_errors.is_empty()
     }
@@ -1425,7 +1426,10 @@ impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation<'a>
     }
 }
 
-/// Scan a set of policies for potentially confusing/obfuscating text.
+/// Scan a set of policies for potentially confusing/obfuscating text. These
+/// checks are also provided through [`Validator::validate`] which provides more
+/// comprehensive error detection, but this function can be used to check for
+/// confusable strings without defining a schema.
 pub fn confusable_string_checker<'a>(
     templates: impl Iterator<Item = &'a Template>,
 ) -> impl Iterator<Item = ValidationWarning<'a>> {

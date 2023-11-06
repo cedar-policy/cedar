@@ -4,7 +4,7 @@
 
 ### Added
 
-- `--deny-warnings` option to `valiate` command. This option turns non-fatal
+- `--deny-warnings` option to `validate` command. This option turns non-fatal
   warnings into errors.
 
 ## 2.4.2

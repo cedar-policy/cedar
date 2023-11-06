@@ -109,7 +109,7 @@ pub struct ValidateArgs {
     #[arg(short, long = "policies", value_name = "FILE")]
     pub policies_file: String,
     /// Report a validation failure for non-fatal warnings
-    #[arg(short, long)]
+    #[arg(long)]
     pub deny_warnings: bool,
 }
 
