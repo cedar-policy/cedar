@@ -1757,23 +1757,27 @@ mod test {
                                             }
                                         },
                                         "right": {
-                                            "<": {
-                                                "left": {
-                                                    "neg": {
-                                                        "arg": {
-                                                            "-": {
-                                                                "left": {
-                                                                    "Value": 23
-                                                                },
-                                                                "right": {
-                                                                    "Value": 1
+                                            "!": {
+                                                "arg":{
+                                                    "<=": {
+                                                        "left": {
+                                                            "Value": 4
+                                                        },
+                                                        "right": {
+                                                            "neg": {
+                                                                "arg": {
+                                                                    "-": {
+                                                                        "left": {
+                                                                            "Value": 23
+                                                                        },
+                                                                        "right": {
+                                                                            "Value": 1
+                                                                        }
+                                                                    }
                                                                 }
                                                             }
                                                         }
                                                     }
-                                                },
-                                                "right": {
-                                                    "Value": 4
                                                 }
                                             }
                                         }
@@ -1792,12 +1796,16 @@ mod test {
                                             }
                                         },
                                         "right": {
-                                            "<=": {
-                                                "left": {
-                                                    "Value": 1
-                                                },
-                                                "right": {
-                                                    "Value": 7
+                                            "!": {
+                                                "arg": {
+                                                    "<": {
+                                                        "left": {
+                                                            "Value": 7
+                                                        },
+                                                        "right": {
+                                                            "Value": 1
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
