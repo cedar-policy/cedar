@@ -27,7 +27,8 @@ jobs:
       - run: cargo audit --deny warnings # For some reason this hangs if you don't cargo build first
 
   cargo-deny:
+    name: cargo deny
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v3
-    - uses: EmbarkStudios/cargo-deny-action@v1
+      - uses: actions/checkout@v3
+      - run: EmbarkStudios/cargo-deny-action@v1
