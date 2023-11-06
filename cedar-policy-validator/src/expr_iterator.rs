@@ -55,6 +55,8 @@ pub(super) fn policy_entity_uids(template: &Template) -> impl Iterator<Item = &E
 
 /// Returns an iterator over all entity type names in the policy. This iterates
 /// over the policy head condition in addition to the body.
+/// The Unspecified entity type does not have a `Name`, so it is excluded
+/// from this iter.
 pub(super) fn policy_entity_type_names(template: &Template) -> impl Iterator<Item = &Name> {
     template
         .principal_constraint()

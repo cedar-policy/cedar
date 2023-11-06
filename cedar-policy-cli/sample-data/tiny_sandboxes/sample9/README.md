@@ -49,5 +49,5 @@ sample9$ cargo run authorize --policies policy.cedar --entities entity.json --re
 ALLOW
 ```
 
-This request is allowed because the resource is a photo and bob is the owner of
+This request is allowed because the resource is a photo and `bob` is the owner of
 that photo.

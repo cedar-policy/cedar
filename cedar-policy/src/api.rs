@@ -2311,7 +2311,7 @@ pub enum TemplatePrincipalConstraint {
     Eq(Option<EntityUid>),
     /// Must be the given EntityTypeName.
     Is(EntityTypeName),
-    /// Must be the given EntityTypeName, and `in` the EntityUID
+    /// Must be the given EntityTypeName, and `in` the EntityUID.
     /// If the EntityUID is [`None`], then it is a template slot.
     IsIn(EntityTypeName, Option<EntityUid>),
 }
@@ -2346,7 +2346,7 @@ pub enum ResourceConstraint {
     In(EntityUid),
     /// Must be equal to the given EntityUid
     Eq(EntityUid),
-    /// Must be the given EntityTypeName, and `in` the EntityUID if it is present
+    /// Must be the given EntityTypeName
     Is(EntityTypeName),
     /// Must be the given EntityTypeName, and `in` the EntityUID
     IsIn(EntityTypeName, EntityUid),

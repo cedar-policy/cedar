@@ -1029,7 +1029,7 @@ impl PrincipalConstraint {
         }
     }
 
-    /// Type constraint
+    /// Type constraint, with no hierarchical constraint or slot
     pub fn is_type(entity_type: Name) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_type(entity_type),
@@ -1136,7 +1136,7 @@ impl ResourceConstraint {
         }
     }
 
-    /// Type constraint
+    /// Type constraint, with no hierarchical constraint or slot
     pub fn is_type(entity_type: Name) -> Self {
         Self {
             constraint: PrincipalOrResourceConstraint::is_type(entity_type),
@@ -1460,6 +1460,8 @@ impl ActionConstraint {
     }
 
     /// Get an iterator over all of the entity types in this constraint.
+    /// The Unspecified entity type does not have a `Name`, so it is excluded
+    /// from this iter.
     pub fn iter_entity_type_names(&self) -> impl Iterator<Item = &'_ Name> {
         self.iter_euids()
             .filter_map(|euid| match euid.entity_type() {
