@@ -1303,8 +1303,8 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
     }
 }
 
-/// Contains the result of policy validation. The result includes the list of of
-/// issues found by the validation and whether validation succeeds or fails.
+/// Contains the result of policy validation. The result includes the list of
+/// issues found by validation and whether validation succeeds or fails.
 /// Validation succeeds if there are no fatal errors. There may still be
 /// non-fatal warnings present when validation passes.
 #[derive(Debug)]
@@ -1320,7 +1320,7 @@ impl<'a> ValidationResult<'a> {
         self.validation_errors.is_empty()
     }
 
-    /// Get an iterator over the of errors found by the validator.
+    /// Get an iterator over the errors found by the validator.
     pub fn validation_errors(&self) -> impl Iterator<Item = &ValidationError<'a>> {
         self.validation_errors.iter()
     }

@@ -19,8 +19,8 @@ use thiserror::Error;
 
 use crate::{TypeErrorKind, ValidationWarning};
 
-/// Contains the result of policy validation. The result includes the list of of
-/// issues found by the validation and whether validation succeeds or fails.
+/// Contains the result of policy validation. The result includes the list of
+/// issues found by validation and whether validation succeeds or fails.
 /// Validation succeeds if there are no fatal errors. There may still be
 /// non-fatal warnings present when validation passes.
 #[derive(Debug)]
