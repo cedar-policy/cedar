@@ -122,7 +122,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         Some(action.clone()),
         Some(resource.clone()),
         Context::from_pairs(context.clone()).expect("no duplicate keys in this context"),
-    );
+        None,
+    )
+    .unwrap();
 
     c.bench_function("request_new", |b| {
         b.iter(|| {
@@ -134,7 +136,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                     Context::from_pairs(context.clone())
                         .expect("no duplicate keys in this context"),
                 ),
+                None,
             )
+            .unwrap()
         })
     });
 

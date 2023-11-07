@@ -4,6 +4,8 @@
 
 ### Added
 
+- Requests are now validated by default if a schema is provided. This can be
+  disabled with `--request-validation=false`.
 - The `-s` short form can now be used for `--schema` across all subcommands.
 
 ### Changed
