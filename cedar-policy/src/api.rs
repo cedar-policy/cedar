@@ -2362,7 +2362,7 @@ pub enum TemplateResourceConstraint {
     Eq(Option<EntityUid>),
     /// Must be the given EntityTypeName.
     Is(EntityTypeName),
-    /// Must be the given EntityTypeName, and `in` the EntityUID
+    /// Must be the given EntityTypeName, and `in` the EntityUID.
     /// If the EntityUID is [`None`], then it is a template slot.
     IsIn(EntityTypeName, Option<EntityUid>),
 }

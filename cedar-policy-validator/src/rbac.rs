@@ -428,18 +428,18 @@ impl Validator {
                 EntityReference::Slot,
             )) => Box::new(var.get_known_vars(&self.schema).map(Clone::clone)),
             HeadConstraint::PrincipalOrResource(PrincipalOrResourceConstraint::Is(entity_type)) => {
-                Box::new(var.get_same_type(&self.schema, entity_type).cloned())
+                Box::new(var.get_by_type(&self.schema, entity_type).cloned())
             }
             HeadConstraint::PrincipalOrResource(PrincipalOrResourceConstraint::IsIn(
                 entity_type,
                 EntityReference::Slot,
-            )) => Box::new(var.get_same_type(&self.schema, entity_type).cloned()),
+            )) => Box::new(var.get_by_type(&self.schema, entity_type).cloned()),
             HeadConstraint::PrincipalOrResource(PrincipalOrResourceConstraint::IsIn(
                 entity_type,
                 EntityReference::EUID(in_entity),
             )) => {
                 let entities_same_type: HashSet<_> =
-                    var.get_same_type(&self.schema, entity_type).collect();
+                    var.get_by_type(&self.schema, entity_type).collect();
                 Box::new(
                     self.schema
                         .get_entities_in(var, in_entity.as_ref().clone())

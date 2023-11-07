@@ -144,7 +144,7 @@ pub enum ExprKind<T = ()> {
         /// Be careful the backslash in `\*` must not be another escape sequence. For instance, `\\*` matches a backslash plus an arbitrary string.
         pattern: Pattern,
     },
-    /// Entity type membership. Does the first argument have the entity type
+    /// Entity type test. Does the first argument have the entity type
     /// specified by the second argument.
     Is {
         /// Expression to test. Must evaluate to an Entity.
@@ -473,9 +473,9 @@ impl Expr {
         ExprBuilder::new().like(expr, pattern)
     }
 
-    /// Create a 'is' expression.
-    pub fn is_type(expr: Expr, entity_type: Name) -> Self {
-        ExprBuilder::new().is_type(expr, entity_type)
+    /// Create an `is` expression.
+    pub fn is_entity_type(expr: Expr, entity_type: Name) -> Self {
+        ExprBuilder::new().is_entity_type(expr, entity_type)
     }
 
     /// Check if an expression contains any symbolic unknowns
@@ -581,7 +581,7 @@ impl Expr {
             ExprKind::MulByConst { arg, constant } => {
                 Ok(Expr::mul(arg.substitute(definitions)?, *constant))
             }
-            ExprKind::Is { expr, entity_type } => Ok(Expr::is_type(
+            ExprKind::Is { expr, entity_type } => Ok(Expr::is_entity_type(
                 expr.substitute(definitions)?,
                 entity_type.clone(),
             )),
@@ -968,7 +968,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an 'is' expression.
-    pub fn is_type(self, expr: Expr<T>, entity_type: Name) -> Expr<T> {
+    pub fn is_entity_type(self, expr: Expr<T>, entity_type: Name) -> Expr<T> {
         self.with_expr_kind(ExprKind::Is {
             expr: Arc::new(expr),
             entity_type,
@@ -1430,7 +1430,7 @@ mod test {
             )
         );
         assert_eq!(
-            Expr::is_type(
+            Expr::is_entity_type(
                 Expr::val(EntityUID::with_eid("foo")),
                 "Type".parse().unwrap()
             ),
@@ -1659,8 +1659,8 @@ mod test {
                 Expr::like(Expr::val(1), vec![PatternElem::Wildcard]),
             ),
             (
-                ExprBuilder::with_data(1).is_type(temp, "T".parse().unwrap()),
-                Expr::is_type(Expr::val(1), "T".parse().unwrap()),
+                ExprBuilder::with_data(1).is_entity_type(temp, "T".parse().unwrap()),
+                Expr::is_entity_type(Expr::val(1), "T".parse().unwrap()),
             ),
         ];
 

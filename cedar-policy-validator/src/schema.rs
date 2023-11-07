@@ -760,7 +760,7 @@ pub(crate) trait HeadVar<K>: Copy {
     ) -> Option<Box<dyn Iterator<Item = &'a K> + 'a>>;
 
     /// Get the entities that have the same type as the `entity_type` provided.
-    fn get_same_type<'a>(
+    fn get_by_type<'a>(
         &self,
         schema: &'a ValidatorSchema,
         entity_type: &'a Name,
@@ -816,7 +816,7 @@ impl HeadVar<Name> for PrincipalOrResourceHeadVar {
         }
     }
 
-    fn get_same_type<'a>(
+    fn get_by_type<'a>(
         &self,
         schema: &'a ValidatorSchema,
         entity_type: &'a Name,
@@ -872,7 +872,7 @@ impl HeadVar<EntityUID> for ActionHeadVar {
         }
     }
 
-    fn get_same_type<'a>(
+    fn get_by_type<'a>(
         &self,
         schema: &'a ValidatorSchema,
         entity_type: &'a Name,

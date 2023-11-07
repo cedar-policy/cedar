@@ -2085,7 +2085,9 @@ fn construct_expr_like(e: ast::Expr, s: Vec<PatternElem>, l: SourceInfo) -> ast:
     ast::ExprBuilder::new().with_source_info(l).like(e, s)
 }
 fn construct_expr_is(e: ast::Expr, n: ast::Name, l: SourceInfo) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_info(l).is_type(e, n)
+    ast::ExprBuilder::new()
+        .with_source_info(l)
+        .is_entity_type(e, n)
 }
 fn construct_ext_func(name: ast::Name, args: Vec<ast::Expr>, l: SourceInfo) -> ast::Expr {
     // INVARIANT (MethodStyleArgs): CallStyle is not MethodStyle, so any args vector is fine
@@ -3608,30 +3610,30 @@ mod tests {
         for (es, expr) in [
             (
                 r#"User::"alice" is User"#,
-                Expr::is_type(
+                Expr::is_entity_type(
                     Expr::val(r#"User::"alice""#.parse::<EntityUID>().unwrap()),
                     "User".parse().unwrap(),
                 ),
             ),
             (
                 r#"principal is User"#,
-                Expr::is_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
+                Expr::is_entity_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
             ),
             (
                 r#"principal.foo is User"#,
-                Expr::is_type(
+                Expr::is_entity_type(
                     Expr::get_attr(Expr::var(ast::Var::Principal), "foo".into()),
                     "User".parse().unwrap(),
                 ),
             ),
             (
                 r#"1 is User"#,
-                Expr::is_type(Expr::val(1), "User".parse().unwrap()),
+                Expr::is_entity_type(Expr::val(1), "User".parse().unwrap()),
             ),
             (
                 r#"principal is User in Group::"friends""#,
                 Expr::and(
-                    Expr::is_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
+                    Expr::is_entity_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
                     Expr::is_in(
                         Expr::var(ast::Var::Principal),
                         Expr::val(r#"Group::"friends""#.parse::<EntityUID>().unwrap()),
@@ -3643,7 +3645,10 @@ mod tests {
                 Expr::and(
                     Expr::val(true),
                     Expr::and(
-                        Expr::is_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
+                        Expr::is_entity_type(
+                            Expr::var(ast::Var::Principal),
+                            "User".parse().unwrap(),
+                        ),
                         Expr::is_in(
                             Expr::var(ast::Var::Principal),
                             Expr::var(ast::Var::Principal),
@@ -3655,7 +3660,10 @@ mod tests {
                 r#"principal is User in principal && true"#,
                 Expr::and(
                     Expr::and(
-                        Expr::is_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
+                        Expr::is_entity_type(
+                            Expr::var(ast::Var::Principal),
+                            "User".parse().unwrap(),
+                        ),
                         Expr::is_in(
                             Expr::var(ast::Var::Principal),
                             Expr::var(ast::Var::Principal),
@@ -3666,7 +3674,7 @@ mod tests {
             ),
             (
                 r#"principal is A::B::C::User"#,
-                Expr::is_type(
+                Expr::is_entity_type(
                     Expr::var(ast::Var::Principal),
                     "A::B::C::User".parse().unwrap(),
                 ),
@@ -3674,7 +3682,7 @@ mod tests {
             (
                 r#"principal is A::B::C::User in Group::"friends""#,
                 Expr::and(
-                    Expr::is_type(
+                    Expr::is_entity_type(
                         Expr::var(ast::Var::Principal),
                         "A::B::C::User".parse().unwrap(),
                     ),
@@ -3700,19 +3708,19 @@ mod tests {
         for (src, p, a, r) in [
             (
                 r#"permit(principal is User, action, resource);"#,
-                PrincipalConstraint::is_type("User".parse().unwrap()),
+                PrincipalConstraint::is_entity_type("User".parse().unwrap()),
                 ActionConstraint::any(),
                 ResourceConstraint::any(),
             ),
             (
                 r#"permit(principal is A::User, action, resource);"#,
-                PrincipalConstraint::is_type("A::User".parse().unwrap()),
+                PrincipalConstraint::is_entity_type("A::User".parse().unwrap()),
                 ActionConstraint::any(),
                 ResourceConstraint::any(),
             ),
             (
                 r#"permit(principal is User in Group::"thing", action, resource);"#,
-                PrincipalConstraint::is_type_in(
+                PrincipalConstraint::is_entity_type_in(
                     "User".parse().unwrap(),
                     r#"Group::"thing""#.parse().unwrap(),
                 ),
@@ -3721,7 +3729,7 @@ mod tests {
             ),
             (
                 r#"permit(principal is A::User in Group::"thing", action, resource);"#,
-                PrincipalConstraint::is_type_in(
+                PrincipalConstraint::is_entity_type_in(
                     "A::User".parse().unwrap(),
                     r#"Group::"thing""#.parse().unwrap(),
                 ),
@@ -3730,7 +3738,7 @@ mod tests {
             ),
             (
                 r#"permit(principal is User in ?principal, action, resource);"#,
-                PrincipalConstraint::is_type_in_slot("User".parse().unwrap()),
+                PrincipalConstraint::is_entity_type_in_slot("User".parse().unwrap()),
                 ActionConstraint::any(),
                 ResourceConstraint::any(),
             ),
@@ -3738,13 +3746,13 @@ mod tests {
                 r#"permit(principal, action, resource is Folder);"#,
                 PrincipalConstraint::any(),
                 ActionConstraint::any(),
-                ResourceConstraint::is_type("Folder".parse().unwrap()),
+                ResourceConstraint::is_entity_type("Folder".parse().unwrap()),
             ),
             (
                 r#"permit(principal, action, resource is Folder in Folder::"inner");"#,
                 PrincipalConstraint::any(),
                 ActionConstraint::any(),
-                ResourceConstraint::is_type_in(
+                ResourceConstraint::is_entity_type_in(
                     "Folder".parse().unwrap(),
                     r#"Folder::"inner""#.parse().unwrap(),
                 ),
@@ -3753,7 +3761,7 @@ mod tests {
                 r#"permit(principal, action, resource is Folder in ?resource);"#,
                 PrincipalConstraint::any(),
                 ActionConstraint::any(),
-                ResourceConstraint::is_type_in_slot("Folder".parse().unwrap()),
+                ResourceConstraint::is_entity_type_in_slot("Folder".parse().unwrap()),
             ),
         ] {
             let policy = parse_policy_template(None, src).unwrap();

@@ -555,7 +555,9 @@ impl<'q, 'e> Evaluator<'e> {
                         EntityType::Unspecified => false,
                     }
                     .into()),
-                    PartialValue::Residual(r) => Ok(Expr::is_type(r, entity_type.clone()).into()),
+                    PartialValue::Residual(r) => {
+                        Ok(Expr::is_entity_type(r, entity_type.clone()).into())
+                    }
                 }
             }
             ExprKind::Set(items) => {
@@ -3407,7 +3409,7 @@ pub mod test {
             Ok(Value::Lit(Literal::Bool(false)))
         );
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_type(
+            eval.interpret_inline_policy(&Expr::is_entity_type(
                 Expr::val(EntityUID::unspecified_from_eid(Eid::new("thing"))),
                 "User".parse().unwrap()
             )),
@@ -4035,7 +4037,7 @@ pub mod test {
         );
 
         assert_restricted_expression_error(
-            BorrowedRestrictedExpr::new(&Expr::is_type(
+            BorrowedRestrictedExpr::new(&Expr::is_entity_type(
                 Expr::val(EntityUID::with_eid("alice")),
                 "User".parse().unwrap(),
             ))
@@ -5038,7 +5040,7 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
 
-        let e = Expr::is_type(Expr::unknown("a"), "User".parse().unwrap());
+        let e = Expr::is_entity_type(Expr::unknown("a"), "User".parse().unwrap());
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 

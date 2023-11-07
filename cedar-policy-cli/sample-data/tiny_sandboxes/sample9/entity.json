@@ -5,14 +5,14 @@
         "parents": []
     },
     {
-        "uid":  { "type":"User", "id":"bob"},
+        "uid":  { "type":"User", "id":"Bob"},
         "attrs": {},
         "parents": []
     },
     {
         "uid":  { "type":"Photo", "id":"VacationPhoto94.jpg" },
         "attrs": {
-            "owner": { "__entity": { "type":"User", "id":"bob"} }
+            "owner": { "__entity": { "type":"User", "id":"Bob"} }
         },
         "parents": []
     }

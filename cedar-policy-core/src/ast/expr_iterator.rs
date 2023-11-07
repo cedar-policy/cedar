@@ -242,7 +242,7 @@ mod test {
 
     #[test]
     fn is() {
-        let e = Expr::is_type(Expr::val(1), "T".parse().unwrap());
+        let e = Expr::is_entity_type(Expr::val(1), "T".parse().unwrap());
         assert_eq!(
             e.subexpressions().collect::<HashSet<_>>(),
             HashSet::from([&e, &Expr::val(1)])

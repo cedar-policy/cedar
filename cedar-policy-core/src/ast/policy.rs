@@ -1016,23 +1016,23 @@ impl PrincipalConstraint {
     }
 
     /// Type constraint additionally constrained to be in a slot.
-    pub fn is_type_in_slot(entity_type: Name) -> Self {
+    pub fn is_entity_type_in_slot(entity_type: Name) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_type_in_slot(entity_type),
+            constraint: PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type),
         }
     }
 
     /// Type constraint, with a hierarchical constraint.
-    pub fn is_type_in(entity_type: Name, in_entity: EntityUID) -> Self {
+    pub fn is_entity_type_in(entity_type: Name, in_entity: EntityUID) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_type_in(entity_type, in_entity),
+            constraint: PrincipalOrResourceConstraint::is_entity_type_in(entity_type, in_entity),
         }
     }
 
-    /// Type constraint, with no hierarchical constraint or slot
-    pub fn is_type(entity_type: Name) -> Self {
+    /// Type constraint, with no hierarchical constraint or slot.
+    pub fn is_entity_type(entity_type: Name) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_type(entity_type),
+            constraint: PrincipalOrResourceConstraint::is_entity_type(entity_type),
         }
     }
 
@@ -1123,23 +1123,23 @@ impl ResourceConstraint {
     }
 
     /// Type constraint additionally constrained to be in a slot.
-    pub fn is_type_in_slot(entity_type: Name) -> Self {
+    pub fn is_entity_type_in_slot(entity_type: Name) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_type_in_slot(entity_type),
+            constraint: PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type),
         }
     }
 
     /// Type constraint, with a hierarchical constraint.
-    pub fn is_type_in(entity_type: Name, in_entity: EntityUID) -> Self {
+    pub fn is_entity_type_in(entity_type: Name, in_entity: EntityUID) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_type_in(entity_type, in_entity),
+            constraint: PrincipalOrResourceConstraint::is_entity_type_in(entity_type, in_entity),
         }
     }
 
-    /// Type constraint, with no hierarchical constraint or slot
-    pub fn is_type(entity_type: Name) -> Self {
+    /// Type constraint, with no hierarchical constraint or slot.
+    pub fn is_entity_type(entity_type: Name) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_type(entity_type),
+            constraint: PrincipalOrResourceConstraint::is_entity_type(entity_type),
         }
     }
 
@@ -1294,17 +1294,17 @@ impl PrincipalOrResourceConstraint {
     }
 
     /// Type constraint additionally constrained to be in a slot.
-    pub fn is_type_in_slot(entity_type: Name) -> Self {
+    pub fn is_entity_type_in_slot(entity_type: Name) -> Self {
         PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot)
     }
 
     /// Type constraint with a hierarchical constraint.
-    pub fn is_type_in(entity_type: Name, in_entity: EntityUID) -> Self {
+    pub fn is_entity_type_in(entity_type: Name, in_entity: EntityUID) -> Self {
         PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::euid(in_entity))
     }
 
-    /// Type constraint, optionally with a hierarchical constraint.
-    pub fn is_type(entity_type: Name) -> Self {
+    /// Type constraint, with no hierarchical constraint or slot.
+    pub fn is_entity_type(entity_type: Name) -> Self {
         PrincipalOrResourceConstraint::Is(entity_type)
     }
 
@@ -1321,11 +1321,11 @@ impl PrincipalOrResourceConstraint {
                 Expr::is_in(Expr::var(v.into()), euid.into_expr(v.into()))
             }
             PrincipalOrResourceConstraint::IsIn(entity_type, euid) => Expr::and(
-                Expr::is_type(Expr::var(v.into()), entity_type.clone()),
+                Expr::is_entity_type(Expr::var(v.into()), entity_type.clone()),
                 Expr::is_in(Expr::var(v.into()), euid.into_expr(v.into())),
             ),
             PrincipalOrResourceConstraint::Is(entity_type) => {
-                Expr::is_type(Expr::var(v.into()), entity_type.clone())
+                Expr::is_entity_type(Expr::var(v.into()), entity_type.clone())
             }
         }
     }

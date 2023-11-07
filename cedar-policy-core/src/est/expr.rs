@@ -450,7 +450,7 @@ impl Expr {
     }
 
     /// `left is entity_type`
-    pub fn is_type(left: Expr, entity_type: SmolStr) -> Self {
+    pub fn is_entity_type(left: Expr, entity_type: SmolStr) -> Self {
         Expr::ExprNoExt(ExprNoExt::Is {
             left: Arc::new(left),
             entity_type,
@@ -459,7 +459,7 @@ impl Expr {
     }
 
     /// `left is entity_type in entity`
-    pub fn is_type_in(left: Expr, entity_type: SmolStr, entity: Expr) -> Self {
+    pub fn is_entity_type_in(left: Expr, entity_type: SmolStr, entity: Expr) -> Self {
         Expr::ExprNoExt(ExprNoExt::Is {
             left: Arc::new(left),
             entity_type,
@@ -617,7 +617,7 @@ impl Expr {
                 .map_err(FromJsonError::InvalidEntityType)
                 .and_then(|entity_type_name| {
                     let left: ast::Expr = (*left).clone().try_into_ast(id.clone())?;
-                    let is_expr = ast::Expr::is_type(left.clone(), entity_type_name);
+                    let is_expr = ast::Expr::is_entity_type(left.clone(), entity_type_name);
                     match in_expr {
                         // The AST doesn't have an `... is ... in ..` node, so
                         // we represent it as a conjunction of `is` and `in`.
@@ -748,7 +748,7 @@ impl From<ast::Expr> for Expr {
                 Expr::like(unwrap_or_clone(expr).into(), pattern.to_string().into())
             }
             ast::ExprKind::Is { expr, entity_type } => {
-                Expr::is_type(unwrap_or_clone(expr).into(), entity_type.to_string().into())
+                Expr::is_entity_type(unwrap_or_clone(expr).into(), entity_type.to_string().into())
             }
             ast::ExprKind::Set(set) => {
                 Expr::set(unwrap_or_clone(set).into_iter().map(Into::into).collect())
@@ -952,12 +952,12 @@ impl TryFrom<cst::Relation> for Expr {
                         Some(ASTNode {
                             node: Some(in_entity),
                             ..
-                        }) => Ok(Expr::is_type_in(
+                        }) => Ok(Expr::is_entity_type_in(
                             target,
                             entity_type.to_string().into(),
                             in_entity.try_into()?,
                         )),
-                        None => Ok(Expr::is_type(target, entity_type.to_string().into())),
+                        None => Ok(Expr::is_entity_type(target, entity_type.to_string().into())),
                         Some(ASTNode { node: None, .. }) => {
                             Err(ParseError::ToAST(ToASTError::MissingNodeData).into())
                         }
