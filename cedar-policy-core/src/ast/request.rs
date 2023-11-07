@@ -79,34 +79,53 @@ impl EntityUIDEntry {
 }
 
 impl Request {
-    /// Default constructor
-    pub fn new(
+    /// Default constructor.
+    ///
+    /// If `schema` is provided, this constructor validates that this `Request`
+    /// complies with the given `schema`.
+    pub fn new<S: RequestSchema>(
         principal: EntityUID,
         action: EntityUID,
         resource: EntityUID,
         context: Context,
-    ) -> Self {
-        Self {
+        schema: Option<&S>,
+        extensions: Extensions<'_>,
+    ) -> Result<Self, S::Error> {
+        let req = Self {
             principal: EntityUIDEntry::concrete(principal),
             action: EntityUIDEntry::concrete(action),
             resource: EntityUIDEntry::concrete(resource),
             context: Some(context),
+        };
+        if let Some(schema) = schema {
+            schema.validate_request(&req, extensions)?;
         }
+        Ok(req)
     }
 
-    /// Create a new request with potentially unknown (for partial eval) head variables
-    pub fn new_with_unknowns(
+    /// Create a new `Request` with potentially unknown (for partial eval) variables.
+    ///
+    /// If `schema` is provided, this constructor validates that this `Request`
+    /// complies with the given `schema` (at least to the extent that we can
+    /// validate with the given information)
+    pub fn new_with_unknowns<S: RequestSchema>(
         principal: EntityUIDEntry,
         action: EntityUIDEntry,
         resource: EntityUIDEntry,
         context: Option<Context>,
-    ) -> Self {
-        Self {
+        schema: Option<&S>,
+        extensions: Extensions<'_>,
+    ) -> Result<Self, S::Error> {
+        let req = Self {
             principal,
             action,
             resource,
             context,
+        };
+        if let Some(schema) = schema {
+            schema.validate_request(&req, extensions)?;
         }
+        Ok(req)
     }
 
     /// Get the principal associated with the request
@@ -152,7 +171,7 @@ impl std::fmt::Display for Request {
 }
 
 /// `Context` field of a `Request`
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Context {
     /// an `Expr::Record` that qualifies as a "restricted expression"
     /// INVARIANT: This must be of the variant `Record`
@@ -259,6 +278,32 @@ impl std::default::Default for Context {
 impl std::fmt::Display for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.context)
+    }
+}
+
+/// Trait for schemas capable of validating `Request`s
+pub trait RequestSchema {
+    /// Error type returned when a request fails validation
+    type Error: std::error::Error;
+    /// Validate the given `request`, returning `Err` if it fails validation
+    fn validate_request(
+        &self,
+        request: &Request,
+        extensions: Extensions<'_>,
+    ) -> Result<(), Self::Error>;
+}
+
+/// A `RequestSchema` that does no validation and always reports a passing result
+#[derive(Debug, Clone)]
+pub struct RequestSchemaAllPass;
+impl RequestSchema for RequestSchemaAllPass {
+    type Error = std::convert::Infallible;
+    fn validate_request(
+        &self,
+        _request: &Request,
+        _extensions: Extensions<'_>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 

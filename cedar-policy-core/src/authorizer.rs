@@ -399,9 +399,9 @@ impl std::fmt::Debug for Authorizer {
 mod test {
     use std::collections::BTreeMap;
 
-    use crate::parser;
-
     use super::*;
+    use crate::ast::RequestSchemaAllPass;
+    use crate::parser;
 
     /// Sanity unit test case for is_authorized.
     /// More robust testing is accomplished through the integration tests.
@@ -413,7 +413,10 @@ mod test {
             EntityUID::with_eid("a"),
             EntityUID::with_eid("r"),
             Context::empty(),
-        );
+            None::<&RequestSchemaAllPass>,
+            Extensions::none(),
+        )
+        .unwrap();
         let pset = PolicySet::new();
         let entities = Entities::new();
         let ans = a.is_authorized(&q, &pset, &entities);
@@ -429,7 +432,10 @@ mod test {
             EntityUID::with_eid("a"),
             EntityUID::with_eid("r"),
             Context::empty(),
-        );
+            None::<&RequestSchemaAllPass>,
+            Extensions::none(),
+        )
+        .unwrap();
         let mut pset = PolicySet::new();
         let entities = Entities::new();
 
@@ -509,7 +515,10 @@ mod test {
             EntityUID::with_eid("a"),
             EntityUID::with_eid("r"),
             Context::empty(),
-        );
+            None::<&RequestSchemaAllPass>,
+            Extensions::none(),
+        )
+        .unwrap();
         let mut pset = PolicySet::new();
         pset.add_static(true_policy("0", Effect::Permit))
             .expect("Policy ID already in PolicySet");
@@ -534,7 +543,10 @@ mod test {
             EntityUID::with_eid("a"),
             EntityUID::with_eid("r"),
             context,
-        );
+            None::<&RequestSchemaAllPass>,
+            Extensions::none(),
+        )
+        .unwrap();
         let mut pset = PolicySet::new();
         pset.add_static(true_policy("0", Effect::Permit))
             .expect("Policy ID already in PolicySet");
@@ -569,7 +581,10 @@ mod test {
             EntityUID::with_eid("a"),
             EntityUID::with_eid("r"),
             Context::empty(),
-        );
+            None::<&RequestSchemaAllPass>,
+            Extensions::none(),
+        )
+        .unwrap();
         let mut pset = PolicySet::new();
         pset.add_static(true_policy("0", Effect::Permit))
             .expect("Policy ID already in PolicySet");
@@ -587,7 +602,10 @@ mod test {
             EntityUID::with_eid("a"),
             EntityUID::with_eid("r"),
             Context::empty(),
-        );
+            None::<&RequestSchemaAllPass>,
+            Extensions::none(),
+        )
+        .unwrap();
         let a = Authorizer::new();
         let mut pset = PolicySet::new();
         let es = Entities::new();
@@ -628,7 +646,10 @@ mod test {
             EntityUID::with_eid("a"),
             EntityUID::with_eid("r"),
             Context::empty(),
-        );
+            None::<&RequestSchemaAllPass>,
+            Extensions::none(),
+        )
+        .unwrap();
         let a = Authorizer::new();
         let mut pset = PolicySet::new();
         let es = Entities::new();
@@ -690,7 +711,10 @@ mod test {
             EntityUID::with_eid("a"),
             EntityUID::with_eid("r"),
             Context::empty(),
-        );
+            None::<&RequestSchemaAllPass>,
+            Extensions::none(),
+        )
+        .unwrap();
         let a = Authorizer::new();
         let mut pset = PolicySet::new();
         let es = Entities::new();
@@ -738,7 +762,10 @@ mod test {
             EntityUID::with_eid("a"),
             EntityUID::with_eid("r"),
             Context::empty(),
-        );
+            None::<&RequestSchemaAllPass>,
+            Extensions::none(),
+        )
+        .unwrap();
         let a = Authorizer::new();
         let mut pset = PolicySet::new();
         let es = Entities::new();

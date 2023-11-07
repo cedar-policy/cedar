@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Entities::from_*()` methods now validate the entities against the `schema`, if a `schema`
   is provided.
 - `Entities::from_entities()` and `Entities::add_entities()` now take an optional schema argument.
+- `Request::new()` now takes an optional schema argument, and returns a `Result`.
 - Change the semantics of equality for IP ranges. For example,
   `ip("192.168.0.1/24") == ip("192.168.0.3/24")` was previously `true` and is now
   `false`. The behavior of equality on single IP addresses is unchanged, and so is
@@ -50,6 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improve the `Display` impls for `Policy` and `PolicySet`, and add a `Display`
   impl for `Template`.  The displayed representations now more closely match the
   original input, whether the input was in string or JSON form.
+- `ValidationWarning::location` and `ValidationWarning::to_kind_and_location`
+  now return `&SourceLocation<'a>` instead of `&'a PolicyID`, matching
+  `ValidationError::location`.
 
 ### Fixed
 

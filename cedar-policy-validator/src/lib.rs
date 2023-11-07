@@ -17,33 +17,32 @@
 //! Validator for Cedar policies
 #![forbid(unsafe_code)]
 
+use cedar_policy_core::ast::{Policy, PolicySet, Template};
+use serde::Serialize;
 use std::collections::HashSet;
 
-use cedar_policy_core::ast::{Policy, PolicySet, Template};
-
 mod err;
-mod str_checks;
 pub use err::*;
+mod coreschema;
+pub use coreschema::*;
 mod expr_iterator;
 mod extension_schema;
 mod extensions;
 mod fuzzy_match;
 mod validation_result;
-use serde::Serialize;
 pub use validation_result::*;
 mod rbac;
 mod schema;
 pub use schema::*;
 mod schema_file_format;
 pub use schema_file_format::*;
+mod str_checks;
+pub use str_checks::{confusable_string_checks, ValidationWarning, ValidationWarningKind};
 mod type_error;
 pub use type_error::*;
 pub mod typecheck;
+use typecheck::Typechecker;
 pub mod types;
-
-pub use str_checks::{confusable_string_checks, ValidationWarning, ValidationWarningKind};
-
-use self::typecheck::Typechecker;
 
 /// Used to select how a policy will be validated.
 #[derive(Default, Eq, PartialEq, Copy, Clone, Debug, Serialize)]

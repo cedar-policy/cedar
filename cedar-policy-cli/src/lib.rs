@@ -21,7 +21,7 @@
 
 mod err;
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -124,7 +124,7 @@ pub struct CheckParseArgs {
 #[derive(Args, Debug)]
 pub struct RequestArgs {
     /// Principal for the request, e.g., User::"alice"
-    #[arg(short, long)]
+    #[arg(short = 'l', long)]
     pub principal: Option<String>,
     /// Action for the request, e.g., Action::"view"
     #[arg(short, long)]
@@ -142,10 +142,19 @@ pub struct RequestArgs {
     /// --principal, --action, etc.
     #[arg(long = "request-json", value_name = "FILE", conflicts_with_all = &["principal", "action", "resource", "context_json_file"])]
     pub request_json_file: Option<String>,
+    /// Whether to enable request validation. This has no effect if a schema is
+    /// not provided.
+    #[arg(long = "request-validation", action = ArgAction::Set, default_value_t = true)]
+    pub request_validation: bool,
 }
 
 impl RequestArgs {
     /// Turn this `RequestArgs` into the appropriate `Request` object
+    ///
+    /// `schema` will be used for schema-based parsing of the context, and also
+    /// (if `self.request_validation` is `true`) for request validation.
+    ///
+    /// `self.request_validation` has no effect if `schema` is `None`.
     fn get_request(&self, schema: Option<&Schema>) -> Result<Request> {
         match &self.request_json_file {
             Some(jsonfile) => {
@@ -185,7 +194,18 @@ impl RequestArgs {
                 )
                 .into_diagnostic()
                 .wrap_err_with(|| format!("failed to create a context from {jsonfile}"))?;
-                Ok(Request::new(principal, action, resource, context))
+                Request::new(
+                    principal,
+                    action,
+                    resource,
+                    context,
+                    if self.request_validation {
+                        schema
+                    } else {
+                        None
+                    },
+                )
+                .map_err(|e| miette!("{e}"))
             }
             None => {
                 let principal = self
@@ -227,7 +247,18 @@ impl RequestArgs {
                         })?,
                     },
                 };
-                Ok(Request::new(principal, action, resource, context))
+                Request::new(
+                    principal,
+                    action,
+                    resource,
+                    context,
+                    if self.request_validation {
+                        schema
+                    } else {
+                        None
+                    },
+                )
+                .map_err(|e| miette!("{e}"))
             }
         }
     }
@@ -239,15 +270,15 @@ pub struct AuthorizeArgs {
     #[command(flatten)]
     pub request: RequestArgs,
     /// File containing the static Cedar policies and templates to evaluate against
-    #[arg(long = "policies", value_name = "FILE")]
+    #[arg(short, long = "policies", value_name = "FILE")]
     pub policies_file: String,
     /// File containing template linked policies
-    #[arg(long = "template-linked", value_name = "FILE")]
+    #[arg(short = 'k', long = "template-linked", value_name = "FILE")]
     pub template_linked_file: Option<String>,
     /// File containing schema information
     /// Used to populate the store with action entities and for schema-based
     /// parsing of entity hierarchy, if present
-    #[arg(long = "schema", value_name = "FILE")]
+    #[arg(short, long = "schema", value_name = "FILE")]
     pub schema_file: Option<String>,
     /// File containing JSON representation of the Cedar entity hierarchy
     #[arg(long = "entities", value_name = "FILE")]
@@ -263,10 +294,10 @@ pub struct AuthorizeArgs {
 #[derive(Args, Debug)]
 pub struct LinkArgs {
     /// File containing static policies and templates.
-    #[arg(short, long)]
+    #[arg(short, long = "policies", value_name = "FILE")]
     pub policies_file: String,
     /// File containing template-linked policies
-    #[arg(short, long)]
+    #[arg(short = 'k', long = "template-linked", value_name = "FILE")]
     pub template_linked_file: String,
     /// Id of the template to instantiate
     #[arg(long)]
@@ -353,7 +384,7 @@ pub struct EvaluateArgs {
     /// File containing schema information
     /// Used to populate the store with action entities and for schema-based
     /// parsing of entity hierarchy, if present
-    #[arg(long = "schema", value_name = "FILE")]
+    #[arg(short, long = "schema", value_name = "FILE")]
     pub schema_file: Option<String>,
     /// File containing JSON representation of the Cedar entity hierarchy.
     /// This is optional; if not present, we'll just use an empty hierarchy.

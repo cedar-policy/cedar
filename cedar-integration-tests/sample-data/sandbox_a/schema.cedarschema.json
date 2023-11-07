@@ -76,10 +76,10 @@
       "view": {
         "appliesTo": {
           "resourceTypes": [
-            "Photo"
+            "Photo", "Video"
           ],
           "principalTypes": [
-            "User"
+            "User", "Administrator"
           ],
           "context": {
             "type": "Record",
