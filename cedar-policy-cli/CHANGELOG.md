@@ -14,6 +14,7 @@
   subcommands, while `-l` refers to `--principal`. Relatedly, the `--policies`
   long form of the flag is also now accepted across all subcommands.
 - The short form of `--template-linked` was changed from `-t` to `-k`.
+- The `format` subcommand no longer takes a positional file argument.
 
 ## 2.4.2
 
