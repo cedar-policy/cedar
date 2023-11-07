@@ -20,11 +20,15 @@
 use serde::Serialize;
 use smol_str::SmolStr;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::Display,
 };
 
-use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprShapeOnly, Name};
+use cedar_policy_core::{
+    ast::{BorrowedRestrictedExpr, EntityType, EntityUID, Expr, ExprShapeOnly, Name},
+    entities::{type_of_restricted_expr, TypeOfRestrictedExprError},
+    extensions::Extensions,
+};
 
 use crate::ValidationMode;
 
@@ -540,40 +544,48 @@ impl Type {
             CoreSchemaType::Set { element_ty } => {
                 matches!(self, Type::Set { element_type: Some(element_type) } if element_type.is_consistent_with(element_ty))
             }
-            CoreSchemaType::EmptySet => matches!(self, Type::Set { .. }), // empty-set matches a set of any element type
-            CoreSchemaType::Record { attrs } => match self {
+            CoreSchemaType::EmptySet => {
+                // for any given validator Set type, there is some value (namely, the empty set)
+                // that could have the EmptySet CoreSchemaType and that validator Set type.
+                matches!(self, Type::Set { .. })
+            }
+            CoreSchemaType::Record { attrs: core_attrs } => match self {
                 Type::EntityOrRecord(kind) => match kind {
                     EntityRecordKind::Record {
                         attrs: self_attrs, ..
                     } => {
-                        attrs.iter().all(|(k, v)| {
+                        core_attrs.iter().all(|(k, core_attr_ty)| {
                             match self_attrs.get_attr(k) {
-                                Some(ty) => {
+                                Some(self_attr_ty) => {
                                     // both have the attribute, doesn't matter
                                     // if one or both consider it required or
                                     // optional
-                                    ty.attr_type.is_consistent_with(v.schema_type())
+                                    self_attr_ty
+                                        .attr_type
+                                        .is_consistent_with(core_attr_ty.schema_type())
                                 }
                                 None => {
-                                    // attrs has the attribute, self_attrs does not.
-                                    // if required in attrs, incompatible.
+                                    // core_attrs has the attribute, self_attrs does not.
+                                    // if required in core_attrs, incompatible.
                                     // otherwise fine
-                                    !v.is_required()
+                                    !core_attr_ty.is_required()
                                 }
                             }
-                        }) && self_attrs.iter().all(|(k, v)| {
-                            match attrs.get(k) {
-                                Some(ty) => {
+                        }) && self_attrs.iter().all(|(k, self_attr_ty)| {
+                            match core_attrs.get(k) {
+                                Some(core_attr_ty) => {
                                     // both have the attribute, doesn't matter
                                     // if one or both consider it required or
                                     // optional
-                                    v.attr_type.is_consistent_with(ty.schema_type())
+                                    self_attr_ty
+                                        .attr_type
+                                        .is_consistent_with(core_attr_ty.schema_type())
                                 }
                                 None => {
-                                    // self_attrs has the attribute, attrs does not.
+                                    // self_attrs has the attribute, core_attrs does not.
                                     // if required in self_attrs, incompatible.
                                     // otherwise fine
-                                    !v.is_required
+                                    !self_attr_ty.is_required
                                 }
                             }
                         })
@@ -614,6 +626,128 @@ impl Type {
             }
         }
     }
+
+    /// Does the given `BorrowedRestrictedExpr` have this validator type?
+    pub(crate) fn typecheck_restricted_expr(
+        &self,
+        restricted_expr: BorrowedRestrictedExpr<'_>,
+        extensions: Extensions<'_>,
+    ) -> Result<bool, TypeOfRestrictedExprError> {
+        match self {
+            Type::Never => Ok(false), // no expr has type Never
+            Type::Primitive {
+                primitive_type: Primitive::Bool,
+            } => Ok(restricted_expr.as_bool().is_some()),
+            Type::Primitive {
+                primitive_type: Primitive::Long,
+            } => Ok(restricted_expr.as_long().is_some()),
+            Type::Primitive {
+                primitive_type: Primitive::String,
+            } => Ok(restricted_expr.as_string().is_some()),
+            Type::True => Ok(restricted_expr.as_bool() == Some(true)),
+            Type::False => Ok(restricted_expr.as_bool() == Some(false)),
+            Type::Set { element_type: None } => Ok(restricted_expr.as_set_elements().is_some()),
+            Type::Set {
+                element_type: Some(el_type),
+            } => match restricted_expr.as_set_elements() {
+                Some(elts) => {
+                    for elt in elts {
+                        if !el_type.typecheck_restricted_expr(elt, extensions)? {
+                            return Ok(false);
+                        }
+                    }
+                    Ok(true)
+                }
+                None => Ok(false),
+            },
+            Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => {
+                match restricted_expr.as_euid() {
+                    Some(euid) => match euid.entity_type() {
+                        EntityType::Concrete(name) => Ok(lub.contains(name)),
+                        EntityType::Unspecified => Ok(false), // Unspecified can only have the validator type `AnyEntity`, not any specific lub
+                    },
+                    None => Ok(false),
+                }
+            }
+            Type::EntityOrRecord(EntityRecordKind::ActionEntity { name, .. }) => {
+                match restricted_expr.as_euid() {
+                    Some(euid) if euid.is_action() => match euid.entity_type() {
+                        EntityType::Concrete(euid_name) => Ok(euid_name == name),
+                        EntityType::Unspecified => Ok(false), // `euid.is_action()` should never be true for an Unspecified, so this should be unreachable, but it's safe to return Ok(false), because Unspecified can only have the validator type `AnyEntity` anyway
+                    },
+                    _ => Ok(false),
+                }
+            }
+            Type::EntityOrRecord(EntityRecordKind::AnyEntity) => {
+                Ok(restricted_expr.as_euid().is_some())
+            }
+            Type::EntityOrRecord(EntityRecordKind::Record {
+                attrs,
+                open_attributes,
+            }) => match restricted_expr.as_record_pairs() {
+                Some(pairs) => {
+                    let record: HashMap<_, BorrowedRestrictedExpr<'_>> = pairs.collect();
+                    for (k, attr_val) in &record {
+                        match attrs.get_attr(&k) {
+                            Some(attr_ty) => {
+                                if !attr_ty
+                                    .attr_type
+                                    .typecheck_restricted_expr(attr_val.to_owned(), extensions)?
+                                {
+                                    return Ok(false);
+                                }
+                            }
+                            None => {
+                                if open_attributes != &OpenTag::OpenAttributes {
+                                    // the restricted expr has an attribute not
+                                    // listed in the Type, and the Type doesn't
+                                    // have open attributes
+                                    return Ok(false);
+                                }
+                            }
+                        }
+                    }
+                    // we've now checked that all of the attrs in `restricted_expr` are OK and have the right types.
+                    // what remains is making sure that all the required attrs are actually in `restricted_expr`
+                    for (k, attr_ty) in attrs.iter() {
+                        if attr_ty.is_required && !record.contains_key(k) {
+                            return Ok(false);
+                        }
+                    }
+                    Ok(true)
+                }
+                None => Ok(false),
+            },
+            Type::ExtensionType { name } => match restricted_expr.as_extn_fn_call() {
+                Some((fn_name, args)) => {
+                    let func = extensions.func(fn_name)?;
+                    match func.return_type() {
+                        Some(cedar_policy_core::entities::SchemaType::Extension {
+                            name: actual_name,
+                        }) => {
+                            if actual_name != name {
+                                return Ok(false);
+                            }
+                        }
+                        _ => return Ok(false),
+                    }
+                    for (actual_arg, expected_arg_ty) in args.zip(func.arg_types()) {
+                        match expected_arg_ty {
+                            None => {} // in this case, the docs on `.arg_types()` say that multiple types are allowed, we just approximate as saying you can pass any type to this argument
+                            Some(ty) => {
+                                if &type_of_restricted_expr(actual_arg, extensions)? != ty {
+                                    return Ok(false);
+                                }
+                            }
+                        }
+                    }
+                    // if we got here, then the return type and arg types typecheck
+                    Ok(true)
+                }
+                None => Ok(false), // no other kinds of restricted expr (other than fn calls) can produce extension-typed values
+            },
+        }
+    }
 }
 
 impl Display for Type {
@@ -632,7 +766,7 @@ impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
         use cedar_policy_core::entities::AttributeType as CoreAttributeType;
         use cedar_policy_core::entities::SchemaType as CoreSchemaType;
         match ty {
-            Type::Never => Err("'Never' type is not representable in core::Type".into()),
+            Type::Never => Err("'Never' type is not representable in core::SchemaType".into()),
             Type::True | Type::False => Ok(CoreSchemaType::Bool),
             Type::Primitive {
                 primitive_type: Primitive::Bool,
@@ -648,12 +782,9 @@ impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
             } => Ok(CoreSchemaType::Set {
                 element_ty: Box::new(CoreSchemaType::try_from(*element_type)?),
             }),
-            Type::Set { element_type: None } => {
-                Err("Set<None> type is not representable in core::SchemaType".into())
-            }
+            Type::Set { element_type: None } => Ok(CoreSchemaType::EmptySet),
             Type::EntityOrRecord(kind @ EntityRecordKind::AnyEntity) => Err(format!(
-                "any-entity type is not representable in core::Type: {:?}",
-                kind
+                "any-entity type is not representable in core::SchemaType: {kind:?}"
             )),
             Type::EntityOrRecord(EntityRecordKind::ActionEntity { name, .. }) => {
                 Ok(CoreSchemaType::Entity {
@@ -683,9 +814,9 @@ impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
                 Some(name) => Ok(CoreSchemaType::Entity {
                     ty: EntityType::Concrete(name),
                 }),
-                None => {
-                    Err("non-singleton LUB type is not representable in core::Type".to_string())
-                }
+                None => Err(
+                    "non-singleton LUB type is not representable in core::SchemaType".to_string(),
+                ),
             },
             Type::ExtensionType { name } => Ok(CoreSchemaType::Extension { name }),
         }
@@ -801,6 +932,12 @@ impl EntityLUB {
     /// disjoint from th entity types composing another LUB.
     pub(crate) fn is_disjoint(&self, other: &EntityLUB) -> bool {
         self.lub_elements.is_disjoint(&other.lub_elements)
+    }
+
+    /// Return true if the given entity type `Name` is in the set of entity
+    /// types comprising this LUB.
+    pub(crate) fn contains(&self, ty: &Name) -> bool {
+        self.lub_elements.contains(ty)
     }
 
     /// An iterator over the entity type `Name`s in the set of entity types

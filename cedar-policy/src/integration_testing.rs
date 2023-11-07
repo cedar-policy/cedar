@@ -93,12 +93,19 @@ pub struct JsonRequest {
     /// Context for the request. This should be a JSON object, not any other kind
     /// of JSON value
     context: serde_json::Value,
+    /// Whether to enable request validation for this request
+    #[serde(default = "constant_true")]
+    enable_request_validation: bool,
     /// Expected decision for the request
     decision: Decision,
     /// Expected "reasons" for the request
     reasons: Vec<String>,
     /// Expected error/warning messages for the request
     errors: Vec<String>,
+}
+
+fn constant_true() -> bool {
+    true
 }
 
 /// For relative paths, return the absolute path, assuming that the path
@@ -299,7 +306,24 @@ pub fn perform_integration_test_from_json_custom(
                     jsonfile.display()
                 )
             });
-        let request = Request::new(principal, action, resource, context);
+        let request = Request::new(
+            principal,
+            action,
+            resource,
+            context,
+            if json_request.enable_request_validation {
+                Some(&schema)
+            } else {
+                None
+            },
+        )
+        .unwrap_or_else(|e| {
+            panic!(
+                "error validating request \"{}\" in {}: {e}",
+                json_request.desc,
+                jsonfile.display()
+            )
+        });
         let response = if let Some(custom_impl) = custom_impl_opt {
             custom_impl.is_authorized(&request.0, &policies.ast, &entities.0)
         } else {

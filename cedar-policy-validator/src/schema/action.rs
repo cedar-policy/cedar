@@ -8,7 +8,7 @@ use serde::Serialize;
 use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
 
-use crate::types::{AttributeType, Attributes};
+use crate::types::{Attributes, OpenTag, Type};
 
 /// Contains information about actions used by the validator.  The contents of
 /// the struct are the same as the schema entity type structure, but the
@@ -42,9 +42,14 @@ pub struct ValidatorActionId {
 }
 
 impl ValidatorActionId {
-    /// An iterator over the attributes of this action's required context
-    pub fn context(&self) -> impl Iterator<Item = (&SmolStr, &AttributeType)> {
-        self.context.iter()
+    /// The `Type` that this action requires for its context.
+    ///
+    /// This always returns a closed record type.
+    pub fn context_type(&self) -> Type {
+        Type::record_with_attributes(
+            self.context.iter().map(|(k, v)| (k.clone(), v.clone())),
+            OpenTag::ClosedAttributes,
+        )
     }
 }
 
@@ -72,9 +77,9 @@ pub(crate) struct ValidatorApplySpec {
     /// The principal entity types the action can be applied to. This set may
     /// be a singleton set containing the unspecified entity type when the
     /// `principalTypes` list is omitted in the schema. A non-singleton set
-    /// shouldn't contain the unspecified entity type, but validation will give
-    /// the same success/failure result as when it is the only element of the
-    /// set, perhaps with extra type errors.
+    /// shouldn't contain the unspecified entity type, but (policy) validation
+    /// will give the same success/failure result as when it is the only element
+    /// of the set, perhaps with extra type errors.
     #[serde(rename = "principalApplySpec")]
     principal_apply_spec: HashSet<EntityType>,
 
@@ -87,7 +92,7 @@ pub(crate) struct ValidatorApplySpec {
 impl ValidatorApplySpec {
     /// Create an apply spec for an action that can only be applied to some
     /// specific entities.
-    pub(crate) fn new(
+    pub fn new(
         principal_apply_spec: HashSet<EntityType>,
         resource_apply_spec: HashSet<EntityType>,
     ) -> Self {
@@ -97,13 +102,23 @@ impl ValidatorApplySpec {
         }
     }
 
+    /// Is the given principal type applicable for this spec?
+    pub fn is_applicable_principal_type(&self, ty: &EntityType) -> bool {
+        self.principal_apply_spec.contains(ty)
+    }
+
     /// Get the applicable principal types for this spec.
-    pub(crate) fn applicable_principal_types(&self) -> impl Iterator<Item = &EntityType> {
+    pub fn applicable_principal_types(&self) -> impl Iterator<Item = &EntityType> {
         self.principal_apply_spec.iter()
     }
 
+    /// Is the given resource type applicable for this spec?
+    pub fn is_applicable_resource_type(&self, ty: &EntityType) -> bool {
+        self.resource_apply_spec.contains(ty)
+    }
+
     /// Get the applicable resource types for this spec.
-    pub(crate) fn applicable_resource_types(&self) -> impl Iterator<Item = &EntityType> {
+    pub fn applicable_resource_types(&self) -> impl Iterator<Item = &EntityType> {
         self.resource_apply_spec.iter()
     }
 }

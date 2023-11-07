@@ -239,10 +239,13 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
 /// Errors thrown by [`type_of_restricted_expr()`]
 #[derive(Debug, Error)]
 pub enum TypeOfRestrictedExprError {
-    /// Encountered a heterogeneous set
+    /// Encountered a heterogeneous set. Heterogeneous sets do not have a valid
+    /// `SchemaType`.
     #[error(transparent)]
     HeterogeneousSet(#[from] HeterogeneousSetError),
-    /// Error looking up an extension function
+    /// Error looking up an extension function, which may be necessary for
+    /// expressions that contain extension function calls -- not to actually
+    /// call the extension function, but to get metadata about it
     #[error(transparent)]
     ExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
 }

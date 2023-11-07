@@ -880,7 +880,10 @@ pub mod test {
                 ),
             ])
             .unwrap(),
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
         )
+        .unwrap()
     }
 
     // Many of these tests use this basic `Entities`
@@ -3098,7 +3101,10 @@ pub mod test {
             EntityUID::with_eid("test_action"),
             EntityUID::with_eid("test_resource"),
             Context::empty(),
-        );
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
         //Alice has parent "Friends" but we don't add "Friends" to the slice
         let mut alice = Entity::with_uid(EntityUID::with_eid("Alice"));
         let parent = Entity::with_uid(EntityUID::with_eid("Friends"));
@@ -3847,7 +3853,10 @@ pub mod test {
             EntityUID::with_eid("a"),
             EntityUID::with_eid("r"),
             Context::empty(),
-        );
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
@@ -4064,7 +4073,10 @@ pub mod test {
             EntityUIDEntry::Unknown,
             EntityUIDEntry::Unknown,
             Some(Context::empty()),
-        );
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
         let es = Entities::new();
         let exts = Extensions::none();
         let e = Evaluator::new(&q, &es, &exts).expect("failed to create evaluator");
@@ -4091,7 +4103,15 @@ pub mod test {
         let rexpr = RestrictedExpr::new(context_expr)
             .expect("Context Expression was not a restricted expression");
         let context = Context::from_expr(rexpr).unwrap();
-        let q = Request::new(euid.clone(), euid.clone(), euid, context);
+        let q = Request::new(
+            euid.clone(),
+            euid.clone(),
+            euid,
+            context,
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
         let es = Entities::new();
         let exts = Extensions::none();
         let eval = Evaluator::new(&q, &es, &exts).expect("Failed to instantiate evaluator");
@@ -4223,7 +4243,15 @@ pub mod test {
         ))
         .unwrap();
         let euid: EntityUID = r#"Test::"test""#.parse().unwrap();
-        let q = Request::new(euid.clone(), euid.clone(), euid, context);
+        let q = Request::new(
+            euid.clone(),
+            euid.clone(),
+            euid,
+            context,
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
         let es = Entities::new();
         let exts = Extensions::none();
         let eval = Evaluator::new(&q, &es, &exts).expect("Failed to instantiate evaluator");
@@ -4261,7 +4289,15 @@ pub mod test {
         .expect("should qualify as restricted");
         let context = Context::from_expr(c_expr).unwrap();
 
-        let q = Request::new(p, a, r, context);
+        let q = Request::new(
+            p,
+            a,
+            r,
+            context,
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
         let exts = Extensions::none();
         let eval = Evaluator::new(&q, &es, &exts).expect("Could not create evaluator");
 
@@ -4279,7 +4315,7 @@ pub mod test {
         let a: EntityUID = r#"a::"Action""#.parse().unwrap();
         let r: EntityUID = r#"r::"Resource""#.parse().unwrap();
         let c = Context::empty();
-        Request::new(p, a, r, c)
+        Request::new(p, a, r, c, Some(&RequestSchemaAllPass), Extensions::none()).unwrap()
     }
 
     #[test]
@@ -4333,7 +4369,10 @@ pub mod test {
                 Expr::record([("condition".into(), Expr::unknown("unknown_condition"))]).unwrap(),
             ))
             .unwrap(),
-        );
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
         let eval = Evaluator::new(&q, &es, &exts).unwrap();
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();

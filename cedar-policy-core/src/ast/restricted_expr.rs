@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use super::{Expr, ExprConstructionError, ExprKind, Literal, Name};
+use super::{EntityUID, Expr, ExprConstructionError, ExprKind, Literal, Name, Type};
 use crate::entities::JsonSerializationError;
 use crate::parser;
 use crate::parser::err::ParseErrors;
@@ -178,6 +178,99 @@ impl<'a> BorrowedRestrictedExpr<'a> {
         Ok(serde_json::to_value(
             crate::entities::CedarValueJson::from_expr(self)?,
         )?)
+    }
+
+    /// Get the `bool` value of this `RestrictedExpr` if it's a boolean, or
+    /// `None` if it is not a boolean
+    pub fn as_bool(&self) -> Option<bool> {
+        // the only way a `RestrictedExpr` can be a boolean is if it's a literal
+        match self.expr_kind() {
+            ExprKind::Lit(Literal::Bool(b)) => Some(*b),
+            _ => None,
+        }
+    }
+
+    /// Get the `i64` value of this `RestrictedExpr` if it's a long, or `None`
+    /// if it is not a long
+    pub fn as_long(&self) -> Option<i64> {
+        // the only way a `RestrictedExpr` can be a long is if it's a literal
+        match self.expr_kind() {
+            ExprKind::Lit(Literal::Long(i)) => Some(*i),
+            _ => None,
+        }
+    }
+
+    /// Get the `SmolStr` value of this `RestrictedExpr` if it's a string, or
+    /// `None` if it is not a string
+    pub fn as_string(&self) -> Option<&SmolStr> {
+        // the only way a `RestrictedExpr` can be a string is if it's a literal
+        match self.expr_kind() {
+            ExprKind::Lit(Literal::String(s)) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// Get the `EntityUID` value of this `RestrictedExpr` if it's an entity
+    /// reference, or `None` if it is not an entity reference
+    pub fn as_euid(&self) -> Option<&EntityUID> {
+        // the only way a `RestrictedExpr` can be an entity reference is if it's
+        // a literal
+        match self.expr_kind() {
+            ExprKind::Lit(Literal::EntityUID(e)) => Some(e),
+            _ => None,
+        }
+    }
+
+    /// Get the name and type annotation of the `Unknown` if this
+    /// `RestrictedExpr` is an `Unknown`, or `None` if it is not an `Unknown`
+    pub fn as_unknown(&self) -> Option<(&SmolStr, &Option<Type>)> {
+        match self.expr_kind() {
+            ExprKind::Unknown {
+                name,
+                type_annotation,
+            } => Some((name, type_annotation)),
+            _ => None,
+        }
+    }
+
+    /// Iterate over the elements of the set if this `RestrictedExpr` is a set,
+    /// or `None` if it is not a set
+    pub fn as_set_elements<'s>(
+        &'s self,
+    ) -> Option<impl Iterator<Item = BorrowedRestrictedExpr<'s>>> {
+        match self.expr_kind() {
+            ExprKind::Set(set) => Some(set.iter().map(BorrowedRestrictedExpr::new_unchecked)), // since the RestrictedExpr invariant holds for the input set, it will hold for each element as well
+            _ => None,
+        }
+    }
+
+    /// Iterate over the (key, value) pairs of the record if this
+    /// `RestrictedExpr` is a record, or `None` if it is not a record
+    pub fn as_record_pairs<'s>(
+        &'s self,
+    ) -> Option<impl Iterator<Item = (&'s SmolStr, BorrowedRestrictedExpr<'s>)>> {
+        match self.expr_kind() {
+            ExprKind::Record(map) => Some(
+                map.iter()
+                    .map(|(k, v)| (k, BorrowedRestrictedExpr::new_unchecked(v))),
+            ), // since the RestrictedExpr invariant holds for the input record, it will hold for each attr value as well
+            _ => None,
+        }
+    }
+
+    /// Get the name and args of the called extension function if this
+    /// `RestrictedExpr` is an extension function call, or `None` if it is not
+    /// an extension function call
+    pub fn as_extn_fn_call<'s>(
+        &'s self,
+    ) -> Option<(&Name, impl Iterator<Item = BorrowedRestrictedExpr<'s>>)> {
+        match self.expr_kind() {
+            ExprKind::ExtensionFunctionApp { fn_name, args } => Some((
+                fn_name,
+                args.iter().map(BorrowedRestrictedExpr::new_unchecked),
+            )), // since the RestrictedExpr invariant holds for the input call, it will hold for each argument as well
+            _ => None,
+        }
     }
 }
 

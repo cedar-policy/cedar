@@ -71,12 +71,19 @@ struct JsonRequest {
     resource: Option<serde_json::Value>,
     /// Context for the request
     context: serde_json::Value,
+    /// Whether to enable request validation for this request
+    #[serde(default = "constant_true")]
+    enable_request_validation: bool,
     /// Expected decision for the request
     decision: Decision,
     /// Expected "reasons" for the request
     reasons: Vec<String>,
     /// Expected error/warning messages for the request
     errors: Vec<String>,
+}
+
+fn constant_true() -> bool {
+    true
 }
 
 fn value_to_euid_string(v: serde_json::Value) -> Result<String, impl std::error::Error> {
@@ -186,6 +193,9 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             entity_args.push("--action".to_string());
             entity_args.push(value_to_euid_string(s).unwrap());
         }
+        if !json_request.enable_request_validation {
+            entity_args.push("--request-validation=false".to_string());
+        }
 
         let authorize_cmd = assert_cmd::Command::cargo_bin("cedar")
             .expect("bin exists")
@@ -212,15 +222,33 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             .expect("output should be valid UTF-8");
 
         for error in &json_request.errors {
-            assert!(output.contains(error));
+            assert!(
+                output.contains(error),
+                "test {} failed for request \"{}\": output does not contain expected error {error:?}.\noutput was: {output}\nstderr was: {}",
+                jsonfile.display(),
+                &json_request.desc,
+                String::from_utf8(authorize_cmd.get_output().stderr.clone()).expect("stderr should be valid UTF-8"),
+            );
         }
 
         if json_request.reasons.is_empty() {
-            assert!(output.contains("no policies applied to this request"));
+            assert!(
+                output.contains("no policies applied to this request"),
+                "test {} failed for request \"{}\": output does not contain the string \"no policies applied to this request\", as expected.\noutput was: {output}\nstderr was: {}",
+                jsonfile.display(),
+                &json_request.desc,
+                String::from_utf8(authorize_cmd.get_output().stderr.clone()).expect("stderr should be valid UTF-8"),
+            );
         } else {
             assert!(output.contains("this decision was due to the following policies"));
             for reason in &json_request.reasons {
-                assert!(output.contains(&reason.escape_debug().to_string()));
+                assert!(
+                    output.contains(&reason.escape_debug().to_string()),
+                    "test {} failed for request \"{}\": output does not contain the reason string {reason:?}.\noutput was: {output}\nstderr was: {}",
+                    jsonfile.display(),
+                    &json_request.desc,
+                    String::from_utf8(authorize_cmd.get_output().stderr.clone()).expect("stderr should be valid UTF-8"),
+                );
             }
         };
     }

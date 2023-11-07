@@ -171,7 +171,9 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
         Some(action.clone()),
         Some(resource.clone()),
         context,
-    );
+        None,
+    )
+    .unwrap();
 
     // Check that we got the "Deny" result
     assert_eq!(
@@ -186,7 +188,9 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
         Some(action.clone()),
         Some(resource.clone()),
         Context::empty(),
-    );
+        None,
+    )
+    .unwrap();
 
     // Check that we got the "Allow" result and it was based on the added policy
     assert_eq!(
@@ -204,7 +208,9 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
         None,
         Some(resource.clone()),
         Context::empty(),
-    );
+        None,
+    )
+    .unwrap();
 
     // Check that we got an "Allow" result
     assert_eq!(
@@ -214,13 +220,21 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
     );
 
     // Requesting with an unspecified principal or resource will return Deny (but not fail)
-    let request4 = Request::new(None, Some(action.clone()), Some(resource), Context::empty());
+    let request4 = Request::new(
+        None,
+        Some(action.clone()),
+        Some(resource),
+        Context::empty(),
+        None,
+    )
+    .unwrap();
     assert_eq!(
         auth.is_authorized(&request4, &policies, &entities)
             .decision(),
         Decision::Deny
     );
-    let request5 = Request::new(Some(principal), Some(action), None, Context::empty());
+    let request5 =
+        Request::new(Some(principal), Some(action), None, Context::empty(), None).unwrap();
     assert_eq!(
         auth.is_authorized(&request5, &policies, &entities)
             .decision(),
@@ -259,7 +273,9 @@ fn expression_eval_1() -> Result<(), Box<dyn Error>> {
         Some(action),
         Some(resource),
         Context::empty(),
-    );
+        None,
+    )
+    .unwrap();
 
     //try an evaluation
     let result = eval_expression(
@@ -304,7 +320,9 @@ fn expression_eval_attr() -> Result<(), Box<dyn Error>> {
         Some(action),
         Some(resource),
         Context::empty(),
-    );
+        None,
+    )
+    .unwrap();
 
     //try an evaluation
     let result = eval_expression(
@@ -355,7 +373,8 @@ fn expression_eval_context() -> Result<(), Box<dyn Error>> {
     .unwrap();
 
     // Combine into request
-    let request = Request::new(Some(principal), Some(action), Some(resource), context);
+    let request =
+        Request::new(Some(principal), Some(action), Some(resource), context, None).unwrap();
 
     //try an evaluation
     let result = eval_expression(

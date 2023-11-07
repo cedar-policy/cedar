@@ -185,7 +185,8 @@ impl AuthorizationCall {
             .map_err(|e| [format!("Error encoding the context as JSON: {e}")])?;
         let context = Context::from_json_value(context, schema.as_ref().map(|s| (s, &action)))
             .map_err(|e| [e.to_string()])?;
-        let q = Request::new(principal, Some(action), resource, context);
+        let q = Request::new(principal, Some(action), resource, context, schema.as_ref())
+            .map_err(|e| [e.to_string()])?;
         let (policies, entities) = self.slice.try_into(schema.as_ref())?;
         Ok((q, policies, entities))
     }
@@ -1334,21 +1335,21 @@ mod test {
             "slice" : {
                 "policies" : {},
                 "entities" : [
-                    { 
+                    {
                         "uid": {
                             "type" : "User",
                             "id" : "alice"
                         },
-                        "attrs": {}, 
-                        "parents": [] 
+                        "attrs": {},
+                        "parents": []
                     },
-                    { 
+                    {
                         "uid": {
                             "type" : "User",
                             "id" : "alice"
                         },
-                        "attrs": {}, 
-                        "parents": [] 
+                        "attrs": {},
+                        "parents": []
                     }
                 ],
                 "templates" : {},

@@ -38,6 +38,7 @@ use cedar_policy_core::parser;
 pub use cedar_policy_core::parser::err::ParseErrors;
 use cedar_policy_core::parser::SourceInfo;
 use cedar_policy_core::FromNormalizedStr;
+use cedar_policy_validator::RequestValidationError; // this type is unsuitable for `pub use` because it contains internal types like `EntityUID` and `EntityType`
 pub use cedar_policy_validator::{
     TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
 };
@@ -619,7 +620,7 @@ impl Authorizer {
     /// #
     /// # let c = Context::empty();
     /// #
-    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), c);
+    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), c, None).unwrap();
     /// #
     /// # // create a policy
     /// # let s = r#"permit(
@@ -675,7 +676,7 @@ impl Authorizer {
     ///
     /// let c = Context::empty();
     ///
-    /// let request: Request = Request::new(Some(p), Some(a), Some(r), c);
+    /// let request: Request = Request::new(Some(p), Some(a), Some(r), c, None).unwrap();
     ///
     /// // create a policy
     /// let s = r#"
@@ -801,7 +802,7 @@ impl Diagnostics {
     /// #
     /// # let c = Context::empty();
     /// #
-    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), c);
+    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), c, None).unwrap();
     /// #
     /// # // create a policy
     /// # let s = r#"permit(
@@ -860,7 +861,7 @@ impl Diagnostics {
     /// #
     /// # let c = Context::empty();
     /// #
-    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), c);
+    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), c, None).unwrap();
     /// #
     /// # // create a policy
     /// # let s = r#"permit(
@@ -2923,28 +2924,31 @@ impl FromStr for RestrictedExpression {
 /// for partial evaluation.
 #[cfg(feature = "partial-eval")]
 #[derive(Debug)]
-pub struct RequestBuilder {
+pub struct RequestBuilder<'a> {
     principal: ast::EntityUIDEntry,
     action: ast::EntityUIDEntry,
     resource: ast::EntityUIDEntry,
     /// Here, `None` means unknown
     context: Option<ast::Context>,
+    /// Here, `None` means no request validation is performed
+    schema: Option<&'a Schema>,
 }
 
 #[cfg(feature = "partial-eval")]
-impl Default for RequestBuilder {
+impl<'a> Default for RequestBuilder<'a> {
     fn default() -> Self {
         Self {
             principal: ast::EntityUIDEntry::Unknown,
             action: ast::EntityUIDEntry::Unknown,
             resource: ast::EntityUIDEntry::Unknown,
             context: None,
+            schema: None,
         }
     }
 }
 
 #[cfg(feature = "partial-eval")]
-impl RequestBuilder {
+impl<'a> RequestBuilder<'a> {
     /// Set the principal.
     ///
     /// Note that you can create the `EntityUid` using `.parse()` on any
@@ -3016,14 +3020,24 @@ impl RequestBuilder {
         }
     }
 
+    /// Set the schema. If present, this will be used for request validation.
+    pub fn schema(self, schema: &'a Schema) -> Self {
+        Self {
+            schema: Some(schema),
+            ..self
+        }
+    }
+
     /// Create the [`Request`]
-    pub fn build(self) -> Request {
-        Request(ast::Request::new_with_unknowns(
+    pub fn build(self) -> Result<Request, RequestValidationError> {
+        Ok(Request(ast::Request::new_with_unknowns(
             self.principal,
             self.action,
             self.resource,
             self.context,
-        ))
+            self.schema.map(|schema| &schema.0),
+            Extensions::all_available(),
+        )?))
     }
 }
 
@@ -3035,7 +3049,7 @@ pub struct Request(pub(crate) ast::Request);
 impl Request {
     /// Create a [`RequestBuilder`]
     #[cfg(feature = "partial-eval")]
-    pub fn builder() -> RequestBuilder {
+    pub fn builder<'a>() -> RequestBuilder<'a> {
         RequestBuilder::default()
     }
 
@@ -3048,12 +3062,16 @@ impl Request {
     /// decisions (e.g., because they are not used in your policies).
     /// If any of the fields are `None`, we will automatically generate
     /// a unique entity UID that is not equal to any UID in the store.
+    ///
+    /// If `schema` is present, this constructor will validate that the
+    /// `Request` complies with the given `schema`.
     pub fn new(
         principal: Option<EntityUid>,
         action: Option<EntityUid>,
         resource: Option<EntityUid>,
         context: Context,
-    ) -> Self {
+        schema: Option<&Schema>,
+    ) -> Result<Self, RequestValidationError> {
         let p = match principal {
             Some(p) => p.0,
             None => ast::EntityUID::unspecified_from_eid(ast::Eid::new("principal")),
@@ -3066,7 +3084,14 @@ impl Request {
             Some(r) => r.0,
             None => ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")),
         };
-        Self(ast::Request::new(p, a, r, context.0))
+        Ok(Self(ast::Request::new(
+            p,
+            a,
+            r,
+            context.0,
+            schema.map(|schema| &schema.0),
+            Extensions::all_available(),
+        )?))
     }
 
     /// Get the principal component of the request. Returns `None` if the principal is
@@ -3121,8 +3146,7 @@ impl Context {
     /// Create an empty `Context`
     /// ```
     /// use cedar_policy::Context;
-    /// let c = Context::empty();
-    /// // let request: Request = Request::new(Some(principal), Some(action), Some(resource), c);
+    /// let context = Context::empty();
     /// ```
     pub fn empty() -> Self {
         Self(ast::Context::empty())
@@ -3133,7 +3157,7 @@ impl Context {
     /// of `(key, restricted expression)` pairs.
     /// ```
     /// use cedar_policy::{Context, RestrictedExpression};
-    /// use std::collections::HashMap;
+    /// # use std::collections::HashMap;
     /// use std::str::FromStr;
     /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request,PolicySet};
     /// let data : serde_json::Value = serde_json::json!({
@@ -3160,7 +3184,7 @@ impl Context {
     /// # let r_eid = EntityId::from_str("trip").unwrap();
     /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
     /// # let r = EntityUid::from_type_name_and_id(r_name, r_eid);
-    /// let request: Request = Request::new(Some(p), Some(a), Some(r), context);
+    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), context, None).unwrap();
     /// ```
     pub fn from_pairs(
         pairs: impl IntoIterator<Item = (String, RestrictedExpression)>,
@@ -3182,7 +3206,7 @@ impl Context {
     /// must specify the `Action` for schema-based parsing.
     /// ```
     /// use cedar_policy::{Context, RestrictedExpression};
-    /// use std::collections::HashMap;
+    /// # use std::collections::HashMap;
     /// use std::str::FromStr;
     /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request,PolicySet};
     /// let data =r#"{
@@ -3206,7 +3230,7 @@ impl Context {
     /// # let r_eid = EntityId::from_str("trip").unwrap();
     /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
     /// # let r = EntityUid::from_type_name_and_id(r_name, r_eid);
-    /// let request: Request = Request::new(Some(p), Some(a), Some(r), context);
+    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), context, None).unwrap();
     /// ```
     pub fn from_json_str(
         json: &str,
@@ -3233,33 +3257,36 @@ impl Context {
     /// must specify the `Action` for schema-based parsing.
     /// ```
     /// use cedar_policy::{Context, RestrictedExpression, Schema};
-    /// use std::collections::HashMap;
+    /// # use std::collections::HashMap;
     /// use std::str::FromStr;
     /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request,PolicySet};
     /// let data = serde_json::json!(
     /// {
-    ///     "sub": "1234"
+    ///     "sub": 1234
     /// });
-    /// let schema_data =r#"
+    /// let schema_json = serde_json::json!(
     ///     {
     ///       "": {
-    ///         "entityTypes": {},
-    ///           "actions": {
-    ///             "view": {
-    ///                "appliesTo": {
-    ///                  "principalTypes": [],
-    ///                   "resourceTypes": [],
-    ///                   "context": {
-    ///                     "type": "Record",
-    ///                     "attributes": {
-    ///                       "sub": { "type": "Long" }
-    ///                     }
+    ///         "entityTypes": {
+    ///           "User": {},
+    ///           "Album": {},
+    ///         },
+    ///         "actions": {
+    ///           "view": {
+    ///              "appliesTo": {
+    ///                "principalTypes": ["User"],
+    ///                 "resourceTypes": ["Album"],
+    ///                 "context": {
+    ///                   "type": "Record",
+    ///                   "attributes": {
+    ///                     "sub": { "type": "Long" }
     ///                   }
     ///                 }
     ///               }
+    ///             }
     ///           }
     ///       }
-    ///     }"#;
+    ///     });
     /// # // create a request
     /// # let p_eid = EntityId::from_str("alice").unwrap();
     /// # let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
@@ -3270,9 +3297,9 @@ impl Context {
     /// # let r_eid = EntityId::from_str("trip").unwrap();
     /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
     /// # let resource = EntityUid::from_type_name_and_id(r_name, r_eid);
-    /// let schema = Schema::from_str(schema_data).unwrap();
+    /// let schema = Schema::from_json_value(schema_json).unwrap();
     /// let context = Context::from_json_value(data, Some((&schema, &action))).unwrap();
-    /// let request: Request = Request::new(Some(principal), Some(action), Some(resource), context);
+    /// # let request: Request = Request::new(Some(principal), Some(action), Some(resource), context, Some(&schema)).unwrap();
     /// ```
     pub fn from_json_value(
         json: serde_json::Value,
@@ -3303,7 +3330,7 @@ impl Context {
     /// # use std::collections::HashMap;
     /// # use std::str::FromStr;
     /// # use std::fs::File;
-    /// let mut json = File::open("json_file.txt").expect("failed");
+    /// let mut json = File::open("json_file.txt").unwrap();
     /// let context = Context::from_json_file(&json, None).unwrap();
     /// # // create a request
     /// # let p_eid = EntityId::from_str("alice").unwrap();
@@ -3316,7 +3343,7 @@ impl Context {
     /// # let r_eid = EntityId::from_str("trip").unwrap();
     /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
     /// # let r = EntityUid::from_type_name_and_id(r_name, r_eid);
-    /// let request: Request = Request::new(Some(p), Some(a), Some(r), context);
+    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), context, None).unwrap();
     /// ```
     pub fn from_json_file(
         json: impl std::io::Read,
@@ -3336,12 +3363,11 @@ impl Context {
         schema: &Schema,
         action: &EntityUid,
     ) -> Result<impl ContextSchema, ContextJsonError> {
-        schema
-            .0
-            .get_context_schema(&action.0)
-            .ok_or_else(|| ContextJsonError::MissingAction {
+        cedar_policy_validator::context_schema_for_action(&schema.0, &action.0).ok_or_else(|| {
+            ContextJsonError::MissingAction {
                 action: action.clone(),
-            })
+            }
+        })
     }
 }
 
@@ -3540,6 +3566,7 @@ mod partial_eval_test {
 #[cfg(test)]
 mod entity_uid_tests {
     use super::*;
+    use cool_asserts::assert_matches;
 
     /// building an `EntityUid` from components
     #[test]
@@ -3751,13 +3778,13 @@ permit(principal ==  A :: B
     #[test]
     fn accessing_unspecified_entity_returns_none() {
         let c = Context::empty();
-        let request: Request = Request::new(None, None, None, c);
+        let request = Request::new(None, None, None, c, None).unwrap();
         let p = request.principal();
         let a = request.action();
         let r = request.resource();
-        assert!(p.is_none());
-        assert!(a.is_none());
-        assert!(r.is_none());
+        assert_matches!(p, None);
+        assert_matches!(a, None);
+        assert_matches!(r, None);
     }
 }
 
@@ -4130,7 +4157,9 @@ mod policy_set_tests {
             Some(EntityUid::from_strs("Action", "a")),
             Some(EntityUid::from_strs("Resource", "b")),
             Context::empty(),
-        );
+            None,
+        )
+        .unwrap();
 
         let e = r#"[
             {
@@ -4412,7 +4441,9 @@ mod policy_set_tests {
             Some(EntityUid::from_strs("Action", "a")),
             Some(EntityUid::from_strs("Resource", "b")),
             Context::empty(),
-        );
+            None,
+        )
+        .unwrap();
 
         let e = r#"[
             {

@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Entities::from_*()` methods now validate the entities against the `schema`, if a `schema`
   is provided.
 - `Entities::from_entities()` and `Entities::add_entities()` now take an optional schema argument.
+- `Request::new()` now takes an optional schema argument, and returns a `Result`.
 - Change the semantics of equality for IP ranges. For example,
   `ip("192.168.0.1/24") == ip("192.168.0.3/24")` was previously `true` and is now
   `false`. The behavior of equality on single IP addresses is unchanged, and so is
