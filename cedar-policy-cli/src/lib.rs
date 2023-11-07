@@ -115,8 +115,8 @@ pub struct ValidateArgs {
 
 #[derive(Args, Debug)]
 pub struct CheckParseArgs {
-    /// File containing the policy set
-    #[clap(short, long = "policies", value_name = "FILE")]
+    /// Optional policy file name. If none is provided, read input from stdin.
+    #[arg(short, long = "policies", value_name = "FILE")]
     pub policies_file: Option<String>,
 }
 
@@ -313,8 +313,8 @@ pub struct LinkArgs {
 #[derive(Args, Debug)]
 pub struct FormatArgs {
     /// Optional policy file name. If none is provided, read input from stdin.
-    #[arg(value_name = "FILE")]
-    pub file_name: Option<String>,
+    #[arg(short, long = "policies", value_name = "FILE")]
+    pub policy_file: Option<String>,
 
     /// Custom line width (default: 80).
     #[arg(short, long, value_name = "UINT", default_value_t = 80)]
@@ -540,7 +540,7 @@ pub fn link(args: &LinkArgs) -> CedarExitCode {
 }
 
 fn format_policies_inner(args: &FormatArgs) -> Result<()> {
-    let policies_str = read_from_file_or_stdin(args.file_name.as_ref(), "policy set")?;
+    let policies_str = read_from_file_or_stdin(args.policy_file.as_ref(), "policy set")?;
     let config = Config {
         line_width: args.line_width,
         indent_width: args.indent_width,

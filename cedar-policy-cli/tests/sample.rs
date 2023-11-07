@@ -111,6 +111,7 @@ fn run_format_test(policies_file: &str) {
     let format_cmd = assert_cmd::Command::cargo_bin("cedar")
         .expect("bin exists")
         .arg("format")
+        .arg("-p")
         .arg(policies_file)
         .assert();
     assert_eq!(
