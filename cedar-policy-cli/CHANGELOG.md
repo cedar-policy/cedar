@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- Requests are now validated by default. This can be disabled with
-  `--request-validation=false`.
+- Requests are now validated by default if a schema is provided. This can be
+  disabled with `--request-validation=false`.
 
 ## 2.4.2
 
