@@ -1341,6 +1341,7 @@ impl<'a> From<cedar_policy_validator::ValidationResult<'a>> for ValidationResult
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
 #[derive(Debug, Error)]
+#[error("validation error on `{}`: {}", self.location, self.error_kind())]
 pub struct ValidationError<'a> {
     location: SourceLocation<'a>,
     error_kind: ValidationErrorKind,
@@ -1365,22 +1366,6 @@ impl<'a> From<cedar_policy_validator::ValidationError<'a>> for ValidationError<'
             location: SourceLocation::from(location),
             error_kind,
         }
-    }
-}
-
-impl<'a> std::fmt::Display for ValidationError<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "validation error on policy `{}`",
-            self.location.policy_id
-        )?;
-        if let (Some(range_start), Some(range_end)) =
-            (self.location().range_start(), self.location().range_end())
-        {
-            write!(f, " at offset {range_start}-{range_end}")?;
-        }
-        write!(f, ": {}", self.error_kind())
     }
 }
 
@@ -1410,6 +1395,21 @@ impl<'a> SourceLocation<'a> {
     }
 }
 
+impl<'a> std::fmt::Display for SourceLocation<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "policy `{}`", self.policy_id)?;
+        if let Some(source_range) = &self.source_range {
+            write!(
+                f,
+                " at offset {}-{}",
+                source_range.range_start(),
+                source_range.range_end()
+            )?;
+        }
+        Ok(())
+    }
+}
+
 impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation<'a> {
     fn from(loc: cedar_policy_validator::SourceLocation<'a>) -> SourceLocation<'a> {
         let policy_id: &'a PolicyId = PolicyId::ref_cast(loc.policy_id());
@@ -1430,7 +1430,7 @@ pub fn confusable_string_checker<'a>(
 }
 
 #[derive(Debug, Error)]
-#[error("validation warning on policy `{}`: {}", .location.policy_id, .kind)]
+#[error("validation warning on `{}`: {}", .location, .kind)]
 /// Warnings found in Cedar policies
 pub struct ValidationWarning<'a> {
     location: SourceLocation<'a>,
@@ -1454,10 +1454,7 @@ impl<'a> From<cedar_policy_validator::ValidationWarning<'a>> for ValidationWarni
     fn from(w: cedar_policy_validator::ValidationWarning<'a>) -> Self {
         let (loc, kind) = w.to_kind_and_location();
         ValidationWarning {
-            location: SourceLocation {
-                policy_id: PolicyId::ref_cast(loc),
-                source_range: None,
-            },
+            location: loc.into(),
             kind,
         }
     }

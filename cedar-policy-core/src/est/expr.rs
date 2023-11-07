@@ -29,6 +29,7 @@ use crate::parser::ASTNode;
 use either::Either;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -48,6 +49,7 @@ pub enum Expr {
 
 /// Serde JSON structure for [any Cedar expression other than an extension
 /// function call] in the EST format
+#[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum ExprNoExt {
@@ -239,10 +241,11 @@ pub enum ExprNoExt {
     /// Record literal, whose elements may be arbitrary expressions
     /// (which is why we need this case specifically and can't just
     /// use Expr::Value)
-    Record(HashMap<SmolStr, Expr>),
+    Record(#[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")] HashMap<SmolStr, Expr>),
 }
 
 /// Serde JSON structure for an extension function call in the EST format
+#[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExtFuncCall {
     /// maps the name of the function to a JSON list/array of the arguments.
@@ -254,6 +257,7 @@ pub struct ExtFuncCall {
     /// less), but we make it a map in order to get the correct JSON structure
     /// we want.
     #[serde(flatten)]
+    #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
     call: HashMap<SmolStr, Vec<Expr>>,
 }
 

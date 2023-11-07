@@ -121,7 +121,7 @@ pub struct CheckParseArgs {
 #[derive(Args, Debug)]
 pub struct RequestArgs {
     /// Principal for the request, e.g., User::"alice"
-    #[arg(short, long)]
+    #[arg(short = 'l', long)]
     pub principal: Option<String>,
     /// Action for the request, e.g., Action::"view"
     #[arg(short, long)]
@@ -267,15 +267,15 @@ pub struct AuthorizeArgs {
     #[command(flatten)]
     pub request: RequestArgs,
     /// File containing the static Cedar policies and templates to evaluate against
-    #[arg(long = "policies", value_name = "FILE")]
+    #[arg(short, long = "policies", value_name = "FILE")]
     pub policies_file: String,
     /// File containing template linked policies
-    #[arg(long = "template-linked", value_name = "FILE")]
+    #[arg(short = 'k', long = "template-linked", value_name = "FILE")]
     pub template_linked_file: Option<String>,
     /// File containing schema information
     /// Used to populate the store with action entities and for schema-based
     /// parsing of entity hierarchy, if present
-    #[arg(long = "schema", value_name = "FILE")]
+    #[arg(short, long = "schema", value_name = "FILE")]
     pub schema_file: Option<String>,
     /// File containing JSON representation of the Cedar entity hierarchy
     #[arg(long = "entities", value_name = "FILE")]
@@ -291,10 +291,10 @@ pub struct AuthorizeArgs {
 #[derive(Args, Debug)]
 pub struct LinkArgs {
     /// File containing static policies and templates.
-    #[arg(short, long)]
+    #[arg(short, long = "policies", value_name = "FILE")]
     pub policies_file: String,
     /// File containing template-linked policies
-    #[arg(short, long)]
+    #[arg(short = 'k', long = "template-linked", value_name = "FILE")]
     pub template_linked_file: String,
     /// Id of the template to instantiate
     #[arg(long)]
@@ -381,7 +381,7 @@ pub struct EvaluateArgs {
     /// File containing schema information
     /// Used to populate the store with action entities and for schema-based
     /// parsing of entity hierarchy, if present
-    #[arg(long = "schema", value_name = "FILE")]
+    #[arg(short, long = "schema", value_name = "FILE")]
     pub schema_file: Option<String>,
     /// File containing JSON representation of the Cedar entity hierarchy.
     /// This is optional; if not present, we'll just use an empty hierarchy.

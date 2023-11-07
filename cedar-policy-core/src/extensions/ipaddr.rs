@@ -43,13 +43,27 @@ mod names {
 /// This error is likely due to confusion between "127.0.0.1" and ip("127.0.0.1").
 const ADVICE_MSG: &str = "Maybe you forgot to apply the `ip` constructor?";
 
+/// Maximum prefix size for IpV4 addresses
+const PREFIX_MAX_LEN_V4: u8 = 32;
+/// Maximum prefix size for IpV6 addresses
+const PREFIX_MAX_LEN_V6: u8 = 128;
+/// Maximum prefix string size for IpV4 addresses
+/// len('32') = 2
+const PREFIX_STR_MAX_LEN_V4: u8 = 2;
+/// Maximum prefix string size for IpV6 addresses
+/// len('128') = 3
+const PREFIX_STR_MAX_LEN_V6: u8 = 3;
+/// The maximum length of an IpNet in bytes is
+/// len('ABCD:EF01:2345:6789:ABCD:EF01:2345:6789/128') = 43
+const IP_STR_REP_MAX_LEN: u8 = 43;
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 struct IPAddr {
-    /// the actual address, without subnet
+    /// the actual address, without prefix
     addr: std::net::IpAddr,
-    /// Subnet -- the part after the `/` in CIDR.
+    /// Prefix -- the part after the `/` in CIDR.
     /// A single address will have `32` here (in the IPv4 case) or `128` (in the IPv6 case).
-    subnet: u8,
+    prefix: u8,
 }
 
 impl IPAddr {
@@ -86,44 +100,47 @@ impl IPAddr {
     /// Return true if this is a loopback address
     fn is_loopback(&self) -> bool {
         // Loopback addresses are "127.0.0.0/8" for IpV4 and "::1" for IpV6
-        // Unlike the implementation of `is_multicast`, we don't need to test prefix
-        // The reason for IpV6 is obvious: There's only one loopback address
-        // The reason for IpV4 is that provided the truncated ip address is a loopback address, its prefix cannot be less than 8 because otherwise its more significant byte cannot be 127
-        self.addr.is_loopback()
+        // If `addr` is a loopback address, its prefix is `0x7f` or `0x00000000000000000000000000000001`
+        // We need to just make sure the prefix length (i.e., `prefix`) is greater than or equal to `8` or `128`
+        self.addr.is_loopback() && self.prefix >= if self.is_ipv4() { 8 } else { PREFIX_MAX_LEN_V6 }
     }
 
     /// Return true if this is a multicast address
     fn is_multicast(&self) -> bool {
         // Multicast addresses are "224.0.0.0/4" for IpV4 and "ff00::/8" for IpV6
-        // If an ip range's addresses are multicast addresses, calling
-        // `is_in_range()` over it and its associated net above should evaluate
-        // to true
-        // The implementation uses the property that if `ip1/prefix1` is in range
-        // `ip2/prefix2`, then `ip1` is in `ip2/prefix2` and `prefix1 >= prefix2`
-        self.addr.is_multicast() && self.subnet >= if self.is_ipv4() { 4 } else { 8 }
+        // Following the same reasoning as `is_loopback`
+        self.addr.is_multicast() && self.prefix >= if self.is_ipv4() { 4 } else { 8 }
     }
 
     /// Return true if this is contained in the given `IPAddr`
     fn is_in_range(&self, other: &Self) -> bool {
         match (&self.addr, &other.addr) {
             (std::net::IpAddr::V4(self_v4), std::net::IpAddr::V4(other_v4)) => {
-                let netmask = |subnet: u8| u32::MAX.checked_shl(32 - subnet as u32).unwrap_or(0);
-                let hostmask = |subnet: u8| u32::MAX.checked_shr(subnet as u32).unwrap_or(0);
+                let netmask = |prefix: u8| {
+                    u32::MAX
+                        .checked_shl((PREFIX_MAX_LEN_V4 - prefix).into())
+                        .unwrap_or(0)
+                };
+                let hostmask = |prefix: u8| u32::MAX.checked_shr(prefix.into()).unwrap_or(0);
 
-                let self_network = u32::from(*self_v4) & netmask(self.subnet);
-                let other_network = u32::from(*other_v4) & netmask(other.subnet);
-                let self_broadcast = u32::from(*self_v4) | hostmask(self.subnet);
-                let other_broadcast = u32::from(*other_v4) | hostmask(other.subnet);
+                let self_network = u32::from(*self_v4) & netmask(self.prefix);
+                let other_network = u32::from(*other_v4) & netmask(other.prefix);
+                let self_broadcast = u32::from(*self_v4) | hostmask(self.prefix);
+                let other_broadcast = u32::from(*other_v4) | hostmask(other.prefix);
                 other_network <= self_network && self_broadcast <= other_broadcast
             }
             (std::net::IpAddr::V6(self_v6), std::net::IpAddr::V6(other_v6)) => {
-                let netmask = |subnet: u8| u128::MAX.checked_shl(128 - subnet as u32).unwrap_or(0);
-                let hostmask = |subnet: u8| u128::MAX.checked_shr(subnet as u32).unwrap_or(0);
+                let netmask = |prefix: u8| {
+                    u128::MAX
+                        .checked_shl((PREFIX_MAX_LEN_V6 - prefix).into())
+                        .unwrap_or(0)
+                };
+                let hostmask = |prefix: u8| u128::MAX.checked_shr(prefix.into()).unwrap_or(0);
 
-                let self_network = u128::from(*self_v6) & netmask(self.subnet);
-                let other_network = u128::from(*other_v6) & netmask(other.subnet);
-                let self_broadcast = u128::from(*self_v6) | hostmask(self.subnet);
-                let other_broadcast = u128::from(*other_v6) | hostmask(other.subnet);
+                let self_network = u128::from(*self_v6) & netmask(self.prefix);
+                let other_network = u128::from(*other_v6) & netmask(other.prefix);
+                let self_broadcast = u128::from(*self_v6) | hostmask(self.prefix);
+                let other_broadcast = u128::from(*other_v6) | hostmask(other.prefix);
                 other_network <= self_network && self_broadcast <= other_broadcast
             }
             (_, _) => false,
@@ -131,36 +148,67 @@ impl IPAddr {
     }
 }
 
+fn parse_prefix(s: &str, max: u8, max_len: u8) -> Result<u8, String> {
+    if s.len() > max_len as usize {
+        return Err(format!("error parsing prefix: string length is too large"));
+    }
+    if s.chars().any(|c| !c.is_ascii_digit()) {
+        return Err(format!("error parsing prefix: encountered non-digit"));
+    }
+    if s.starts_with('0') && s != "0" {
+        return Err(format!("error parsing prefix: leading zero(s)"));
+    }
+    let res: u8 = s
+        .parse()
+        .map_err(|err| format!("error parsing prefix from the string `{s}`: {err}"))?;
+    if res > max {
+        return Err(format!(
+            "error parsing prefix: {res} is larger than the limit {max}"
+        ));
+    }
+    Ok(res)
+}
+
 impl std::str::FromStr for IPAddr {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Return Err if the input is too long
+        if s.bytes().len() > IP_STR_REP_MAX_LEN as usize {
+            return Err(format!(
+                "error parsing IP address from string `{s}`: string length is too large"
+            ));
+        }
         // Return Err if string is IPv4 embedded in IPv6 format
         str_contains_colons_and_dots(s)?;
 
-        match std::net::IpAddr::from_str(s) {
-            Ok(singleaddr) => Ok(Self {
-                addr: singleaddr,
-                subnet: if singleaddr.is_ipv4() { 32 } else { 128 },
-            }),
-            Err(e1) => match s.split_once('/') {
-                Some((addr, subnet)) => {
-                    // `addr` (the part before the slash) should be a valid IP address,
-                    // while `subnet` should be a valid u8 representing the subnet
-                    let addr: std::net::IpAddr = addr.parse().map_err(|e| {
-                        format!("error parsing IP address from the string `{addr}`: {e}")
-                    })?;
-                    let subnet: u8 = subnet.parse().map_err(|e| {
-                        format!("error parsing subnet from the string `{subnet}`: {e}")
-                    })?;
-                    if addr.is_ipv4() && subnet > 32 {
-                        Err(format!("invalid IPv4 subnet: {subnet}"))
-                    } else if addr.is_ipv6() && subnet > 128 {
-                        Err(format!("invalid IPv6 subnet: {subnet}"))
-                    } else {
-                        Ok(Self { addr, subnet })
+        // Split over '/' first so we don't have to parse the address field twice
+        match s.split_once('/') {
+            Some((addr_str, prefix_str)) => {
+                // `addr` (the part before the slash) should be a valid IP address,
+                // while `prefix` should be either 0..32 or 0..128 depending on the version
+                let addr: std::net::IpAddr = addr_str.parse().map_err(|e| {
+                    format!("error parsing IP address from the string `{addr_str}`: {e}")
+                })?;
+                let prefix = match addr {
+                    std::net::IpAddr::V4(_) => {
+                        parse_prefix(prefix_str, PREFIX_MAX_LEN_V4, PREFIX_STR_MAX_LEN_V4)?
                     }
-                }
-                None => Err(format!("invalid IP address: {e1}")),
+                    std::net::IpAddr::V6(_) => {
+                        parse_prefix(prefix_str, PREFIX_MAX_LEN_V6, PREFIX_STR_MAX_LEN_V6)?
+                    }
+                };
+                Ok(Self { addr, prefix })
+            }
+            None => match std::net::IpAddr::from_str(s) {
+                Ok(singleaddr) => Ok(Self {
+                    addr: singleaddr,
+                    prefix: if singleaddr.is_ipv4() {
+                        PREFIX_MAX_LEN_V4
+                    } else {
+                        PREFIX_MAX_LEN_V6
+                    },
+                }),
+                Err(_) => Err(format!("invalid IP address: {s}")),
             },
         }
     }
@@ -168,7 +216,7 @@ impl std::str::FromStr for IPAddr {
 
 impl std::fmt::Display for IPAddr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}/{}", self.addr, self.subnet)
+        write!(f, "{}/{}", self.addr, self.prefix)
     }
 }
 
@@ -596,17 +644,20 @@ mod tests {
             Ok(Value::from(true))
         );
 
-        // test the extremes of valid values for subnet
+        // test the extremes of valid values for prefix
         assert_matches!(eval.interpret_inline_policy(&ip("127.0.0.1/0")), Ok(_));
         assert_matches!(eval.interpret_inline_policy(&ip("127.0.0.1/32")), Ok(_));
         assert_matches!(eval.interpret_inline_policy(&ip("ffee::/0")), Ok(_));
         assert_matches!(eval.interpret_inline_policy(&ip("ffee::/128")), Ok(_));
 
-        // test for parse errors related to subnets specifically
+        // test for parse errors related to prefixes specifically
         assert_ipaddr_err(eval.interpret_inline_policy(&ip("127.0.0.1/8/24")));
         assert_ipaddr_err(eval.interpret_inline_policy(&ip("fee::/64::1")));
         assert_ipaddr_err(eval.interpret_inline_policy(&ip("172.0.0.1/64")));
         assert_ipaddr_err(eval.interpret_inline_policy(&ip("ffee::/132")));
+        assert_ipaddr_err(eval.interpret_inline_policy(&ip("ffee::/+1")));
+        assert_ipaddr_err(eval.interpret_inline_policy(&ip("ffee::/01")));
+        assert_ipaddr_err(eval.interpret_inline_policy(&ip("ffee::/1234")));
 
         // test the Display impl
         assert_eq!(
@@ -705,6 +756,13 @@ mod tests {
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isLoopback").expect("should be a valid identifier"),
                 vec![ip("::2")]
+            )),
+            Ok(Value::from(false))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isLoopback").expect("should be a valid identifier"),
+                vec![ip("127.255.200.200/0")]
             )),
             Ok(Value::from(false))
         );
