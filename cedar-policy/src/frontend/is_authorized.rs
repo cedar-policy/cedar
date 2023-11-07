@@ -154,7 +154,17 @@ struct AuthorizationCall {
     /// attributes have the wrong types (e.g., string instead of integer).
     #[serde(rename = "schema")]
     schema: Option<serde_json::Value>,
+    /// If this is `true` and a schema is provided, perform request validation.
+    /// If this is `false`, the schema will only be used for schema-based
+    /// parsing of `context`, and not for request validation.
+    /// If a schema is not provided, this option has no effect.
+    #[serde(default = "constant_true")]
+    enable_request_validation: bool,
     slice: RecvdSlice,
+}
+
+fn constant_true() -> bool {
+    true
 }
 
 impl AuthorizationCall {
@@ -185,8 +195,18 @@ impl AuthorizationCall {
             .map_err(|e| [format!("Error encoding the context as JSON: {e}")])?;
         let context = Context::from_json_value(context, schema.as_ref().map(|s| (s, &action)))
             .map_err(|e| [e.to_string()])?;
-        let q = Request::new(principal, Some(action), resource, context, schema.as_ref())
-            .map_err(|e| [e.to_string()])?;
+        let q = Request::new(
+            principal,
+            Some(action),
+            resource,
+            context,
+            if self.enable_request_validation {
+                schema.as_ref()
+            } else {
+                None
+            },
+        )
+        .map_err(|e| [e.to_string()])?;
         let (policies, entities) = self.slice.try_into(schema.as_ref())?;
         Ok((q, policies, entities))
     }
