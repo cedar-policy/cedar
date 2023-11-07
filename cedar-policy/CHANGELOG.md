@@ -54,6 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ValidationWarning::location` and `ValidationWarning::to_kind_and_location`
   now return `&SourceLocation<'a>` instead of `&'a PolicyID`, matching
   `ValidationError::location`.
+- `ValidationWarningKind` is now `non_exhaustive`, allowing future warnings to
+  be added without a breaking change.
 
 ### Fixed
 
