@@ -56,6 +56,7 @@ impl std::fmt::Display for ValidationWarning<'_> {
 }
 
 #[derive(Debug, Clone, PartialEq, Error, Eq)]
+#[non_exhaustive]
 pub enum ValidationWarningKind {
     /// A string contains mixed scripts. Different scripts can contain visually similar characters which may be confused for each other.
     #[error("string `\"{0}\"` contains mixed scripts")]
