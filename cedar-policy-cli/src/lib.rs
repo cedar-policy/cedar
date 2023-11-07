@@ -451,10 +451,8 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
     let validator = Validator::new(schema);
     let result = validator.validate(&pset, ValidationMode::default());
 
-    let mut errors = result.validation_errors().peekable();
-    let mut warnings = result.validation_warnings().peekable();
-
-    let exit_code = if errors.peek().is_some() || (args.deny_warnings && warnings.peek().is_some())
+    let exit_code = if !result.validation_passed()
+        || (args.deny_warnings && !result.validation_passed_without_warnings())
     {
         println!("Validation Failed");
         CedarExitCode::ValidationFailure
@@ -463,6 +461,7 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
         CedarExitCode::Success
     };
 
+    let mut errors = result.validation_errors().peekable();
     if errors.peek().is_some() {
         println!("Validation Errors:");
         for note in errors {
@@ -470,6 +469,7 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
         }
     }
 
+    let mut warnings = result.validation_warnings().peekable();
     if warnings.peek().is_some() {
         println!("Validation Warnings:");
         for note in warnings {

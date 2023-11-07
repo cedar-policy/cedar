@@ -1316,9 +1316,16 @@ pub struct ValidationResult<'a> {
 
 impl<'a> ValidationResult<'a> {
     /// True when validation passes. There are no errors, but there may be
-    /// non-fatal warnings.
+    /// non-fatal warnings. Use [`ValidationResult::validation_passed_without_warnings`]
+    /// to check that there are also no warnings.
     pub fn validation_passed(&self) -> bool {
         self.validation_errors.is_empty()
+    }
+
+    /// True when validation passes (i.e., there are no errors) and there are
+    /// additional no non-fatal warnings.
+    pub fn validation_passed_without_warnings(&self) -> bool {
+        self.validation_errors.is_empty() && self.validation_warnings.is_empty()
     }
 
     /// Get an iterator over the errors found by the validator.

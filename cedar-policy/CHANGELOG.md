@@ -18,9 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `PolicySet::remove_static`, `PolicySet::remove_template` and `PolicySet::unlink` to remove policies from the policy set.
 - `PolicySet::get_linked_policies` to get the policies linked to a `Template`.
 - `ValidationResult::validation_warnings` to access non-fatal warnings returned
-  by the validator. The validator now returns warnings previously only available
-  through `confusable_string_checker`.
-
+  by the validator and `ValidationResult::validation_passed_without_warnings`.
+  The main validation entry point now checks for warnings previously only
+  available through `confusable_string_checker`
 
 ### Changed
 
