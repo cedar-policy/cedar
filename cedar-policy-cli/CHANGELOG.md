@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- The `-s` short form can now be used for `--schema` across all subcommands.
+
+### Changed
+
+- The `-p` flag now always refers to `--policies` (not `--principal`) across all
+  subcommands, while `-l` refers to `--principal`. Relatedly, the `--policies`
+  long form of the flag is also now accepted across all subcommands.
+- The short form of `--template-linked` was changed from `-t` to `-k`.
+
 ## 2.4.2
 
 ## 2.4.1
