@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Requests are now validated by default. This can be disabled with
+  `--request-validation=false`.
+
 ## 2.4.2
 
 ## 2.4.1
