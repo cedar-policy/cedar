@@ -1323,7 +1323,7 @@ impl<'a> ValidationResult<'a> {
     }
 
     /// True when validation passes (i.e., there are no errors) and there are
-    /// additional no non-fatal warnings.
+    /// additionally no non-fatal warnings.
     pub fn validation_passed_without_warnings(&self) -> bool {
         self.validation_errors.is_empty() && self.validation_warnings.is_empty()
     }
