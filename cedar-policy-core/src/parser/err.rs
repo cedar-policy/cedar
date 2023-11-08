@@ -252,8 +252,10 @@ pub enum ToASTError {
         /// The key that appeared two or more times
         key: SmolStr,
     },
-    /// Returned when a user attempts to use type-constraint syntax. This is not currently supported
-    #[error("type constraints are not currently supported")]
+    /// Returned when a user attempts to use type-constraint `:` syntax. This
+    /// syntax was not adopted, but `is` can be used to write type constraints
+    /// in the policy scope.
+    #[error("type constraints using `:` are not supported. Try using `is` instead")]
     TypeConstraints,
     /// Returned when a policy uses a path in an invalid context
     #[error("a path is not valid in this context")]
@@ -293,6 +295,9 @@ pub enum ToASTError {
     /// Returns when a policy scope has incorrect EntityUIDs/Template Slots
     #[error(transparent)]
     RefCreation(#[from] RefCreationError),
+    /// Returned when an `is` appears in an invalid position in the policy scope
+    #[error(transparent)]
+    InvalidIs(#[from] InvalidIsError),
 }
 
 impl ToASTError {
@@ -373,6 +378,19 @@ impl std::fmt::Display for Ref {
         }
     }
 }
+
+/// Error when `is` appears in the policy scope in a position where it is
+/// forbidden.
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+pub enum InvalidIsError {
+    /// The action scope may not contain an `is`
+    #[error("`is` cannot appear in the action scope")]
+    ActionScope,
+    /// An `is` cannot appear with this operator in the policy scope
+    #[error("`is` cannot appear in the scope at the same time as `{0}`")]
+    WrongOp(cst::RelOp),
+}
+
 /// Error from the CST parser.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub struct ToCSTError {
@@ -464,6 +482,7 @@ lazy_static! {
         ("IN", "`in`"),
         ("HAS", "`has`"),
         ("LIKE", "`like`"),
+        ("IS", "`is`"),
         ("THEN", "`then`"),
         ("ELSE", "`else`"),
         ("PRINCIPAL", "`principal`"),

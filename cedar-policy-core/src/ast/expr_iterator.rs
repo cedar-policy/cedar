@@ -94,6 +94,9 @@ impl<'a, T> Iterator for ExprIterator<'a, T> {
             ExprKind::Record(map) => {
                 self.expression_stack.extend(map.values());
             }
+            ExprKind::Is { expr, .. } => {
+                self.expression_stack.push(expr);
+            }
         }
         Some(next_expr)
     }
@@ -234,6 +237,15 @@ mod test {
         assert_eq!(
             e.subexpressions().collect::<HashSet<_>>(),
             HashSet::from([&e, &Expr::val(false), &Expr::val(true)])
+        );
+    }
+
+    #[test]
+    fn is() {
+        let e = Expr::is_entity_type(Expr::val(1), "T".parse().unwrap());
+        assert_eq!(
+            e.subexpressions().collect::<HashSet<_>>(),
+            HashSet::from([&e, &Expr::val(1)])
         );
     }
 

@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by the validator and `ValidationResult::validation_passed_without_warnings`.
   The main validation entry point now checks for warnings previously only
   available through `confusable_string_checker`
+- The `is` operation as described in [RFC 5](https://github.com/cedar-policy/rfcs/blob/main/text/0005-is-operator.md).
 
 ### Changed
 

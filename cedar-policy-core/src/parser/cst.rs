@@ -66,8 +66,11 @@ pub struct VariableDef {
     /// identifier, expected:
     /// principal, action, resource
     pub variable: Node<Ident>,
-    /// type of entity
-    pub name: Option<Node<Name>>,
+    /// type of entity using previously considered `var : type` syntax. This is
+    /// not used for anything other than error reporting.
+    pub unused_type_name: Option<Node<Name>>,
+    /// type of entity using current `var is type` syntax
+    pub entity_type: Option<Node<Name>>,
     /// hierarchy of entity
     pub ineq: Option<(RelOp, Node<Expr>)>,
 }
@@ -105,6 +108,8 @@ pub enum Ident {
     Has,
     /// like
     Like,
+    /// is
+    Is,
     /// if
     If,
     /// then
@@ -186,6 +191,15 @@ pub enum Relation {
         target: Node<Add>,
         /// pattern to match on
         pattern: Node<Add>,
+    },
+    /// Built-in '.. is .. (in ..)?' operation
+    IsIn {
+        /// element that may be an entity type and `in` an entity
+        target: Node<Add>,
+        /// entity type to check for
+        entity_type: Node<Name>,
+        /// entity that the target may be `in`
+        in_entity: Option<Node<Add>>,
     },
 }
 

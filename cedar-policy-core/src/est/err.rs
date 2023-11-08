@@ -16,6 +16,7 @@
 
 use crate::ast;
 use crate::entities::JsonDeserializationError;
+use crate::parser::err::ParseErrors;
 use crate::parser::unescape;
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -58,6 +59,9 @@ pub enum FromJsonError {
     /// Error thrown while processing string escapes
     #[error("invalid escape patterns: {:?}", .0.iter().map(|e| e.to_string()).collect::<Vec<String>>())]
     UnescapeError(Vec<unescape::UnescapeError>),
+    /// Error reported when the entity type tested by an `is` expression cannot be parsed.
+    #[error("invalid entity type: {0}")]
+    InvalidEntityType(ParseErrors),
 }
 
 /// Errors while instantiating a policy
