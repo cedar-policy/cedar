@@ -915,7 +915,7 @@ impl RefKind for SingleEntity {
 
 impl RefKind for EntityReference {
     fn err_str() -> &'static str {
-        "entity uid or template slot"
+        "entity uid or matching template slot"
     }
 
     fn create_slot(_: &mut ParseErrors) -> Option<Self> {
@@ -1639,7 +1639,7 @@ impl ASTNode<Option<cst::Primary>> {
                 if slot.matches(var) {
                     Ok(T::create_slot(errs))
                 } else {
-                    Err(format!("?{slot}"))
+                    Err(format!("{slot} instead of ?{var}"))
                 }
             }
             cst::Primary::Literal(_) => Err("literal".to_string()),
