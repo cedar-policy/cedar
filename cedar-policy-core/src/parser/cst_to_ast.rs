@@ -346,6 +346,7 @@ impl ASTNode<Option<cst::Ident>> {
             | cst::Ident::Then
             | cst::Ident::Else
             | cst::Ident::In
+            | cst::Ident::Is
             | cst::Ident::Has
             | cst::Ident::Like => {
                 errs.push(err::ParseError::ToAST(ToASTError::ReservedIdentifier(
@@ -507,20 +508,34 @@ impl ASTNode<Option<cst::VariableDef>> {
             None => None,
         }?;
 
-        if let Some(typename) = vardef.name.as_ref() {
-            typename.to_type_constraint(errs)?;
+        if let Some(unused_typename) = vardef.unused_type_name.as_ref() {
+            unused_typename.to_type_constraint(errs)?;
         }
 
         let c = if let Some((op, rel_expr)) = &vardef.ineq {
             let eref = rel_expr.to_ref_or_slot(errs, var)?;
-            match op {
-                cst::RelOp::Eq => Some(PrincipalOrResourceConstraint::Eq(eref)),
-                cst::RelOp::In => Some(PrincipalOrResourceConstraint::In(eref)),
-                op => {
+            match (op, &vardef.entity_type) {
+                (cst::RelOp::Eq, None) => Some(PrincipalOrResourceConstraint::Eq(eref)),
+                (cst::RelOp::Eq, Some(_)) => {
+                    errs.push(
+                        ToASTError::InvalidIs(err::InvalidIsError::WrongOp(cst::RelOp::Eq)).into(),
+                    );
+                    None
+                }
+                (cst::RelOp::In, None) => Some(PrincipalOrResourceConstraint::In(eref)),
+                (cst::RelOp::In, Some(entity_type)) => Some(PrincipalOrResourceConstraint::IsIn(
+                    entity_type.to_name(errs)?,
+                    eref,
+                )),
+                (op, _) => {
                     errs.push(ToASTError::InvalidConstraintOperator(*op).into());
                     None
                 }
             }
+        } else if let Some(entity_type) = &vardef.entity_type {
+            Some(PrincipalOrResourceConstraint::Is(
+                entity_type.to_name(errs)?,
+            ))
         } else {
             Some(PrincipalOrResourceConstraint::Any)
         }?;
@@ -555,8 +570,13 @@ impl ASTNode<Option<cst::VariableDef>> {
             None => None,
         }?;
 
-        if let Some(typename) = vardef.name.as_ref() {
+        if let Some(typename) = vardef.unused_type_name.as_ref() {
             typename.to_type_constraint(errs)?;
+        }
+
+        if vardef.entity_type.is_some() {
+            errs.push(ToASTError::InvalidIs(err::InvalidIsError::ActionScope).into());
+            return None;
         }
 
         let action_constraint = if let Some((op, rel_expr)) = &vardef.ineq {
@@ -1030,6 +1050,10 @@ impl ASTNode<Option<cst::Relation>> {
                 errs.push(ToASTError::wrong_node(T::err_str(), "like").into());
                 None
             }
+            cst::Relation::IsIn { .. } => {
+                errs.push(ToASTError::wrong_node(T::err_str(), "is").into());
+                None
+            }
         }
     }
 
@@ -1088,6 +1112,24 @@ impl ASTNode<Option<cst::Relation>> {
                     _ => None,
                 }
             }
+            cst::Relation::IsIn {
+                target,
+                entity_type,
+                in_entity,
+            } => match (target.to_expr(errs), entity_type.to_name(errs)) {
+                (Some(t), Some(n)) => match in_entity {
+                    Some(in_entity) => in_entity.to_expr(errs).map(|in_entity| {
+                        ExprOrSpecial::Expr(construct_expr_and(
+                            construct_expr_is(t.clone(), n, src.clone()),
+                            construct_expr_rel(t, cst::RelOp::In, in_entity, src.clone()),
+                            std::iter::empty(),
+                            src.clone(),
+                        ))
+                    }),
+                    None => Some(ExprOrSpecial::Expr(construct_expr_is(t, n, src.clone()))),
+                },
+                _ => None,
+            },
         }
     }
 }
@@ -2041,6 +2083,11 @@ fn construct_expr_attr(e: ast::Expr, s: SmolStr, l: SourceInfo) -> ast::Expr {
 }
 fn construct_expr_like(e: ast::Expr, s: Vec<PatternElem>, l: SourceInfo) -> ast::Expr {
     ast::ExprBuilder::new().with_source_info(l).like(e, s)
+}
+fn construct_expr_is(e: ast::Expr, n: ast::Name, l: SourceInfo) -> ast::Expr {
+    ast::ExprBuilder::new()
+        .with_source_info(l)
+        .is_entity_type(e, n)
 }
 fn construct_ext_func(name: ast::Name, args: Vec<ast::Expr>, l: SourceInfo) -> ast::Expr {
     // INVARIANT (MethodStyleArgs): CallStyle is not MethodStyle, so any args vector is fine
@@ -3555,6 +3602,248 @@ mod tests {
             assert!(e.is_none());
             println!("{:?}", errs);
             assert!(errs.contains(&em));
+        }
+    }
+
+    #[test]
+    fn test_is_condition_ok() {
+        for (es, expr) in [
+            (
+                r#"User::"alice" is User"#,
+                Expr::is_entity_type(
+                    Expr::val(r#"User::"alice""#.parse::<EntityUID>().unwrap()),
+                    "User".parse().unwrap(),
+                ),
+            ),
+            (
+                r#"principal is User"#,
+                Expr::is_entity_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
+            ),
+            (
+                r#"principal.foo is User"#,
+                Expr::is_entity_type(
+                    Expr::get_attr(Expr::var(ast::Var::Principal), "foo".into()),
+                    "User".parse().unwrap(),
+                ),
+            ),
+            (
+                r#"1 is User"#,
+                Expr::is_entity_type(Expr::val(1), "User".parse().unwrap()),
+            ),
+            (
+                r#"principal is User in Group::"friends""#,
+                Expr::and(
+                    Expr::is_entity_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
+                    Expr::is_in(
+                        Expr::var(ast::Var::Principal),
+                        Expr::val(r#"Group::"friends""#.parse::<EntityUID>().unwrap()),
+                    ),
+                ),
+            ),
+            (
+                r#"true && principal is User in principal"#,
+                Expr::and(
+                    Expr::val(true),
+                    Expr::and(
+                        Expr::is_entity_type(
+                            Expr::var(ast::Var::Principal),
+                            "User".parse().unwrap(),
+                        ),
+                        Expr::is_in(
+                            Expr::var(ast::Var::Principal),
+                            Expr::var(ast::Var::Principal),
+                        ),
+                    ),
+                ),
+            ),
+            (
+                r#"principal is User in principal && true"#,
+                Expr::and(
+                    Expr::and(
+                        Expr::is_entity_type(
+                            Expr::var(ast::Var::Principal),
+                            "User".parse().unwrap(),
+                        ),
+                        Expr::is_in(
+                            Expr::var(ast::Var::Principal),
+                            Expr::var(ast::Var::Principal),
+                        ),
+                    ),
+                    Expr::val(true),
+                ),
+            ),
+            (
+                r#"principal is A::B::C::User"#,
+                Expr::is_entity_type(
+                    Expr::var(ast::Var::Principal),
+                    "A::B::C::User".parse().unwrap(),
+                ),
+            ),
+            (
+                r#"principal is A::B::C::User in Group::"friends""#,
+                Expr::and(
+                    Expr::is_entity_type(
+                        Expr::var(ast::Var::Principal),
+                        "A::B::C::User".parse().unwrap(),
+                    ),
+                    Expr::is_in(
+                        Expr::var(ast::Var::Principal),
+                        Expr::val(r#"Group::"friends""#.parse::<EntityUID>().unwrap()),
+                    ),
+                ),
+            ),
+        ] {
+            let e = parse_expr(es).unwrap();
+            assert!(
+                e.eq_shape(&expr),
+                "{:?} and {:?} should have the same shape.",
+                e,
+                expr
+            );
+        }
+    }
+
+    #[test]
+    fn is_scope() {
+        for (src, p, a, r) in [
+            (
+                r#"permit(principal is User, action, resource);"#,
+                PrincipalConstraint::is_entity_type("User".parse().unwrap()),
+                ActionConstraint::any(),
+                ResourceConstraint::any(),
+            ),
+            (
+                r#"permit(principal is A::User, action, resource);"#,
+                PrincipalConstraint::is_entity_type("A::User".parse().unwrap()),
+                ActionConstraint::any(),
+                ResourceConstraint::any(),
+            ),
+            (
+                r#"permit(principal is User in Group::"thing", action, resource);"#,
+                PrincipalConstraint::is_entity_type_in(
+                    "User".parse().unwrap(),
+                    r#"Group::"thing""#.parse().unwrap(),
+                ),
+                ActionConstraint::any(),
+                ResourceConstraint::any(),
+            ),
+            (
+                r#"permit(principal is A::User in Group::"thing", action, resource);"#,
+                PrincipalConstraint::is_entity_type_in(
+                    "A::User".parse().unwrap(),
+                    r#"Group::"thing""#.parse().unwrap(),
+                ),
+                ActionConstraint::any(),
+                ResourceConstraint::any(),
+            ),
+            (
+                r#"permit(principal is User in ?principal, action, resource);"#,
+                PrincipalConstraint::is_entity_type_in_slot("User".parse().unwrap()),
+                ActionConstraint::any(),
+                ResourceConstraint::any(),
+            ),
+            (
+                r#"permit(principal, action, resource is Folder);"#,
+                PrincipalConstraint::any(),
+                ActionConstraint::any(),
+                ResourceConstraint::is_entity_type("Folder".parse().unwrap()),
+            ),
+            (
+                r#"permit(principal, action, resource is Folder in Folder::"inner");"#,
+                PrincipalConstraint::any(),
+                ActionConstraint::any(),
+                ResourceConstraint::is_entity_type_in(
+                    "Folder".parse().unwrap(),
+                    r#"Folder::"inner""#.parse().unwrap(),
+                ),
+            ),
+            (
+                r#"permit(principal, action, resource is Folder in ?resource);"#,
+                PrincipalConstraint::any(),
+                ActionConstraint::any(),
+                ResourceConstraint::is_entity_type_in_slot("Folder".parse().unwrap()),
+            ),
+        ] {
+            let policy = parse_policy_template(None, src).unwrap();
+            assert_eq!(policy.principal_constraint(), &p);
+            assert_eq!(policy.action_constraint(), &a);
+            assert_eq!(policy.resource_constraint(), &r);
+        }
+    }
+
+    #[test]
+    fn is_err() {
+        let invalid_is_policies = [
+            (
+                r#"permit(principal in Group::"friends" is User, action, resource);"#,
+                "expected a entity uid or template slot",
+            ),
+            (
+                r#"permit(principal, action, resource in Folder::"folder" is File);"#,
+                "expected a entity uid or template slot",
+            ),
+            (
+                r#"permit(principal is User == User::"Alice", action, resource);"#,
+                "`is` cannot appear in the scope at the same time as `==`",
+            ),
+            (
+                r#"permit(principal, action, resource is Doc == Doc::"a");"#,
+                "`is` cannot appear in the scope at the same time as `==`",
+            ),
+            (
+                r#"permit(principal is User::"alice", action, resource);"#,
+                r#"unexpected token `"alice"`"#,
+            ),
+            (
+                r#"permit(principal, action, resource is File::"f");"#,
+                r#"unexpected token `"f"`"#,
+            ),
+            (
+                r#"permit(principal is User in 1, action, resource);"#,
+                "expected a entity uid or template slot, found a `literal` statement",
+            ),
+            (
+                r#"permit(principal, action, resource is File in 1);"#,
+                "expected a entity uid or template slot, found a `literal` statement",
+            ),
+            (
+                r#"permit(principal is 1, action, resource);"#,
+                "unexpected token `1`",
+            ),
+            (
+                r#"permit(principal, action, resource is 1);"#,
+                "unexpected token `1`",
+            ),
+            (
+                r#"permit(principal, action is Action, resource);"#,
+                "`is` cannot appear in the action scope",
+            ),
+            (
+                r#"permit(principal, action is Action in Action::"A", resource);"#,
+                "`is` cannot appear in the action scope",
+            ),
+            (
+                r#"permit(principal is User in ?resource, action, resource);"#,
+                "expected a entity uid or template slot",
+            ),
+            (
+                r#"permit(principal, action, resource is Folder in ?principal);"#,
+                "expected a entity uid or template slot",
+            ),
+            (
+                r#"permit(principal, action, resource) when { principal is 1 };"#,
+                "unexpected token `1`",
+            ),
+        ];
+        for (p_src, expected) in invalid_is_policies {
+            let err = parse_policy_template(None, p_src).unwrap_err().to_string();
+
+            assert!(
+                err.contains(expected),
+                "expected error containing `{}`, saw `{}`",
+                expected,
+                err
+            );
         }
     }
 }

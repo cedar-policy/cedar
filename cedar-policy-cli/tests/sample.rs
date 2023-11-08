@@ -427,6 +427,18 @@ fn test_authorize_samples() {
         "sample-data/tiny_sandboxes/sample7/request.json",
         CedarExitCode::Success,
     );
+    run_authorize_test_json(
+        "sample-data/tiny_sandboxes/sample8/policy.cedar",
+        "sample-data/tiny_sandboxes/sample8/entity.json",
+        "sample-data/tiny_sandboxes/sample8/request.json",
+        CedarExitCode::Success,
+    );
+    run_authorize_test_json(
+        "sample-data/tiny_sandboxes/sample9/policy.cedar",
+        "sample-data/tiny_sandboxes/sample9/entity.json",
+        "sample-data/tiny_sandboxes/sample9/request.json",
+        CedarExitCode::Success,
+    );
 }
 
 fn run_validate_test(policies_file: &str, schema_file: &str, exit_code: CedarExitCode) {
@@ -526,6 +538,21 @@ fn test_validate_samples() {
         "sample-data/tiny_sandboxes/sample7/policy.cedar",
         "sample-data/tiny_sandboxes/sample7/schema.cedarschema.json",
         CedarExitCode::Success,
+    );
+    run_validate_test(
+        "sample-data/tiny_sandboxes/sample8/policy.cedar",
+        "sample-data/tiny_sandboxes/sample8/schema.cedarschema.json",
+        CedarExitCode::Success,
+    );
+    run_validate_test(
+        "sample-data/tiny_sandboxes/sample9/policy.cedar",
+        "sample-data/tiny_sandboxes/sample9/schema.cedarschema.json",
+        CedarExitCode::Success,
+    );
+    run_validate_test(
+        "sample-data/tiny_sandboxes/sample9/policy_bad.cedar",
+        "sample-data/tiny_sandboxes/sample9/schema.cedarschema.json",
+        CedarExitCode::ValidationFailure,
     );
 }
 

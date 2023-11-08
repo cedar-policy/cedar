@@ -1015,6 +1015,27 @@ impl PrincipalConstraint {
         }
     }
 
+    /// Type constraint additionally constrained to be in a slot.
+    pub fn is_entity_type_in_slot(entity_type: Name) -> Self {
+        Self {
+            constraint: PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type),
+        }
+    }
+
+    /// Type constraint, with a hierarchical constraint.
+    pub fn is_entity_type_in(entity_type: Name, in_entity: EntityUID) -> Self {
+        Self {
+            constraint: PrincipalOrResourceConstraint::is_entity_type_in(entity_type, in_entity),
+        }
+    }
+
+    /// Type constraint, with no hierarchical constraint or slot.
+    pub fn is_entity_type(entity_type: Name) -> Self {
+        Self {
+            constraint: PrincipalOrResourceConstraint::is_entity_type(entity_type),
+        }
+    }
+
     /// Fill in the Slot, if any, with the given EUID
     pub fn with_filled_slot(self, euid: Arc<EntityUID>) -> Self {
         match self.constraint {
@@ -1098,6 +1119,27 @@ impl ResourceConstraint {
     pub fn is_in(euid: EntityUID) -> Self {
         ResourceConstraint {
             constraint: PrincipalOrResourceConstraint::is_in(euid),
+        }
+    }
+
+    /// Type constraint additionally constrained to be in a slot.
+    pub fn is_entity_type_in_slot(entity_type: Name) -> Self {
+        Self {
+            constraint: PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type),
+        }
+    }
+
+    /// Type constraint, with a hierarchical constraint.
+    pub fn is_entity_type_in(entity_type: Name, in_entity: EntityUID) -> Self {
+        Self {
+            constraint: PrincipalOrResourceConstraint::is_entity_type_in(entity_type, in_entity),
+        }
+    }
+
+    /// Type constraint, with no hierarchical constraint or slot.
+    pub fn is_entity_type(entity_type: Name) -> Self {
+        Self {
+            constraint: PrincipalOrResourceConstraint::is_entity_type(entity_type),
         }
     }
 
@@ -1219,6 +1261,10 @@ pub enum PrincipalOrResourceConstraint {
     In(EntityReference),
     /// Equality constraint
     Eq(EntityReference),
+    /// Type constraint,
+    Is(Name),
+    /// Type constraint with a hierarchy constraint
+    IsIn(Name, EntityReference),
 }
 
 impl PrincipalOrResourceConstraint {
@@ -1247,6 +1293,21 @@ impl PrincipalOrResourceConstraint {
         PrincipalOrResourceConstraint::In(EntityReference::euid(euid))
     }
 
+    /// Type constraint additionally constrained to be in a slot.
+    pub fn is_entity_type_in_slot(entity_type: Name) -> Self {
+        PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot)
+    }
+
+    /// Type constraint with a hierarchical constraint.
+    pub fn is_entity_type_in(entity_type: Name, in_entity: EntityUID) -> Self {
+        PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::euid(in_entity))
+    }
+
+    /// Type constraint, with no hierarchical constraint or slot.
+    pub fn is_entity_type(entity_type: Name) -> Self {
+        PrincipalOrResourceConstraint::Is(entity_type)
+    }
+
     /// Turn the constraint into an expr
     /// # arguments
     /// * `v` - The variable name to be used in the expression.
@@ -1258,6 +1319,13 @@ impl PrincipalOrResourceConstraint {
             }
             PrincipalOrResourceConstraint::In(euid) => {
                 Expr::is_in(Expr::var(v.into()), euid.into_expr(v.into()))
+            }
+            PrincipalOrResourceConstraint::IsIn(entity_type, euid) => Expr::and(
+                Expr::is_entity_type(Expr::var(v.into()), entity_type.clone()),
+                Expr::is_in(Expr::var(v.into()), euid.into_expr(v.into())),
+            ),
+            PrincipalOrResourceConstraint::Is(entity_type) => {
+                Expr::is_entity_type(Expr::var(v.into()), entity_type.clone())
             }
         }
     }
@@ -1272,6 +1340,12 @@ impl PrincipalOrResourceConstraint {
             }
             PrincipalOrResourceConstraint::Eq(euid) => {
                 format!("{} == {}", v, euid.into_expr(v.into()))
+            }
+            PrincipalOrResourceConstraint::IsIn(entity_type, euid) => {
+                format!("{} is {} in {}", v, entity_type, euid.into_expr(v.into()))
+            }
+            PrincipalOrResourceConstraint::Is(entity_type) => {
+                format!("{} is {}", v, entity_type)
             }
             PrincipalOrResourceConstraint::Any => format!("{}", v),
         }
@@ -1289,7 +1363,28 @@ impl PrincipalOrResourceConstraint {
                 EntityIterator::One(euid)
             }
             PrincipalOrResourceConstraint::Eq(EntityReference::Slot) => EntityIterator::None,
+            PrincipalOrResourceConstraint::IsIn(_, EntityReference::EUID(euid)) => {
+                EntityIterator::One(euid)
+            }
+            PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot) => EntityIterator::None,
+            PrincipalOrResourceConstraint::Is(_) => EntityIterator::None,
         }
+    }
+
+    /// Get an iterator over all of the entity type names in this constraint.
+    /// The Unspecified entity type does not have a `Name`, so it is excluded
+    /// from this iter.
+    pub fn iter_entity_type_names(&self) -> impl Iterator<Item = &'_ Name> {
+        self.iter_euids()
+            .filter_map(|euid| match euid.entity_type() {
+                EntityType::Concrete(name) => Some(name),
+                EntityType::Unspecified => None,
+            })
+            .chain(match self {
+                PrincipalOrResourceConstraint::Is(entity_type)
+                | PrincipalOrResourceConstraint::IsIn(entity_type, _) => Some(entity_type),
+                _ => None,
+            })
     }
 }
 
@@ -1362,6 +1457,17 @@ impl ActionConstraint {
             }
             ActionConstraint::Eq(euid) => EntityIterator::One(euid),
         }
+    }
+
+    /// Get an iterator over all of the entity types in this constraint.
+    /// The Unspecified entity type does not have a `Name`, so it is excluded
+    /// from this iter.
+    pub fn iter_entity_type_names(&self) -> impl Iterator<Item = &'_ Name> {
+        self.iter_euids()
+            .filter_map(|euid| match euid.entity_type() {
+                EntityType::Concrete(name) => Some(name),
+                EntityType::Unspecified => None,
+            })
     }
 }
 
@@ -1790,13 +1896,31 @@ mod test {
             0
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::Eq(EntityReference::EUID(e))
+            PrincipalOrResourceConstraint::Eq(EntityReference::EUID(e.clone()))
                 .iter_euids()
                 .count(),
             1
         );
         assert_eq!(
             PrincipalOrResourceConstraint::Eq(EntityReference::Slot)
+                .iter_euids()
+                .count(),
+            0
+        );
+        assert_eq!(
+            PrincipalOrResourceConstraint::IsIn("T".parse().unwrap(), EntityReference::EUID(e))
+                .iter_euids()
+                .count(),
+            1
+        );
+        assert_eq!(
+            PrincipalOrResourceConstraint::Is("T".parse().unwrap())
+                .iter_euids()
+                .count(),
+            0
+        );
+        assert_eq!(
+            PrincipalOrResourceConstraint::IsIn("T".parse().unwrap(), EntityReference::Slot)
                 .iter_euids()
                 .count(),
             0

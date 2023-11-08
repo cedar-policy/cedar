@@ -2166,6 +2166,18 @@ impl Template {
                     ast::EntityReference::Slot => None,
                 })
             }
+            ast::PrincipalOrResourceConstraint::Is(entity_type) => {
+                TemplatePrincipalConstraint::Is(EntityTypeName(entity_type.clone()))
+            }
+            ast::PrincipalOrResourceConstraint::IsIn(entity_type, eref) => {
+                TemplatePrincipalConstraint::IsIn(
+                    EntityTypeName(entity_type.clone()),
+                    match eref {
+                        ast::EntityReference::EUID(e) => Some(EntityUid(e.as_ref().clone())),
+                        ast::EntityReference::Slot => None,
+                    },
+                )
+            }
         }
     }
 
@@ -2198,6 +2210,18 @@ impl Template {
                     ast::EntityReference::EUID(e) => Some(EntityUid(e.as_ref().clone())),
                     ast::EntityReference::Slot => None,
                 })
+            }
+            ast::PrincipalOrResourceConstraint::Is(entity_type) => {
+                TemplateResourceConstraint::Is(EntityTypeName(entity_type.clone()))
+            }
+            ast::PrincipalOrResourceConstraint::IsIn(entity_type, eref) => {
+                TemplateResourceConstraint::IsIn(
+                    EntityTypeName(entity_type.clone()),
+                    match eref {
+                        ast::EntityReference::EUID(e) => Some(EntityUid(e.as_ref().clone())),
+                        ast::EntityReference::Slot => None,
+                    },
+                )
             }
         }
     }
@@ -2266,6 +2290,10 @@ pub enum PrincipalConstraint {
     In(EntityUid),
     /// Must be equal to the given EntityUid
     Eq(EntityUid),
+    /// Must be the given EntityTypeName
+    Is(EntityTypeName),
+    /// Must be the given EntityTypeName, and `in` the EntityUID
+    IsIn(EntityTypeName, EntityUid),
 }
 
 /// Head constraint on policy principals for templates.
@@ -2279,14 +2307,19 @@ pub enum TemplatePrincipalConstraint {
     /// Must be equal to the given EntityUid.
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
+    /// Must be the given EntityTypeName.
+    Is(EntityTypeName),
+    /// Must be the given EntityTypeName, and `in` the EntityUID.
+    /// If the EntityUID is [`None`], then it is a template slot.
+    IsIn(EntityTypeName, Option<EntityUid>),
 }
 
 impl TemplatePrincipalConstraint {
     /// Does this constraint contain a slot?
     pub fn has_slot(&self) -> bool {
         match self {
-            Self::Any => false,
-            Self::In(o) | Self::Eq(o) => o.is_none(),
+            Self::Any | Self::Is(_) => false,
+            Self::In(o) | Self::Eq(o) | Self::IsIn(_, o) => o.is_none(),
         }
     }
 }
@@ -2311,6 +2344,10 @@ pub enum ResourceConstraint {
     In(EntityUid),
     /// Must be equal to the given EntityUid
     Eq(EntityUid),
+    /// Must be the given EntityTypeName
+    Is(EntityTypeName),
+    /// Must be the given EntityTypeName, and `in` the EntityUID
+    IsIn(EntityTypeName, EntityUid),
 }
 
 /// Head constraint on policy resources for templates.
@@ -2324,14 +2361,19 @@ pub enum TemplateResourceConstraint {
     /// Must be equal to the given EntityUid.
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
+    /// Must be the given EntityTypeName.
+    Is(EntityTypeName),
+    /// Must be the given EntityTypeName, and `in` the EntityUID.
+    /// If the EntityUID is [`None`], then it is a template slot.
+    IsIn(EntityTypeName, Option<EntityUid>),
 }
 
 impl TemplateResourceConstraint {
     /// Does this constraint contain a slot?
     pub fn has_slot(&self) -> bool {
         match self {
-            Self::Any => false,
-            Self::In(o) | Self::Eq(o) => o.is_none(),
+            Self::Any | Self::Is(_) => false,
+            Self::In(o) | Self::Eq(o) | Self::IsIn(_, o) => o.is_none(),
         }
     }
 }
@@ -2440,6 +2482,15 @@ impl Policy {
             ast::PrincipalOrResourceConstraint::Eq(eref) => {
                 PrincipalConstraint::Eq(self.convert_entity_reference(eref, slot_id).clone())
             }
+            ast::PrincipalOrResourceConstraint::Is(entity_type) => {
+                PrincipalConstraint::Is(EntityTypeName(entity_type.clone()))
+            }
+            ast::PrincipalOrResourceConstraint::IsIn(entity_type, eref) => {
+                PrincipalConstraint::IsIn(
+                    EntityTypeName(entity_type.clone()),
+                    self.convert_entity_reference(eref, slot_id).clone(),
+                )
+            }
         }
     }
 
@@ -2469,6 +2520,15 @@ impl Policy {
             }
             ast::PrincipalOrResourceConstraint::Eq(eref) => {
                 ResourceConstraint::Eq(self.convert_entity_reference(eref, slot_id).clone())
+            }
+            ast::PrincipalOrResourceConstraint::Is(entity_type) => {
+                ResourceConstraint::Is(EntityTypeName(entity_type.clone()))
+            }
+            ast::PrincipalOrResourceConstraint::IsIn(entity_type, eref) => {
+                ResourceConstraint::IsIn(
+                    EntityTypeName(entity_type.clone()),
+                    self.convert_entity_reference(eref, slot_id).clone(),
+                )
             }
         }
     }
@@ -3749,7 +3809,20 @@ mod head_constraints_tests {
             PrincipalConstraint::Eq(euid.clone())
         );
         let p = Policy::from_str("permit(principal in T::\"a\",action,resource);").unwrap();
-        assert_eq!(p.principal_constraint(), PrincipalConstraint::In(euid));
+        assert_eq!(
+            p.principal_constraint(),
+            PrincipalConstraint::In(euid.clone())
+        );
+        let p = Policy::from_str("permit(principal is T,action,resource);").unwrap();
+        assert_eq!(
+            p.principal_constraint(),
+            PrincipalConstraint::Is(EntityTypeName::from_str("T").unwrap())
+        );
+        let p = Policy::from_str("permit(principal is T in T::\"a\",action,resource);").unwrap();
+        assert_eq!(
+            p.principal_constraint(),
+            PrincipalConstraint::IsIn(EntityTypeName::from_str("T").unwrap(), euid)
+        );
     }
 
     #[test]
@@ -3788,7 +3861,22 @@ mod head_constraints_tests {
             ResourceConstraint::Eq(euid.clone())
         );
         let p = Policy::from_str("permit(principal,action,resource in NN::N::T::\"a\");").unwrap();
-        assert_eq!(p.resource_constraint(), ResourceConstraint::In(euid));
+        assert_eq!(
+            p.resource_constraint(),
+            ResourceConstraint::In(euid.clone())
+        );
+        let p = Policy::from_str("permit(principal,action,resource is NN::N::T);").unwrap();
+        assert_eq!(
+            p.resource_constraint(),
+            ResourceConstraint::Is(EntityTypeName::from_str("NN::N::T").unwrap())
+        );
+        let p =
+            Policy::from_str("permit(principal,action,resource is NN::N::T in NN::N::T::\"a\");")
+                .unwrap();
+        assert_eq!(
+            p.resource_constraint(),
+            ResourceConstraint::IsIn(EntityTypeName::from_str("NN::N::T").unwrap(), euid)
+        );
     }
 
     #[test]
@@ -3822,8 +3910,33 @@ mod head_constraints_tests {
             p.principal_constraint(),
             PrincipalConstraint::In(euid.clone())
         );
-        let p = link("permit(principal == ?principal,action,resource);", map);
-        assert_eq!(p.principal_constraint(), PrincipalConstraint::Eq(euid));
+        let p = link(
+            "permit(principal == ?principal,action,resource);",
+            map.clone(),
+        );
+        assert_eq!(
+            p.principal_constraint(),
+            PrincipalConstraint::Eq(euid.clone())
+        );
+
+        let p = link(
+            "permit(principal is T in T::\"a\",action,resource);",
+            HashMap::new(),
+        );
+        assert_eq!(
+            p.principal_constraint(),
+            PrincipalConstraint::IsIn(EntityTypeName::from_str("T").unwrap(), euid.clone())
+        );
+        let p = link("permit(principal is T,action,resource);", HashMap::new());
+        assert_eq!(
+            p.principal_constraint(),
+            PrincipalConstraint::Is(EntityTypeName::from_str("T").unwrap())
+        );
+        let p = link("permit(principal is T in ?principal,action,resource);", map);
+        assert_eq!(
+            p.principal_constraint(),
+            PrincipalConstraint::IsIn(EntityTypeName::from_str("T").unwrap(), euid.clone())
+        );
     }
 
     #[test]
@@ -3877,8 +3990,33 @@ mod head_constraints_tests {
             p.resource_constraint(),
             ResourceConstraint::In(euid.clone())
         );
-        let p = link("permit(principal,action,resource == ?resource);", map);
-        assert_eq!(p.resource_constraint(), ResourceConstraint::Eq(euid));
+        let p = link(
+            "permit(principal,action,resource == ?resource);",
+            map.clone(),
+        );
+        assert_eq!(
+            p.resource_constraint(),
+            ResourceConstraint::Eq(euid.clone())
+        );
+
+        let p = link(
+            "permit(principal,action,resource is T in T::\"a\");",
+            HashMap::new(),
+        );
+        assert_eq!(
+            p.resource_constraint(),
+            ResourceConstraint::IsIn(EntityTypeName::from_str("T").unwrap(), euid.clone())
+        );
+        let p = link("permit(principal,action,resource is T);", HashMap::new());
+        assert_eq!(
+            p.resource_constraint(),
+            ResourceConstraint::Is(EntityTypeName::from_str("T").unwrap())
+        );
+        let p = link("permit(principal,action,resource is T in ?resource);", map);
+        assert_eq!(
+            p.resource_constraint(),
+            ResourceConstraint::IsIn(EntityTypeName::from_str("T").unwrap(), euid)
+        );
     }
 
     fn link(src: &str, values: HashMap<SlotId, EntityUid>) -> Policy {
@@ -5761,6 +5899,34 @@ mod schema_based_parsing_tests {
             t.principal_constraint(),
             TemplatePrincipalConstraint::In(Some(EntityUid::from_strs("A", "a")))
         );
+
+        let src = r#"
+            permit(principal is A, action, resource);
+        "#;
+        let t = Template::parse(None, src).unwrap();
+        assert_eq!(
+            t.principal_constraint(),
+            TemplatePrincipalConstraint::Is(EntityTypeName::from_str("A").unwrap())
+        );
+        let src = r#"
+            permit(principal is A in ?principal, action, resource);
+        "#;
+        let t = Template::parse(None, src).unwrap();
+        assert_eq!(
+            t.principal_constraint(),
+            TemplatePrincipalConstraint::IsIn(EntityTypeName::from_str("A").unwrap(), None)
+        );
+        let src = r#"
+            permit(principal is A in A::"a", action, resource);
+        "#;
+        let t = Template::parse(None, src).unwrap();
+        assert_eq!(
+            t.principal_constraint(),
+            TemplatePrincipalConstraint::IsIn(
+                EntityTypeName::from_str("A").unwrap(),
+                Some(EntityUid::from_strs("A", "a"))
+            )
+        );
     }
 
     #[test]
@@ -5835,6 +6001,34 @@ mod schema_based_parsing_tests {
         assert_eq!(
             t.resource_constraint(),
             TemplateResourceConstraint::In(Some(EntityUid::from_strs("A", "a")))
+        );
+
+        let src = r#"
+            permit(principal, action, resource is A);
+        "#;
+        let t = Template::parse(None, src).unwrap();
+        assert_eq!(
+            t.resource_constraint(),
+            TemplateResourceConstraint::Is(EntityTypeName::from_str("A").unwrap())
+        );
+        let src = r#"
+            permit(principal, action, resource is A in ?resource);
+        "#;
+        let t = Template::parse(None, src).unwrap();
+        assert_eq!(
+            t.resource_constraint(),
+            TemplateResourceConstraint::IsIn(EntityTypeName::from_str("A").unwrap(), None)
+        );
+        let src = r#"
+            permit(principal, action, resource is A in A::"a");
+        "#;
+        let t = Template::parse(None, src).unwrap();
+        assert_eq!(
+            t.resource_constraint(),
+            TemplateResourceConstraint::IsIn(
+                EntityTypeName::from_str("A").unwrap(),
+                Some(EntityUid::from_strs("A", "a"))
+            )
         );
     }
 

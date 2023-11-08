@@ -16,7 +16,6 @@
 
 use super::utils::unwrap_or_clone;
 use super::FromJsonError;
-use crate::ast;
 use crate::entities::{
     CedarValueJson, EscapeKind, FnAndArg, JsonDeserializationError,
     JsonDeserializationErrorContext, TypeAndId,
@@ -26,6 +25,7 @@ use crate::parser::cst::{self, Ident};
 use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::unescape;
 use crate::parser::ASTNode;
+use crate::{ast, FromNormalizedStr};
 use either::Either;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -220,6 +220,18 @@ pub enum ExprNoExt {
         left: Arc<Expr>,
         /// Pattern
         pattern: SmolStr,
+    },
+    /// `<entity> is <entity_type> in <entity_or_entity_set> `
+    #[serde(rename = "is")]
+    Is {
+        /// Left-hand entity argument
+        left: Arc<Expr>,
+        /// Entity type
+        entity_type: SmolStr,
+        /// Entity or entity set
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(rename = "in")]
+        in_expr: Option<Arc<Expr>>,
     },
     /// Ternary
     #[serde(rename = "if-then-else")]
@@ -437,6 +449,24 @@ impl Expr {
         })
     }
 
+    /// `left is entity_type`
+    pub fn is_entity_type(left: Expr, entity_type: SmolStr) -> Self {
+        Expr::ExprNoExt(ExprNoExt::Is {
+            left: Arc::new(left),
+            entity_type,
+            in_expr: None,
+        })
+    }
+
+    /// `left is entity_type in entity`
+    pub fn is_entity_type_in(left: Expr, entity_type: SmolStr, entity: Expr) -> Self {
+        Expr::ExprNoExt(ExprNoExt::Is {
+            left: Arc::new(left),
+            entity_type,
+            in_expr: Some(Arc::new(entity)),
+        })
+    }
+
     /// `if cond_expr then then_expr else else_expr`
     pub fn ite(cond_expr: Expr, then_expr: Expr, else_expr: Expr) -> Self {
         Expr::ExprNoExt(ExprNoExt::If {
@@ -579,6 +609,25 @@ impl Expr {
                     Err(errs) => Err(FromJsonError::UnescapeError(errs)),
                 }
             }
+            Expr::ExprNoExt(ExprNoExt::Is {
+                left,
+                entity_type,
+                in_expr,
+            }) => ast::Name::from_normalized_str(entity_type.as_str())
+                .map_err(FromJsonError::InvalidEntityType)
+                .and_then(|entity_type_name| {
+                    let left: ast::Expr = (*left).clone().try_into_ast(id.clone())?;
+                    let is_expr = ast::Expr::is_entity_type(left.clone(), entity_type_name);
+                    match in_expr {
+                        // The AST doesn't have an `... is ... in ..` node, so
+                        // we represent it as a conjunction of `is` and `in`.
+                        Some(in_expr) => Ok(ast::Expr::and(
+                            is_expr,
+                            ast::Expr::is_in(left, (*in_expr).clone().try_into_ast(id)?),
+                        )),
+                        None => Ok(is_expr),
+                    }
+                }),
             Expr::ExprNoExt(ExprNoExt::If {
                 cond_expr,
                 then_expr,
@@ -697,6 +746,9 @@ impl From<ast::Expr> for Expr {
             }
             ast::ExprKind::Like { expr, pattern } => {
                 Expr::like(unwrap_or_clone(expr).into(), pattern.to_string().into())
+            }
+            ast::ExprKind::Is { expr, entity_type } => {
+                Expr::is_entity_type(unwrap_or_clone(expr).into(), entity_type.to_string().into())
             }
             ast::ExprKind::Set(set) => {
                 Expr::set(unwrap_or_clone(set).into_iter().map(Into::into).collect())
@@ -880,6 +932,38 @@ impl TryFrom<cst::Relation> for Expr {
                     Ok(Expr::like(target_expr, pat_str))
                 }
                 (_, _) => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
+            },
+            cst::Relation::IsIn {
+                target,
+                entity_type,
+                in_entity,
+            } => match (target, entity_type) {
+                (
+                    ASTNode {
+                        node: Some(target), ..
+                    },
+                    ASTNode {
+                        node: Some(entity_type),
+                        ..
+                    },
+                ) => {
+                    let target = target.try_into()?;
+                    match in_entity {
+                        Some(ASTNode {
+                            node: Some(in_entity),
+                            ..
+                        }) => Ok(Expr::is_entity_type_in(
+                            target,
+                            entity_type.to_string().into(),
+                            in_entity.try_into()?,
+                        )),
+                        None => Ok(Expr::is_entity_type(target, entity_type.to_string().into())),
+                        Some(ASTNode { node: None, .. }) => {
+                            Err(ParseError::ToAST(ToASTError::MissingNodeData).into())
+                        }
+                    }
+                }
+                _ => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
             },
         }
     }
@@ -1377,6 +1461,7 @@ fn ident_to_str_len(i: &Ident) -> usize {
         Ident::Else => 4,
         Ident::Ident(s) => s.len(),
         Ident::Invalid(s) => s.len(),
+        Ident::Is => 2,
     }
 }
 
@@ -1600,6 +1685,17 @@ impl std::fmt::Display for ExprNoExt {
             ExprNoExt::Like { left, pattern } => {
                 write!(f, "{} like \"{}\"", maybe_with_parens(left), pattern) // intentionally not using .escape_debug() for pattern
             }
+            ExprNoExt::Is {
+                left,
+                entity_type,
+                in_expr,
+            } => {
+                write!(f, "{} is {}", maybe_with_parens(left), entity_type)?;
+                match in_expr {
+                    Some(in_expr) => write!(f, " in {}", maybe_with_parens(in_expr)),
+                    None => Ok(()),
+                }
+            }
             ExprNoExt::If {
                 cond_expr,
                 then_expr,
@@ -1694,6 +1790,7 @@ fn maybe_with_parens(expr: &Expr) -> String {
         Expr::ExprNoExt(ExprNoExt::GetAttr { .. }) => format!("({expr})"),
         Expr::ExprNoExt(ExprNoExt::HasAttr { .. }) => format!("({expr})"),
         Expr::ExprNoExt(ExprNoExt::Like { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Is { .. }) => format!("({expr})"),
         Expr::ExprNoExt(ExprNoExt::If { .. }) => format!("({expr})"),
         Expr::ExprNoExt(ExprNoExt::Set(_)) => expr.to_string(),
         Expr::ExprNoExt(ExprNoExt::Record(_)) => expr.to_string(),

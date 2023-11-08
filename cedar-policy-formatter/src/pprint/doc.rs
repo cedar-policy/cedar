@@ -41,19 +41,41 @@ impl Doc for ASTNode<Option<VariableDef>> {
         let end_comment = get_comment_at_end(self.info.0.end, &mut context.tokens)?;
         let var_doc = vd.variable.as_inner()?.to_doc(context)?;
 
+        let is_doc = match &vd.entity_type {
+            Some(entity_type) => Some(
+                RcDoc::line()
+                    .append(add_comment(
+                        RcDoc::text("is"),
+                        get_comment_after_end(vd.variable.info.0.end, &mut context.tokens)?,
+                        RcDoc::nil(),
+                    ))
+                    .group()
+                    .append(
+                        RcDoc::line()
+                            .append(entity_type.to_doc(context)?)
+                            .nest(context.config.indent_width),
+                    )
+                    .group(),
+            ),
+            None => Some(RcDoc::nil()),
+        }?;
+
         Some(match &vd.ineq {
-            Some((op, rhs)) => get_leading_comment_doc_from_str(&start_comment.leading_comment)
-                .append(
+            Some((op, rhs)) => {
+                let op_comment = match &vd.entity_type {
+                    Some(entity_type) => {
+                        get_comment_after_end(entity_type.info.0.end, &mut context.tokens)?
+                    }
+                    None => get_comment_after_end(vd.variable.info.0.end, &mut context.tokens)?,
+                };
+                get_leading_comment_doc_from_str(&start_comment.leading_comment).append(
                     var_doc
                         .append(get_trailing_comment_doc_from_str(
                             &start_comment.trailing_comment,
                         ))
+                        .append(is_doc)
                         .append(RcDoc::line())
-                        .append(add_comment(
-                            RcDoc::as_string(op),
-                            get_comment_after_end(vd.variable.info.0.end, &mut context.tokens)?,
-                            RcDoc::nil(),
-                        ))
+                        .append(add_comment(RcDoc::as_string(op), op_comment, RcDoc::nil()))
                         .group()
                         .append(
                             RcDoc::line()
@@ -67,8 +89,13 @@ impl Doc for ASTNode<Option<VariableDef>> {
                         .append(get_trailing_comment_doc_from_str(
                             &end_comment.trailing_comment,
                         )),
-                ),
-            None => add_comment(var_doc, start_comment, RcDoc::nil()),
+                )
+            }
+            None => add_comment(var_doc, start_comment, RcDoc::nil())
+                .append(is_doc)
+                .append(get_trailing_comment_doc_from_str(
+                    &end_comment.trailing_comment,
+                )),
         })
     }
 }
@@ -260,6 +287,41 @@ impl Doc for ASTNode<Option<Relation>> {
                     .append(pattern.to_doc(context)?.nest(context.config.indent_width))
                     .group(),
             ),
+            Relation::IsIn {
+                target,
+                entity_type,
+                in_entity,
+            } => {
+                let doc_is = target
+                    .to_doc(context)?
+                    .append(RcDoc::space())
+                    .append(add_comment(
+                        RcDoc::text("is"),
+                        get_comment_after_end(target.info.0.end, &mut context.tokens)?,
+                        RcDoc::nil(),
+                    ))
+                    .append(RcDoc::space())
+                    .append(
+                        entity_type
+                            .to_doc(context)?
+                            .nest(context.config.indent_width),
+                    );
+                Some(
+                    match in_entity {
+                        Some(in_entity) => doc_is
+                            .append(RcDoc::line())
+                            .append(add_comment(
+                                RcDoc::text("in"),
+                                get_comment_after_end(entity_type.info.0.end, &mut context.tokens)?,
+                                RcDoc::nil(),
+                            ))
+                            .append(RcDoc::space())
+                            .append(in_entity.to_doc(context)?.nest(context.config.indent_width)),
+                        None => doc_is,
+                    }
+                    .group(),
+                )
+            }
         }
     }
 }

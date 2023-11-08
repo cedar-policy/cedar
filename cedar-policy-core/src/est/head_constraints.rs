@@ -15,9 +15,10 @@
  */
 
 use super::{FromJsonError, InstantiationError};
-use crate::ast;
 use crate::entities::{EntityUidJson, JsonDeserializationErrorContext};
+use crate::{ast, FromNormalizedStr};
 use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -34,6 +35,9 @@ pub enum PrincipalConstraint {
     /// `in` constraint
     #[serde(rename = "in")]
     In(PrincipalOrResourceInConstraint),
+    /// `is` (and possibly `in`) constraint
+    #[serde(rename = "is")]
+    Is(PrincipalOrResourceIsConstraint),
 }
 
 /// Serde JSON structure for an action head constraint in the EST format
@@ -64,6 +68,9 @@ pub enum ResourceConstraint {
     /// `in` constraint
     #[serde(rename = "in")]
     In(PrincipalOrResourceInConstraint),
+    #[serde(rename = "is")]
+    /// `is` (and possibly `in`) constraint
+    Is(PrincipalOrResourceIsConstraint),
 }
 
 /// Serde JSON structure for a `==` head constraint in the EST format
@@ -97,6 +104,17 @@ pub enum PrincipalOrResourceInConstraint {
         /// slot
         slot: ast::SlotId,
     },
+}
+
+/// Serde JSON structure for an `is` head constraint for principal/resource in
+/// the EST format
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrincipalOrResourceIsConstraint {
+    entity_type: SmolStr,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "in")]
+    in_entity: Option<PrincipalOrResourceInConstraint>,
 }
 
 /// Serde JSON structure for an `in` head constraint for action in the EST
@@ -148,6 +166,22 @@ impl PrincipalConstraint {
                     None => Err(InstantiationError::MissedSlot { slot }),
                 }
             }
+            e @ PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type: _,
+                in_entity: None | Some(PrincipalOrResourceInConstraint::Entity { .. }),
+            }) => Ok(e),
+            PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type,
+                in_entity: Some(PrincipalOrResourceInConstraint::Slot { slot }),
+            }) => Ok(PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type,
+                in_entity: Some(PrincipalOrResourceInConstraint::Entity {
+                    entity: vals
+                        .get(&slot)
+                        .ok_or(InstantiationError::MissedSlot { slot })?
+                        .clone(),
+                }),
+            })),
         }
     }
 }
@@ -184,6 +218,22 @@ impl ResourceConstraint {
                     None => Err(InstantiationError::MissedSlot { slot }),
                 }
             }
+            e @ ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type: _,
+                in_entity: None | Some(PrincipalOrResourceInConstraint::Entity { .. }),
+            }) => Ok(e),
+            ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type,
+                in_entity: Some(PrincipalOrResourceInConstraint::Slot { slot }),
+            }) => Ok(ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type,
+                in_entity: Some(PrincipalOrResourceInConstraint::Entity {
+                    entity: vals
+                        .get(&slot)
+                        .ok_or(InstantiationError::MissedSlot { slot })?
+                        .clone(),
+                }),
+            })),
         }
     }
 }
@@ -213,6 +263,11 @@ impl std::fmt::Display for PrincipalConstraint {
             Self::In(ic) => {
                 write!(f, "principal ")?;
                 std::fmt::Display::fmt(ic, f)?;
+                Ok(())
+            }
+            Self::Is(isc) => {
+                write!(f, "principal ")?;
+                std::fmt::Display::fmt(isc, f)?;
                 Ok(())
             }
         }
@@ -251,6 +306,11 @@ impl std::fmt::Display for ResourceConstraint {
                 std::fmt::Display::fmt(ic, f)?;
                 Ok(())
             }
+            Self::Is(isc) => {
+                write!(f, "resource ")?;
+                std::fmt::Display::fmt(isc, f)?;
+                Ok(())
+            }
         }
     }
 }
@@ -286,6 +346,16 @@ impl std::fmt::Display for PrincipalOrResourceInConstraint {
             }
             Self::Slot { slot } => write!(f, "in {slot}"),
         }
+    }
+}
+
+impl std::fmt::Display for PrincipalOrResourceIsConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "is {}", self.entity_type)?;
+        if let Some(in_entity) = &self.in_entity {
+            write!(f, " {}", in_entity)?;
+        }
+        Ok(())
     }
 }
 
@@ -372,6 +442,25 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
                     slot: ast::SlotId::principal(),
                 })
             }
+            ast::PrincipalOrResourceConstraint::IsIn(entity_type, euid) => {
+                PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                    entity_type: entity_type.to_string().into(),
+                    in_entity: Some(match euid {
+                        ast::EntityReference::EUID(e) => PrincipalOrResourceInConstraint::Entity {
+                            entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
+                        },
+                        ast::EntityReference::Slot => PrincipalOrResourceInConstraint::Slot {
+                            slot: ast::SlotId::principal(),
+                        },
+                    }),
+                })
+            }
+            ast::PrincipalOrResourceConstraint::Is(entity_type) => {
+                PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                    entity_type: entity_type.to_string().into(),
+                    in_entity: None,
+                })
+            }
         }
     }
 }
@@ -398,6 +487,25 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
             ast::PrincipalOrResourceConstraint::In(ast::EntityReference::Slot) => {
                 ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot {
                     slot: ast::SlotId::resource(),
+                })
+            }
+            ast::PrincipalOrResourceConstraint::IsIn(entity_type, euid) => {
+                ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                    entity_type: entity_type.to_string().into(),
+                    in_entity: Some(match euid {
+                        ast::EntityReference::EUID(e) => PrincipalOrResourceInConstraint::Entity {
+                            entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
+                        },
+                        ast::EntityReference::Slot => PrincipalOrResourceInConstraint::Slot {
+                            slot: ast::SlotId::resource(),
+                        },
+                    }),
+                })
+            }
+            ast::PrincipalOrResourceConstraint::Is(entity_type) => {
+                ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                    entity_type: entity_type.to_string().into(),
+                    in_entity: None,
                 })
             }
         }
@@ -439,6 +547,25 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
                     Err(Self::Error::InvalidSlotName)
                 }
             }
+            PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type,
+                in_entity,
+            }) => ast::Name::from_normalized_str(entity_type.as_str())
+                .map_err(Self::Error::InvalidEntityType)
+                .and_then(|entity_type| {
+                    Ok(match in_entity {
+                        None => ast::PrincipalOrResourceConstraint::is_entity_type(entity_type),
+                        Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
+                            ast::PrincipalOrResourceConstraint::is_entity_type_in(
+                                entity_type,
+                                entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
+                            )
+                        }
+                        Some(PrincipalOrResourceInConstraint::Slot { .. }) => {
+                            ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type)
+                        }
+                    })
+                }),
         }
     }
 }
@@ -478,6 +605,25 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
                     Err(Self::Error::InvalidSlotName)
                 }
             }
+            ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type,
+                in_entity,
+            }) => ast::Name::from_normalized_str(entity_type.as_str())
+                .map_err(Self::Error::InvalidEntityType)
+                .and_then(|entity_type| {
+                    Ok(match in_entity {
+                        None => ast::PrincipalOrResourceConstraint::is_entity_type(entity_type),
+                        Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
+                            ast::PrincipalOrResourceConstraint::is_entity_type_in(
+                                entity_type,
+                                entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
+                            )
+                        }
+                        Some(PrincipalOrResourceInConstraint::Slot { .. }) => {
+                            ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type)
+                        }
+                    })
+                }),
         }
     }
 }

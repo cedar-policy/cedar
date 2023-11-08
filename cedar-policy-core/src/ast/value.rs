@@ -67,6 +67,7 @@ impl TryFrom<Expr> for Value {
             ExprKind::GetAttr { .. } => Err(NotValue::NotValue),
             ExprKind::HasAttr { .. } => Err(NotValue::NotValue),
             ExprKind::Like { .. } => Err(NotValue::NotValue),
+            ExprKind::Is { .. } => Err(NotValue::NotValue),
             ExprKind::Set(members) => members
                 .iter()
                 .map(|e| e.clone().try_into())

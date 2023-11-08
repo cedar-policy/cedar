@@ -19,7 +19,7 @@
 #![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
-use std::str::FromStr;
+use std::{str::FromStr, vec};
 
 use cedar_policy_core::ast::{BinaryOp, EntityUID, Expr, PatternElem, SlotId, Var};
 use serde_json::json;
@@ -27,13 +27,14 @@ use smol_str::SmolStr;
 
 use crate::{
     type_error::TypeError, types::Type, AttributeAccess, AttributesOrContext, EntityType,
-    NamespaceDefinition, ValidationMode,
+    NamespaceDefinition, SchemaFragment, ValidationMode,
 };
 
 use super::test_utils::{
-    assert_typecheck_fails_empty_schema, assert_typecheck_fails_empty_schema_without_type,
-    assert_typecheck_fails_for_mode, assert_typechecks, assert_typechecks_empty_schema,
-    assert_typechecks_empty_schema_permissive, assert_typechecks_for_mode, empty_schema_file,
+    assert_typecheck_fails, assert_typecheck_fails_empty_schema,
+    assert_typecheck_fails_empty_schema_without_type, assert_typecheck_fails_for_mode,
+    assert_typechecks, assert_typechecks_empty_schema, assert_typechecks_empty_schema_permissive,
+    assert_typechecks_for_mode, empty_schema_file,
 };
 
 #[test]
@@ -1095,5 +1096,50 @@ fn add_sub_typecheck_fails() {
             Type::primitive_long(),
             Type::primitive_string(),
         )],
+    );
+}
+
+#[test]
+fn is_typecheck_fails() {
+    let schema: NamespaceDefinition =
+        serde_json::from_value(json!({ "entityTypes": { "User": {}, }, "actions": {} })).unwrap();
+    assert_typecheck_fails(
+        schema,
+        r#"1 is User"#.parse().unwrap(),
+        Some(Type::primitive_boolean()),
+        vec![TypeError::expected_type(
+            Expr::val(1),
+            Type::any_entity_reference(),
+            Type::primitive_long(),
+        )],
+    );
+}
+
+#[test]
+fn is_typechecks() {
+    let schema: SchemaFragment = serde_json::from_value(json!({
+            "": { "entityTypes": { "User": {}, "Photo": {} }, "actions": {} },
+            "N::S": { "entityTypes": { "User": {} }, "actions": {} }
+    }))
+    .unwrap();
+    assert_typechecks(
+        schema.clone(),
+        r#"User::"alice" is User"#.parse().unwrap(),
+        Type::singleton_boolean(true),
+    );
+    assert_typechecks(
+        schema.clone(),
+        r#"User::"alice" is Photo"#.parse().unwrap(),
+        Type::singleton_boolean(false),
+    );
+    assert_typechecks(
+        schema.clone(),
+        r#"N::S::User::"alice" is N::S::User"#.parse().unwrap(),
+        Type::singleton_boolean(true),
+    );
+    assert_typechecks(
+        schema,
+        r#"N::S::User::"alice" is User"#.parse().unwrap(),
+        Type::singleton_boolean(false),
     );
 }
