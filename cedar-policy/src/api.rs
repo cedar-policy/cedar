@@ -1304,34 +1304,47 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
     }
 }
 
-/// Contains the result of policy validation. The result includes the list of of
-/// issues found by the validation and whether validation succeeds or fails.
-/// Validation succeeds if there are no fatal errors.  There are currently no
-/// non-fatal warnings, so any issues found will cause validation to fail.
+/// Contains the result of policy validation. The result includes the list of
+/// issues found by validation and whether validation succeeds or fails.
+/// Validation succeeds if there are no fatal errors. There may still be
+/// non-fatal warnings present when validation passes.
 #[derive(Debug)]
 pub struct ValidationResult<'a> {
     validation_errors: Vec<ValidationError<'a>>,
+    validation_warnings: Vec<ValidationWarning<'a>>,
 }
 
 impl<'a> ValidationResult<'a> {
-    /// True when validation passes. There are no fatal errors.
+    /// True when validation passes. There are no errors, but there may be
+    /// non-fatal warnings. Use [`ValidationResult::validation_passed_without_warnings`]
+    /// to check that there are also no warnings.
     pub fn validation_passed(&self) -> bool {
         self.validation_errors.is_empty()
     }
 
-    /// Get the list of errors found by the validator.
+    /// True when validation passes (i.e., there are no errors) and there are
+    /// additionally no non-fatal warnings.
+    pub fn validation_passed_without_warnings(&self) -> bool {
+        self.validation_errors.is_empty() && self.validation_warnings.is_empty()
+    }
+
+    /// Get an iterator over the errors found by the validator.
     pub fn validation_errors(&self) -> impl Iterator<Item = &ValidationError<'a>> {
         self.validation_errors.iter()
+    }
+
+    /// Get an iterator over the warnings found by the validator.
+    pub fn validation_warnings(&self) -> impl Iterator<Item = &ValidationWarning<'a>> {
+        self.validation_warnings.iter()
     }
 }
 
 impl<'a> From<cedar_policy_validator::ValidationResult<'a>> for ValidationResult<'a> {
     fn from(r: cedar_policy_validator::ValidationResult<'a>) -> Self {
+        let (errors, warnings) = r.into_errors_and_warnings();
         Self {
-            validation_errors: r
-                .into_validation_errors()
-                .map(ValidationError::from)
-                .collect(),
+            validation_errors: errors.map(ValidationError::from).collect(),
+            validation_warnings: warnings.map(ValidationWarning::from).collect(),
         }
     }
 }
@@ -1421,7 +1434,10 @@ impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation<'a>
     }
 }
 
-/// Scan a set of policies for potentially confusing/obfuscating text.
+/// Scan a set of policies for potentially confusing/obfuscating text. These
+/// checks are also provided through [`Validator::validate`] which provides more
+/// comprehensive error detection, but this function can be used to check for
+/// confusable strings without defining a schema.
 pub fn confusable_string_checker<'a>(
     templates: impl Iterator<Item = &'a Template>,
 ) -> impl Iterator<Item = ValidationWarning<'a>> {

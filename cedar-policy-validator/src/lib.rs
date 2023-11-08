@@ -89,7 +89,10 @@ impl Validator {
             .policies()
             .filter_map(|p| self.validate_slots(p))
             .flatten();
-        ValidationResult::new(template_and_static_policy_errs.chain(link_errs))
+        ValidationResult::new(
+            template_and_static_policy_errs.chain(link_errs),
+            confusable_string_checks(policies.all_templates()),
+        )
     }
 
     /// Run all validations against a single static policy or template (note
@@ -159,8 +162,13 @@ impl Validator {
 mod test {
     use std::collections::HashMap;
 
+    use crate::types::Type;
+
     use super::*;
-    use cedar_policy_core::{ast, parser};
+    use cedar_policy_core::{
+        ast::{self, Expr},
+        parser,
+    };
 
     #[test]
     fn top_level_validate() -> Result<()> {
@@ -305,8 +313,8 @@ mod test {
         // the template is valid by itself
         let result = validator.validate(&set, ValidationMode::default());
         assert_eq!(
-            result.into_validation_errors().collect::<Vec<_>>(),
-            Vec::new()
+            result.validation_errors().collect::<Vec<_>>(),
+            Vec::<&ValidationError>::new()
         );
 
         // a valid instantiation is valid
@@ -390,5 +398,65 @@ mod test {
         assert!(result.validation_errors().any(|x| x == &invalid_action_err));
 
         Ok(())
+    }
+
+    #[test]
+    fn validate_finds_warning_and_error() {
+        let schema: ValidatorSchema = serde_json::from_str::<SchemaFragment>(
+            r#"
+            {
+                "": {
+                    "entityTypes": {
+                        "User": { }
+                    },
+                    "actions": {
+                        "view": {
+                            "appliesTo": {
+                                "resourceTypes": [ "User" ],
+                                "principalTypes": [ "User" ]
+                            }
+                        }
+                    }
+                }
+            }
+        "#,
+        )
+        .expect("Schema parse error.")
+        .try_into()
+        .expect("Expected valid schema.");
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let p = parser::parse_policy(
+            None,
+            r#"permit(principal == User::"һenry", action, resource) when {1 > true};"#,
+        )
+        .unwrap();
+        set.add_static(p).unwrap();
+
+        let result = validator.validate(&set, ValidationMode::default());
+        assert_eq!(
+            result
+                .validation_errors()
+                .map(|err| err.error_kind())
+                .collect::<Vec<_>>(),
+            vec![&ValidationErrorKind::type_error(
+                TypeError::expected_type(
+                    Expr::val(1),
+                    Type::primitive_long(),
+                    Type::singleton_boolean(true)
+                )
+                .kind
+            )]
+        );
+        assert_eq!(
+            result
+                .validation_warnings()
+                .map(|warn| warn.kind())
+                .collect::<Vec<_>>(),
+            vec![&ValidationWarningKind::MixedScriptIdentifier(
+                "һenry".into()
+            )]
+        );
     }
 }

@@ -445,6 +445,7 @@ fn run_validate_test(policies_file: &str, schema_file: &str, exit_code: CedarExi
     let cmd = ValidateArgs {
         schema_file: schema_file.into(),
         policies_file: policies_file.into(),
+        deny_warnings: false,
     };
     let output = validate(&cmd);
     assert_eq!(exit_code, output, "{:#?}", cmd);

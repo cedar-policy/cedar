@@ -108,6 +108,9 @@ pub struct ValidateArgs {
     /// File containing the policy set
     #[arg(short, long = "policies", value_name = "FILE")]
     pub policies_file: String,
+    /// Report a validation failure for non-fatal warnings
+    #[arg(long)]
+    pub deny_warnings: bool,
 }
 
 #[derive(Args, Debug)]
@@ -447,16 +450,34 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
 
     let validator = Validator::new(schema);
     let result = validator.validate(&pset, ValidationMode::default());
-    if result.validation_passed() {
-        println!("Validation Passed");
-        return CedarExitCode::Success;
+
+    let exit_code = if !result.validation_passed()
+        || (args.deny_warnings && !result.validation_passed_without_warnings())
+    {
+        println!("Validation Failed");
+        CedarExitCode::ValidationFailure
     } else {
-        println!("Validation Results:");
-        for note in result.validation_errors() {
+        println!("Validation Passed");
+        CedarExitCode::Success
+    };
+
+    let mut errors = result.validation_errors().peekable();
+    if errors.peek().is_some() {
+        println!("Validation Errors:");
+        for note in errors {
             println!("{}", note);
         }
-        return CedarExitCode::ValidationFailure;
     }
+
+    let mut warnings = result.validation_warnings().peekable();
+    if warnings.peek().is_some() {
+        println!("Validation Warnings:");
+        for note in warnings {
+            println!("{}", note);
+        }
+    }
+
+    exit_code
 }
 
 pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
