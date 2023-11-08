@@ -3776,11 +3776,11 @@ mod tests {
         let invalid_is_policies = [
             (
                 r#"permit(principal in Group::"friends" is User, action, resource);"#,
-                "expected a entity uid or template slot",
+                "expected a entity uid or matching template slot",
             ),
             (
                 r#"permit(principal, action, resource in Folder::"folder" is File);"#,
-                "expected a entity uid or template slot",
+                "expected a entity uid or matching template slot",
             ),
             (
                 r#"permit(principal is User == User::"Alice", action, resource);"#,
@@ -3800,11 +3800,11 @@ mod tests {
             ),
             (
                 r#"permit(principal is User in 1, action, resource);"#,
-                "expected a entity uid or template slot, found a `literal` statement",
+                "expected a entity uid or matching template slot, found a `literal` statement",
             ),
             (
                 r#"permit(principal, action, resource is File in 1);"#,
-                "expected a entity uid or template slot, found a `literal` statement",
+                "expected a entity uid or matching template slot, found a `literal` statement",
             ),
             (
                 r#"permit(principal is 1, action, resource);"#,
@@ -3824,11 +3824,11 @@ mod tests {
             ),
             (
                 r#"permit(principal is User in ?resource, action, resource);"#,
-                "expected a entity uid or template slot",
+                "expected a entity uid or matching template slot",
             ),
             (
                 r#"permit(principal, action, resource is Folder in ?principal);"#,
-                "expected a entity uid or template slot",
+                "expected a entity uid or matching template slot",
             ),
             (
                 r#"permit(principal, action, resource) when { principal is 1 };"#,
