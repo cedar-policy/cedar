@@ -1972,6 +1972,24 @@ impl PolicySet {
             .into_iter()
             .map(|(key, value)| (key.into(), value.0))
             .collect();
+
+        // Try to get the template with the id we're linking from.  We do this
+        // _before_ calling `self.ast.link` because `link` mutates the policy
+        // set by creating a new link entry in a hashmap. This happens even when
+        // trying to link a static policy, which we want to error on here.
+        let template = match self.templates.get(&template_id) {
+            Some(template) => template,
+            None => {
+                return Err(if self.policies.contains_key(&template_id) {
+                    PolicySetError::ExpectedTemplate
+                } else {
+                    PolicySetError::LinkingError(ast::LinkingError::NoSuchTemplate {
+                        id: template_id.0,
+                    })
+                });
+            }
+        };
+
         let linked_ast = self
             .ast
             .link(
@@ -1980,17 +1998,10 @@ impl PolicySet {
                 unwrapped_vals.clone(),
             )
             .map_err(PolicySetError::LinkingError)?;
+
         // PANIC SAFETY: `lossless.link()` will not fail after `ast.link()` succeeds
         #[allow(clippy::expect_used)]
-        let linked_lossless = self
-            .templates
-            .get(&template_id)
-            // We know `template_id` exists in the policy set as either a
-            // template or a static policy because otherwise `ast.link()` would
-            // have errored. If `ast.link()` did not error, then it could still
-            // be that the id corresponds to a static policy. This function
-            // should only be used to link templates, so this is an error.
-            .ok_or(PolicySetError::ExpectedTemplate)?
+        let linked_lossless = template
             .lossless
             .clone()
             .link(unwrapped_vals.iter().map(|(k, v)| (*k, v)))
@@ -4073,19 +4084,23 @@ mod policy_set_tests {
         let env: HashMap<SlotId, EntityUid> =
             std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
 
+        let before_link = pset.clone();
         let r = pset.link(
             PolicyId::from_str("t").unwrap(),
             PolicyId::from_str("id").unwrap(),
             env,
         );
 
-        match r {
-            Ok(_) => panic!("Should have failed due to conflict"),
-            Err(PolicySetError::LinkingError(LinkingError::PolicyIdConflict { id })) => {
+        assert_matches!(
+            r,
+            Err(PolicySetError::LinkingError(LinkingError::PolicyIdConflict { id })) =>{
                 assert_eq!(id, ast::PolicyID::from_string("id"));
             }
-            Err(e) => panic!("Incorrect error: {e}"),
-        };
+        );
+        assert_eq!(
+            pset, before_link,
+            "A failed link shouldn't mutate the policy set"
+        );
     }
 
     #[test]
@@ -4374,12 +4389,17 @@ mod policy_set_tests {
         let mut pset = PolicySet::new();
         pset.add(static_policy).unwrap();
 
+        let before_link = pset.clone();
         let result = pset.link(
             PolicyId::from_str("static").unwrap(),
             PolicyId::from_str("linked").unwrap(),
             HashMap::new(),
         );
         assert_matches!(result, Err(PolicySetError::ExpectedTemplate));
+        assert_eq!(
+            pset, before_link,
+            "A failed link shouldn't mutate the policy set"
+        );
     }
 
     #[test]
@@ -4399,16 +4419,16 @@ mod policy_set_tests {
         )
         .unwrap();
 
+        let before_link = pset.clone();
         let result = pset.link(
             PolicyId::from_str("linked").unwrap(),
             PolicyId::from_str("linked2").unwrap(),
             HashMap::new(),
         );
-        assert_matches!(
-            result,
-            Err(PolicySetError::LinkingError(
-                LinkingError::NoSuchTemplate { .. }
-            ))
+        assert_matches!(result, Err(PolicySetError::ExpectedTemplate));
+        assert_eq!(
+            pset, before_link,
+            "A failed link shouldn't mutate the policy set"
         );
     }
 

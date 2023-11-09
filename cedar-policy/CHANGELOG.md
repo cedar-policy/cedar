@@ -64,6 +64,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   matching all other operators. This affects what error is reported when there is
   an evaluation error in both operands, but does not otherwise change the result
   of evaluation.
+- Updated `PolicySet::link` to not mutate internal state when failing to link a static
+  policy. With this fix it is possible to create a link with a policy id
+  after previously failing to create that link with the same id from a static
+  policy.
 
 ## [2.4.2] - 2023-10-23
 Cedar Language Version: 2.1.2
