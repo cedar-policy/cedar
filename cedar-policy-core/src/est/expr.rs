@@ -514,7 +514,9 @@ impl Expr {
                 .map_err(Into::into),
             Expr::ExprNoExt(ExprNoExt::Var(var)) => Ok(ast::Expr::var(var)),
             Expr::ExprNoExt(ExprNoExt::Slot(slot)) => Ok(ast::Expr::slot(slot)),
-            Expr::ExprNoExt(ExprNoExt::Unknown { name }) => Ok(ast::Expr::unknown(name)),
+            Expr::ExprNoExt(ExprNoExt::Unknown { name }) => {
+                Ok(ast::Expr::unknown(ast::Unknown::new_untyped(name)))
+            }
             Expr::ExprNoExt(ExprNoExt::Not { arg }) => {
                 Ok(ast::Expr::not((*arg).clone().try_into_ast(id)?))
             }
@@ -692,7 +694,7 @@ impl From<ast::Expr> for Expr {
             ast::ExprKind::Lit(lit) => lit.into(),
             ast::ExprKind::Var(var) => var.into(),
             ast::ExprKind::Slot(slot) => slot.into(),
-            ast::ExprKind::Unknown { name, .. } => Expr::unknown(name),
+            ast::ExprKind::Unknown(ast::Unknown { name, .. }) => Expr::unknown(name),
             ast::ExprKind::If {
                 test_expr,
                 then_expr,

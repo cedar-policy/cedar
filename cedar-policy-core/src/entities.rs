@@ -96,12 +96,12 @@ impl Entities {
             None => match self.mode {
                 Mode::Concrete => Dereference::NoSuchEntity,
                 #[cfg(feature = "partial-eval")]
-                Mode::Partial => Dereference::Residual(Expr::unknown_with_type(
-                    format!("{uid}"),
-                    Some(Type::Entity {
+                Mode::Partial => Dereference::Residual(Expr::unknown(Unknown {
+                    name: format!("{uid}").into(),
+                    type_annotation: Some(Type::Entity {
                         ty: uid.entity_type().clone(),
                     }),
-                )),
+                })),
             },
         }
     }
@@ -817,8 +817,7 @@ mod json_parsing_tests {
         let euid = r#"Test::"jeff""#.parse().unwrap();
         let jeff = es.entity(&euid).unwrap();
         let rexpr = jeff.get("foo").unwrap();
-        let expected_rexpr = RestrictedExpr::new(Expr::val(3)).unwrap();
-        assert_eq!(rexpr, &expected_rexpr);
+        assert_eq!(rexpr, &RestrictedExpr::val(3));
         assert!(jeff.is_descendant_of(&r#"Test::"susan""#.parse().unwrap()));
         simple_entities_still_sane(&es);
     }
@@ -918,8 +917,7 @@ mod json_parsing_tests {
         let bob = r#"Test::"bob""#.parse().unwrap();
         let alice = e.entity(&r#"Test::"alice""#.parse().unwrap()).unwrap();
         let bar = alice.get("bar").unwrap();
-        let two = RestrictedExpr::new(Expr::val(2)).unwrap();
-        assert_eq!(bar, &two);
+        assert_eq!(bar, &RestrictedExpr::val(2));
         assert!(alice.is_descendant_of(&bob));
         let bob = e.entity(&bob).unwrap();
         assert!(bob.ancestors().collect::<Vec<_>>().is_empty());

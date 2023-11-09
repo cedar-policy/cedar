@@ -2029,19 +2029,18 @@ impl PolicySet {
                 .ast
                 .condition()
                 .unknowns()
-                .filter_map(|expr| match expr.expr_kind() {
-                    ast::ExprKind::Unknown {
-                        name,
-                        type_annotation,
-                    } => {
+                .filter_map(
+                    |ast::Unknown {
+                         name,
+                         type_annotation,
+                     }| {
                         if matches!(type_annotation, Some(ast::Type::Entity { .. })) {
                             EntityUid::from_str(name.as_str()).ok()
                         } else {
                             None
                         }
-                    }
-                    _ => None,
-                })
+                    },
+                )
                 .collect();
             entity_uids.extend(ids);
         }

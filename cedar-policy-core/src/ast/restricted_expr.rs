@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use super::{EntityUID, Expr, ExprConstructionError, ExprKind, Literal, Name, Type};
+use super::{EntityUID, Expr, ExprConstructionError, ExprKind, Literal, Name, Unknown};
 use crate::entities::JsonSerializationError;
 use crate::parser;
 use crate::parser::err::ParseErrors;
@@ -88,6 +88,12 @@ impl RestrictedExpr {
     pub fn val(v: impl Into<Literal>) -> Self {
         // All literals are valid restricted-exprs
         Self::new_unchecked(Expr::val(v))
+    }
+
+    /// Create a `RestrictedExpr` that's just a single `Unknown`.
+    pub fn unknown(u: Unknown) -> Self {
+        // All unknowns are valid restricted-exprs
+        Self::new_unchecked(Expr::unknown(u))
     }
 
     /// Create a `RestrictedExpr` which evaluates to a Set of the given `RestrictedExpr`s
@@ -221,14 +227,11 @@ impl<'a> BorrowedRestrictedExpr<'a> {
         }
     }
 
-    /// Get the name and type annotation of the `Unknown` if this
-    /// `RestrictedExpr` is an `Unknown`, or `None` if it is not an `Unknown`
-    pub fn as_unknown(&self) -> Option<(&SmolStr, &Option<Type>)> {
+    /// Get `Unknown` value of this `RestrictedExpr` if it's an `Unknown`, or
+    /// `None` if it is not an `Unknown`
+    pub fn as_unknown(&self) -> Option<&Unknown> {
         match self.expr_kind() {
-            ExprKind::Unknown {
-                name,
-                type_annotation,
-            } => Some((name, type_annotation)),
+            ExprKind::Unknown(u) => Some(u),
             _ => None,
         }
     }
@@ -280,7 +283,7 @@ impl<'a> BorrowedRestrictedExpr<'a> {
 fn is_restricted(expr: &Expr) -> Result<(), RestrictedExprError> {
     match expr.expr_kind() {
         ExprKind::Lit(_) => Ok(()),
-        ExprKind::Unknown { .. } => Ok(()),
+        ExprKind::Unknown(_) => Ok(()),
         ExprKind::Var(_) => Err(RestrictedExprError::InvalidRestrictedExpression {
             feature: "variables".into(),
             expr: expr.clone(),

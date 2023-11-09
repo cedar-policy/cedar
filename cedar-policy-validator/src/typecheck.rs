@@ -570,12 +570,9 @@ impl<'a> Typechecker<'a> {
                 .with_same_source_info(e)
                 .var(Var::Context),
             ),
-            ExprKind::Unknown {
-                name,
-                type_annotation,
-            } => TypecheckAnswer::fail(
-                ExprBuilder::with_data(None).unknown(name.clone(), type_annotation.clone()),
-            ),
+            ExprKind::Unknown(u) => {
+                TypecheckAnswer::fail(ExprBuilder::with_data(None).unknown(u.clone()))
+            }
             // Template Slots, always has to be an entity.
             ExprKind::Slot(slotid) => TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(if slotid.is_principal() {

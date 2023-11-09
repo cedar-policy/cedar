@@ -54,7 +54,7 @@ impl TryFrom<Expr> for Value {
     fn try_from(value: Expr) -> Result<Self, Self::Error> {
         match value.into_expr_kind() {
             ExprKind::Lit(l) => Ok(Value::Lit(l)),
-            ExprKind::Unknown { .. } => Err(NotValue::NotValue),
+            ExprKind::Unknown(_) => Err(NotValue::NotValue),
             ExprKind::Var(_) => Err(NotValue::NotValue),
             ExprKind::Slot(_) => Err(NotValue::NotValue),
             ExprKind::If { .. } => Err(NotValue::NotValue),
@@ -452,6 +452,13 @@ impl Value {
             authoritative: Arc::new(authoritative),
             fast: Some(Arc::new(fast)),
         })
+    }
+}
+
+impl PartialValue {
+    /// Create a new `PartialValue` consisting of just this single `Unknown`
+    pub fn unknown(u: Unknown) -> Self {
+        Self::Residual(Expr::unknown(u))
     }
 }
 

@@ -532,7 +532,7 @@ mod test {
         let context = Context::from_expr(
             RestrictedExpr::record([(
                 "test".into(),
-                RestrictedExpr::new(Expr::unknown("name")).unwrap(),
+                RestrictedExpr::unknown(Unknown::new_untyped("name")),
             )])
             .unwrap(),
         )

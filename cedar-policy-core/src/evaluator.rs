@@ -109,7 +109,7 @@ impl<'e> RestrictedEvaluator<'e> {
                     Either::Right(residuals) => Ok(Expr::set(residuals).into()),
                 }
             }
-            ExprKind::Unknown{name, type_annotation} => Ok(PartialValue::Residual(Expr::unknown_with_type(name.clone(), type_annotation.clone()))),
+            ExprKind::Unknown(u) => Ok(PartialValue::unknown(u.clone())),
             ExprKind::Record(map) => {
                 let map = map
                     .iter()
@@ -179,7 +179,7 @@ impl<'q, 'e> Evaluator<'e> {
                 // For more, see notes on `RestrictedExpr`.
                 let restricted_eval = RestrictedEvaluator::new(extensions);
                 match &q.context {
-                    None => PartialValue::Residual(Expr::unknown("context")),
+                    None => PartialValue::unknown(Unknown::new_untyped("context")),
                     Some(ctxt) => restricted_eval.partial_interpret(ctxt.as_ref().as_borrowed())?,
                 }
             },
@@ -270,7 +270,7 @@ impl<'q, 'e> Evaluator<'e> {
                 Var::Resource => Ok(self.resource.evaluate(*v)),
                 Var::Context => Ok(self.context.clone()),
             },
-            ExprKind::Unknown { .. } => Ok(PartialValue::Residual(e.clone())),
+            ExprKind::Unknown(_) => Ok(PartialValue::Residual(e.clone())),
             ExprKind::If {
                 test_expr,
                 then_expr,
@@ -985,22 +985,22 @@ pub mod test {
         let r = eval.partial_eval_expr(&e).unwrap();
         let expected_residual = Expr::binary_app(
             BinaryOp::In,
-            Expr::unknown_with_type(
-                format!("{missing}"),
-                Some(Type::Entity {
+            Expr::unknown(Unknown {
+                name: format!("{missing}").into(),
+                type_annotation: Some(Type::Entity {
                     ty: EntityUID::test_entity_type(),
                 }),
-            ),
+            }),
             Expr::set([Expr::val(parent.clone()), Expr::val(second.clone())]),
         );
         let expected_residual2 = Expr::binary_app(
             BinaryOp::In,
-            Expr::unknown_with_type(
-                format!("{missing}"),
-                Some(Type::Entity {
+            Expr::unknown(Unknown {
+                name: format!("{missing}").into(),
+                type_annotation: Some(Type::Entity {
                     ty: EntityUID::test_entity_type(),
                 }),
-            ),
+            }),
             Expr::set([Expr::val(second), Expr::val(parent)]),
         );
 
@@ -1031,12 +1031,12 @@ pub mod test {
         let r = eval.partial_eval_expr(&e).unwrap();
         let expected_residual = Expr::binary_app(
             BinaryOp::In,
-            Expr::unknown_with_type(
-                format!("{missing}"),
-                Some(Type::Entity {
+            Expr::unknown(Unknown {
+                name: format!("{missing}").into(),
+                type_annotation: Some(Type::Entity {
                     ty: EntityUID::test_entity_type(),
                 }),
-            ),
+            }),
             Expr::val(parent),
         );
         assert_eq!(r, Either::Right(expected_residual));
@@ -1059,12 +1059,12 @@ pub mod test {
         let e = Expr::has_attr(Expr::val(missing.clone()), "spoon".into());
         let r = eval.partial_eval_expr(&e).unwrap();
         let expected_residual = Expr::has_attr(
-            Expr::unknown_with_type(
-                format!("{missing}"),
-                Some(Type::Entity {
+            Expr::unknown(Unknown {
+                name: format!("{missing}").into(),
+                type_annotation: Some(Type::Entity {
                     ty: EntityUID::test_entity_type(),
                 }),
-            ),
+            }),
             "spoon".into(),
         );
         assert_eq!(r, Either::Right(expected_residual));
@@ -1087,12 +1087,12 @@ pub mod test {
         let e = Expr::get_attr(Expr::val(missing.clone()), "spoon".into());
         let r = eval.partial_eval_expr(&e).unwrap();
         let expected_residual = Expr::get_attr(
-            Expr::unknown_with_type(
-                format!("{missing}"),
-                Some(Type::Entity {
+            Expr::unknown(Unknown {
+                name: format!("{missing}").into(),
+                type_annotation: Some(Type::Entity {
                     ty: EntityUID::test_entity_type(),
                 }),
-            ),
+            }),
             "spoon".into(),
         );
         assert_eq!(r, Either::Right(expected_residual));
@@ -4121,7 +4121,8 @@ pub mod test {
     #[test]
     fn partial_contexts1() {
         // { "cell" : <unknown> }
-        let c_expr = Expr::record([("cell".into(), Expr::unknown("cell"))]).unwrap();
+        let c_expr =
+            Expr::record([("cell".into(), Expr::unknown(Unknown::new_untyped("cell")))]).unwrap();
         let expr = Expr::binary_app(
             BinaryOp::Eq,
             Expr::get_attr(Expr::var(Var::Context), "cell".into()),
@@ -4129,7 +4130,7 @@ pub mod test {
         );
         let expected = Expr::binary_app(
             BinaryOp::Eq,
-            Expr::unknown("cell".to_string()),
+            Expr::unknown(Unknown::new_untyped("cell")),
             Expr::val(2),
         );
 
@@ -4143,7 +4144,7 @@ pub mod test {
         // { "loc" : "test", "cell" : <unknown> }
         let c_expr = Expr::record([
             ("loc".into(), Expr::val("test")),
-            ("cell".into(), Expr::unknown("cell")),
+            ("cell".into(), Expr::unknown(Unknown::new_untyped("cell"))),
         ])
         .unwrap();
         // context["cell"] == 2
@@ -4155,7 +4156,7 @@ pub mod test {
         let r = partial_context_test(c_expr.clone(), expr);
         let expected = Expr::binary_app(
             BinaryOp::Eq,
-            Expr::unknown("cell".to_string()),
+            Expr::unknown(Unknown::new_untyped("cell")),
             Expr::val(2),
         );
         assert_eq!(r, Either::Right(expected));
@@ -4173,7 +4174,8 @@ pub mod test {
     #[test]
     fn partial_contexts3() {
         // { "loc" : "test", "cell" : { "row" : <unknown> } }
-        let row = Expr::record([("row".into(), Expr::unknown("row"))]).unwrap();
+        let row =
+            Expr::record([("row".into(), Expr::unknown(Unknown::new_untyped("row")))]).unwrap();
         //assert!(row.is_partially_projectable());
         let c_expr =
             Expr::record([("loc".into(), Expr::val("test")), ("cell".into(), row)]).unwrap();
@@ -4188,8 +4190,11 @@ pub mod test {
             Expr::val(2),
         );
         let r = partial_context_test(c_expr, expr);
-        let expected =
-            Expr::binary_app(BinaryOp::Eq, Expr::unknown("row".to_string()), Expr::val(2));
+        let expected = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::unknown(Unknown::new_untyped("row")),
+            Expr::val(2),
+        );
         assert_eq!(r, Either::Right(expected));
     }
 
@@ -4197,8 +4202,8 @@ pub mod test {
     fn partial_contexts4() {
         // { "loc" : "test", "cell" : { "row" : <unknown>, "col" : <unknown> } }
         let row = Expr::record([
-            ("row".into(), Expr::unknown("row")),
-            ("col".into(), Expr::unknown("col")),
+            ("row".into(), Expr::unknown(Unknown::new_untyped("row"))),
+            ("col".into(), Expr::unknown(Unknown::new_untyped("col"))),
         ])
         .unwrap();
         //assert!(row.is_partially_projectable());
@@ -4215,7 +4220,11 @@ pub mod test {
             Expr::val(2),
         );
         let r = partial_context_test(c_expr.clone(), expr);
-        let expected = Expr::binary_app(BinaryOp::Eq, Expr::unknown("row"), Expr::val(2));
+        let expected = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::unknown(Unknown::new_untyped("row")),
+            Expr::val(2),
+        );
         assert_eq!(r, Either::Right(expected));
         // context["cell"]["col"] == 2
         let expr = Expr::binary_app(
@@ -4227,8 +4236,11 @@ pub mod test {
             Expr::val(2),
         );
         let r = partial_context_test(c_expr, expr);
-        let expected =
-            Expr::binary_app(BinaryOp::Eq, Expr::unknown("col".to_string()), Expr::val(2));
+        let expected = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::unknown(Unknown::new_untyped("col")),
+            Expr::val(2),
+        );
         assert_eq!(r, Either::Right(expected));
     }
 
@@ -4237,7 +4249,7 @@ pub mod test {
         let context = Context::from_expr(RestrictedExpr::new_unchecked(
             Expr::record([
                 ("a".into(), Expr::val(3)),
-                ("b".into(), Expr::unknown("b".to_string())),
+                ("b".into(), Expr::unknown(Unknown::new_untyped("b"))),
             ])
             .unwrap(),
         ))
@@ -4284,7 +4296,7 @@ pub mod test {
         let r: EntityUID = r#"Table::"t""#.parse().expect("Failed to parse");
 
         let c_expr = RestrictedExpr::new(
-            Expr::record([("cell".into(), Expr::unknown("cell".to_string()))]).unwrap(),
+            Expr::record([("cell".into(), Expr::unknown(Unknown::new_untyped("cell")))]).unwrap(),
         )
         .expect("should qualify as restricted");
         let context = Context::from_expr(c_expr).unwrap();
@@ -4320,7 +4332,7 @@ pub mod test {
 
     #[test]
     fn if_semantics_residual_guard() {
-        let a = Expr::unknown("guard".to_string());
+        let a = Expr::unknown(Unknown::new_untyped("guard"));
         let b = Expr::and(Expr::val(1), Expr::val(2));
         let c = Expr::val(true);
 
@@ -4336,7 +4348,7 @@ pub mod test {
         assert_eq!(
             r,
             PartialValue::Residual(Expr::ite(
-                Expr::unknown("guard".to_string()),
+                Expr::unknown(Unknown::new_untyped("guard")),
                 Expr::call_extension_fn(
                     "error".parse().unwrap(),
                     vec![Expr::val("type error: expected bool, got long")]
@@ -4366,7 +4378,11 @@ pub mod test {
             EntityUID::with_eid("a"),
             EntityUID::with_eid("r"),
             Context::from_expr(RestrictedExpr::new_unchecked(
-                Expr::record([("condition".into(), Expr::unknown("unknown_condition"))]).unwrap(),
+                Expr::record([(
+                    "condition".into(),
+                    Expr::unknown(Unknown::new_untyped("unknown_condition")),
+                )])
+                .unwrap(),
             ))
             .unwrap(),
             Some(&RequestSchemaAllPass),
@@ -4382,7 +4398,7 @@ pub mod test {
             PartialValue::Residual(Expr::ite(
                 Expr::binary_app(
                     BinaryOp::Eq,
-                    Expr::unknown("unknown_condition".to_string()),
+                    Expr::unknown(Unknown::new_untyped("unknown_condition")),
                     Expr::val("value"),
                 ),
                 b,
@@ -4393,7 +4409,7 @@ pub mod test {
 
     #[test]
     fn if_semantics_both_err() {
-        let a = Expr::unknown("guard".to_string());
+        let a = Expr::unknown(Unknown::new_untyped("guard"));
         let b = Expr::and(Expr::val(1), Expr::val(2));
         let c = Expr::or(Expr::val(1), Expr::val(3));
 
@@ -4412,7 +4428,7 @@ pub mod test {
         // Left-hand-side evaluates to `false`, should short-circuit to value
         let e = Expr::and(
             Expr::binary_app(BinaryOp::Eq, Expr::val(1), Expr::val(2)),
-            Expr::and(Expr::unknown("a".to_string()), Expr::val(false)),
+            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
         );
 
         let es = Entities::new();
@@ -4429,7 +4445,7 @@ pub mod test {
         // Left hand sides evaluates to `true`, can't drop it due to dynamic types
         let e = Expr::and(
             Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(2)),
-            Expr::and(Expr::unknown("a".to_string()), Expr::val(false)),
+            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
         );
 
         let es = Entities::new();
@@ -4442,7 +4458,7 @@ pub mod test {
             r,
             PartialValue::Residual(Expr::and(
                 Expr::val(true),
-                Expr::and(Expr::unknown("a".to_string()), Expr::val(false))
+                Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false))
             ))
         );
     }
@@ -4452,7 +4468,7 @@ pub mod test {
         // Errors on left hand side should propagate
         let e = Expr::and(
             Expr::binary_app(BinaryOp::Add, Expr::val("hello"), Expr::val(2)),
-            Expr::and(Expr::unknown("a".to_string()), Expr::val(false)),
+            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
         );
 
         let es = Entities::new();
@@ -4466,7 +4482,11 @@ pub mod test {
     fn and_semantics4() {
         // Left hand is residual, errors on right hand side should _not_ propagate
         let e = Expr::and(
-            Expr::binary_app(BinaryOp::Eq, Expr::unknown("a".to_string()), Expr::val(2)),
+            Expr::binary_app(
+                BinaryOp::Eq,
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::val(2),
+            ),
             Expr::and(Expr::val("hello"), Expr::val("bye")),
         );
 
@@ -4483,7 +4503,7 @@ pub mod test {
 
         let e = Expr::or(
             Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(2)),
-            Expr::and(Expr::unknown("a".to_string()), Expr::val(false)),
+            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
         );
 
         let es = Entities::new();
@@ -4500,7 +4520,7 @@ pub mod test {
         // Left hand sides evaluates to `false`, can't drop it due to dynamic types
         let e = Expr::or(
             Expr::binary_app(BinaryOp::Eq, Expr::val(1), Expr::val(2)),
-            Expr::and(Expr::unknown("a".to_string()), Expr::val(false)),
+            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
         );
 
         let es = Entities::new();
@@ -4513,7 +4533,7 @@ pub mod test {
             r,
             PartialValue::Residual(Expr::or(
                 Expr::val(false),
-                Expr::and(Expr::unknown("a".to_string()), Expr::val(false))
+                Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false))
             ))
         );
     }
@@ -4523,7 +4543,7 @@ pub mod test {
         // Errors on left hand side should propagate
         let e = Expr::or(
             Expr::binary_app(BinaryOp::Add, Expr::val("hello"), Expr::val(2)),
-            Expr::and(Expr::unknown("a".to_string()), Expr::val(false)),
+            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
         );
 
         let es = Entities::new();
@@ -4537,7 +4557,11 @@ pub mod test {
     fn or_semantics4() {
         // Left hand is residual, errors on right hand side should _not_ propagate
         let e = Expr::or(
-            Expr::binary_app(BinaryOp::Eq, Expr::unknown("a".to_string()), Expr::val(2)),
+            Expr::binary_app(
+                BinaryOp::Eq,
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::val(2),
+            ),
             Expr::and(Expr::val("hello"), Expr::val("bye")),
         );
 
@@ -4551,7 +4575,7 @@ pub mod test {
     #[test]
     fn record_semantics_err() {
         let a = Expr::get_attr(
-            Expr::record([("value".into(), Expr::unknown("test".to_string()))]).unwrap(),
+            Expr::record([("value".into(), Expr::unknown(Unknown::new_untyped("test")))]).unwrap(),
             "notpresent".into(),
         );
 
@@ -4565,7 +4589,7 @@ pub mod test {
     #[test]
     fn record_semantics_key_present() {
         let a = Expr::get_attr(
-            Expr::record([("value".into(), Expr::unknown("test".to_string()))]).unwrap(),
+            Expr::record([("value".into(), Expr::unknown(Unknown::new_untyped("test")))]).unwrap(),
             "value".into(),
         );
 
@@ -4575,7 +4599,7 @@ pub mod test {
 
         let r = eval.partial_interpret(&a, &HashMap::new()).unwrap();
 
-        let expected = PartialValue::Residual(Expr::unknown("test"));
+        let expected = PartialValue::unknown(Unknown::new_untyped("test"));
 
         assert_eq!(r, expected);
     }
@@ -4584,8 +4608,8 @@ pub mod test {
     fn record_semantics_missing_attr() {
         let a = Expr::get_attr(
             Expr::record([
-                ("a".into(), Expr::unknown("a")),
-                ("b".into(), Expr::unknown("c")),
+                ("a".into(), Expr::unknown(Unknown::new_untyped("a"))),
+                ("b".into(), Expr::unknown(Unknown::new_untyped("c"))),
             ])
             .unwrap(),
             "c".into(),
@@ -4602,8 +4626,8 @@ pub mod test {
     fn record_semantics_mult_unknowns() {
         let a = Expr::get_attr(
             Expr::record([
-                ("a".into(), Expr::unknown("a")),
-                ("b".into(), Expr::unknown("b")),
+                ("a".into(), Expr::unknown(Unknown::new_untyped("a"))),
+                ("b".into(), Expr::unknown(Unknown::new_untyped("b"))),
             ])
             .unwrap(),
             "b".into(),
@@ -4615,14 +4639,14 @@ pub mod test {
 
         let r = eval.partial_interpret(&a, &HashMap::new()).unwrap();
 
-        let expected = PartialValue::Residual(Expr::unknown("b"));
+        let expected = PartialValue::unknown(Unknown::new_untyped("b"));
 
         assert_eq!(r, expected);
     }
 
     #[test]
     fn parital_if_noerrors() {
-        let guard = Expr::get_attr(Expr::unknown("a"), "field".into());
+        let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
         let cons = Expr::val(1);
         let alt = Expr::val(2);
         let e = Expr::ite(guard.clone(), cons, alt);
@@ -4640,7 +4664,7 @@ pub mod test {
 
     #[test]
     fn parital_if_cons_error() {
-        let guard = Expr::get_attr(Expr::unknown("a"), "field".into());
+        let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
         let cons = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(true));
         let alt = Expr::val(2);
         let e = Expr::ite(guard.clone(), cons, alt);
@@ -4665,7 +4689,7 @@ pub mod test {
 
     #[test]
     fn parital_if_alt_error() {
-        let guard = Expr::get_attr(Expr::unknown("a"), "field".into());
+        let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
         let cons = Expr::val(2);
         let alt = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(true));
         let e = Expr::ite(guard.clone(), cons, alt);
@@ -4689,7 +4713,7 @@ pub mod test {
 
     #[test]
     fn parital_if_both_error() {
-        let guard = Expr::get_attr(Expr::unknown("a"), "field".into());
+        let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
         let cons = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(true));
         let alt = Expr::less(Expr::val("hello"), Expr::val("bye"));
         let e = Expr::ite(guard, cons, alt);
@@ -4705,7 +4729,7 @@ pub mod test {
     #[test]
     fn partial_and_err_res() {
         let lhs = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("test"));
-        let rhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let e = Expr::and(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
@@ -4718,7 +4742,7 @@ pub mod test {
     #[test]
     fn partial_or_err_res() {
         let lhs = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("test"));
-        let rhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let e = Expr::or(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
@@ -4731,7 +4755,7 @@ pub mod test {
     #[test]
     fn partial_and_true_res() {
         let lhs = Expr::binary_app(BinaryOp::Eq, Expr::val(1), Expr::val(1));
-        let rhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let e = Expr::and(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
@@ -4741,7 +4765,7 @@ pub mod test {
 
         let expected = Expr::and(
             Expr::val(true),
-            Expr::get_attr(Expr::unknown("test"), "field".into()),
+            Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into()),
         );
         assert_eq!(r, PartialValue::Residual(expected));
     }
@@ -4750,7 +4774,7 @@ pub mod test {
     #[test]
     fn partial_and_false_res() {
         let lhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(1));
-        let rhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let e = Expr::and(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
@@ -4763,7 +4787,7 @@ pub mod test {
     // res && true -> res && true
     #[test]
     fn partial_and_res_true() {
-        let lhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let rhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(2));
         let e = Expr::and(lhs.clone(), rhs);
         let es = Entities::new();
@@ -4777,7 +4801,7 @@ pub mod test {
 
     #[test]
     fn partial_and_res_false() {
-        let lhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let rhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(1));
         let e = Expr::and(lhs.clone(), rhs);
         let es = Entities::new();
@@ -4792,8 +4816,8 @@ pub mod test {
     // res && res -> res && res
     #[test]
     fn partial_and_res_res() {
-        let lhs = Expr::unknown("b");
-        let rhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let lhs = Expr::unknown(Unknown::new_untyped("b"));
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let e = Expr::and(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
@@ -4802,8 +4826,8 @@ pub mod test {
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
         let expected = Expr::and(
-            Expr::unknown("b"),
-            Expr::get_attr(Expr::unknown("test"), "field".into()),
+            Expr::unknown(Unknown::new_untyped("b")),
+            Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into()),
         );
         assert_eq!(r, PartialValue::Residual(expected));
     }
@@ -4811,7 +4835,7 @@ pub mod test {
     // res && err -> res && err
     #[test]
     fn partial_and_res_err() {
-        let lhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let rhs = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("oops"));
         let e = Expr::and(lhs, rhs);
         let es = Entities::new();
@@ -4821,7 +4845,7 @@ pub mod test {
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
         let expected = Expr::and(
-            Expr::get_attr(Expr::unknown("test"), "field".into()),
+            Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into()),
             Expr::call_extension_fn(
                 "error".parse().unwrap(),
                 vec![Expr::val("type error: expected long, got string")],
@@ -4834,7 +4858,7 @@ pub mod test {
     #[test]
     fn partial_or_true_res() {
         let lhs = Expr::binary_app(BinaryOp::Eq, Expr::val(1), Expr::val(1));
-        let rhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let e = Expr::or(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
@@ -4848,7 +4872,7 @@ pub mod test {
     #[test]
     fn partial_or_false_res() {
         let lhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(1));
-        let rhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let e = Expr::or(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
@@ -4857,7 +4881,7 @@ pub mod test {
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         let expected = Expr::or(
             Expr::val(false),
-            Expr::get_attr(Expr::unknown("test"), "field".into()),
+            Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into()),
         );
         assert_eq!(r, PartialValue::Residual(expected));
     }
@@ -4865,7 +4889,7 @@ pub mod test {
     // res || true -> res || true
     #[test]
     fn partial_or_res_true() {
-        let lhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let rhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(2));
         let e = Expr::or(lhs.clone(), rhs);
         let es = Entities::new();
@@ -4879,7 +4903,7 @@ pub mod test {
 
     #[test]
     fn partial_or_res_false() {
-        let lhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let rhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(1));
         let e = Expr::or(lhs.clone(), rhs);
         let es = Entities::new();
@@ -4894,8 +4918,8 @@ pub mod test {
     // res || res -> res || res
     #[test]
     fn partial_or_res_res() {
-        let lhs = Expr::unknown("b");
-        let rhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let lhs = Expr::unknown(Unknown::new_untyped("b"));
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let e = Expr::or(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
@@ -4904,8 +4928,8 @@ pub mod test {
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
         let expected = Expr::or(
-            Expr::unknown("b"),
-            Expr::get_attr(Expr::unknown("test"), "field".into()),
+            Expr::unknown(Unknown::new_untyped("b")),
+            Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into()),
         );
         assert_eq!(r, PartialValue::Residual(expected));
     }
@@ -4913,7 +4937,7 @@ pub mod test {
     // res || err -> res || err
     #[test]
     fn partial_or_res_err() {
-        let lhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let rhs = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("oops"));
         let e = Expr::or(lhs, rhs);
         let es = Entities::new();
@@ -4923,7 +4947,7 @@ pub mod test {
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
         let expected = Expr::or(
-            Expr::get_attr(Expr::unknown("test"), "field".into()),
+            Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into()),
             Expr::call_extension_fn(
                 "error".parse().unwrap(),
                 vec![Expr::val("type error: expected long, got string")],
@@ -4938,11 +4962,11 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
 
-        let e = Expr::unary_app(UnaryOp::Neg, Expr::unknown("a"));
+        let e = Expr::unary_app(UnaryOp::Neg, Expr::unknown(Unknown::new_untyped("a")));
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(r, PartialValue::Residual(e));
 
-        let e = Expr::unary_app(UnaryOp::Not, Expr::unknown("a"));
+        let e = Expr::unary_app(UnaryOp::Not, Expr::unknown(Unknown::new_untyped("a")));
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(r, PartialValue::Residual(e));
     }
@@ -4970,38 +4994,54 @@ pub mod test {
             let e = Expr::binary_app(
                 binop,
                 Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(2)),
-                Expr::unknown("a"),
+                Expr::unknown(Unknown::new_untyped("a")),
             );
             let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
-            let expected = Expr::binary_app(binop, Expr::val(3), Expr::unknown("a"));
+            let expected = Expr::binary_app(
+                binop,
+                Expr::val(3),
+                Expr::unknown(Unknown::new_untyped("a")),
+            );
             assert_eq!(r, PartialValue::Residual(expected));
             // ensure PE propagates left side errors
             let e = Expr::binary_app(
                 binop,
                 Expr::binary_app(BinaryOp::Add, Expr::val("hello"), Expr::val(2)),
-                Expr::unknown("a"),
+                Expr::unknown(Unknown::new_untyped("a")),
             );
             assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
             // ensure PE evaluates right side
             let e = Expr::binary_app(
                 binop,
-                Expr::unknown("a"),
+                Expr::unknown(Unknown::new_untyped("a")),
                 Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(2)),
             );
             let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
-            let expected = Expr::binary_app(binop, Expr::unknown("a"), Expr::val(3));
+            let expected = Expr::binary_app(
+                binop,
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::val(3),
+            );
             assert_eq!(r, PartialValue::Residual(expected));
             // ensure PE propagates right side errors
             let e = Expr::binary_app(
                 binop,
-                Expr::unknown("a"),
+                Expr::unknown(Unknown::new_untyped("a")),
                 Expr::binary_app(BinaryOp::Add, Expr::val("hello"), Expr::val(2)),
             );
             assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
             // Both left and right residuals
-            let e = Expr::binary_app(binop, Expr::unknown("a"), Expr::unknown("b"));
+            let e = Expr::binary_app(
+                binop,
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::unknown(Unknown::new_untyped("b")),
+            );
             let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
-            let expected = Expr::binary_app(binop, Expr::unknown("a"), Expr::unknown("b"));
+            let expected = Expr::binary_app(
+                binop,
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::unknown(Unknown::new_untyped("b")),
+            );
             assert_eq!(r, PartialValue::Residual(expected));
         }
     }
@@ -5012,7 +5052,7 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
 
-        let e = Expr::mul(Expr::unknown("a"), 32);
+        let e = Expr::mul(Expr::unknown(Unknown::new_untyped("a")), 32);
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(r, PartialValue::Residual(e));
     }
@@ -5023,7 +5063,10 @@ pub mod test {
         let exts = Extensions::all_available();
         let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
 
-        let e = Expr::call_extension_fn("ip".parse().unwrap(), vec![Expr::unknown("a")]);
+        let e = Expr::call_extension_fn(
+            "ip".parse().unwrap(),
+            vec![Expr::unknown(Unknown::new_untyped("a"))],
+        );
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -5038,7 +5081,7 @@ pub mod test {
         let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
 
         let a = Expr::call_extension_fn("ip".parse().unwrap(), vec![Expr::val("127.0.0.1")]);
-        let b = Expr::unknown("a");
+        let b = Expr::unknown(Unknown::new_untyped("a"));
         let e = Expr::call_extension_fn("isInRange".parse().unwrap(), vec![a, b]);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
@@ -5046,7 +5089,7 @@ pub mod test {
         assert_eq!(r, PartialValue::Residual(e));
 
         let b = Expr::call_extension_fn("ip".parse().unwrap(), vec![Expr::val("127.0.0.1")]);
-        let a = Expr::unknown("a");
+        let a = Expr::unknown(Unknown::new_untyped("a"));
         let e = Expr::call_extension_fn("isInRange".parse().unwrap(), vec![a, b]);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
@@ -5054,7 +5097,7 @@ pub mod test {
         assert_eq!(r, PartialValue::Residual(e));
 
         let b = Expr::call_extension_fn("ip".parse().unwrap(), vec![Expr::val("invalid")]);
-        let a = Expr::unknown("a");
+        let a = Expr::unknown(Unknown::new_untyped("a"));
         let e = Expr::call_extension_fn("isInRange".parse().unwrap(), vec![a, b]);
 
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
@@ -5066,7 +5109,7 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
 
-        let e = Expr::like(Expr::unknown("a"), []);
+        let e = Expr::like(Expr::unknown(Unknown::new_untyped("a")), []);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -5079,7 +5122,10 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
 
-        let e = Expr::is_entity_type(Expr::unknown("a"), "User".parse().unwrap());
+        let e = Expr::is_entity_type(
+            Expr::unknown(Unknown::new_untyped("a")),
+            "User".parse().unwrap(),
+        );
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -5092,7 +5138,7 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
 
-        let e = Expr::has_attr(Expr::unknown("a"), "test".into());
+        let e = Expr::has_attr(Expr::unknown(Unknown::new_untyped("a")), "test".into());
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -5105,24 +5151,32 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
 
-        let e = Expr::set([Expr::val(1), Expr::unknown("a"), Expr::val(2)]);
+        let e = Expr::set([
+            Expr::val(1),
+            Expr::unknown(Unknown::new_untyped("a")),
+            Expr::val(2),
+        ]);
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(r, PartialValue::Residual(e));
 
         let e = Expr::set([
             Expr::val(1),
-            Expr::unknown("a"),
+            Expr::unknown(Unknown::new_untyped("a")),
             Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(2)),
         ]);
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(
             r,
-            PartialValue::Residual(Expr::set([Expr::val(1), Expr::unknown("a"), Expr::val(3)]))
+            PartialValue::Residual(Expr::set([
+                Expr::val(1),
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::val(3)
+            ]))
         );
 
         let e = Expr::set([
             Expr::val(1),
-            Expr::unknown("a"),
+            Expr::unknown(Unknown::new_untyped("a")),
             Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("a")),
         ]);
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
@@ -5136,20 +5190,26 @@ pub mod test {
 
         let e = Expr::record([
             ("a".into(), Expr::val(1)),
-            ("b".into(), Expr::unknown("a")),
+            ("b".into(), Expr::unknown(Unknown::new_untyped("a"))),
             ("c".into(), Expr::val(2)),
         ])
         .unwrap();
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(r, PartialValue::Residual(e));
 
-        let e = Expr::record([("a".into(), Expr::val(1)), ("a".into(), Expr::unknown("a"))]);
+        let e = Expr::record([
+            ("a".into(), Expr::val(1)),
+            ("a".into(), Expr::unknown(Unknown::new_untyped("a"))),
+        ]);
         assert_eq!(
             e,
             Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "a".into() })
         );
 
-        let e = Expr::record([("a".into(), Expr::unknown("a")), ("a".into(), Expr::val(1))]);
+        let e = Expr::record([
+            ("a".into(), Expr::unknown(Unknown::new_untyped("a"))),
+            ("a".into(), Expr::val(1)),
+        ]);
         assert_eq!(
             e,
             Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "a".into() })
@@ -5157,7 +5217,7 @@ pub mod test {
 
         let e = Expr::record([
             ("a".into(), Expr::val(1)),
-            ("b".into(), Expr::unknown("a")),
+            ("b".into(), Expr::unknown(Unknown::new_untyped("a"))),
             (
                 "c".into(),
                 Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(2)),
@@ -5170,7 +5230,7 @@ pub mod test {
             PartialValue::Residual(
                 Expr::record([
                     ("a".into(), Expr::val(1)),
-                    ("b".into(), Expr::unknown("a")),
+                    ("b".into(), Expr::unknown(Unknown::new_untyped("a"))),
                     ("c".into(), Expr::val(3))
                 ])
                 .unwrap()
@@ -5179,7 +5239,7 @@ pub mod test {
 
         let e = Expr::record([
             ("a".into(), Expr::val(1)),
-            ("b".into(), Expr::unknown("a")),
+            ("b".into(), Expr::unknown(Unknown::new_untyped("a"))),
             (
                 "c".into(),
                 Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("hello")),
@@ -5214,7 +5274,11 @@ pub mod test {
             Expr::record([
                 (
                     "a".into(),
-                    Expr::binary_app(BinaryOp::Add, Expr::unknown("a"), Expr::val(3)),
+                    Expr::binary_app(
+                        BinaryOp::Add,
+                        Expr::unknown(Unknown::new_untyped("a")),
+                        Expr::val(3),
+                    ),
                 ),
                 ("b".into(), Expr::val(83)),
             ])
@@ -5227,7 +5291,11 @@ pub mod test {
         let e = Expr::get_attr(
             Expr::record([(
                 "a".into(),
-                Expr::binary_app(BinaryOp::Add, Expr::unknown("a"), Expr::val(3)),
+                Expr::binary_app(
+                    BinaryOp::Add,
+                    Expr::unknown(Unknown::new_untyped("a")),
+                    Expr::val(3),
+                ),
             )])
             .unwrap(),
             "b".into(),

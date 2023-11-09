@@ -52,13 +52,7 @@ pub enum ExprKind<T = ()> {
     /// Template Slots
     Slot(SlotId),
     /// Symbolic Unknown for partial-eval
-    Unknown {
-        /// The name of the unknown
-        name: SmolStr,
-        /// The type of the values that can be substituted in for the unknown
-        /// If `None`, we have no type annotation, and thus a value of any type can be substituted.
-        type_annotation: Option<Type>,
-    },
+    Unknown(Unknown),
     /// Ternary expression
     If {
         /// Condition for the ternary expression. Must evaluate to Bool type
@@ -275,7 +269,7 @@ impl<T> Expr<T> {
     pub fn is_projectable(&self) -> bool {
         self.subexpressions().all(|e| match e.expr_kind() {
             ExprKind::Lit(_) => true,
-            ExprKind::Unknown { .. } => true,
+            ExprKind::Unknown(_) => true,
             ExprKind::Set(_) => true,
             ExprKind::Var(_) => true,
             ExprKind::Record(_) => true,
@@ -294,14 +288,9 @@ impl Expr {
         ExprBuilder::new().val(v)
     }
 
-    /// Create an unknown value
-    pub fn unknown(name: impl Into<SmolStr>) -> Self {
-        Self::unknown_with_type(name, None)
-    }
-
-    /// Create an unknown value, with an optional type annotation
-    pub fn unknown_with_type(name: impl Into<SmolStr>, t: Option<Type>) -> Self {
-        ExprBuilder::new().unknown(name.into(), t)
+    /// Create an `Expr` that's just a single `Unknown`.
+    pub fn unknown(u: Unknown) -> Self {
+        ExprBuilder::new().unknown(u)
     }
 
     /// Create an `Expr` that's just this literal `Var`
@@ -481,13 +470,16 @@ impl Expr {
     /// Check if an expression contains any symbolic unknowns
     pub fn is_unknown(&self) -> bool {
         self.subexpressions()
-            .any(|e| matches!(e.expr_kind(), ExprKind::Unknown { .. }))
+            .any(|e| matches!(e.expr_kind(), ExprKind::Unknown(_)))
     }
 
     /// Get all unknowns in an expression
-    pub fn unknowns(&self) -> impl Iterator<Item = &Expr> {
+    pub fn unknowns(&self) -> impl Iterator<Item = &Unknown> {
         self.subexpressions()
-            .filter(|subexpr| matches!(subexpr.expr_kind(), ExprKind::Unknown { .. }))
+            .filter_map(|subexpr| match subexpr.expr_kind() {
+                ExprKind::Unknown(u) => Some(u),
+                _ => None,
+            })
     }
 
     /// Substitute unknowns with values
@@ -499,10 +491,10 @@ impl Expr {
     ) -> Result<Expr, SubstitutionError> {
         match self.expr_kind() {
             ExprKind::Lit(_) => Ok(self.clone()),
-            ExprKind::Unknown {
+            ExprKind::Unknown(Unknown {
                 name,
                 type_annotation,
-            } => match (definitions.get(name), type_annotation) {
+            }) => match (definitions.get(name), type_annotation) {
                 (None, _) => Ok(self.clone()),
                 (Some(value), None) => Ok(value.clone().into()),
                 (Some(value), Some(t)) => {
@@ -619,6 +611,27 @@ pub enum SubstitutionError {
     },
 }
 
+/// Representation of a partial-evaluation Unknown at the AST level
+#[derive(Serialize, Deserialize, Hash, Debug, Clone, PartialEq, Eq)]
+pub struct Unknown {
+    /// The name of the unknown
+    pub name: SmolStr,
+    /// The type of the values that can be substituted in for the unknown.
+    /// If `None`, we have no type annotation, and thus a value of any type can
+    /// be substituted.
+    pub type_annotation: Option<Type>,
+}
+
+impl Unknown {
+    /// Create a new untyped `Unknown`
+    pub fn new_untyped(name: impl Into<SmolStr>) -> Self {
+        Self {
+            name: name.into(),
+            type_annotation: None,
+        }
+    }
+}
+
 /// Builder for constructing `Expr` objects annotated with some `data`
 /// (possibly taking default value) and optional some `source_info`.
 #[derive(Debug)]
@@ -708,11 +721,8 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an `Unknown` `Expr`
-    pub fn unknown(self, name: impl Into<SmolStr>, type_annotation: Option<Type>) -> Expr<T> {
-        self.with_expr_kind(ExprKind::Unknown {
-            name: name.into(),
-            type_annotation,
-        })
+    pub fn unknown(self, u: Unknown) -> Expr<T> {
+        self.with_expr_kind(ExprKind::Unknown(u))
     }
 
     /// Create an `Expr` that's just this literal `Var`
@@ -1078,14 +1088,14 @@ impl<T> Expr<T> {
             (Var(v), Var(v1)) => v == v1,
             (Slot(s), Slot(s1)) => s == s1,
             (
-                Unknown {
+                Unknown(self::Unknown {
                     name: name1,
                     type_annotation: ta_1,
-                },
-                Unknown {
+                }),
+                Unknown(self::Unknown {
                     name: name2,
                     type_annotation: ta_2,
-                },
+                }),
             ) => (name1 == name2) && (ta_1 == ta_2),
             (
                 If {
@@ -1197,13 +1207,7 @@ impl<T> Expr<T> {
             ExprKind::Lit(l) => l.hash(state),
             ExprKind::Var(v) => v.hash(state),
             ExprKind::Slot(s) => s.hash(state),
-            ExprKind::Unknown {
-                name,
-                type_annotation,
-            } => {
-                name.hash(state);
-                type_annotation.hash(state);
-            }
+            ExprKind::Unknown(u) => u.hash(state),
             ExprKind::If {
                 test_expr,
                 then_expr,
@@ -1516,23 +1520,23 @@ mod test {
     #[test]
     fn unknowns() {
         let e = Expr::ite(
-            Expr::not(Expr::unknown("a".to_string())),
-            Expr::and(Expr::unknown("b".to_string()), Expr::val(3)),
-            Expr::unknown("c".to_string()),
+            Expr::not(Expr::unknown(Unknown::new_untyped("a"))),
+            Expr::and(Expr::unknown(Unknown::new_untyped("b")), Expr::val(3)),
+            Expr::unknown(Unknown::new_untyped("c")),
         );
         let unknowns = e.unknowns().collect_vec();
         assert_eq!(unknowns.len(), 3);
-        assert!(unknowns.contains(&&Expr::unknown("a".to_string())));
-        assert!(unknowns.contains(&&Expr::unknown("b".to_string())));
-        assert!(unknowns.contains(&&Expr::unknown("c".to_string())));
+        assert!(unknowns.contains(&&Unknown::new_untyped("a")));
+        assert!(unknowns.contains(&&Unknown::new_untyped("b")));
+        assert!(unknowns.contains(&&Unknown::new_untyped("c")));
     }
 
     #[test]
     fn is_unknown() {
         let e = Expr::ite(
-            Expr::not(Expr::unknown("a".to_string())),
-            Expr::and(Expr::unknown("b".to_string()), Expr::val(3)),
-            Expr::unknown("c".to_string()),
+            Expr::not(Expr::unknown(Unknown::new_untyped("a"))),
+            Expr::and(Expr::unknown(Unknown::new_untyped("b")), Expr::val(3)),
+            Expr::unknown(Unknown::new_untyped("c")),
         );
         assert!(e.is_unknown());
         let e = Expr::ite(
