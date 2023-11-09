@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-use smol_str::SmolStr;
-
 use crate::ast::*;
 use crate::entities::SchemaType;
 use crate::evaluator;
@@ -76,7 +74,7 @@ pub enum ExtensionOutputValue {
     /// A concrete value from an extension call
     Concrete(Value),
     /// An unknown returned from an extension call
-    Unknown(SmolStr),
+    Unknown(Unknown),
 }
 
 impl<T> From<T> for ExtensionOutputValue
@@ -313,7 +311,7 @@ impl ExtensionFunction {
     pub fn call(&self, args: &[Value]) -> evaluator::Result<PartialValue> {
         match (self.func)(args)? {
             ExtensionOutputValue::Concrete(v) => Ok(PartialValue::Value(v)),
-            ExtensionOutputValue::Unknown(name) => Ok(PartialValue::Residual(Expr::unknown(name))),
+            ExtensionOutputValue::Unknown(u) => Ok(PartialValue::Residual(Expr::unknown(u))),
         }
     }
 }

@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use super::{
     BorrowedRestrictedExpr, EntityUID, Expr, ExprConstructionError, ExprKind, Literal,
-    PartialValue, RestrictedExpr, Value, Var,
+    PartialValue, RestrictedExpr, Unknown, Value, Var,
 };
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
@@ -60,7 +60,7 @@ impl EntityUIDEntry {
     pub fn evaluate(&self, var: Var) -> PartialValue {
         match self {
             EntityUIDEntry::Concrete(euid) => Value::Lit(Literal::EntityUID(euid.clone())).into(),
-            EntityUIDEntry::Unknown => Expr::unknown(var.to_string()).into(),
+            EntityUIDEntry::Unknown => Expr::unknown(Unknown::new_untyped(var.to_string())).into(),
         }
     }
 

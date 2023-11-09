@@ -2029,19 +2029,18 @@ impl PolicySet {
                 .ast
                 .condition()
                 .unknowns()
-                .filter_map(|expr| match expr.expr_kind() {
-                    ast::ExprKind::Unknown {
-                        name,
-                        type_annotation,
-                    } => {
+                .filter_map(
+                    |ast::Unknown {
+                         name,
+                         type_annotation,
+                     }| {
                         if matches!(type_annotation, Some(ast::Type::Entity { .. })) {
                             EntityUid::from_str(name.as_str()).ok()
                         } else {
                             None
                         }
-                    }
-                    _ => None,
-                })
+                    },
+                )
                 .collect();
             entity_uids.extend(ids);
         }
@@ -4437,12 +4436,12 @@ mod policy_set_tests {
     fn unknown_entities() {
         let ast = ast::Policy::from_when_clause(
             ast::Effect::Permit,
-            ast::Expr::unknown_with_type(
+            ast::Expr::unknown(ast::Unknown::new_with_type(
                 "test_entity_type::\"unknown\"",
-                Some(ast::Type::Entity {
+                ast::Type::Entity {
                     ty: ast::EntityType::Concrete("test_entity_type".parse().unwrap()),
-                }),
-            ),
+                },
+            )),
             ast::PolicyID::from_smolstr("static".into()),
         );
         let static_policy = Policy::from_ast(ast);
