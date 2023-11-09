@@ -985,22 +985,22 @@ pub mod test {
         let r = eval.partial_eval_expr(&e).unwrap();
         let expected_residual = Expr::binary_app(
             BinaryOp::In,
-            Expr::unknown(Unknown {
-                name: format!("{missing}").into(),
-                type_annotation: Some(Type::Entity {
+            Expr::unknown(Unknown::new_with_type(
+                format!("{missing}"),
+                Type::Entity {
                     ty: EntityUID::test_entity_type(),
-                }),
-            }),
+                },
+            )),
             Expr::set([Expr::val(parent.clone()), Expr::val(second.clone())]),
         );
         let expected_residual2 = Expr::binary_app(
             BinaryOp::In,
-            Expr::unknown(Unknown {
-                name: format!("{missing}").into(),
-                type_annotation: Some(Type::Entity {
+            Expr::unknown(Unknown::new_with_type(
+                format!("{missing}"),
+                Type::Entity {
                     ty: EntityUID::test_entity_type(),
-                }),
-            }),
+                },
+            )),
             Expr::set([Expr::val(second), Expr::val(parent)]),
         );
 
@@ -1031,12 +1031,12 @@ pub mod test {
         let r = eval.partial_eval_expr(&e).unwrap();
         let expected_residual = Expr::binary_app(
             BinaryOp::In,
-            Expr::unknown(Unknown {
-                name: format!("{missing}").into(),
-                type_annotation: Some(Type::Entity {
+            Expr::unknown(Unknown::new_with_type(
+                format!("{missing}"),
+                Type::Entity {
                     ty: EntityUID::test_entity_type(),
-                }),
-            }),
+                },
+            )),
             Expr::val(parent),
         );
         assert_eq!(r, Either::Right(expected_residual));
@@ -1059,12 +1059,12 @@ pub mod test {
         let e = Expr::has_attr(Expr::val(missing.clone()), "spoon".into());
         let r = eval.partial_eval_expr(&e).unwrap();
         let expected_residual = Expr::has_attr(
-            Expr::unknown(Unknown {
-                name: format!("{missing}").into(),
-                type_annotation: Some(Type::Entity {
+            Expr::unknown(Unknown::new_with_type(
+                format!("{missing}"),
+                Type::Entity {
                     ty: EntityUID::test_entity_type(),
-                }),
-            }),
+                },
+            )),
             "spoon".into(),
         );
         assert_eq!(r, Either::Right(expected_residual));
@@ -1087,12 +1087,12 @@ pub mod test {
         let e = Expr::get_attr(Expr::val(missing.clone()), "spoon".into());
         let r = eval.partial_eval_expr(&e).unwrap();
         let expected_residual = Expr::get_attr(
-            Expr::unknown(Unknown {
-                name: format!("{missing}").into(),
-                type_annotation: Some(Type::Entity {
+            Expr::unknown(Unknown::new_with_type(
+                format!("{missing}"),
+                Type::Entity {
                     ty: EntityUID::test_entity_type(),
-                }),
-            }),
+                },
+            )),
             "spoon".into(),
         );
         assert_eq!(r, Either::Right(expected_residual));

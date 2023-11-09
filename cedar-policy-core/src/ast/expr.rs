@@ -630,6 +630,15 @@ impl Unknown {
             type_annotation: None,
         }
     }
+
+    /// Create a new `Unknown` with type annotation. (Only values of the given
+    /// type can be substituted.)
+    pub fn new_with_type(name: impl Into<SmolStr>, ty: Type) -> Self {
+        Self {
+            name: name.into(),
+            type_annotation: Some(ty),
+        }
+    }
 }
 
 /// Builder for constructing `Expr` objects annotated with some `data`

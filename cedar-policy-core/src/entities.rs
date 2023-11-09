@@ -96,12 +96,12 @@ impl Entities {
             None => match self.mode {
                 Mode::Concrete => Dereference::NoSuchEntity,
                 #[cfg(feature = "partial-eval")]
-                Mode::Partial => Dereference::Residual(Expr::unknown(Unknown {
-                    name: format!("{uid}").into(),
-                    type_annotation: Some(Type::Entity {
+                Mode::Partial => Dereference::Residual(Expr::unknown(Unknown::new_with_type(
+                    format!("{uid}"),
+                    Type::Entity {
                         ty: uid.entity_type().clone(),
-                    }),
-                })),
+                    },
+                ))),
             },
         }
     }
