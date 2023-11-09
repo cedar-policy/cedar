@@ -15,6 +15,10 @@ Cedar Language Version: 2.1.3
   The 2.4.2 behavior, including the more useful error messages, remain available
   in all 3.x versions of Cedar.
   (#520)
+- Updated `PolicySet::link` to not mutate internal state when failing to link a static
+  policy. With this fix it is possible to create a link with a policy id
+  after previously failing to create that link with the same id from a static
+  policy.
 
 ## 2.4.2
 
