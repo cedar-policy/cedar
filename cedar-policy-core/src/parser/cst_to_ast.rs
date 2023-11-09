@@ -3775,6 +3775,14 @@ mod tests {
     fn is_err() {
         let invalid_is_policies = [
             (
+                r#"permit(principal == ?resource, action, resource);"#,
+                "?resource instead of ?principal",
+            ),
+            (
+                r#"permit(principal, action, resource == ?principal);"#,
+                "?principal instead of ?resource",
+            ),
+            (
                 r#"permit(principal in Group::"friends" is User, action, resource);"#,
                 "expected a entity uid or matching template slot",
             ),
