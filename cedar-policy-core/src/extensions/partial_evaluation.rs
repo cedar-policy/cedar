@@ -23,10 +23,9 @@ use crate::{
 
 /// Create a new untyped `Unknown`
 fn create_new_unknown(v: Value) -> evaluator::Result<ExtensionOutputValue> {
-    Ok(ExtensionOutputValue::Unknown(Unknown {
-        name: v.get_as_string()?.clone(),
-        type_annotation: None,
-    }))
+    Ok(ExtensionOutputValue::Unknown(Unknown::new_untyped(
+        v.get_as_string()?.clone(),
+    )))
 }
 
 fn throw_error(v: Value) -> evaluator::Result<ExtensionOutputValue> {
