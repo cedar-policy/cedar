@@ -4,6 +4,7 @@ use crate::ast::{
     Unknown,
 };
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
+use itertools::Itertools;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use thiserror::Error;
@@ -29,7 +30,7 @@ pub enum EntitySchemaConformanceError {
     },
     /// The given attribute on the given entity had a different type than the
     /// schema indicated
-    #[error("in attribute `{attr}` on `{uid}`, type mismatch: attribute was expected to have type {expected}, but it does not: `{actual}`")]
+    #[error("in attribute `{attr}` on `{uid}`, type mismatch: attribute was expected to have type {expected}, but it does not: `{}`", display_restricted_expr(.actual.as_borrowed()))]
     TypeMismatch {
         /// Entity where the type mismatch occurred
         uid: EntityUID,
@@ -344,5 +345,33 @@ pub fn type_of_restricted_expr(
         // PANIC SAFETY. Unreachable by invariant on restricted expressions
         #[allow(clippy::unreachable)]
         expr => unreachable!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
+    }
+}
+
+/// Display a `RestrictedExpr`, but sorting record attributes and set elements,
+/// so that the output is deterministic (important for tests that check equality
+/// of error messages).
+fn display_restricted_expr(expr: BorrowedRestrictedExpr<'_>) -> String {
+    match expr.expr_kind() {
+        ExprKind::Set(elements) => {
+            let restricted_exprs = elements.iter().map(BorrowedRestrictedExpr::new_unchecked); // since the RestrictedExpr invariant holds for the input, it holds for all set elements
+            format!(
+                "[{}]",
+                restricted_exprs
+                    .map(display_restricted_expr)
+                    .sorted_unstable()
+                    .join(", ")
+            )
+        }
+        ExprKind::Record(m) => {
+            format!(
+                "{{{}}}",
+                m.iter()
+                    .sorted_unstable_by_key(|(k, _)| SmolStr::clone(k))
+                    .map(|(k, v)| format!("\"{}\": {}", k.escape_debug(), v))
+                    .join(", ")
+            )
+        }
+        _ => format!("{expr}"), // all other cases: use the normal Display
     }
 }
