@@ -129,13 +129,18 @@ impl FromIterator<(SmolStr, CedarValueJson)> for JsonRecord {
 
 impl JsonRecord {
     /// Iterate over the (k, v) pairs in the record
-    pub fn iter<'s>(&'s self) -> impl Iterator<Item = (&'s SmolStr, &'s CedarValueJson)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&'_ SmolStr, &'_ CedarValueJson)> {
         self.values.iter()
     }
 
     /// Get the number of attributes in the record
     pub fn len(&self) -> usize {
         self.values.len()
+    }
+
+    /// Is the record empty (no attributes)
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
     }
 }
 

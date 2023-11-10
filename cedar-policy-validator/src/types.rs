@@ -688,7 +688,7 @@ impl Type {
                 Some(pairs) => {
                     let record: HashMap<_, BorrowedRestrictedExpr<'_>> = pairs.collect();
                     for (k, attr_val) in &record {
-                        match attrs.get_attr(&k) {
+                        match attrs.get_attr(k) {
                             Some(attr_ty) => {
                                 if !attr_ty
                                     .attr_type
