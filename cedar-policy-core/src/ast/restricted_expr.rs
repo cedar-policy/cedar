@@ -238,9 +238,7 @@ impl<'a> BorrowedRestrictedExpr<'a> {
 
     /// Iterate over the elements of the set if this `RestrictedExpr` is a set,
     /// or `None` if it is not a set
-    pub fn as_set_elements(
-        &self,
-    ) -> Option<impl Iterator<Item = BorrowedRestrictedExpr<'_>>> {
+    pub fn as_set_elements(&self) -> Option<impl Iterator<Item = BorrowedRestrictedExpr<'_>>> {
         match self.expr_kind() {
             ExprKind::Set(set) => Some(set.iter().map(BorrowedRestrictedExpr::new_unchecked)), // since the RestrictedExpr invariant holds for the input set, it will hold for each element as well
             _ => None,
