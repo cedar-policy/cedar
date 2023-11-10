@@ -68,6 +68,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   policy. With this fix it is possible to create a link with a policy id
   after previously failing to create that link with the same id from a static
   policy.
+- Fixed schema-based parsing of entity data that includes unknowns (for the
+  `partial-eval` experimental feature). (#418)
 
 ## [2.4.2] - 2023-10-23
 Cedar Language Version: 2.1.2
