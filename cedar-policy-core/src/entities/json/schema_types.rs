@@ -14,10 +14,15 @@
  * limitations under the License.
  */
 
-use crate::ast::{EntityType, Name, Type};
+use crate::ast::{
+    BorrowedRestrictedExpr, EntityType, Expr, ExprKind, Literal, Name, PartialValue, Type, Unknown,
+    Value,
+};
+use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use itertools::Itertools;
 use smol_str::SmolStr;
 use std::collections::HashMap;
+use thiserror::Error;
 
 /// Possible types that schema-based parsing can expect for Cedar values.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -230,5 +235,202 @@ impl std::fmt::Display for AttributeType {
             },
             &self.attr_type
         )
+    }
+}
+
+/// Errors encountered when trying to compute the [`SchemaType`] of something
+#[derive(Debug, Error)]
+pub enum GetSchemaTypeError {
+    /// Encountered a heterogeneous set. Heterogeneous sets do not have a valid
+    /// [`SchemaType`].
+    #[error(transparent)]
+    HeterogeneousSet(#[from] HeterogeneousSetError),
+    /// Error looking up an extension function, which may be necessary to
+    /// compute the [`SchemaType`] of expressions that contain extension
+    /// function calls -- not to actually call the extension function, but to
+    /// get metadata about it
+    #[error(transparent)]
+    ExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
+    /// Trying to compute the [`SchemaType`], but the value or expression
+    /// contains an [`Unknown`] that has insufficient type information
+    /// associated in order to compute the `SchemaType`
+    #[error("can't compute SchemaType because of insufficient type information for `{unknown}`")]
+    UnknownInsufficientTypeInfo {
+        /// `Unknown` which has insufficient type information
+        unknown: Unknown,
+    },
+    /// Trying to compute the [`SchemaType`] of a nontrivial residual (i.e., a
+    /// residual which is not just a single `Unknown`). For now, we do not
+    /// attempt to compute the [`SchemaType`] in these cases, and just return
+    /// this error.
+    #[error("can't compute SchemaType of nontrivial residual `{residual}`")]
+    NontrivialResidual {
+        /// Nontrivial residual which we were trying to compute the
+        /// [`SchemaType`] of
+        residual: Expr,
+    },
+}
+
+/// Found a set whose elements don't all have the same type.  This doesn't match
+/// any possible schema.
+#[derive(Debug, Error)]
+#[error("set elements have different types: {ty1} and {ty2}")]
+pub struct HeterogeneousSetError {
+    /// First element type which was found
+    ty1: Box<SchemaType>,
+    /// Second element type which was found
+    ty2: Box<SchemaType>,
+}
+
+/// Get the [`SchemaType`] of a restricted expression.
+///
+/// This isn't possible for general `Expr`s (without a request, full schema,
+/// etc), but is possible for (concrete) restricted expressions, given the
+/// information in `Extensions`.
+///
+/// For records, we can't know whether the attributes in the given record are
+/// required or optional.
+/// This function, when given a record that has keys A, B, and C, will return a
+/// `SchemaType` where A, B, and C are all marked as optional attributes, but no
+/// other attributes are possible.
+/// That is, this assumes that all existing attributes are optional, but that no
+/// other optional attributes are possible.
+/// Compared to marking A, B, and C as required, this allows the returned
+/// `SchemaType` to `is_consistent_with()` more types.
+pub fn schematype_of_restricted_expr(
+    rexpr: BorrowedRestrictedExpr<'_>,
+    extensions: Extensions<'_>,
+) -> Result<SchemaType, GetSchemaTypeError> {
+    match rexpr.expr_kind() {
+        ExprKind::Lit(lit) => Ok(schematype_of_lit(lit)),
+        ExprKind::Set(elements) => {
+            let element_types = elements.iter().map(|el| {
+                schematype_of_restricted_expr(BorrowedRestrictedExpr::new_unchecked(el), extensions) // assuming the invariant holds for the set as a whole, it will also hold for each element
+            });
+            schematype_of_set_elements(element_types)
+        }
+        ExprKind::Record(map) => {
+            Ok(SchemaType::Record {
+                attrs: map.iter().map(|(k, v)| {
+                    let attr_type = schematype_of_restricted_expr(
+                        BorrowedRestrictedExpr::new_unchecked(v), // assuming the invariant holds for the record as a whole, it will also hold for each attribute value
+                        extensions,
+                    )?;
+                    // we can't know if the attribute is required or optional,
+                    // but marking it optional is more flexible -- allows the
+                    // attribute type to `is_consistent_with()` more types
+                    Ok((k.clone(), AttributeType::optional(attr_type)))
+                }).collect::<Result<HashMap<_,_>, GetSchemaTypeError>>()?
+            })
+        }
+        ExprKind::ExtensionFunctionApp { fn_name, .. } => {
+            let efunc = extensions.func(fn_name)?;
+            Ok(efunc.return_type().cloned().ok_or_else(|| ExtensionFunctionLookupError::HasNoType {
+                name: efunc.name().clone()
+            })?)
+        }
+        ExprKind::Unknown(u @ Unknown { type_annotation, .. }) => match type_annotation {
+            None => Err(GetSchemaTypeError::UnknownInsufficientTypeInfo { unknown: u.clone() }),
+            Some(ty) => match SchemaType::from_ty(ty.clone()) {
+                Some(ty) => Ok(ty),
+                None => Err(GetSchemaTypeError::UnknownInsufficientTypeInfo { unknown: u.clone() }),
+            }
+        }
+        // PANIC SAFETY. Unreachable by invariant on restricted expressions
+        #[allow(clippy::unreachable)]
+        expr => unreachable!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
+    }
+}
+
+/// Get the [`SchemaType`] of a [`Value`].
+///
+/// Note that while getting the [`Type`] of a [`Value`] (with `value.type_of()`)
+/// is O(1), getting the [`SchemaType`] requires recursively traversing the
+/// whole `Value` and is thus O(n).
+///
+/// If the `Value` is a record, we can't know whether the attributes in the
+/// given record are required or optional.
+/// This function will return the `SchemaType` where all attributes that appear
+/// in the `Value` are required, and no other attributes exist.
+/// That is, this assumes that all existing attributes are required, and that no
+/// other optional attributes are possible.
+pub fn schematype_of_value(value: &Value) -> Result<SchemaType, HeterogeneousSetError> {
+    match value {
+        Value::Lit(lit) => Ok(schematype_of_lit(lit)),
+        Value::Set(set) => {
+            let element_types = set.iter().map(|el| schematype_of_value(el));
+            schematype_of_set_elements(element_types)
+        }
+        Value::Record(map) => Ok(SchemaType::Record {
+            attrs: map
+                .iter()
+                .map(|(k, v)| Ok((k.clone(), AttributeType::required(schematype_of_value(v)?))))
+                .collect::<Result<_, HeterogeneousSetError>>()?,
+        }),
+        Value::ExtensionValue(ev) => Ok(SchemaType::Extension {
+            name: ev.typename(),
+        }),
+    }
+}
+
+/// Get the [`SchemaType`] of a [`Literal`].
+pub fn schematype_of_lit(lit: &Literal) -> SchemaType {
+    match lit {
+        Literal::Bool(_) => SchemaType::Bool,
+        Literal::Long(_) => SchemaType::Long,
+        Literal::String(_) => SchemaType::String,
+        Literal::EntityUID(euid) => SchemaType::Entity {
+            ty: euid.entity_type().clone(),
+        },
+    }
+}
+
+/// Get the [`SchemaType`] for a set whose elements have the types given by this
+/// iterator.
+///
+/// Always returns some kind of `SchemaType::Set { .. }`, or an error.
+fn schematype_of_set_elements<E: From<HeterogeneousSetError>>(
+    mut element_types: impl Iterator<Item = Result<SchemaType, E>>,
+) -> Result<SchemaType, E> {
+    match element_types.next() {
+        None => Ok(SchemaType::EmptySet),
+        Some(Err(e)) => Err(e),
+        Some(Ok(element_ty)) => {
+            let matches_element_ty = |ty: &Result<SchemaType, E>| matches!(ty, Ok(ty) if ty.is_consistent_with(&element_ty));
+            let conflicting_ty = element_types.find(|ty| !matches_element_ty(ty));
+            match conflicting_ty {
+                None => Ok(SchemaType::Set {
+                    element_ty: Box::new(element_ty),
+                }),
+                Some(Ok(conflicting_ty)) => Err(HeterogeneousSetError {
+                    ty1: Box::new(element_ty),
+                    ty2: Box::new(conflicting_ty),
+                }
+                .into()),
+                Some(Err(e)) => Err(e),
+            }
+        }
+    }
+}
+
+/// Get the [`SchemaType`] of a [`PartialValue`].
+///
+/// For some residuals, the `SchemaType` cannot be determined without evaluating
+/// (or knowing more type information about the unknowns). In those cases, this
+/// function returns an appropriate `GetSchemaTypeError`.
+///
+/// See notes on [`schematype_of_value()`].
+pub fn schematype_of_partialvalue(
+    pvalue: &PartialValue,
+    extensions: Extensions<'_>,
+) -> Result<SchemaType, GetSchemaTypeError> {
+    match pvalue {
+        PartialValue::Value(v) => schematype_of_value(v).map_err(Into::into),
+        PartialValue::Residual(expr) => match BorrowedRestrictedExpr::new(expr) {
+            Ok(expr) => schematype_of_restricted_expr(expr, extensions),
+            Err(_) => Err(GetSchemaTypeError::NontrivialResidual {
+                residual: expr.clone(),
+            }), // the PartialValue is a residual that isn't a valid restricted expression. For now we don't try to determine the type in this case.
+        },
     }
 }

@@ -16,12 +16,12 @@
 
 use std::fmt::Display;
 
-use super::SchemaType;
+use super::{HeterogeneousSetError, SchemaType};
 use crate::ast::{
     BorrowedRestrictedExpr, EntityUID, Expr, ExprKind, Name, PolicyID, RestrictedExpr,
     RestrictedExprError,
 };
-use crate::entities::conformance::{EntitySchemaConformanceError, HeterogeneousSetError};
+use crate::entities::conformance::EntitySchemaConformanceError;
 use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
 use either::Either;
@@ -196,11 +196,11 @@ pub enum JsonDeserializationError {
     /// not currently supported.
     /// To pass an unknown to an extension function, use the
     /// explicit-constructor form.
-    #[error("{ctx}, argument `{arg}` to implicit constructor is an unknown; this is not currently supported. To pass an unknown to an extension function, use the explicit constructor form")]
+    #[error("{ctx}, argument `{arg}` to implicit constructor contains an unknown; this is not currently supported. To pass an unknown to an extension function, use the explicit constructor form")]
     UnknownInImplicitConstructorArg {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
-        /// Argument which was encountered
+        /// Argument which contains an unknown
         arg: Box<RestrictedExpr>,
     },
     /// Raised when a JsonValue contains the no longer supported `__expr` escape

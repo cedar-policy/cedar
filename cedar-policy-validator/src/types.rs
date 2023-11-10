@@ -26,7 +26,7 @@ use std::{
 
 use cedar_policy_core::{
     ast::{BorrowedRestrictedExpr, EntityType, EntityUID, Expr, ExprShapeOnly, Name},
-    entities::{type_of_restricted_expr, TypeOfRestrictedExprError},
+    entities::{typecheck_restricted_expr_against_schematype, GetSchemaTypeError},
     extensions::Extensions,
 };
 
@@ -632,7 +632,7 @@ impl Type {
         &self,
         restricted_expr: BorrowedRestrictedExpr<'_>,
         extensions: Extensions<'_>,
-    ) -> Result<bool, TypeOfRestrictedExprError> {
+    ) -> Result<bool, GetSchemaTypeError> {
         match self {
             Type::Never => Ok(false), // no expr has type Never
             Type::Primitive {
@@ -735,7 +735,11 @@ impl Type {
                         match expected_arg_ty {
                             None => {} // in this case, the docs on `.arg_types()` say that multiple types are allowed, we just approximate as saying you can pass any type to this argument
                             Some(ty) => {
-                                if &type_of_restricted_expr(actual_arg, extensions)? != ty {
+                                if typecheck_restricted_expr_against_schematype(
+                                    actual_arg, ty, extensions,
+                                )
+                                .is_err()
+                                {
                                     return Ok(false);
                                 }
                             }

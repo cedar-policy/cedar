@@ -1,5 +1,5 @@
 use crate::{ValidatorEntityType, ValidatorSchema};
-use cedar_policy_core::entities::TypeOfRestrictedExprError;
+use cedar_policy_core::entities::GetSchemaTypeError;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::{ast, entities};
 use smol_str::SmolStr;
@@ -282,7 +282,7 @@ pub enum RequestValidationError {
     /// Error computing the type of the `Context`; see the contained error type
     /// for details about the kinds of errors that can occur
     #[error("context is not valid: {0}")]
-    TypeOfContext(TypeOfRestrictedExprError),
+    TypeOfContext(GetSchemaTypeError),
 }
 
 /// Struct which carries enough information that it can impl Core's

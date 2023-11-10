@@ -22,8 +22,8 @@ use crate::ast::{
     RestrictedExpr, Unknown,
 };
 use crate::entities::{
-    type_of_restricted_expr, EntitySchemaConformanceError, EscapeKind, TypeMismatchError,
-    TypeOfRestrictedExprError,
+    schematype_of_restricted_expr, EntitySchemaConformanceError, EscapeKind, GetSchemaTypeError,
+    TypeMismatchError,
 };
 use crate::extensions::Extensions;
 use crate::FromNormalizedStr;
@@ -83,7 +83,7 @@ pub enum CedarValueJson {
     /// heterogeneously
     Set(Vec<CedarValueJson>),
     /// JSON object => Cedar record; must have string keys, but values
-    /// can be any JSONValues, even heterogeneously
+    /// can be any `CedarValueJson`s, even heterogeneously
     Record(JsonRecord),
 }
 
@@ -426,7 +426,7 @@ impl<'e> ValueParser<'e> {
                     };
                     let err = TypeMismatchError {
                         expected: Box::new(expected_ty.clone()),
-                        actual_ty: match type_of_restricted_expr(
+                        actual_ty: match schematype_of_restricted_expr(
                             actual_val.as_borrowed(),
                             self.extensions,
                         ) {
@@ -505,7 +505,7 @@ impl<'e> ValueParser<'e> {
                     };
                     let err = TypeMismatchError {
                         expected: Box::new(expected_ty.clone()),
-                        actual_ty: match type_of_restricted_expr(
+                        actual_ty: match schematype_of_restricted_expr(
                             actual_val.as_borrowed(),
                             self.extensions,
                         ) {
@@ -567,9 +567,9 @@ impl<'e> ValueParser<'e> {
             }
             ExtnValueJson::ImplicitConstructor(val) => {
                 let arg = val.into_expr(ctx.clone())?;
-                let argty = type_of_restricted_expr(arg.as_borrowed(), self.extensions).map_err(
-                    |e| match e {
-                        TypeOfRestrictedExprError::HeterogeneousSet(err) => match ctx() {
+                let argty = schematype_of_restricted_expr(arg.as_borrowed(), self.extensions)
+                    .map_err(|e| match e {
+                        GetSchemaTypeError::HeterogeneousSet(err) => match ctx() {
                             JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                                 JsonDeserializationError::EntitySchemaConformance(
                                     EntitySchemaConformanceError::HeterogeneousSet {
@@ -584,7 +584,7 @@ impl<'e> ValueParser<'e> {
                                 err,
                             },
                         },
-                        TypeOfRestrictedExprError::ExtensionFunctionLookup(err) => match ctx() {
+                        GetSchemaTypeError::ExtensionFunctionLookup(err) => match ctx() {
                             JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                                 JsonDeserializationError::EntitySchemaConformance(
                                     EntitySchemaConformanceError::ExtensionFunctionLookup {
@@ -599,14 +599,14 @@ impl<'e> ValueParser<'e> {
                                 err,
                             },
                         },
-                        TypeOfRestrictedExprError::UnknownInsufficientTypeInfo { .. } => {
+                        GetSchemaTypeError::UnknownInsufficientTypeInfo { .. }
+                        | GetSchemaTypeError::NontrivialResidual { .. } => {
                             JsonDeserializationError::UnknownInImplicitConstructorArg {
                                 ctx: Box::new(ctx()),
                                 arg: Box::new(arg.clone()),
                             }
                         }
-                    },
-                )?;
+                    })?;
                 let func = self
                     .extensions
                     .lookup_single_arg_constructor(
@@ -640,8 +640,7 @@ impl<'e> ValueParser<'e> {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum EntityUidJson {
-    /// Explicit `__expr` syntax.
-    /// This is no longer supported and is only here for generating nice error messages.
+    /// This was removed in 3.0 and is only here for generating nice error messages.
     ExplicitExprEscape {
         /// Contents are ignored.
         __expr: String,
@@ -657,32 +656,6 @@ pub enum EntityUidJson {
 
     /// Implicit catch-all case for error handling
     FoundValue(serde_json::Value),
-}
-
-/// Serde JSON format for Cedar values where we know we're expecting an
-/// extension value
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(untagged)]
-pub enum ExtnValueJson {
-    /// This was removed in 3.0 and is here to give nice error messages
-    ExplicitExprEscape {
-        /// The contents of the `__expr`` escape
-        __expr: String,
-    },
-    /// Explicit `__extn` escape; see notes on `CedarValueJson::ExtnEscape`
-    ExplicitExtnEscape {
-        /// JSON object containing the extension-constructor call
-        __extn: FnAndArg,
-    },
-    /// Implicit `__extn` escape, in which case we'll just see the `FnAndArg`
-    /// directly
-    ImplicitExtnEscape(FnAndArg),
-    /// Implicit `__extn` escape and constructor. Constructor is implicitly
-    /// selected based on the argument type and the expected type.
-    //
-    // This is listed last so that it has lowest priority when deserializing.
-    // If one of the above forms fits, we use that.
-    ImplicitConstructor(CedarValueJson),
 }
 
 impl EntityUidJson {
@@ -741,4 +714,30 @@ impl From<&EntityUID> for EntityUidJson {
             __entity: uid.into(),
         }
     }
+}
+
+/// Serde JSON format for Cedar values where we know we're expecting an
+/// extension value
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum ExtnValueJson {
+    /// This was removed in 3.0 and is only here for generating nice error messages.
+    ExplicitExprEscape {
+        /// Contents are ignored.
+        __expr: String,
+    },
+    /// Explicit `__extn` escape; see notes on `CedarValueJson::ExtnEscape`
+    ExplicitExtnEscape {
+        /// JSON object containing the extension-constructor call
+        __extn: FnAndArg,
+    },
+    /// Implicit `__extn` escape, in which case we'll just see the `FnAndArg`
+    /// directly
+    ImplicitExtnEscape(FnAndArg),
+    /// Implicit `__extn` escape and constructor. Constructor is implicitly
+    /// selected based on the argument type and the expected type.
+    //
+    // This is listed last so that it has lowest priority when deserializing.
+    // If one of the above forms fits, we use that.
+    ImplicitConstructor(CedarValueJson),
 }
