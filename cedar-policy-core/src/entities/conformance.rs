@@ -1,5 +1,8 @@
 use super::{AttributeType, EntityTypeDescription, Schema, SchemaType};
-use crate::ast::{BorrowedRestrictedExpr, Entity, EntityType, EntityUID, ExprKind, Literal};
+use crate::ast::{
+    BorrowedRestrictedExpr, Entity, EntityType, EntityUID, ExprKind, Literal, RestrictedExpr,
+    Unknown,
+};
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use smol_str::SmolStr;
 use std::collections::HashMap;
@@ -26,7 +29,7 @@ pub enum EntitySchemaConformanceError {
     },
     /// The given attribute on the given entity had a different type than the
     /// schema indicated
-    #[error("in attribute `{attr}` on `{uid}`, type mismatch: attribute was expected to have type {expected}, but actually has type {actual}")]
+    #[error("in attribute `{attr}` on `{uid}`, type mismatch: attribute was expected to have type {expected}, but it does not: `{actual}`")]
     TypeMismatch {
         /// Entity where the type mismatch occurred
         uid: EntityUID,
@@ -34,8 +37,8 @@ pub enum EntitySchemaConformanceError {
         attr: SmolStr,
         /// Type which was expected
         expected: Box<SchemaType>,
-        /// Type which was encountered instead
-        actual: Box<SchemaType>,
+        /// Attribute value which doesn't have the expected type
+        actual: Box<RestrictedExpr>,
     },
     /// Found a set whose elements don't all have the same type. This doesn't match
     /// any possible schema.
@@ -182,7 +185,7 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                     Some(expected_ty) => {
                         // typecheck: ensure that the entity attribute value matches
                         // the expected type
-                        match type_of_restricted_expr(val, self.extensions) {
+                        match type_of_restricted_expr(val.clone(), self.extensions) {
                             Ok(actual_ty) => {
                                 if actual_ty.is_consistent_with(&expected_ty) {
                                     // typecheck passes
@@ -191,9 +194,17 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                                         uid: uid.clone(),
                                         attr: attr.into(),
                                         expected: Box::new(expected_ty),
-                                        actual: Box::new(actual_ty),
+                                        actual: Box::new(val.to_owned()),
                                     });
                                 }
+                            }
+                            Err(TypeOfRestrictedExprError::UnknownInsufficientTypeInfo {
+                                ..
+                            }) => {
+                                // in this case we just don't have the information to know whether
+                                // the attribute value (an unknown) matches the expected type.
+                                // For now we consider this as passing -- we can't really report a
+                                // type error.
                             }
                             Err(TypeOfRestrictedExprError::HeterogeneousSet(err)) => {
                                 return Err(EntitySchemaConformanceError::HeterogeneousSet {
@@ -248,6 +259,14 @@ pub enum TypeOfRestrictedExprError {
     /// call the extension function, but to get metadata about it
     #[error(transparent)]
     ExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
+    /// Trying to compute the type of a restricted expression which contains
+    /// an [`Unknown`] that has insufficient type information associated in
+    /// order to compute the `SchemaType`
+    #[error("can't compute SchemaType because of insufficient type information for `{unknown}`")]
+    UnknownInsufficientTypeInfo {
+        /// `Unknown` which has insufficient type information
+        unknown: Unknown,
+    },
 }
 
 /// Get the [`SchemaType`] of a restricted expression.
@@ -314,6 +333,13 @@ pub fn type_of_restricted_expr(
             Ok(efunc.return_type().cloned().ok_or_else(|| ExtensionFunctionLookupError::HasNoType {
                 name: efunc.name().clone()
             })?)
+        }
+        ExprKind::Unknown(u @ Unknown { type_annotation, .. }) => match type_annotation {
+            None => Err(TypeOfRestrictedExprError::UnknownInsufficientTypeInfo { unknown: u.clone() }),
+            Some(ty) => match SchemaType::from_ty(ty.clone()) {
+                Some(ty) => Ok(ty),
+                None => Err(TypeOfRestrictedExprError::UnknownInsufficientTypeInfo { unknown: u.clone() }),
+            }
         }
         // PANIC SAFETY. Unreachable by invariant on restricted expressions
         #[allow(clippy::unreachable)]

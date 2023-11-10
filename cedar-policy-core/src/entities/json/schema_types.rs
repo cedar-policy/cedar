@@ -64,6 +64,22 @@ pub struct AttributeType {
 }
 
 impl SchemaType {
+    /// Return the `SchemaType` corresponding to the given `Type`, if possible.
+    ///
+    /// Some `Type`s do not contain enough information to construct a full
+    /// `SchemaType`.  In those cases, this function returns `None`.
+    pub fn from_ty(ty: Type) -> Option<Self> {
+        match ty {
+            Type::Bool => Some(SchemaType::Bool),
+            Type::Long => Some(SchemaType::Long),
+            Type::String => Some(SchemaType::String),
+            Type::Entity { ty } => Some(SchemaType::Entity { ty }),
+            Type::Set => None,
+            Type::Record => None,
+            Type::Extension { name } => Some(SchemaType::Extension { name }),
+        }
+    }
+
     /// Does this SchemaType match the given Type.
     /// I.e., are they compatible, in the sense that there exist some concrete
     /// values that have the given SchemaType and the given Type.

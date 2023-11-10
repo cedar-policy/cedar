@@ -307,30 +307,36 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                         }
                         Some(rexpr) => rexpr,
                     };
-                    let expected_ty =
-                        type_of_restricted_expr(expected_rexpr.as_borrowed(), self.extensions)
-                            .map_err(|e| match e {
-                                TypeOfRestrictedExprError::HeterogeneousSet(err) => {
-                                    JsonDeserializationError::EntitySchemaConformance(
-                                        EntitySchemaConformanceError::HeterogeneousSet {
-                                            uid: uid.clone(),
-                                            attr: k.clone(),
-                                            err,
-                                        },
-                                    )
-                                }
-                                TypeOfRestrictedExprError::ExtensionFunctionLookup(err) => {
-                                    JsonDeserializationError::EntitySchemaConformance(
-                                        EntitySchemaConformanceError::ExtensionFunctionLookup {
-                                            uid: uid.clone(),
-                                            attr: k.clone(),
-                                            err,
-                                        },
-                                    )
-                                }
-                            })?;
+                    let expected_ty = match type_of_restricted_expr(
+                        expected_rexpr.as_borrowed(),
+                        self.extensions,
+                    ) {
+                        Ok(ty) => Ok(Some(ty)),
+                        Err(TypeOfRestrictedExprError::HeterogeneousSet(err)) => {
+                            Err(JsonDeserializationError::EntitySchemaConformance(
+                                EntitySchemaConformanceError::HeterogeneousSet {
+                                    uid: uid.clone(),
+                                    attr: k.clone(),
+                                    err,
+                                },
+                            ))
+                        }
+                        Err(TypeOfRestrictedExprError::ExtensionFunctionLookup(err)) => {
+                            Err(JsonDeserializationError::EntitySchemaConformance(
+                                EntitySchemaConformanceError::ExtensionFunctionLookup {
+                                    uid: uid.clone(),
+                                    attr: k.clone(),
+                                    err,
+                                },
+                            ))
+                        }
+                        Err(TypeOfRestrictedExprError::UnknownInsufficientTypeInfo { .. }) => {
+                            // In this case, we'll just do ordinary non-schema-based parsing.
+                            Ok(None)
+                        }
+                    }?;
                     let actual_rexpr =
-                        vparser.val_into_restricted_expr(v.into(), Some(&expected_ty), || {
+                        vparser.val_into_restricted_expr(v.into(), expected_ty.as_ref(), || {
                             JsonDeserializationErrorContext::EntityAttribute {
                                 uid: uid.clone(),
                                 attr: k.clone(),

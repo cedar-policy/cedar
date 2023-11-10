@@ -143,7 +143,9 @@ pub enum JsonDeserializationError {
     /// entity attributes are reported as `Self::EntitySchemaConformance`. As of
     /// this writing, that means this should only be used for schema-based
     /// parsing of the `Context`.)
-    #[error("{ctx}, type mismatch: expected type {expected}, but actually has type {actual}")]
+    #[error(
+        "{ctx}, type mismatch: expected value to have type {expected}, but it does not: `{actual}`"
+    )]
     TypeMismatch {
         /// Context of this error, which will be something other than `EntityAttribute`.
         /// (Type mismatches in entity attributes are reported as
@@ -151,8 +153,8 @@ pub enum JsonDeserializationError {
         ctx: Box<JsonDeserializationErrorContext>,
         /// Type which was expected
         expected: Box<SchemaType>,
-        /// Type which was encountered instead
-        actual: Box<SchemaType>,
+        /// Value which doesn't have the expected type
+        actual: Box<RestrictedExpr>,
     },
     /// During schema-based parsing, found a set whose elements don't all have
     /// the same type.  This doesn't match any possible schema.
@@ -189,6 +191,18 @@ pub enum JsonDeserializationError {
         ctx: Box<JsonDeserializationErrorContext>,
         /// Underlying error
         err: ExtensionFunctionLookupError,
+    },
+    /// During schema-based parsing, found an unknown in an _argument_ to an
+    /// extension function being processed in implicit-constructor form. This is
+    /// not currently supported.
+    /// To pass an unknown to an extension function, use the
+    /// explicit-constructor form.
+    #[error("{ctx}, argument `{arg}` to implicit constructor is an unknown; this is not currently supported. To pass an unknown to an extension function, use the explicit constructor form")]
+    UnknownInImplicitConstructorArg {
+        /// Context of this error
+        ctx: Box<JsonDeserializationErrorContext>,
+        /// Argument which was encountered
+        arg: Box<RestrictedExpr>,
     },
     /// Raised when a JsonValue contains the no longer supported `__expr` escape
     #[error("{0}, invalid escape. The `__expr` escape is no longer supported")]
