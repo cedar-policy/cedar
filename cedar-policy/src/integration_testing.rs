@@ -111,6 +111,11 @@ fn constant_true() -> bool {
 /// For relative paths, return the absolute path, assuming that the path
 /// is relative to the root of the `CedarIntegrationTests` repo.
 /// For absolute paths, return them unchanged.
+///
+/// # Panics
+///
+/// Panics if the environment variable `CARGO_MANIFEST_DIR` is not set.
+/// This variable should be set by Cargo at build-time.
 pub fn resolve_integration_test_path(path: impl AsRef<Path>) -> PathBuf {
     if path.as_ref().is_relative() {
         let mut full_path = PathBuf::new();

@@ -169,7 +169,7 @@ impl ast::RequestSchema for ValidatorSchema {
         // the remaining checks require knowing about the action.
         match request.action() {
             EntityUIDEntry::Concrete(action) => {
-                let validator_action_id = self.get_action_id(&*action).ok_or_else(|| {
+                let validator_action_id = self.get_action_id(action).ok_or_else(|| {
                     RequestValidationError::UndeclaredAction {
                         action: Arc::clone(action),
                     }
@@ -224,10 +224,10 @@ impl ast::RequestSchema for ValidatorSchema {
 
 impl<'a> ast::RequestSchema for CoreSchema<'a> {
     type Error = RequestValidationError;
-    fn validate_request<'e>(
+    fn validate_request(
         &self,
         request: &ast::Request,
-        extensions: Extensions<'e>,
+        extensions: Extensions<'_>,
     ) -> Result<(), Self::Error> {
         self.schema.validate_request(request, extensions)
     }

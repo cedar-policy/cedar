@@ -150,13 +150,16 @@ impl IPAddr {
 
 fn parse_prefix(s: &str, max: u8, max_len: u8) -> Result<u8, String> {
     if s.len() > max_len as usize {
-        return Err(format!("error parsing prefix: string length is too large"));
+        return Err(format!(
+            "error parsing prefix: string length {} is too large",
+            s.len()
+        ));
     }
     if s.chars().any(|c| !c.is_ascii_digit()) {
-        return Err(format!("error parsing prefix: encountered non-digit"));
+        return Err(format!("error parsing prefix `{s}`: encountered non-digit"));
     }
     if s.starts_with('0') && s != "0" {
-        return Err(format!("error parsing prefix: leading zero(s)"));
+        return Err(format!("error parsing prefix `{s}`: leading zero(s)"));
     }
     let res: u8 = s
         .parse()

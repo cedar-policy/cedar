@@ -343,7 +343,7 @@ fn parse_instantiations(
                 };
             }
             match policies.link(template_id, instance_id, vals) {
-                Ok(_) => Ok(()),
+                Ok(()) => Ok(()),
                 Err(e) => Err(vec![format!("Error instantiating template: {e}")]),
             }
         }
@@ -397,7 +397,7 @@ impl RecvdSlice {
         if let Some(t_inst_list) = template_instantiations {
             for instantiation in t_inst_list {
                 match parse_instantiations(&mut policies, instantiation) {
-                    Ok(_) => (),
+                    Ok(()) => (),
                     Err(err) => errs.extend(err),
                 }
             }
@@ -420,7 +420,7 @@ fn parse_policy_set_from_individual_policies(
     for (id, policy_src) in policies {
         match Policy::parse(Some(id.clone()), policy_src) {
             Ok(p) => match policy_set.add(p) {
-                Ok(_) => {}
+                Ok(()) => {}
                 Err(err) => {
                     errs.push(format!("couldn't add policy to set due to error: {err}"));
                 }
@@ -436,7 +436,7 @@ fn parse_policy_set_from_individual_policies(
         for (id, policy_src) in templates {
             match Template::parse(Some(id.clone()), policy_src) {
                 Ok(p) => match policy_set.add_template(p) {
-                    Ok(_) => {}
+                    Ok(()) => {}
                     Err(err) => {
                         errs.push(format!("couldn't add policy to set due to error: {err}"));
                     }

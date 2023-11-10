@@ -238,9 +238,7 @@ impl<'a> BorrowedRestrictedExpr<'a> {
 
     /// Iterate over the elements of the set if this `RestrictedExpr` is a set,
     /// or `None` if it is not a set
-    pub fn as_set_elements<'s>(
-        &'s self,
-    ) -> Option<impl Iterator<Item = BorrowedRestrictedExpr<'s>>> {
+    pub fn as_set_elements(&self) -> Option<impl Iterator<Item = BorrowedRestrictedExpr<'_>>> {
         match self.expr_kind() {
             ExprKind::Set(set) => Some(set.iter().map(BorrowedRestrictedExpr::new_unchecked)), // since the RestrictedExpr invariant holds for the input set, it will hold for each element as well
             _ => None,
@@ -249,9 +247,9 @@ impl<'a> BorrowedRestrictedExpr<'a> {
 
     /// Iterate over the (key, value) pairs of the record if this
     /// `RestrictedExpr` is a record, or `None` if it is not a record
-    pub fn as_record_pairs<'s>(
-        &'s self,
-    ) -> Option<impl Iterator<Item = (&'s SmolStr, BorrowedRestrictedExpr<'s>)>> {
+    pub fn as_record_pairs(
+        &self,
+    ) -> Option<impl Iterator<Item = (&'_ SmolStr, BorrowedRestrictedExpr<'_>)>> {
         match self.expr_kind() {
             ExprKind::Record(map) => Some(
                 map.iter()
@@ -264,9 +262,9 @@ impl<'a> BorrowedRestrictedExpr<'a> {
     /// Get the name and args of the called extension function if this
     /// `RestrictedExpr` is an extension function call, or `None` if it is not
     /// an extension function call
-    pub fn as_extn_fn_call<'s>(
-        &'s self,
-    ) -> Option<(&Name, impl Iterator<Item = BorrowedRestrictedExpr<'s>>)> {
+    pub fn as_extn_fn_call(
+        &self,
+    ) -> Option<(&Name, impl Iterator<Item = BorrowedRestrictedExpr<'_>>)> {
         match self.expr_kind() {
             ExprKind::ExtensionFunctionApp { fn_name, args } => Some((
                 fn_name,

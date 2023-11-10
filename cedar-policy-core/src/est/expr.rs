@@ -1537,13 +1537,13 @@ fn display_cedarvaluejson(f: &mut std::fmt::Formatter<'_>, v: &CedarValueJson) -
             });
             match style {
                 Some(ast::CallStyle::MethodStyle) => {
-                    display_cedarvaluejson(f, &arg)?;
+                    display_cedarvaluejson(f, arg)?;
                     write!(f, ".{ext_fn}()")?;
                     Ok(())
                 }
                 Some(ast::CallStyle::FunctionStyle) | None => {
                     write!(f, "{ext_fn}(")?;
-                    display_cedarvaluejson(f, &arg)?;
+                    display_cedarvaluejson(f, arg)?;
                     write!(f, ")")?;
                     Ok(())
                 }

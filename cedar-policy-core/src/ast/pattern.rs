@@ -85,7 +85,7 @@ impl std::fmt::Display for Pattern {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for pc in self.elems.as_ref() {
             match pc {
-                PatternElem::Char(c) if c == &'*' => write!(f, r#"\*"#)?,
+                PatternElem::Char('*') => write!(f, r#"\*"#)?,
                 PatternElem::Char(c) => write!(f, "{}", c.escape_debug())?,
                 PatternElem::Wildcard => write!(f, r#"*"#)?,
             }

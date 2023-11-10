@@ -1977,17 +1977,14 @@ impl PolicySet {
         // _before_ calling `self.ast.link` because `link` mutates the policy
         // set by creating a new link entry in a hashmap. This happens even when
         // trying to link a static policy, which we want to error on here.
-        let template = match self.templates.get(&template_id) {
-            Some(template) => template,
-            None => {
-                return Err(if self.policies.contains_key(&template_id) {
-                    PolicySetError::ExpectedTemplate
-                } else {
-                    PolicySetError::LinkingError(ast::LinkingError::NoSuchTemplate {
-                        id: template_id.0,
-                    })
-                });
-            }
+        let Some(template) = self.templates.get(&template_id) else {
+            return Err(if self.policies.contains_key(&template_id) {
+                PolicySetError::ExpectedTemplate
+            } else {
+                PolicySetError::LinkingError(ast::LinkingError::NoSuchTemplate {
+                    id: template_id.0,
+                })
+            });
         };
 
         let linked_ast = self
