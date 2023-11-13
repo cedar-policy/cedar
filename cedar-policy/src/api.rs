@@ -976,6 +976,7 @@ pub enum ValidationMode {
     /// have a restricted form which is amenable for analysis.
     #[default]
     Strict,
+    #[cfg(feature = "permissive-validate")]
     /// Validate that policies do not contain any type errors.
     Permissive,
 }
@@ -984,6 +985,7 @@ impl From<ValidationMode> for cedar_policy_validator::ValidationMode {
     fn from(mode: ValidationMode) -> Self {
         match mode {
             ValidationMode::Strict => Self::Strict,
+            #[cfg(feature = "permissive-validate")]
             ValidationMode::Permissive => Self::Permissive,
         }
     }

@@ -69,6 +69,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after previously failing to create that link with the same id from a static
   policy.
 
+### Removed
+
+- Move `ValidationMode::Permissive` behind an experimental feature flag.
+  To continue using this feature you must enable the `permissive-validate` feature
+  flag.
+
 ## [2.4.2] - 2023-10-23
 Cedar Language Version: 2.1.2
 
