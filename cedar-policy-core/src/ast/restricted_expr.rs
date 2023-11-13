@@ -231,7 +231,10 @@ impl std::str::FromStr for RestrictedExpr {
 
 /// While `RestrictedExpr` wraps an _owned_ `Expr`, `BorrowedRestrictedExpr`
 /// wraps a _borrowed_ `Expr`, with the same invariants.
-#[derive(Serialize, Hash, Debug, Clone, PartialEq, Eq)]
+///
+/// We derive `Copy` for this type because it's just a single reference, and
+/// `&T` is `Copy` for all `T`.
+#[derive(Serialize, Hash, Debug, Clone, PartialEq, Eq, Copy)]
 pub struct BorrowedRestrictedExpr<'a>(&'a Expr);
 
 impl<'a> BorrowedRestrictedExpr<'a> {

@@ -15,14 +15,13 @@
  */
 
 use super::{
-    CedarValueJson, EntityTypeDescription, EntityUidJson, JsonDeserializationError,
-    JsonDeserializationErrorContext, JsonSerializationError, NoEntitiesSchema, Schema, TypeAndId,
-    ValueParser,
+    schematype_of_restricted_expr, CedarValueJson, EntityTypeDescription, EntityUidJson,
+    GetSchemaTypeError, JsonDeserializationError, JsonDeserializationErrorContext,
+    JsonSerializationError, NoEntitiesSchema, Schema, TypeAndId, ValueParser,
 };
 use crate::ast::{Entity, EntityType, EntityUID, RestrictedExpr};
 use crate::entities::{
-    type_of_restricted_expr, unwrap_or_clone, Entities, EntitiesError,
-    EntitySchemaConformanceError, TCComputation, TypeOfRestrictedExprError,
+    unwrap_or_clone, Entities, EntitiesError, EntitySchemaConformanceError, TCComputation,
 };
 use crate::extensions::Extensions;
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
@@ -307,12 +306,12 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                         }
                         Some(rexpr) => rexpr,
                     };
-                    let expected_ty = match type_of_restricted_expr(
+                    let expected_ty = match schematype_of_restricted_expr(
                         expected_rexpr.as_borrowed(),
                         self.extensions,
                     ) {
                         Ok(ty) => Ok(Some(ty)),
-                        Err(TypeOfRestrictedExprError::HeterogeneousSet(err)) => {
+                        Err(GetSchemaTypeError::HeterogeneousSet(err)) => {
                             Err(JsonDeserializationError::EntitySchemaConformance(
                                 EntitySchemaConformanceError::HeterogeneousSet {
                                     uid: uid.clone(),
@@ -321,7 +320,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                                 },
                             ))
                         }
-                        Err(TypeOfRestrictedExprError::ExtensionFunctionLookup(err)) => {
+                        Err(GetSchemaTypeError::ExtensionFunctionLookup(err)) => {
                             Err(JsonDeserializationError::EntitySchemaConformance(
                                 EntitySchemaConformanceError::ExtensionFunctionLookup {
                                     uid: uid.clone(),
@@ -330,8 +329,9 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                                 },
                             ))
                         }
-                        Err(TypeOfRestrictedExprError::UnknownInsufficientTypeInfo { .. }) => {
-                            // In this case, we'll just do ordinary non-schema-based parsing.
+                        Err(GetSchemaTypeError::UnknownInsufficientTypeInfo { .. })
+                        | Err(GetSchemaTypeError::NontrivialResidual { .. }) => {
+                            // In these cases, we'll just do ordinary non-schema-based parsing.
                             Ok(None)
                         }
                     }?;
