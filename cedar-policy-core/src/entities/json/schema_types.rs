@@ -267,7 +267,7 @@ pub enum GetSchemaTypeError {
     NontrivialResidual {
         /// Nontrivial residual which we were trying to compute the
         /// [`SchemaType`] of
-        residual: Expr,
+        residual: Box<Expr>,
     },
 }
 
@@ -297,6 +297,10 @@ pub struct HeterogeneousSetError {
 /// other optional attributes are possible.
 /// Compared to marking A, B, and C as required, this allows the returned
 /// `SchemaType` to `is_consistent_with()` more types.
+///
+/// This function may return `GetSchemaTypeError`, but should never return
+/// `NontrivialResidual`, because `RestrictedExpr`s can't contain nontrivial
+/// residuals, only simple unknowns.
 pub fn schematype_of_restricted_expr(
     rexpr: BorrowedRestrictedExpr<'_>,
     extensions: Extensions<'_>,
@@ -428,9 +432,13 @@ pub fn schematype_of_partialvalue(
         PartialValue::Value(v) => schematype_of_value(v).map_err(Into::into),
         PartialValue::Residual(expr) => match BorrowedRestrictedExpr::new(expr) {
             Ok(expr) => schematype_of_restricted_expr(expr, extensions),
-            Err(_) => Err(GetSchemaTypeError::NontrivialResidual {
-                residual: expr.clone(),
-            }), // the PartialValue is a residual that isn't a valid restricted expression. For now we don't try to determine the type in this case.
+            Err(_) => {
+                // the PartialValue is a residual that isn't a valid restricted expression.
+                // For now we don't try to determine the type in this case.
+                Err(GetSchemaTypeError::NontrivialResidual {
+                    residual: Box::new(expr.clone()),
+                })
+            }
         },
     }
 }

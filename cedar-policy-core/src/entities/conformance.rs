@@ -259,13 +259,10 @@ pub fn typecheck_restricted_expr_against_schematype(
             Ok(())
         }
         Err(GetSchemaTypeError::NontrivialResidual { .. }) => {
-            // this case should be unreachable for the case of `PartialValue`s
-            // which are entity attributes, because a `PartialValue` computed
-            // from a `RestrictedExpr` should only have trivial residuals.  And
-            // as of this writing, there are no callers of this function that
-            // pass anything other than entity attributes.  Nonetheless, rather
-            // than relying on these delicate invariants, it's safe to treat
-            // this case like the case above and consider this as passing.
+            // this case is unreachable according to the invariant in the comments
+            // on `schematype_of_restricted_expr()`.
+            // Nonetheless, rather than relying on that invariant, it's safe to
+            // treat this case like the case above and consider this as passing.
             Ok(())
         }
         Err(GetSchemaTypeError::HeterogeneousSet(err)) => {
