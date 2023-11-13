@@ -263,7 +263,7 @@ pub enum TypeOfRestrictedExprError {
     /// Trying to compute the type of a restricted expression which contains
     /// an [`Unknown`] that has insufficient type information associated in
     /// order to compute the `SchemaType`
-    #[error("can't compute SchemaType because of insufficient type information for `{unknown}`")]
+    #[error("cannot compute type because of insufficient type information for `{unknown}`")]
     UnknownInsufficientTypeInfo {
         /// `Unknown` which has insufficient type information
         unknown: Unknown,
