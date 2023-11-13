@@ -22,7 +22,8 @@ use crate::ast::{
     RestrictedExpr, Unknown,
 };
 use crate::entities::{
-    type_of_restricted_expr, EntitySchemaConformanceError, EscapeKind, TypeOfRestrictedExprError,
+    type_of_restricted_expr, EntitySchemaConformanceError, EscapeKind, TypeMismatchError,
+    TypeOfRestrictedExprError,
 };
 use crate::extensions::Extensions;
 use crate::FromNormalizedStr;
@@ -414,26 +415,30 @@ impl<'e> ValueParser<'e> {
                         .collect::<Result<Vec<RestrictedExpr>, JsonDeserializationError>>()?,
                 )),
                 _ => {
-                    let expected = Box::new(expected_ty.clone());
-                    let actual = {
+                    let actual_val = {
                         let jvalue: CedarValueJson = serde_json::from_value(val)?;
-                        Box::new(jvalue.into_expr(ctx.clone())?)
+                        jvalue.into_expr(ctx.clone())?
+                    };
+                    let err = TypeMismatchError {
+                        expected: Box::new(expected_ty.clone()),
+                        actual_ty: match type_of_restricted_expr(
+                            actual_val.as_borrowed(),
+                            self.extensions,
+                        ) {
+                            Ok(actual_ty) => Some(Box::new(actual_ty)),
+                            Err(_) => None, // just don't report the type if there was an error computing it
+                        },
+                        actual_val: Box::new(actual_val),
                     };
                     match ctx() {
                         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                             Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::TypeMismatch {
-                                    uid,
-                                    attr,
-                                    expected,
-                                    actual,
-                                },
+                                EntitySchemaConformanceError::TypeMismatch { uid, attr, err },
                             ))
                         }
                         ctx => Err(JsonDeserializationError::TypeMismatch {
                             ctx: Box::new(ctx),
-                            expected,
-                            actual,
+                            err,
                         }),
                     }
                 }
@@ -489,26 +494,30 @@ impl<'e> ValueParser<'e> {
                     })
                 }
                 _ => {
-                    let expected = Box::new(expected_ty.clone());
-                    let actual = {
+                    let actual_val = {
                         let jvalue: CedarValueJson = serde_json::from_value(val)?;
-                        Box::new(jvalue.into_expr(ctx.clone())?)
+                        jvalue.into_expr(ctx.clone())?
+                    };
+                    let err = TypeMismatchError {
+                        expected: Box::new(expected_ty.clone()),
+                        actual_ty: match type_of_restricted_expr(
+                            actual_val.as_borrowed(),
+                            self.extensions,
+                        ) {
+                            Ok(actual_ty) => Some(Box::new(actual_ty)),
+                            Err(_) => None, // just don't report the type if there was an error computing it
+                        },
+                        actual_val: Box::new(actual_val),
                     };
                     match ctx() {
                         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                             Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::TypeMismatch {
-                                    uid,
-                                    attr,
-                                    expected,
-                                    actual,
-                                },
+                                EntitySchemaConformanceError::TypeMismatch { uid, attr, err },
                             ))
                         }
                         ctx => Err(JsonDeserializationError::TypeMismatch {
                             ctx: Box::new(ctx),
-                            expected,
-                            actual,
+                            err,
                         }),
                     }
                 }

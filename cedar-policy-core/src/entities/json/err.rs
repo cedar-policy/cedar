@@ -17,7 +17,10 @@
 use std::fmt::Display;
 
 use super::SchemaType;
-use crate::ast::{EntityUID, Expr, ExprKind, Name, PolicyID, RestrictedExpr, RestrictedExprError};
+use crate::ast::{
+    BorrowedRestrictedExpr, EntityUID, Expr, ExprKind, Name, PolicyID, RestrictedExpr,
+    RestrictedExprError,
+};
 use crate::entities::conformance::{EntitySchemaConformanceError, HeterogeneousSetError};
 use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
@@ -143,18 +146,14 @@ pub enum JsonDeserializationError {
     /// entity attributes are reported as `Self::EntitySchemaConformance`. As of
     /// this writing, that means this should only be used for schema-based
     /// parsing of the `Context`.)
-    #[error(
-        "{ctx}, type mismatch: expected value to have type {expected}, but it does not: `{actual}`"
-    )]
+    #[error("{ctx}, {err}")]
     TypeMismatch {
         /// Context of this error, which will be something other than `EntityAttribute`.
         /// (Type mismatches in entity attributes are reported as
         /// `Self::EntitySchemaConformance`.)
         ctx: Box<JsonDeserializationErrorContext>,
-        /// Type which was expected
-        expected: Box<SchemaType>,
-        /// Value which doesn't have the expected type
-        actual: Box<RestrictedExpr>,
+        /// Underlying error
+        err: TypeMismatchError,
     },
     /// During schema-based parsing, found a set whose elements don't all have
     /// the same type.  This doesn't match any possible schema.
@@ -273,6 +272,25 @@ pub enum JsonDeserializationErrorContext {
     },
 }
 
+/// Type mismatch error (in terms of `SchemaType`)
+#[derive(Debug, Error)]
+#[error("type mismatch: value was expected to have type {expected}, but {}: `{}`",
+    match .actual_ty {
+        Some(actual_ty) => format!("actually has type {actual_ty}"),
+        None => "it does not".to_string(),
+    },
+    display_restricted_expr(.actual_val.as_borrowed()))]
+pub struct TypeMismatchError {
+    /// Type which was expected
+    pub expected: Box<SchemaType>,
+    /// Type which was encountered instead. May be `None` in the case that
+    /// the encountered value was an `Unknown` with insufficient type
+    /// information to produce a `SchemaType`
+    pub actual_ty: Option<Box<SchemaType>>,
+    /// Value which doesn't have the expected type
+    pub actual_val: Box<RestrictedExpr>,
+}
+
 impl std::fmt::Display for JsonDeserializationErrorContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -292,6 +310,13 @@ fn display_json_value(v: &Either<serde_json::Value, Expr>) -> String {
     }
 }
 
+/// Display a `serde_json::Value`, but sorting object attributes, so that the
+/// output is deterministic (important for tests that check equality of error
+/// messages).
+///
+/// Note that this doesn't sort array elements, because JSON arrays are ordered,
+/// so all JSON-handling functions naturally preserve order for arrays and thus
+/// provide a deterministic output.
 fn display_value(v: &serde_json::Value) -> String {
     match v {
         serde_json::Value::Array(contents) => {
@@ -305,5 +330,33 @@ fn display_value(v: &serde_json::Value) -> String {
             format!("{{{}}}", v.iter().map(display_kv).join(","))
         }
         other => other.to_string(),
+    }
+}
+
+/// Display a `RestrictedExpr`, but sorting record attributes and set elements,
+/// so that the output is deterministic (important for tests that check equality
+/// of error messages).
+fn display_restricted_expr(expr: BorrowedRestrictedExpr<'_>) -> String {
+    match expr.expr_kind() {
+        ExprKind::Set(elements) => {
+            let restricted_exprs = elements.iter().map(BorrowedRestrictedExpr::new_unchecked); // since the RestrictedExpr invariant holds for the input, it holds for all set elements
+            format!(
+                "[{}]",
+                restricted_exprs
+                    .map(display_restricted_expr)
+                    .sorted_unstable()
+                    .join(", ")
+            )
+        }
+        ExprKind::Record(m) => {
+            format!(
+                "{{{}}}",
+                m.iter()
+                    .sorted_unstable_by_key(|(k, _)| SmolStr::clone(k))
+                    .map(|(k, v)| format!("\"{}\": {}", k.escape_debug(), v))
+                    .join(", ")
+            )
+        }
+        _ => format!("{expr}"), // all other cases: use the normal Display
     }
 }

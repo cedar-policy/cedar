@@ -15,6 +15,7 @@
  */
 
 use crate::ast::{EntityType, Name, Type};
+use itertools::Itertools;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 
@@ -190,17 +191,27 @@ impl std::fmt::Display for SchemaType {
                 if attrs.is_empty() {
                     write!(f, "empty record")
                 } else {
-                    write!(f, "record with attributes: (")?;
-                    for (k, v) in attrs.iter() {
-                        write!(f, "{k:?} => {v}, ")?;
+                    write!(f, "record with attributes: {{")?;
+                    // sorting attributes ensures that there is a single, deterministic
+                    // Display output for each `SchemaType`, which is important for
+                    // tests that check equality of error messages
+                    for (i, (k, v)) in attrs
+                        .iter()
+                        .sorted_unstable_by_key(|(k, _)| SmolStr::clone(k))
+                        .enumerate()
+                    {
+                        write!(f, "{k:?} => {v}")?;
+                        if i < (attrs.len() - 1) {
+                            write!(f, ", ")?;
+                        }
                     }
-                    write!(f, ")")?;
+                    write!(f, "}}")?;
                     Ok(())
                 }
             }
             Self::Entity { ty } => match ty {
                 EntityType::Unspecified => write!(f, "(entity of unspecified type)"),
-                EntityType::Concrete(name) => write!(f, "(entity of type `{}`)", name),
+                EntityType::Concrete(name) => write!(f, "`{}`", name),
             },
             Self::Extension { name } => write!(f, "{}", name),
         }
