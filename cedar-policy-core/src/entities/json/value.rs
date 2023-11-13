@@ -19,10 +19,11 @@ use super::{
 };
 use crate::ast::{
     BorrowedRestrictedExpr, Eid, EntityUID, ExprConstructionError, ExprKind, Literal, Name,
-    RestrictedExpr,
+    RestrictedExpr, Unknown,
 };
 use crate::entities::{
-    type_of_restricted_expr, EntitySchemaConformanceError, EscapeKind, TypeOfRestrictedExprError,
+    type_of_restricted_expr, EntitySchemaConformanceError, EscapeKind, TypeMismatchError,
+    TypeOfRestrictedExprError,
 };
 use crate::extensions::Extensions;
 use crate::FromNormalizedStr;
@@ -371,6 +372,25 @@ impl<'e> ValueParser<'e> {
         expected_ty: Option<&SchemaType>,
         ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
     ) -> Result<RestrictedExpr, JsonDeserializationError> {
+        // First we have to check if we've been given an Unknown. This is valid
+        // regardless of the expected type (see #418).
+        let parse_as_unknown = |val: serde_json::Value| {
+            let extjson: ExtnValueJson = serde_json::from_value(val).ok()?;
+            match extjson {
+                ExtnValueJson::ExplicitExtnEscape {
+                    __extn: FnAndArg { ext_fn, arg },
+                } if ext_fn == "unknown" => {
+                    let arg = arg.into_expr(ctx.clone()).ok()?;
+                    let name = arg.as_string()?;
+                    Some(RestrictedExpr::unknown(Unknown::new_untyped(name.clone())))
+                }
+                _ => None, // only explicit `__extn` escape is valid for this purpose. For instance, if we allowed `ImplicitConstructor` here, then all strings would parse as calls to `unknown()`, which is clearly not what we want.
+            }
+        };
+        if let Some(rexpr) = parse_as_unknown(val.clone()) {
+            return Ok(rexpr);
+        }
+        // otherwise, we do normal schema-based parsing based on the expected type.
         match expected_ty {
             // The expected type is an entity reference. Special parsing rules
             // apply: for instance, the `__entity` escape can optionally be omitted.
@@ -400,33 +420,30 @@ impl<'e> ValueParser<'e> {
                         .collect::<Result<Vec<RestrictedExpr>, JsonDeserializationError>>()?,
                 )),
                 _ => {
-                    let expected = Box::new(expected_ty.clone());
-                    let actual = {
+                    let actual_val = {
                         let jvalue: CedarValueJson = serde_json::from_value(val)?;
-                        let ty = type_of_restricted_expr(
-                            jvalue.into_expr(ctx.clone())?.as_borrowed(),
+                        jvalue.into_expr(ctx.clone())?
+                    };
+                    let err = TypeMismatchError {
+                        expected: Box::new(expected_ty.clone()),
+                        actual_ty: match type_of_restricted_expr(
+                            actual_val.as_borrowed(),
                             self.extensions,
-                        )
-                        .map_err(|e| {
-                            type_of_restricted_expr_error_to_json_deserialization_error(e, ctx())
-                        })?;
-                        Box::new(ty)
+                        ) {
+                            Ok(actual_ty) => Some(Box::new(actual_ty)),
+                            Err(_) => None, // just don't report the type if there was an error computing it
+                        },
+                        actual_val: Box::new(actual_val),
                     };
                     match ctx() {
                         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                             Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::TypeMismatch {
-                                    uid,
-                                    attr,
-                                    expected,
-                                    actual,
-                                },
+                                EntitySchemaConformanceError::TypeMismatch { uid, attr, err },
                             ))
                         }
                         ctx => Err(JsonDeserializationError::TypeMismatch {
                             ctx: Box::new(ctx),
-                            expected,
-                            actual,
+                            err,
                         }),
                     }
                 }
@@ -482,33 +499,30 @@ impl<'e> ValueParser<'e> {
                     })
                 }
                 _ => {
-                    let expected = Box::new(expected_ty.clone());
-                    let actual = {
+                    let actual_val = {
                         let jvalue: CedarValueJson = serde_json::from_value(val)?;
-                        let ty = type_of_restricted_expr(
-                            jvalue.into_expr(ctx.clone())?.as_borrowed(),
+                        jvalue.into_expr(ctx.clone())?
+                    };
+                    let err = TypeMismatchError {
+                        expected: Box::new(expected_ty.clone()),
+                        actual_ty: match type_of_restricted_expr(
+                            actual_val.as_borrowed(),
                             self.extensions,
-                        )
-                        .map_err(|e| {
-                            type_of_restricted_expr_error_to_json_deserialization_error(e, ctx())
-                        })?;
-                        Box::new(ty)
+                        ) {
+                            Ok(actual_ty) => Some(Box::new(actual_ty)),
+                            Err(_) => None, // just don't report the type if there was an error computing it
+                        },
+                        actual_val: Box::new(actual_val),
                     };
                     match ctx() {
                         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                             Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::TypeMismatch {
-                                    uid,
-                                    attr,
-                                    expected,
-                                    actual,
-                                },
+                                EntitySchemaConformanceError::TypeMismatch { uid, attr, err },
                             ))
                         }
                         ctx => Err(JsonDeserializationError::TypeMismatch {
                             ctx: Box::new(ctx),
-                            expected,
-                            actual,
+                            err,
                         }),
                     }
                 }
@@ -553,10 +567,46 @@ impl<'e> ValueParser<'e> {
             }
             ExtnValueJson::ImplicitConstructor(val) => {
                 let arg = val.into_expr(ctx.clone())?;
-                let argty =
-                    type_of_restricted_expr(arg.as_borrowed(), self.extensions).map_err(|e| {
-                        type_of_restricted_expr_error_to_json_deserialization_error(e, ctx())
-                    })?;
+                let argty = type_of_restricted_expr(arg.as_borrowed(), self.extensions).map_err(
+                    |e| match e {
+                        TypeOfRestrictedExprError::HeterogeneousSet(err) => match ctx() {
+                            JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
+                                JsonDeserializationError::EntitySchemaConformance(
+                                    EntitySchemaConformanceError::HeterogeneousSet {
+                                        uid,
+                                        attr,
+                                        err,
+                                    },
+                                )
+                            }
+                            ctx => JsonDeserializationError::HeterogeneousSet {
+                                ctx: Box::new(ctx),
+                                err,
+                            },
+                        },
+                        TypeOfRestrictedExprError::ExtensionFunctionLookup(err) => match ctx() {
+                            JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
+                                JsonDeserializationError::EntitySchemaConformance(
+                                    EntitySchemaConformanceError::ExtensionFunctionLookup {
+                                        uid,
+                                        attr,
+                                        err,
+                                    },
+                                )
+                            }
+                            ctx => JsonDeserializationError::ExtensionFunctionLookup {
+                                ctx: Box::new(ctx),
+                                err,
+                            },
+                        },
+                        TypeOfRestrictedExprError::UnknownInsufficientTypeInfo { .. } => {
+                            JsonDeserializationError::UnknownInImplicitConstructorArg {
+                                ctx: Box::new(ctx()),
+                                arg: Box::new(arg.clone()),
+                            }
+                        }
+                    },
+                )?;
                 let func = self
                     .extensions
                     .lookup_single_arg_constructor(
@@ -582,36 +632,6 @@ impl<'e> ValueParser<'e> {
                 ))
             }
         }
-    }
-}
-
-fn type_of_restricted_expr_error_to_json_deserialization_error(
-    torerr: TypeOfRestrictedExprError,
-    ctx: JsonDeserializationErrorContext,
-) -> JsonDeserializationError {
-    match torerr {
-        TypeOfRestrictedExprError::HeterogeneousSet(err) => match ctx {
-            JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
-                JsonDeserializationError::EntitySchemaConformance(
-                    EntitySchemaConformanceError::HeterogeneousSet { uid, attr, err },
-                )
-            }
-            ctx => JsonDeserializationError::HeterogeneousSet {
-                ctx: Box::new(ctx),
-                err,
-            },
-        },
-        TypeOfRestrictedExprError::ExtensionFunctionLookup(err) => match ctx {
-            JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
-                JsonDeserializationError::EntitySchemaConformance(
-                    EntitySchemaConformanceError::ExtensionFunctionLookup { uid, attr, err },
-                )
-            }
-            ctx => JsonDeserializationError::ExtensionFunctionLookup {
-                ctx: Box::new(ctx),
-                err,
-            },
-        },
     }
 }
 

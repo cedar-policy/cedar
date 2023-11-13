@@ -641,6 +641,14 @@ impl Unknown {
     }
 }
 
+impl std::fmt::Display for Unknown {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Like the Display impl for Expr, we delegate to the EST
+        // pretty-printer, to avoid code duplication
+        write!(f, "{}", crate::est::Expr::from(Expr::unknown(self.clone())))
+    }
+}
+
 /// Builder for constructing `Expr` objects annotated with some `data`
 /// (possibly taking default value) and optional some `source_info`.
 #[derive(Debug)]

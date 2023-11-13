@@ -5407,7 +5407,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on numDirectReports");
         assert!(
-            err.to_string().contains(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type long, but actually has type string"#),
+            err.to_string().contains(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#),
             "actual error message was {err}"
         );
 
@@ -5475,7 +5475,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on hr_contacts");
         assert!(
-            err.to_string().contains(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type (set of (entity of type `HR`)), but actually has type record with attributes: ("#),
+            err.to_string().contains(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#),
             "actual error message was {err}"
         );
 
@@ -5510,7 +5510,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on manager");
         assert!(
-            err.to_string().contains(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type (entity of type `Employee`), but actually has type (entity of type `HR`)"#),
+            err.to_string().contains(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#),
             "actual error message was {err}"
         );
 
@@ -5546,7 +5546,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on home_ip");
         assert!(
-            err.to_string().contains(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type ipaddr, but actually has type decimal"#),
+            err.to_string().contains(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#),
             "actual error message was {err}"
         );
 
@@ -5615,7 +5615,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on attribute \"inner1\"");
         assert!(
-            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type record with attributes: "#),
+            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#),
             "actual error message was {err}"
         );
 
@@ -5730,7 +5730,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to manager being wrong entity type (missing namespace)");
         assert!(
-            err.to_string().contains(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: attribute was expected to have type (entity of type `XYZCorp::Employee`), but actually has type (entity of type `Employee`)"#),
+            err.to_string().contains(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but actually has type `Employee`: `Employee::"34FB87"`"#),
             "actual error message was {err}"
         );
     }
@@ -6222,5 +6222,140 @@ mod schema_based_parsing_tests {
             EntitiesError::Duplicate(euid) => assert_eq!(euid, expected_euid),
             e => panic!("Wrong error. Expected `Duplicate`, got: {e:?}"),
         }
+    }
+
+    /// Test that schema-based parsing accepts unknowns in any position where any type is expected
+    #[test]
+    fn issue_418() {
+        let schema = Schema::from_json_value(json!(
+        {"": {
+            "entityTypes": {
+                "Employee": {
+                    "memberOfTypes": [],
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "isFullTime": { "type": "Boolean" },
+                            "numDirectReports": { "type": "Long" },
+                            "department": { "type": "String" },
+                            "manager": { "type": "Entity", "name": "Employee" },
+                            "hr_contacts": { "type": "Set", "element": {
+                                "type": "Entity", "name": "HR" } },
+                            "sales_contacts": { "type": "Set", "element": {
+                                "type": "Entity", "name": "Employee" } },
+                            "json_blob": { "type": "Record", "attributes": {
+                                "inner1": { "type": "Boolean" },
+                                "inner2": { "type": "String" },
+                                "inner3": { "type": "Record", "attributes": {
+                                    "innerinner": { "type": "Entity", "name": "Employee" }
+                                }}
+                            }},
+                            "home_ip": { "type": "Extension", "name": "ipaddr" },
+                            "work_ip": { "type": "Extension", "name": "ipaddr" },
+                            "trust_score": { "type": "Extension", "name": "decimal" },
+                            "tricky": { "type": "Record", "attributes": {
+                                "type": { "type": "String" },
+                                "id": { "type": "String" }
+                            }}
+                        }
+                    }
+                },
+                "HR": {
+                    "memberOfTypes": []
+                }
+            },
+            "actions": {
+                "view": { }
+            }
+        }}
+        ))
+        .expect("should be a valid schema");
+
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {
+                        "isFullTime": { "__extn": { "fn": "unknown", "arg": "abc" }},
+                        "numDirectReports": { "__extn": { "fn": "unknown", "arg": "def" }},
+                        "department": { "__extn": { "fn": "unknown", "arg": "zxy" }},
+                        "manager": { "__extn": { "fn": "unknown", "arg": "www" }},
+                        "hr_contacts": { "__extn": { "fn": "unknown", "arg": "yyy" }},
+                        "sales_contacts": [
+                            { "type": "HR", "id": "aaaaa" },
+                            { "__extn": { "fn": "unknown", "arg": "123" }}
+                        ],
+                        "json_blob": {
+                            "inner1": false,
+                            "inner2": { "__extn": { "fn": "unknown", "arg": "hhh" }},
+                            "inner3": { "innerinner": { "__extn": { "fn": "unknown", "arg": "bbb" }}},
+                        },
+                        "home_ip": { "__extn": { "fn": "unknown", "arg": "uuu" }},
+                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
+                        "trust_score": { "__extn": { "fn": "unknown", "arg": "dec" }},
+                        "tricky": { "__extn": { "fn": "unknown", "arg": "ttt" }}
+                    },
+                    "parents": []
+                }
+            ]
+        );
+
+        let parsed = Entities::from_json_value(entitiesjson.clone(), Some(&schema))
+            .expect("Should parse without error");
+        let parsed = parsed
+            .get(&EntityUid::from_strs("Employee", "12UA45"))
+            .expect("that should be the employee id");
+        let assert_contains_unknown = |err: EvaluationError, unk_name: &str| {
+            assert!(
+                err.to_string()
+                    .contains("the expression contains unknown(s)"),
+                "actual error message was {err}"
+            );
+            assert!(
+                err.to_string().contains(unk_name),
+                "actual error message was {err}"
+            );
+        };
+        assert_matches!(
+            parsed.attr("isFullTime"),
+            Some(Err(e)) => assert_contains_unknown(e, "abc")
+        );
+        assert_matches!(
+            parsed.attr("numDirectReports"),
+            Some(Err(e)) => assert_contains_unknown(e, "def")
+        );
+        assert_matches!(
+            parsed.attr("department"),
+            Some(Err(e)) => assert_contains_unknown(e, "zxy")
+        );
+        assert_matches!(
+            parsed.attr("manager"),
+            Some(Err(e)) => assert_contains_unknown(e, "www")
+        );
+        assert_matches!(
+            parsed.attr("hr_contacts"),
+            Some(Err(e)) => assert_contains_unknown(e, "yyy")
+        );
+        assert_matches!(
+            parsed.attr("sales_contacts"),
+            Some(Err(e)) => assert_contains_unknown(e, "123")
+        );
+        assert_matches!(
+            parsed.attr("json_blob"),
+            Some(Err(e)) => assert_contains_unknown(e, "bbb")
+        );
+        assert_matches!(
+            parsed.attr("home_ip"),
+            Some(Err(e)) => assert_contains_unknown(e, "uuu")
+        );
+        assert_matches!(parsed.attr("work_ip"), Some(Ok(_)));
+        assert_matches!(
+            parsed.attr("trust_score"),
+            Some(Err(e)) => assert_contains_unknown(e, "dec")
+        );
+        assert_matches!(
+            parsed.attr("tricky"),
+            Some(Err(e)) => assert_contains_unknown(e, "ttt")
+        );
     }
 }
