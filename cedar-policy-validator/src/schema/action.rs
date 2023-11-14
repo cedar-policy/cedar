@@ -28,6 +28,14 @@ pub struct ValidatorActionId {
     /// descendants before it is used in any validation.
     pub(crate) descendants: HashSet<EntityUID>,
 
+    /// Indicate that the `member_of` set for this action entity was flagged
+    /// as incomplete, or the `member_of` for any ancestor action entity is
+    /// incomplete. This action may ultimately be a member of any other action,
+    /// so an `in` expression where the left operand is this action, and the
+    /// right operand is any other action, can have type `Boolean` but not
+    /// `False`.
+    pub(crate) open_ancestor_set: bool,
+
     /// The type of the context record associated with this action.
     pub(crate) context: Type,
 

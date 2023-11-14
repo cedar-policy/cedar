@@ -211,7 +211,11 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
             // ancestor type is allowed by the schema
             for ancestor_euid in entity.ancestors() {
                 let ancestor_type = ancestor_euid.entity_type();
-                if schema_etype.allowed_parent_types().contains(ancestor_type) {
+                if schema_etype
+                    .allowed_parent_types()
+                    .map(|parents| parents.contains(ancestor_type))
+                    .unwrap_or(true)
+                {
                     // note that `allowed_parent_types()` was transitively
                     // closed, so it's actually `allowed_ancestor_types()`
                     //

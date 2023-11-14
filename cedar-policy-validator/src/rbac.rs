@@ -483,6 +483,7 @@ mod test {
                     user_type.into(),
                     EntityType {
                         member_of_types: vec![group_type.into()],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -490,6 +491,7 @@ mod test {
                     group_type.into(),
                     EntityType {
                         member_of_types: vec![],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -497,6 +499,7 @@ mod test {
                     widget_type.into(),
                     EntityType {
                         member_of_types: vec![bin_type.into()],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -504,6 +507,7 @@ mod test {
                     bin_type.into(),
                     EntityType {
                         member_of_types: vec![],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -517,6 +521,7 @@ mod test {
                         context: AttributesOrContext::default(),
                     }),
                     member_of: None,
+                    member_of_incomplete: false,
                     attributes: None,
                 },
             )],
@@ -559,6 +564,7 @@ mod test {
                 foo_type.into(),
                 EntityType {
                     member_of_types: vec![],
+                    member_of_types_incomplete: false,
                     shape: AttributesOrContext::default(),
                 },
             )],
@@ -594,6 +600,7 @@ mod test {
                 "foo_type".into(),
                 EntityType {
                     member_of_types: vec![],
+                    member_of_types_incomplete: false,
                     shape: AttributesOrContext::default(),
                 },
             )],
@@ -681,6 +688,7 @@ mod test {
                 ActionType {
                     applies_to: None,
                     member_of: None,
+                    member_of_incomplete: false,
                     attributes: None,
                 },
             )],
@@ -715,6 +723,7 @@ mod test {
                 p_name.into(),
                 EntityType {
                     member_of_types: vec![],
+                    member_of_types_incomplete: false,
                     shape: AttributesOrContext::default(),
                 },
             )],
@@ -739,6 +748,7 @@ mod test {
                 p_name.into(),
                 EntityType {
                     member_of_types: vec![],
+                    member_of_types_incomplete: false,
                     shape: AttributesOrContext::default(),
                 },
             )],
@@ -763,6 +773,7 @@ mod test {
                 p_name.into(),
                 EntityType {
                     member_of_types: vec![],
+                    member_of_types_incomplete: false,
                     shape: AttributesOrContext::default(),
                 },
             )],
@@ -808,6 +819,7 @@ mod test {
                 ActionType {
                     applies_to: None,
                     member_of: None,
+                    member_of_incomplete: false,
                     attributes: None,
                 },
             )],
@@ -998,6 +1010,7 @@ mod test {
                 ActionType {
                     applies_to: None,
                     member_of: None,
+                    member_of_incomplete: false,
                     attributes: None,
                 },
             )],
@@ -1027,6 +1040,7 @@ mod test {
                 ActionType {
                     applies_to: None,
                     member_of: None,
+                    member_of_incomplete: false,
                     attributes: None,
                 },
             )],
@@ -1056,6 +1070,7 @@ mod test {
                 ActionType {
                     applies_to: None,
                     member_of: None,
+                    member_of_incomplete: false,
                     attributes: None,
                 },
             )],
@@ -1083,6 +1098,7 @@ mod test {
                 foo_type.into(),
                 EntityType {
                     member_of_types: vec![],
+                    member_of_types_incomplete: false,
                     shape: AttributesOrContext::default(),
                 },
             )],
@@ -1119,6 +1135,7 @@ mod test {
                     principal_type.into(),
                     EntityType {
                         member_of_types: vec![],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -1126,6 +1143,7 @@ mod test {
                     resource_type.into(),
                     EntityType {
                         member_of_types: vec![],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -1139,6 +1157,7 @@ mod test {
                         context: AttributesOrContext::default(),
                     }),
                     member_of: Some(vec![]),
+                    member_of_incomplete: false,
                     attributes: None,
                 },
             )],
@@ -1526,6 +1545,7 @@ mod test {
                     principal_type.into(),
                     EntityType {
                         member_of_types: vec![],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -1533,6 +1553,7 @@ mod test {
                     resource_type.into(),
                     EntityType {
                         member_of_types: vec![resource_parent_type.into()],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -1540,6 +1561,7 @@ mod test {
                     resource_parent_type.into(),
                     EntityType {
                         member_of_types: vec![resource_grandparent_type.into()],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -1547,6 +1569,7 @@ mod test {
                     resource_grandparent_type.into(),
                     EntityType {
                         member_of_types: vec![],
+                        member_of_types_incomplete: false,
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -1564,6 +1587,7 @@ mod test {
                             ty: None,
                             id: action_parent_name.into(),
                         }]),
+                        member_of_incomplete: false,
                         attributes: None,
                     },
                 ),
@@ -1575,6 +1599,7 @@ mod test {
                             ty: None,
                             id: action_grandparent_name.into(),
                         }]),
+                        member_of_incomplete: false,
                         attributes: None,
                     },
                 ),
@@ -1583,6 +1608,7 @@ mod test {
                     ActionType {
                         applies_to: None,
                         member_of: Some(vec![]),
+                        member_of_incomplete: false,
                         attributes: None,
                     },
                 ),

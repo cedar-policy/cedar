@@ -125,8 +125,12 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
         )
     }
 
-    fn allowed_parent_types(&self) -> Arc<HashSet<ast::EntityType>> {
-        Arc::clone(&self.allowed_parent_types)
+    fn allowed_parent_types(&self) -> Option<Arc<HashSet<ast::EntityType>>> {
+        if self.validator_type.open_ancestor_set {
+            None
+        } else {
+            Some(Arc::clone(&self.allowed_parent_types))
+        }
     }
 
     fn open_attributes(&self) -> bool {

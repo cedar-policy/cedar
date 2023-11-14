@@ -97,6 +97,8 @@ pub struct EntityTypeFragment {
     /// namespace, so we will check if they are declared in any fragment when
     /// constructing a `ValidatorSchema`.
     pub(super) parents: HashSet<Name>,
+    /// Could there be other types of groups an entity type could be include in.
+    pub(super) open_parents: bool,
 }
 
 /// Action declarations held in a `ValidatorNamespaceDef`. Entity types
@@ -116,6 +118,8 @@ pub struct ActionFragment {
     pub(super) applies_to: ValidatorApplySpec,
     /// The direct parent action entities for this action.
     pub(super) parents: HashSet<EntityUID>,
+    /// Might there be other action groups this action is a member of.
+    pub(super) open_parents: bool,
     /// The types for the attributes defined for this actions entity.
     pub(super) attribute_types: Attributes,
     /// The values for the attributes defined for this actions entity, stored
@@ -302,11 +306,20 @@ impl ValidatorNamespaceDef {
                         entity_type.shape.into_inner(),
                     )?;
 
+                    if cfg!(not(feature = "partial-validate"))
+                        && entity_type.member_of_types_incomplete
+                    {
+                        return Err(SchemaError::UnsupportedFeature(
+                            UnsupportedFeature::OpenRecordsAndEntities,
+                        ));
+                    }
+
                     Ok((
                         name,
                         EntityTypeFragment {
                             attributes,
                             parents,
+                            open_parents: entity_type.member_of_types_incomplete,
                         },
                     ))
                 })
@@ -476,12 +489,19 @@ impl ValidatorNamespaceDef {
                             extensions,
                         )?;
 
+                    if cfg!(not(feature = "partial-validate")) && action_type.member_of_incomplete {
+                        return Err(SchemaError::UnsupportedFeature(
+                            UnsupportedFeature::OpenRecordsAndEntities,
+                        ));
+                    }
+
                     Ok((
                         action_id,
                         ActionFragment {
                             context,
                             applies_to,
                             parents,
+                            open_parents: action_type.member_of_incomplete,
                             attribute_types,
                             attributes,
                         },

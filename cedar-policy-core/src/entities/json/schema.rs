@@ -109,7 +109,7 @@ pub trait EntityTypeDescription {
     fn required_attrs<'s>(&'s self) -> Box<dyn Iterator<Item = SmolStr> + 's>;
 
     /// Get the entity types which are allowed to be parents of this entity type.
-    fn allowed_parent_types(&self) -> Arc<HashSet<EntityType>>;
+    fn allowed_parent_types(&self) -> Option<Arc<HashSet<EntityType>>>;
 
     /// May entities with this type have attributes other than those specified
     /// in the schema
@@ -133,8 +133,8 @@ impl EntityTypeDescription for NullEntityTypeDescription {
     fn required_attrs(&self) -> Box<dyn Iterator<Item = SmolStr>> {
         Box::new(std::iter::empty())
     }
-    fn allowed_parent_types(&self) -> Arc<HashSet<EntityType>> {
-        Arc::new(HashSet::new())
+    fn allowed_parent_types(&self) -> Option<Arc<HashSet<EntityType>>> {
+        Some(Arc::new(HashSet::new()))
     }
     fn open_attributes(&self) -> bool {
         false

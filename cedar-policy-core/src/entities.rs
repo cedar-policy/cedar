@@ -1815,8 +1815,8 @@ mod schema_based_parsing_tests {
             )
         }
 
-        fn allowed_parent_types(&self) -> Arc<HashSet<EntityType>> {
-            Arc::new(HashSet::new())
+        fn allowed_parent_types(&self) -> Option<Arc<HashSet<EntityType>>> {
+            Some(Arc::new(HashSet::new()))
         }
 
         fn open_attributes(&self) -> bool {
@@ -2882,8 +2882,8 @@ mod schema_based_parsing_tests {
                 )
             }
 
-            fn allowed_parent_types(&self) -> Arc<HashSet<EntityType>> {
-                Arc::new(HashSet::new())
+            fn allowed_parent_types(&self) -> Option<Arc<HashSet<EntityType>>> {
+                Some(Arc::new(HashSet::new()))
             }
 
             fn open_attributes(&self) -> bool {

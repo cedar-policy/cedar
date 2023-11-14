@@ -653,3 +653,76 @@ mod fail_partial_schema {
         );
     }
 }
+
+mod open_member_of {
+
+    use super::*;
+
+    fn schema_file() -> NamespaceDefinition {
+        serde_json::from_value(serde_json::json!(
+            {
+                "entityTypes": {
+                    "Group": {
+                        "memberOfTypesIncomplete": true
+                    },
+                    "User": {
+                        "memberOfTypes": [ "Group" ],
+                    },
+                },
+                "actions": {
+                    "view": {
+                        "memberOfIncomplete": true,
+                    },
+                    "view_photo": {
+                        "memberOf": [{"id": "view"}],
+                    }
+                }
+            }
+        ))
+        .expect("Expected valid schema")
+    }
+
+    pub(crate) fn assert_typechecks_partial_schema(policy: StaticPolicy) {
+        assert_partial_typecheck(schema_file(), policy)
+    }
+
+    #[test]
+    fn in_open_member_of() {
+        let p = parse_policy(
+            None,
+            r#"permit(principal, action, resource) when { Action::"view" in Action::"bogus"};"#,
+        )
+        .expect("Policy should parse.");
+        assert_typechecks_partial_schema(p)
+    }
+
+    #[test]
+    fn in_transitive_open_member_of() {
+        let p = parse_policy(
+            None,
+            r#"permit(principal, action, resource) when { Action::"view_photo" in Action::"fake"};"#,
+        )
+        .expect("Policy should parse.");
+        assert_typechecks_partial_schema(p)
+    }
+
+    #[test]
+    fn in_open_member_of_types() {
+        let p = parse_policy(
+            None,
+            r#"permit(principal, action, resource) when { Group::"alice_friends" in Fake::"bogus"};"#,
+        )
+        .expect("Policy should parse.");
+        assert_typechecks_partial_schema(p)
+    }
+
+    #[test]
+    fn in_transitive_open_member_of_types() {
+        let p = parse_policy(
+            None,
+            r#"permit(principal, action, resource) when { User::"alice" in Bogus::"fake"};"#,
+        )
+        .expect("Policy should parse.");
+        assert_typechecks_partial_schema(p)
+    }
+}

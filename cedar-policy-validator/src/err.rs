@@ -159,7 +159,7 @@ impl std::fmt::Display for UnsupportedFeature {
         match self {
             Self::OpenRecordsAndEntities => write!(
                 f,
-                "records and entities with `additionalAttributes` are experimental, but the experimental `partial-validate` feature is not enabled"
+                "`additionalAttribute`, `memberOfTypesIncomplete`, and `memberOfIncomplete` are experimental, but the experimental `partial-validate` feature is not enabled"
             ),
             Self::ActionAttributes(attrs) => write!(
                 f,

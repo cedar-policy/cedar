@@ -1904,8 +1904,17 @@ impl<'a> Typechecker<'a> {
                     }
                 }
                 (Some(EntityType::Specified(var_name)), Some(descendants)) => {
+                    let open_ancestor_set = self
+                        .schema
+                        .get_entity_type(var_name)
+                        .map(|ety| ety.open_ancestor_set)
+                        // Treats a undefined entity type as having an open
+                        // ancestor set so that `<undefined entity type> in *`
+                        // has type `Bool`.
+                        .unwrap_or(true);
                     Typechecker::entity_in_descendants(
                         var_name,
+                        open_ancestor_set,
                         descendants,
                         in_expr,
                         lhs_expr,
@@ -1956,16 +1965,32 @@ impl<'a> Typechecker<'a> {
                             EntityType::Unspecified => false,
                         });
                     if lhs_is_action && !actions.is_empty() {
+                        let open_ancestor_set = self
+                            .schema
+                            .get_action_id(&lhs_euid)
+                            .map(|a| a.open_ancestor_set)
+                            // Treats a undefined action as having an open
+                            // ancestor set.
+                            .unwrap_or(true);
                         self.type_of_action_in_actions(
                             lhs_euid,
+                            open_ancestor_set,
                             actions.iter(),
                             in_expr,
                             lhs_expr,
                             rhs_expr,
                         )
                     } else if !lhs_is_action && !non_actions.is_empty() {
+                        let open_ancestor_set = self
+                            .schema
+                            .get_entity_type(name)
+                            .map(|ety| ety.open_ancestor_set)
+                            // Treats a undefined entity type as having an open
+                            // ancestor set.
+                            .unwrap_or(true);
                         self.type_of_non_action_in_entities(
                             lhs_euid,
+                            open_ancestor_set,
                             non_actions.iter(),
                             in_expr,
                             lhs_expr,
@@ -2010,6 +2035,7 @@ impl<'a> Typechecker<'a> {
     fn type_of_action_in_actions<'b>(
         &self,
         lhs: &EntityUID,
+        lhs_open_ancestor_set: bool,
         rhs: impl IntoIterator<Item = &'a EntityUID> + 'a,
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
@@ -2017,7 +2043,14 @@ impl<'a> Typechecker<'a> {
     ) -> TypecheckAnswer<'b> {
         let rhs_descendants = self.schema.get_actions_in_set(rhs);
         if let Some(rhs_descendants) = rhs_descendants {
-            Typechecker::entity_in_descendants(lhs, rhs_descendants, in_expr, lhs_expr, rhs_expr)
+            Typechecker::entity_in_descendants(
+                lhs,
+                lhs_open_ancestor_set,
+                rhs_descendants,
+                in_expr,
+                lhs_expr,
+                rhs_expr,
+            )
         } else {
             let annotated_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
                 .with_same_source_info(in_expr)
@@ -2038,6 +2071,7 @@ impl<'a> Typechecker<'a> {
     fn type_of_non_action_in_entities<'b>(
         &self,
         lhs: &EntityUID,
+        lhs_open_ancestor_set: bool,
         rhs: impl IntoIterator<Item = &'a EntityUID> + 'a,
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
@@ -2050,6 +2084,7 @@ impl<'a> Typechecker<'a> {
                     Some(rhs_descendants) if self.schema.is_known_entity_type(lhs_ety) => {
                         Typechecker::entity_in_descendants(
                             lhs_ety,
+                            lhs_open_ancestor_set,
                             rhs_descendants,
                             in_expr,
                             lhs_expr,
@@ -2085,6 +2120,7 @@ impl<'a> Typechecker<'a> {
     /// type false if it is not, and boolean otherwise.
     fn entity_in_descendants<'b, K>(
         lhs_entity: &K,
+        lhs_open_ancestor_set: bool,
         rhs_descendants: impl IntoIterator<Item = &'a K>,
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
@@ -2095,7 +2131,7 @@ impl<'a> Typechecker<'a> {
     {
         let is_var_in_descendants = rhs_descendants.into_iter().any(|e| e == lhs_entity);
         TypecheckAnswer::success(
-            ExprBuilder::with_data(Some(if is_var_in_descendants {
+            ExprBuilder::with_data(Some(if lhs_open_ancestor_set || is_var_in_descendants {
                 Type::primitive_boolean()
             } else {
                 Type::singleton_boolean(false)

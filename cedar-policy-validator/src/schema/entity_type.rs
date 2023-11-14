@@ -25,6 +25,13 @@ pub struct ValidatorEntityType {
     /// descendants before it is used in any validation.
     pub descendants: HashSet<Name>,
 
+    /// Indicate that the `member_of_types` set for this entity type was flagged
+    /// as incomplete, or the `member_of_types` for any of this types ancestor
+    /// types is incomplete. This entity type may ultimately be a member of any
+    /// other entity type, so an `in` expression where the left operand is an
+    /// entity with this type can only have type `Boolean` and not `False`.
+    pub(crate) open_ancestor_set: bool,
+
     /// The attributes associated with this entity. Keys are the attribute
     /// identifiers while the values are the type of the attribute.
     pub(crate) attributes: Attributes,

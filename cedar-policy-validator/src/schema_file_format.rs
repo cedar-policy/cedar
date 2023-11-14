@@ -89,6 +89,9 @@ pub struct EntityType {
     #[serde(default)]
     #[serde(rename = "memberOfTypes")]
     pub member_of_types: Vec<SmolStr>,
+    #[serde(default = "partial_schema_default")]
+    #[serde(rename = "memberOfTypesIncomplete")]
+    pub member_of_types_incomplete: bool,
     #[serde(default)]
     pub shape: AttributesOrContext,
 }
@@ -132,6 +135,9 @@ pub struct ActionType {
     #[serde(default)]
     #[serde(rename = "memberOf")]
     pub member_of: Option<Vec<ActionEntityUID>>,
+    #[serde(default = "partial_schema_default")]
+    #[serde(rename = "memberOfIncomplete")]
+    pub member_of_incomplete: bool,
 }
 
 /// The apply spec specifies what principals and resources an action can be used
@@ -597,7 +603,8 @@ pub struct TypeOfAttribute {
 }
 
 /// By default schema properties which enable parts of partial schema validation
-/// should be `false`.  Defines the default value for `additionalAttributes`.
+/// should be `false`.  Defines the default value for `additionalAttributes`,
+/// `memberOfTypesIncomplete` and `memberOfIncomplete`.
 fn partial_schema_default() -> bool {
     false
 }

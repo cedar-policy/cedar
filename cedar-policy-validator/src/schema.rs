@@ -265,6 +265,7 @@ impl ValidatorSchema {
                     ValidatorEntityType {
                         name,
                         descendants,
+                        open_ancestor_set: entity_type.open_parents,
                         attributes,
                         open_attributes,
                     },
@@ -300,6 +301,7 @@ impl ValidatorSchema {
                             context.attrs,
                             open_context_attributes,
                         ),
+                        open_ancestor_set: action.open_parents,
                         attribute_types: action.attribute_types,
                         attributes: action.attributes,
                     },
@@ -310,9 +312,34 @@ impl ValidatorSchema {
         // We constructed entity types and actions with child maps, but we need
         // transitively closed descendants.
         compute_tc(&mut entity_types, false)?;
+        // Any entity type which is a descendant of an entity type with an open
+        // ancestor set must also have an open ancestor set. These entity types
+        // are first collected into a set to avoid taking a mutable and
+        // immutable borrow of `entity_types` at the same time.
+        let entities_types_open_ancestors = entity_types
+            .values()
+            .filter(|e| e.open_ancestor_set)
+            .flat_map(|e| e.descendants.iter().cloned())
+            .collect::<HashSet<_>>();
+        entities_types_open_ancestors.iter().for_each(|name| {
+            if let Some(descendant) = entity_types.get_mut(name) {
+                descendant.open_ancestor_set = true;
+            }
+        });
+
         // Pass `true` here so that we also check that the action hierarchy does
         // not contain cycles.
         compute_tc(&mut action_ids, true)?;
+        let action_open_ancestors = action_ids
+            .values()
+            .filter(|e| e.open_ancestor_set)
+            .flat_map(|e| e.descendants.iter().cloned())
+            .collect::<HashSet<_>>();
+        action_open_ancestors.iter().for_each(|name| {
+            if let Some(descendant) = action_ids.get_mut(name) {
+                descendant.open_ancestor_set = true;
+            }
+        });
 
         // Return with an error if there is an undeclared entity or action
         // referenced in any fragment. `{entity,action}_children` are provided

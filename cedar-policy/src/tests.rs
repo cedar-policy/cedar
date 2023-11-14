@@ -2666,7 +2666,15 @@ fn partial_schema_unsupported() {
     use serde_json::json;
     assert_panics!(
         Schema::from_json_value( json!({"": { "entityTypes": { "A": { "shape": { "type": "Record", "attributes": {}, "additionalAttributes": true } } }, "actions": {} }})).unwrap(),
-        includes("records and entities with `additionalAttributes` are experimental, but the experimental `partial-validate` feature is not enabled")
+        includes("`additionalAttribute`, `memberOfTypesIncomplete`, and `memberOfIncomplete` are experimental, but the experimental `partial-validate` feature is not enabled")
+    );
+    assert_panics!(
+        Schema::from_json_value( json!({"": { "entityTypes": { "A": { "memberOfTypesIncomplete": true } }, "actions": {} }})).unwrap(),
+        includes("`additionalAttribute`, `memberOfTypesIncomplete`, and `memberOfIncomplete` are experimental, but the experimental `partial-validate` feature is not enabled")
+    );
+    assert_panics!(
+        Schema::from_json_value( json!({"": { "entityTypes": {}, "actions": {"A": { "memberOfIncomplete": true }} }})).unwrap(),
+        includes("`additionalAttribute`, `memberOfTypesIncomplete`, and `memberOfIncomplete` are experimental, but the experimental `partial-validate` feature is not enabled")
     );
 }
 
@@ -2721,6 +2729,58 @@ mod partial_schema {
         let parsed_without_schema = Entities::from_json_value(entitiesjson, None).unwrap();
 
         let uid = EntityUid::from_strs("Employee", "12UA45");
+        assert_eq!(
+            parsed.get(&uid),
+            parsed_without_schema.get(&uid),
+            "Parsing with a partial schema should give the same result as parsing without a schema"
+        );
+    }
+
+    #[test]
+    fn extra_parent_entity() {
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": { },
+                    "parents": [
+                        {"type": "Foo", "id": "345"}
+                    ]
+                }
+            ]
+        );
+
+        let schema = partial_schema();
+        let parsed = Entities::from_json_value(entitiesjson.clone(), Some(&schema))
+            .expect("Parsing with a partial schema should allow unknown attributes.");
+        let parsed_without_schema = Entities::from_json_value(entitiesjson, None).unwrap();
+
+        let uid = EntityUid::from_strs("Employee", "12UA45");
+        assert_eq!(
+            parsed.get(&uid),
+            parsed_without_schema.get(&uid),
+            "Parsing with a partial schema should give the same result as parsing without a schema"
+        );
+    }
+
+    #[test]
+    fn extra_parent_action_entity() {
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Action", "id": "Act" },
+                    "attrs": { },
+                    "parents": [ {"type": "Action", "id": "Act2"} ]
+                }
+            ]
+        );
+
+        let schema = partial_schema();
+        let parsed = Entities::from_json_value(entitiesjson.clone(), Some(&schema))
+            .expect("Parsing with a partial schema should allow unknown attributes.");
+        let parsed_without_schema = Entities::from_json_value(entitiesjson, None).unwrap();
+
+        let uid = EntityUid::from_strs("Action", "Act");
         assert_eq!(
             parsed.get(&uid),
             parsed_without_schema.get(&uid),
