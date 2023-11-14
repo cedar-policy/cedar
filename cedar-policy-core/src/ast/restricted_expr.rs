@@ -611,8 +611,6 @@ pub enum RestrictedExprParseError {
     RestrictedExpr(#[from] RestrictedExprError),
 }
 
-///
-
 #[cfg(test)]
 mod test {
     use super::*;
