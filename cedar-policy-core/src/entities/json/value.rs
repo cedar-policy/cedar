@@ -514,6 +514,7 @@ impl<'e> ValueParser<'e> {
             Some(
                 expected_ty @ SchemaType::Record {
                     attrs: expected_attrs,
+                    open_attrs,
                 },
             ) => match val {
                 serde_json::Value::Object(mut actual_attrs) => {
@@ -537,14 +538,18 @@ impl<'e> ValueParser<'e> {
                             }
                         })
                         .collect::<Result<Vec<(SmolStr, RestrictedExpr)>, JsonDeserializationError>>()?;
-                    // we've now checked that all expected attrs exist, and removed them from `actual_attrs`.
-                    // we still need to verify that we didn't have any unexpected attrs.
-                    if let Some((record_attr, _)) = actual_attrs.into_iter().next() {
-                        return Err(JsonDeserializationError::UnexpectedRecordAttr {
-                            ctx: Box::new(ctx2()),
-                            record_attr: record_attr.into(),
-                        });
+
+                    if !open_attrs {
+                        // we've now checked that all expected attrs exist, and removed them from `actual_attrs`.
+                        // we still need to verify that we didn't have any unexpected attrs.
+                        if let Some((record_attr, _)) = actual_attrs.into_iter().next() {
+                            return Err(JsonDeserializationError::UnexpectedRecordAttr {
+                                ctx: Box::new(ctx2()),
+                                record_attr: record_attr.into(),
+                            });
+                        }
                     }
+
                     // having duplicate keys should be impossible here (because
                     // neither `actual_attrs` nor `expected_attrs` can have
                     // duplicate keys; they're both maps), but we can still throw

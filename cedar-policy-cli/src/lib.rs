@@ -111,6 +111,11 @@ pub struct ValidateArgs {
     /// Report a validation failure for non-fatal warnings
     #[arg(long)]
     pub deny_warnings: bool,
+    /// Validate the policy using partial schema validation. This option is
+    /// experimental and will cause the CLI to exit if it was not built with the
+    /// experimental `partial-validate` feature enabled.
+    #[arg(long = "partial-validate")]
+    pub partial_validate: bool,
 }
 
 #[derive(Args, Debug)]
@@ -432,6 +437,18 @@ pub fn check_parse(args: &CheckParseArgs) -> CedarExitCode {
 }
 
 pub fn validate(args: &ValidateArgs) -> CedarExitCode {
+    let mode = if args.partial_validate {
+        #[cfg(not(feature = "partial-validate"))]
+        {
+            println!("Error: arguments include the experimental option `--partial-validate`, but this executable was not built with `partial-validate` experimental feature enabled");
+            return CedarExitCode::Failure;
+        }
+        #[cfg(feature = "partial-validate")]
+        ValidationMode::Partial
+    } else {
+        ValidationMode::default()
+    };
+
     let pset = match read_policy_set(Some(&args.policies_file)) {
         Ok(pset) => pset,
         Err(e) => {
@@ -449,7 +466,7 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
     };
 
     let validator = Validator::new(schema);
-    let result = validator.validate(&pset, ValidationMode::default());
+    let result = validator.validate(&pset, mode);
 
     let exit_code = if !result.validation_passed()
         || (args.deny_warnings && !result.validation_passed_without_warnings())

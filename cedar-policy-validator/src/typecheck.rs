@@ -22,6 +22,7 @@ mod test_expr;
 mod test_extensions;
 mod test_namespace;
 mod test_optional_attributes;
+mod test_partial;
 mod test_policy;
 mod test_strict;
 mod test_type_annotation;
@@ -561,12 +562,9 @@ impl<'a> Typechecker<'a> {
                 .var(Var::Resource),
             ),
             ExprKind::Var(Var::Context) => TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(Type::record_with_attributes(
-                    request_env.context.clone(),
-                    OpenTag::ClosedAttributes,
-                )))
-                .with_same_source_info(e)
-                .var(Var::Context),
+                ExprBuilder::with_data(Some(request_env.context.clone()))
+                    .with_same_source_info(e)
+                    .var(Var::Context),
             ),
             ExprKind::Unknown(u) => {
                 TypecheckAnswer::fail(ExprBuilder::with_data(None).unknown(u.clone()))
@@ -968,6 +966,19 @@ impl<'a> Typechecker<'a> {
                                     ));
                                     TypecheckAnswer::fail(annot_expr)
                                 }
+                            }
+                            // In partial schema validation, if we can't find
+                            // the attribute but there may be additional
+                            // attributes, we do not fail and instead return the
+                            // bottom type (`Never`).
+                            None if self.mode.is_partial()
+                                && Type::may_have_attr(self.schema, typ_actual, attr) =>
+                            {
+                                TypecheckAnswer::success(
+                                    ExprBuilder::with_data(Some(Type::Never))
+                                        .with_same_source_info(e)
+                                        .get_attr(typ_expr_actual, attr.clone()),
+                                )
                             }
                             None => {
                                 let borrowed =

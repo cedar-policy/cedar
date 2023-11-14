@@ -1767,11 +1767,13 @@ mod schema_based_parsing_tests {
                                 )]
                                 .into_iter()
                                 .collect(),
+                                open_attrs: false,
                             }),
                         ),
                     ]
                     .into_iter()
                     .collect(),
+                    open_attrs: false,
                 }),
                 "home_ip" => Some(SchemaType::Extension {
                     name: Name::parse_unqualified_name("ipaddr").expect("valid"),
@@ -1789,6 +1791,7 @@ mod schema_based_parsing_tests {
                     ]
                     .into_iter()
                     .collect(),
+                    open_attrs: false,
                 }),
                 _ => None,
             }
@@ -1814,6 +1817,10 @@ mod schema_based_parsing_tests {
 
         fn allowed_parent_types(&self) -> Arc<HashSet<EntityType>> {
             Arc::new(HashSet::new())
+        }
+
+        fn open_attributes(&self) -> bool {
+            false
         }
     }
 
@@ -2877,6 +2884,10 @@ mod schema_based_parsing_tests {
 
             fn allowed_parent_types(&self) -> Arc<HashSet<EntityType>> {
                 Arc::new(HashSet::new())
+            }
+
+            fn open_attributes(&self) -> bool {
+                false
             }
         }
 

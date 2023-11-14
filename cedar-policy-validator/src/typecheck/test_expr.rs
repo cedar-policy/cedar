@@ -505,7 +505,7 @@ fn eq_typecheck_entity_literals_false() {
 fn entity_has_typechecks() {
     assert_typechecks_empty_schema(
         Expr::has_attr(Expr::var(Var::Principal), "attr".into()),
-        Type::singleton_boolean(false),
+        Type::primitive_boolean(),
     );
 }
 

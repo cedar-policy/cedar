@@ -34,7 +34,7 @@ use serde_with::serde_as;
 use super::NamespaceDefinition;
 use crate::{
     err::*,
-    types::{Attributes, EntityRecordKind, Type},
+    types::{Attributes, EntityRecordKind, OpenTag, Type},
     SchemaFragment,
 };
 
@@ -254,17 +254,19 @@ impl ValidatorSchema {
                 // error for any other undeclared entity types by
                 // `check_for_undeclared`.
                 let descendants = entity_children.remove(&name).unwrap_or_default();
+                let (attributes, open_attributes) = Self::record_attributes_or_none(
+                    entity_type.attributes.resolve_type_defs(&type_defs)?,
+                )
+                .ok_or(SchemaError::ContextOrShapeNotRecord(
+                    ContextOrShape::EntityTypeShape(name.clone()),
+                ))?;
                 Ok((
                     name.clone(),
                     ValidatorEntityType {
-                        name: name.clone(),
+                        name,
                         descendants,
-                        attributes: Self::record_attributes_or_none(
-                            entity_type.attributes.resolve_type_defs(&type_defs)?,
-                        )
-                        .ok_or(SchemaError::ContextOrShapeNotRecord(
-                            ContextOrShape::EntityTypeShape(name),
-                        ))?,
+                        attributes,
+                        open_attributes,
                     },
                 ))
             })
@@ -283,19 +285,21 @@ impl ValidatorSchema {
             .into_iter()
             .map(|(name, action)| -> Result<_> {
                 let descendants = action_children.remove(&name).unwrap_or_default();
-
+                let (context, open_context_attributes) =
+                    Self::record_attributes_or_none(action.context.resolve_type_defs(&type_defs)?)
+                        .ok_or(SchemaError::ContextOrShapeNotRecord(
+                            ContextOrShape::ActionContext(name.clone()),
+                        ))?;
                 Ok((
                     name.clone(),
                     ValidatorActionId {
-                        name: name.clone(),
+                        name,
                         applies_to: action.applies_to,
                         descendants,
-                        context: Self::record_attributes_or_none(
-                            action.context.resolve_type_defs(&type_defs)?,
-                        )
-                        .ok_or(SchemaError::ContextOrShapeNotRecord(
-                            ContextOrShape::ActionContext(name),
-                        ))?,
+                        context: Type::record_with_attributes(
+                            context.attrs,
+                            open_context_attributes,
+                        ),
                         attribute_types: action.attribute_types,
                         attributes: action.attributes,
                     },
@@ -371,13 +375,7 @@ impl ValidatorSchema {
         // types and `appliesTo` lists. See the `entity_types` loop for why the
         // `descendants` list is not checked.
         for action in action_ids.values() {
-            for (_, attr_typ) in action.context.iter() {
-                Self::check_undeclared_in_type(
-                    &attr_typ.attr_type,
-                    entity_types,
-                    &mut undeclared_e,
-                );
-            }
+            Self::check_undeclared_in_type(&action.context, entity_types, &mut undeclared_e);
 
             for p_entity in action.applies_to.applicable_principal_types() {
                 match p_entity {
@@ -411,9 +409,12 @@ impl ValidatorSchema {
         Ok(())
     }
 
-    fn record_attributes_or_none(ty: Type) -> Option<Attributes> {
+    fn record_attributes_or_none(ty: Type) -> Option<(Attributes, OpenTag)> {
         match ty {
-            Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => Some(attrs),
+            Type::EntityOrRecord(EntityRecordKind::Record {
+                attrs,
+                open_attributes,
+            }) => Some((attrs, open_attributes)),
             _ => None,
         }
     }

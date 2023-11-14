@@ -680,14 +680,23 @@ impl ValidatorNamespaceDef {
                 attributes,
                 additional_attributes,
             }) => {
-                if additional_attributes {
+                if cfg!(not(feature = "partial-validate")) && additional_attributes {
                     Err(SchemaError::UnsupportedFeature(
                         UnsupportedFeature::OpenRecordsAndEntities,
                     ))
                 } else {
                     Ok(
                         Self::parse_record_attributes(default_namespace, attributes)?.map(
-                            |attrs| Type::record_with_attributes(attrs, OpenTag::ClosedAttributes),
+                            move |attrs| {
+                                Type::record_with_attributes(
+                                    attrs,
+                                    if additional_attributes {
+                                        OpenTag::OpenAttributes
+                                    } else {
+                                        OpenTag::ClosedAttributes
+                                    },
+                                )
+                            },
                         ),
                     )
                 }

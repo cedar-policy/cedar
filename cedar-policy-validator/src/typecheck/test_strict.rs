@@ -28,7 +28,7 @@ use std::str::FromStr;
 use cedar_policy_core::ast::{EntityType, EntityUID, Expr};
 
 use crate::{
-    types::{Attributes, EffectSet, RequestEnv, Type},
+    types::{EffectSet, OpenTag, RequestEnv, Type},
     IncompatibleTypes, SchemaFragment, TypeErrorKind, ValidationMode,
 };
 
@@ -149,7 +149,7 @@ where
             principal: &EntityType::Specified("User".parse().unwrap()),
             action: &EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
             resource: &EntityType::Specified("Photo".parse().unwrap()),
-            context: &Attributes::with_attributes(None),
+            context: &Type::record_with_attributes(None, OpenTag::ClosedAttributes),
             principal_slot: None,
             resource_slot: None,
         },

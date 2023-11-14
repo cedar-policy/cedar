@@ -30,7 +30,7 @@ use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprShapeOnly, StaticP
 use crate::{
     schema::ACTION_ENTITY_TYPE,
     type_error::TypeError,
-    types::{Attributes, EffectSet, RequestEnv, Type},
+    types::{EffectSet, OpenTag, RequestEnv, Type},
     NamespaceDefinition, ValidationMode, ValidatorSchema,
 };
 
@@ -78,7 +78,7 @@ impl Typechecker<'_> {
                     .parse()
                     .expect("Placeholder type \"Resource\" failed to parse as valid type name."),
             ),
-            context: &Attributes::with_attributes(None),
+            context: &Type::record_with_attributes(None, OpenTag::ClosedAttributes),
             principal_slot: None,
             resource_slot: None,
         };
@@ -153,11 +153,27 @@ pub(crate) fn assert_policy_typechecks_for_mode(
     mode: ValidationMode,
 ) {
     with_typechecker_from_schema(schema, |mut typechecker| {
+        let policy: Arc<Template> = policy.into();
         typechecker.mode = mode;
         let mut type_errors: HashSet<TypeError> = HashSet::new();
-        let typechecked = typechecker.typecheck_policy(&policy.into(), &mut type_errors);
+        let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors);
         assert_eq!(type_errors, HashSet::new(), "Did not expect any errors.");
         assert!(typechecked, "Expected that policy would typecheck.");
+
+        // Ensure that partial schema validation doesn't cause any policy that
+        // should validate with a complete schema to no longer validate with the
+        // same complete schema.
+        typechecker.mode = ValidationMode::Permissive;
+        let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors);
+        assert_eq!(
+            type_errors,
+            HashSet::new(),
+            "Did not expect any errors under partial schema validation."
+        );
+        assert!(
+            typechecked,
+            "Expected that policy would typecheck under partial schema validation."
+        );
     });
 }
 
