@@ -23,27 +23,6 @@ use cedar_policy_core::ast::{
 
 use std::{collections::HashSet, sync::Arc};
 
-/// Enum for representing a reference to any variation of a HeadConstraint
-#[derive(Debug, Clone)]
-pub enum HeadConstraint<'a> {
-    /// Represents constraints on the principal or resource
-    PrincipalOrResource(&'a PrincipalOrResourceConstraint),
-    /// Represents action constraints
-    Action(&'a ActionConstraint),
-}
-
-impl<'a> From<&'a ActionConstraint> for HeadConstraint<'a> {
-    fn from(a: &'a ActionConstraint) -> Self {
-        HeadConstraint::Action(a)
-    }
-}
-
-impl<'a> From<&'a PrincipalOrResourceConstraint> for HeadConstraint<'a> {
-    fn from(por: &'a PrincipalOrResourceConstraint) -> Self {
-        HeadConstraint::PrincipalOrResource(por)
-    }
-}
-
 use crate::expr_iterator::{policy_entity_type_names, policy_entity_uids};
 
 use super::{
@@ -198,24 +177,21 @@ impl Validator {
 
     fn check_if_in_fixes<'a>(
         &'a self,
-        head_var_condition: &PrincipalOrResourceConstraint,
+        scope_constraint: &PrincipalOrResourceConstraint,
         apply_specs: &[&'a ValidatorApplySpec],
         select_apply_spec: &impl Fn(
             &'a ValidatorApplySpec,
         ) -> Box<dyn Iterator<Item = &'a ast::EntityType> + 'a>,
     ) -> bool {
-        let euid = Validator::get_eq_comparison(
-            head_var_condition,
-            PrincipalOrResourceHeadVar::PrincipalOrResource,
-        );
+        let entity_type = Validator::get_eq_comparison(scope_constraint);
 
         // Now we check the following property
         // not exists spec in apply_specs such that lit in spec.principals
         // AND
         // exists spec in apply_specs such that there exists principal in spec.principals such that lit `memberOf` principal
         // (as well as for resource)
-        self.check_if_none_equal(apply_specs, euid.as_ref(), &select_apply_spec)
-            && self.check_if_any_contain(apply_specs, euid.as_ref(), &select_apply_spec)
+        self.check_if_none_equal(apply_specs, entity_type, &select_apply_spec)
+            && self.check_if_any_contain(apply_specs, entity_type, &select_apply_spec)
     }
 
     // This checks the first property:
@@ -262,15 +238,15 @@ impl Validator {
         }
     }
 
-    /// Check if an expression is an equality comparison between a literal EUID and a head variable.
+    /// Check if an expression is an equality comparison between a literal EUID and a scope variable.
     /// If it is, return the EUID.
-    fn get_eq_comparison<K>(
-        head_var_condition: &PrincipalOrResourceConstraint,
-        var: impl HeadVar<K>,
-    ) -> Option<K> {
-        match head_var_condition {
+    fn get_eq_comparison(scope_constraint: &PrincipalOrResourceConstraint) -> Option<&Name> {
+        match scope_constraint {
             PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)) => {
-                var.get_euid_component(euid.as_ref().clone())
+                match euid.entity_type() {
+                    ast::EntityType::Concrete(name) => Some(name),
+                    ast::EntityType::Unspecified => None,
+                }
             }
             _ => None,
         }
@@ -287,10 +263,10 @@ impl Validator {
         resource_constraint: &ResourceConstraint,
     ) -> impl Iterator<Item = ValidationErrorKind> {
         let mut apply_specs = self.get_apply_specs_for_action(action_constraint);
-        let resources_for_head: HashSet<Name> = self
+        let resources_for_scope: HashSet<&Name> = self
             .get_resources_satisfying_constraint(resource_constraint)
             .collect();
-        let principals_for_head: HashSet<Name> = self
+        let principals_for_scope: HashSet<&Name> = self
             .get_principals_satisfying_constraint(principal_constraint)
             .collect();
 
@@ -308,7 +284,7 @@ impl Validator {
                 let action_principals = spec
                     .applicable_principal_types()
                     .filter_map(|ty| match ty {
-                        ast::EntityType::Concrete(name) => Some(name.clone()),
+                        ast::EntityType::Concrete(name) => Some(name),
                         ast::EntityType::Unspecified => None,
                     })
                     .collect::<HashSet<_>>();
@@ -318,7 +294,7 @@ impl Validator {
                 let action_resources = spec
                     .applicable_resource_types()
                     .filter_map(|ty| match ty {
-                        ast::EntityType::Concrete(name) => Some(name.clone()),
+                        ast::EntityType::Concrete(name) => Some(name),
                         ast::EntityType::Unspecified => None,
                     })
                     .collect::<HashSet<_>>();
@@ -327,9 +303,9 @@ impl Validator {
                     .any(|ty| matches!(ty, ast::EntityType::Unspecified));
 
                 let matching_principal = applicable_principal_unspecified
-                    || !principals_for_head.is_disjoint(&action_principals);
+                    || !principals_for_scope.is_disjoint(&action_principals);
                 let matching_resource = applicable_resource_unspecified
-                    || !resources_for_head.is_disjoint(&action_resources);
+                    || !resources_for_scope.is_disjoint(&action_resources);
                 matching_principal && matching_resource
             })
         })
@@ -346,111 +322,86 @@ impl Validator {
         self.get_actions_satisfying_constraint(action_constraint)
             // Get the action type if the id string exists, and then the
             // applies_to list.
-            .filter_map(|action_id| self.schema.get_action_id(&action_id))
+            .filter_map(|action_id| self.schema.get_action_id(action_id))
             .map(|action| &action.applies_to)
     }
 
+    /// Get the set of actions (action entity id strings) that satisfy the
+    /// action scope constraint of the policy.
+    fn get_actions_satisfying_constraint<'a>(
+        &'a self,
+        action_constraint: &'a ActionConstraint,
+    ) -> Box<dyn Iterator<Item = &'a EntityUID> + 'a> {
+        match action_constraint {
+            // <var>
+            ActionConstraint::Any => Box::new(self.schema.known_action_ids()),
+            // <var> == <literal euid>
+            ActionConstraint::Eq(euid) => Box::new(std::iter::once(euid.as_ref())),
+            // <var> in [<literal euid>...]
+            ActionConstraint::In(euids) => Box::new(
+                self.schema
+                    .get_actions_in_set(euids.iter().map(Arc::as_ref)),
+            ),
+        }
+    }
+
     /// Get the set of principals (entity type strings) that satisfy the principal
-    /// head constraint of the policy.
+    /// scope constraint of the policy.
     pub(crate) fn get_principals_satisfying_constraint<'a>(
         &'a self,
         principal_constraint: &'a PrincipalConstraint,
-    ) -> impl Iterator<Item = Name> + 'a {
-        self.get_entities_satisfying_constraint(
-            HeadConstraint::from(principal_constraint.as_inner()),
-            PrincipalOrResourceHeadVar::PrincipalOrResource,
-        )
-    }
-
-    /// Get the set of actions (action entity id strings) that satisfy the
-    /// action head constraint of the policy.
-    pub(crate) fn get_actions_satisfying_constraint<'a>(
-        &'a self,
-        action_constraint: &'a ActionConstraint,
-    ) -> impl Iterator<Item = EntityUID> + 'a {
-        self.get_entities_satisfying_constraint(
-            HeadConstraint::from(action_constraint),
-            ActionHeadVar::Action,
-        )
+    ) -> impl Iterator<Item = &'a Name> + 'a {
+        self.get_entity_types_satisfying_constraint(principal_constraint.as_inner())
     }
 
     /// Get the set of resources (entity type strings) that satisfy the resource
-    /// head constraint of the policy.
+    /// scope constraint of the policy.
     pub(crate) fn get_resources_satisfying_constraint<'a>(
         &'a self,
         resource_constraint: &'a ResourceConstraint,
-    ) -> impl Iterator<Item = Name> + 'a {
-        self.get_entities_satisfying_constraint(
-            HeadConstraint::from(resource_constraint.as_inner()),
-            PrincipalOrResourceHeadVar::PrincipalOrResource,
-        )
+    ) -> impl Iterator<Item = &'a Name> + 'a {
+        self.get_entity_types_satisfying_constraint(resource_constraint.as_inner())
     }
 
-    // Get the set of entities satisfying the condition for a particular
-    // variable in the head of the policy. Note: The strings returned by this
-    // function will be entity types in the case that `var` is principal or
-    // resource but will be action ids in the case that it is action.
-    fn get_entities_satisfying_constraint<'a, H, K>(
+    // Get the set of entity types satisfying the condition for the principal
+    // or resource variable in the policy scope.
+    fn get_entity_types_satisfying_constraint<'a>(
         &'a self,
-        head_var_condition: HeadConstraint<'a>,
-        var: H,
-    ) -> Box<dyn Iterator<Item = K> + 'a>
-    where
-        H: 'a + HeadVar<K>,
-        K: 'a + Clone + Eq + std::hash::Hash,
-    {
-        match head_var_condition {
-            HeadConstraint::Action(ActionConstraint::Any)
-            | HeadConstraint::PrincipalOrResource(PrincipalOrResourceConstraint::Any) => {
-                // <var>
-                Box::new(var.get_known_vars(&self.schema).map(Clone::clone))
-            }
-            HeadConstraint::Action(ActionConstraint::Eq(euid))
-            | HeadConstraint::PrincipalOrResource(PrincipalOrResourceConstraint::Eq(
-                EntityReference::EUID(euid),
-            )) => {
-                // <var> == <literal euid>
-                match self.schema.get_entity_eq(var, euid.as_ref().clone()) {
-                    Some(entity) => Box::new([entity].into_iter()),
-                    None => Box::new(std::iter::empty()),
+        scope_constraint: &'a PrincipalOrResourceConstraint,
+    ) -> Box<dyn Iterator<Item = &'a Name> + 'a> {
+        match scope_constraint {
+            // <var>
+            PrincipalOrResourceConstraint::Any => Box::new(self.schema.known_entity_types()),
+            // <var> == <literal euid>
+            PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)) => Box::new(
+                match euid.entity_type() {
+                    ast::EntityType::Concrete(name) => Some(name),
+                    ast::EntityType::Unspecified => None,
                 }
+                .into_iter(),
+            ),
+            // <var> in <literal euid>
+            PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)) => {
+                Box::new(self.schema.get_entity_types_in(euid.as_ref()))
             }
-            HeadConstraint::PrincipalOrResource(PrincipalOrResourceConstraint::In(
-                EntityReference::EUID(euid),
-            )) => {
-                // <var> in <literal euid>
-                Box::new(self.schema.get_entities_in(var, euid.as_ref().clone()))
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot)
+            | PrincipalOrResourceConstraint::In(EntityReference::Slot) => {
+                Box::new(self.schema.known_entity_types())
             }
-            HeadConstraint::PrincipalOrResource(PrincipalOrResourceConstraint::Eq(
-                EntityReference::Slot,
-            )) => Box::new(var.get_known_vars(&self.schema).map(Clone::clone)),
-            HeadConstraint::PrincipalOrResource(PrincipalOrResourceConstraint::In(
-                EntityReference::Slot,
-            )) => Box::new(var.get_known_vars(&self.schema).map(Clone::clone)),
-            HeadConstraint::PrincipalOrResource(PrincipalOrResourceConstraint::Is(entity_type)) => {
-                Box::new(var.get_by_type(&self.schema, entity_type).cloned())
-            }
-            HeadConstraint::PrincipalOrResource(PrincipalOrResourceConstraint::IsIn(
-                entity_type,
-                EntityReference::Slot,
-            )) => Box::new(var.get_by_type(&self.schema, entity_type).cloned()),
-            HeadConstraint::PrincipalOrResource(PrincipalOrResourceConstraint::IsIn(
-                entity_type,
-                EntityReference::EUID(in_entity),
-            )) => {
-                let entities_same_type: HashSet<_> =
-                    var.get_by_type(&self.schema, entity_type).collect();
+            PrincipalOrResourceConstraint::Is(entity_type)
+            | PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot) => Box::new(
+                if self.schema.is_known_entity_type(entity_type) {
+                    Some(entity_type)
+                } else {
+                    None
+                }
+                .into_iter(),
+            ),
+            PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::EUID(in_entity)) => {
                 Box::new(
                     self.schema
-                        .get_entities_in(var, in_entity.as_ref().clone())
-                        .filter(move |k| entities_same_type.contains(k)),
-                )
-            }
-            HeadConstraint::Action(ActionConstraint::In(euids)) => {
-                // <var> in [<literal euid>...]
-                Box::new(
-                    self.schema
-                        .get_entities_in_set(var, euids.iter().map(Arc::as_ref).cloned()),
+                        .get_entity_types_in(in_entity.as_ref())
+                        .filter(move |k| &entity_type == k),
                 )
             }
         }
@@ -769,7 +720,7 @@ mod test {
             .get_principals_satisfying_constraint(&principal_constraint)
             .collect::<Vec<_>>();
         assert_eq!(entities.len(), 1);
-        let name = &entities[0];
+        let name = entities[0];
         assert_eq!(name, &p_name.parse().expect("Expected valid entity type."));
     }
 
@@ -793,7 +744,7 @@ mod test {
             .get_principals_satisfying_constraint(&principal_constraint)
             .collect::<Vec<_>>();
         assert_eq!(entities.len(), 1);
-        let name = &entities[0];
+        let name = entities[0];
         assert_eq!(name, &p_name.parse().expect("Expected valid entity type."));
     }
 
@@ -1050,7 +1001,7 @@ mod test {
         let actions = validate
             .get_actions_satisfying_constraint(&action_constraint)
             .collect();
-        assert_eq!(HashSet::from([euid_foo]), actions);
+        assert_eq!(HashSet::from([&euid_foo]), actions);
 
         Ok(())
     }
@@ -1079,7 +1030,7 @@ mod test {
         let actions = validate
             .get_actions_satisfying_constraint(&action_constraint)
             .collect();
-        assert_eq!(HashSet::from([euid_foo]), actions);
+        assert_eq!(HashSet::from([&euid_foo]), actions);
 
         Ok(())
     }
@@ -1108,7 +1059,7 @@ mod test {
         let actions = validate
             .get_actions_satisfying_constraint(&action_constraint)
             .collect();
-        assert_eq!(HashSet::from([euid_foo]), actions);
+        assert_eq!(HashSet::from([&euid_foo]), actions);
 
         Ok(())
     }
@@ -1135,6 +1086,7 @@ mod test {
         let validate = Validator::new(singleton_schema);
         let principals = validate
             .get_principals_satisfying_constraint(&principal_constraint)
+            .cloned()
             .map(cedar_policy_core::ast::EntityType::Concrete)
             .collect::<HashSet<_>>();
         assert_eq!(HashSet::from([euid_foo.components().0]), principals);
@@ -1656,7 +1608,7 @@ mod test {
     }
 
     #[test]
-    fn unspecified_entity_in_head() -> Result<()> {
+    fn unspecified_entity_in_scope() -> Result<()> {
         // Note: it's not possible to create an unspecified entity through the parser,
         // so we have to test using manually-constructed policies.
         let validate = Validator::new(ValidatorSchema::empty());
@@ -1803,7 +1755,7 @@ mod test {
     }
 
     #[test]
-    fn unspecified_principal_resource_with_head_conditions() {
+    fn unspecified_principal_resource_with_scope_conditions() {
         let schema = serde_json::from_str::<NamespaceDefinition>(
             r#"
         {
