@@ -446,7 +446,7 @@ impl std::fmt::Display for PartialValueSerializedAsExpr {
 /// Contains some extra contextual information and the underlying
 /// `EvaluationError`.
 #[derive(Debug, Error)]
-#[error("failed to evaluate attribute `{attr}` of entity `{uid}`: {err}")]
+#[error("failed to evaluate attribute `{attr}` of `{uid}`: {err}")]
 pub struct EntityAttrEvaluationError {
     /// UID of the entity where the error was encountered
     pub uid: EntityUID,
