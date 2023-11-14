@@ -481,7 +481,7 @@ impl<'a> Typechecker<'a> {
                 ),
                 // The template uses the slot, but without a scope constraint.
                 // This can't happen for the moment because slots may only
-                // appear in head constraints, but if we ever see this, then the
+                // appear in scope constraints, but if we ever see this, then the
                 // only correct way to proceed is by returning all entity types
                 // as possible instantiations.
                 PrincipalOrResourceConstraint::Is(_) | PrincipalOrResourceConstraint::Any => {
@@ -1785,7 +1785,7 @@ impl<'a> Typechecker<'a> {
         }
     }
 
-    // Given an expression, if that expression is a literal or the `action` head
+    // Given an expression, if that expression is a literal or the `action`
     // variable, return it as an EntityUID. Return `None` otherwise.
     fn euid_from_euid_literal_or_action(request_env: &RequestEnv, e: &Expr) -> Option<EntityUID> {
         match Typechecker::replace_action_var_with_euid(request_env, e)

@@ -503,8 +503,8 @@ impl ValidatorSchema {
             .flat_map(move |e| self.get_entity_types_in(e))
     }
 
-    /// Get all action entities in the schema which are decadents of one of the
-    /// given entities type in the action hierarchy.
+    /// Get all action entities in the schema which are descendants of one of
+    /// the given entities in the action hierarchy.
     pub(crate) fn get_actions_in_set<'a>(
         &'a self,
         euids: impl IntoIterator<Item = &'a EntityUID> + 'a,
