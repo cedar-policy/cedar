@@ -44,6 +44,8 @@ pub enum SchemaType {
     Record {
         /// Attributes and their types
         attrs: HashMap<SmolStr, AttributeType>,
+        /// Can a record with this type have attributes other than those specified in `attrs`
+        open_attrs: bool,
     },
     /// Entity
     Entity {
@@ -119,7 +121,16 @@ impl SchemaType {
                 (Set { element_ty: elty1 }, Set { element_ty: elty2 }) => {
                     elty1.is_consistent_with(elty2)
                 }
-                (Record { attrs: attrs1 }, Record { attrs: attrs2 }) => {
+                (
+                    Record {
+                        attrs: attrs1,
+                        open_attrs: open1,
+                    },
+                    Record {
+                        attrs: attrs2,
+                        open_attrs: open2,
+                    },
+                ) => {
                     attrs1.iter().all(|(k, v)| {
                         match attrs2.get(k) {
                             Some(ty) => {
@@ -129,9 +140,9 @@ impl SchemaType {
                             }
                             None => {
                                 // attrs1 has the attribute, attrs2 does not.
-                                // if required in attrs1, incompatible.
-                                // otherwise fine
-                                !v.required
+                                // if required in attrs1 and and attrs2 is
+                                // closed, incompatible.  otherwise fine
+                                !v.required || *open2
                             }
                         }
                     }) && attrs2.iter().all(|(k, v)| {
@@ -143,9 +154,9 @@ impl SchemaType {
                             }
                             None => {
                                 // attrs2 has the attribute, attrs1 does not.
-                                // if required in attrs2, incompatible.
-                                // otherwise fine
-                                !v.required
+                                // if required in attrs2 and attrs1 is closed,
+                                // incompatible.  otherwise fine
+                                !v.required || *open1
                             }
                         }
                     })
@@ -192,11 +203,17 @@ impl std::fmt::Display for SchemaType {
             Self::String => write!(f, "string"),
             Self::Set { element_ty } => write!(f, "(set of {})", &element_ty),
             Self::EmptySet => write!(f, "empty-set"),
-            Self::Record { attrs } => {
-                if attrs.is_empty() {
+            Self::Record { attrs, open_attrs } => {
+                if attrs.is_empty() && *open_attrs {
+                    write!(f, "any record")
+                } else if attrs.is_empty() {
                     write!(f, "empty record")
                 } else {
-                    write!(f, "record with attributes: {{")?;
+                    if *open_attrs {
+                        write!(f, "record with at least attributes: {{")?;
+                    } else {
+                        write!(f, "record with attributes: {{")?;
+                    }
                     // sorting attributes ensures that there is a single, deterministic
                     // Display output for each `SchemaType`, which is important for
                     // tests that check equality of error messages
@@ -324,7 +341,8 @@ pub fn schematype_of_restricted_expr(
                     // but marking it optional is more flexible -- allows the
                     // attribute type to `is_consistent_with()` more types
                     Ok((k.clone(), AttributeType::optional(attr_type)))
-                }).collect::<Result<HashMap<_,_>, GetSchemaTypeError>>()?
+                }).collect::<Result<HashMap<_,_>, GetSchemaTypeError>>()?,
+                open_attrs: false,
             })
         }
         ExprKind::ExtensionFunctionApp { fn_name, .. } => {
@@ -370,6 +388,7 @@ pub fn schematype_of_value(value: &Value) -> Result<SchemaType, HeterogeneousSet
                 .iter()
                 .map(|(k, v)| Ok((k.clone(), AttributeType::required(schematype_of_value(v)?))))
                 .collect::<Result<_, HeterogeneousSetError>>()?,
+            open_attrs: false,
         }),
         Value::ExtensionValue(ev) => Ok(SchemaType::Extension {
             name: ev.typename(),

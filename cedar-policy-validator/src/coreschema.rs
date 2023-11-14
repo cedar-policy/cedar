@@ -128,6 +128,10 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
     fn allowed_parent_types(&self) -> Arc<HashSet<ast::EntityType>> {
         Arc::clone(&self.allowed_parent_types)
     }
+
+    fn open_attributes(&self) -> bool {
+        self.validator_type.open_attributes.is_open()
+    }
 }
 
 impl ast::RequestSchema for ValidatorSchema {

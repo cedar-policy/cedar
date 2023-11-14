@@ -33,6 +33,7 @@ impl ContextSchema for NullContextSchema {
     fn context_type(&self) -> SchemaType {
         SchemaType::Record {
             attrs: HashMap::new(),
+            open_attrs: false,
         }
     }
 }

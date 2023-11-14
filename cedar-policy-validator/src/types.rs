@@ -47,7 +47,7 @@ pub struct RequestEnv<'a> {
     pub principal: &'a EntityType,
     pub action: &'a EntityUID,
     pub resource: &'a EntityType,
-    pub context: &'a Attributes,
+    pub context: &'a Type,
 
     pub principal_slot: Option<EntityType>,
     pub resource_slot: Option<EntityType>,
@@ -380,7 +380,7 @@ impl Type {
             Type::Never => true,
             // An EntityOrRecord might have an open attributes record, in which
             // case it could have any attribute.
-            Type::EntityOrRecord(k) if k.has_open_attributes_record() => true,
+            Type::EntityOrRecord(k) if k.has_open_attributes_record(schema) => true,
             // In this case and all following `EntityOrRecord` cases, we know it
             // does not have an open attributes record, so we know that an
             // attribute may not exist if it is not explicitly listed in the
@@ -552,10 +552,14 @@ impl Type {
                 // that could have the EmptySet CoreSchemaType and that validator Set type.
                 matches!(self, Type::Set { .. })
             }
-            CoreSchemaType::Record { attrs: core_attrs } => match self {
+            CoreSchemaType::Record {
+                attrs: core_attrs,
+                open_attrs: core_open,
+            } => match self {
                 Type::EntityOrRecord(kind) => match kind {
                     EntityRecordKind::Record {
-                        attrs: self_attrs, ..
+                        attrs: self_attrs,
+                        open_attributes: self_open,
                     } => {
                         core_attrs.iter().all(|(k, core_attr_ty)| {
                             match self_attrs.get_attr(k) {
@@ -571,7 +575,7 @@ impl Type {
                                     // core_attrs has the attribute, self_attrs does not.
                                     // if required in core_attrs, incompatible.
                                     // otherwise fine
-                                    !core_attr_ty.is_required()
+                                    !core_attr_ty.is_required() || self_open.is_open()
                                 }
                             }
                         }) && self_attrs.iter().all(|(k, self_attr_ty)| {
@@ -588,7 +592,7 @@ impl Type {
                                     // self_attrs has the attribute, core_attrs does not.
                                     // if required in self_attrs, incompatible.
                                     // otherwise fine
-                                    !self_attr_ty.is_required
+                                    !self_attr_ty.is_required || *core_open
                                 }
                             }
                         })
@@ -837,25 +841,27 @@ impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
                     ty: EntityType::Specified(name),
                 })
             }
-            Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
-                Ok(CoreSchemaType::Record {
-                    attrs: {
-                        attrs
-                            .into_iter()
-                            .map(|(k, v)| {
-                                let schema_type = v.attr_type.try_into()?;
-                                Ok((
-                                    k,
-                                    match v.is_required {
-                                        true => CoreAttributeType::required(schema_type),
-                                        false => CoreAttributeType::optional(schema_type),
-                                    },
-                                ))
-                            })
-                            .collect::<Result<_, String>>()?
-                    },
-                })
-            }
+            Type::EntityOrRecord(EntityRecordKind::Record {
+                attrs,
+                open_attributes,
+            }) => Ok(CoreSchemaType::Record {
+                attrs: {
+                    attrs
+                        .into_iter()
+                        .map(|(k, v)| {
+                            let schema_type = v.attr_type.try_into()?;
+                            Ok((
+                                k,
+                                match v.is_required {
+                                    true => CoreAttributeType::required(schema_type),
+                                    false => CoreAttributeType::optional(schema_type),
+                                },
+                            ))
+                        })
+                        .collect::<Result<_, String>>()?
+                },
+                open_attrs: open_attributes.is_open(),
+            }),
             Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => match lub.into_single_entity() {
                 Some(name) => Ok(CoreSchemaType::Entity {
                     ty: EntityType::Specified(name),
@@ -1251,7 +1257,7 @@ impl EntityRecordKind {
 
     /// Return `true` if this entity or record may have additional undeclared
     /// attributes.
-    pub(crate) fn has_open_attributes_record(&self) -> bool {
+    pub(crate) fn has_open_attributes_record(&self, schema: &ValidatorSchema) -> bool {
         match self {
             // Records explicitly store this information.
             EntityRecordKind::Record {
@@ -1266,11 +1272,18 @@ impl EntityRecordKind {
             // super type of all other entity types which may have attributes,
             // so it clearly may have additional attributes.
             EntityRecordKind::AnyEntity => true,
-            // An entity LUB may not have an open attributes record. The record
-            // type returned by `get_attributes_type` _may_ be open, but even in
-            // that case we can account for all attributes that might exist by
-            // examining the elements of the LUB.
-            EntityRecordKind::Entity(_) => false,
+            // An entity LUB may have additional attributes if any of the
+            // elements may have additional attributes.
+            EntityRecordKind::Entity(lub) => lub.iter().any(|e_name| {
+                schema
+                    .get_entity_type(e_name)
+                    .map(|e_type| e_type.open_attributes)
+                    // The entity type was not found in the schema, so we know
+                    // nothing about it and must assume that it may have
+                    // additional attributes.
+                    .unwrap_or(OpenTag::OpenAttributes)
+                    .is_open()
+            }),
         }
     }
 

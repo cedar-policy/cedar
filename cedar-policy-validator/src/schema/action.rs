@@ -8,7 +8,7 @@ use serde::Serialize;
 use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
 
-use crate::types::{Attributes, OpenTag, Type};
+use crate::types::{Attributes, Type};
 
 /// Contains information about actions used by the validator.  The contents of
 /// the struct are the same as the schema entity type structure, but the
@@ -28,9 +28,8 @@ pub struct ValidatorActionId {
     /// descendants before it is used in any validation.
     pub(crate) descendants: HashSet<EntityUID>,
 
-    /// The context attributes associated with this action. Keys are the context
-    /// attribute identifiers while the values are the type of the attribute.
-    pub(crate) context: Attributes,
+    /// The type of the context record associated with this action.
+    pub(crate) context: Type,
 
     /// The attribute types for this action, used for typechecking.
     pub(crate) attribute_types: Attributes,
@@ -49,10 +48,7 @@ impl ValidatorActionId {
     ///
     /// This always returns a closed record type.
     pub fn context_type(&self) -> Type {
-        Type::record_with_attributes(
-            self.context.iter().map(|(k, v)| (k.clone(), v.clone())),
-            OpenTag::ClosedAttributes,
-        )
+        self.context.clone()
     }
 }
 

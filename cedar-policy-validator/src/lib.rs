@@ -50,14 +50,28 @@ pub enum ValidationMode {
     #[default]
     Strict,
     Permissive,
+    #[cfg(feature = "partial-validate")]
+    Partial,
 }
 
 impl ValidationMode {
+    /// Does this mode use partial validation. We could conceivably have a
+    /// strict/partial validation mode.
+    fn is_partial(self) -> bool {
+        match self {
+            ValidationMode::Strict | ValidationMode::Permissive => false,
+            #[cfg(feature = "partial-validate")]
+            ValidationMode::Partial => true,
+        }
+    }
+
     /// Does this mode apply strict validation rules.
     fn is_strict(self) -> bool {
         match self {
             ValidationMode::Strict => true,
             ValidationMode::Permissive => false,
+            #[cfg(feature = "partial-validate")]
+            ValidationMode::Partial => false,
         }
     }
 }
