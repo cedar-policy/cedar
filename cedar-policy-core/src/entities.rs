@@ -2908,7 +2908,7 @@ mod schema_based_parsing_tests {
         let is_full_time = parsed
             .get("isFullTime")
             .expect("isFullTime attr should exist");
-        assert_eq!(is_full_time, &PartialValue::from(true),);
+        assert_eq!(is_full_time, &PartialValue::from(true));
         let department = parsed
             .get("department")
             .expect("department attr should exist");
