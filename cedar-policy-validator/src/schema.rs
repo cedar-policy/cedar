@@ -476,7 +476,7 @@ impl ValidatorSchema {
     }
 
     /// Get all entity types in the schema which can be descendants of the given
-    /// entity type in the entity type hierarchy.
+    /// entity type in the entity type graph.
     pub(crate) fn get_entity_types_in<'a>(
         &'a self,
         entity: &'a EntityUID,
@@ -493,7 +493,7 @@ impl ValidatorSchema {
     }
 
     /// Get all entity types in the schema which can be a descendant of one of
-    /// the given entity types in the entity type hierarchy.
+    /// the given entity types in the entity type graph.
     pub(crate) fn get_entity_types_in_set<'a>(
         &'a self,
         euids: impl IntoIterator<Item = &'a EntityUID> + 'a,
