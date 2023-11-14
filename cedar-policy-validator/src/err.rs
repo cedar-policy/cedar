@@ -17,7 +17,7 @@
 use std::collections::HashSet;
 
 use cedar_policy_core::{
-    ast::{EntityUID, Name},
+    ast::{EntityAttrEvaluationError, EntityUID, Name},
     parser::err::{ParseError, ParseErrors},
     transitive_closure,
 };
@@ -97,6 +97,11 @@ pub enum SchemaError {
     /// This error variant should only be used when `PermitAttributes` is enabled.
     #[error("action `{0}` has an attribute with unsupported JSON representation: {1}")]
     UnsupportedActionAttribute(EntityUID, String),
+    /// Error when evaluating an action attribute
+    #[error(transparent)]
+    ActionAttrEval(EntityAttrEvaluationError),
+    /// Error thrown when the schema contains the `__expr` escape.
+    /// Support for this escape form has been dropped.
     #[error("uses the `__expr` escape, which is no longer supported")]
     ExprEscapeUsed,
 }

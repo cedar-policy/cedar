@@ -44,7 +44,7 @@ impl<'a, T> Iterator for ExprIterator<'a, T> {
         let next_expr = self.expression_stack.pop()?;
         match next_expr.expr_kind() {
             ExprKind::Lit(_) => (),
-            ExprKind::Unknown { .. } => (),
+            ExprKind::Unknown(_) => (),
             ExprKind::Slot(_) => (),
             ExprKind::Var(_) => (),
             ExprKind::If {

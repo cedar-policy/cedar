@@ -271,8 +271,8 @@ fn ip_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let function_name = names::IP_FROM_STR_NAME.clone();
     let ipaddr = ExtensionValueWithArgs::new(
         Arc::new(IPAddr::from_str(str.as_str()).map_err(extension_err)?),
-        vec![arg.into()],
         function_name,
+        vec![arg.into()],
     );
     Ok(Value::ExtensionValue(Arc::new(ipaddr)).into())
 }

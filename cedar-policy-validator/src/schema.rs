@@ -24,7 +24,7 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use cedar_policy_core::{
     ast::{Entity, EntityType, EntityUID, Name},
-    entities::{Entities, TCComputation},
+    entities::{Entities, EntitiesError, TCComputation},
     extensions::Extensions,
     transitive_closure::compute_tc,
 };
@@ -67,7 +67,11 @@ impl TryInto<ValidatorSchemaFragment> for SchemaFragment {
     type Error = SchemaError;
 
     fn try_into(self) -> Result<ValidatorSchemaFragment> {
-        ValidatorSchemaFragment::from_schema_fragment(self, ActionBehavior::default())
+        ValidatorSchemaFragment::from_schema_fragment(
+            self,
+            ActionBehavior::default(),
+            Extensions::all_available(),
+        )
     }
 }
 
@@ -79,6 +83,7 @@ impl ValidatorSchemaFragment {
     pub fn from_schema_fragment(
         fragment: SchemaFragment,
         action_behavior: ActionBehavior,
+        extensions: Extensions<'_>,
     ) -> Result<Self> {
         Ok(Self(
             fragment
@@ -89,6 +94,7 @@ impl ValidatorSchemaFragment {
                         Some(fragment_ns),
                         ns_def,
                         action_behavior,
+                        extensions,
                     )
                 })
                 .collect::<Result<Vec<_>>>()?,
@@ -152,25 +158,32 @@ impl ValidatorSchema {
 
     /// Construct a `ValidatorSchema` from a JSON value (which should be an
     /// object matching the `SchemaFileFormat` shape).
-    pub fn from_json_value(json: serde_json::Value) -> Result<Self> {
+    pub fn from_json_value(json: serde_json::Value, extensions: Extensions<'_>) -> Result<Self> {
         Self::from_schema_file(
             SchemaFragment::from_json_value(json)?,
             ActionBehavior::default(),
+            extensions,
         )
     }
 
     /// Construct a `ValidatorSchema` directly from a file.
-    pub fn from_file(file: impl std::io::Read) -> Result<Self> {
-        Self::from_schema_file(SchemaFragment::from_file(file)?, ActionBehavior::default())
+    pub fn from_file(file: impl std::io::Read, extensions: Extensions<'_>) -> Result<Self> {
+        Self::from_schema_file(
+            SchemaFragment::from_file(file)?,
+            ActionBehavior::default(),
+            extensions,
+        )
     }
 
     pub fn from_schema_file(
         schema_file: SchemaFragment,
         action_behavior: ActionBehavior,
+        extensions: Extensions<'_>,
     ) -> Result<ValidatorSchema> {
         Self::from_schema_fragments([ValidatorSchemaFragment::from_schema_fragment(
             schema_file,
             action_behavior,
+            extensions,
         )?])
     }
 
@@ -369,7 +382,7 @@ impl ValidatorSchema {
             for p_entity in action.applies_to.applicable_principal_types() {
                 match p_entity {
                     EntityType::Concrete(p_entity) => {
-                        if !entity_types.contains_key(p_entity) {
+                        if !entity_types.contains_key(&p_entity) {
                             undeclared_e.insert(p_entity.to_string());
                         }
                     }
@@ -380,7 +393,7 @@ impl ValidatorSchema {
             for r_entity in action.applies_to.applicable_resource_types() {
                 match r_entity {
                     EntityType::Concrete(r_entity) => {
-                        if !entity_types.contains_key(r_entity) {
+                        if !entity_types.contains_key(&r_entity) {
                             undeclared_e.insert(r_entity.to_string());
                         }
                     }
@@ -550,7 +563,7 @@ impl ValidatorSchema {
             }
         }
         self.action_ids.iter().map(move |(action_id, action)| {
-            Entity::new(
+            Entity::new_with_attr_partialvalueserializedasexpr(
                 action_id.clone(),
                 action.attributes.clone(),
                 action_ancestors.remove(action_id).unwrap_or_default(),
@@ -559,13 +572,15 @@ impl ValidatorSchema {
     }
 
     /// Construct an `Entity` object for each action in the schema
-    pub fn action_entities(&self) -> cedar_policy_core::entities::Result<Entities> {
+    pub fn action_entities(&self) -> std::result::Result<Entities, EntitiesError> {
+        let extensions = Extensions::all_available();
         Entities::from_entities(
             self.action_entities_iter(),
             None::<&cedar_policy_core::entities::NoEntitiesSchema>, // we don't want to tell `Entities::from_entities()` to add the schema's action entities, that would infinitely recurse
             TCComputation::AssumeAlreadyComputed,
-            Extensions::all_available(),
+            extensions,
         )
+        .map_err(Into::into)
     }
 }
 
@@ -741,6 +756,7 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes {
                 None,
                 self.0,
                 crate::ActionBehavior::PermitAttributes,
+                Extensions::all_available(),
             )?,
         ])])
     }
@@ -1255,6 +1271,7 @@ mod test {
         let schema = ValidatorSchemaFragment::from_schema_fragment(
             schema_json,
             ActionBehavior::ProhibitAttributes,
+            Extensions::all_available(),
         );
         match schema {
             Err(SchemaError::UnsupportedFeature(UnsupportedFeature::ActionAttributes(actions))) => {
@@ -1878,7 +1895,7 @@ mod test {
         let view_photo = actions.entity(&action_uid);
         assert_eq!(
             view_photo.unwrap(),
-            &Entity::new(action_uid, HashMap::new(), HashSet::new())
+            &Entity::new_with_attr_partialvalues(action_uid, HashMap::new(), HashSet::new())
         );
     }
 
@@ -1909,7 +1926,7 @@ mod test {
         let view_photo_entity = actions.entity(&view_photo_uid);
         assert_eq!(
             view_photo_entity.unwrap(),
-            &Entity::new(
+            &Entity::new_with_attr_partialvalues(
                 view_photo_uid,
                 HashMap::new(),
                 HashSet::from([view_uid.clone(), read_uid.clone()])
@@ -1919,13 +1936,17 @@ mod test {
         let view_entity = actions.entity(&view_uid);
         assert_eq!(
             view_entity.unwrap(),
-            &Entity::new(view_uid, HashMap::new(), HashSet::from([read_uid.clone()]))
+            &Entity::new_with_attr_partialvalues(
+                view_uid,
+                HashMap::new(),
+                HashSet::from([read_uid.clone()])
+            )
         );
 
         let read_entity = actions.entity(&read_uid);
         assert_eq!(
             read_entity.unwrap(),
-            &Entity::new(read_uid, HashMap::new(), HashSet::new())
+            &Entity::new_with_attr_partialvalues(read_uid, HashMap::new(), HashSet::new())
         );
     }
 
@@ -1953,8 +1974,10 @@ mod test {
             &Entity::new(
                 action_uid,
                 HashMap::from([("attr".into(), RestrictedExpr::val("foo"))]),
-                HashSet::new()
+                HashSet::new(),
+                &Extensions::none(),
             )
+            .unwrap(),
         );
     }
 

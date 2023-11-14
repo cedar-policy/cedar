@@ -18,8 +18,8 @@ use std::fmt::Display;
 
 use super::{HeterogeneousSetError, SchemaType};
 use crate::ast::{
-    BorrowedRestrictedExpr, EntityUID, Expr, ExprKind, Name, PolicyID, RestrictedExpr,
-    RestrictedExprError,
+    BorrowedRestrictedExpr, EntityAttrEvaluationError, EntityUID, Expr, ExprKind, Name,
+    PartialValue, PolicyID, RestrictedExpr, RestrictedExprError,
 };
 use crate::entities::conformance::EntitySchemaConformanceError;
 use crate::extensions::ExtensionFunctionLookupError;
@@ -115,6 +115,9 @@ pub enum JsonDeserializationError {
         /// The key that appeared two or more times
         key: SmolStr,
     },
+    /// Error when evaluating an entity attribute
+    #[error(transparent)]
+    EntityAttributeEvaluation(#[from] EntityAttrEvaluationError),
     /// During schema-based parsing, encountered an entity which does not
     /// conform to the schema.
     ///
@@ -243,6 +246,13 @@ pub enum JsonSerializationError {
         /// `ExprKind` which we didn't expect to find
         kind: ExprKind,
     },
+    /// Encountered a (partial-evaluation) residual which can't be encoded in
+    /// JSON
+    #[error("can't encode residual as JSON: {residual}")]
+    Residual {
+        /// Residual which can't be encoded in JSON
+        residual: Expr,
+    },
 }
 
 /// Gives information about the context of a JSON deserialization error (e.g.,
@@ -279,7 +289,11 @@ pub enum JsonDeserializationErrorContext {
         Some(actual_ty) => format!("actually has type {actual_ty}"),
         None => "it does not".to_string(),
     },
-    display_restricted_expr(.actual_val.as_borrowed()))]
+    match .actual_val {
+        Either::Left(pval) => format!("{pval}"),
+        Either::Right(expr) => display_restricted_expr(expr.as_borrowed()),
+    }
+)]
 pub struct TypeMismatchError {
     /// Type which was expected
     pub expected: Box<SchemaType>,
@@ -287,8 +301,10 @@ pub struct TypeMismatchError {
     /// the encountered value was an `Unknown` with insufficient type
     /// information to produce a `SchemaType`
     pub actual_ty: Option<Box<SchemaType>>,
-    /// Value which doesn't have the expected type
-    pub actual_val: Box<RestrictedExpr>,
+    /// Value which doesn't have the expected type; represented as either a
+    /// PartialValue or RestrictedExpr, whichever is more convenient for the
+    /// caller
+    pub actual_val: Either<PartialValue, Box<RestrictedExpr>>,
 }
 
 impl std::fmt::Display for JsonDeserializationErrorContext {

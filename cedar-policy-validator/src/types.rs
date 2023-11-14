@@ -1894,6 +1894,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
+            Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -2002,6 +2003,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
+            Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -2125,6 +2127,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
+            Extensions::all_available(),
         )
         .expect("Expected valid schema");
 
@@ -2166,6 +2169,7 @@ mod test {
             ))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
+            Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }

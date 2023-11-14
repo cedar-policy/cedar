@@ -369,7 +369,8 @@ mod test {
                 }
             }
         }});
-        ValidatorSchema::from_json_value(src).expect("failed to create ValidatorSchema")
+        ValidatorSchema::from_json_value(src, Extensions::all_available())
+            .expect("failed to create ValidatorSchema")
     }
 
     /// basic success with concrete request and no context

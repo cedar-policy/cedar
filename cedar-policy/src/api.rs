@@ -23,15 +23,15 @@
 pub use ast::Effect;
 pub use authorizer::Decision;
 use cedar_policy_core::ast;
-use cedar_policy_core::ast::{ExprConstructionError, RestrictedExprError};
+use cedar_policy_core::ast::{ExprConstructionError, RestrictedExprParseError};
 use cedar_policy_core::authorizer;
 pub use cedar_policy_core::authorizer::AuthorizationError;
 use cedar_policy_core::entities::{
     self, ContextSchema, Dereference, JsonDeserializationError, JsonDeserializationErrorContext,
 };
 use cedar_policy_core::est;
+use cedar_policy_core::evaluator::Evaluator;
 pub use cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind};
-use cedar_policy_core::evaluator::{Evaluator, RestrictedEvaluator};
 pub use cedar_policy_core::extensions;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
@@ -87,7 +87,7 @@ impl From<SlotId> for ast::SlotId {
 }
 
 /// Entity datatype
-// INVARIANT The `EntityUid` of an `Entity` cannot be unspecified
+// INVARIANT(UidOfEntityNotUnspecified): The `EntityUid` of an `Entity` cannot be unspecified
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, RefCast)]
 pub struct Entity(ast::Entity);
@@ -118,16 +118,32 @@ impl Entity {
         uid: EntityUid,
         attrs: HashMap<String, RestrictedExpression>,
         parents: HashSet<EntityUid>,
-    ) -> Self {
+    ) -> Result<Self, EntityAttrEvaluationError> {
         // note that we take a "parents" parameter here; we will compute TC when
         // the `Entities` object is created
-        // INVARIANT by invariant on `EntityUid`
-        Self(ast::Entity::new(
+        // INVARIANT(UidOfEntityNotUnspecified): by invariant on `EntityUid`
+        Ok(Self(ast::Entity::new(
             uid.0,
             attrs
                 .into_iter()
                 .map(|(k, v)| (SmolStr::from(k), v.0))
                 .collect(),
+            parents.into_iter().map(|uid| uid.0).collect(),
+            &Extensions::all_available(),
+        )?))
+    }
+
+    /// Create a new `Entity` with no attributes.
+    ///
+    /// Unlike [`Entity::new()`], this constructor cannot error.
+    /// (The only source of errors in `Entity::new()` are attributes.)
+    pub fn new_no_attrs(uid: EntityUid, parents: HashSet<EntityUid>) -> Self {
+        // note that we take a "parents" parameter here; we will compute TC when
+        // the `Entities` object is created
+        // INVARIANT(UidOfEntityNotUnspecified): by invariant on `EntityUid`
+        Self(ast::Entity::new_with_attr_partialvalues(
+            uid.0,
+            HashMap::new(),
             parents.into_iter().map(|uid| uid.0).collect(),
         ))
     }
@@ -140,10 +156,10 @@ impl Entity {
     /// let type_name = EntityTypeName::from_str("User").unwrap();
     /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
     /// let alice = Entity::with_uid(euid);
-    /// # assert_eq!(alice.attr("age"), None);
+    /// # cool_asserts::assert_matches!(alice.attr("age"), None);
     /// ```
     pub fn with_uid(uid: EntityUid) -> Self {
-        // INVARIANT: by invariant on `EntityUid`
+        // INVARIANT(UidOfEntityNotUnspecified): by invariant on `EntityUid`
         Self(ast::Entity::with_uid(uid.0))
     }
 
@@ -164,7 +180,8 @@ impl Entity {
 
     /// Get the value for the given attribute, or `None` if not present.
     ///
-    /// This can also return Some(Err) if the attribute had an illegal value.
+    /// This can also return Some(Err) if the attribute is not a value (i.e., is
+    /// unknown due to partial evaluation).
     /// ```
     /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid, EvalResult,
     ///     RestrictedExpression};
@@ -177,19 +194,17 @@ impl Entity {
     ///     ("age".to_string(), RestrictedExpression::from_str("21").unwrap()),
     ///     ("department".to_string(), RestrictedExpression::from_str("\"CS\"").unwrap()),
     /// ]);
-    /// let entity = Entity::new(euid, attrs, HashSet::new());
-    /// assert_eq!(entity.attr("age").unwrap(), Ok(EvalResult::Long(21)));
-    /// assert_eq!(entity.attr("department").unwrap(), Ok(EvalResult::String("CS".to_string())));
-    ///```
-    pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, EvaluationError>> {
-        let expr = self.0.get(attr)?;
-        let all_ext = Extensions::all_available();
-        let evaluator = RestrictedEvaluator::new(&all_ext);
-        Some(
-            evaluator
-                .interpret(expr.as_borrowed())
-                .map(EvalResult::from),
-        )
+    /// let entity = Entity::new(euid, attrs, HashSet::new()).unwrap();
+    /// assert_eq!(entity.attr("age").unwrap().unwrap(), EvalResult::Long(21));
+    /// assert_eq!(entity.attr("department").unwrap().unwrap(), EvalResult::String("CS".to_string()));
+    /// assert!(entity.attr("foo").is_none());
+    /// ```
+    pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, impl std::error::Error>> {
+        let v = match ast::Value::try_from(self.0.get(attr)?.clone()) {
+            Ok(v) => v,
+            Err(e) => return Some(Err(e)),
+        };
+        Some(Ok(EvalResult::from(v)))
     }
 }
 
@@ -232,13 +247,6 @@ impl Entities {
     #[cfg(feature = "partial-eval")]
     pub fn partial(self) -> Self {
         Self(self.0.partial())
-    }
-
-    /// Attempt to eagerly compute the values of attributes for all entities in the slice.
-    /// This can fail if evaluation of the [`RestrictedExpression`] fails.
-    /// In a future major version, we will likely make this function automatically called via the constructor.
-    pub fn evaluate(self) -> Result<Self, EvaluationError> {
-        Ok(Self(self.0.evaluate()?))
     }
 
     /// Iterate over the `Entity`'s in the `Entities`
@@ -445,7 +453,7 @@ impl Entities {
     /// let type_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
     /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
     /// let entity = entities.get(&euid).unwrap();
-    /// assert_eq!(entity.attr("age").unwrap(), Ok(EvalResult::Long(19)));
+    /// assert_eq!(entity.attr("age").unwrap().unwrap(), EvalResult::Long(19));
     /// let ip = entity.attr("ip_addr").unwrap().unwrap();
     /// assert_eq!(ip, EvalResult::ExtensionValue("10.0.1.101/32".to_string()));
     /// ```
@@ -1116,7 +1124,10 @@ impl Schema {
     /// shape required for Cedar schemas).
     pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
         Ok(Self(
-            cedar_policy_validator::ValidatorSchema::from_json_value(json)?,
+            cedar_policy_validator::ValidatorSchema::from_json_value(
+                json,
+                Extensions::all_available(),
+            )?,
         ))
     }
 
@@ -1124,12 +1135,13 @@ impl Schema {
     pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         Ok(Self(cedar_policy_validator::ValidatorSchema::from_file(
             file,
+            Extensions::all_available(),
         )?))
     }
 
     /// Extract from the schema an `Entities` containing the action entities
     /// declared in the schema.
-    pub fn action_entities(&self) -> Result<Entities, entities::EntitiesError> {
+    pub fn action_entities(&self) -> Result<Entities, EntitiesError> {
         Ok(Entities(self.0.action_entities()?))
     }
 }
@@ -1208,10 +1220,35 @@ pub enum SchemaError {
     /// This error variant should only be used when `PermitAttributes` is enabled.
     #[error("action `{0}` has an attribute with unsupported JSON representation: {1}")]
     UnsupportedActionAttribute(EntityUid, String),
+    /// Error when evaluating an action attribute
+    #[error(transparent)]
+    ActionAttrEval(EntityAttrEvaluationError),
     /// Error thrown when the schema contains the `__expr` escape.
     /// Support for this escape form has been dropped.
     #[error("schema contained the non-supported `__expr` escape.")]
     ExprEscapeUsed,
+}
+
+/// Error when evaluating an entity attribute
+#[derive(Debug, Error)]
+#[error("in attribute `{attr}` of `{uid}`: {err}")]
+pub struct EntityAttrEvaluationError {
+    /// Action that had the attribute with the error
+    pub uid: EntityUid,
+    /// Attribute that had the error
+    pub attr: SmolStr,
+    /// Underlying evaluation error
+    pub err: EvaluationError,
+}
+
+impl From<ast::EntityAttrEvaluationError> for EntityAttrEvaluationError {
+    fn from(err: ast::EntityAttrEvaluationError) -> Self {
+        Self {
+            uid: EntityUid(err.uid),
+            attr: err.attr,
+            err: err.err,
+        }
+    }
 }
 
 /// Describes in what action context or entity type shape a schema parsing error
@@ -1298,6 +1335,9 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             }
             cedar_policy_validator::SchemaError::UnsupportedActionAttribute(uid, escape_type) => {
                 Self::UnsupportedActionAttribute(EntityUid(uid), escape_type)
+            }
+            cedar_policy_validator::SchemaError::ActionAttrEval(err) => {
+                Self::ActionAttrEval(err.into())
             }
             cedar_policy_validator::SchemaError::ExprEscapeUsed => Self::ExprEscapeUsed,
         }
@@ -2933,7 +2973,7 @@ impl RestrictedExpression {
 }
 
 impl FromStr for RestrictedExpression {
-    type Err = RestrictedExprError;
+    type Err = RestrictedExprParseError;
 
     /// create a `RestrictedExpression` using Cedar syntax
     fn from_str(expression: &str) -> Result<Self, Self::Err> {
@@ -3727,7 +3767,7 @@ permit(principal ==  A :: B
     fn malformed_entity_type_name_should_fail() {
         let result = EntityTypeName::from_str("I'm an invalid name");
 
-        assert!(matches!(result, Err(ParseErrors(_))));
+        assert_matches!(result, Err(ParseErrors(_)));
         let error = result.err().unwrap();
         assert!(error.to_string().contains("invalid token"));
     }
@@ -4848,17 +4888,9 @@ mod ancestors_tests {
         let a_euid: EntityUid = EntityUid::from_strs("test", "A");
         let b_euid: EntityUid = EntityUid::from_strs("test", "b");
         let c_euid: EntityUid = EntityUid::from_strs("test", "C");
-        let a = Entity::new(a_euid.clone(), HashMap::new(), HashSet::new());
-        let b = Entity::new(
-            b_euid.clone(),
-            HashMap::new(),
-            std::iter::once(a_euid.clone()).collect(),
-        );
-        let c = Entity::new(
-            c_euid.clone(),
-            HashMap::new(),
-            std::iter::once(b_euid.clone()).collect(),
-        );
+        let a = Entity::new_no_attrs(a_euid.clone(), HashSet::new());
+        let b = Entity::new_no_attrs(b_euid.clone(), std::iter::once(a_euid.clone()).collect());
+        let c = Entity::new_no_attrs(c_euid.clone(), std::iter::once(b_euid.clone()).collect());
         let es = Entities::from_entities([a, b, c], None).unwrap();
         let ans = es.ancestors(&c_euid).unwrap().collect::<HashSet<_>>();
         assert_eq!(ans.len(), 2);
@@ -4977,7 +5009,8 @@ mod entity_validate_tests {
                 ),
             ]),
             HashSet::new(),
-        );
+        )
+        .unwrap();
         validate_entity(entity, &schema()).unwrap();
     }
 
@@ -5035,7 +5068,8 @@ mod entity_validate_tests {
                 ),
             ]),
             HashSet::from_iter([EntityUid::from_strs("Manager", "jane")]),
-        );
+        )
+        .unwrap();
         match validate_entity(entity, &schema) {
             Ok(_) => panic!("expected an error due to extraneous parent"),
             Err(e) => {
@@ -5096,7 +5130,8 @@ mod entity_validate_tests {
                 ),
             ]),
             HashSet::new(),
-        );
+        )
+        .unwrap();
         match validate_entity(entity, &schema) {
             Ok(_) => panic!("expected an error due to missing attribute `numDirectReports`"),
             Err(e) => {
@@ -5159,7 +5194,8 @@ mod entity_validate_tests {
                 ),
             ]),
             HashSet::new(),
-        );
+        )
+        .unwrap();
         match validate_entity(entity, &schema) {
             Ok(_) => panic!("expected an error due to extraneous attribute"),
             Err(e) => {
@@ -5170,11 +5206,7 @@ mod entity_validate_tests {
             }
         }
 
-        let entity = Entity::new(
-            EntityUid::from_strs("Manager", "jane"),
-            HashMap::new(),
-            HashSet::new(),
-        );
+        let entity = Entity::new_no_attrs(EntityUid::from_strs("Manager", "jane"), HashSet::new());
         match validate_entity(entity, &schema) {
             Ok(_) => panic!("expected an error due to unexpected entity type"),
             Err(e) => {
@@ -5195,8 +5227,6 @@ mod entity_validate_tests {
 #[allow(clippy::panic)]
 #[cfg(test)]
 mod schema_based_parsing_tests {
-    use std::assert_eq;
-
     use super::*;
     use cool_asserts::assert_matches;
     use serde_json::json;
@@ -5284,28 +5314,22 @@ mod schema_based_parsing_tests {
         let parsed = parsed
             .get(&EntityUid::from_strs("Employee", "12UA45"))
             .expect("that should be the employee id");
-        assert_eq!(
+        assert_matches!(
             parsed.attr("home_ip"),
-            Some(Ok(EvalResult::String("222.222.222.101".into())))
+            Some(Ok(EvalResult::String(s))) if &s == "222.222.222.101"
         );
-        assert_eq!(
+        assert_matches!(
             parsed.attr("trust_score"),
-            Some(Ok(EvalResult::String("5.7".into())))
+            Some(Ok(EvalResult::String(s))) if &s == "5.7"
         );
-        assert!(matches!(
-            parsed.attr("manager"),
-            Some(Ok(EvalResult::Record(_)))
-        ));
-        assert!(matches!(
-            parsed.attr("work_ip"),
-            Some(Ok(EvalResult::Record(_)))
-        ));
+        assert_matches!(parsed.attr("manager"), Some(Ok(EvalResult::Record(_))));
+        assert_matches!(parsed.attr("work_ip"), Some(Ok(EvalResult::Record(_))));
         {
             let Some(Ok(EvalResult::Set(set))) = parsed.attr("hr_contacts") else {
                 panic!("expected hr_contacts attr to exist and be a Set")
             };
             let contact = set.iter().next().expect("should be at least one contact");
-            assert!(matches!(contact, EvalResult::Record(_)));
+            assert_matches!(contact, EvalResult::Record(_));
         };
         {
             let Some(Ok(EvalResult::Record(rec))) = parsed.attr("json_blob") else {
@@ -5318,7 +5342,7 @@ mod schema_based_parsing_tests {
             let innerinner = rec
                 .get("innerinner")
                 .expect("expected innerinner attr to exist");
-            assert!(matches!(innerinner, EvalResult::Record(_)));
+            assert_matches!(innerinner, EvalResult::Record(_));
         };
         // but with schema-based parsing, we get these other types
         let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
@@ -5328,27 +5352,27 @@ mod schema_based_parsing_tests {
         let parsed = parsed
             .get(&EntityUid::from_strs("Employee", "12UA45"))
             .expect("that should be the employee id");
-        assert_eq!(parsed.attr("isFullTime"), Some(Ok(EvalResult::Bool(true))));
-        assert_eq!(
+        assert_matches!(parsed.attr("isFullTime"), Some(Ok(EvalResult::Bool(true))));
+        assert_matches!(
             parsed.attr("numDirectReports"),
             Some(Ok(EvalResult::Long(3)))
         );
-        assert_eq!(
+        assert_matches!(
             parsed.attr("department"),
-            Some(Ok(EvalResult::String("Sales".into())))
+            Some(Ok(EvalResult::String(s))) if &s == "Sales"
         );
-        assert_eq!(
+        assert_matches!(
             parsed.attr("manager"),
-            Some(Ok(EvalResult::EntityUid(EntityUid::from_strs(
+            Some(Ok(EvalResult::EntityUid(euid))) if euid == EntityUid::from_strs(
                 "Employee", "34FB87"
-            ))))
+            )
         );
         {
             let Some(Ok(EvalResult::Set(set))) = parsed.attr("hr_contacts") else {
                 panic!("expected hr_contacts attr to exist and be a Set")
             };
             let contact = set.iter().next().expect("should be at least one contact");
-            assert!(matches!(contact, EvalResult::EntityUid(_)));
+            assert_matches!(contact, EvalResult::EntityUid(_));
         };
         {
             let Some(Ok(EvalResult::Record(rec))) = parsed.attr("json_blob") else {
@@ -5361,19 +5385,19 @@ mod schema_based_parsing_tests {
             let innerinner = rec
                 .get("innerinner")
                 .expect("expected innerinner attr to exist");
-            assert!(matches!(innerinner, EvalResult::EntityUid(_)));
+            assert_matches!(innerinner, EvalResult::EntityUid(_));
         };
-        assert_eq!(
+        assert_matches!(
             parsed.attr("home_ip"),
-            Some(Ok(EvalResult::ExtensionValue("222.222.222.101/32".into())))
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "222.222.222.101/32"
         );
-        assert_eq!(
+        assert_matches!(
             parsed.attr("work_ip"),
-            Some(Ok(EvalResult::ExtensionValue("2.2.2.0/24".into())))
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "2.2.2.0/24"
         );
-        assert_eq!(
+        assert_matches!(
             parsed.attr("trust_score"),
-            Some(Ok(EvalResult::ExtensionValue("5.7000".into())))
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "5.7000"
         );
 
         // simple type mismatch with expected type
@@ -5546,7 +5570,7 @@ mod schema_based_parsing_tests {
         let err = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect_err("should fail due to type mismatch on home_ip");
         assert!(
-            err.to_string().contains(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#),
+            err.to_string().contains(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `3.3300`"#),
             "actual error message was {err}"
         );
 
@@ -5701,17 +5725,17 @@ mod schema_based_parsing_tests {
         let parsed = parsed
             .get(&EntityUid::from_strs("XYZCorp::Employee", "12UA45"))
             .expect("that should be the employee type and id");
-        assert_eq!(parsed.attr("isFullTime"), Some(Ok(EvalResult::Bool(true))));
-        assert_eq!(
+        assert_matches!(parsed.attr("isFullTime"), Some(Ok(EvalResult::Bool(true))));
+        assert_matches!(
             parsed.attr("department"),
-            Some(Ok(EvalResult::String("Sales".into())))
+            Some(Ok(EvalResult::String(s))) if &s == "Sales"
         );
-        assert_eq!(
+        assert_matches!(
             parsed.attr("manager"),
-            Some(Ok(EvalResult::EntityUid(EntityUid::from_strs(
+            Some(Ok(EvalResult::EntityUid(euid))) if euid == EntityUid::from_strs(
                 "XYZCorp::Employee",
                 "34FB87"
-            ))))
+            )
         );
 
         let entitiesjson = json!(
@@ -6168,27 +6192,14 @@ mod schema_based_parsing_tests {
             action_entities,
             Entities::from_entities(
                 [
-                    Entity::new(a_euid.clone(), HashMap::new(), HashSet::new()),
-                    Entity::new(
-                        b_euid.clone(),
-                        HashMap::new(),
-                        HashSet::from([a_euid.clone()])
-                    ),
-                    Entity::new(
-                        c_euid.clone(),
-                        HashMap::new(),
-                        HashSet::from([a_euid.clone()])
-                    ),
-                    Entity::new(
+                    Entity::new_no_attrs(a_euid.clone(), HashSet::new()),
+                    Entity::new_no_attrs(b_euid.clone(), HashSet::from([a_euid.clone()])),
+                    Entity::new_no_attrs(c_euid.clone(), HashSet::from([a_euid.clone()])),
+                    Entity::new_no_attrs(
                         d_euid.clone(),
-                        HashMap::new(),
                         HashSet::from([a_euid.clone(), b_euid.clone(), c_euid.clone()])
                     ),
-                    Entity::new(
-                        e_euid,
-                        HashMap::new(),
-                        HashSet::from([a_euid, b_euid, c_euid, d_euid])
-                    ),
+                    Entity::new_no_attrs(e_euid, HashSet::from([a_euid, b_euid, c_euid, d_euid])),
                 ],
                 Some(&schema)
             )
@@ -6305,57 +6316,53 @@ mod schema_based_parsing_tests {
         let parsed = parsed
             .get(&EntityUid::from_strs("Employee", "12UA45"))
             .expect("that should be the employee id");
-        let assert_contains_unknown = |err: EvaluationError, unk_name: &str| {
+        let assert_contains_unknown = |err: &str, unk_name: &str| {
             assert!(
-                err.to_string()
-                    .contains("the expression contains unknown(s)"),
+                err.contains("value contains a residual expression"),
                 "actual error message was {err}"
             );
-            assert!(
-                err.to_string().contains(unk_name),
-                "actual error message was {err}"
-            );
+            assert!(err.contains(unk_name), "actual error message was {err}");
         };
         assert_matches!(
             parsed.attr("isFullTime"),
-            Some(Err(e)) => assert_contains_unknown(e, "abc")
+            Some(Err(e)) => assert_contains_unknown(&e.to_string(), "abc")
         );
         assert_matches!(
             parsed.attr("numDirectReports"),
-            Some(Err(e)) => assert_contains_unknown(e, "def")
+            Some(Err(e)) => assert_contains_unknown(&e.to_string(), "def")
         );
         assert_matches!(
             parsed.attr("department"),
-            Some(Err(e)) => assert_contains_unknown(e, "zxy")
+            Some(Err(e)) => assert_contains_unknown(&e.to_string(), "zxy")
         );
         assert_matches!(
             parsed.attr("manager"),
-            Some(Err(e)) => assert_contains_unknown(e, "www")
+            Some(Err(e)) => assert_contains_unknown(&e.to_string(), "www")
         );
         assert_matches!(
             parsed.attr("hr_contacts"),
-            Some(Err(e)) => assert_contains_unknown(e, "yyy")
+            Some(Err(e)) => assert_contains_unknown(&e.to_string(), "yyy")
         );
         assert_matches!(
             parsed.attr("sales_contacts"),
-            Some(Err(e)) => assert_contains_unknown(e, "123")
+            Some(Err(e)) => assert_contains_unknown(&e.to_string(), "123")
         );
         assert_matches!(
             parsed.attr("json_blob"),
-            Some(Err(e)) => assert_contains_unknown(e, "bbb")
+            Some(Err(e)) => assert_contains_unknown(&e.to_string(), "bbb")
         );
         assert_matches!(
             parsed.attr("home_ip"),
-            Some(Err(e)) => assert_contains_unknown(e, "uuu")
+            Some(Err(e)) => assert_contains_unknown(&e.to_string(), "uuu")
         );
         assert_matches!(parsed.attr("work_ip"), Some(Ok(_)));
         assert_matches!(
             parsed.attr("trust_score"),
-            Some(Err(e)) => assert_contains_unknown(e, "dec")
+            Some(Err(e)) => assert_contains_unknown(&e.to_string(), "dec")
         );
         assert_matches!(
             parsed.attr("tricky"),
-            Some(Err(e)) => assert_contains_unknown(e, "ttt")
+            Some(Err(e)) => assert_contains_unknown(&e.to_string(), "ttt")
         );
     }
 }

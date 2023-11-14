@@ -1,9 +1,10 @@
 use super::{
-    schematype_of_restricted_expr, EntityTypeDescription, GetSchemaTypeError,
-    HeterogeneousSetError, Schema, SchemaType, TypeMismatchError,
+    schematype_of_partialvalue, schematype_of_restricted_expr, EntityTypeDescription,
+    GetSchemaTypeError, HeterogeneousSetError, Schema, SchemaType, TypeMismatchError,
 };
-use crate::ast::{BorrowedRestrictedExpr, Entity, EntityType, EntityUID};
+use crate::ast::{BorrowedRestrictedExpr, Entity, EntityType, EntityUID, PartialValue};
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
+use either::Either;
 use smol_str::SmolStr;
 use thiserror::Error;
 
@@ -165,37 +166,34 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                         // docs on the `attr_type()` trait method
                         return Err(EntitySchemaConformanceError::UnexpectedEntityAttr {
                             uid: uid.clone(),
-                            attr: attr.into(),
+                            attr: attr.clone(),
                         });
                     }
                     Some(expected_ty) => {
                         // typecheck: ensure that the entity attribute value matches
                         // the expected type
-                        match typecheck_restricted_expr_against_schematype(
-                            val,
-                            &expected_ty,
-                            self.extensions,
-                        ) {
+                        match typecheck_value_against_schematype(val, &expected_ty, self.extensions)
+                        {
                             Ok(()) => {} // typecheck passes
-                            Err(RestrictedExprTypecheckError::TypeMismatch(err)) => {
+                            Err(TypecheckError::TypeMismatch(err)) => {
                                 return Err(EntitySchemaConformanceError::TypeMismatch {
                                     uid: uid.clone(),
-                                    attr: attr.into(),
+                                    attr: attr.clone(),
                                     err,
                                 });
                             }
-                            Err(RestrictedExprTypecheckError::HeterogeneousSet(err)) => {
+                            Err(TypecheckError::HeterogeneousSet(err)) => {
                                 return Err(EntitySchemaConformanceError::HeterogeneousSet {
                                     uid: uid.clone(),
-                                    attr: attr.into(),
+                                    attr: attr.clone(),
                                     err,
                                 });
                             }
-                            Err(RestrictedExprTypecheckError::ExtensionFunctionLookup(err)) => {
+                            Err(TypecheckError::ExtensionFunctionLookup(err)) => {
                                 return Err(
                                     EntitySchemaConformanceError::ExtensionFunctionLookup {
                                         uid: uid.clone(),
-                                        attr: attr.into(),
+                                        attr: attr.clone(),
                                         err,
                                     },
                                 );
@@ -225,6 +223,57 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
     }
 }
 
+/// Check whether the given `PartialValue` typechecks with the given `SchemaType`.
+/// If the typecheck passes, return `Ok(())`.
+/// If the typecheck fails, return an appropriate `Err`.
+pub fn typecheck_value_against_schematype(
+    value: &PartialValue,
+    expected_ty: &SchemaType,
+    extensions: Extensions<'_>,
+) -> Result<(), TypecheckError> {
+    // TODO: instead of computing the `SchemaType` of `value` and then checking
+    // whether the schematypes are "consistent", wouldn't it be less confusing,
+    // more efficient, and maybe even more precise to just typecheck directly?
+    match schematype_of_partialvalue(value, extensions) {
+        Ok(actual_ty) => {
+            if actual_ty.is_consistent_with(expected_ty) {
+                // typecheck passes
+                Ok(())
+            } else {
+                Err(TypecheckError::TypeMismatch(TypeMismatchError {
+                    expected: Box::new(expected_ty.clone()),
+                    actual_ty: Some(Box::new(actual_ty)),
+                    actual_val: Either::Left(value.clone()),
+                }))
+            }
+        }
+        Err(GetSchemaTypeError::UnknownInsufficientTypeInfo { .. }) => {
+            // in this case we just don't have the information to know whether
+            // the attribute value (a residual) matches the expected type.
+            // For now we consider this as passing -- we can't really report a
+            // type error.
+            Ok(())
+        }
+        Err(GetSchemaTypeError::NontrivialResidual { .. }) => {
+            // this case should be unreachable for the case of `PartialValue`s
+            // which are entity attributes, because a `PartialValue` computed
+            // from a `RestrictedExpr` should only have trivial residuals.
+            // And as of this writing, there are no callers of this function that
+            // pass anything other than entity attributes.
+            // Nonetheless, rather than relying on these delicate invariants,
+            // it's safe to treat this case like the case above and consider
+            // this as passing.
+            Ok(())
+        }
+        Err(GetSchemaTypeError::HeterogeneousSet(err)) => {
+            Err(TypecheckError::HeterogeneousSet(err))
+        }
+        Err(GetSchemaTypeError::ExtensionFunctionLookup(err)) => {
+            Err(TypecheckError::ExtensionFunctionLookup(err))
+        }
+    }
+}
+
 /// Check whether the given `RestrictedExpr` typechecks with the given `SchemaType`.
 /// If the typecheck passes, return `Ok(())`.
 /// If the typecheck fails, return an appropriate `Err`.
@@ -232,8 +281,8 @@ pub fn typecheck_restricted_expr_against_schematype(
     expr: BorrowedRestrictedExpr<'_>,
     expected_ty: &SchemaType,
     extensions: Extensions<'_>,
-) -> Result<(), RestrictedExprTypecheckError> {
-    // TODO: instead of computing the `SchemaType` of `value` and then checking
+) -> Result<(), TypecheckError> {
+    // TODO: instead of computing the `SchemaType` of `expr` and then checking
     // whether the schematypes are "consistent", wouldn't it be less confusing,
     // more efficient, and maybe even more precise to just typecheck directly?
     match schematype_of_restricted_expr(expr, extensions) {
@@ -242,13 +291,11 @@ pub fn typecheck_restricted_expr_against_schematype(
                 // typecheck passes
                 Ok(())
             } else {
-                Err(RestrictedExprTypecheckError::TypeMismatch(
-                    TypeMismatchError {
-                        expected: Box::new(expected_ty.clone()),
-                        actual_ty: Some(Box::new(actual_ty)),
-                        actual_val: Box::new(expr.to_owned()),
-                    },
-                ))
+                Err(TypecheckError::TypeMismatch(TypeMismatchError {
+                    expected: Box::new(expected_ty.clone()),
+                    actual_ty: Some(Box::new(actual_ty)),
+                    actual_val: Either::Right(Box::new(expr.to_owned())),
+                }))
             }
         }
         Err(GetSchemaTypeError::UnknownInsufficientTypeInfo { .. }) => {
@@ -266,18 +313,18 @@ pub fn typecheck_restricted_expr_against_schematype(
             Ok(())
         }
         Err(GetSchemaTypeError::HeterogeneousSet(err)) => {
-            Err(RestrictedExprTypecheckError::HeterogeneousSet(err))
+            Err(TypecheckError::HeterogeneousSet(err))
         }
         Err(GetSchemaTypeError::ExtensionFunctionLookup(err)) => {
-            Err(RestrictedExprTypecheckError::ExtensionFunctionLookup(err))
+            Err(TypecheckError::ExtensionFunctionLookup(err))
         }
     }
 }
 
-/// Errors returned by
+/// Errors returned by [`typecheck_value_against_schematype()`] and
 /// [`typecheck_restricted_expr_against_schematype()`]
 #[derive(Debug, Error)]
-pub enum RestrictedExprTypecheckError {
+pub enum TypecheckError {
     /// The given value had a type different than what was expected
     #[error(transparent)]
     TypeMismatch(#[from] TypeMismatchError),
@@ -288,7 +335,9 @@ pub enum RestrictedExprTypecheckError {
     /// Error looking up an extension function. This error can occur when
     /// typechecking a `RestrictedExpr` because that may require getting
     /// information about any extension functions referenced in the
-    /// `RestrictedExpr`.
+    /// `RestrictedExpr`; and it can occur when typechecking a `PartialValue`
+    /// because that may require getting information about any extension
+    /// functions referenced in residuals.
     #[error(transparent)]
     ExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
 }

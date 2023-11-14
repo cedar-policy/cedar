@@ -17,7 +17,7 @@
 //! This module contains the Cedar evaluator.
 
 use crate::ast::*;
-use crate::entities::{Dereference, Entities, EntityAttrValues};
+use crate::entities::{Dereference, Entities};
 use crate::extensions::Extensions;
 #[cfg(test)]
 use std::collections::HashMap;
@@ -62,10 +62,6 @@ pub struct Evaluator<'e> {
     entities: &'e Entities,
     /// Extensions which are active for this evaluation
     extensions: &'e Extensions<'e>,
-    /// Entity attribute value cache
-    ///
-    /// We evaluate entity attribute expressions upon the creation of an evaluator.
-    entity_attr_values: EntityAttrValues<'e>,
 }
 
 /// Evaluator for "restricted" expressions. See notes on `RestrictedExpr`.
@@ -165,8 +161,6 @@ impl<'q, 'e> Evaluator<'e> {
         entities: &'e Entities,
         extensions: &'e Extensions<'e>,
     ) -> Result<Self> {
-        // Eagerly evaluate each attribute expression in the entities.
-        let entity_attr_values = entities.get_attr_values()?;
         Ok(Self {
             principal: q.principal().clone(),
             action: q.action().clone(),
@@ -185,7 +179,6 @@ impl<'q, 'e> Evaluator<'e> {
             },
             entities,
             extensions,
-            entity_attr_values,
         })
     }
 
@@ -709,7 +702,7 @@ impl<'q, 'e> Evaluator<'e> {
                 })
                 .map(|v| PartialValue::Value(v.clone())),
             PartialValue::Value(Value::Lit(Literal::EntityUID(uid))) => {
-                match self.entity_attr_values.get(uid.as_ref()) {
+                match self.entities.entity(uid.as_ref()) {
                     Dereference::NoSuchEntity => Err(match *uid.entity_type() {
                         EntityType::Unspecified => {
                             EvaluationError::unspecified_entity_access(attr.clone())
@@ -721,7 +714,7 @@ impl<'q, 'e> Evaluator<'e> {
                     Dereference::Residual(r) => {
                         Ok(PartialValue::Residual(Expr::get_attr(r, attr.clone())))
                     }
-                    Dereference::Data(attrs) => attrs
+                    Dereference::Data(entity) => entity
                         .get(attr)
                         .ok_or_else(|| {
                             EvaluationError::entity_attr_does_not_exist(uid, attr.clone())
@@ -907,24 +900,36 @@ pub mod test {
         let entity_no_attrs_no_parents =
             Entity::with_uid(EntityUID::with_eid("entity_no_attrs_no_parents"));
         let mut entity_with_attrs = Entity::with_uid(EntityUID::with_eid("entity_with_attrs"));
-        entity_with_attrs.set_attr("spoon".into(), RestrictedExpr::val(787));
-        entity_with_attrs.set_attr(
-            "tags".into(),
-            RestrictedExpr::set(vec![
-                RestrictedExpr::val("fun"),
-                RestrictedExpr::val("good"),
-                RestrictedExpr::val("useful"),
-            ]),
-        );
-        entity_with_attrs.set_attr(
-            "address".into(),
-            RestrictedExpr::record(vec![
-                ("street".into(), RestrictedExpr::val("234 magnolia")),
-                ("town".into(), RestrictedExpr::val("barmstadt")),
-                ("country".into(), RestrictedExpr::val("amazonia")),
-            ])
-            .unwrap(),
-        );
+        entity_with_attrs
+            .set_attr(
+                "spoon".into(),
+                RestrictedExpr::val(787),
+                &Extensions::none(),
+            )
+            .unwrap();
+        entity_with_attrs
+            .set_attr(
+                "tags".into(),
+                RestrictedExpr::set(vec![
+                    RestrictedExpr::val("fun"),
+                    RestrictedExpr::val("good"),
+                    RestrictedExpr::val("useful"),
+                ]),
+                &Extensions::none(),
+            )
+            .unwrap();
+        entity_with_attrs
+            .set_attr(
+                "address".into(),
+                RestrictedExpr::record(vec![
+                    ("street".into(), RestrictedExpr::val("234 magnolia")),
+                    ("town".into(), RestrictedExpr::val("barmstadt")),
+                    ("country".into(), RestrictedExpr::val("amazonia")),
+                ])
+                .unwrap(),
+                &Extensions::none(),
+            )
+            .unwrap();
         let mut child = Entity::with_uid(EntityUID::with_eid("child"));
         let mut parent = Entity::with_uid(EntityUID::with_eid("parent"));
         let grandparent = Entity::with_uid(EntityUID::with_eid("grandparent"));

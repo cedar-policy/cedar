@@ -344,12 +344,16 @@ impl<V: ExtensionValue> StaticallyTyped for V {
 }
 
 #[derive(Debug, Clone)]
-/// Object container for extension values, also stores the fully reduced AST
-/// for the arguments
+/// Object container for extension values, also stores the constructor-and-args
+/// that can reproduce the value (important for converting the value back to
+/// `RestrictedExpr` for instance)
 pub struct ExtensionValueWithArgs {
     value: Arc<dyn InternalExtensionValue>,
-    args: Vec<Expr>,
-    constructor: Name,
+    pub(crate) constructor: Name,
+    /// Args are stored in `RestrictedExpr` form, just because that's most
+    /// convenient for reconstructing a `RestrictedExpr` that reproduces this
+    /// extension value
+    pub(crate) args: Vec<RestrictedExpr>,
 }
 
 impl ExtensionValueWithArgs {
@@ -366,20 +370,20 @@ impl ExtensionValueWithArgs {
     /// Constructor
     pub fn new(
         value: Arc<dyn InternalExtensionValue + Send + Sync>,
-        args: Vec<Expr>,
         constructor: Name,
+        args: Vec<RestrictedExpr>,
     ) -> Self {
         Self {
             value,
-            args,
             constructor,
+            args,
         }
     }
 }
 
 impl From<ExtensionValueWithArgs> for Expr {
     fn from(val: ExtensionValueWithArgs) -> Self {
-        ExprBuilder::new().call_extension_fn(val.constructor, val.args)
+        ExprBuilder::new().call_extension_fn(val.constructor, val.args.into_iter().map(Into::into))
     }
 }
 
