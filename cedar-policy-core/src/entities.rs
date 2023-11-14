@@ -24,7 +24,7 @@ use std::borrow::Cow;
 use std::collections::{hash_map, HashMap};
 use std::fmt::Write;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_with::serde_as;
 
 mod conformance;
@@ -38,11 +38,11 @@ use smol_str::SmolStr;
 /// Represents an entity hierarchy, and allows looking up `Entity` objects by
 /// UID.
 //
-/// Note that `Entities` is `Serialize` and `Deserialize`, but currently this is
-/// only used for the Dafny-FFI layer in DRT. All others use (and should use) the
-/// `from_json_*()` and `write_to_json()` methods as necessary.
+/// Note that `Entities` is `Serialize`, but currently this is only used for the
+/// FFI layer in DRT. All others use (and should use) the `from_json_*()` and
+/// `write_to_json()` methods as necessary.
 #[serde_as]
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct Entities {
     /// Serde cannot serialize a HashMap to JSON when the key to the map cannot
     /// be serialized to a JSON string. This is a limitation of the JSON format.

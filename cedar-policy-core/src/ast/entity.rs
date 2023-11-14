@@ -208,7 +208,7 @@ impl std::fmt::Display for Eid {
 }
 
 /// Entity datatype
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Entity {
     /// UID
     uid: EntityUID,
