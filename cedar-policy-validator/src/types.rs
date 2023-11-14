@@ -43,14 +43,82 @@ use super::schema::{
 /// represent the full type of (principal, action, resource, context)
 /// authorization request.
 #[derive(Clone, Debug, PartialEq)]
-pub struct RequestEnv<'a> {
-    pub principal: &'a EntityType,
-    pub action: &'a EntityUID,
-    pub resource: &'a EntityType,
-    pub context: &'a Type,
+pub enum RequestEnv<'a> {
+    Unknown,
+    Known {
+        principal: &'a EntityType,
+        action: &'a EntityUID,
+        resource: &'a EntityType,
+        context: &'a Type,
 
-    pub principal_slot: Option<EntityType>,
-    pub resource_slot: Option<EntityType>,
+        principal_slot: Option<EntityType>,
+        resource_slot: Option<EntityType>,
+    },
+}
+
+impl<'a> RequestEnv<'a> {
+    pub fn principal_entity_type(&self) -> Option<&'a EntityType> {
+        match self {
+            RequestEnv::Unknown => None,
+            RequestEnv::Known { principal, .. } => Some(principal),
+        }
+    }
+
+    pub fn principal_type(&self) -> Type {
+        match self.principal_entity_type() {
+            Some(principal) => Type::possibly_unspecified_entity_reference(principal.clone()),
+            None => Type::any_entity_reference(),
+        }
+    }
+
+    pub fn action_entity_uid(&self) -> Option<&'a EntityUID> {
+        match self {
+            RequestEnv::Unknown => None,
+            RequestEnv::Known { action, .. } => Some(action),
+        }
+    }
+
+    pub fn action_type(&self, schema: &ValidatorSchema) -> Option<Type> {
+        match self.action_entity_uid() {
+            Some(action) => Type::euid_literal(action.clone(), schema),
+            None => Some(Type::any_entity_reference()),
+        }
+    }
+
+    pub fn resource_entity_type(&self) -> Option<&'a EntityType> {
+        match self {
+            RequestEnv::Unknown => None,
+            RequestEnv::Known { resource, .. } => Some(resource),
+        }
+    }
+
+    pub fn resource_type(&self) -> Type {
+        match self.resource_entity_type() {
+            Some(resource) => Type::possibly_unspecified_entity_reference(resource.clone()),
+            None => Type::any_entity_reference(),
+        }
+    }
+
+    pub fn context_type(&self) -> Type {
+        match self {
+            RequestEnv::Unknown => Type::any_record(),
+            RequestEnv::Known { context, .. } => (*context).clone(),
+        }
+    }
+
+    pub fn principal_slot(&self) -> &Option<EntityType> {
+        match self {
+            RequestEnv::Unknown => &None,
+            RequestEnv::Known { principal_slot, .. } => principal_slot,
+        }
+    }
+
+    pub fn resource_slot(&self) -> &Option<EntityType> {
+        match self {
+            RequestEnv::Unknown => &None,
+            RequestEnv::Known { resource_slot, .. } => resource_slot,
+        }
+    }
 }
 
 /// The main type structure.
@@ -120,7 +188,7 @@ impl Type {
     /// type for the type of the EntityUID.
     pub(crate) fn euid_literal(entity: EntityUID, schema: &ValidatorSchema) -> Option<Type> {
         match entity.entity_type() {
-            EntityType::Unspecified => None,
+            EntityType::Unspecified => Some(Type::any_entity_reference()),
             EntityType::Specified(name) => {
                 if is_action_entity_type(name) {
                     schema
@@ -395,7 +463,7 @@ impl Type {
                         .map_or(false, |entity_type| entity_type.attr(attr).is_some())
                 })
             }
-            // UBs of ActionEntities are AnyEntity. So if we have an ActionEntity here its attrs are known
+            // UBs of ActionEntities are AnyEntity. So if we have an ActionEntity here its attrs are known.
             Type::EntityOrRecord(EntityRecordKind::ActionEntity { attrs, .. }) => {
                 attrs.iter().any(|(found_attr, _)| attr.eq(found_attr))
             }

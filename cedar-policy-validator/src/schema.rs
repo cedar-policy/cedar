@@ -494,19 +494,18 @@ impl ValidatorSchema {
     /// includes all entity types that are descendants of the type of `entity`
     /// according  to the schema, and the type of `entity` itself because
     /// `entity in entity` evaluates to `true`.
-    pub(crate) fn get_entity_types_in<'a>(
-        &'a self,
-        entity: &'a EntityUID,
-    ) -> impl Iterator<Item = &Name> + 'a {
+    pub(crate) fn get_entity_types_in<'a>(&'a self, entity: &'a EntityUID) -> Option<Vec<&Name>> {
         let ety = match entity.entity_type() {
             EntityType::Specified(ety) => Some(ety),
             EntityType::Unspecified => None,
         };
 
-        ety.and_then(|ety| self.get_entity_type(ety))
-            .into_iter()
-            .flat_map(|ety| ety.descendants.iter())
-            .chain(ety.filter(|ety| self.is_known_entity_type(ety)))
+        ety.and_then(|ety| self.get_entity_type(ety)).map(|ety| {
+            ety.descendants
+                .iter()
+                .chain(std::iter::once(&ety.name))
+                .collect()
+        })
     }
 
     /// Get all entity types in the schema where an `{entity0} in {euids}` can
@@ -515,10 +514,12 @@ impl ValidatorSchema {
     pub(crate) fn get_entity_types_in_set<'a>(
         &'a self,
         euids: impl IntoIterator<Item = &'a EntityUID> + 'a,
-    ) -> impl Iterator<Item = &Name> + 'a {
+    ) -> Option<Vec<&Name>> {
         euids
             .into_iter()
-            .flat_map(move |e| self.get_entity_types_in(e))
+            .map(|e| self.get_entity_types_in(e))
+            .collect::<Option<Vec<_>>>()
+            .map(|v| v.into_iter().flatten().collect::<Vec<_>>())
     }
 
     /// Get all action entities in the schema where `action in euids` evaluates
@@ -527,17 +528,19 @@ impl ValidatorSchema {
     pub(crate) fn get_actions_in_set<'a>(
         &'a self,
         euids: impl IntoIterator<Item = &'a EntityUID> + 'a,
-    ) -> impl Iterator<Item = &'a EntityUID> + 'a {
-        euids.into_iter().flat_map(|e| {
-            self.get_action_id(e)
-                .into_iter()
-                .flat_map(|action| action.descendants.iter())
-                .chain(if self.is_known_action_id(e) {
-                    Some(e)
-                } else {
-                    None
+    ) -> Option<Vec<&'a EntityUID>> {
+        euids
+            .into_iter()
+            .map(|e| {
+                self.get_action_id(e).map(|action| {
+                    action
+                        .descendants
+                        .iter()
+                        .chain(std::iter::once(&action.name))
                 })
-        })
+            })
+            .collect::<Option<Vec<_>>>()
+            .map(|v| v.into_iter().flatten().collect::<Vec<_>>())
     }
 
     /// Get the `Type` of context expected for the given `action`.

@@ -378,7 +378,10 @@ impl AttributeAccess {
             if let Some(Type::EntityOrRecord(EntityRecordKind::Entity(lub))) = expr.data() {
                 return AttributeAccess::EntityLUB(lub.clone(), attrs);
             } else if let ExprKind::Var(Var::Context) = expr.expr_kind() {
-                return AttributeAccess::Context(req_env.action.clone(), attrs);
+                return match req_env.action_entity_uid() {
+                    Some(action) => AttributeAccess::Context(action.clone(), attrs),
+                    None => AttributeAccess::Other(attrs),
+                };
             } else if let ExprKind::GetAttr {
                 expr: sub_expr,
                 attr,
