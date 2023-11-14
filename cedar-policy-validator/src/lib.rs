@@ -117,15 +117,31 @@ impl Validator {
         p: &'a Template,
         mode: ValidationMode,
     ) -> impl Iterator<Item = ValidationError> + 'a {
-        self.validate_entity_types(p)
-            .chain(self.validate_action_ids(p))
-            .chain(self.validate_action_application(
-                p.principal_constraint(),
-                p.action_constraint(),
-                p.resource_constraint(),
-            ))
-            .map(move |note| ValidationError::with_policy_id(p.id(), None, note))
-            .chain(self.typecheck_policy(p, mode))
+        if mode.is_partial() {
+            // We skip `validate_entity_types`, `validate_action_ids`, and
+            // `validate_action_application` passes for partial schema
+            // validation because there may be arbitrary extra entity types and
+            // actions, so we can never claim that one doesn't exist.
+            None
+        } else {
+            Some(
+                self.validate_entity_types(p)
+                    .chain(self.validate_action_ids(p))
+                    // We could usefully update this pass to apply to partial
+                    // schema if it only failed when there is a known action
+                    // applied to known principal/resource entity types that are
+                    // not in its `appliesTo`.
+                    .chain(self.validate_action_application(
+                        p.principal_constraint(),
+                        p.action_constraint(),
+                        p.resource_constraint(),
+                    ))
+                    .map(move |note| ValidationError::with_policy_id(p.id(), None, note)),
+            )
+        }
+        .into_iter()
+        .flatten()
+        .chain(self.typecheck_policy(p, mode))
     }
 
     /// Run relevant validations against a single template-linked policy,

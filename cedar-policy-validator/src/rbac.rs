@@ -340,7 +340,9 @@ impl Validator {
             // <var> in [<literal euid>...]
             ActionConstraint::In(euids) => Box::new(
                 self.schema
-                    .get_actions_in_set(euids.iter().map(Arc::as_ref)),
+                    .get_actions_in_set(euids.iter().map(Arc::as_ref))
+                    .unwrap_or_default()
+                    .into_iter(),
             ),
         }
     }
@@ -381,9 +383,12 @@ impl Validator {
                 .into_iter(),
             ),
             // <var> in <literal euid>
-            PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)) => {
-                Box::new(self.schema.get_entity_types_in(euid.as_ref()))
-            }
+            PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)) => Box::new(
+                self.schema
+                    .get_entity_types_in(euid.as_ref())
+                    .unwrap_or_default()
+                    .into_iter(),
+            ),
             PrincipalOrResourceConstraint::Eq(EntityReference::Slot)
             | PrincipalOrResourceConstraint::In(EntityReference::Slot) => {
                 Box::new(self.schema.known_entity_types())
@@ -401,6 +406,8 @@ impl Validator {
                 Box::new(
                     self.schema
                         .get_entity_types_in(in_entity.as_ref())
+                        .unwrap_or_default()
+                        .into_iter()
                         .filter(move |k| &entity_type == k),
                 )
             }
@@ -1785,5 +1792,61 @@ mod test {
                 TypeErrorKind::ImpossiblePolicy
             )]
         );
+    }
+}
+
+#[cfg(test)]
+#[cfg(feature = "partial-validate")]
+mod partial_schema {
+    use cedar_policy_core::{
+        ast::{StaticPolicy, Template},
+        parser::parse_policy,
+    };
+
+    use crate::{NamespaceDefinition, Validator};
+
+    fn assert_validates_with_empty_schema(policy: StaticPolicy) {
+        let schema = serde_json::from_str::<NamespaceDefinition>(
+            r#"
+        {
+            "entityTypes": { },
+            "actions": {}
+        }
+        "#,
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let (template, _) = Template::link_static_policy(policy);
+        let validate = Validator::new(schema);
+        let errs = validate
+            .validate_policy(&template, crate::ValidationMode::Partial)
+            .collect::<Vec<_>>();
+        assert_eq!(errs, vec![], "Did not expect any validation errors.");
+    }
+
+    #[test]
+    fn undeclared_entity_type_partial_schema() {
+        let policy = parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal == User::"alice", action, resource);"#,
+        )
+        .unwrap();
+        assert_validates_with_empty_schema(policy);
+
+        let policy = parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action == Action::"view", resource);"#,
+        )
+        .unwrap();
+        assert_validates_with_empty_schema(policy);
+
+        let policy = parse_policy(
+            Some("0".to_string()),
+            r#"permit(principal, action, resource == Photo::"party.jpg");"#,
+        )
+        .unwrap();
+        assert_validates_with_empty_schema(policy);
     }
 }
