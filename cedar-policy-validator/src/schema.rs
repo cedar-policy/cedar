@@ -475,8 +475,11 @@ impl ValidatorSchema {
         self.entity_types.iter()
     }
 
-    /// Get all entity types in the schema which can be descendants of the given
-    /// entity type in the entity type graph.
+    /// Get all entity types in the schema where an `{entity0} in {entity}` can
+    /// evaluate to `true` for some `entity0` with that entity type. This
+    /// includes all entity types that are descendants of the type of `entity`
+    /// according  to the schema, and the type of `entity` itself because
+    /// `entity in entity` evaluates to `true`.
     pub(crate) fn get_entity_types_in<'a>(
         &'a self,
         entity: &'a EntityUID,
@@ -492,8 +495,9 @@ impl ValidatorSchema {
             .chain(ety.filter(|ety| self.is_known_entity_type(ety)))
     }
 
-    /// Get all entity types in the schema which can be a descendant of one of
-    /// the given entity types in the entity type graph.
+    /// Get all entity types in the schema where an `{entity0} in {euids}` can
+    /// evaluate to `true` for some `entity0` with that entity type. See comment
+    /// on `get_entity_types_in`.
     pub(crate) fn get_entity_types_in_set<'a>(
         &'a self,
         euids: impl IntoIterator<Item = &'a EntityUID> + 'a,
@@ -503,8 +507,9 @@ impl ValidatorSchema {
             .flat_map(move |e| self.get_entity_types_in(e))
     }
 
-    /// Get all action entities in the schema which are descendants of one of
-    /// the given entities in the action hierarchy.
+    /// Get all action entities in the schema where `action in euids` evaluates
+    /// to `true`. This includes all actions which are descendants of some
+    /// element of `euids`, and all elements of `euids`.
     pub(crate) fn get_actions_in_set<'a>(
         &'a self,
         euids: impl IntoIterator<Item = &'a EntityUID> + 'a,

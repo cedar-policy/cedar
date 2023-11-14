@@ -238,8 +238,8 @@ impl Validator {
         }
     }
 
-    /// Check if an expression is an equality comparison between a literal EUID and a scope variable.
-    /// If it is, return the EUID.
+    /// Check if an expression is an equality comparison between a literal EUID
+    /// and a scope variable.  If it is, return the type of literal EUID.
     fn get_eq_comparison(scope_constraint: &PrincipalOrResourceConstraint) -> Option<&Name> {
         match scope_constraint {
             PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)) => {
