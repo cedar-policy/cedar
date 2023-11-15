@@ -154,8 +154,8 @@ impl<'q, 'e> Evaluator<'e> {
     /// (An `Entities` is the entity-hierarchy portion of a `Slice`, without the
     /// policies.)
     ///
-    /// Can throw an error, eg if evaluating attributes in the `context` throws
-    /// an error.
+    /// Throws an `EvaluationError` only if evaluating the request `context`
+    /// throws an `EvaluationError`.
     pub fn new(
         q: &'q Request,
         entities: &'e Entities,

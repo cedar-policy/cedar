@@ -21,16 +21,16 @@ use thiserror::Error;
 /// Errors that can occur during authorization
 #[derive(Debug, PartialEq, Eq, Clone, Error)]
 pub enum AuthorizationError {
-    /// Failed to eagerly evaluate entity attributes when initializing the `Evaluator`.
-    #[error("error occurred while evaluating entity attributes: {0}")]
-    AttributeEvaluationError(EvaluationError),
+    /// Failed to evaluate the request `context`.
+    #[error("error occurred while evaluating the request `context`: {0}")]
+    ContextEvaluationError(EvaluationError),
 
     /// An error occurred when evaluating a policy.
-    #[error("error occurred while evaluating policy `{}`: {}", &.id, &.error)]
+    #[error("error occurred while evaluating policy `{id}`: {error}")]
     PolicyEvaluationError {
         /// Id of the policy with an error
         id: PolicyID,
-        /// Specific evaluation error
+        /// Underlying evaluation error
         error: EvaluationError,
     },
 }

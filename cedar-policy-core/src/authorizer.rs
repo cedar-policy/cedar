@@ -171,7 +171,7 @@ impl Authorizer {
                 return ResponseKind::FullyEvaluated(Response::new(
                     Decision::Deny,
                     HashSet::new(),
-                    vec![AuthorizationError::AttributeEvaluationError(e)],
+                    vec![AuthorizationError::ContextEvaluationError(e)],
                 ));
             }
         };
