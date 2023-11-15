@@ -38,9 +38,7 @@ use crate::{
     extension_schema::{ExtensionFunctionType, ExtensionSchema},
     extensions::all_available_extension_schemas,
     fuzzy_match::fuzzy_search,
-    schema::{
-        is_action_entity_type, ActionHeadVar, HeadVar, PrincipalOrResourceHeadVar, ValidatorSchema,
-    },
+    schema::{is_action_entity_type, ValidatorSchema},
     types::{AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, RequestEnv, Type},
     AttributeAccess, ValidationMode,
 };
@@ -483,7 +481,7 @@ impl<'a> Typechecker<'a> {
                 ),
                 // The template uses the slot, but without a scope constraint.
                 // This can't happen for the moment because slots may only
-                // appear in head constraints, but if we ever see this, then the
+                // appear in scope constraints, but if we ever see this, then the
                 // only correct way to proceed is by returning all entity types
                 // as possible instantiations.
                 PrincipalOrResourceConstraint::Is(_) | PrincipalOrResourceConstraint::Any => {
@@ -1691,7 +1689,7 @@ impl<'a> Typechecker<'a> {
                             ExprKind::Lit(Literal::EntityUID(_)),
                         ) => self.type_of_entity_literal_in_entity_literals(
                             request_env,
-                            (**euid0).clone(),
+                            euid0,
                             [rhs_as_euid_lit.as_ref()],
                             in_expr,
                             lhs_expr,
@@ -1702,7 +1700,7 @@ impl<'a> Typechecker<'a> {
                         (ExprKind::Lit(Literal::EntityUID(euid)), ExprKind::Set(elems)) => self
                             .type_of_entity_literal_in_entity_literals(
                                 request_env,
-                                (**euid).clone(),
+                                euid,
                                 elems.as_ref(),
                                 in_expr,
                                 lhs_expr,
@@ -1787,7 +1785,7 @@ impl<'a> Typechecker<'a> {
         }
     }
 
-    // Given an expression, if that expression is a literal or the `action` head
+    // Given an expression, if that expression is a literal or the `action`
     // variable, return it as an EntityUID. Return `None` otherwise.
     fn euid_from_euid_literal_or_action(request_env: &RequestEnv, e: &Expr) -> Option<EntityUID> {
         match Typechecker::replace_action_var_with_euid(request_env, e)
@@ -1840,9 +1838,7 @@ impl<'a> Typechecker<'a> {
             } else {
                 request_env.resource
             };
-            let descendants = self
-                .schema
-                .get_entities_in_set(PrincipalOrResourceHeadVar::PrincipalOrResource, rhs);
+            let descendants = self.schema.get_entity_types_in_set(rhs.iter());
             match var_euid {
                 EntityType::Concrete(var_name) => Typechecker::entity_in_descendants(
                     var_name,
@@ -1874,7 +1870,7 @@ impl<'a> Typechecker<'a> {
     fn type_of_entity_literal_in_entity_literals<'b, 'c>(
         &self,
         request_env: &RequestEnv,
-        lhs_euid: EntityUID,
+        lhs_euid: &EntityUID,
         rhs_elems: impl IntoIterator<Item = &'b Expr>,
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
@@ -1895,19 +1891,17 @@ impl<'a> Typechecker<'a> {
                             EntityType::Unspecified => false,
                         });
                     if lhs_is_action && !actions.is_empty() {
-                        self.type_of_euid_in_euids(
+                        self.type_of_action_in_actions(
                             lhs_euid,
-                            actions,
-                            ActionHeadVar::Action,
+                            actions.iter(),
                             in_expr,
                             lhs_expr,
                             rhs_expr,
                         )
                     } else if !lhs_is_action && !non_actions.is_empty() {
-                        self.type_of_euid_in_euids(
+                        self.type_of_non_action_in_entities(
                             lhs_euid,
-                            non_actions,
-                            PrincipalOrResourceHeadVar::PrincipalOrResource,
+                            non_actions.iter(),
                             in_expr,
                             lhs_expr,
                             rhs_expr,
@@ -1944,38 +1938,55 @@ impl<'a> Typechecker<'a> {
         }
     }
 
-    // Get the type for `in` when it is applied to an EUID literal and a set of
-    // EUID literals. The type depends on if we know the LHS entity literal
-    // cannot be in the RHS set.
-    fn type_of_euid_in_euids<'b, K>(
+    // Get the type for `in` when it is applied to an action EUID literal and a
+    // set of EUID literals. We can look up all ancestors of the action in the
+    // schema, so the type will be `False` if the none of the rhs actions are an
+    // ancestor of the lhs.
+    fn type_of_action_in_actions<'b>(
         &self,
-        lhs: EntityUID,
-        rhs: impl IntoIterator<Item = EntityUID>,
-        var: impl HeadVar<K>,
+        lhs: &EntityUID,
+        rhs: impl IntoIterator<Item = &'a EntityUID> + 'a,
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
-    ) -> TypecheckAnswer<'b>
-    where
-        K: Clone + PartialEq,
-    {
-        if let Some(lhs_entity) = self.schema.get_entity_eq(var, lhs) {
-            let rhs_descendants = self.schema.get_entities_in_set(var, rhs);
-            Typechecker::entity_in_descendants(
-                &lhs_entity,
-                rhs_descendants,
-                in_expr,
-                lhs_expr,
-                rhs_expr,
-            )
-        } else {
-            // Unspecified entities will be detected by a different part of the validator.
-            // Still return `TypecheckFail` so that typechecking is not considered successful.
-            TypecheckAnswer::fail(
-                ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                    .with_same_source_info(in_expr)
-                    .is_in(lhs_expr, rhs_expr),
-            )
+    ) -> TypecheckAnswer<'b> {
+        let rhs_descendants = self.schema.get_actions_in_set(rhs);
+        Typechecker::entity_in_descendants(lhs, rhs_descendants, in_expr, lhs_expr, rhs_expr)
+    }
+
+    // Get the type for `in` when it is applied to an non-action EUID literal
+    // and a set of EUID literals. We can't conclude anything about membership
+    // based on the precise EUIDs when they're not actions, so we only look at
+    // entity types. The type will be `False` is none of the entities on the rhs
+    // have a type which may be an ancestor of the rhs entity type.
+    fn type_of_non_action_in_entities<'b>(
+        &self,
+        lhs: &EntityUID,
+        rhs: impl IntoIterator<Item = &'a EntityUID> + 'a,
+        in_expr: &Expr,
+        lhs_expr: Expr<Option<Type>>,
+        rhs_expr: Expr<Option<Type>>,
+    ) -> TypecheckAnswer<'b> {
+        match lhs.entity_type() {
+            EntityType::Concrete(lhs_ety) => {
+                let rhs_descendants = self.schema.get_entity_types_in_set(rhs);
+                Typechecker::entity_in_descendants(
+                    lhs_ety,
+                    rhs_descendants,
+                    in_expr,
+                    lhs_expr,
+                    rhs_expr,
+                )
+            }
+            EntityType::Unspecified => {
+                // Unspecified entities will be detected by a different part of the validator.
+                // Still return `TypecheckFail` so that typechecking is not considered successful.
+                TypecheckAnswer::fail(
+                    ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                        .with_same_source_info(in_expr)
+                        .is_in(lhs_expr, rhs_expr),
+                )
+            }
         }
     }
 
@@ -1983,15 +1994,15 @@ impl<'a> Typechecker<'a> {
     /// type false if it is not, and boolean otherwise.
     fn entity_in_descendants<'b, K>(
         lhs_entity: &K,
-        rhs_descendants: impl IntoIterator<Item = K>,
+        rhs_descendants: impl IntoIterator<Item = &'a K>,
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
     ) -> TypecheckAnswer<'b>
     where
-        K: PartialEq,
+        K: PartialEq + 'a,
     {
-        let is_var_in_descendants = rhs_descendants.into_iter().any(|e| &e == lhs_entity);
+        let is_var_in_descendants = rhs_descendants.into_iter().any(|e| e == lhs_entity);
         TypecheckAnswer::success(
             ExprBuilder::with_data(Some(if is_var_in_descendants {
                 Type::primitive_boolean()
