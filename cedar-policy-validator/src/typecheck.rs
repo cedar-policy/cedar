@@ -1563,7 +1563,7 @@ impl<'a> Typechecker<'a> {
                 let left_is_unspecified = Typechecker::is_unspecified_entity(request_env, lhs_expr);
                 let right_is_specified = rhs_ty
                     .as_ref()
-                    .map(|ty| Type::must_be_specified_entity(&ty))
+                    .map(|ty| Type::must_be_specified_entity(ty))
                     .unwrap_or(false);
 
                 if left_is_unspecified && right_is_specified {
