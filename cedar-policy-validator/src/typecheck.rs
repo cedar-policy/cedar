@@ -1300,9 +1300,9 @@ impl<'a> Typechecker<'a> {
                         let type_of_eq = self.type_of_equality(
                             request_env,
                             arg1,
-                            lhs_ty.data().clone(),
+                            lhs_ty.data(),
                             arg2,
-                            rhs_ty.data().clone(),
+                            rhs_ty.data(),
                         );
 
                         if self.mode.is_strict() {
@@ -1529,14 +1529,14 @@ impl<'a> Typechecker<'a> {
         &self,
         request_env: &RequestEnv,
         lhs_expr: &'b Expr,
-        lhs_ty: Option<Type>,
+        lhs_ty: &Option<Type>,
         rhs_expr: &'b Expr,
-        rhs_ty: Option<Type>,
+        rhs_ty: &Option<Type>,
     ) -> Type {
         // If we know the types are disjoint, then we can return give the
         // expression type False. See `are_types_disjoint` definition for
         // explanation of why fewer types are disjoint than may be expected.
-        let disjoint_types = match (&lhs_ty, &rhs_ty) {
+        let disjoint_types = match (lhs_ty, rhs_ty) {
             (Some(lhs_ty), Some(rhs_ty)) => Type::are_types_disjoint(lhs_ty, rhs_ty),
             _ => false,
         };
@@ -1562,6 +1562,7 @@ impl<'a> Typechecker<'a> {
             } else {
                 let left_is_unspecified = Typechecker::is_unspecified_entity(request_env, lhs_expr);
                 let right_is_specified = rhs_ty
+                    .as_ref()
                     .map(|ty| Type::must_be_specified_entity(&ty))
                     .unwrap_or(false);
 
