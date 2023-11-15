@@ -22,7 +22,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: `a::\"\"` does not have the attribute `jj`"
+        "while evaluating policy `policy0`: `a::\"\"` does not have the attribute `jj`"
       ]
     },
     {
@@ -43,7 +43,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: `a::\"\"` does not have the attribute `jj`"
+        "while evaluating policy `policy0`: `a::\"\"` does not have the attribute `jj`"
       ]
     },
     {
@@ -64,7 +64,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: `a::\"\"` does not have the attribute `jj`"
+        "while evaluating policy `policy0`: `a::\"\"` does not have the attribute `jj`"
       ]
     },
     {
@@ -85,7 +85,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: `a::\"\"` does not have the attribute `jj`"
+        "while evaluating policy `policy0`: `a::\"\"` does not have the attribute `jj`"
       ]
     },
     {
@@ -106,7 +106,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: `a::\"\"` does not have the attribute `jj`"
+        "while evaluating policy `policy0`: `a::\"\"` does not have the attribute `jj`"
       ]
     },
     {
@@ -127,7 +127,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: `a::\"\"` does not have the attribute `jj`"
+        "while evaluating policy `policy0`: `a::\"\"` does not have the attribute `jj`"
       ]
     },
     {
@@ -148,7 +148,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: `a::\"\"` does not have the attribute `jj`"
+        "while evaluating policy `policy0`: `a::\"\"` does not have the attribute `jj`"
       ]
     },
     {
@@ -169,7 +169,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: `a::\"\"` does not have the attribute `jj`"
+        "while evaluating policy `policy0`: `a::\"\"` does not have the attribute `jj`"
       ]
     }
   ]
