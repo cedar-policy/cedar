@@ -22,7 +22,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `A97w::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `A97w::a`)"
       ]
     },
     {
@@ -43,7 +43,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `A97w::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `A97w::a`)"
       ]
     },
     {
@@ -64,7 +64,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `A97w::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `A97w::a`)"
       ]
     },
     {
@@ -85,7 +85,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `A97w::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `A97w::a`)"
       ]
     },
     {
@@ -106,7 +106,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `A97w::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `A97w::a`)"
       ]
     },
     {
@@ -127,7 +127,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `A97w::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `A97w::a`)"
       ]
     },
     {
@@ -148,7 +148,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `A97w::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `A97w::a`)"
       ]
     },
     {
@@ -169,7 +169,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `A97w::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `A97w::a`)"
       ]
     }
   ]

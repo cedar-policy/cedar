@@ -22,7 +22,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: wrong number of arguments provided to extension function `lessThan`: expected 2, got 3"
+        "while evaluating policy `policy0`: wrong number of arguments provided to extension function `lessThan`: expected 2, got 3"
       ]
     },
     {
@@ -43,7 +43,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: wrong number of arguments provided to extension function `lessThan`: expected 2, got 3"
+        "while evaluating policy `policy0`: wrong number of arguments provided to extension function `lessThan`: expected 2, got 3"
       ]
     },
     {
@@ -64,7 +64,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: wrong number of arguments provided to extension function `lessThan`: expected 2, got 3"
+        "while evaluating policy `policy0`: wrong number of arguments provided to extension function `lessThan`: expected 2, got 3"
       ]
     },
     {
@@ -85,7 +85,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: wrong number of arguments provided to extension function `lessThan`: expected 2, got 3"
+        "while evaluating policy `policy0`: wrong number of arguments provided to extension function `lessThan`: expected 2, got 3"
       ]
     },
     {
@@ -106,7 +106,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: wrong number of arguments provided to extension function `lessThan`: expected 2, got 3"
+        "while evaluating policy `policy0`: wrong number of arguments provided to extension function `lessThan`: expected 2, got 3"
       ]
     },
     {
@@ -127,7 +127,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: wrong number of arguments provided to extension function `lessThan`: expected 2, got 3"
+        "while evaluating policy `policy0`: wrong number of arguments provided to extension function `lessThan`: expected 2, got 3"
       ]
     },
     {
@@ -148,7 +148,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: wrong number of arguments provided to extension function `lessThan`: expected 2, got 3"
+        "while evaluating policy `policy0`: wrong number of arguments provided to extension function `lessThan`: expected 2, got 3"
       ]
     },
     {
@@ -169,7 +169,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: wrong number of arguments provided to extension function `lessThan`: expected 2, got 3"
+        "while evaluating policy `policy0`: wrong number of arguments provided to extension function `lessThan`: expected 2, got 3"
       ]
     }
   ]
