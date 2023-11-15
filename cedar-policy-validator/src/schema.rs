@@ -609,6 +609,7 @@ mod test {
 
     use cedar_policy_core::ast::RestrictedExpr;
     use cedar_policy_core::parser::err::{ParseError, ToASTError};
+    use cool_asserts::assert_matches;
     use serde_json::json;
 
     use super::*;
@@ -856,11 +857,12 @@ mod test {
         });
         let schema_file: NamespaceDefinition = serde_json::from_value(src).expect("Parse Error");
         let schema: Result<ValidatorSchema> = schema_file.try_into();
-        match schema {
-            Ok(_) => panic!("from_schema_file should have failed"),
-            Err(SchemaError::CycleInActionHierarchy) => (), // expected result
-            e => panic!("Unexpected error from from_schema_file: {:?}", e),
-        }
+        assert_matches!(
+            schema,
+            Err(SchemaError::CycleInActionHierarchy(euid)) => {
+                assert_eq!(euid, r#"Action::"view_photo""#.parse().unwrap());
+            }
+        )
     }
 
     // Slightly more complex cycle in action hierarchy
@@ -887,14 +889,11 @@ mod test {
         });
         let schema_file: NamespaceDefinition = serde_json::from_value(src).expect("Parse Error");
         let schema: Result<ValidatorSchema> = schema_file.try_into();
-        match schema {
-            Ok(x) => {
-                println!("{:?}", x);
-                panic!("from_schema_file should have failed");
-            }
-            Err(SchemaError::CycleInActionHierarchy) => (), // expected result
-            e => panic!("Unexpected error from from_schema_file: {:?}", e),
-        }
+        assert_matches!(
+            schema,
+            // The exact action reported as being in the cycle isn't deterministic.
+            Err(SchemaError::CycleInActionHierarchy(_)),
+        )
     }
 
     #[test]
