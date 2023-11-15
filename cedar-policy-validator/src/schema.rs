@@ -488,48 +488,55 @@ impl ValidatorSchema {
         self.entity_types.iter()
     }
 
-    /// Get the validator entity equal to an EUID using the component for a head
-    /// var kind.
-    pub(crate) fn get_entity_eq<'a, H, K>(&self, var: H, euid: EntityUID) -> Option<K>
-    where
-        H: 'a + HeadVar<K>,
-        K: 'a,
-    {
-        var.get_euid_component(euid)
-    }
-
-    /// Get the validator entities that are in the descendants of an EUID using
-    /// the component for a head var kind.
-    pub(crate) fn get_entities_in<'a, H, K>(
+    /// Get all entity types in the schema where an `{entity0} in {entity}` can
+    /// evaluate to `true` for some `entity0` with that entity type. This
+    /// includes all entity types that are descendants of the type of `entity`
+    /// according  to the schema, and the type of `entity` itself because
+    /// `entity in entity` evaluates to `true`.
+    pub(crate) fn get_entity_types_in<'a>(
         &'a self,
-        var: H,
-        euid: EntityUID,
-    ) -> impl Iterator<Item = K> + 'a
-    where
-        H: 'a + HeadVar<K>,
-        K: 'a + Clone,
-    {
-        var.get_descendants_if_present(self, euid.clone())
+        entity: &'a EntityUID,
+    ) -> impl Iterator<Item = &Name> + 'a {
+        let ety = match entity.entity_type() {
+            EntityType::Concrete(ety) => Some(ety),
+            EntityType::Unspecified => None,
+        };
+
+        ety.and_then(|ety| self.get_entity_type(ety))
             .into_iter()
-            .flatten()
-            .map(Clone::clone)
-            .chain(var.get_euid_component_if_present(self, euid))
+            .flat_map(|ety| ety.descendants.iter())
+            .chain(ety.filter(|ety| self.is_known_entity_type(ety)))
     }
 
-    /// Get the validator entities that are in the descendants of any of the
-    /// entities in a set of EUID using the component for a head var kind.
-    pub(crate) fn get_entities_in_set<'a, H, K>(
+    /// Get all entity types in the schema where an `{entity0} in {euids}` can
+    /// evaluate to `true` for some `entity0` with that entity type. See comment
+    /// on `get_entity_types_in`.
+    pub(crate) fn get_entity_types_in_set<'a>(
         &'a self,
-        var: H,
-        euids: impl IntoIterator<Item = EntityUID> + 'a,
-    ) -> impl Iterator<Item = K> + 'a
-    where
-        H: 'a + HeadVar<K>,
-        K: 'a + Clone,
-    {
+        euids: impl IntoIterator<Item = &'a EntityUID> + 'a,
+    ) -> impl Iterator<Item = &Name> + 'a {
         euids
             .into_iter()
-            .flat_map(move |e| self.get_entities_in(var, e))
+            .flat_map(move |e| self.get_entity_types_in(e))
+    }
+
+    /// Get all action entities in the schema where `action in euids` evaluates
+    /// to `true`. This includes all actions which are descendants of some
+    /// element of `euids`, and all elements of `euids`.
+    pub(crate) fn get_actions_in_set<'a>(
+        &'a self,
+        euids: impl IntoIterator<Item = &'a EntityUID> + 'a,
+    ) -> impl Iterator<Item = &'a EntityUID> + 'a {
+        euids.into_iter().flat_map(|e| {
+            self.get_action_id(e)
+                .into_iter()
+                .flat_map(|action| action.descendants.iter())
+                .chain(if self.is_known_action_id(e) {
+                    Some(e)
+                } else {
+                    None
+                })
+        })
     }
 
     /// Get the `Type` of context expected for the given `action`.
@@ -581,163 +588,6 @@ impl ValidatorSchema {
             extensions,
         )
         .map_err(Into::into)
-    }
-}
-
-/// This trait configures what sort of entity (principals, actions, or resources)
-/// are returned by the function `get_entities_satisfying_constraint`.
-pub(crate) trait HeadVar<K>: Copy {
-    /// For a validator, get the known entities for this sort of head variable.
-    /// This is all entity types (for principals and resources), or actions ids
-    /// (for actions) that appear in the service description.
-    fn get_known_vars<'a>(
-        &self,
-        schema: &'a ValidatorSchema,
-    ) -> Box<dyn Iterator<Item = &'a K> + 'a>;
-
-    /// Extract the relevant component of an entity uid. This is the entity type
-    /// for principals and resources, and the entity id for actions.
-    fn get_euid_component(&self, euid: EntityUID) -> Option<K>;
-
-    /// Extract the relevant component of an entity uid if the entity uid is in
-    /// the schema. Otherwise return None.
-    fn get_euid_component_if_present(&self, schema: &ValidatorSchema, euid: EntityUID)
-        -> Option<K>;
-
-    /// Get and iterator containing the valid descendants of an entity, if that
-    /// entity exists in the schema. Otherwise None.
-    fn get_descendants_if_present<'a>(
-        &self,
-        schema: &'a ValidatorSchema,
-        euid: EntityUID,
-    ) -> Option<Box<dyn Iterator<Item = &'a K> + 'a>>;
-
-    /// Get the entities that have the same type as the `entity_type` provided.
-    fn get_by_type<'a>(
-        &self,
-        schema: &'a ValidatorSchema,
-        entity_type: &'a Name,
-    ) -> Box<dyn Iterator<Item = &'a K> + 'a>;
-}
-
-/// Used to have `get_entities_satisfying_constraint` return the
-/// `EntityTypeNames` for either principals or resources satisfying the head
-/// constraints.
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum PrincipalOrResourceHeadVar {
-    PrincipalOrResource,
-}
-
-impl HeadVar<Name> for PrincipalOrResourceHeadVar {
-    fn get_known_vars<'a>(
-        &self,
-        schema: &'a ValidatorSchema,
-    ) -> Box<dyn Iterator<Item = &'a Name> + 'a> {
-        Box::new(schema.known_entity_types())
-    }
-
-    fn get_euid_component(&self, euid: EntityUID) -> Option<Name> {
-        let (ty, _) = euid.components();
-        match ty {
-            EntityType::Unspecified => None,
-            EntityType::Concrete(name) => Some(name),
-        }
-    }
-
-    fn get_euid_component_if_present(
-        &self,
-        schema: &ValidatorSchema,
-        euid: EntityUID,
-    ) -> Option<Name> {
-        let euid_component = self.get_euid_component(euid)?;
-        if schema.is_known_entity_type(&euid_component) {
-            Some(euid_component)
-        } else {
-            None
-        }
-    }
-
-    fn get_descendants_if_present<'a>(
-        &self,
-        schema: &'a ValidatorSchema,
-        euid: EntityUID,
-    ) -> Option<Box<dyn Iterator<Item = &'a Name> + 'a>> {
-        let euid_component = self.get_euid_component(euid)?;
-        match schema.get_entity_type(&euid_component) {
-            Some(entity_type) => Some(Box::new(entity_type.descendants.iter())),
-            None => None,
-        }
-    }
-
-    fn get_by_type<'a>(
-        &self,
-        schema: &'a ValidatorSchema,
-        entity_type: &'a Name,
-    ) -> Box<dyn Iterator<Item = &'a Name> + 'a> {
-        match schema.get_entity_type(entity_type) {
-            Some(_) => Box::new(std::iter::once(entity_type)),
-            None => Box::new(std::iter::empty()),
-        }
-    }
-}
-
-/// Used to have `get_entities_satisfying_constraint` return the
-/// `ActionIdNames` for actions satisfying the head constraints
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum ActionHeadVar {
-    Action,
-}
-
-impl HeadVar<EntityUID> for ActionHeadVar {
-    fn get_known_vars<'a>(
-        &self,
-        schema: &'a ValidatorSchema,
-    ) -> Box<dyn Iterator<Item = &'a EntityUID> + 'a> {
-        Box::new(schema.known_action_ids())
-    }
-
-    fn get_euid_component(&self, euid: EntityUID) -> Option<EntityUID> {
-        Some(euid)
-    }
-
-    fn get_euid_component_if_present(
-        &self,
-        schema: &ValidatorSchema,
-        euid: EntityUID,
-    ) -> Option<EntityUID> {
-        let euid_component = self.get_euid_component(euid)?;
-        if schema.is_known_action_id(&euid_component) {
-            Some(euid_component)
-        } else {
-            None
-        }
-    }
-
-    fn get_descendants_if_present<'a>(
-        &self,
-        schema: &'a ValidatorSchema,
-        euid: EntityUID,
-    ) -> Option<Box<dyn Iterator<Item = &'a EntityUID> + 'a>> {
-        let euid_component = self.get_euid_component(euid)?;
-        match schema.get_action_id(&euid_component) {
-            Some(action_id) => Some(Box::new(action_id.descendants.iter())),
-            None => None,
-        }
-    }
-
-    fn get_by_type<'a>(
-        &self,
-        schema: &'a ValidatorSchema,
-        entity_type: &'a Name,
-    ) -> Box<dyn Iterator<Item = &'a EntityUID> + 'a> {
-        Box::new(
-            schema
-                .known_action_ids()
-                .filter(move |a| match a.entity_type() {
-                    EntityType::Concrete(a_type) => a_type == entity_type,
-                    EntityType::Unspecified => false,
-                }),
-        )
     }
 }
 

@@ -9,44 +9,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- New APIs to `Entities` to make it easy to add a collection of entities to an existing `Entities` structure.
+- New APIs to `Entities` to make it easy to add a collection of entities to an
+  existing `Entities` structure. (#276)
 - Export the `cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind}` and
-  `cedar_policy_core::authorizer::AuthorizationError` error types.
+  `cedar_policy_core::authorizer::AuthorizationError` error types. (#260, #271)
 - `ParseError::primary_source_span` to get the primary source span locating an error.
-- Experimental API `PolicySet::unknown_entities` to collect unknown entity UIDs from a `PartialResponse`.
-- `PolicySet::remove_static`, `PolicySet::remove_template` and `PolicySet::unlink` to remove policies from the policy set.
-- `PolicySet::get_linked_policies` to get the policies linked to a `Template`.
+- Experimental API `PolicySet::unknown_entities` to collect unknown entity UIDs
+  from a `PartialResponse`. (#353)
+- `PolicySet::remove_static`, `PolicySet::remove_template` and
+  `PolicySet::unlink` to remove policies from the policy set. (#337)
+- `PolicySet::get_linked_policies` to get the policies linked to a `Template`. (#337)
 - `ValidationResult::validation_warnings` to access non-fatal warnings returned
   by the validator and `ValidationResult::validation_passed_without_warnings`.
   The main validation entry point now checks for warnings previously only
-  available through `confusable_string_checker`
-- The `is` operation as described in [RFC 5](https://github.com/cedar-policy/rfcs/blob/main/text/0005-is-operator.md).
+  available through `confusable_string_checker`. (#404)
+- The `is` operation as described in
+  [RFC 5](https://github.com/cedar-policy/rfcs/blob/main/text/0005-is-operator.md).
+  (#396)
 - `Entity::new_no_attrs()` which provides an infallible constructor for `Entity`
   in the case that there are no attributes. (See changes to `Entity::new()` below.)
 
 ### Changed
 
-- Removed `__expr` escape from Cedar JSON formats
-- Rename `cedar_policy_core::est::EstToAstError` to `cedar_policy_core::est::FromJsonError`.
-- Rename `cedar_policy_core::entities::JsonDeserializationError::ExtensionsError` to `cedar_policy_core::entities::JsonDeserializationError::ExtensionFunctionLookup`.
-- Rename variants in `cedar_policy::SchemaError`.
+- Removed `__expr` escape from Cedar JSON formats, which has been deprecated
+  since Cedar 1.2. (#333)
+- Rename `cedar_policy_core::est::EstToAstError` to
+  `cedar_policy_core::est::FromJsonError`. (#197)
+- Rename `cedar_policy_core::entities::JsonDeserializationError::ExtensionsError`
+  to `cedar_policy_core::entities::JsonDeserializationError::ExtensionFunctionLookup`.
+  (#360)
+- Rename variants in `cedar_policy::SchemaError`. (#231)
 - `Diagnostics::errors()` now returns an iterator over `AuthorizationError`s.
-- `Response::new()` now expects a `Vec<AuthorizationError>` as its third argument.
+  (#260)
+- `Response::new()` now expects a `Vec<AuthorizationError>` as its third
+  argument. (#260)
 - Implement [RFC 19](https://github.com/cedar-policy/rfcs/blob/main/text/0019-stricter-validation.md),
-  making validation slightly more strict, but more explainable.
+  making validation slightly more strict, but more explainable. (#282)
 - Implement [RFC 20](https://github.com/cedar-policy/rfcs/blob/main/text/0020-unique-record-keys.md),
-  disallowing duplicate keys in record values (including record literals in policies, request `context`,
-  and records in entity attributes).
-- `Entities::from_*()` methods now automatically add action entities present in the `schema`
-  to the constructed `Entities`, if a `schema` is provided.
-- `Entities::from_*()` methods now validate the entities against the `schema`, if a `schema`
-  is provided.
-- `Entities::from_entities()` and `Entities::add_entities()` now take an optional schema argument.
-- `Request::new()` now takes an optional schema argument, and returns a `Result`.
+  disallowing duplicate keys in record values (including record literals in
+  policies, request `context`, and records in entity attributes). (#375)
+- `Entities::from_*()` methods now automatically add action entities present in
+  the `schema` to the constructed `Entities`, if a `schema` is provided. (#360)
+- `Entities::from_*()` methods now validate the entities against the `schema`,
+  if a `schema` is provided. (#360)
+- `Entities::from_entities()` and `Entities::add_entities()` now take an
+  optional schema argument. (#360)
+- `Request::new()` now takes an optional schema argument, and validates the request
+  against that schema. To signal validation errors, it now returns a `Result`.
+  (#393)
 - Change the semantics of equality for IP ranges. For example,
   `ip("192.168.0.1/24") == ip("192.168.0.3/24")` was previously `true` and is now
   `false`. The behavior of equality on single IP addresses is unchanged, and so is
-  the behavior of `.isInRange()`.
+  the behavior of `.isInRange()`. (#348)
 - Standardize on duplicates being errors instead of last-write-wins in the
   JSON-based APIs in the `frontend` module.
 - `Entity::new()` now eagerly evaluates entity attributes, leading to
@@ -60,27 +74,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `<EntityId as FromStr>::Error` is now `Infallible` instead of `ParseErrors`.
 - `SchemaError` has a new variant corresponding to errors evaluating action
   attributes.
+  (#372)
 - Improve the `Display` impls for `Policy` and `PolicySet`, and add a `Display`
   impl for `Template`.  The displayed representations now more closely match the
-  original input, whether the input was in string or JSON form.
+  original input, whether the input was in string or JSON form. (#167)
 - `ValidationWarning::location` and `ValidationWarning::to_kind_and_location`
   now return `&SourceLocation<'a>` instead of `&'a PolicyID`, matching
-  `ValidationError::location`.
+  `ValidationError::location`. (#405)
 - `ValidationWarningKind` is now `non_exhaustive`, allowing future warnings to
-  be added without a breaking change.
+  be added without a breaking change. (#404)
 
 ### Fixed
 
 - Evaluation order of operand to `>` and `>=` (#112). They now evaluate left to right,
   matching all other operators. This affects what error is reported when there is
   an evaluation error in both operands, but does not otherwise change the result
-  of evaluation.
+  of evaluation. (#402)
 - Updated `PolicySet::link` to not mutate internal state when failing to link a static
   policy. With this fix it is possible to create a link with a policy id
   after previously failing to create that link with the same id from a static
-  policy.
+  policy. (#412)
 - Fixed schema-based parsing of entity data that includes unknowns (for the
-  `partial-eval` experimental feature). (#418)
+  `partial-eval` experimental feature). (#419)
 
 ## [2.4.2] - 2023-10-23
 Cedar Language Version: 2.1.2
@@ -89,7 +104,7 @@ Cedar Language Version: 2.1.2
 
 - Issue #370 related to how the validator handles template-linked policies.
   The validator will now produce the same result for an equivalent static
-  and template-linked policy.
+  and template-linked policy. (#371)
 
 ## [2.4.1] - 2023-10-12
 Cedar Language Version: 2.1.1
@@ -101,7 +116,7 @@ Cedar Language Version: 2.1.1
 ### Changed
 
 - Improve validation error messages for access to undeclared attributes and
-  unsafe access to optional attributes to report the target of the access (issue #175).
+  unsafe access to optional attributes to report the target of the access. (#295)
 - `EntityUid`'s impl of `FromStr` is no longer marked as deprecated.
 
 ### Fixed
@@ -110,7 +125,7 @@ Cedar Language Version: 2.1.1
   resulting in a panic on some inputs.
 - `Request::principal()`, `Request::action()`, and `Request::resource()` will
   now return `None` if the entities are unspecified (i.e., constructed by passing
-  `None` to `Request::new()`).
+  `None` to `Request::new()`). (#339)
 
 ## [2.4.0] - 2023-09-21
 Cedar Language Version: 2.1.1
@@ -158,7 +173,7 @@ Cedar Language Version: 2.1.0
 
 - Issue #150 related to implicit namespaces for actions in `memberOf` lists in
   schemas. An action without an explicit namespace in a `memberOf` now
-  correctly uses the default namespace.
+  correctly uses the default namespace. (#151)
 
 ## [2.3.2] - 2023-08-04
 Cedar Language Version: 2.1.0
@@ -192,7 +207,7 @@ Cedar Language Version: 2.1.0
 ### Fixed
 
 - Panic in `PolicySet::link()` that could occur when the function was called
-  with a policy id corresponding to a static policy.
+  with a policy id corresponding to a static policy. (#203)
 
 ## [2.3.0] - 2023-06-29
 Cedar Language Version: 2.1.0
