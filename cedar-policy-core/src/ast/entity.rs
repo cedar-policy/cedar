@@ -277,7 +277,7 @@ impl Entity {
     ///
     /// Unlike in `Entity::new()`, in this constructor, attributes are expressed
     /// as `PartialValueSerializedAsExpr`.
-    pub fn new_with_attr_partialvalueserializedasexpr(
+    pub fn new_with_attr_partial_value_serialized_as_expr(
         uid: EntityUID,
         attrs: HashMap<SmolStr, PartialValueSerializedAsExpr>,
         ancestors: HashSet<EntityUID>,
@@ -404,7 +404,10 @@ impl std::fmt::Display for Entity {
     }
 }
 
-/// `PartialValue`, but serialized as a RestrictedExpr, for historical reasons
+/// `PartialValue`, but serialized as a `RestrictedExpr`.
+///
+/// (Extension values can't be directly serialized, but can be serialized as
+/// `RestrictedExpr`)
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PartialValueSerializedAsExpr(

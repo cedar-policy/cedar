@@ -570,7 +570,7 @@ impl ValidatorSchema {
             }
         }
         self.action_ids.iter().map(move |(action_id, action)| {
-            Entity::new_with_attr_partialvalueserializedasexpr(
+            Entity::new_with_attr_partial_value_serialized_as_expr(
                 action_id.clone(),
                 action.attributes.clone(),
                 action_ancestors.remove(action_id).unwrap_or_default(),
