@@ -2960,6 +2960,11 @@ impl RestrictedExpression {
         Self(ast::RestrictedExpr::val(value))
     }
 
+    /// Create an expression representing a literal `EntityUid`.
+    pub fn new_entity_uid(value: EntityUid) -> Self {
+        Self(ast::RestrictedExpr::val(value.0))
+    }
+
     /// Create an expression representing a record.
     ///
     /// Error if any key appears two or more times in `fields`.
