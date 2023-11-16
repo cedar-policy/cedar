@@ -26,8 +26,8 @@ use std::{
 
 use cedar_policy_core::{
     ast::{
-        BorrowedRestrictedExpr, EntityType, EntityUID, Expr, ExprShapeOnly, Literal, Name,
-        PartialValue, Value,
+        BorrowedRestrictedExpr, EntityType, EntityUID, Expr, ExprShapeOnly, Name, PartialValue,
+        RestrictedExpr, Value,
     },
     entities::{typecheck_restricted_expr_against_schematype, GetSchemaTypeError},
     extensions::Extensions,
@@ -660,127 +660,10 @@ impl Type {
         value: &Value,
         extensions: Extensions<'_>,
     ) -> Result<bool, GetSchemaTypeError> {
-        match self {
-            Type::Never => Ok(false), // no value has type Never
-            Type::Primitive {
-                primitive_type: Primitive::Bool,
-            } => Ok(matches!(value, Value::Lit(Literal::Bool(_)))),
-            Type::Primitive {
-                primitive_type: Primitive::Long,
-            } => Ok(matches!(value, Value::Lit(Literal::Long(_)))),
-            Type::Primitive {
-                primitive_type: Primitive::String,
-            } => Ok(matches!(value, Value::Lit(Literal::String(_)))),
-            Type::True => match value {
-                Value::Lit(Literal::Bool(b)) => Ok(*b),
-                _ => Ok(false),
-            },
-            Type::False => match value {
-                Value::Lit(Literal::Bool(b)) => Ok(!*b),
-                _ => Ok(false),
-            },
-            Type::Set { element_type: None } => Ok(matches!(value, Value::Set(_))),
-            Type::Set {
-                element_type: Some(el_type),
-            } => match value {
-                Value::Set(set) => {
-                    for elt in set.iter() {
-                        if !el_type.typecheck_value(elt, extensions)? {
-                            return Ok(false);
-                        }
-                    }
-                    Ok(true)
-                }
-                _ => Ok(false),
-            },
-            Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => match value {
-                Value::Lit(Literal::EntityUID(euid)) => match euid.entity_type() {
-                    EntityType::Concrete(name) => Ok(lub.contains(&name)),
-                    EntityType::Unspecified => Ok(false), // Unspecified can only have the validator type `AnyEntity`, not any specific lub
-                },
-                _ => Ok(false),
-            },
-            Type::EntityOrRecord(EntityRecordKind::ActionEntity { name, .. }) => match value {
-                Value::Lit(Literal::EntityUID(euid)) if euid.is_action() => {
-                    match euid.entity_type() {
-                        EntityType::Concrete(ref euid_name) => Ok(euid_name == name),
-                        EntityType::Unspecified => Ok(false), // `euid.is_action()` should never be true for an Unspecified, so this should be unreachable, but it's safe to return Ok(false), because Unspecified can only have the validator type `AnyEntity` anyway
-                    }
-                }
-                _ => Ok(false),
-            },
-            Type::EntityOrRecord(EntityRecordKind::AnyEntity) => {
-                Ok(matches!(value, Value::Lit(Literal::EntityUID(_))))
-            }
-            Type::EntityOrRecord(EntityRecordKind::Record {
-                attrs,
-                open_attributes,
-            }) => match value {
-                Value::Record(map) => {
-                    for (k, attr_val) in map.iter() {
-                        match attrs.get_attr(k) {
-                            Some(attr_ty) => {
-                                if !attr_ty.attr_type.typecheck_value(attr_val, extensions)? {
-                                    return Ok(false);
-                                }
-                            }
-                            None => {
-                                if open_attributes != &OpenTag::OpenAttributes {
-                                    // the value has an attribute not listed in
-                                    // the Type, and the Type doesn't have open
-                                    // attributes
-                                    return Ok(false);
-                                }
-                            }
-                        }
-                    }
-                    // we've now checked that all of the attrs in `value` are OK and have the right types.
-                    // what remains is making sure that all the required attrs are actually in `value`
-                    for (k, attr_ty) in attrs.iter() {
-                        if attr_ty.is_required && !map.contains_key(k) {
-                            return Ok(false);
-                        }
-                    }
-                    Ok(true)
-                }
-                _ => Ok(false),
-            },
-            Type::ExtensionType { name } => match value {
-                Value::ExtensionValue(ev) => {
-                    let (constructor, args) = ev.constructor_and_args();
-                    let func = extensions.func(constructor)?;
-                    match func.return_type() {
-                        Some(cedar_policy_core::entities::SchemaType::Extension {
-                            name: actual_name,
-                        }) => {
-                            if actual_name != name {
-                                return Ok(false);
-                            }
-                        }
-                        _ => return Ok(false),
-                    }
-                    for (actual_arg, expected_arg_ty) in args.iter().zip(func.arg_types()) {
-                        match expected_arg_ty {
-                            None => {} // in this case, the docs on `func.arg_types()` say that multiple types are allowed, we just approximate as saying you can pass any type to this argument
-                            Some(ty) => {
-                                if typecheck_restricted_expr_against_schematype(
-                                    actual_arg.as_borrowed(),
-                                    ty,
-                                    extensions,
-                                )
-                                .is_err()
-                                {
-                                    return Ok(false);
-                                }
-                            }
-                        }
-                    }
-                    // if we got here, then the return type and arg types typecheck
-                    Ok(true)
-                }
-                _ => Ok(false),
-            },
-        }
+        // we accept the overhead of cloning the `Value` and converting to
+        // `RestrictedExpr` in order to improve code reuse and maintainability
+        let rexpr = RestrictedExpr::from(value.clone());
+        self.typecheck_restricted_expr(rexpr.as_borrowed(), extensions)
     }
 
     /// Does the given `BorrowedRestrictedExpr` have this validator type?
