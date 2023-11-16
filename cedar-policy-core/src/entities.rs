@@ -1698,7 +1698,7 @@ mod schema_based_parsing_tests {
         }
         fn action(&self, action: &EntityUID) -> Option<Arc<Entity>> {
             match action.to_string().as_str() {
-                r#"Action::"view""# => Some(Arc::new(Entity::new_with_attr_partialvalues(
+                r#"Action::"view""# => Some(Arc::new(Entity::new_with_attr_partial_value(
                     action.clone(),
                     [(SmolStr::from("foo"), PartialValue::from(34))]
                         .into_iter()

@@ -144,7 +144,7 @@ impl Entity {
         // note that we take a "parents" parameter here; we will compute TC when
         // the `Entities` object is created
         // INVARIANT(UidOfEntityNotUnspecified): by invariant on `EntityUid`
-        Self(ast::Entity::new_with_attr_partialvalues(
+        Self(ast::Entity::new_with_attr_partial_value(
             uid.0,
             HashMap::new(),
             parents.into_iter().map(|uid| uid.0).collect(),
