@@ -245,7 +245,7 @@ pub enum JsonSerializationError {
     },
     /// Encountered a (partial-evaluation) residual which can't be encoded in
     /// JSON
-    #[error("can't encode residual as JSON: {residual}")]
+    #[error("cannot encode residual as JSON: {residual}")]
     Residual {
         /// Residual which can't be encoded in JSON
         residual: Expr,
