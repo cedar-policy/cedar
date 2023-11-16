@@ -22,7 +22,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got string"
+        "while evaluating policy `policy0`: type error: expected bool, got string"
       ]
     },
     {
@@ -100,7 +100,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got string"
+        "while evaluating policy `policy0`: type error: expected bool, got string"
       ]
     },
     {
@@ -121,7 +121,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got string"
+        "while evaluating policy `policy0`: type error: expected bool, got string"
       ]
     },
     {
@@ -142,7 +142,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got string"
+        "while evaluating policy `policy0`: type error: expected bool, got string"
       ]
     },
     {
@@ -163,7 +163,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got string"
+        "while evaluating policy `policy0`: type error: expected bool, got string"
       ]
     }
   ]

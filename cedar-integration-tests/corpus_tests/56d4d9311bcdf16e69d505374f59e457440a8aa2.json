@@ -22,7 +22,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: entity `A0000::\"\"` does not exist"
+        "while evaluating policy `policy0`: entity `A0000::\"\"` does not exist"
       ]
     },
     {
@@ -43,7 +43,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: entity `A0000::\"\"` does not exist"
+        "while evaluating policy `policy0`: entity `A0000::\"\"` does not exist"
       ]
     },
     {
@@ -64,7 +64,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: entity `A0000::\"\"` does not exist"
+        "while evaluating policy `policy0`: entity `A0000::\"\"` does not exist"
       ]
     },
     {
@@ -85,7 +85,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: entity `A0000::\"\"` does not exist"
+        "while evaluating policy `policy0`: entity `A0000::\"\"` does not exist"
       ]
     },
     {
@@ -106,7 +106,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: entity `A0000::\"\"` does not exist"
+        "while evaluating policy `policy0`: entity `A0000::\"\"` does not exist"
       ]
     },
     {
@@ -127,7 +127,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: entity `A0000::\"\"` does not exist"
+        "while evaluating policy `policy0`: entity `A0000::\"\"` does not exist"
       ]
     },
     {
@@ -148,7 +148,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: entity `A0000::\"\"` does not exist"
+        "while evaluating policy `policy0`: entity `A0000::\"\"` does not exist"
       ]
     },
     {
@@ -169,7 +169,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: entity `A0000::\"\"` does not exist"
+        "while evaluating policy `policy0`: entity `A0000::\"\"` does not exist"
       ]
     }
   ]

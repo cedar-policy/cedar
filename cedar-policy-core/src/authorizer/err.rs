@@ -22,7 +22,7 @@ use thiserror::Error;
 #[derive(Debug, PartialEq, Eq, Clone, Error)]
 pub enum AuthorizationError {
     /// An error occurred when evaluating a policy.
-    #[error("error occurred while evaluating policy `{id}`: {error}")]
+    #[error("while evaluating policy `{id}`: {error}")]
     PolicyEvaluationError {
         /// Id of the policy with an error
         id: PolicyID,

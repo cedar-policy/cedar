@@ -64,8 +64,8 @@ pub enum SchemaError {
     #[error("duplicate common type `{0}`")]
     DuplicateCommonType(String),
     /// Cycle in the schema's action hierarchy.
-    #[error("cycle in action hierarchy")]
-    CycleInActionHierarchy,
+    #[error("cycle in action hierarchy containing `{0}`")]
+    CycleInActionHierarchy(EntityUID),
     /// Parse errors occurring while parsing an entity type.
     #[error("parse error in entity type: {}", Self::format_parse_errs(.0))]
     ParseEntityType(ParseErrors),
@@ -115,7 +115,9 @@ impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
             transitive_closure::TcError::MissingTcEdge { .. } => {
                 SchemaError::ActionTransitiveClosure(Box::new(e))
             }
-            transitive_closure::TcError::HasCycle { .. } => SchemaError::CycleInActionHierarchy,
+            transitive_closure::TcError::HasCycle { vertex_with_loop } => {
+                SchemaError::CycleInActionHierarchy(vertex_with_loop)
+            }
         }
     }
 }
