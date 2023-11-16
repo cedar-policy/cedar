@@ -186,12 +186,19 @@ pub enum ToASTError {
     #[error("right hand side of a `like` expression must be a pattern literal, but got `{0}`")]
     InvalidPattern(String),
     /// Returned when an unexpected node is in the policy scope clause
-    #[error("expected a {expected}, found a `{got}` statement")]
+    #[error("expected {expected}, found {got}{}",
+        match .suggestion {
+            None => "".into(),
+            Some(s) => format!("; {s}"),
+        }
+    )]
     WrongNode {
         /// What the expected AST node kind was
         expected: &'static str,
         /// What AST node was present in the policy source
         got: String,
+        /// Optional free-form text with a suggestion for how to fix the problem
+        suggestion: Option<String>,
     },
     /// Returned when a policy contains ambiguous ordering of operators.
     /// This can be resolved by using parenthesis to make order explicit
@@ -299,10 +306,15 @@ pub enum ToASTError {
 
 impl ToASTError {
     /// Constructor for the [`ToASTError::WrongNode`] error
-    pub fn wrong_node(expected: &'static str, got: impl Into<String>) -> Self {
+    pub fn wrong_node(
+        expected: &'static str,
+        got: impl Into<String>,
+        suggestion: Option<impl Into<String>>,
+    ) -> Self {
         Self::WrongNode {
             expected,
             got: got.into(),
+            suggestion: suggestion.map(Into::into),
         }
     }
 

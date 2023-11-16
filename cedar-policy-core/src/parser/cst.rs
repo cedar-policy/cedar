@@ -21,7 +21,7 @@ use smol_str::SmolStr;
 // still recover other parts
 type Node<N> = ASTNode<Option<N>>;
 
-/// The set of policy statements that forms an authorization policy
+/// The set of policy statements that forms a policy set
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Policies(pub Vec<Node<Policy>>);
 
