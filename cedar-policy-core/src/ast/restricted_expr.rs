@@ -278,7 +278,7 @@ impl TryFrom<PartialValue> for RestrictedExpr {
 #[derive(Debug, PartialEq, Error)]
 pub enum PartialValueToRestrictedExprError {
     /// The `PartialValue` contains a nontrivial residual that isn't a valid `RestrictedExpr`
-    #[error("residual is not a valid RestrictedExpr: `{residual}`")]
+    #[error("residual is not a valid restricted expression: `{residual}`")]
     NontrivialResidual {
         /// Residual that isn't a valid `RestrictedExpr`
         residual: Box<Expr>,
