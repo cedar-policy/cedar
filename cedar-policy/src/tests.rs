@@ -1,4 +1,21 @@
-use api::*;
+use super::*;
+
+pub use ast::Effect;
+pub use authorizer::Decision;
+use cedar_policy_core::ast;
+use cedar_policy_core::authorizer;
+pub use cedar_policy_core::authorizer::AuthorizationError;
+use cedar_policy_core::entities::{self};
+pub use cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind};
+pub use cedar_policy_core::extensions;
+pub use cedar_policy_core::parser::err::ParseErrors;
+pub use cedar_policy_validator::{
+    TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
+};
+use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
+
+pub use super::api::Response;
 
 // PANIC SAFETY unit tests
 #[allow(clippy::panic)]
@@ -630,26 +647,14 @@ mod policy_set_tests {
 
         //Allow
         let response = authorizer.is_authorized(&request, &pset, &entities);
-        assert_matches!(
-            response,
-            Response {
-                decision: Decision::Allow,
-                diagnostics: _
-            }
-        );
+        assert_eq!(response.decision(), Decision::Allow);
 
         pset.remove_static(PolicyId::from_str("id").unwrap())
             .expect("Failed to remove static policy");
 
         //Deny
         let response = authorizer.is_authorized(&request, &pset, &entities);
-        assert_matches!(
-            response,
-            Response {
-                decision: Decision::Deny,
-                diagnostics: _
-            }
-        );
+        assert_eq!(response.decision(), Decision::Deny);
 
         let template = Template::parse(
             Some("t".into()),
@@ -670,13 +675,7 @@ mod policy_set_tests {
 
         //Allow
         let response = authorizer.is_authorized(&request, &pset, &entities);
-        assert_matches!(
-            response,
-            Response {
-                decision: Decision::Allow,
-                diagnostics: _
-            }
-        );
+        assert_eq!(response.decision(), Decision::Allow);
 
         assert_matches!(
             pset.remove_static(PolicyId::from_str("t").unwrap()),
@@ -693,13 +692,7 @@ mod policy_set_tests {
 
         //Deny
         let response = authorizer.is_authorized(&request, &pset, &entities);
-        assert_matches!(
-            response,
-            Response {
-                decision: Decision::Deny,
-                diagnostics: _
-            }
-        );
+        assert_eq!(response.decision(), Decision::Deny);
 
         let env1: HashMap<SlotId, EntityUid> =
             std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
@@ -712,13 +705,7 @@ mod policy_set_tests {
 
         //Allow
         let response = authorizer.is_authorized(&request, &pset, &entities);
-        assert_matches!(
-            response,
-            Response {
-                decision: Decision::Allow,
-                diagnostics: _
-            }
-        );
+        assert_eq!(response.decision(), Decision::Allow);
 
         //Can't remove template that is still linked
         assert_matches!(
@@ -734,13 +721,7 @@ mod policy_set_tests {
 
         //Deny
         let response = authorizer.is_authorized(&request, &pset, &entities);
-        assert_matches!(
-            response,
-            Response {
-                decision: Decision::Deny,
-                diagnostics: _
-            }
-        );
+        assert_eq!(response.decision(), Decision::Deny);
     }
 
     #[test]
@@ -914,26 +895,14 @@ mod policy_set_tests {
 
         // Allow
         let response = authorizer.is_authorized(&request, &pset, &entities);
-        assert_matches!(
-            response,
-            Response {
-                decision: Decision::Allow,
-                diagnostics: _
-            }
-        );
+        assert_eq!(response.decision(), Decision::Allow);
 
         let result = pset.unlink(linked_policy_id.clone());
         assert_matches!(result, Ok(_));
 
         //Deny
         let response = authorizer.is_authorized(&request, &pset, &entities);
-        assert_matches!(
-            response,
-            Response {
-                decision: Decision::Deny,
-                diagnostics: _
-            }
-        );
+        assert_eq!(response.decision(), Decision::Deny);
 
         let result = pset.unlink(linked_policy_id);
         assert_matches!(result, Err(PolicySetError::LinkNonexistentError(_)));
@@ -1724,7 +1693,13 @@ mod schema_based_parsing_tests {
         let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
         assert_eq!(parsed.iter().count(), 2); // Employee::"12UA45" and the one action
-        assert_eq!(parsed.iter().filter(|e| e.0.uid().is_action()).count(), 1);
+        assert_eq!(
+            parsed
+                .iter()
+                .filter(|e| e.uid().type_name().basename() == "Action")
+                .count(),
+            1
+        );
         let parsed = parsed
             .get(&EntityUid::from_strs("Employee", "12UA45"))
             .expect("that should be the employee id");
@@ -2097,7 +2072,13 @@ mod schema_based_parsing_tests {
         let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
         assert_eq!(parsed.iter().count(), 2); // XYZCorp::Employee::"12UA45" and one action
-        assert_eq!(parsed.iter().filter(|e| e.0.uid().is_action()).count(), 1);
+        assert_eq!(
+            parsed
+                .iter()
+                .filter(|e| e.uid().type_name().basename() == "Action")
+                .count(),
+            1
+        );
         let parsed = parsed
             .get(&EntityUid::from_strs("XYZCorp::Employee", "12UA45"))
             .expect("that should be the employee type and id");
@@ -2179,7 +2160,13 @@ mod schema_based_parsing_tests {
         let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
         assert_eq!(parsed.iter().count(), 2); // Employee::"12UA45" and one action
-        assert_eq!(parsed.iter().filter(|e| e.0.uid().is_action()).count(), 1);
+        assert_eq!(
+            parsed
+                .iter()
+                .filter(|e| e.uid().type_name().basename() == "Action")
+                .count(),
+            1
+        );
 
         // "department" shouldn't be required
         let entitiesjson = json!(
@@ -2197,7 +2184,13 @@ mod schema_based_parsing_tests {
         let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
         assert_eq!(parsed.iter().count(), 2); // Employee::"12UA45" and the one action
-        assert_eq!(parsed.iter().filter(|e| e.0.uid().is_action()).count(), 1);
+        assert_eq!(
+            parsed
+                .iter()
+                .filter(|e| e.uid().type_name().basename() == "Action")
+                .count(),
+            1
+        );
     }
 
     /// Test that involves open entities
