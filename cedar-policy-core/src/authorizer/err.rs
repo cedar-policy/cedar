@@ -21,10 +21,6 @@ use thiserror::Error;
 /// Errors that can occur during authorization
 #[derive(Debug, PartialEq, Eq, Clone, Error)]
 pub enum AuthorizationError {
-    /// Failed to evaluate the request `context`.
-    #[error("error occurred while evaluating the request `context`: {0}")]
-    ContextEvaluationError(EvaluationError),
-
     /// An error occurred when evaluating a policy.
     #[error("error occurred while evaluating policy `{id}`: {error}")]
     PolicyEvaluationError {

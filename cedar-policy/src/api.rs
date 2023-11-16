@@ -23,11 +23,14 @@
 pub use ast::Effect;
 pub use authorizer::Decision;
 use cedar_policy_core::ast;
-use cedar_policy_core::ast::{ExprConstructionError, RestrictedExprParseError};
+use cedar_policy_core::ast::{
+    ContextCreationError, ExprConstructionError, RestrictedExprParseError,
+}; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
 use cedar_policy_core::authorizer;
 pub use cedar_policy_core::authorizer::AuthorizationError;
 use cedar_policy_core::entities::{
-    self, ContextSchema, Dereference, JsonDeserializationError, JsonDeserializationErrorContext,
+    self, ContextJsonDeserializationError, ContextSchema, Dereference, JsonDeserializationError,
+    JsonDeserializationErrorContext,
 };
 use cedar_policy_core::est;
 use cedar_policy_core::evaluator::Evaluator;
@@ -3251,9 +3254,10 @@ impl Context {
     /// ```
     pub fn from_pairs(
         pairs: impl IntoIterator<Item = (String, RestrictedExpression)>,
-    ) -> Result<Self, ExprConstructionError> {
+    ) -> Result<Self, ContextCreationError> {
         Ok(Self(ast::Context::from_pairs(
             pairs.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
+            Extensions::all_available(),
         )?))
     }
 
@@ -3439,7 +3443,7 @@ impl Context {
 pub enum ContextJsonError {
     /// Error deserializing the JSON into a Context
     #[error(transparent)]
-    JsonDeserialization(#[from] JsonDeserializationError),
+    JsonDeserialization(#[from] ContextJsonDeserializationError),
     /// The supplied action doesn't exist in the supplied schema
     #[error("action `{action}` does not exist in the supplied schema")]
     MissingAction {
@@ -3598,7 +3602,7 @@ pub fn eval_expression(
     expr: &Expression,
 ) -> Result<EvalResult, EvaluationError> {
     let all_ext = Extensions::all_available();
-    let eval = Evaluator::new(&request.0, &entities.0, &all_ext)?;
+    let eval = Evaluator::new(request.0.clone(), &entities.0, &all_ext);
     Ok(EvalResult::from(
         // Evaluate under the empty slot map, as an expression should not have slots
         eval.interpret(&expr.0, &ast::SlotEnv::new())?,

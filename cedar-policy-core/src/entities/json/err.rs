@@ -18,8 +18,8 @@ use std::fmt::Display;
 
 use super::{HeterogeneousSetError, SchemaType};
 use crate::ast::{
-    BorrowedRestrictedExpr, EntityAttrEvaluationError, EntityUID, Expr, ExprKind, Name,
-    PartialValue, PolicyID, RestrictedExpr, RestrictedExprError,
+    BorrowedRestrictedExpr, ContextCreationError, EntityAttrEvaluationError, EntityUID, Expr,
+    ExprKind, Name, PartialValue, PolicyID, RestrictedExpr, RestrictedExprError,
 };
 use crate::entities::conformance::EntitySchemaConformanceError;
 use crate::extensions::ExtensionFunctionLookupError;
@@ -82,12 +82,9 @@ pub enum JsonDeserializationError {
         /// the expression we got instead
         got: Box<Either<serde_json::Value, Expr>>,
     },
-    /// Contexts need to be records, but we got some other JSON value
-    #[error("expected `context` to be a record, but got `{got}`")]
-    ExpectedContextToBeRecord {
-        /// Expression we got instead
-        got: Box<RestrictedExpr>,
-    },
+    /// Errors creating the request context from JSON
+    #[error("while parsing context, {0}")]
+    ContextCreation(#[from] ContextCreationError),
     /// Parents of actions should be actions, but this action has a non-action parent
     #[error("action `{uid}` has a non-action parent `{parent}`")]
     ActionParentIsNotAction {

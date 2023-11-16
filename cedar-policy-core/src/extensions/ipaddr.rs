@@ -483,7 +483,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         // test that normal stuff still works with ipaddr extension enabled
         assert_eq!(
@@ -613,7 +613,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         // test that an ipv4 range parses from string and isIpv4 but not isIpv6
         assert_eq!(
@@ -695,7 +695,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         // basic equality tests
         assert_eq!(
@@ -739,7 +739,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
@@ -833,7 +833,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
@@ -953,7 +953,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_eq(ip("10.0.0.0"), ip("10.0.0.0"))),

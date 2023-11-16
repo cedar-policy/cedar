@@ -165,16 +165,7 @@ impl Authorizer {
         pset: &PolicySet,
         entities: &Entities,
     ) -> ResponseKind {
-        let eval = match Evaluator::new(q, entities, &self.extensions) {
-            Ok(eval) => eval,
-            Err(e) => {
-                return ResponseKind::FullyEvaluated(Response::new(
-                    Decision::Deny,
-                    HashSet::new(),
-                    vec![AuthorizationError::ContextEvaluationError(e)],
-                ));
-            }
-        };
+        let eval = Evaluator::new(q.clone(), entities, &self.extensions);
 
         let results = self.evaluate_policies(pset, eval);
 
@@ -534,7 +525,9 @@ mod test {
                 "test".into(),
                 RestrictedExpr::unknown(Unknown::new_untyped("name")),
             )])
-            .unwrap(),
+            .unwrap()
+            .as_borrowed(),
+            Extensions::none(),
         )
         .unwrap();
         let a = Authorizer::new();

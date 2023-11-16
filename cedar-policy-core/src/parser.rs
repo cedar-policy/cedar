@@ -441,7 +441,7 @@ mod eval_tests {
         let request = eval::test::basic_request();
         let entities = eval::test::basic_entities();
         let exts = Extensions::none();
-        let evaluator = eval::Evaluator::new(&request, &entities, &exts).unwrap();
+        let evaluator = eval::Evaluator::new(request, &entities, &exts);
 
         // bools
         let expr = parse_expr("false").expect("parse fail");
@@ -495,7 +495,7 @@ mod eval_tests {
         let request = eval::test::basic_request();
         let entities = eval::test::rich_entities();
         let exts = Extensions::none();
-        let evaluator = eval::Evaluator::new(&request, &entities, &exts).unwrap();
+        let evaluator = eval::Evaluator::new(request, &entities, &exts);
 
         let expr = parse_expr(
             r#"
@@ -564,7 +564,7 @@ mod eval_tests {
         let request = eval::test::basic_request();
         let entities = eval::test::basic_entities();
         let exts = Extensions::none();
-        let evaluator = eval::Evaluator::new(&request, &entities, &exts).unwrap();
+        let evaluator = eval::Evaluator::new(request, &entities, &exts);
 
         let expr = parse_expr(
             r#"

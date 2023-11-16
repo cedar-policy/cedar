@@ -376,7 +376,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         // valid decimal strings
         assert_decimal_valid(
@@ -472,7 +472,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         let a = parse_expr(r#"decimal("123.0")"#).expect("parsing error");
         let b = parse_expr(r#"decimal("123.0000")"#).expect("parsing error");
@@ -536,7 +536,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         for ((l, r), res) in tests {
             assert_eq!(
@@ -603,7 +603,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         assert_eq!(
             eval.interpret_inline_policy(

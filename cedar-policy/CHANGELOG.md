@@ -38,7 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rename `cedar_policy_core::entities::JsonDeserializationError::ExtensionsError`
   to `cedar_policy_core::entities::JsonDeserializationError::ExtensionFunctionLookup`.
   (#360)
-- Rename variants in `cedar_policy::SchemaError`. (#231)
+- Rename variants in `SchemaError`. (#231)
+- `SchemaError` has a new variant corresponding to errors evaluating action
+  attributes. (#372)
 - `Diagnostics::errors()` now returns an iterator over `AuthorizationError`s.
   (#260)
 - `Response::new()` now expects a `Vec<AuthorizationError>` as its third
@@ -62,7 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `false`. The behavior of equality on single IP addresses is unchanged, and so is
   the behavior of `.isInRange()`. (#348)
 - Standardize on duplicates being errors instead of last-write-wins in the
-  JSON-based APIs in the `frontend` module.
+  JSON-based APIs in the `frontend` module. This also means some error types
+  have changed.
 - `Entity::new()` now eagerly evaluates entity attributes, leading to
   performance improvements (particularly when entity data is reused across
   multiple `is_authorized` calls). As a result, it returns `Result`, because
@@ -72,9 +75,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Entity::attr()` now returns errors in many fewer cases (because the attribute
   is stored in already-evaluated form), and its error type has changed.
 - `<EntityId as FromStr>::Error` is now `Infallible` instead of `ParseErrors`.
-- `SchemaError` has a new variant corresponding to errors evaluating action
-  attributes.
-  (#372)
 - Improve the `Display` impls for `Policy` and `PolicySet`, and add a `Display`
   impl for `Template`.  The displayed representations now more closely match the
   original input, whether the input was in string or JSON form. (#167)

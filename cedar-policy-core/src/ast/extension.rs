@@ -357,17 +357,7 @@ pub struct ExtensionValueWithArgs {
 }
 
 impl ExtensionValueWithArgs {
-    /// Get the internal value
-    pub fn value(&self) -> &(dyn InternalExtensionValue) {
-        self.value.as_ref()
-    }
-
-    /// Get the typename of this extension value
-    pub fn typename(&self) -> Name {
-        self.value.typename()
-    }
-
-    /// Constructor
+    /// Create a new `ExtensionValueWithArgs`
     pub fn new(
         value: Arc<dyn InternalExtensionValue + Send + Sync>,
         constructor: Name,
@@ -378,6 +368,21 @@ impl ExtensionValueWithArgs {
             constructor,
             args,
         }
+    }
+
+    /// Get the internal value
+    pub fn value(&self) -> &(dyn InternalExtensionValue) {
+        self.value.as_ref()
+    }
+
+    /// Get the typename of this extension value
+    pub fn typename(&self) -> Name {
+        self.value.typename()
+    }
+
+    /// Get the constructor and args that can reproduce this value
+    pub fn constructor_and_args(&self) -> (&Name, &[RestrictedExpr]) {
+        (&self.constructor, &self.args)
     }
 }
 

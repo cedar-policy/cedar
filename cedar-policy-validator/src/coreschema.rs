@@ -199,7 +199,7 @@ impl ast::RequestSchema for ValidatorSchema {
                 if let Some(context) = request.context() {
                     let expected_context_ty = validator_action_id.context_type();
                     if !expected_context_ty
-                        .typecheck_restricted_expr(context.as_ref().as_borrowed(), extensions)
+                        .typecheck_partial_value(context.as_ref(), extensions)
                         .map_err(RequestValidationError::TypeOfContext)?
                     {
                         return Err(RequestValidationError::InvalidContext {
@@ -397,10 +397,10 @@ mod test {
                 ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                 ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(),
                 ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
-                ast::Context::from_pairs([(
-                    "admin_approval".into(),
-                    ast::RestrictedExpr::val(true)
-                )])
+                ast::Context::from_pairs(
+                    [("admin_approval".into(), ast::RestrictedExpr::val(true))],
+                    Extensions::all_available()
+                )
                 .unwrap(),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -733,10 +733,13 @@ mod test {
     /// request context does not comply with specification: extra attribute
     #[test]
     fn context_extra_attribute() {
-        let context_with_extra_attr = ast::Context::from_pairs([
-            ("admin_approval".into(), ast::RestrictedExpr::val(true)),
-            ("extra".into(), ast::RestrictedExpr::val(42)),
-        ])
+        let context_with_extra_attr = ast::Context::from_pairs(
+            [
+                ("admin_approval".into(), ast::RestrictedExpr::val(true)),
+                ("extra".into(), ast::RestrictedExpr::val(42)),
+            ],
+            Extensions::all_available(),
+        )
         .unwrap();
         assert_matches!(
             ast::Request::new(
@@ -757,10 +760,13 @@ mod test {
     /// request context does not comply with specification: attribute is wrong type
     #[test]
     fn context_attribute_wrong_type() {
-        let context_with_wrong_type_attr = ast::Context::from_pairs([(
-            "admin_approval".into(),
-            ast::RestrictedExpr::set([ast::RestrictedExpr::val(true)]),
-        )])
+        let context_with_wrong_type_attr = ast::Context::from_pairs(
+            [(
+                "admin_approval".into(),
+                ast::RestrictedExpr::set([ast::RestrictedExpr::val(true)]),
+            )],
+            Extensions::all_available(),
+        )
         .unwrap();
         assert_matches!(
             ast::Request::new(
@@ -781,13 +787,16 @@ mod test {
     /// request context contains heterogeneous set
     #[test]
     fn context_attribute_heterogeneous_set() {
-        let context_with_heterogeneous_set = ast::Context::from_pairs([(
-            "admin_approval".into(),
-            ast::RestrictedExpr::set([
-                ast::RestrictedExpr::val(true),
-                ast::RestrictedExpr::val(-1001),
-            ]),
-        )])
+        let context_with_heterogeneous_set = ast::Context::from_pairs(
+            [(
+                "admin_approval".into(),
+                ast::RestrictedExpr::set([
+                    ast::RestrictedExpr::val(true),
+                    ast::RestrictedExpr::val(-1001),
+                ]),
+            )],
+            Extensions::all_available(),
+        )
         .unwrap();
         assert_matches!(
             ast::Request::new(
