@@ -76,7 +76,7 @@ impl Schema for AllEntitiesNoAttrsSchema {
         })
     }
     fn action(&self, action: &EntityUID) -> Option<Arc<Entity>> {
-        Some(Arc::new(Entity::new(
+        Some(Arc::new(Entity::new_with_attr_partial_value(
             action.clone(),
             HashMap::new(),
             HashSet::new(),

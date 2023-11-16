@@ -36,7 +36,7 @@ use smol_str::SmolStr;
 use std::collections::HashMap;
 
 use crate::ast;
-use crate::ast::RestrictedExprError;
+use crate::ast::RestrictedExprParseError;
 use crate::est;
 
 /// simple main function for parsing policies
@@ -239,9 +239,9 @@ pub(crate) fn parse_expr(ptext: &str) -> Result<ast::Expr, err::ParseErrors> {
 /// `FromStr` impl or its constructors
 pub(crate) fn parse_restrictedexpr(
     ptext: &str,
-) -> Result<ast::RestrictedExpr, RestrictedExprError> {
+) -> Result<ast::RestrictedExpr, RestrictedExprParseError> {
     let expr = parse_expr(ptext)?;
-    ast::RestrictedExpr::new(expr)
+    Ok(ast::RestrictedExpr::new(expr)?)
 }
 
 /// parse an EntityUID
@@ -441,7 +441,7 @@ mod eval_tests {
         let request = eval::test::basic_request();
         let entities = eval::test::basic_entities();
         let exts = Extensions::none();
-        let evaluator = eval::Evaluator::new(&request, &entities, &exts).unwrap();
+        let evaluator = eval::Evaluator::new(request, &entities, &exts);
 
         // bools
         let expr = parse_expr("false").expect("parse fail");
@@ -495,7 +495,7 @@ mod eval_tests {
         let request = eval::test::basic_request();
         let entities = eval::test::rich_entities();
         let exts = Extensions::none();
-        let evaluator = eval::Evaluator::new(&request, &entities, &exts).unwrap();
+        let evaluator = eval::Evaluator::new(request, &entities, &exts);
 
         let expr = parse_expr(
             r#"
@@ -564,7 +564,7 @@ mod eval_tests {
         let request = eval::test::basic_request();
         let entities = eval::test::basic_entities();
         let exts = Extensions::none();
-        let evaluator = eval::Evaluator::new(&request, &entities, &exts).unwrap();
+        let evaluator = eval::Evaluator::new(request, &entities, &exts);
 
         let expr = parse_expr(
             r#"

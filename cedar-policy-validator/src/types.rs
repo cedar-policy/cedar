@@ -25,7 +25,10 @@ use std::{
 };
 
 use cedar_policy_core::{
-    ast::{BorrowedRestrictedExpr, EntityType, EntityUID, Expr, ExprShapeOnly, Name},
+    ast::{
+        BorrowedRestrictedExpr, EntityType, EntityUID, Expr, ExprShapeOnly, Name, PartialValue,
+        RestrictedExpr, Value,
+    },
     entities::{typecheck_restricted_expr_against_schematype, GetSchemaTypeError},
     extensions::Extensions,
 };
@@ -627,7 +630,46 @@ impl Type {
         }
     }
 
+    /// Does the given `PartialValue` have this validator type?
+    ///
+    /// If the `PartialValue` is a residual with not enough information to
+    /// determine conclusively that it either does or does not typecheck (i.e.,
+    /// it does typecheck for some permissible substitutions of the unknowns,
+    /// but does not typecheck for other permissible substitutions), this is
+    /// reported as an error.
+    ///
+    /// TODO(#437): Handling of `Unknown`s is not yet complete and doesn't
+    /// properly behave according to the above description, as of this writing.
+    pub(crate) fn typecheck_partial_value(
+        &self,
+        value: &PartialValue,
+        extensions: Extensions<'_>,
+    ) -> Result<bool, GetSchemaTypeError> {
+        match value {
+            PartialValue::Value(value) => self.typecheck_value(&value, extensions),
+            PartialValue::Residual(expr) => match BorrowedRestrictedExpr::new(expr) {
+                Ok(rexpr) => self.typecheck_restricted_expr(rexpr, extensions),
+                Err(_) => Ok(false), // TODO(#437): instead of just reporting typecheck fails for all nontrivial residuals, we should do something more intelligent
+            },
+        }
+    }
+
+    /// Does the given `Value` have this validator type?
+    pub(crate) fn typecheck_value(
+        &self,
+        value: &Value,
+        extensions: Extensions<'_>,
+    ) -> Result<bool, GetSchemaTypeError> {
+        // we accept the overhead of cloning the `Value` and converting to
+        // `RestrictedExpr` in order to improve code reuse and maintainability
+        let rexpr = RestrictedExpr::from(value.clone());
+        self.typecheck_restricted_expr(rexpr.as_borrowed(), extensions)
+    }
+
     /// Does the given `BorrowedRestrictedExpr` have this validator type?
+    ///
+    /// TODO(#437): Handling of restricted exprs containing `Unknown`s is not
+    /// yet complete or correct, as of this writing.
     pub(crate) fn typecheck_restricted_expr(
         &self,
         restricted_expr: BorrowedRestrictedExpr<'_>,
@@ -1894,6 +1936,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
+            Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -2002,6 +2045,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
+            Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -2125,6 +2169,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
+            Extensions::all_available(),
         )
         .expect("Expected valid schema");
 
@@ -2166,6 +2211,7 @@ mod test {
             ))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
+            Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }

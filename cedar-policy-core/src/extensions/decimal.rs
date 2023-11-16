@@ -177,7 +177,7 @@ fn decimal_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
     let decimal = Decimal::from_str(str.as_str()).map_err(|e| extension_err(e.to_string()))?;
     let function_name = names::DECIMAL_FROM_STR_NAME.clone();
-    let e = ExtensionValueWithArgs::new(Arc::new(decimal), vec![arg.into()], function_name);
+    let e = ExtensionValueWithArgs::new(Arc::new(decimal), function_name, vec![arg.into()]);
     Ok(Value::ExtensionValue(Arc::new(e)).into())
 }
 
@@ -376,7 +376,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         // valid decimal strings
         assert_decimal_valid(
@@ -472,7 +472,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         let a = parse_expr(r#"decimal("123.0")"#).expect("parsing error");
         let b = parse_expr(r#"decimal("123.0000")"#).expect("parsing error");
@@ -536,7 +536,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         for ((l, r), res) in tests {
             assert_eq!(
@@ -603,7 +603,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         assert_eq!(
             eval.interpret_inline_policy(

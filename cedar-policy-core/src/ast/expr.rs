@@ -175,6 +175,15 @@ impl From<Value> for Expr {
     }
 }
 
+impl From<PartialValue> for Expr {
+    fn from(pv: PartialValue) -> Self {
+        match pv {
+            PartialValue::Value(v) => Expr::from(v),
+            PartialValue::Residual(expr) => expr,
+        }
+    }
+}
+
 impl<T> Expr<T> {
     fn new(expr_kind: ExprKind<T>, source_info: Option<SourceInfo>, data: T) -> Self {
         Self {
@@ -643,8 +652,8 @@ impl Unknown {
 
 impl std::fmt::Display for Unknown {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Like the Display impl for Expr, we delegate to the EST
-        // pretty-printer, to avoid code duplication
+        // Like the Display impl for Expr, we delegate to the EST pretty-printer,
+        // to avoid code duplication
         write!(f, "{}", crate::est::Expr::from(Expr::unknown(self.clone())))
     }
 }
@@ -936,10 +945,14 @@ impl<T> ExprBuilder<T> {
 
     /// Create an `Expr` which calls the extension function with the given
     /// `Name` on `args`
-    pub fn call_extension_fn(self, fn_name: Name, args: Vec<Expr<T>>) -> Expr<T> {
+    pub fn call_extension_fn(
+        self,
+        fn_name: Name,
+        args: impl IntoIterator<Item = Expr<T>>,
+    ) -> Expr<T> {
         self.with_expr_kind(ExprKind::ExtensionFunctionApp {
             fn_name,
-            args: Arc::new(args),
+            args: Arc::new(args.into_iter().collect()),
         })
     }
 

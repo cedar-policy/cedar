@@ -71,9 +71,6 @@ impl ParseError {
             ParseError::ToCST(to_cst_err) => Some(to_cst_err.primary_source_span()),
             ParseError::RestrictedExpr(restricted_expr_err) => match restricted_expr_err {
                 RestrictedExprError::InvalidRestrictedExpression { .. } => None,
-                RestrictedExprError::Parse(ParseErrors(parse_errs)) => {
-                    parse_errs.first().and_then(ParseError::primary_source_span)
-                }
             },
             ParseError::ToAST(_) | ParseError::ParseLiteral(_) => None,
         }

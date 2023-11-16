@@ -3,10 +3,14 @@
 
 use std::collections::{HashMap, HashSet};
 
-use cedar_policy_core::entities::JsonDeserializationErrorContext;
 use cedar_policy_core::{
-    ast::{Eid, EntityType, EntityUID, Id, Name, RestrictedExpr},
-    entities::CedarValueJson,
+    ast::{
+        Eid, EntityAttrEvaluationError, EntityType, EntityUID, Id, Name,
+        PartialValueSerializedAsExpr,
+    },
+    entities::{CedarValueJson, JsonDeserializationErrorContext},
+    evaluator::RestrictedEvaluator,
+    extensions::Extensions,
     parser::err::ParseErrors,
     FromNormalizedStr,
 };
@@ -117,7 +121,7 @@ pub struct ActionFragment {
     /// The values for the attributes defined for this actions entity, stored
     /// separately so that we can later extract use these values to construct
     /// the actual `Entity` objects defined by the schema.
-    pub(super) attributes: HashMap<SmolStr, RestrictedExpr>,
+    pub(super) attributes: HashMap<SmolStr, PartialValueSerializedAsExpr>,
 }
 
 type ResolveFunc<T> = dyn FnOnce(&HashMap<Name, Type>) -> Result<T>;
@@ -173,7 +177,12 @@ impl TryInto<ValidatorNamespaceDef> for NamespaceDefinition {
     type Error = SchemaError;
 
     fn try_into(self) -> Result<ValidatorNamespaceDef> {
-        ValidatorNamespaceDef::from_namespace_definition(None, self, ActionBehavior::default())
+        ValidatorNamespaceDef::from_namespace_definition(
+            None,
+            self,
+            ActionBehavior::default(),
+            Extensions::all_available(),
+        )
     }
 }
 
@@ -185,6 +194,7 @@ impl ValidatorNamespaceDef {
         namespace: Option<SmolStr>,
         namespace_def: NamespaceDefinition,
         action_behavior: ActionBehavior,
+        extensions: Extensions<'_>,
     ) -> Result<ValidatorNamespaceDef> {
         // Check that each entity types and action is only declared once.
         let mut e_types_ids: HashSet<SmolStr> = HashSet::new();
@@ -216,7 +226,8 @@ impl ValidatorNamespaceDef {
         // into the representation used by the validator.
         let type_defs =
             Self::build_type_defs(namespace_def.common_types, schema_namespace.as_ref())?;
-        let actions = Self::build_action_ids(namespace_def.actions, schema_namespace.as_ref())?;
+        let actions =
+            Self::build_action_ids(namespace_def.actions, schema_namespace.as_ref(), extensions)?;
         let entity_types =
             Self::build_entity_types(namespace_def.entity_types, schema_namespace.as_ref())?;
 
@@ -367,9 +378,11 @@ impl ValidatorNamespaceDef {
     fn convert_attr_jsonval_map_to_attributes(
         m: HashMap<SmolStr, CedarValueJson>,
         action_id: &EntityUID,
-    ) -> Result<(Attributes, HashMap<SmolStr, RestrictedExpr>)> {
+        extensions: Extensions<'_>,
+    ) -> Result<(Attributes, HashMap<SmolStr, PartialValueSerializedAsExpr>)> {
         let mut attr_types: HashMap<SmolStr, Type> = HashMap::new();
-        let mut attr_values: HashMap<SmolStr, RestrictedExpr> = HashMap::new();
+        let mut attr_values: HashMap<SmolStr, PartialValueSerializedAsExpr> = HashMap::new();
+        let evaluator = RestrictedEvaluator::new(&extensions);
 
         for (k, v) in m {
             let t = Self::jsonval_to_type_helper(&v, action_id);
@@ -389,7 +402,16 @@ impl ValidatorNamespaceDef {
             // PANIC SAFETY: see above
             #[allow(clippy::expect_used)]
             let e = v.into_expr(|| JsonDeserializationErrorContext::EntityAttribute { uid: action_id.clone(), attr: k.clone() }).expect("`Self::jsonval_to_type_helper` will always return `Err` for a `CedarValueJson` that might make `into_expr` return `Err`");
-            attr_values.insert(k.clone(), e);
+            let pv = evaluator
+                .partial_interpret(e.as_borrowed())
+                .map_err(|err| {
+                    SchemaError::ActionAttrEval(EntityAttrEvaluationError {
+                        uid: action_id.clone(),
+                        attr: k.clone(),
+                        err,
+                    })
+                })?;
+            attr_values.insert(k.clone(), pv.into());
         }
         Ok((
             Attributes::with_required_attributes(attr_types),
@@ -403,6 +425,7 @@ impl ValidatorNamespaceDef {
     fn build_action_ids(
         schema_file_actions: HashMap<SmolStr, ActionType>,
         schema_namespace: Option<&Name>,
+        extensions: Extensions<'_>,
     ) -> Result<ActionsDef> {
         Ok(ActionsDef {
             actions: schema_file_actions
@@ -450,6 +473,7 @@ impl ValidatorNamespaceDef {
                         Self::convert_attr_jsonval_map_to_attributes(
                             action_type.attributes.unwrap_or_default(),
                             &action_id,
+                            extensions,
                         )?;
 
                     Ok((

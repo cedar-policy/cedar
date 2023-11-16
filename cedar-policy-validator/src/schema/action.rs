@@ -1,7 +1,7 @@
 //! This module contains the definition of `ValidatorActionId` and the types it relies on
 
 use cedar_policy_core::{
-    ast::{EntityType, EntityUID, RestrictedExpr},
+    ast::{EntityType, EntityUID, PartialValueSerializedAsExpr},
     transitive_closure::TCNode,
 };
 use serde::Serialize;
@@ -38,7 +38,10 @@ pub struct ValidatorActionId {
     /// The actual attribute value for this action, used to construct an
     /// `Entity` for this action. Could also be used for more precise
     /// typechecking by partial evaluation.
-    pub(crate) attributes: HashMap<SmolStr, RestrictedExpr>,
+    ///
+    /// Attributes are serialized as `RestrictedExpr`s, so that roundtripping
+    /// works seamlessly.
+    pub(crate) attributes: HashMap<SmolStr, PartialValueSerializedAsExpr>,
 }
 
 impl ValidatorActionId {

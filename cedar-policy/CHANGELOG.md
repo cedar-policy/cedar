@@ -9,7 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Option to eagerly evaluate entity attributes and re-use across calls to `is_authorized`.
 - New APIs to `Entities` to make it easy to add a collection of entities to an
   existing `Entities` structure. (#276)
 - Export the `cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind}` and
@@ -27,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `is` operation as described in
   [RFC 5](https://github.com/cedar-policy/rfcs/blob/main/text/0005-is-operator.md).
   (#396)
+- `Entity::new_no_attrs()` which provides an infallible constructor for `Entity`
+  in the case that there are no attributes. (See changes to `Entity::new()` below.)
 
 ### Changed
 
@@ -37,7 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rename `cedar_policy_core::entities::JsonDeserializationError::ExtensionsError`
   to `cedar_policy_core::entities::JsonDeserializationError::ExtensionFunctionLookup`.
   (#360)
-- Rename variants in `cedar_policy::SchemaError`. (#231)
+- Rename variants in `SchemaError`. (#231)
+- `SchemaError` has a new variant corresponding to errors evaluating action
+  attributes. (#430)
 - `Diagnostics::errors()` now returns an iterator over `AuthorizationError`s.
   (#260)
 - `Response::new()` now expects a `Vec<AuthorizationError>` as its third
@@ -61,9 +64,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `false`. The behavior of equality on single IP addresses is unchanged, and so is
   the behavior of `.isInRange()`. (#348)
 - Standardize on duplicates being errors instead of last-write-wins in the
-  JSON-based APIs in the `frontend` module.
+  JSON-based APIs in the `frontend` module. This also means some error types
+  have changed.
+- `Entity::new()` now eagerly evaluates entity attributes, leading to
+  performance improvements (particularly when entity data is reused across
+  multiple `is_authorized` calls). As a result, it returns `Result`, because
+  attribute evaluation can fail. (#430)
+- `Entities::from_json_*()` also now eagerly evaluates entity attributes, and as
+  a result returns errors when attribute evaluation fails. (#430)
+- `Entity::attr()` now returns errors in many fewer cases (because the attribute
+  is stored in already-evaluated form), and its error type has changed. (#430)
+- `Context::from_*()` methods also now eagerly evaluate the `Context`, and as
+  a result return errors when evaluation fails. (#430)
 - `<EntityId as FromStr>::Error` is now `Infallible` instead of `ParseErrors`.
-  (#372)
 - Improve the `Display` impls for `Policy` and `PolicySet`, and add a `Display`
   impl for `Template`.  The displayed representations now more closely match the
   original input, whether the input was in string or JSON form. (#167)

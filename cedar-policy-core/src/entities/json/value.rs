@@ -19,11 +19,11 @@ use super::{
 };
 use crate::ast::{
     BorrowedRestrictedExpr, Eid, EntityUID, ExprConstructionError, ExprKind, Literal, Name,
-    RestrictedExpr, Unknown,
+    RestrictedExpr, Unknown, Value,
 };
 use crate::entities::{
-    schematype_of_restricted_expr, EntitySchemaConformanceError, EscapeKind, GetSchemaTypeError,
-    TypeMismatchError,
+    schematype_of_restricted_expr, unwrap_or_clone, EntitySchemaConformanceError, EscapeKind,
+    GetSchemaTypeError, TypeMismatchError,
 };
 use crate::extensions::Extensions;
 use crate::FromNormalizedStr;
@@ -283,36 +283,77 @@ impl CedarValueJson {
                 // if `map` contains a key which collides with one of our JSON
                 // escapes, then we have a problem because it would be interpreted
                 // as an escape when being read back in.
-                // We could be a little more permissive here, but to be
-                // conservative, we throw an error for any record that contains
-                // any key with a reserved name, not just single-key records
-                // with the reserved names.
-                let reserved_keys: HashSet<&str> =
-                    HashSet::from_iter(["__entity", "__extn", "__expr"]);
-                let collision = map.keys().find(|k| reserved_keys.contains(k.as_str()));
-                if let Some(collision) = collision {
-                    Err(JsonSerializationError::ReservedKey {
-                        key: collision.clone(),
-                    })
-                } else {
-                    // the common case: the record doesn't use any reserved keys
-                    Ok(Self::Record(
-                        map.iter()
-                            .map(|(k, v)| {
-                                Ok((
-                                    k.clone(),
-                                    CedarValueJson::from_expr(
-                                        // assuming the invariant holds for `expr`, it must also hold here
-                                        BorrowedRestrictedExpr::new_unchecked(v),
-                                    )?,
-                                ))
-                            })
-                            .collect::<Result<_, JsonSerializationError>>()?,
-                    ))
-                }
+                check_for_reserved_keys(map.keys())?;
+                Ok(Self::Record(
+                    map.iter()
+                        .map(|(k, v)| {
+                            Ok((
+                                k.clone(),
+                                CedarValueJson::from_expr(
+                                    // assuming the invariant holds for `expr`, it must also hold here
+                                    BorrowedRestrictedExpr::new_unchecked(v),
+                                )?,
+                            ))
+                        })
+                        .collect::<Result<_, JsonSerializationError>>()?,
+                ))
             }
             kind => {
                 Err(JsonSerializationError::UnexpectedRestrictedExprKind { kind: kind.clone() })
+            }
+        }
+    }
+
+    /// Convert a Cedar value into a `CedarValueJson`.
+    ///
+    /// Only throws errors in two cases:
+    /// 1. `value` is (or contains) a record with a reserved key such as
+    ///     "__entity"
+    /// 2. `value` is (or contains) an extension value, and the argument to the
+    ///     extension constructor that produced that extension value can't
+    ///     itself be converted to `CedarJsonValue`. (Either because that
+    ///     argument falls into one of these two cases itself, or because the
+    ///     argument is a nontrivial residual.)
+    pub fn from_value(value: Value) -> Result<Self, JsonSerializationError> {
+        match value {
+            Value::Lit(lit) => Ok(Self::from_lit(lit)),
+            Value::Set(set) => Ok(Self::Set(
+                set.iter()
+                    .cloned()
+                    .map(Self::from_value)
+                    .collect::<Result<_, _>>()?,
+            )),
+            Value::Record(map) => {
+                // if `map` contains a key which collides with one of our JSON
+                // escapes, then we have a problem because it would be interpreted
+                // as an escape when being read back in.
+                check_for_reserved_keys(map.keys())?;
+                Ok(Self::Record(
+                    map.iter()
+                        .map(|(k, v)| Ok((k.clone(), Self::from_value(v.clone())?)))
+                        .collect::<Result<JsonRecord, JsonSerializationError>>()?,
+                ))
+            }
+            Value::ExtensionValue(ev) => {
+                let ext_fn: &Name = &ev.constructor;
+                Ok(Self::ExtnEscape {
+                    __extn: FnAndArg {
+                        ext_fn: ext_fn.to_string().into(),
+                        arg: match ev.args.as_slice() {
+                            [ref expr] => Box::new(Self::from_expr(expr.as_borrowed())?),
+                            [] => {
+                                return Err(JsonSerializationError::ExtnCall0Arguments {
+                                    func: ext_fn.clone(),
+                                })
+                            }
+                            _ => {
+                                return Err(JsonSerializationError::ExtnCall2OrMoreArguments {
+                                    func: ext_fn.clone(),
+                                })
+                            }
+                        },
+                    },
+                })
             }
         }
     }
@@ -324,9 +365,28 @@ impl CedarValueJson {
             Literal::Long(i) => Self::Long(i),
             Literal::String(s) => Self::String(s),
             Literal::EntityUID(euid) => Self::EntityEscape {
-                __entity: (*euid).clone().into(),
+                __entity: unwrap_or_clone(euid).into(),
             },
         }
+    }
+}
+
+/// helper function to check if the given keys contain any reserved keys,
+/// throwing an appropriate `JsonSerializationError` if so
+fn check_for_reserved_keys<'a>(
+    mut keys: impl Iterator<Item = &'a SmolStr>,
+) -> Result<(), JsonSerializationError> {
+    // We could be a little more permissive here, but to be
+    // conservative, we throw an error for any record that contains
+    // any key with a reserved name, not just single-key records
+    // with the reserved names.
+    let reserved_keys: HashSet<&str> = HashSet::from_iter(["__entity", "__extn", "__expr"]);
+    let collision = keys.find(|k| reserved_keys.contains(k.as_str()));
+    match collision {
+        Some(collision) => Err(JsonSerializationError::ReservedKey {
+            key: collision.clone(),
+        }),
+        None => Ok(()),
     }
 }
 
@@ -419,7 +479,7 @@ impl<'e> ValueParser<'e> {
                         })
                         .collect::<Result<Vec<RestrictedExpr>, JsonDeserializationError>>()?,
                 )),
-                _ => {
+                val => {
                     let actual_val = {
                         let jvalue: CedarValueJson = serde_json::from_value(val)?;
                         jvalue.into_expr(ctx.clone())?
@@ -433,7 +493,7 @@ impl<'e> ValueParser<'e> {
                             Ok(actual_ty) => Some(Box::new(actual_ty)),
                             Err(_) => None, // just don't report the type if there was an error computing it
                         },
-                        actual_val: Box::new(actual_val),
+                        actual_val: Either::Right(Box::new(actual_val)),
                     };
                     match ctx() {
                         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
@@ -498,7 +558,7 @@ impl<'e> ValueParser<'e> {
                         }
                     })
                 }
-                _ => {
+                val => {
                     let actual_val = {
                         let jvalue: CedarValueJson = serde_json::from_value(val)?;
                         jvalue.into_expr(ctx.clone())?
@@ -512,7 +572,7 @@ impl<'e> ValueParser<'e> {
                             Ok(actual_ty) => Some(Box::new(actual_ty)),
                             Err(_) => None, // just don't report the type if there was an error computing it
                         },
-                        actual_val: Box::new(actual_val),
+                        actual_val: Either::Right(Box::new(actual_val)),
                     };
                     match ctx() {
                         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {

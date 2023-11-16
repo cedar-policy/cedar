@@ -17,10 +17,8 @@
 //! This module contains the `Entities` type and related functionality.
 
 use crate::ast::*;
-use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::transitive_closure::{compute_tc, enforce_tc_and_dag};
-use std::borrow::Cow;
 use std::collections::{hash_map, HashMap};
 use std::fmt::Write;
 
@@ -33,7 +31,6 @@ mod err;
 pub use err::*;
 mod json;
 pub use json::*;
-use smol_str::SmolStr;
 
 /// Represents an entity hierarchy, and allows looking up `Entity` objects by
 /// UID.
@@ -54,9 +51,6 @@ pub struct Entities {
     #[serde_as(as = "Vec<(_, _)>")]
     entities: HashMap<EntityUID, Entity>,
 
-    #[serde(skip)]
-    evaluated_entities: Option<EvaluatedEntities>,
-
     /// The mode flag determines whether this store functions as a partial store or
     /// as a fully concrete store.
     /// Mode::Concrete means that the store is fully concrete, and failed dereferences are an error.
@@ -73,7 +67,6 @@ impl Entities {
         Self {
             entities: HashMap::new(),
             mode: Mode::default(),
-            evaluated_entities: None,
         }
     }
 
@@ -85,7 +78,6 @@ impl Entities {
         Self {
             entities: self.entities,
             mode: Mode::Partial,
-            evaluated_entities: self.evaluated_entities,
         }
     }
 
@@ -148,7 +140,6 @@ impl Entities {
             }
             TCComputation::ComputeNow => compute_tc(&mut self.entities, true).map_err(Box::new)?,
         };
-        self.evaluated_entities = None;
         Ok(self)
     }
 
@@ -197,7 +188,6 @@ impl Entities {
         Ok(Self {
             entities: entity_map,
             mode: Mode::default(),
-            evaluated_entities: None,
         })
     }
 
@@ -298,37 +288,6 @@ impl Entities {
         dot_str.write_str("}\n")?;
         Ok(dot_str)
     }
-
-    /// Attempt to eagerly compute the values of attributes for all entities in the slice.
-    /// This can fail if evaluation of the [`RestrictedExpr`] fails.
-    /// In a future major version, we will likely make this function automatically called via the constructor.
-    pub fn evaluate(self) -> std::result::Result<Self, EvaluationError> {
-        if self.evaluated_entities.is_some() {
-            Ok(self)
-        } else {
-            let r = self.compute_entities_values()?;
-            Ok(Self {
-                entities: self.entities,
-                evaluated_entities: Some(r),
-                mode: self.mode,
-            })
-        }
-    }
-
-    fn compute_entities_values(&self) -> std::result::Result<EvaluatedEntities, EvaluationError> {
-        build_evaluated_entities(self, &Extensions::all_available())
-    }
-
-    /// Extracts the [`EntityAttrValues`] for this entity slice.
-    /// If the entity values have already been computed via [`Self::evaluate`], then that will be re-used.
-    /// Otherwise, the attributes will be evaluated.
-    pub fn get_attr_values(&self) -> std::result::Result<EntityAttrValues<'_>, EvaluationError> {
-        let map = match &self.evaluated_entities {
-            Some(cached) => Cow::Borrowed(cached),
-            None => Cow::Owned(self.compute_entities_values()?),
-        };
-        Ok(EntityAttrValues::new(map, self))
-    }
 }
 
 /// Create a map from EntityUids to Entities, erroring if there are any duplicates
@@ -343,73 +302,6 @@ fn create_entity_map(es: impl Iterator<Item = Entity>) -> Result<HashMap<EntityU
         };
     }
     Ok(map)
-}
-
-type EvaluatedEntities = HashMap<EntityUID, HashMap<SmolStr, PartialValue>>;
-
-/// Structure of borrowed entity information that is used in the evaluator
-#[derive(Debug)]
-pub struct EntityAttrValues<'a> {
-    /// The evaluated entity attributes. The attributes may either be owner or borrowed.
-    attrs: Cow<'a, EvaluatedEntities>,
-    /// The original entity slice, which contains hierarchy information.
-    entities: &'a Entities,
-}
-
-fn build_evaluated_entities(
-    entities: &Entities,
-    extensions: &'_ Extensions<'_>,
-) -> std::result::Result<EvaluatedEntities, EvaluationError> {
-    let restricted_eval = RestrictedEvaluator::new(extensions);
-    // Eagerly evaluate each attribute expression in the entities.
-    let attrs =
-        entities
-            .iter()
-            .map(|entity| {
-                Ok(
-                        (
-                            entity.uid(),
-                            entity
-                                .attrs_map()
-                                .iter()
-                                .map(|(attr, v)| {
-                                    Ok((
-                                        attr.to_owned(),
-                                        restricted_eval.partial_interpret(v.as_borrowed())?,
-                                    ))
-                                })
-                                .collect::<std::result::Result<
-                                    HashMap<SmolStr, PartialValue>,
-                                    EvaluationError,
-                                >>()?,
-                        ),
-                    )
-            })
-            .collect::<std::result::Result<
-                HashMap<EntityUID, HashMap<SmolStr, PartialValue>>,
-                EvaluationError,
-            >>()?;
-    Ok(attrs)
-}
-
-impl<'a> EntityAttrValues<'a> {
-    /// Construct an [`EntityAttrValues`] with either an owned or borrowed set of evaluated attributes.
-    pub fn new(attrs: Cow<'a, EvaluatedEntities>, entities: &'a Entities) -> Self {
-        Self { attrs, entities }
-    }
-
-    /// Get an entity's attribute map by its EntityUID.
-    pub fn get(&self, uid: &EntityUID) -> Dereference<'_, HashMap<SmolStr, PartialValue>> {
-        match self.entities.entity(uid) {
-            Dereference::NoSuchEntity => Dereference::NoSuchEntity,
-            Dereference::Residual(r) => Dereference::Residual(r),
-            Dereference::Data(_) => self
-                .attrs
-                .get(uid)
-                .map(Dereference::Data)
-                .unwrap_or_else(|| Dereference::NoSuchEntity),
-        }
-    }
 }
 
 impl IntoIterator for Entities {
@@ -816,8 +708,8 @@ mod json_parsing_tests {
             .unwrap();
         let euid = r#"Test::"jeff""#.parse().unwrap();
         let jeff = es.entity(&euid).unwrap();
-        let rexpr = jeff.get("foo").unwrap();
-        assert_eq!(rexpr, &RestrictedExpr::val(3));
+        let value = jeff.get("foo").unwrap();
+        assert_eq!(value, &PartialValue::from(3));
         assert!(jeff.is_descendant_of(&r#"Test::"susan""#.parse().unwrap()));
         simple_entities_still_sane(&es);
     }
@@ -917,7 +809,7 @@ mod json_parsing_tests {
         let bob = r#"Test::"bob""#.parse().unwrap();
         let alice = e.entity(&r#"Test::"alice""#.parse().unwrap()).unwrap();
         let bar = alice.get("bar").unwrap();
-        assert_eq!(bar, &RestrictedExpr::val(2));
+        assert_eq!(bar, &PartialValue::from(2));
         assert!(alice.is_descendant_of(&bob));
         let bob = e.entity(&bob).unwrap();
         assert!(bob.ancestors().collect::<Vec<_>>().is_empty());
@@ -979,7 +871,7 @@ mod json_parsing_tests {
 
         let janice = es.entity(&EntityUID::with_eid("janice"));
 
-        assert!(matches!(janice, Dereference::Residual(_)));
+        assert_matches!(janice, Dereference::Residual(_));
     }
 
     #[test]
@@ -1030,17 +922,6 @@ mod json_parsing_tests {
         let alice = es.entity(&EntityUID::with_eid("alice")).unwrap();
         // Double check transitive closure computation
         assert!(alice.is_descendant_of(&EntityUID::with_eid("bob")));
-    }
-
-    /// helper function which tests whether attribute values are shape-equal
-    fn assert_attr_vals_are_shape_equal(
-        actual: Option<&RestrictedExpr>,
-        expected: &RestrictedExpr,
-    ) {
-        assert_eq!(
-            actual.map(|re| RestrictedExprShapeOnly::new(re.as_borrowed())),
-            Some(RestrictedExprShapeOnly::new(expected.as_borrowed()))
-        )
     }
 
     #[test]
@@ -1249,36 +1130,39 @@ mod json_parsing_tests {
         let es = eparser.from_json_value(json).expect("JSON is correct");
 
         let alice = es.entity(&EntityUID::with_eid("alice")).unwrap();
-        assert_attr_vals_are_shape_equal(alice.get("bacon"), &RestrictedExpr::val("eggs"));
-        assert_attr_vals_are_shape_equal(
+        assert_eq!(alice.get("bacon"), Some(&PartialValue::from("eggs")));
+        assert_eq!(
             alice.get("pancakes"),
-            &RestrictedExpr::set([
-                RestrictedExpr::val(1),
-                RestrictedExpr::val(2),
-                RestrictedExpr::val(3),
-            ]),
+            Some(&PartialValue::from(vec![
+                Value::from(1),
+                Value::from(2),
+                Value::from(3),
+            ])),
         );
-        assert_attr_vals_are_shape_equal(
+        assert_eq!(
             alice.get("waffles"),
-            &RestrictedExpr::record([("key".into(), RestrictedExpr::val("value"))]).unwrap(),
+            Some(&PartialValue::from(vec![(
+                "key".into(),
+                Value::from("value")
+            )])),
         );
-        assert_attr_vals_are_shape_equal(
-            alice.get("toast"),
-            &RestrictedExpr::call_extension_fn(
+        assert_eq!(
+            alice.get("toast").cloned().map(RestrictedExpr::try_from),
+            Some(Ok(RestrictedExpr::call_extension_fn(
                 "decimal".parse().expect("should be a valid Name"),
                 vec![RestrictedExpr::val("33.47")],
-            ),
+            ))),
         );
-        assert_attr_vals_are_shape_equal(
+        assert_eq!(
             alice.get("12345"),
-            &RestrictedExpr::val(EntityUID::with_eid("bob")),
+            Some(&PartialValue::from(EntityUID::with_eid("bob"))),
         );
-        assert_attr_vals_are_shape_equal(
-            alice.get("a b c"),
-            &RestrictedExpr::call_extension_fn(
+        assert_eq!(
+            alice.get("a b c").cloned().map(RestrictedExpr::try_from),
+            Some(Ok(RestrictedExpr::call_extension_fn(
                 "ip".parse().expect("should be a valid Name"),
                 vec![RestrictedExpr::val("222.222.222.0/24")],
-            ),
+            ))),
         );
         assert!(alice.is_descendant_of(&EntityUID::with_eid("bob")));
         assert!(alice.is_descendant_of(&EntityUID::with_eid("catherine")));
@@ -1560,7 +1444,9 @@ mod json_parsing_tests {
             ]
             .into_iter()
             .collect(),
-        );
+            &Extensions::all_available(),
+        )
+        .unwrap();
         let entities = Entities::from_entities(
             [
                 complicated_entity,
@@ -1592,7 +1478,9 @@ mod json_parsing_tests {
             ]
             .into_iter()
             .collect(),
-        );
+            &Extensions::all_available(),
+        )
+        .unwrap();
         let entities = Entities::from_entities(
             [
                 oops_entity,
@@ -1604,10 +1492,10 @@ mod json_parsing_tests {
             Extensions::all_available(),
         )
         .expect("Failed to construct entities");
-        assert!(matches!(
+        assert_matches!(
             roundtrip(&entities),
             Err(EntitiesError::Serialization(JsonSerializationError::ReservedKey { key })) if key.as_str() == "__entity"
-        ));
+        );
     }
 
     /// test that an Action having a non-Action parent is an error
@@ -1791,6 +1679,7 @@ mod entities_tests {
 mod schema_based_parsing_tests {
     use super::*;
     use crate::extensions::Extensions;
+    use cool_asserts::assert_matches;
     use serde_json::json;
     use smol_str::SmolStr;
     use std::collections::HashSet;
@@ -1809,9 +1698,9 @@ mod schema_based_parsing_tests {
         }
         fn action(&self, action: &EntityUID) -> Option<Arc<Entity>> {
             match action.to_string().as_str() {
-                r#"Action::"view""# => Some(Arc::new(Entity::new(
+                r#"Action::"view""# => Some(Arc::new(Entity::new_with_attr_partial_value(
                     action.clone(),
-                    [(SmolStr::from("foo"), RestrictedExpr::val(34))]
+                    [(SmolStr::from("foo"), PartialValue::from(34))]
                         .into_iter()
                         .collect(),
                     [r#"Action::"readOnly""#.parse().expect("valid uid")]
@@ -1972,59 +1861,56 @@ mod schema_based_parsing_tests {
             .entity(&r#"Employee::"12UA45""#.parse().unwrap())
             .expect("that should be the employee id");
         let home_ip = parsed.get("home_ip").expect("home_ip attr should exist");
-        assert!(matches!(
-            home_ip.expr_kind(),
-            &ExprKind::Lit(Literal::String(_)),
-        ));
+        assert_matches!(
+            home_ip,
+            &PartialValue::Value(Value::Lit(Literal::String(_))),
+        );
         let trust_score = parsed
             .get("trust_score")
             .expect("trust_score attr should exist");
-        assert!(matches!(
-            trust_score.expr_kind(),
-            &ExprKind::Lit(Literal::String(_)),
-        ));
+        assert_matches!(
+            trust_score,
+            &PartialValue::Value(Value::Lit(Literal::String(_))),
+        );
         let manager = parsed.get("manager").expect("manager attr should exist");
-        assert!(matches!(manager.expr_kind(), &ExprKind::Record { .. }));
+        assert_matches!(manager, &PartialValue::Value(Value::Record { .. }));
         let work_ip = parsed.get("work_ip").expect("work_ip attr should exist");
-        assert!(matches!(work_ip.expr_kind(), &ExprKind::Record { .. }));
+        assert_matches!(work_ip, &PartialValue::Value(Value::Record { .. }));
         let hr_contacts = parsed
             .get("hr_contacts")
             .expect("hr_contacts attr should exist");
-        assert!(matches!(hr_contacts.expr_kind(), &ExprKind::Set(_)));
+        assert_matches!(hr_contacts, &PartialValue::Value(Value::Set(_)));
         let contact = {
-            let ExprKind::Set(set) = hr_contacts.expr_kind() else {
+            let PartialValue::Value(Value::Set(set)) = hr_contacts else {
                 panic!("already checked it was Set")
             };
             set.iter().next().expect("should be at least one contact")
         };
-        assert!(matches!(contact.expr_kind(), &ExprKind::Record { .. }));
+        assert_matches!(contact, &Value::Record(_));
         let json_blob = parsed
             .get("json_blob")
             .expect("json_blob attr should exist");
-        let ExprKind::Record(map) = json_blob.expr_kind() else {
+        let PartialValue::Value(Value::Record(map)) = json_blob else {
             panic!("expected json_blob to be a Record")
         };
         let (_, inner1) = map
             .iter()
             .find(|(k, _)| *k == "inner1")
             .expect("inner1 attr should exist");
-        assert!(matches!(
-            inner1.expr_kind(),
-            &ExprKind::Lit(Literal::Bool(_))
-        ));
+        assert_matches!(inner1, &Value::Lit(Literal::Bool(_)));
         let (_, inner3) = map
             .iter()
             .find(|(k, _)| *k == "inner3")
             .expect("inner3 attr should exist");
-        assert!(matches!(inner3.expr_kind(), &ExprKind::Record { .. }));
-        let ExprKind::Record(innermap) = inner3.expr_kind() else {
+        assert_matches!(inner3, &Value::Record(_));
+        let Value::Record(innermap) = inner3 else {
             panic!("already checked it was Record")
         };
         let (_, innerinner) = innermap
             .iter()
             .find(|(k, _)| *k == "innerinner")
             .expect("innerinner attr should exist");
-        assert!(matches!(innerinner.expr_kind(), &ExprKind::Record { .. }));
+        assert_matches!(innerinner, &Value::Record(_));
 
         // but with schema-based parsing, we get these other types
         let eparser = EntityJsonParser::new(
@@ -2042,96 +1928,80 @@ mod schema_based_parsing_tests {
         let is_full_time = parsed
             .get("isFullTime")
             .expect("isFullTime attr should exist");
-        assert_eq!(
-            RestrictedExprShapeOnly::new(is_full_time.as_borrowed()),
-            RestrictedExprShapeOnly::new(RestrictedExpr::val(true).as_borrowed())
-        );
+        assert_eq!(is_full_time, &PartialValue::Value(Value::from(true)),);
         let num_direct_reports = parsed
             .get("numDirectReports")
             .expect("numDirectReports attr should exist");
-        assert_eq!(
-            RestrictedExprShapeOnly::new(num_direct_reports.as_borrowed()),
-            RestrictedExprShapeOnly::new(RestrictedExpr::val(3).as_borrowed())
-        );
+        assert_eq!(num_direct_reports, &PartialValue::Value(Value::from(3)),);
         let department = parsed
             .get("department")
             .expect("department attr should exist");
-        assert_eq!(
-            RestrictedExprShapeOnly::new(department.as_borrowed()),
-            RestrictedExprShapeOnly::new(RestrictedExpr::val("Sales").as_borrowed())
-        );
+        assert_eq!(department, &PartialValue::Value(Value::from("Sales")),);
         let manager = parsed.get("manager").expect("manager attr should exist");
         assert_eq!(
-            RestrictedExprShapeOnly::new(manager.as_borrowed()),
-            RestrictedExprShapeOnly::new(
-                RestrictedExpr::val("Employee::\"34FB87\"".parse::<EntityUID>().expect("valid"))
-                    .as_borrowed()
-            )
+            manager,
+            &PartialValue::Value(Value::from(
+                "Employee::\"34FB87\"".parse::<EntityUID>().expect("valid")
+            )),
         );
         let hr_contacts = parsed
             .get("hr_contacts")
             .expect("hr_contacts attr should exist");
-        assert!(matches!(hr_contacts.expr_kind(), &ExprKind::Set(_)));
+        assert_matches!(hr_contacts, &PartialValue::Value(Value::Set(_)));
         let contact = {
-            let ExprKind::Set(set) = hr_contacts.expr_kind() else {
+            let PartialValue::Value(Value::Set(set)) = hr_contacts else {
                 panic!("already checked it was Set")
             };
             set.iter().next().expect("should be at least one contact")
         };
-        assert!(matches!(
-            contact.expr_kind(),
-            &ExprKind::Lit(Literal::EntityUID(_))
-        ));
+        assert_matches!(contact, &Value::Lit(Literal::EntityUID(_)));
         let json_blob = parsed
             .get("json_blob")
             .expect("json_blob attr should exist");
-        let ExprKind::Record(map) = json_blob.expr_kind() else {
+        let PartialValue::Value(Value::Record(map)) = json_blob else {
             panic!("expected json_blob to be a Record")
         };
         let (_, inner1) = map
             .iter()
             .find(|(k, _)| *k == "inner1")
             .expect("inner1 attr should exist");
-        assert!(matches!(
-            inner1.expr_kind(),
-            &ExprKind::Lit(Literal::Bool(_))
-        ));
+        assert_matches!(inner1, &Value::Lit(Literal::Bool(_)));
         let (_, inner3) = map
             .iter()
             .find(|(k, _)| *k == "inner3")
             .expect("inner3 attr should exist");
-        assert!(matches!(inner3.expr_kind(), &ExprKind::Record { .. }));
-        let ExprKind::Record(innermap) = inner3.expr_kind() else {
+        assert_matches!(inner3, &Value::Record(_));
+        let Value::Record(innermap) = inner3 else {
             panic!("already checked it was Record")
         };
         let (_, innerinner) = innermap
             .iter()
             .find(|(k, _)| *k == "innerinner")
             .expect("innerinner attr should exist");
-        assert!(matches!(
-            innerinner.expr_kind(),
-            &ExprKind::Lit(Literal::EntityUID(_))
-        ));
+        assert_matches!(innerinner, &Value::Lit(Literal::EntityUID(_)));
         assert_eq!(
-            parsed.get("home_ip"),
-            Some(&RestrictedExpr::call_extension_fn(
+            parsed.get("home_ip").cloned().map(RestrictedExpr::try_from),
+            Some(Ok(RestrictedExpr::call_extension_fn(
                 Name::parse_unqualified_name("ip").expect("valid"),
                 vec![RestrictedExpr::val("222.222.222.101")]
-            )),
+            ))),
         );
         assert_eq!(
-            parsed.get("work_ip"),
-            Some(&RestrictedExpr::call_extension_fn(
+            parsed.get("work_ip").cloned().map(RestrictedExpr::try_from),
+            Some(Ok(RestrictedExpr::call_extension_fn(
                 Name::parse_unqualified_name("ip").expect("valid"),
                 vec![RestrictedExpr::val("2.2.2.0/24")]
-            )),
+            ))),
         );
         assert_eq!(
-            parsed.get("trust_score"),
-            Some(&RestrictedExpr::call_extension_fn(
+            parsed
+                .get("trust_score")
+                .cloned()
+                .map(RestrictedExpr::try_from),
+            Some(Ok(RestrictedExpr::call_extension_fn(
                 Name::parse_unqualified_name("decimal").expect("valid"),
                 vec![RestrictedExpr::val("5.7")]
-            )),
+            ))),
         );
     }
 
@@ -3038,28 +2908,19 @@ mod schema_based_parsing_tests {
         let is_full_time = parsed
             .get("isFullTime")
             .expect("isFullTime attr should exist");
-        assert_eq!(
-            RestrictedExprShapeOnly::new(is_full_time.as_borrowed()),
-            RestrictedExprShapeOnly::new(RestrictedExpr::val(true).as_borrowed())
-        );
+        assert_eq!(is_full_time, &PartialValue::from(true));
         let department = parsed
             .get("department")
             .expect("department attr should exist");
-        assert_eq!(
-            RestrictedExprShapeOnly::new(department.as_borrowed()),
-            RestrictedExprShapeOnly::new(RestrictedExpr::val("Sales").as_borrowed())
-        );
+        assert_eq!(department, &PartialValue::from("Sales"),);
         let manager = parsed.get("manager").expect("manager attr should exist");
         assert_eq!(
-            RestrictedExprShapeOnly::new(manager.as_borrowed()),
-            RestrictedExprShapeOnly::new(
-                RestrictedExpr::val(
-                    "XYZCorp::Employee::\"34FB87\""
-                        .parse::<EntityUID>()
-                        .expect("valid")
-                )
-                .as_borrowed()
-            )
+            manager,
+            &PartialValue::from(
+                "XYZCorp::Employee::\"34FB87\""
+                    .parse::<EntityUID>()
+                    .expect("valid")
+            ),
         );
 
         let entitiesjson = json!(
