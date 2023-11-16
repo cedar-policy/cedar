@@ -278,31 +278,30 @@ impl Context {
             .from_json_file(json)
     }
 
-    /*
     /// Iterate over the (key, value) pairs in the `Context`; or return `None`
     /// if the `Context` is purely unknown
     //
     // PANIC SAFETY: This is safe due to the invariant on `self.context`, `self.context` must always be a record
     #[allow(clippy::panic)]
-    pub fn iter(&self) -> Option<&dyn Iterator<Item = (&SmolStr, PartialValue)>> {
+    #[cfg(fuzzing)]
+    pub fn iter<'s>(&'s self) -> Option<Box<dyn Iterator<Item = (&SmolStr, PartialValue)> + 's>> {
         // PANIC SAFETY invariant on `self.context` ensures that it is a record
         #[allow(clippy::panic)]
         match self.context.as_ref() {
-            PartialValue::Value(Value::Record(map)) => {
-                Some(&map.iter().map(|(k, v)| (k, PartialValue::Value(v.clone()))))
-            }
+            PartialValue::Value(Value::Record(map)) => Some(Box::new(
+                map.iter().map(|(k, v)| (k, PartialValue::Value(v.clone()))),
+            )),
             PartialValue::Residual(expr) => match expr.expr_kind() {
-                ExprKind::Record(map) => Some(
-                    &map.iter()
+                ExprKind::Record(map) => Some(Box::new(
+                    map.iter()
                         .map(|(k, v)| (k, PartialValue::Residual(v.clone()))),
-                ),
-                ExprKind::Unknown(unk) => None,
+                )),
+                ExprKind::Unknown(_) => None,
                 kind => panic!("internal invariant violation: expected a record, got {kind:?}"),
             },
             v => panic!("internal invariant violation: expected a record, got {v:?}"),
         }
     }
-    */
 }
 
 impl AsRef<PartialValue> for Context {
