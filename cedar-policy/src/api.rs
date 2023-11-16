@@ -1177,8 +1177,8 @@ pub enum SchemaError {
     #[error("duplicate common type `{0}`")]
     DuplicateCommonType(String),
     /// Cycle in the schema's action hierarchy.
-    #[error("cycle in action hierarchy")]
-    CycleInActionHierarchy,
+    #[error("cycle in action hierarchy containing `{0}`")]
+    CycleInActionHierarchy(EntityUid),
     /// Parse errors occurring while parsing an entity type.
     #[error("parse error in entity type: {0}")]
     ParseEntityType(ParseErrors),
@@ -1280,8 +1280,8 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             cedar_policy_validator::SchemaError::DuplicateCommonType(c) => {
                 Self::DuplicateCommonType(c)
             }
-            cedar_policy_validator::SchemaError::CycleInActionHierarchy => {
-                Self::CycleInActionHierarchy
+            cedar_policy_validator::SchemaError::CycleInActionHierarchy(e) => {
+                Self::CycleInActionHierarchy(EntityUid(e))
             }
             cedar_policy_validator::SchemaError::ParseEntityType(e) => Self::ParseEntityType(e),
             cedar_policy_validator::SchemaError::ParseNamespace(e) => Self::ParseNamespace(e),
