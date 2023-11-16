@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (#396)
 - `Entity::new_no_attrs()` which provides an infallible constructor for `Entity`
   in the case that there are no attributes. (See changes to `Entity::new()` below.)
+- `RestrictedExpression::new_entity_uid()` (#442, resolving #350)
 
 ### Changed
 
