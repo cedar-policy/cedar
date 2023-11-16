@@ -848,7 +848,10 @@ impl ASTNode<Option<cst::Expr>> {
         match expr {
             cst::ExprData::Or(o) => o.to_ref_or_refs::<T>(errs, var),
             cst::ExprData::If(_, _, _) => {
-                errs.push(ToASTError::wrong_node(T::err_str(), "if").into());
+                errs.push(
+                    ToASTError::wrong_node(T::err_str(), "an `if` expression", None::<String>)
+                        .into(),
+                );
                 None
             }
         }
@@ -895,7 +898,7 @@ struct SingleEntity(pub EntityUID);
 
 impl RefKind for SingleEntity {
     fn err_str() -> &'static str {
-        "entity uid"
+        "an entity uid"
     }
 
     fn create_single_ref(e: EntityUID, _errs: &mut ParseErrors) -> Option<Self> {
@@ -915,7 +918,7 @@ impl RefKind for SingleEntity {
 
 impl RefKind for EntityReference {
     fn err_str() -> &'static str {
-        "entity uid or matching template slot"
+        "an entity uid or matching template slot"
     }
 
     fn create_slot(_: &mut ParseErrors) -> Option<Self> {
@@ -941,7 +944,7 @@ enum OneOrMultipleRefs {
 
 impl RefKind for OneOrMultipleRefs {
     fn err_str() -> &'static str {
-        "entity uid, set of entity uids, or template slot"
+        "an entity uid, set of entity uids, or template slot"
     }
 
     fn create_slot(errs: &mut ParseErrors) -> Option<Self> {
@@ -986,7 +989,10 @@ impl ASTNode<Option<cst::Or>> {
         match or.extended.len() {
             0 => or.initial.to_ref_or_refs::<T>(errs, var),
             _n => {
-                errs.push(ToASTError::wrong_node(T::err_str(), "||").into());
+                errs.push(
+                    ToASTError::wrong_node(T::err_str(), "a `||` expression", None::<String>)
+                        .into(),
+                );
                 None
             }
         }
@@ -1000,7 +1006,10 @@ impl ASTNode<Option<cst::And>> {
         match and.extended.len() {
             0 => and.initial.to_ref_or_refs::<T>(errs, var),
             _n => {
-                errs.push(ToASTError::wrong_node(T::err_str(), "&&").into());
+                errs.push(
+                    ToASTError::wrong_node(T::err_str(), "a `&&` expression", None::<String>)
+                        .into(),
+                );
                 None
             }
         }
@@ -1038,20 +1047,32 @@ impl ASTNode<Option<cst::Relation>> {
             cst::Relation::Common { initial, extended } => match extended.len() {
                 0 => initial.to_ref_or_refs::<T>(errs, var),
                 _n => {
-                    errs.push(ToASTError::wrong_node(T::err_str(), "binary operator").into());
+                    errs.push(
+                        ToASTError::wrong_node(T::err_str(), "a binary operator", None::<String>)
+                            .into(),
+                    );
                     None
                 }
             },
             cst::Relation::Has { .. } => {
-                errs.push(ToASTError::wrong_node(T::err_str(), "has").into());
+                errs.push(
+                    ToASTError::wrong_node(T::err_str(), "a `has` expression", None::<String>)
+                        .into(),
+                );
                 None
             }
             cst::Relation::Like { .. } => {
-                errs.push(ToASTError::wrong_node(T::err_str(), "like").into());
+                errs.push(
+                    ToASTError::wrong_node(T::err_str(), "a `like` expression", None::<String>)
+                        .into(),
+                );
                 None
             }
             cst::Relation::IsIn { .. } => {
-                errs.push(ToASTError::wrong_node(T::err_str(), "is").into());
+                errs.push(
+                    ToASTError::wrong_node(T::err_str(), "an `is` expression", None::<String>)
+                        .into(),
+                );
                 None
             }
         }
@@ -1141,7 +1162,7 @@ impl ASTNode<Option<cst::Add>> {
         match add.extended.len() {
             0 => add.initial.to_ref_or_refs::<T>(errs, var),
             _n => {
-                errs.push(ToASTError::wrong_node(T::err_str(), "+/-").into());
+                errs.push(ToASTError::wrong_node(T::err_str(), "a `+/-` expression", Some("note that entity types and namespaces cannot use `+` or `-` characters -- perhaps try `_` or `::` instead?")).into());
                 None
             }
         }
@@ -1181,7 +1202,9 @@ impl ASTNode<Option<cst::Mult>> {
         match mult.extended.len() {
             0 => mult.initial.to_ref_or_refs::<T>(errs, var),
             _n => {
-                errs.push(ToASTError::wrong_node(T::err_str(), "*").into());
+                errs.push(
+                    ToASTError::wrong_node(T::err_str(), "a `*` expression", None::<String>).into(),
+                );
                 None
             }
         }
@@ -1276,7 +1299,14 @@ impl ASTNode<Option<cst::Unary>> {
         let unary = maybe_unary?;
         match &unary.op {
             Some(op) => {
-                errs.push(ToASTError::wrong_node(T::err_str(), op.to_string()).into());
+                errs.push(
+                    ToASTError::wrong_node(
+                        T::err_str(),
+                        format!("a `{op}` expression"),
+                        None::<String>,
+                    )
+                    .into(),
+                );
                 None
             }
             None => unary.item.to_ref_or_refs::<T>(errs, var),
@@ -1384,7 +1414,7 @@ impl ASTNode<Option<cst::Member>> {
         match mem.access.len() {
             0 => mem.item.to_ref_or_refs::<T>(errs, var),
             _n => {
-                errs.push(ToASTError::wrong_node(T::err_str(), ".").into());
+                errs.push(ToASTError::wrong_node(T::err_str(), "a `.` expression", Some("note that entity types and namespaces cannot use `.` characters -- perhaps try `_` or `::` instead?")).into());
                 None
             }
         }
@@ -1633,30 +1663,51 @@ impl ASTNode<Option<cst::Primary>> {
     fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
         let maybe_prim = self.as_inner();
         let prim = maybe_prim?;
-        let r: Result<Option<T>, String> = match prim {
+        match prim {
             cst::Primary::Slot(s) => {
                 let slot = s.as_inner()?;
                 if slot.matches(var) {
-                    Ok(T::create_slot(errs))
+                    T::create_slot(errs)
                 } else {
-                    Err(format!("{slot} instead of ?{var}"))
+                    errs.push(
+                        ToASTError::wrong_node(
+                            T::err_str(),
+                            format!("{slot} instead of ?{var}"),
+                            None::<String>,
+                        )
+                        .into(),
+                    );
+                    None
                 }
             }
-            cst::Primary::Literal(_) => Err("literal".to_string()),
-            cst::Primary::Ref(x) => Ok(T::create_single_ref(x.to_ref(errs)?, errs)),
-            cst::Primary::Name(_) => Err("name".to_string()),
-            cst::Primary::Expr(x) => Ok(x.to_ref_or_refs::<T>(errs, var)),
+            cst::Primary::Literal(lit) => {
+                let found = match lit.as_inner() {
+                    Some(lit) => format!("literal `{lit}`"),
+                    None => "empty node".to_string(),
+                };
+                errs.push(ToASTError::wrong_node(T::err_str(), found, None::<String>).into());
+                None
+            }
+            cst::Primary::Ref(x) => T::create_single_ref(x.to_ref(errs)?, errs),
+            cst::Primary::Name(name) => {
+                let found = match name.as_inner() {
+                    Some(name) => format!("name `{name}`"),
+                    None => "name".to_string(),
+                };
+                errs.push(ToASTError::wrong_node(T::err_str(), found, None::<String>).into());
+                None
+            }
+            cst::Primary::Expr(x) => x.to_ref_or_refs::<T>(errs, var),
             cst::Primary::EList(lst) => {
                 let v: Option<Vec<EntityUID>> =
                     lst.iter().map(|expr| expr.to_ref(var, errs)).collect();
-                Ok(T::create_multiple_refs(v?, errs))
+                T::create_multiple_refs(v?, errs)
             }
-            cst::Primary::RInits(_) => Err("record initializer".to_string()),
-        };
-        match r {
-            Ok(t) => t,
-            Err(found) => {
-                errs.push(ToASTError::wrong_node(T::err_str(), found).into());
+            cst::Primary::RInits(_) => {
+                errs.push(
+                    ToASTError::wrong_node(T::err_str(), "record initializer", None::<String>)
+                        .into(),
+                );
                 None
             }
         }
@@ -2145,6 +2196,7 @@ mod tests {
         ast::Expr,
         parser::{err::ParseErrors, *},
     };
+    use cool_asserts::assert_matches;
     use std::str::FromStr;
 
     #[test]
@@ -3784,11 +3836,11 @@ mod tests {
             ),
             (
                 r#"permit(principal in Group::"friends" is User, action, resource);"#,
-                "expected a entity uid or matching template slot",
+                "expected an entity uid or matching template slot",
             ),
             (
                 r#"permit(principal, action, resource in Folder::"folder" is File);"#,
-                "expected a entity uid or matching template slot",
+                "expected an entity uid or matching template slot",
             ),
             (
                 r#"permit(principal is User == User::"Alice", action, resource);"#,
@@ -3808,11 +3860,11 @@ mod tests {
             ),
             (
                 r#"permit(principal is User in 1, action, resource);"#,
-                "expected a entity uid or matching template slot, found a `literal` statement",
+                "expected an entity uid or matching template slot, found literal `1`",
             ),
             (
                 r#"permit(principal, action, resource is File in 1);"#,
-                "expected a entity uid or matching template slot, found a `literal` statement",
+                "expected an entity uid or matching template slot, found literal `1`",
             ),
             (
                 r#"permit(principal is 1, action, resource);"#,
@@ -3832,11 +3884,11 @@ mod tests {
             ),
             (
                 r#"permit(principal is User in ?resource, action, resource);"#,
-                "expected a entity uid or matching template slot",
+                "expected an entity uid or matching template slot",
             ),
             (
                 r#"permit(principal, action, resource is Folder in ?principal);"#,
-                "expected a entity uid or matching template slot",
+                "expected an entity uid or matching template slot",
             ),
             (
                 r#"permit(principal, action, resource) when { principal is 1 };"#,
@@ -3853,5 +3905,25 @@ mod tests {
                 err
             );
         }
+    }
+
+    #[test]
+    fn issue_255() {
+        let policy = r#"
+            permit (
+                principal == name-with-dashes::"Alice",
+                action,
+                resource
+            );
+        "#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                assert!(
+                    e.to_string().contains("expected an entity uid or matching template slot, found a `+/-` expression; note that entity types and namespaces cannot use `+` or `-` characters -- perhaps try `_` or `::` instead?"),
+                    "actual error message was {e}"
+                )
+            }
+        )
     }
 }
