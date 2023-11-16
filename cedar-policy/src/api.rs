@@ -718,7 +718,7 @@ impl Authorizer {
     /// println!("{:?}", r);
     /// ```
     pub fn is_authorized(&self, r: &Request, p: &PolicySet, e: &Entities) -> Response {
-        self.0.is_authorized(&r.0, &p.ast, &e.0).into()
+        self.0.is_authorized(r.0.clone(), &p.ast, &e.0).into()
     }
 
     /// A partially evaluated authorization request.
@@ -734,7 +734,7 @@ impl Authorizer {
     ) -> PartialResponse {
         let response = self
             .0
-            .is_authorized_core(&query.0, &policy_set.ast, &entities.0);
+            .is_authorized_core(query.0.clone(), &policy_set.ast, &entities.0);
         match response {
             authorizer::ResponseKind::FullyEvaluated(a) => PartialResponse::Concrete(a.into()),
             authorizer::ResponseKind::Partial(p) => PartialResponse::Residual(p.into()),

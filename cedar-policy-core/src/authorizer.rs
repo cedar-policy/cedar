@@ -93,7 +93,7 @@ impl Authorizer {
     ///
     /// The language spec and Dafny model give a precise definition of how this is
     /// computed.
-    pub fn is_authorized(&self, q: &Request, pset: &PolicySet, entities: &Entities) -> Response {
+    pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> Response {
         match self.is_authorized_core(q, pset, entities) {
             ResponseKind::FullyEvaluated(response) => response,
             ResponseKind::Partial(partial) => {
@@ -161,11 +161,11 @@ impl Authorizer {
     /// computed.
     pub fn is_authorized_core(
         &self,
-        q: &Request,
+        q: Request,
         pset: &PolicySet,
         entities: &Entities,
     ) -> ResponseKind {
-        let eval = Evaluator::new(q.clone(), entities, &self.extensions);
+        let eval = Evaluator::new(q, entities, &self.extensions);
 
         let results = self.evaluate_policies(pset, eval);
 
@@ -410,7 +410,7 @@ mod test {
         .unwrap();
         let pset = PolicySet::new();
         let entities = Entities::new();
-        let ans = a.is_authorized(&q, &pset, &entities);
+        let ans = a.is_authorized(q, &pset, &entities);
         assert_eq!(ans.decision, Decision::Deny);
     }
 
@@ -448,25 +448,25 @@ mod test {
         let p1 = parser::parse_policy(Some("1".into()), p1_src).unwrap();
         pset.add_static(p1).unwrap();
 
-        let ans = a.is_authorized(&q, &pset, &entities);
+        let ans = a.is_authorized(q.clone(), &pset, &entities);
         assert_eq!(ans.decision, Decision::Allow);
 
         pset.add_static(parser::parse_policy(Some("2".into()), p2_src).unwrap())
             .unwrap();
 
-        let ans = a.is_authorized(&q, &pset, &entities);
+        let ans = a.is_authorized(q.clone(), &pset, &entities);
         assert_eq!(ans.decision, Decision::Allow);
 
         pset.add_static(parser::parse_policy(Some("3".into()), p3_src).unwrap())
             .unwrap();
 
-        let ans = a.is_authorized(&q, &pset, &entities);
+        let ans = a.is_authorized(q.clone(), &pset, &entities);
         assert_eq!(ans.decision, Decision::Allow);
 
         pset.add_static(parser::parse_policy(Some("4".into()), p4_src).unwrap())
             .unwrap();
 
-        let ans = a.is_authorized(&q, &pset, &entities);
+        let ans = a.is_authorized(q, &pset, &entities);
         assert_eq!(ans.decision, Decision::Deny);
     }
 
@@ -514,7 +514,7 @@ mod test {
         pset.add_static(true_policy("0", Effect::Permit))
             .expect("Policy ID already in PolicySet");
         let entities = Entities::new();
-        let ans = a.is_authorized(&q, &pset, &entities);
+        let ans = a.is_authorized(q, &pset, &entities);
         assert!(ans.decision == Decision::Allow);
     }
 
@@ -544,25 +544,25 @@ mod test {
         pset.add_static(true_policy("0", Effect::Permit))
             .expect("Policy ID already in PolicySet");
         let entities = Entities::new();
-        let ans = a.is_authorized(&q, &pset, &entities);
+        let ans = a.is_authorized(q.clone(), &pset, &entities);
         assert_eq!(ans.decision, Decision::Allow);
         pset.add_static(context_pol("1", Effect::Forbid))
             .expect("Policy ID overlap");
-        let ans = a.is_authorized(&q, &pset, &entities);
+        let ans = a.is_authorized(q.clone(), &pset, &entities);
         assert_eq!(ans.decision, Decision::Allow);
 
         let mut pset = PolicySet::new();
         let entities = Entities::new();
         pset.add_static(context_pol("1", Effect::Forbid))
             .expect("Policy ID overlap");
-        let ans = a.is_authorized(&q, &pset, &entities);
+        let ans = a.is_authorized(q.clone(), &pset, &entities);
         assert_eq!(ans.decision, Decision::Deny);
 
         let mut pset = PolicySet::new();
         let entities = Entities::new();
         pset.add_static(context_pol("1", Effect::Permit))
             .expect("Policy ID overlap");
-        let ans = a.is_authorized(&q, &pset, &entities);
+        let ans = a.is_authorized(q, &pset, &entities);
         assert_eq!(ans.decision, Decision::Deny);
     }
 
@@ -584,7 +584,7 @@ mod test {
         pset.add_static(true_policy("1", Effect::Forbid))
             .expect("Policy ID already in PolicySet");
         let entities = Entities::new();
-        let ans = a.is_authorized(&q, &pset, &entities);
+        let ans = a.is_authorized(q, &pset, &entities);
         assert!(ans.decision == Decision::Deny);
     }
 
@@ -622,13 +622,13 @@ mod test {
         pset.add_static(parser::parse_policy(Some("2".to_string()), src2).unwrap())
             .unwrap();
 
-        let r = a.is_authorized_core(&q, &pset, &es).decision();
+        let r = a.is_authorized_core(q.clone(), &pset, &es).decision();
         assert_eq!(r, Some(Decision::Allow));
 
         pset.add_static(parser::parse_policy(Some("3".to_string()), src3).unwrap())
             .unwrap();
 
-        let r = a.is_authorized_core(&q, &pset, &es).decision();
+        let r = a.is_authorized_core(q, &pset, &es).decision();
         assert_eq!(r, Some(Decision::Allow));
     }
 
@@ -660,7 +660,7 @@ mod test {
         pset.add_static(parser::parse_policy(Some("2".to_string()), src2).unwrap())
             .unwrap();
 
-        let r = a.is_authorized_core(&q, &pset, &es);
+        let r = a.is_authorized_core(q.clone(), &pset, &es);
         match r {
             ResponseKind::FullyEvaluated(_) => {
                 panic!("Reached response, should have gotten residual.")
@@ -677,7 +677,7 @@ mod test {
                     )
                 });
                 let pset = PolicySet::try_from_iter(new).unwrap();
-                let r = a.is_authorized(&q, &pset, &es);
+                let r = a.is_authorized(q.clone(), &pset, &es);
                 assert_eq!(r.decision, Decision::Allow);
 
                 let map = [("test".into(), Value::Lit(true.into()))]
@@ -691,7 +691,7 @@ mod test {
                     )
                 });
                 let pset = PolicySet::try_from_iter(new).unwrap();
-                let r = a.is_authorized(&q, &pset, &es);
+                let r = a.is_authorized(q, &pset, &es);
                 assert_eq!(r.decision, Decision::Deny);
             }
         }
@@ -712,7 +712,7 @@ mod test {
         let mut pset = PolicySet::new();
         let es = Entities::new();
 
-        let r = a.is_authorized_core(&q, &pset, &es);
+        let r = a.is_authorized_core(q.clone(), &pset, &es);
         assert_eq!(r.decision(), Some(Decision::Deny));
 
         let src1 = r#"
@@ -721,7 +721,7 @@ mod test {
 
         pset.add_static(parser::parse_policy(Some("1".into()), src1).unwrap())
             .unwrap();
-        let r = a.is_authorized_core(&q, &pset, &es);
+        let r = a.is_authorized_core(q.clone(), &pset, &es);
         assert_eq!(r.decision(), Some(Decision::Deny));
 
         let src2 = r#"
@@ -730,7 +730,7 @@ mod test {
 
         pset.add_static(parser::parse_policy(Some("2".into()), src2).unwrap())
             .unwrap();
-        let r = a.is_authorized_core(&q, &pset, &es);
+        let r = a.is_authorized_core(q.clone(), &pset, &es);
         assert_eq!(r.decision(), Some(Decision::Deny));
 
         let src3 = r#"
@@ -744,7 +744,7 @@ mod test {
             .unwrap();
         pset.add_static(parser::parse_policy(Some("4".into()), src4).unwrap())
             .unwrap();
-        let r = a.is_authorized_core(&q, &pset, &es);
+        let r = a.is_authorized_core(q, &pset, &es);
         assert_eq!(r.decision(), Some(Decision::Deny));
     }
 
@@ -778,7 +778,7 @@ mod test {
         pset.add_static(parser::parse_policy(Some("2".into()), src2).unwrap())
             .unwrap();
 
-        let r = a.is_authorized_core(&q, &pset, &es);
+        let r = a.is_authorized_core(q.clone(), &pset, &es);
         match r {
             ResponseKind::FullyEvaluated(_) => {
                 panic!("Reached response, should have gotten residual.")
@@ -795,7 +795,7 @@ mod test {
                     )
                 });
                 let pset = PolicySet::try_from_iter(new).unwrap();
-                let r = a.is_authorized(&q, &pset, &es);
+                let r = a.is_authorized(q.clone(), &pset, &es);
                 assert_eq!(r.decision, Decision::Deny);
 
                 let map = [("a".into(), Value::Lit(true.into()))]
@@ -809,14 +809,14 @@ mod test {
                     )
                 });
                 let pset = PolicySet::try_from_iter(new).unwrap();
-                let r = a.is_authorized(&q, &pset, &es);
+                let r = a.is_authorized(q.clone(), &pset, &es);
                 assert_eq!(r.decision, Decision::Allow);
             }
         }
 
         pset.add_static(parser::parse_policy(Some("3".into()), src3).unwrap())
             .unwrap();
-        let r = a.is_authorized_core(&q, &pset, &es);
+        let r = a.is_authorized_core(q, &pset, &es);
         assert_eq!(r.decision(), Some(Decision::Deny));
     }
 }
