@@ -1,6 +1,6 @@
 use super::{
-    schematype_of_restricted_expr, EntityTypeDescription,
-    GetSchemaTypeError, HeterogeneousSetError, Schema, SchemaType, TypeMismatchError,
+    schematype_of_restricted_expr, EntityTypeDescription, GetSchemaTypeError,
+    HeterogeneousSetError, Schema, SchemaType, TypeMismatchError,
 };
 use crate::ast::{
     BorrowedRestrictedExpr, Entity, EntityType, EntityUID, PartialValue,
