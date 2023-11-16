@@ -261,7 +261,7 @@ impl Entity {
     ///
     /// Unlike in `Entity::new()`, in this constructor, attributes are expressed
     /// as `PartialValue`.
-    pub fn new_with_attr_partialvalues(
+    pub fn new_with_attr_partial_value(
         uid: EntityUID,
         attrs: HashMap<SmolStr, PartialValue>,
         ancestors: HashSet<EntityUID>,
