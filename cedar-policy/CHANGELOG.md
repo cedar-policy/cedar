@@ -40,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (#360)
 - Rename variants in `SchemaError`. (#231)
 - `SchemaError` has a new variant corresponding to errors evaluating action
-  attributes. (#372)
+  attributes. (#430)
 - `Diagnostics::errors()` now returns an iterator over `AuthorizationError`s.
   (#260)
 - `Response::new()` now expects a `Vec<AuthorizationError>` as its third
@@ -69,11 +69,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Entity::new()` now eagerly evaluates entity attributes, leading to
   performance improvements (particularly when entity data is reused across
   multiple `is_authorized` calls). As a result, it returns `Result`, because
-  attribute evaluation can fail.
+  attribute evaluation can fail. (#430)
 - `Entities::from_json_*()` also now eagerly evaluates entity attributes, and as
-  a result returns errors when attribute evaluation fails.
+  a result returns errors when attribute evaluation fails. (#430)
 - `Entity::attr()` now returns errors in many fewer cases (because the attribute
-  is stored in already-evaluated form), and its error type has changed.
+  is stored in already-evaluated form), and its error type has changed. (#430)
+- `Context::from_*()` methods also now eagerly evaluate the `Context`, and as
+  a result return errors when evaluation fails. (#430)
 - `<EntityId as FromStr>::Error` is now `Infallible` instead of `ParseErrors`.
 - Improve the `Display` impls for `Policy` and `PolicySet`, and add a `Display`
   impl for `Template`.  The displayed representations now more closely match the

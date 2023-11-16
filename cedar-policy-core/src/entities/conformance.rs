@@ -1,8 +1,11 @@
 use super::{
-    schematype_of_partialvalue, schematype_of_restricted_expr, EntityTypeDescription,
+    schematype_of_restricted_expr, EntityTypeDescription,
     GetSchemaTypeError, HeterogeneousSetError, Schema, SchemaType, TypeMismatchError,
 };
-use crate::ast::{BorrowedRestrictedExpr, Entity, EntityType, EntityUID, PartialValue};
+use crate::ast::{
+    BorrowedRestrictedExpr, Entity, EntityType, EntityUID, PartialValue,
+    PartialValueToRestrictedExprError, RestrictedExpr,
+};
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use either::Either;
 use smol_str::SmolStr;
@@ -231,45 +234,23 @@ pub fn typecheck_value_against_schematype(
     expected_ty: &SchemaType,
     extensions: Extensions<'_>,
 ) -> Result<(), TypecheckError> {
-    // TODO: instead of computing the `SchemaType` of `value` and then checking
-    // whether the schematypes are "consistent", wouldn't it be less confusing,
-    // more efficient, and maybe even more precise to just typecheck directly?
-    match schematype_of_partialvalue(value, extensions) {
-        Ok(actual_ty) => {
-            if actual_ty.is_consistent_with(expected_ty) {
-                // typecheck passes
-                Ok(())
-            } else {
-                Err(TypecheckError::TypeMismatch(TypeMismatchError {
-                    expected: Box::new(expected_ty.clone()),
-                    actual_ty: Some(Box::new(actual_ty)),
-                    actual_val: Either::Left(value.clone()),
-                }))
-            }
-        }
-        Err(GetSchemaTypeError::UnknownInsufficientTypeInfo { .. }) => {
-            // in this case we just don't have the information to know whether
-            // the attribute value (a residual) matches the expected type.
-            // For now we consider this as passing -- we can't really report a
-            // type error.
-            Ok(())
-        }
-        Err(GetSchemaTypeError::NontrivialResidual { .. }) => {
+    // TODO: can this `.clone()` be avoided, perhaps by converting to
+    // `BorrowedRestrictedExpr` instead of `RestrictedExpr`
+    match RestrictedExpr::try_from(value.clone()) {
+        Ok(expr) => typecheck_restricted_expr_against_schematype(
+            expr.as_borrowed(),
+            expected_ty,
+            extensions,
+        ),
+        Err(PartialValueToRestrictedExprError::NontrivialResidual { .. }) => {
             // this case should be unreachable for the case of `PartialValue`s
             // which are entity attributes, because a `PartialValue` computed
             // from a `RestrictedExpr` should only have trivial residuals.
             // And as of this writing, there are no callers of this function that
             // pass anything other than entity attributes.
             // Nonetheless, rather than relying on these delicate invariants,
-            // it's safe to treat this case like the case above and consider
-            // this as passing.
+            // it's safe to consider this as passing.
             Ok(())
-        }
-        Err(GetSchemaTypeError::HeterogeneousSet(err)) => {
-            Err(TypecheckError::HeterogeneousSet(err))
-        }
-        Err(GetSchemaTypeError::ExtensionFunctionLookup(err)) => {
-            Err(TypecheckError::ExtensionFunctionLookup(err))
         }
     }
 }
