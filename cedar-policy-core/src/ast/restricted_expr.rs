@@ -136,6 +136,13 @@ impl RestrictedExpr {
         ))
     }
 
+    /// Write a RestrictedExpr in "natural JSON" format.
+    ///
+    /// Used to output the context as a map from Strings to JSON Values
+    pub fn to_natural_json(&self) -> Result<serde_json::Value, JsonSerializationError> {
+        self.as_borrowed().to_natural_json()
+    }
+
     /// Get the `bool` value of this `RestrictedExpr` if it's a boolean, or
     /// `None` if it is not a boolean
     pub fn as_bool(&self) -> Option<bool> {
