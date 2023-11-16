@@ -3867,6 +3867,14 @@ mod tests {
                 "expected an entity uid or matching template slot, found literal `1`",
             ),
             (
+                r#"permit(principal is User in User, action, resource);"#,
+                "expected an entity uid or matching template slot, found name `User`",
+            ),
+            (
+                r#"permit(principal, action, resource is File in File);"#,
+                "expected an entity uid or matching template slot, found name `File`",
+            ),
+            (
                 r#"permit(principal is 1, action, resource);"#,
                 "unexpected token `1`",
             ),
