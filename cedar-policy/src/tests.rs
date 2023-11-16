@@ -2718,7 +2718,7 @@ mod schema_based_parsing_tests {
         );
         assert_matches!(
             parsed.attr("json_blob"),
-            Some(Err(e)) => assert_contains_unknown(&e.to_string(), "bbbb")
+            Some(Err(e)) => assert_contains_unknown(&e.to_string(), "bbb")
         );
         assert_matches!(
             parsed.attr("home_ip"),
