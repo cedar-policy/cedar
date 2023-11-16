@@ -1410,7 +1410,7 @@ impl ASTNode<Option<cst::Member>> {
         // Starting off with a failure and filtering items from the accessor list
         // can cause false error messages. We consider this acceptable for now because
         // they only occur along side a real error.
-        // TODO: eliminate the false errors (likely with `Option`s inside `AstAccessor`)
+        // TODO(#439): eliminate the false errors (likely with `Option`s inside `AstAccessor`)
         //
         // This algorithm is essentially an iterator over the accessor slice, but the
         // pattern match should be easier to read, since we have to check multiple elements
