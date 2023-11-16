@@ -282,8 +282,6 @@ impl Context {
     /// if the `Context` is purely unknown
     //
     // PANIC SAFETY: This is safe due to the invariant on `self.context`, `self.context` must always be a record
-    #[allow(clippy::panic)]
-    #[cfg(fuzzing)]
     pub fn iter<'s>(&'s self) -> Option<Box<dyn Iterator<Item = (&SmolStr, PartialValue)> + 's>> {
         // PANIC SAFETY invariant on `self.context` ensures that it is a record
         #[allow(clippy::panic)]
