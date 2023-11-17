@@ -86,7 +86,7 @@ impl Schema for AllEntitiesNoAttrsSchema {
         &'a self,
         basename: &'a Id,
     ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
-        Box::new(std::iter::once(EntityType::Concrete(
+        Box::new(std::iter::once(EntityType::Specified(
             Name::unqualified_name(basename.clone()),
         )))
     }

@@ -146,9 +146,9 @@ where
     f(
         simple_schema_file(),
         RequestEnv {
-            principal: &EntityType::Concrete("User".parse().unwrap()),
+            principal: &EntityType::Specified("User".parse().unwrap()),
             action: &EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
-            resource: &EntityType::Concrete("Photo".parse().unwrap()),
+            resource: &EntityType::Specified("Photo".parse().unwrap()),
             context: &Attributes::with_attributes(None),
             principal_slot: None,
             resource_slot: None,

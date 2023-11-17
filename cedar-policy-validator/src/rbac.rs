@@ -67,7 +67,7 @@ impl Validator {
                     cedar_policy_core::ast::EntityType::Unspecified => Some(
                         ValidationErrorKind::unspecified_entity(euid.eid().to_string()),
                     ),
-                    cedar_policy_core::ast::EntityType::Concrete(_) => None,
+                    cedar_policy_core::ast::EntityType::Specified(_) => None,
                 }
             }))
     }
@@ -92,7 +92,7 @@ impl Validator {
                 ast::EntityType::Unspecified => Some(ValidationErrorKind::unspecified_entity(
                     euid.eid().to_string(),
                 )),
-                ast::EntityType::Concrete(name) => {
+                ast::EntityType::Specified(name) => {
                     let is_known_action_entity_id = self.schema.is_known_action_id(euid);
                     let is_action_entity_type = is_action_entity_type(name);
 
@@ -130,7 +130,7 @@ impl Validator {
                 cedar_policy_core::ast::EntityType::Unspecified => Some(
                     ValidationErrorKind::unspecified_entity(euid.eid().to_string()),
                 ),
-                cedar_policy_core::ast::EntityType::Concrete(name) => {
+                cedar_policy_core::ast::EntityType::Specified(name) => {
                     if !self.schema.is_known_entity_type(name) {
                         let actual_entity_type = entity_type.to_string();
                         let suggested_entity_type =
@@ -207,7 +207,7 @@ impl Validator {
         if let Some(lit) = lit_opt {
             !specs.iter().any(|spec| {
                 select_apply_spec(spec).any(|e| match e {
-                    ast::EntityType::Concrete(e) => e == lit,
+                    ast::EntityType::Specified(e) => e == lit,
                     ast::EntityType::Unspecified => false,
                 })
             })
@@ -229,7 +229,7 @@ impl Validator {
         if let Some(etype) = lit_opt.and_then(|typename| self.schema.get_entity_type(typename)) {
             specs.iter().any(|spec| {
                 select_apply_spec(spec).any(|p| match p {
-                    ast::EntityType::Concrete(p) => etype.descendants.contains(p),
+                    ast::EntityType::Specified(p) => etype.descendants.contains(p),
                     ast::EntityType::Unspecified => false,
                 })
             })
@@ -244,7 +244,7 @@ impl Validator {
         match scope_constraint {
             PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)) => {
                 match euid.entity_type() {
-                    ast::EntityType::Concrete(name) => Some(name),
+                    ast::EntityType::Specified(name) => Some(name),
                     ast::EntityType::Unspecified => None,
                 }
             }
@@ -284,7 +284,7 @@ impl Validator {
                 let action_principals = spec
                     .applicable_principal_types()
                     .filter_map(|ty| match ty {
-                        ast::EntityType::Concrete(name) => Some(name),
+                        ast::EntityType::Specified(name) => Some(name),
                         ast::EntityType::Unspecified => None,
                     })
                     .collect::<HashSet<_>>();
@@ -294,7 +294,7 @@ impl Validator {
                 let action_resources = spec
                     .applicable_resource_types()
                     .filter_map(|ty| match ty {
-                        ast::EntityType::Concrete(name) => Some(name),
+                        ast::EntityType::Specified(name) => Some(name),
                         ast::EntityType::Unspecified => None,
                     })
                     .collect::<HashSet<_>>();
@@ -375,7 +375,7 @@ impl Validator {
             // <var> == <literal euid>
             PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)) => Box::new(
                 match euid.entity_type() {
-                    ast::EntityType::Concrete(name) => Some(name),
+                    ast::EntityType::Specified(name) => Some(name),
                     ast::EntityType::Unspecified => None,
                 }
                 .into_iter(),
@@ -1087,7 +1087,7 @@ mod test {
         let principals = validate
             .get_principals_satisfying_constraint(&principal_constraint)
             .cloned()
-            .map(cedar_policy_core::ast::EntityType::Concrete)
+            .map(cedar_policy_core::ast::EntityType::Specified)
             .collect::<HashSet<_>>();
         assert_eq!(HashSet::from([euid_foo.components().0]), principals);
 

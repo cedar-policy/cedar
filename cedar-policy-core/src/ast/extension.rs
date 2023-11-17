@@ -72,7 +72,7 @@ impl std::fmt::Debug for Extension {
 #[derive(Debug, Clone)]
 pub enum ExtensionOutputValue {
     /// A concrete value from an extension call
-    Concrete(Value),
+    Known(Value),
     /// An unknown returned from an extension call
     Unknown(Unknown),
 }
@@ -82,7 +82,7 @@ where
     T: Into<Value>,
 {
     fn from(v: T) -> Self {
-        ExtensionOutputValue::Concrete(v.into())
+        ExtensionOutputValue::Known(v.into())
     }
 }
 
@@ -310,7 +310,7 @@ impl ExtensionFunction {
     /// Call the `ExtensionFunction` with the given args
     pub fn call(&self, args: &[Value]) -> evaluator::Result<PartialValue> {
         match (self.func)(args)? {
-            ExtensionOutputValue::Concrete(v) => Ok(PartialValue::Value(v)),
+            ExtensionOutputValue::Known(v) => Ok(PartialValue::Value(v)),
             ExtensionOutputValue::Unknown(u) => Ok(PartialValue::Residual(Expr::unknown(u))),
         }
     }

@@ -34,7 +34,7 @@ use thiserror::Error;
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum EntityType {
     /// Concrete nominal type
-    Concrete(Name),
+    Specified(Name),
     /// Unspecified
     Unspecified,
 }
@@ -43,19 +43,19 @@ impl EntityType {
     /// Is this an Action entity type
     pub fn is_action(&self) -> bool {
         match self {
-            Self::Concrete(name) => name.basename() == &Id::new_unchecked("Action"),
+            Self::Specified(name) => name.basename() == &Id::new_unchecked("Action"),
             Self::Unspecified => false,
         }
     }
 }
 
 // Note: the characters '<' and '>' are not allowed in `Name`s, so the display for
-// `Unspecified` never conflicts with `Concrete(name)`.
+// `Unspecified` never conflicts with `Specified(name)`.
 impl std::fmt::Display for EntityType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Unspecified => write!(f, "<Unspecified>"),
-            Self::Concrete(name) => write!(f, "{}", name),
+            Self::Specified(name) => write!(f, "{}", name),
         }
     }
 }
@@ -99,7 +99,7 @@ impl EntityUID {
     pub(crate) fn test_entity_type() -> EntityType {
         let name = Name::parse_unqualified_name("test_entity_type")
             .expect("test_entity_type should be a valid identifier");
-        EntityType::Concrete(name)
+        EntityType::Specified(name)
     }
     // by default, Coverlay does not track coverage for lines after a line
     // containing #[cfg(test)].
@@ -110,7 +110,7 @@ impl EntityUID {
     /// Create an `EntityUID` with the given (unqualified) typename, and the given string as its EID.
     pub fn with_eid_and_type(typename: &str, eid: &str) -> Result<Self, ParseErrors> {
         Ok(Self {
-            ty: EntityType::Concrete(Name::parse_unqualified_name(typename)?),
+            ty: EntityType::Specified(Name::parse_unqualified_name(typename)?),
             eid: Eid(eid.into()),
         })
     }
@@ -124,7 +124,7 @@ impl EntityUID {
     /// Create a nominally-typed `EntityUID` with the given typename and EID
     pub fn from_components(name: Name, eid: Eid) -> Self {
         Self {
-            ty: EntityType::Concrete(name),
+            ty: EntityType::Specified(name),
             eid,
         }
     }

@@ -48,7 +48,7 @@ impl ValidatorEntityType {
     /// in the unspecified case.
     pub fn has_descendant_entity_type(&self, ety: &EntityType) -> bool {
         match ety {
-            EntityType::Concrete(ety) => self.descendants.contains(ety),
+            EntityType::Specified(ety) => self.descendants.contains(ety),
             EntityType::Unspecified => false,
         }
     }

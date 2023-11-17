@@ -50,7 +50,7 @@ pub struct Request {
 #[derive(Debug, Clone, Serialize)]
 pub enum EntityUIDEntry {
     /// A concrete (but perhaps unspecified) EntityUID
-    Concrete(Arc<EntityUID>),
+    Known(Arc<EntityUID>),
     /// An EntityUID left as unknown for partial evaluation
     Unknown,
 }
@@ -61,20 +61,20 @@ impl EntityUIDEntry {
     /// An unknown corresponding to the passed `var`
     pub fn evaluate(&self, var: Var) -> PartialValue {
         match self {
-            EntityUIDEntry::Concrete(euid) => Value::Lit(Literal::EntityUID(euid.clone())).into(),
+            EntityUIDEntry::Known(euid) => Value::Lit(Literal::EntityUID(euid.clone())).into(),
             EntityUIDEntry::Unknown => Expr::unknown(Unknown::new_untyped(var.to_string())).into(),
         }
     }
 
     /// Create an entry with a concrete EntityUID
     pub fn concrete(euid: EntityUID) -> Self {
-        Self::Concrete(Arc::new(euid))
+        Self::Known(Arc::new(euid))
     }
 
     /// Get the UID of the entry, or `None` if it is unknown (partial evaluation)
     pub fn uid(&self) -> Option<&EntityUID> {
         match self {
-            Self::Concrete(euid) => Some(euid),
+            Self::Known(euid) => Some(euid),
             Self::Unknown => None,
         }
     }
@@ -155,7 +155,7 @@ impl Request {
 impl std::fmt::Display for Request {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let display_euid = |maybe_euid: &EntityUIDEntry| match maybe_euid {
-            EntityUIDEntry::Concrete(euid) => format!("{euid}"),
+            EntityUIDEntry::Known(euid) => format!("{euid}"),
             EntityUIDEntry::Unknown => "unknown".to_string(),
         };
         write!(

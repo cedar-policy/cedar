@@ -139,7 +139,7 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
         } else {
             let schema_etype = self.schema.entity_type(etype).ok_or_else(|| {
                 let suggested_types = match etype {
-                    EntityType::Concrete(name) => self
+                    EntityType::Specified(name) => self
                         .schema
                         .entity_types_with_basename(name.basename())
                         .collect(),

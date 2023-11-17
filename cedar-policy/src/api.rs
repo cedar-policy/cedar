@@ -1648,7 +1648,7 @@ impl EntityUid {
         #[allow(clippy::panic)]
         match self.0.entity_type() {
             ast::EntityType::Unspecified => panic!("Impossible to have an unspecified entity"),
-            ast::EntityType::Concrete(name) => EntityTypeName::ref_cast(name),
+            ast::EntityType::Specified(name) => EntityTypeName::ref_cast(name),
         }
     }
 
@@ -3172,9 +3172,9 @@ impl Request {
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn principal(&self) -> Option<&EntityUid> {
         match self.0.principal() {
-            ast::EntityUIDEntry::Concrete(euid) => match euid.entity_type() {
+            ast::EntityUIDEntry::Known(euid) => match euid.entity_type() {
                 // INVARIANT: we ensure Concrete-ness here
-                ast::EntityType::Concrete(_) => Some(EntityUid::ref_cast(euid.as_ref())),
+                ast::EntityType::Specified(_) => Some(EntityUid::ref_cast(euid.as_ref())),
                 ast::EntityType::Unspecified => None,
             },
             ast::EntityUIDEntry::Unknown => None,
@@ -3186,9 +3186,9 @@ impl Request {
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn action(&self) -> Option<&EntityUid> {
         match self.0.action() {
-            ast::EntityUIDEntry::Concrete(euid) => match euid.entity_type() {
+            ast::EntityUIDEntry::Known(euid) => match euid.entity_type() {
                 // INVARIANT: we ensure Concrete-ness here
-                ast::EntityType::Concrete(_) => Some(EntityUid::ref_cast(euid.as_ref())),
+                ast::EntityType::Specified(_) => Some(EntityUid::ref_cast(euid.as_ref())),
                 ast::EntityType::Unspecified => None,
             },
             ast::EntityUIDEntry::Unknown => None,
@@ -3200,9 +3200,9 @@ impl Request {
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn resource(&self) -> Option<&EntityUid> {
         match self.0.resource() {
-            ast::EntityUIDEntry::Concrete(euid) => match euid.entity_type() {
+            ast::EntityUIDEntry::Known(euid) => match euid.entity_type() {
                 // INVARIANT: we ensure Concrete-ness here
-                ast::EntityType::Concrete(_) => Some(EntityUid::ref_cast(euid.as_ref())),
+                ast::EntityType::Specified(_) => Some(EntityUid::ref_cast(euid.as_ref())),
                 ast::EntityType::Unspecified => None,
             },
             ast::EntityUIDEntry::Unknown => None,

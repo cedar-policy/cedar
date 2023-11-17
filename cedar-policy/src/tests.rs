@@ -830,7 +830,7 @@ mod policy_set_tests {
             ast::Expr::unknown(ast::Unknown::new_with_type(
                 "test_entity_type::\"unknown\"",
                 ast::Type::Entity {
-                    ty: ast::EntityType::Concrete("test_entity_type".parse().unwrap()),
+                    ty: ast::EntityType::Specified("test_entity_type".parse().unwrap()),
                 },
             )),
             ast::PolicyID::from_smolstr("static".into()),

@@ -238,7 +238,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 } else {
                     EntitySchemaInfo::NonAction(schema.entity_type(etype).ok_or_else(|| {
                         let suggested_types = match etype {
-                            EntityType::Concrete(name) => {
+                            EntityType::Specified(name) => {
                                 schema.entity_types_with_basename(name.basename()).collect()
                             }
                             EntityType::Unspecified => vec![],

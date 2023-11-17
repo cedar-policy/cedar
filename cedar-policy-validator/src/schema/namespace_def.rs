@@ -576,7 +576,7 @@ impl ValidatorNamespaceDef {
                     // `EntityTypeParseError` when the string is not a valid
                     // name.
                     .map(|ty_str| {
-                        Ok(EntityType::Concrete(
+                        Ok(EntityType::Specified(
                             Self::parse_possibly_qualified_name_with_default_namespace(
                                 ty_str, namespace,
                             )

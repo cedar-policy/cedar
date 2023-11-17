@@ -66,14 +66,14 @@ impl Typechecker<'_> {
         // Using bogus entity type names here for testing. They'll be treated as
         // having empty attribute records, so tests will behave as expected.
         let request_env = RequestEnv {
-            principal: &EntityType::Concrete(
+            principal: &EntityType::Specified(
                 "Principal"
                     .parse()
                     .expect("Placeholder type \"Principal\" failed to parse as valid type name."),
             ),
             action: &EntityUID::with_eid_and_type(ACTION_ENTITY_TYPE, "action")
                 .expect("ACTION_ENTITY_TYPE failed to parse as type name."),
-            resource: &EntityType::Concrete(
+            resource: &EntityType::Specified(
                 "Resource"
                     .parse()
                     .expect("Placeholder type \"Resource\" failed to parse as valid type name."),

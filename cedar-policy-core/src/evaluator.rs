@@ -528,7 +528,7 @@ impl<'e> Evaluator<'e> {
                 let v = self.partial_interpret(expr, slots)?;
                 match v {
                     PartialValue::Value(v) => Ok(match v.get_as_entity()?.entity_type() {
-                        EntityType::Concrete(expr_entity_type) => entity_type == expr_entity_type,
+                        EntityType::Specified(expr_entity_type) => entity_type == expr_entity_type,
                         EntityType::Unspecified => false,
                     }
                     .into()),
@@ -691,7 +691,7 @@ impl<'e> Evaluator<'e> {
                         EntityType::Unspecified => {
                             EvaluationError::unspecified_entity_access(attr.clone())
                         }
-                        EntityType::Concrete(_) => {
+                        EntityType::Specified(_) => {
                             EvaluationError::entity_does_not_exist(uid.clone())
                         }
                     }),
