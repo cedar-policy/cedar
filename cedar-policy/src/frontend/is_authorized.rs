@@ -25,6 +25,7 @@ use crate::{
     Authorizer, Context, Decision, Entities, EntityUid, ParseErrors, Policy, PolicySet, Request,
     Response, Schema, SlotId, Template,
 };
+use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -143,17 +144,17 @@ enum AuthorizationAnswer {
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize)]
 struct AuthorizationCall {
-    principal: Option<serde_json::Value>,
-    action: serde_json::Value,
-    resource: Option<serde_json::Value>,
+    principal: Option<JsonValueWithNoDuplicateKeys>,
+    action: JsonValueWithNoDuplicateKeys,
+    resource: Option<JsonValueWithNoDuplicateKeys>,
     #[serde_as(as = "MapPreventDuplicates<_, _>")]
-    context: HashMap<String, serde_json::Value>,
+    context: HashMap<String, JsonValueWithNoDuplicateKeys>,
     /// Optional schema in JSON format.
     /// If present, this will inform the parsing: for instance, it will allow
     /// `__entity` and `__extn` escapes to be implicit, and it will error if
     /// attributes have the wrong types (e.g., string instead of integer).
     #[serde(rename = "schema")]
-    schema: Option<serde_json::Value>,
+    schema: Option<JsonValueWithNoDuplicateKeys>,
     /// If this is `true` and a schema is provided, perform request validation.
     /// If this is `false`, the schema will only be used for schema-based
     /// parsing of `context`, and not for request validation.
@@ -171,21 +172,21 @@ impl AuthorizationCall {
     fn get_components(self) -> Result<(Request, PolicySet, Entities), Vec<String>> {
         let schema = self
             .schema
-            .map(Schema::from_json_value)
+            .map(|v| Schema::from_json_value(v.into()))
             .transpose()
             .map_err(|e| [e.to_string()])?;
         let principal = match self.principal {
             Some(p) => Some(
-                EntityUid::from_json(p)
+                EntityUid::from_json(p.into())
                     .map_err(|e| ["Failed to parse principal".into(), e.to_string()])?,
             ),
             None => None,
         };
-        let action = EntityUid::from_json(self.action)
+        let action = EntityUid::from_json(self.action.into())
             .map_err(|e| ["Failed to parse action".into(), e.to_string()])?;
         let resource = match self.resource {
             Some(r) => Some(
-                EntityUid::from_json(r)
+                EntityUid::from_json(r.into())
                     .map_err(|e| ["Failed to parse resource".into(), e.to_string()])?,
             ),
             None => None,
@@ -286,7 +287,7 @@ struct RecvdSlice {
     policies: PolicySpecification,
     /// JSON object containing the entities data, in "natural JSON" form -- same
     /// format as expected by EntityJsonParser
-    entities: serde_json::Value,
+    entities: JsonValueWithNoDuplicateKeys,
 
     /// Optional template policies.
     #[serde_as(as = "Option<MapPreventDuplicates<_, _>>")]
@@ -376,23 +377,25 @@ impl RecvdSlice {
 
         let mut errs = Vec::new();
 
-        let (mut policies, entities) =
-            match (Entities::from_json_value(entities, schema), policy_set) {
-                (Ok(entities), Ok(policies)) => (policies, entities),
-                (Ok(_), Err(policy_parse_errors)) => {
-                    errs.extend(policy_parse_errors);
-                    (PolicySet::new(), Entities::empty())
-                }
-                (Err(e), Ok(_)) => {
-                    errs.push(e.to_string());
-                    (PolicySet::new(), Entities::empty())
-                }
-                (Err(e), Err(policy_parse_errors)) => {
-                    errs.push(e.to_string());
-                    errs.extend(policy_parse_errors);
-                    (PolicySet::new(), Entities::empty())
-                }
-            };
+        let (mut policies, entities) = match (
+            Entities::from_json_value(entities.into(), schema),
+            policy_set,
+        ) {
+            (Ok(entities), Ok(policies)) => (policies, entities),
+            (Ok(_), Err(policy_parse_errors)) => {
+                errs.extend(policy_parse_errors);
+                (PolicySet::new(), Entities::empty())
+            }
+            (Err(e), Ok(_)) => {
+                errs.push(e.to_string());
+                (PolicySet::new(), Entities::empty())
+            }
+            (Err(e), Err(policy_parse_errors)) => {
+                errs.push(e.to_string());
+                errs.extend(policy_parse_errors);
+                (PolicySet::new(), Entities::empty())
+            }
+        };
 
         if let Some(t_inst_list) = template_instantiations {
             for instantiation in t_inst_list {
@@ -493,7 +496,7 @@ mod test {
         );
         let rslice = RecvdSlice {
             policies: PolicySpecification::Map(HashMap::new()),
-            entities,
+            entities: entities.into(),
             templates: None,
             template_instantiations: None,
         };
