@@ -13,11 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   existing `Entities` structure. (#276)
 - Export the `cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind}` and
   `cedar_policy_core::authorizer::AuthorizationError` error types. (#260, #271)
-- `ParseError::primary_source_span` to get the primary source span locating an error.
+- `ParseError::primary_source_span` to get the primary source span locating an
+  error. (#324)
 - Experimental API `PolicySet::unknown_entities` to collect unknown entity UIDs
-  from a `PartialResponse`. (#353)
+  from a `PartialResponse`. (#353, resolving #321)
 - `PolicySet::remove_static`, `PolicySet::remove_template` and
-  `PolicySet::unlink` to remove policies from the policy set. (#337)
+  `PolicySet::unlink` to remove policies from the policy set. (#337, resolving #328)
 - `PolicySet::get_linked_policies` to get the policies linked to a `Template`. (#337)
 - `ValidationResult::validation_warnings` to access non-fatal warnings returned
   by the validator and `ValidationResult::validation_passed_without_warnings`.
@@ -27,13 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [RFC 5](https://github.com/cedar-policy/rfcs/blob/main/text/0005-is-operator.md).
   (#396)
 - `Entity::new_no_attrs()` which provides an infallible constructor for `Entity`
-  in the case that there are no attributes. (See changes to `Entity::new()` below.)
+  in the case that there are no attributes. (See changes to `Entity::new()`
+  below.) (#430)
 - `RestrictedExpression::new_entity_uid()` (#442, resolving #350)
 
 ### Changed
 
-- Removed `__expr` escape from Cedar JSON formats, which has been deprecated
-  since Cedar 1.2. (#333)
 - Rename `cedar_policy_core::est::EstToAstError` to
   `cedar_policy_core::est::FromJsonError`. (#197)
 - Rename `cedar_policy_core::entities::JsonDeserializationError::ExtensionsError`
@@ -59,14 +59,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   optional schema argument. (#360)
 - `Request::new()` now takes an optional schema argument, and validates the request
   against that schema. To signal validation errors, it now returns a `Result`.
-  (#393)
+  (#393, resolving #191)
 - Change the semantics of equality for IP ranges. For example,
   `ip("192.168.0.1/24") == ip("192.168.0.3/24")` was previously `true` and is now
   `false`. The behavior of equality on single IP addresses is unchanged, and so is
   the behavior of `.isInRange()`. (#348)
 - Standardize on duplicates being errors instead of last-write-wins in the
   JSON-based APIs in the `frontend` module. This also means some error types
-  have changed.
+  have changed. (#365, #448)
 - `Entity::new()` now eagerly evaluates entity attributes, leading to
   performance improvements (particularly when entity data is reused across
   multiple `is_authorized` calls). As a result, it returns `Result`, because
@@ -78,35 +78,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Context::from_*()` methods also now eagerly evaluate the `Context`, and as
   a result return errors when evaluation fails. (#430)
 - `<EntityId as FromStr>::Error` is now `Infallible` instead of `ParseErrors`.
+  (#372)
 - Improve the `Display` impls for `Policy` and `PolicySet`, and add a `Display`
   impl for `Template`.  The displayed representations now more closely match the
-  original input, whether the input was in string or JSON form. (#167)
+  original input, whether the input was in string or JSON form. (#167, resolving
+  #125)
 - `ValidationWarning::location` and `ValidationWarning::to_kind_and_location`
   now return `&SourceLocation<'a>` instead of `&'a PolicyID`, matching
   `ValidationError::location`. (#405)
 - `ValidationWarningKind` is now `non_exhaustive`, allowing future warnings to
   be added without a breaking change. (#404)
 - Improve schema parsing error messages when a cycle exists in the action
-  hierarchy to includes an action which is part of the cycle (#436, resolving #416).
+  hierarchy to includes an action which is part of the cycle (#436, resolving
+  #416).
 
 ### Fixed
 
-- Evaluation order of operand to `>` and `>=` (#112). They now evaluate left to right,
+- Evaluation order of operand to `>` and `>=`. They now evaluate left to right,
   matching all other operators. This affects what error is reported when there is
   an evaluation error in both operands, but does not otherwise change the result
-  of evaluation. (#402)
+  of evaluation. (#402, resolving #112)
 - Updated `PolicySet::link` to not mutate internal state when failing to link a static
   policy. With this fix it is possible to create a link with a policy id
   after previously failing to create that link with the same id from a static
   policy. (#412)
 - Fixed schema-based parsing of entity data that includes unknowns (for the
-  `partial-eval` experimental feature). (#419)
+  `partial-eval` experimental feature). (#419, resolving #418)
 
 ### Removed
 
+- Removed `__expr` escape from Cedar JSON formats, which has been deprecated
+  since Cedar 1.2. (#333)
 - Move `ValidationMode::Permissive` behind an experimental feature flag.
-  To continue using this feature you must enable the `permissive-validate` feature
-  flag.
+  To continue using this feature you must enable the `permissive-validate`
+  feature flag. (#428)
 
 ## [2.4.2] - 2023-10-23
 Cedar Language Version: 2.1.2
@@ -115,7 +120,7 @@ Cedar Language Version: 2.1.2
 
 - Issue #370 related to how the validator handles template-linked policies.
   The validator will now produce the same result for an equivalent static
-  and template-linked policy. (#371)
+  and template-linked policy. (#371, resolving #370)
 
 ## [2.4.1] - 2023-10-12
 Cedar Language Version: 2.1.1
@@ -128,7 +133,7 @@ Cedar Language Version: 2.1.1
 
 - Improve validation error messages for access to undeclared attributes and
   unsafe access to optional attributes to report the target of the access. (#295)
-- `EntityUid`'s impl of `FromStr` is no longer marked as deprecated.
+- `EntityUid`'s impl of `FromStr` is no longer marked as deprecated. (#319)
 
 ### Fixed
 
