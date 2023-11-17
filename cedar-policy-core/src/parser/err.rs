@@ -541,6 +541,11 @@ impl ParseErrors {
         ParseErrors(Vec::with_capacity(capacity))
     }
 
+    /// Add an error to the `ParseErrors`
+    pub(super) fn push(&mut self, err: impl Into<ParseError>) {
+        self.0.push(err.into());
+    }
+
     // TODO(spinda): Can we get rid of this?
     /// returns a Vec with stringified versions of the ParserErrors
     pub fn errors_as_strings(&self) -> Vec<String> {
@@ -655,15 +660,9 @@ impl DerefMut for ParseErrors {
     }
 }
 
-impl From<ParseError> for ParseErrors {
-    fn from(err: ParseError) -> Self {
-        vec![err].into()
-    }
-}
-
-impl From<ToCSTError> for ParseErrors {
-    fn from(err: ToCSTError) -> Self {
-        ParseError::from(err).into()
+impl<T: Into<ParseError>> From<T> for ParseErrors {
+    fn from(err: T) -> Self {
+        vec![err.into()].into()
     }
 }
 
@@ -673,9 +672,15 @@ impl From<Vec<ParseError>> for ParseErrors {
     }
 }
 
-impl FromIterator<ParseError> for ParseErrors {
-    fn from_iter<T: IntoIterator<Item = ParseError>>(errs: T) -> Self {
-        ParseErrors(errs.into_iter().collect())
+impl<T: Into<ParseError>> FromIterator<T> for ParseErrors {
+    fn from_iter<I: IntoIterator<Item = T>>(errs: I) -> Self {
+        ParseErrors(errs.into_iter().map(Into::into).collect())
+    }
+}
+
+impl<T: Into<ParseError>> Extend<T> for ParseErrors {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        self.0.extend(iter.into_iter().map(Into::into))
     }
 }
 
