@@ -86,7 +86,7 @@ pub enum ParseLiteralError {
     ParseLiteral(String),
 }
 
-/// Errors in  the CST -> AST transform, mostly well-formedness issues.
+/// Errors in the CST -> AST transform, mostly well-formedness issues.
 #[derive(Debug, Diagnostic, Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ToASTError {
@@ -98,15 +98,23 @@ pub enum ToASTError {
     DuplicatePolicyId(PolicyID),
     /// Returned when a template is encountered but a static policy is expected
     #[error(
-        "expected a static policy, got a template. Try removing the template slots from this policy"
+        "expected a static policy, got a template containing the slot {slot}; try removing the template slot(s) from this policy"
     )]
-    UnexpectedTemplate,
+    UnexpectedTemplate {
+        /// Slot that was found (which is not valid in a static policy)
+        slot: cst::Slot,
+    },
     /// Returned when we attempt to parse a policy with malformed or conflicting annotations
     #[error("this policy uses poorly formed or duplicate annotations")]
     BadAnnotations,
-    /// Returned when a policy contains Template Slots in the condition clause. This is not currently supported.
-    #[error("template slots are currently unsupported in policy condition clauses")]
-    SlotsInConditionClause,
+    /// Returned when a policy contains template slots in a when/unless clause. This is not currently supported. See RFC 3
+    #[error("found template slot {slot} in a `{clausetype}` clause; slots are currently unsupported in `{clausetype}` clauses")]
+    SlotsInConditionClause {
+        /// Slot that was found in a when/unless clause
+        slot: cst::Slot,
+        /// Clause type, e.g. "when" or "unless"
+        clausetype: &'static str,
+    },
     /// Returned when a policy is missing one of the 3 required scope clauses. (`principal`, `action`, and `resource`)
     #[error("this policy is missing the `{0}` variable in the scope")]
     MissingScopeConstraint(Var),
