@@ -42,7 +42,6 @@ pub use api::*;
 /// Frontend utilities, see comments in the module itself
 pub mod frontend;
 
-#[cfg(test)] //redundant, but helps rust_analyzer not incorrectly flag `use` statements
 mod tests;
 
 #[cfg(feature = "integration_testing")]

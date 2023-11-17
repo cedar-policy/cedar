@@ -1,3 +1,7 @@
+#![cfg(test)]
+// PANIC SAFETY unit tests
+#![allow(clippy::panic)]
+
 use super::*;
 
 pub use ast::Effect;
@@ -17,9 +21,6 @@ use std::str::FromStr;
 
 pub use super::api::Response;
 
-// PANIC SAFETY unit tests
-#[allow(clippy::panic)]
-#[cfg(test)]
 mod entity_uid_tests {
     use super::*;
     use cool_asserts::assert_matches;
@@ -244,7 +245,6 @@ permit(principal ==  A :: B
     }
 }
 
-#[cfg(test)]
 mod head_constraints_tests {
     use super::*;
 
@@ -488,10 +488,7 @@ mod head_constraints_tests {
     }
 }
 
-// PANIC SAFETY unit tests
-#[allow(clippy::panic)]
 /// Tests in this module are adapted from Core's `policy_set.rs` tests
-#[cfg(test)]
 mod policy_set_tests {
     use super::*;
     use ast::LinkingError;
@@ -1114,7 +1111,6 @@ mod policy_set_tests {
     }
 }
 
-#[cfg(test)]
 mod schema_tests {
     use super::*;
     use cool_asserts::assert_matches;
@@ -1224,7 +1220,6 @@ mod schema_tests {
     }
 }
 
-#[cfg(test)]
 mod ancestors_tests {
     use super::*;
 
@@ -1247,7 +1242,6 @@ mod ancestors_tests {
 /// A few tests of validating entities.
 /// Many other validation-related tests are in the separate module focusing on
 /// schema-based parsing.
-#[cfg(test)]
 mod entity_validate_tests {
     use super::*;
     use serde_json::json;
@@ -1568,9 +1562,6 @@ mod entity_validate_tests {
 /// the Validator and Core packages working together.
 ///
 /// (Core has similar tests, but using a stubbed implementation of Schema.)
-// PANIC SAFETY unit tests
-#[allow(clippy::panic)]
-#[cfg(test)]
 mod schema_based_parsing_tests {
     use super::*;
     use cool_asserts::assert_matches;
