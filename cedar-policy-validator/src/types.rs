@@ -121,7 +121,7 @@ impl Type {
     pub(crate) fn euid_literal(entity: EntityUID, schema: &ValidatorSchema) -> Option<Type> {
         match entity.entity_type() {
             EntityType::Unspecified => None,
-            EntityType::Concrete(name) => {
+            EntityType::Specified(name) => {
                 if is_action_entity_type(name) {
                     schema
                         .get_action_id(&entity)
@@ -181,7 +181,7 @@ impl Type {
         validator_action_id: &ValidatorActionId,
     ) -> Option<Type> {
         match validator_action_id.name.entity_type() {
-            EntityType::Concrete(name) => {
+            EntityType::Specified(name) => {
                 Some(Type::EntityOrRecord(EntityRecordKind::ActionEntity {
                     name: name.clone(),
                     attrs: Attributes::with_attributes(validator_action_id.attribute_types.clone()),
@@ -193,7 +193,7 @@ impl Type {
 
     pub(crate) fn possibly_unspecified_entity_reference(ety: EntityType) -> Type {
         match ety {
-            EntityType::Concrete(name) => Type::named_entity_reference(name),
+            EntityType::Specified(name) => Type::named_entity_reference(name),
             EntityType::Unspecified => Type::any_entity_reference(),
         }
     }
@@ -600,7 +600,7 @@ impl Type {
                 _ => false,
             },
             CoreSchemaType::Entity {
-                ty: CoreEntityType::Concrete(concrete_name),
+                ty: CoreEntityType::Specified(concrete_name),
             } => match self {
                 Type::EntityOrRecord(kind) => match kind {
                     EntityRecordKind::Entity(lub) => {
@@ -705,7 +705,7 @@ impl Type {
             Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => {
                 match restricted_expr.as_euid() {
                     Some(euid) => match euid.entity_type() {
-                        EntityType::Concrete(name) => Ok(lub.contains(name)),
+                        EntityType::Specified(name) => Ok(lub.contains(name)),
                         EntityType::Unspecified => Ok(false), // Unspecified can only have the validator type `AnyEntity`, not any specific lub
                     },
                     None => Ok(false),
@@ -714,7 +714,7 @@ impl Type {
             Type::EntityOrRecord(EntityRecordKind::ActionEntity { name, .. }) => {
                 match restricted_expr.as_euid() {
                     Some(euid) if euid.is_action() => match euid.entity_type() {
-                        EntityType::Concrete(euid_name) => Ok(euid_name == name),
+                        EntityType::Specified(euid_name) => Ok(euid_name == name),
                         EntityType::Unspecified => Ok(false), // `euid.is_action()` should never be true for an Unspecified, so this should be unreachable, but it's safe to return Ok(false), because Unspecified can only have the validator type `AnyEntity` anyway
                     },
                     _ => Ok(false),
@@ -834,7 +834,7 @@ impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
             )),
             Type::EntityOrRecord(EntityRecordKind::ActionEntity { name, .. }) => {
                 Ok(CoreSchemaType::Entity {
-                    ty: EntityType::Concrete(name),
+                    ty: EntityType::Specified(name),
                 })
             }
             Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
@@ -858,7 +858,7 @@ impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
             }
             Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => match lub.into_single_entity() {
                 Some(name) => Ok(CoreSchemaType::Entity {
-                    ty: EntityType::Concrete(name),
+                    ty: EntityType::Specified(name),
                 }),
                 None => Err(
                     "non-singleton LUB type is not representable in core::SchemaType".to_string(),

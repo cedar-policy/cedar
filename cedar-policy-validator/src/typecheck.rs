@@ -476,7 +476,7 @@ impl<'a> Typechecker<'a> {
                 | PrincipalOrResourceConstraint::In(_) => Box::new(
                     all_entity_types
                         .filter(|(_, ety)| ety.has_descendant_entity_type(var))
-                        .map(|(name, _)| Some(EntityType::Concrete(name.clone())))
+                        .map(|(name, _)| Some(EntityType::Specified(name.clone())))
                         .chain(std::iter::once(Some(var.clone()))),
                 ),
                 // The template uses the slot, but without a scope constraint.
@@ -486,7 +486,7 @@ impl<'a> Typechecker<'a> {
                 // as possible instantiations.
                 PrincipalOrResourceConstraint::Is(_) | PrincipalOrResourceConstraint::Any => {
                     Box::new(
-                        all_entity_types.map(|(name, _)| Some(EntityType::Concrete(name.clone()))),
+                        all_entity_types.map(|(name, _)| Some(EntityType::Specified(name.clone()))),
                     )
                 }
             }
@@ -1841,7 +1841,7 @@ impl<'a> Typechecker<'a> {
             };
             let descendants = self.schema.get_entity_types_in_set(rhs.iter());
             match var_euid {
-                EntityType::Concrete(var_name) => Typechecker::entity_in_descendants(
+                EntityType::Specified(var_name) => Typechecker::entity_in_descendants(
                     var_name,
                     descendants,
                     in_expr,
@@ -1879,7 +1879,7 @@ impl<'a> Typechecker<'a> {
     ) -> TypecheckAnswer<'c> {
         if let Some(rhs) = Typechecker::euids_from_euid_literals_or_action(request_env, rhs_elems) {
             match lhs_euid.entity_type() {
-                EntityType::Concrete(name) => {
+                EntityType::Specified(name) => {
                     // We don't want to apply the action hierarchy check to
                     // non-action entities.  We have a set of entities, so We
                     // can apply the check as long as any are actions. The
@@ -1888,7 +1888,7 @@ impl<'a> Typechecker<'a> {
                     let lhs_is_action = is_action_entity_type(name);
                     let (actions, non_actions): (Vec<_>, Vec<_>) =
                         rhs.into_iter().partition(|e| match e.entity_type() {
-                            EntityType::Concrete(e_name) => is_action_entity_type(e_name),
+                            EntityType::Specified(e_name) => is_action_entity_type(e_name),
                             EntityType::Unspecified => false,
                         });
                     if lhs_is_action && !actions.is_empty() {
@@ -1969,7 +1969,7 @@ impl<'a> Typechecker<'a> {
         rhs_expr: Expr<Option<Type>>,
     ) -> TypecheckAnswer<'b> {
         match lhs.entity_type() {
-            EntityType::Concrete(lhs_ety) => {
+            EntityType::Specified(lhs_ety) => {
                 let rhs_descendants = self.schema.get_entity_types_in_set(rhs);
                 Typechecker::entity_in_descendants(
                     lhs_ety,

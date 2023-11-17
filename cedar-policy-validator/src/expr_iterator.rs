@@ -33,7 +33,7 @@ pub(super) fn expr_entity_uids(expr: &Expr) -> impl Iterator<Item = &EntityUID> 
 pub(super) fn expr_entity_type_names(expr: &Expr) -> impl Iterator<Item = &Name> {
     expr.subexpressions().filter_map(|e| match e.expr_kind() {
         ExprKind::Lit(Literal::EntityUID(uid)) => match uid.entity_type() {
-            EntityType::Concrete(entity_type) => Some(entity_type),
+            EntityType::Specified(entity_type) => Some(entity_type),
             EntityType::Unspecified => None,
         },
         ExprKind::Is { entity_type, .. } => Some(entity_type),
@@ -138,7 +138,7 @@ fn text_in_entity_type<'a>(
     ty: &'a EntityType,
 ) -> impl IntoIterator<Item = TextKind<'a>> {
     match ty {
-        EntityType::Concrete(ty) => text_in_name(l, ty).collect::<Vec<_>>(),
+        EntityType::Specified(ty) => text_in_name(l, ty).collect::<Vec<_>>(),
         EntityType::Unspecified => vec![],
     }
 }

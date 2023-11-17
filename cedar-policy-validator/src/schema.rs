@@ -381,7 +381,7 @@ impl ValidatorSchema {
 
             for p_entity in action.applies_to.applicable_principal_types() {
                 match p_entity {
-                    EntityType::Concrete(p_entity) => {
+                    EntityType::Specified(p_entity) => {
                         if !entity_types.contains_key(&p_entity) {
                             undeclared_e.insert(p_entity.to_string());
                         }
@@ -392,7 +392,7 @@ impl ValidatorSchema {
 
             for r_entity in action.applies_to.applicable_resource_types() {
                 match r_entity {
-                    EntityType::Concrete(r_entity) => {
+                    EntityType::Specified(r_entity) => {
                         if !entity_types.contains_key(&r_entity) {
                             undeclared_e.insert(r_entity.to_string());
                         }
@@ -498,7 +498,7 @@ impl ValidatorSchema {
         entity: &'a EntityUID,
     ) -> impl Iterator<Item = &Name> + 'a {
         let ety = match entity.entity_type() {
-            EntityType::Concrete(ety) => Some(ety),
+            EntityType::Specified(ety) => Some(ety),
             EntityType::Unspecified => None,
         };
 
@@ -972,11 +972,11 @@ mod test {
             .applies_to;
         assert_eq!(
             apply_spec.applicable_principal_types().collect::<Vec<_>>(),
-            vec![&EntityType::Concrete(user_entity_type.clone())]
+            vec![&EntityType::Specified(user_entity_type.clone())]
         );
         assert_eq!(
             apply_spec.applicable_resource_types().collect::<Vec<_>>(),
-            vec![&EntityType::Concrete(photo_entity_type.clone())]
+            vec![&EntityType::Specified(photo_entity_type.clone())]
         );
     }
 
@@ -1414,13 +1414,13 @@ mod test {
             baz.applies_to
                 .applicable_principal_types()
                 .collect::<HashSet<_>>(),
-            HashSet::from([&EntityType::Concrete("Fiz::Buz".parse().unwrap())])
+            HashSet::from([&EntityType::Specified("Fiz::Buz".parse().unwrap())])
         );
         assert_eq!(
             baz.applies_to
                 .applicable_resource_types()
                 .collect::<HashSet<_>>(),
-            HashSet::from([&EntityType::Concrete("Fiz::Baz".parse().unwrap())])
+            HashSet::from([&EntityType::Specified("Fiz::Baz".parse().unwrap())])
         );
     }
 

@@ -1718,10 +1718,10 @@ mod schema_based_parsing_tests {
             basename: &'a Id,
         ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
             match basename.as_ref() {
-                "Employee" => Box::new(std::iter::once(EntityType::Concrete(
+                "Employee" => Box::new(std::iter::once(EntityType::Specified(
                     Name::unqualified_name(basename.clone()),
                 ))),
-                "Action" => Box::new(std::iter::once(EntityType::Concrete(
+                "Action" => Box::new(std::iter::once(EntityType::Specified(
                     Name::unqualified_name(basename.clone()),
                 ))),
                 _ => Box::new(std::iter::empty()),
@@ -1736,7 +1736,7 @@ mod schema_based_parsing_tests {
     struct MockEmployeeDescription;
     impl EntityTypeDescription for MockEmployeeDescription {
         fn entity_type(&self) -> EntityType {
-            EntityType::Concrete(Name::parse_unqualified_name("Employee").expect("valid"))
+            EntityType::Specified(Name::parse_unqualified_name("Employee").expect("valid"))
         }
 
         fn attr_type(&self, attr: &str) -> Option<SchemaType> {
@@ -1744,7 +1744,7 @@ mod schema_based_parsing_tests {
                 ty: self.entity_type(),
             };
             let hr_ty = || SchemaType::Entity {
-                ty: EntityType::Concrete(Name::parse_unqualified_name("HR").expect("valid")),
+                ty: EntityType::Specified(Name::parse_unqualified_name("HR").expect("valid")),
             };
             match attr {
                 "isFullTime" => Some(SchemaType::Bool),
@@ -2839,7 +2839,7 @@ mod schema_based_parsing_tests {
                 basename: &'a Id,
             ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
                 match basename.as_ref() {
-                    "Employee" => Box::new(std::iter::once(EntityType::Concrete(
+                    "Employee" => Box::new(std::iter::once(EntityType::Specified(
                         Name::from_str("XYZCorp::Employee").expect("valid name"),
                     ))),
                     _ => Box::new(std::iter::empty()),
@@ -2853,7 +2853,7 @@ mod schema_based_parsing_tests {
         struct MockEmployeeDescription;
         impl EntityTypeDescription for MockEmployeeDescription {
             fn entity_type(&self) -> EntityType {
-                EntityType::Concrete("XYZCorp::Employee".parse().expect("valid"))
+                EntityType::Specified("XYZCorp::Employee".parse().expect("valid"))
             }
 
             fn attr_type(&self, attr: &str) -> Option<SchemaType> {

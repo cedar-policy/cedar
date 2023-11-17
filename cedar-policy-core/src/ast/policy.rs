@@ -1377,7 +1377,7 @@ impl PrincipalOrResourceConstraint {
     pub fn iter_entity_type_names(&self) -> impl Iterator<Item = &'_ Name> {
         self.iter_euids()
             .filter_map(|euid| match euid.entity_type() {
-                EntityType::Concrete(name) => Some(name),
+                EntityType::Specified(name) => Some(name),
                 EntityType::Unspecified => None,
             })
             .chain(match self {
@@ -1465,7 +1465,7 @@ impl ActionConstraint {
     pub fn iter_entity_type_names(&self) -> impl Iterator<Item = &'_ Name> {
         self.iter_euids()
             .filter_map(|euid| match euid.entity_type() {
-                EntityType::Concrete(name) => Some(name),
+                EntityType::Specified(name) => Some(name),
                 EntityType::Unspecified => None,
             })
     }

@@ -630,7 +630,7 @@ fn action_constraint_contains_only_action_types(
 
 /// Check if an EUID has the type `Action` under an arbitrary namespace
 fn euid_has_action_type(euid: &EntityUID) -> bool {
-    if let EntityType::Concrete(name) = euid.entity_type() {
+    if let EntityType::Specified(name) = euid.entity_type() {
         name.id.as_ref() == "Action"
     } else {
         false
