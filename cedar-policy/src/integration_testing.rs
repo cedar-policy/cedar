@@ -114,14 +114,18 @@ fn constant_true() -> bool {
 ///
 /// # Panics
 ///
-/// Panics if the environment variable `CARGO_MANIFEST_DIR` is not set.
-/// This variable should be set by Cargo at build-time.
+/// Panics if the environment variable `CARGO_MANIFEST_DIR` is not set,
+/// and `CEDAR_INTEGRATION_TESTS_PATH` is not set.
+/// `CARGO_MANIFEST_DIR` should be set by Cargo at build-time, but
+/// `CEDAR_INTEGRATION_TESTS_PATH` overrides `CARGO_MANIFEST_DIR`.
 pub fn resolve_integration_test_path(path: impl AsRef<Path>) -> PathBuf {
     if path.as_ref().is_relative() {
-        let mut full_path = PathBuf::new();
+        if let Ok(integration_tests_env_var) = env::var("CEDAR_INTEGRATION_TESTS_PATH") {
+            return PathBuf::from(integration_tests_env_var);
+        }
         let manifest_dir = env::var("CARGO_MANIFEST_DIR")
             .expect("`CARGO_MANIFEST_DIR` should be set by Cargo at build-time.");
-        full_path.push(manifest_dir.clone());
+        let mut full_path = PathBuf::from(manifest_dir.clone());
         full_path.push("..");
         // We run `cargo test` for cedar-drt. In that case, CARGO_MANIFEST_DIR will be
         // `cedar-spec/cedar-drt` and we want `../cedar/cedar-integration-tests`
