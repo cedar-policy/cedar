@@ -3615,3 +3615,22 @@ pub fn eval_expression(
         eval.interpret(&expr.0, &ast::SlotEnv::new())?,
     ))
 }
+
+#[cfg(test)]
+#[cfg(feature = "partial-eval")]
+mod partial_eval_test {
+    use std::collections::HashSet;
+
+    use crate::{AuthorizationError, PolicyId, PolicySet, ResidualResponse};
+
+    #[test]
+    fn test_pe_response_constructor() {
+        let p: PolicySet = "permit(principal, action, resource);".parse().unwrap();
+        let reason: HashSet<PolicyId> = std::iter::once("id1".parse().unwrap()).collect();
+        let errors: Vec<AuthorizationError> = std::iter::empty().collect();
+        let a = ResidualResponse::new(p.clone(), reason.clone(), errors.clone());
+        assert_eq!(a.diagnostics().errors, errors);
+        assert_eq!(a.diagnostics().reason, reason);
+        assert_eq!(a.residuals(), &p);
+    }
+}

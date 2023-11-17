@@ -830,7 +830,7 @@ mod policy_set_tests {
             ast::Expr::unknown(ast::Unknown::new_with_type(
                 "test_entity_type::\"unknown\"",
                 ast::Type::Entity {
-                    ty: ast::EntityType::Concrete("test_entity_type".parse().unwrap()),
+                    ty: ast::EntityType::Specified("test_entity_type".parse().unwrap()),
                 },
             )),
             ast::PolicyID::from_smolstr("static".into()),
@@ -2724,23 +2724,5 @@ mod schema_based_parsing_tests {
             parsed.attr("tricky"),
             Some(Err(e)) => assert_contains_unknown(&e.to_string(), "ttt")
         );
-    }
-}
-
-#[cfg(feature = "partial-eval")]
-mod partial_eval_test {
-    use std::collections::HashSet;
-
-    use crate::{AuthorizationError, PolicyId, PolicySet, ResidualResponse};
-
-    #[test]
-    fn test_pe_response_constructor() {
-        let p: PolicySet = "permit(principal, action, resource);".parse().unwrap();
-        let reason: HashSet<PolicyId> = std::iter::once("id1".parse().unwrap()).collect();
-        let errors: Vec<AuthorizationError> = std::iter::empty().collect();
-        let a = ResidualResponse::new(p.clone(), reason.clone(), errors.clone());
-        assert_eq!(a.diagnostics().errors, errors);
-        assert_eq!(a.diagnostics().reason, reason);
-        assert_eq!(a.residuals(), &p);
     }
 }
