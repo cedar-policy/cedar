@@ -62,6 +62,8 @@ cool_asserts = "2.0"
 criterion = "0.5"
 globset = "0.4"
 
+proptest = "1.0.0"
+
 [[bench]]
 name = "cedar_benchmarks"
 harness = false
