@@ -377,23 +377,25 @@ impl RecvdSlice {
 
         let mut errs = Vec::new();
 
-        let (mut policies, entities) =
-            match (Entities::from_json_value(entities.into(), schema), policy_set) {
-                (Ok(entities), Ok(policies)) => (policies, entities),
-                (Ok(_), Err(policy_parse_errors)) => {
-                    errs.extend(policy_parse_errors);
-                    (PolicySet::new(), Entities::empty())
-                }
-                (Err(e), Ok(_)) => {
-                    errs.push(e.to_string());
-                    (PolicySet::new(), Entities::empty())
-                }
-                (Err(e), Err(policy_parse_errors)) => {
-                    errs.push(e.to_string());
-                    errs.extend(policy_parse_errors);
-                    (PolicySet::new(), Entities::empty())
-                }
-            };
+        let (mut policies, entities) = match (
+            Entities::from_json_value(entities.into(), schema),
+            policy_set,
+        ) {
+            (Ok(entities), Ok(policies)) => (policies, entities),
+            (Ok(_), Err(policy_parse_errors)) => {
+                errs.extend(policy_parse_errors);
+                (PolicySet::new(), Entities::empty())
+            }
+            (Err(e), Ok(_)) => {
+                errs.push(e.to_string());
+                (PolicySet::new(), Entities::empty())
+            }
+            (Err(e), Err(policy_parse_errors)) => {
+                errs.push(e.to_string());
+                errs.extend(policy_parse_errors);
+                (PolicySet::new(), Entities::empty())
+            }
+        };
 
         if let Some(t_inst_list) = template_instantiations {
             for instantiation in t_inst_list {
