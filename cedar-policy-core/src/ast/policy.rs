@@ -754,7 +754,7 @@ impl StaticPolicy {
         let num_slots = body.condition().slots().next().map(SlotId::clone);
         // INVARIANT (inline policy correctness), checks that no slots exists
         match num_slots {
-            Some(slot_id) => Err(UnexpectedSlotError::Named(slot_id))?,
+            Some(slot_id) => Err(UnexpectedSlotError::FoundSlot(slot_id))?,
             None => Ok(Self(body)),
         }
     }
@@ -767,7 +767,7 @@ impl TryFrom<Template> for StaticPolicy {
         // INVARIANT (Static policy correctness): Must ensure StaticPolicy contains no slots
         let o = value.slots().next().map(SlotId::clone);
         match o {
-            Some(slot_id) => Err(Self::Error::Named(slot_id)),
+            Some(slot_id) => Err(Self::Error::FoundSlot(slot_id)),
             None => Ok(Self(value.body)),
         }
     }
@@ -1181,43 +1181,44 @@ impl EntityReference {
     pub fn euid(euid: EntityUID) -> Self {
         Self::EUID(Arc::new(euid))
     }
+
+    /// Get the entity reference as an `EntityUID`, returning an error if it is
+    /// a slot rather than an `EntityUID`.
+    ///
+    /// `slot` indicates what `SlotId` would be implied by
+    /// `EntityReference::Slot`, which is always clear from the caller's
+    /// context. It is only used for error reporting
+    pub fn into_euid(self, slot: SlotId) -> Result<Arc<EntityUID>, UnexpectedSlotError> {
+        match self {
+            EntityReference::EUID(euid) => Ok(euid),
+            EntityReference::Slot => Err(UnexpectedSlotError::FoundSlot(slot)),
+        }
+    }
+
+    /// Transform into an expression AST
+    ///
+    /// `slot` indicates what `SlotId` would be implied by
+    /// `EntityReference::Slot`, which is always clear from the caller's
+    /// context.
+    pub fn into_expr(&self, slot: SlotId) -> Expr {
+        match self {
+            EntityReference::EUID(euid) => Expr::val(euid.clone()),
+            EntityReference::Slot => Expr::slot(slot),
+        }
+    }
 }
 
 /// Error for unexpected slots
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum UnexpectedSlotError {
-    /// Unexpected Slot without a known name
-    #[error("found a slot where none was expected")]
-    Unnamed,
-    /// Unexpected Slot with a name
-    #[error("found slot `{0}` where none was expected")]
-    Named(SlotId),
-}
-
-impl TryInto<Arc<EntityUID>> for EntityReference {
-    type Error = UnexpectedSlotError;
-
-    fn try_into(self) -> Result<Arc<EntityUID>, Self::Error> {
-        match self {
-            EntityReference::EUID(euid) => Ok(euid),
-            EntityReference::Slot => Err(Self::Error::Unnamed),
-        }
-    }
+    /// Found this slot where slots are not allowed
+    #[error("found slot `{0}` where slots are not allowed")]
+    FoundSlot(SlotId),
 }
 
 impl From<EntityUID> for EntityReference {
     fn from(euid: EntityUID) -> Self {
         Self::EUID(Arc::new(euid))
-    }
-}
-
-impl EntityReference {
-    /// Transform into an expression AST
-    pub fn into_expr(&self, name: SlotId) -> Expr {
-        match self {
-            EntityReference::EUID(euid) => Expr::val(euid.clone()),
-            EntityReference::Slot => Expr::slot(name),
-        }
     }
 }
 
@@ -1868,18 +1869,6 @@ mod test {
     }
 
     #[test]
-    fn template_error_msgs_have_names() {
-        for template in all_templates() {
-            if let Err(e) = StaticPolicy::try_from(template) {
-                match e {
-                    super::UnexpectedSlotError::Unnamed => panic!("Didn't get a name!"),
-                    super::UnexpectedSlotError::Named(_) => (),
-                }
-            }
-        }
-    }
-
-    #[test]
     fn template_por_iter() {
         let e = Arc::new(EntityUID::with_eid("eid"));
         assert_eq!(PrincipalOrResourceConstraint::Any.iter_euids().count(), 0);
@@ -2005,12 +1994,21 @@ mod test {
     fn unexpected_templates() {
         let policy_str = r#"permit(principal == ?principal, action, resource);"#;
         let ParseErrors(errs) = parse_policy(Some("id".into()), policy_str).err().unwrap();
-        assert_eq!(&errs[0], &ParseError::ToAST(ToASTError::UnexpectedTemplate));
+        assert_eq!(
+            &errs[0],
+            &ParseError::ToAST(ToASTError::UnexpectedTemplate {
+                slot: crate::parser::cst::Slot::Principal
+            })
+        );
         assert_eq!(errs.len(), 1);
         let policy_str =
             r#"permit(principal == ?principal, action, resource) when { ?principal == 3 } ;"#;
         let ParseErrors(errs) = parse_policy(Some("id".into()), policy_str).err().unwrap();
-        assert!(errs.contains(&ParseError::ToAST(ToASTError::UnexpectedTemplate)));
+        assert!(
+            errs.contains(&ParseError::ToAST(ToASTError::UnexpectedTemplate {
+                slot: crate::parser::cst::Slot::Principal
+            }))
+        );
         assert_eq!(errs.len(), 2);
     }
 }
