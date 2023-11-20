@@ -63,6 +63,7 @@ criterion = "0.5"
 globset = "0.4"
 
 proptest = "1.0.0"
+rand = "0.8.5"
 
 [[bench]]
 name = "cedar_benchmarks"
