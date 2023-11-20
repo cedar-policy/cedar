@@ -408,7 +408,7 @@ impl<'a> Typechecker<'a> {
                         action
                             .applies_to
                             .applicable_resource_types()
-                            .map(|resource| RequestEnv::Known {
+                            .map(|resource| RequestEnv::DeclaredAction {
                                 principal,
                                 action: &action.name,
                                 resource,
@@ -423,7 +423,7 @@ impl<'a> Typechecker<'a> {
                 // include all principal and resource types for the listed ones.
                 // So we typecheck with a fully unknown request to handle these
                 // missing cases.
-                Some(RequestEnv::Unknown)
+                Some(RequestEnv::UndeclaredAction)
             } else {
                 None
             })
@@ -437,8 +437,8 @@ impl<'a> Typechecker<'a> {
         t: &'b Template,
     ) -> Box<dyn Iterator<Item = RequestEnv> + 'b> {
         match env {
-            RequestEnv::Unknown => Box::new(std::iter::once(RequestEnv::Unknown)),
-            RequestEnv::Known {
+            RequestEnv::UndeclaredAction => Box::new(std::iter::once(RequestEnv::UndeclaredAction)),
+            RequestEnv::DeclaredAction {
                 principal,
                 action,
                 resource,
@@ -458,7 +458,7 @@ impl<'a> Typechecker<'a> {
                         resource,
                         t.resource_constraint().as_inner(),
                     )
-                    .map(move |r_slot| RequestEnv::Known {
+                    .map(move |r_slot| RequestEnv::DeclaredAction {
                         principal,
                         action,
                         resource,

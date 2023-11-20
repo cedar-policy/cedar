@@ -2673,7 +2673,6 @@ fn partial_schema_unsupported() {
 #[cfg(feature = "partial-validate")]
 mod partial_schema {
     use super::*;
-    use cedar_policy_core::ast::EntityUID;
     use serde_json::json;
 
     fn partial_schema() -> Schema {

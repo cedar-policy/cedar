@@ -145,7 +145,7 @@ where
 {
     f(
         simple_schema_file(),
-        RequestEnv::Known {
+        RequestEnv::DeclaredAction {
             principal: &EntityType::Specified("User".parse().unwrap()),
             action: &EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
             resource: &EntityType::Specified("Photo".parse().unwrap()),

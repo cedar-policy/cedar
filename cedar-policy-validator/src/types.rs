@@ -39,13 +39,12 @@ use super::schema::{
     is_action_entity_type, ValidatorActionId, ValidatorEntityType, ValidatorSchema,
 };
 
-/// Contains the four variables bound in the type environment. These together
-/// represent the full type of (principal, action, resource, context)
-/// authorization request.
 #[derive(Clone, Debug, PartialEq)]
 pub enum RequestEnv<'a> {
-    Unknown,
-    Known {
+    /// Contains the four variables bound in the type environment. These together
+    /// represent the full type of (principal, action, resource, context)
+    /// authorization request.
+    DeclaredAction {
         principal: &'a EntityType,
         action: &'a EntityUID,
         resource: &'a EntityType,
@@ -54,13 +53,17 @@ pub enum RequestEnv<'a> {
         principal_slot: Option<EntityType>,
         resource_slot: Option<EntityType>,
     },
+    /// Only in partial schema validation, the action might not have been
+    /// declared in the schema, so this encodes the environment where we know
+    /// nothing about the environment.
+    UndeclaredAction,
 }
 
 impl<'a> RequestEnv<'a> {
     pub fn principal_entity_type(&self) -> Option<&'a EntityType> {
         match self {
-            RequestEnv::Unknown => None,
-            RequestEnv::Known { principal, .. } => Some(principal),
+            RequestEnv::UndeclaredAction => None,
+            RequestEnv::DeclaredAction { principal, .. } => Some(principal),
         }
     }
 
@@ -73,8 +76,8 @@ impl<'a> RequestEnv<'a> {
 
     pub fn action_entity_uid(&self) -> Option<&'a EntityUID> {
         match self {
-            RequestEnv::Unknown => None,
-            RequestEnv::Known { action, .. } => Some(action),
+            RequestEnv::UndeclaredAction => None,
+            RequestEnv::DeclaredAction { action, .. } => Some(action),
         }
     }
 
@@ -87,8 +90,8 @@ impl<'a> RequestEnv<'a> {
 
     pub fn resource_entity_type(&self) -> Option<&'a EntityType> {
         match self {
-            RequestEnv::Unknown => None,
-            RequestEnv::Known { resource, .. } => Some(resource),
+            RequestEnv::UndeclaredAction => None,
+            RequestEnv::DeclaredAction { resource, .. } => Some(resource),
         }
     }
 
@@ -101,22 +104,22 @@ impl<'a> RequestEnv<'a> {
 
     pub fn context_type(&self) -> Type {
         match self {
-            RequestEnv::Unknown => Type::any_record(),
-            RequestEnv::Known { context, .. } => (*context).clone(),
+            RequestEnv::UndeclaredAction => Type::any_record(),
+            RequestEnv::DeclaredAction { context, .. } => (*context).clone(),
         }
     }
 
     pub fn principal_slot(&self) -> &Option<EntityType> {
         match self {
-            RequestEnv::Unknown => &None,
-            RequestEnv::Known { principal_slot, .. } => principal_slot,
+            RequestEnv::UndeclaredAction => &None,
+            RequestEnv::DeclaredAction { principal_slot, .. } => principal_slot,
         }
     }
 
     pub fn resource_slot(&self) -> &Option<EntityType> {
         match self {
-            RequestEnv::Unknown => &None,
-            RequestEnv::Known { resource_slot, .. } => resource_slot,
+            RequestEnv::UndeclaredAction => &None,
+            RequestEnv::DeclaredAction { resource_slot, .. } => resource_slot,
         }
     }
 }
