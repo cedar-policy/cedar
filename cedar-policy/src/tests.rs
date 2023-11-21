@@ -805,6 +805,39 @@ mod policy_set_tests {
     }
 
     #[test]
+    fn pset_removal_prop_test_1() {
+        let template = Template::parse(
+            Some("policy0".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Template Parse Failure");
+        // let static_policy = Policy::parse(
+        //     Some("policy4".into()),
+        //     "permit(principal, action, resource);",
+        // )
+        // .expect("Static parse failure");
+        let mut pset = PolicySet::new();
+        // pset.add(static_policy).unwrap();
+        pset.add_template(template).unwrap();
+        let env: HashMap<SlotId, EntityUid> =
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
+        pset.link(
+            PolicyId::from_str("policy0").unwrap(),
+            PolicyId::from_str("policy3").unwrap(),
+            env,
+        );
+        let template = Template::parse(
+            Some("policy3".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Template Parse Failure");
+        pset.add_template(template).unwrap();
+        pset.remove_static(PolicyId::from_str("policy3").unwrap());
+        pset.remove_template(PolicyId::from_str("policy3").unwrap());
+        //Should not panic
+    }
+
+    #[test]
     fn link_static_policy() {
         // Linking the `PolicyId` of a static policy should not be allowed.
         // Attempting it should cause an `ExpectedTemplate` error.
@@ -2989,14 +3022,10 @@ mod prop_test_policy_set_operations {
         //The production PolicySet implementation
         policy_set: PolicySet,
 
-        //Used to generate unique names
-        max_name_int: i32,
-
         //We model the PolicySet state machine in terms of the below:
-        //Every name is unique
-        static_policy_names: Vec<String>,
-        template_names: Vec<String>,
         link_names: Vec<String>,
+
+        template_names: Vec<String>,
 
         //Every existent template has a (possibly empty) vector of the links to that template
         template_to_link_map: HashMap<String, Vec<String>>,
@@ -3011,41 +3040,37 @@ mod prop_test_policy_set_operations {
         fn new() -> Self {
             Self {
                 policy_set: PolicySet::new(),
-                static_policy_names: Vec::new(),
-                template_names: Vec::new(),
                 link_names: Vec::new(),
+                template_names: Vec::new(),
                 template_to_link_map: HashMap::new(),
                 link_to_template_map: HashMap::new(),
-                max_name_int: 0,
             }
         }
 
-        fn get_next_name(&mut self) -> String {
-            let mut rng = rand::thread_rng();
-            let s = if rng.gen_range(0..2) == 0 {
-                let i = self.max_name_int;
-                self.max_name_int += 1;
-                format!("policy{i}")
-            } else {
-                format!("policy{}", rng.gen_range(0..=self.max_name_int))
-            };
-            s
-        }
+        // fn get_next_name(&mut self) -> String {
+        //     let mut rng = rand::thread_rng();
+        //     let s = if rng.gen_range(0..2) == 0 {
+        //         let i = self.max_name_int;
+        //         self.max_name_int += 1;
+        //         format!("policy{i}")
+        //     } else {
+        //         format!("policy{}", rng.gen_range(0..=self.max_name_int))
+        //     };
+        //     s
+        // }
 
         //add_static never fails and bumps `max_name_int`
-        fn add_static(&mut self) {
-            let policy_name = self.get_next_name();
+        fn add_static(&mut self, policy_name: String) {
             let policy_str = "permit(principal, action, resource);";
             let p = Policy::parse(Some(policy_name.clone()), policy_str).unwrap();
             if self.policy_set.add(p).is_ok() {
                 println!("Add_static {policy_name}");
-                self.static_policy_names.push(policy_name);
+                self.link_names.push(policy_name);
             }
         }
 
         //add_static never fails and bumps `max_name_int`
-        fn add_template(&mut self) {
-            let template_name = self.get_next_name();
+        fn add_template(&mut self, template_name: String) {
             let template_str = "permit(principal == ?principal, action, resource);";
             let template = Template::parse(Some(template_name.clone()), template_str).unwrap();
             if self.policy_set.add_template(template).is_ok() {
@@ -3055,9 +3080,8 @@ mod prop_test_policy_set_operations {
             }
         }
 
-        fn link(&mut self) {
+        fn link(&mut self, policy_name: String) {
             if self.template_names.len() > 0 {
-                let policy_name = self.get_next_name();
                 let euid = EntityUid::from_strs("User", "alice");
                 let template_name = self.template_names.last().unwrap(); //TODO: randomize
                 let vals = HashMap::from([(SlotId::principal(), euid)]);
@@ -3089,25 +3113,23 @@ mod prop_test_policy_set_operations {
             let idx = names
                 .iter()
                 .position(|r| r == &policy_name)
-                .expect("Should find policy_name");
+                .expect(&format!("Should find policy_name {policy_name}"));
             names.remove(idx);
         }
 
-        fn remove_static(&mut self) {
-            let policy_id = self.get_next_name();
-            //Remove from PolicySet and `static_policy_names`
+        fn remove_static(&mut self, policy_id: String) {
+            //Remove from PolicySet and `link_names`
             if self
                 .policy_set
                 .remove_static(PolicyId::from_str(&policy_id).unwrap())
                 .is_ok()
             {
                 println!("Remove_static {policy_id}");
-                Self::remove_policy_name(&mut self.static_policy_names, policy_id);
+                Self::remove_policy_name(&mut self.link_names, policy_id);
             }
         }
 
-        fn remove_template(&mut self) {
-            let template_name = self.get_next_name();
+        fn remove_template(&mut self, template_name: String) {
             if self
                 .policy_set
                 .remove_template(PolicyId::from_str(&template_name).unwrap())
@@ -3127,8 +3149,7 @@ mod prop_test_policy_set_operations {
             }
         }
 
-        fn unlink(&mut self) {
-            let policy_id = self.get_next_name();
+        fn unlink(&mut self, policy_id: String) {
             if self
                 .policy_set
                 .unlink(PolicyId::from_str(&policy_id).unwrap())
@@ -3156,7 +3177,7 @@ mod prop_test_policy_set_operations {
                     Self::remove_policy_name(&mut self.link_names, policy_id);
                 } else {
                     //Then it was a static_policy
-                    Self::remove_policy_name(&mut self.static_policy_names, policy_id);
+                    Self::remove_policy_name(&mut self.link_names, policy_id);
                 }
             }
         }
@@ -3165,7 +3186,7 @@ mod prop_test_policy_set_operations {
         /// static policies, links or templates
         fn check_equiv(&self) {
             let real_policy_set_links: Vec<_> = self.policy_set.policies().collect();
-            for policy_name in &self.static_policy_names {
+            for policy_name in &self.link_names {
                 assert!(real_policy_set_links
                     .iter()
                     .any(|p| p.id() == &PolicyId::from_str(&policy_name).unwrap()));
@@ -3177,7 +3198,7 @@ mod prop_test_policy_set_operations {
             }
             for link_name in real_policy_set_links {
                 assert!(
-                    self.static_policy_names
+                    self.link_names
                         .iter()
                         .any(|p| link_name.id() == &PolicyId::from_str(p).unwrap())
                         || self
@@ -3222,32 +3243,43 @@ mod prop_test_policy_set_operations {
             (5, Unlink),
         ]);
 
+        let mut ints: Vec<(u32, u32)> = Vec::new();
+        let mut last_int: Option<u32> = None;
         for c in s.chars() {
             let n = c.to_digit(10);
             match n {
-                Some(n) => {
-                    if n > 5 {
-                        panic!("Testing harness sending numbers greater than 5");
+                Some(n) => match last_int {
+                    Some(i) => {
+                        ints.push((i, n));
+                        last_int = None;
                     }
-                    let op = n_to_op_map.get(&n).unwrap();
-                    match op {
-                        Add => my_policy_set.add_static(),
-                        RemoveStatic => my_policy_set.remove_static(),
-                        AddTemplate => my_policy_set.add_template(),
-                        RemoveTemplate => my_policy_set.remove_template(),
-                        Link => my_policy_set.link(),
-                        Unlink => my_policy_set.unlink(),
-                    };
-                }
-                None => continue,
+                    None => last_int = Some(n),
+                },
+                None => panic!("Should be able to convert to ints"),
             }
+        }
+
+        for (op_n, policy_n) in ints {
+            if op_n > 5 {
+                panic!("Testing harness sending numbers greater than 5");
+            }
+            let op = n_to_op_map.get(&op_n).unwrap();
+            match op {
+                Add => my_policy_set.add_static(format!("policy{policy_n}")),
+                RemoveStatic => my_policy_set.remove_static(format!("policy{policy_n}")),
+                AddTemplate => my_policy_set.add_template(format!("policy{policy_n}")),
+                RemoveTemplate => my_policy_set.remove_template(format!("policy{policy_n}")),
+                Link => my_policy_set.link(format!("policy{policy_n}")),
+                Unlink => my_policy_set.unlink(format!("policy{policy_n}")),
+            };
+
             my_policy_set.check_equiv();
         }
     }
 
     proptest! {
         #[test]
-        fn doesnt_crash(s in "[0-5]{10}") {
+        fn doesnt_crash(s in "[0-5]{20}") {
             string_to_policy_set_ops(&s);
         }
     }
