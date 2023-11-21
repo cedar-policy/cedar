@@ -161,7 +161,11 @@ impl PolicySet {
     }
 
     /// Add a template to the policy set.
+    /// If a link with the same name already exists, this will error.
     pub fn add_template(&mut self, t: Template) -> Result<(), PolicySetError> {
+        if self.links.contains_key(t.id()) {
+            return Err(PolicySetError::Occupied);
+        }
         // TODO: Use `try_insert` when stabilized.
         // https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert
         match self.templates.entry(t.id().clone()) {

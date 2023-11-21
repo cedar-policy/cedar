@@ -3662,6 +3662,36 @@ mod policy_set_tests {
             )))
         );
     }
+
+    #[test]
+    fn pset_add_template_conflict_link() {
+        let template = Template::parse(
+            Some("policy0".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Template Parse Failure");
+        let mut pset = PolicySet::new();
+        pset.add_template(template).unwrap();
+        let env: HashMap<SlotId, EntityUid> =
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
+        pset.link(
+            PolicyId::from_str("policy0").unwrap(),
+            PolicyId::from_str("policy3").unwrap(),
+            env,
+        )
+        .unwrap();
+        let template = Template::parse(
+            Some("policy3".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Template Parse Failure");
+
+        assert_matches!(
+            pset.add_template(template),
+            Err(PolicySetError::AlreadyDefined)
+        );
+        //Should not panic
+    }
 }
 
 #[cfg(test)]
