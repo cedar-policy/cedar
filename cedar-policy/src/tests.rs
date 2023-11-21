@@ -1147,6 +1147,178 @@ mod policy_set_tests {
             PolicySetError::TemplateNonexistentError(_)
         );
     }
+
+    #[test]
+    fn pset_add_conflict() {
+        let template = Template::parse(
+            Some("policy0".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Template Parse Failure");
+        let mut pset = PolicySet::new();
+        pset.add_template(template).unwrap();
+        let env: HashMap<SlotId, EntityUid> =
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
+        pset.link(
+            PolicyId::from_str("policy0").unwrap(),
+            PolicyId::from_str("policy1").unwrap(),
+            env,
+        )
+        .unwrap();
+
+        //fails for template; static
+        let static_policy = Policy::parse(
+            Some("policy0".into()),
+            "permit(principal, action, resource);",
+        )
+        .expect("Static parse failure");
+        assert_matches!(
+            pset.add(static_policy),
+            Err(PolicySetError::AlreadyDefined { .. })
+        );
+
+        //fails for link; static
+        let static_policy = Policy::parse(
+            Some("policy1".into()),
+            "permit(principal, action, resource);",
+        )
+        .expect("Static parse failure");
+        assert_matches!(
+            pset.add(static_policy),
+            Err(PolicySetError::AlreadyDefined { .. })
+        );
+
+        //fails for static; static
+        let static_policy = Policy::parse(
+            Some("policy2".into()),
+            "permit(principal, action, resource);",
+        )
+        .expect("Static parse failure");
+        pset.add(static_policy.clone()).unwrap();
+        assert_matches!(
+            pset.add(static_policy),
+            Err(PolicySetError::AlreadyDefined { .. })
+        );
+    }
+
+    #[test]
+    fn pset_add_template_conflict() {
+        let template = Template::parse(
+            Some("policy0".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Template Parse Failure");
+        let mut pset = PolicySet::new();
+        pset.add_template(template).unwrap();
+        let env: HashMap<SlotId, EntityUid> =
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
+        pset.link(
+            PolicyId::from_str("policy0").unwrap(),
+            PolicyId::from_str("policy3").unwrap(),
+            env,
+        )
+        .unwrap();
+
+        //fails for link; template
+        let template = Template::parse(
+            Some("policy3".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Template Parse Failure");
+        assert_matches!(
+            pset.add_template(template),
+            Err(PolicySetError::AlreadyDefined { .. })
+        );
+
+        //fails for template; template
+        let template = Template::parse(
+            Some("policy0".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Template Parse Failure");
+        assert_matches!(
+            pset.add_template(template),
+            Err(PolicySetError::AlreadyDefined { .. })
+        );
+
+        //fails for static; template
+        let static_policy = Policy::parse(
+            Some("policy1".into()),
+            "permit(principal, action, resource);",
+        )
+        .expect("Static parse failure");
+        pset.add(static_policy).unwrap();
+        let template = Template::parse(
+            Some("policy1".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Template Parse Failure");
+        assert_matches!(
+            pset.add_template(template),
+            Err(PolicySetError::AlreadyDefined { .. })
+        );
+    }
+
+    #[test]
+    fn pset_link_conflict() {
+        let template = Template::parse(
+            Some("policy0".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Template Parse Failure");
+        let mut pset = PolicySet::new();
+        pset.add_template(template).unwrap();
+        let env: HashMap<SlotId, EntityUid> =
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
+
+        //fails for link; link
+        pset.link(
+            PolicyId::from_str("policy0").unwrap(),
+            PolicyId::from_str("policy3").unwrap(),
+            env.clone(),
+        )
+        .unwrap();
+        assert_matches!(
+            pset.link(
+                PolicyId::from_str("policy0").unwrap(),
+                PolicyId::from_str("policy3").unwrap(),
+                env.clone(),
+            ),
+            Err(PolicySetError::LinkingError(
+                LinkingError::PolicyIdConflict { .. }
+            ))
+        );
+
+        //fails for template; link
+        assert_matches!(
+            pset.link(
+                PolicyId::from_str("policy0").unwrap(),
+                PolicyId::from_str("policy0").unwrap(),
+                env.clone(),
+            ),
+            Err(PolicySetError::LinkingError(
+                LinkingError::PolicyIdConflict { .. }
+            ))
+        );
+
+        //fails for static; link
+        let static_policy = Policy::parse(
+            Some("policy1".into()),
+            "permit(principal, action, resource);",
+        )
+        .expect("Static parse failure");
+        pset.add(static_policy).unwrap();
+        assert_matches!(
+            pset.link(
+                PolicyId::from_str("policy0").unwrap(),
+                PolicyId::from_str("policy1").unwrap(),
+                env,
+            ),
+            Err(PolicySetError::LinkingError(
+                LinkingError::PolicyIdConflict { .. }
+            ))
+        );
+    }
 }
 
 mod schema_tests {
