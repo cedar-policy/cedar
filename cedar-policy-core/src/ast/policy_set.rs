@@ -161,7 +161,7 @@ impl PolicySet {
     }
 
     /// Add a template to the policy set.
-    /// If a link with the same name already exists, this will error.
+    /// If a link or template with the same name already exists, this will error.
     pub fn add_template(&mut self, t: Template) -> Result<(), PolicySetError> {
         if self.links.contains_key(t.id()) {
             return Err(PolicySetError::Occupied);
