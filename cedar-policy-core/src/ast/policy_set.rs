@@ -33,10 +33,12 @@ pub struct PolicySet {
     /// A body is either:
     ///    A Body of a `Template`, which has slots that need to be filled in
     ///    A Body of an `StaticPolicy`, which has been converted into a `Template` that has zero slots
+    ///      The static policy's PolicyID is the same in both `templates` and `links`
     templates: HashMap<PolicyID, Arc<Template>>,
     /// `links` contains all of the executable policies in the `PolicySet`
     /// A `StaticPolicy` must have exactly one `Policy` in `links`
     ///   (this is managed by `PolicySet::add)
+    ///   The static policy's PolicyID is the same in both `templates` and `links`
     /// A `Template` may have zero or many links
     links: HashMap<PolicyID, Policy>,
 
@@ -132,6 +134,9 @@ pub enum PolicySetUnlinkError {
     /// There was no [`PolicyID`] linked policy to unlink
     #[error("unable to unlink policy id `{0}` because it does not exist")]
     UnlinkingError(PolicyID),
+    /// There was a template [`PolicyID`] in the list of templates, so `PolicyID` is a static policy
+    #[error("unable to remove link with policy id `{0}` because it is a static policy")]
+    NotLinkError(PolicyID),
 }
 
 /// Potential errors when removing templates from a `PolicySet`.
@@ -145,6 +150,9 @@ pub enum PolicySetTemplateRemovalError {
         "unable to remove template id `{0}` from template list because it still has active links"
     )]
     RemoveTemplateWithLinksError(PolicyID),
+    /// There was a link [`PolicyID`] in the list of links, so `PolicyID` is a static policy
+    #[error("unable to remove template with policy id `{0}` because it is a static policy")]
+    NotTemplateError(PolicyID),
 }
 
 /// Potential errors when removing policies from a `PolicySet`.
@@ -288,7 +296,12 @@ impl PolicySet {
     }
 
     /// Add a template to the policy set.
+    /// If a link with the same name already exists, this will error.
     pub fn add_template(&mut self, t: Template) -> Result<(), PolicySetError> {
+        if self.links.contains_key(t.id()) {
+            return Err(PolicySetError::Occupied { id: t.id().clone() });
+        }
+
         // TODO: Use `try_insert` when stabilized.
         // https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert
         match self.templates.entry(t.id().clone()) {
@@ -305,11 +318,19 @@ impl PolicySet {
     }
 
     /// Remove a template from the policy set.
-    /// If any policy is linked to the template, this will error
+    /// If any policy is linked to the template this will error
+    /// If it is not a template this will error.
     pub fn remove_template(
         &mut self,
         policy_id: &PolicyID,
     ) -> Result<Template, PolicySetTemplateRemovalError> {
+        //A template occurs in templates but not in links.
+        if self.links.contains_key(policy_id) {
+            return Err(PolicySetTemplateRemovalError::NotTemplateError(
+                policy_id.clone(),
+            ));
+        }
+
         match self.template_to_links_map.get(policy_id) {
             Some(map) => {
                 if !map.is_empty() {
@@ -391,7 +412,12 @@ impl PolicySet {
     }
 
     /// Unlink `policy_id`
+    /// If it is not a link this will error
     pub fn unlink(&mut self, policy_id: &PolicyID) -> Result<Policy, PolicySetUnlinkError> {
+        //A link occurs in links but not in templates.
+        if self.templates.contains_key(policy_id) {
+            return Err(PolicySetUnlinkError::NotLinkError(policy_id.clone()));
+        }
         match self.links.remove(policy_id) {
             Some(p) => {
                 // PANIC SAFETY: every linked policy should have a template

@@ -1774,9 +1774,15 @@ pub enum PolicySetError {
     /// Error when removing a template with active links
     #[error("unable to remove policy template `{0}` because it has active links")]
     RemoveTemplateWithActiveLinksError(PolicyId),
+    /// Error when removing a template that is not a template
+    #[error("unable to remove policy template `{0}` because it is not a template")]
+    RemoveTemplateNotTemplateError(PolicyId),
     /// Error when unlinking a template
     #[error("unable to unlink policy template `{0}` because it does not exist")]
     LinkNonexistentError(PolicyId),
+    /// Error when removing a link that is not a link
+    #[error("unable to unlink `{0}` because it is not a link")]
+    UnlinkLinkNotLinkError(PolicyId),
 }
 
 impl From<ast::PolicySetError> for PolicySetError {
@@ -1884,6 +1890,7 @@ impl PolicySet {
     }
 
     /// Remove a static `Policy` from the `PolicySet`
+    /// If the policy is not a static policy this will error
     pub fn remove_static(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
         let Some(policy) = self.policies.remove(&policy_id) else {
             return Err(PolicySetError::PolicyNonexistentError(policy_id));
@@ -1894,7 +1901,6 @@ impl PolicySet {
         {
             Ok(_) => Ok(policy),
             Err(_) => {
-                //Only reachable if policy_id is a `link` and thus in `self.ast.links` but not `self.ast.templates`
                 //Restore self.policies
                 self.policies.insert(policy_id.clone(), policy);
                 Err(PolicySetError::PolicyNonexistentError(policy_id.clone()))
@@ -1912,6 +1918,7 @@ impl PolicySet {
 
     /// Remove a `Template` from the `PolicySet`.
     /// If any policy is linked to the template, this will error
+    /// If the policy is not a template this will error
     pub fn remove_template(&mut self, template_id: PolicyId) -> Result<Template, PolicySetError> {
         let Some(template) = self.templates.remove(&template_id) else {
             return Err(PolicySetError::TemplateNonexistentError(template_id));
@@ -1929,6 +1936,10 @@ impl PolicySet {
                 Err(PolicySetError::RemoveTemplateWithActiveLinksError(
                     template_id,
                 ))
+            }
+            Err(ast::PolicySetTemplateRemovalError::NotTemplateError(_)) => {
+                self.templates.insert(template_id.clone(), template);
+                Err(PolicySetError::RemoveTemplateNotTemplateError(template_id))
             }
             Err(ast::PolicySetTemplateRemovalError::RemovePolicyNoTemplateError(_)) => {
                 panic!("Found template policy in self.templates but not in self.ast");
@@ -2103,6 +2114,11 @@ impl PolicySet {
             .unlink(&ast::PolicyID::from_string(policy_id.to_string()))
         {
             Ok(_) => Ok(policy),
+            Err(ast::PolicySetUnlinkError::NotLinkError(_)) => {
+                //Restore self.policies
+                self.policies.insert(policy_id.clone(), policy);
+                Err(PolicySetError::UnlinkLinkNotLinkError(policy_id))
+            }
             Err(ast::PolicySetUnlinkError::UnlinkingError(_)) => {
                 panic!("Found linked policy in self.policies but not in self.ast")
             }

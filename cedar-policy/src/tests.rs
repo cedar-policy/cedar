@@ -722,6 +722,44 @@ mod policy_set_tests {
     }
 
     #[test]
+    fn pset_removal_prop_test_1() {
+        let template = Template::parse(
+            Some("policy0".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Template Parse Failure");
+        let mut pset = PolicySet::new();
+        pset.add_template(template).unwrap();
+        let env: HashMap<SlotId, EntityUid> =
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
+        pset.link(
+            PolicyId::from_str("policy0").unwrap(),
+            PolicyId::from_str("policy3").unwrap(),
+            env,
+        )
+        .unwrap();
+        let template = Template::parse(
+            Some("policy3".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Template Parse Failure");
+
+        assert_matches!(
+            pset.add_template(template),
+            Err(PolicySetError::AlreadyDefined { .. })
+        );
+        assert_matches!(
+            pset.remove_static(PolicyId::from_str("policy3").unwrap()),
+            Err(PolicySetError::PolicyNonexistentError(_))
+        );
+        assert_matches!(
+            pset.remove_template(PolicyId::from_str("policy3").unwrap()),
+            Err(PolicySetError::TemplateNonexistentError(_))
+        );
+        //Should not panic
+    }
+
+    #[test]
     fn pset_requests() {
         let template = Template::parse(
             Some("template".into()),
