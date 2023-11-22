@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Marked the `Template::from_json` and `Template::to_json` apis as public
 - New APIs to `Entities` to make it easy to add a collection of entities to an
   existing `Entities` structure. (#276)
 - Export the `cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind}` and

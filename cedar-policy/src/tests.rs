@@ -2726,3 +2726,28 @@ mod schema_based_parsing_tests {
         );
     }
 }
+
+mod template_tests {
+    use crate::Template;
+
+    #[test]
+    fn test_policy_template_to_json() {
+        let template = Template::parse(
+            None,
+            "permit(principal == ?principal, action, resource in ?resource);",
+        );
+        assert_eq!(
+            template.unwrap().to_json().unwrap().to_string(),
+            r#"{"effect":"permit","principal":{"op":"==","slot":"?principal"},"action":{"op":"All"},"resource":{"op":"in","slot":"?resource"},"conditions":[]}"#
+        );
+    }
+
+    #[test]
+    fn test_policy_template_from_json() {
+        let template = Template::from_json(None, serde_json::from_str(r#"{"effect":"permit","principal":{"op":"==","slot":"?principal"},"action":{"op":"All"},"resource":{"op":"in","slot":"?resource"},"conditions":[]}"#).unwrap());
+        assert_eq!(
+            template.unwrap().to_string(),
+            "permit(principal == ?principal, action, resource in ?resource);".to_string()
+        );
+    }
+}
