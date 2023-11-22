@@ -2298,8 +2298,7 @@ impl Template {
     /// If `id` is Some, the policy will be given that Policy Id.
     /// If `id` is None, then "JSON policy" will be used.
     /// The behavior around None may change in the future.
-    #[allow(dead_code)] // planned to be a public method in the future
-    fn from_json(
+    pub fn from_json(
         id: Option<PolicyId>,
         json: serde_json::Value,
     ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
@@ -2312,8 +2311,7 @@ impl Template {
     }
 
     /// Get the JSON representation of this `Template`.
-    #[allow(dead_code)] // planned to be a public method in the future
-    fn to_json(&self) -> Result<serde_json::Value, impl std::error::Error> {
+    pub fn to_json(&self) -> Result<serde_json::Value, impl std::error::Error> {
         let est = self.lossless.est()?;
         let json = serde_json::to_value(est)?;
         Ok::<_, PolicyToJsonError>(json)
