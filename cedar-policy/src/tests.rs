@@ -756,7 +756,6 @@ mod policy_set_tests {
             pset.remove_template(PolicyId::from_str("policy3").unwrap()),
             Err(PolicySetError::TemplateNonexistentError(_))
         );
-        //Should not panic
     }
 
     #[test]

@@ -31,13 +31,13 @@ use thiserror::Error;
 pub struct PolicySet {
     /// `templates` contains all bodies of policies in the `PolicySet`
     /// A body is either:
-    ///    A Body of a `Template`, which has slots that need to be filled in
-    ///    A Body of an `StaticPolicy`, which has been converted into a `Template` that has zero slots
-    ///      The static policy's PolicyID is the same in both `templates` and `links`
+    ///    - A Body of a `Template`, which has slots that need to be filled in
+    ///    - A Body of a `StaticPolicy`, which has been converted into a `Template` that has zero slots
+    /// The static policy's [`PolicyID`] is the same in both `templates` and `links`
     templates: HashMap<PolicyID, Arc<Template>>,
     /// `links` contains all of the executable policies in the `PolicySet`
     /// A `StaticPolicy` must have exactly one `Policy` in `links`
-    ///   (this is managed by `PolicySet::add)
+    ///   (this is managed by `PolicySet::add`)
     ///   The static policy's PolicyID is the same in both `templates` and `links`
     /// A `Template` may have zero or many links
     links: HashMap<PolicyID, Policy>,
@@ -296,7 +296,7 @@ impl PolicySet {
     }
 
     /// Add a template to the policy set.
-    /// If a link with the same name already exists, this will error.
+    /// If a link, static policy or template with the same name already exists, this will error.
     pub fn add_template(&mut self, t: Template) -> Result<(), PolicySetError> {
         if self.links.contains_key(t.id()) {
             return Err(PolicySetError::Occupied { id: t.id().clone() });
@@ -318,8 +318,8 @@ impl PolicySet {
     }
 
     /// Remove a template from the policy set.
-    /// If any policy is linked to the template this will error
-    /// If it is not a template this will error.
+    /// This will error if any policy is linked to the template.
+    /// This will error if `policy_id` is not a template.
     pub fn remove_template(
         &mut self,
         policy_id: &PolicyID,

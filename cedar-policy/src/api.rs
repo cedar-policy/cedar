@@ -1889,8 +1889,9 @@ impl PolicySet {
         }
     }
 
-    /// Remove a static `Policy` from the `PolicySet`
-    /// If the policy is not a static policy this will error
+    /// Remove a static `Policy` from the `PolicySet`.
+    ///
+    /// This will error if the policy is not a static policy.
     pub fn remove_static(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
         let Some(policy) = self.policies.remove(&policy_id) else {
             return Err(PolicySetError::PolicyNonexistentError(policy_id));
@@ -1917,8 +1918,9 @@ impl PolicySet {
     }
 
     /// Remove a `Template` from the `PolicySet`.
-    /// If any policy is linked to the template, this will error
-    /// If the policy is not a template this will error
+    ///
+    /// This will error if any policy is linked to the template.
+    /// This will error if `policy_id` is not a template.
     pub fn remove_template(&mut self, template_id: PolicyId) -> Result<Template, PolicySetError> {
         let Some(template) = self.templates.remove(&template_id) else {
             return Err(PolicySetError::TemplateNonexistentError(template_id));
