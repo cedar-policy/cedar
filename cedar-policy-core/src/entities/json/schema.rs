@@ -110,6 +110,10 @@ pub trait EntityTypeDescription {
 
     /// Get the entity types which are allowed to be parents of this entity type.
     fn allowed_parent_types(&self) -> Arc<HashSet<EntityType>>;
+
+    /// May entities with this type have attributes other than those specified
+    /// in the schema
+    fn open_attributes(&self) -> bool;
 }
 
 /// Simple type that implements `EntityTypeDescription` by expecting no
@@ -131,5 +135,8 @@ impl EntityTypeDescription for NullEntityTypeDescription {
     }
     fn allowed_parent_types(&self) -> Arc<HashSet<EntityType>> {
         Arc::new(HashSet::new())
+    }
+    fn open_attributes(&self) -> bool {
+        false
     }
 }

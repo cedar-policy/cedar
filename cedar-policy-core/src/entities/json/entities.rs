@@ -274,12 +274,21 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                         // `None` indicates the attribute shouldn't exist -- see
                         // docs on the `attr_type()` trait method
                         None => {
-                            return Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::UnexpectedEntityAttr {
-                                    uid: uid.clone(),
-                                    attr: k,
-                                },
-                            ))
+                            if desc.open_attributes() {
+                                vparser.val_into_restricted_expr(v.into(), None, || {
+                                    JsonDeserializationErrorContext::EntityAttribute {
+                                        uid: uid.clone(),
+                                        attr: k.clone(),
+                                    }
+                                })?
+                            } else {
+                                return Err(JsonDeserializationError::EntitySchemaConformance(
+                                    EntitySchemaConformanceError::UnexpectedEntityAttr {
+                                        uid: uid.clone(),
+                                        attr: k,
+                                    },
+                                ));
+                            }
                         }
                         Some(expected_ty) => vparser.val_into_restricted_expr(
                             v.into(),

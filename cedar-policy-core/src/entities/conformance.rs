@@ -167,10 +167,12 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                     None => {
                         // `None` indicates the attribute shouldn't exist -- see
                         // docs on the `attr_type()` trait method
-                        return Err(EntitySchemaConformanceError::UnexpectedEntityAttr {
-                            uid: uid.clone(),
-                            attr: attr.clone(),
-                        });
+                        if !schema_etype.open_attributes() {
+                            return Err(EntitySchemaConformanceError::UnexpectedEntityAttr {
+                                uid: uid.clone(),
+                                attr: attr.clone(),
+                            });
+                        }
                     }
                     Some(expected_ty) => {
                         // typecheck: ensure that the entity attribute value matches

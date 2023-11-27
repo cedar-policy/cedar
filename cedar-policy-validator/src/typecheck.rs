@@ -22,6 +22,7 @@ mod test_expr;
 mod test_extensions;
 mod test_namespace;
 mod test_optional_attributes;
+mod test_partial;
 mod test_policy;
 mod test_strict;
 mod test_type_annotation;
@@ -398,24 +399,34 @@ impl<'a> Typechecker<'a> {
 
         // For every action compute the cross product of the principal and
         // resource applies_to sets.
-        all_actions.flat_map(move |action| {
-            action
-                .applies_to
-                .applicable_principal_types()
-                .flat_map(move |principal| {
-                    action
-                        .applies_to
-                        .applicable_resource_types()
-                        .map(move |resource| RequestEnv {
-                            principal,
-                            action: &action.name,
-                            resource,
-                            context: &action.context,
-                            principal_slot: None,
-                            resource_slot: None,
-                        })
-                })
-        })
+        all_actions
+            .flat_map(|action| {
+                action
+                    .applies_to
+                    .applicable_principal_types()
+                    .flat_map(|principal| {
+                        action
+                            .applies_to
+                            .applicable_resource_types()
+                            .map(|resource| RequestEnv::DeclaredAction {
+                                principal,
+                                action: &action.name,
+                                resource,
+                                context: &action.context,
+                                principal_slot: None,
+                                resource_slot: None,
+                            })
+                    })
+            })
+            .chain(if self.mode.is_partial() {
+                // A partial schema might not list all actions, and may not
+                // include all principal and resource types for the listed ones.
+                // So we typecheck with a fully unknown request to handle these
+                // missing cases.
+                Some(RequestEnv::UndeclaredAction)
+            } else {
+                None
+            })
     }
 
     /// Given a request environment and a template, return new environments
@@ -424,29 +435,40 @@ impl<'a> Typechecker<'a> {
         &'b self,
         env: RequestEnv<'b>,
         t: &'b Template,
-    ) -> impl Iterator<Item = RequestEnv> + 'b {
-        self.possible_slot_instantiations(
-            t,
-            SlotId::principal(),
-            env.principal,
-            t.principal_constraint().as_inner(),
-        )
-        .flat_map(move |p_slot| {
-            self.possible_slot_instantiations(
-                t,
-                SlotId::resource(),
-                env.resource,
-                t.resource_constraint().as_inner(),
-            )
-            .map(move |r_slot| RequestEnv {
-                principal: env.principal,
-                action: env.action,
-                resource: env.resource,
-                context: env.context,
-                principal_slot: p_slot.clone(),
-                resource_slot: r_slot.clone(),
-            })
-        })
+    ) -> Box<dyn Iterator<Item = RequestEnv> + 'b> {
+        match env {
+            RequestEnv::UndeclaredAction => Box::new(std::iter::once(RequestEnv::UndeclaredAction)),
+            RequestEnv::DeclaredAction {
+                principal,
+                action,
+                resource,
+                context,
+                ..
+            } => Box::new(
+                self.possible_slot_instantiations(
+                    t,
+                    SlotId::principal(),
+                    principal,
+                    t.principal_constraint().as_inner(),
+                )
+                .flat_map(move |p_slot| {
+                    self.possible_slot_instantiations(
+                        t,
+                        SlotId::resource(),
+                        resource,
+                        t.resource_constraint().as_inner(),
+                    )
+                    .map(move |r_slot| RequestEnv::DeclaredAction {
+                        principal,
+                        action,
+                        resource,
+                        context,
+                        principal_slot: p_slot.clone(),
+                        resource_slot: r_slot.clone(),
+                    })
+                }),
+            ),
+        }
     }
 
     /// Get the entity types which could instantiate the slot given in this
@@ -520,53 +542,41 @@ impl<'a> Typechecker<'a> {
             // Principal, resource, and context have types defined by
             // the request type.
             ExprKind::Var(Var::Principal) => TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(Type::possibly_unspecified_entity_reference(
-                    request_env.principal.clone(),
-                )))
-                .with_same_source_info(e)
-                .var(Var::Principal),
+                ExprBuilder::with_data(Some(request_env.principal_type()))
+                    .with_same_source_info(e)
+                    .var(Var::Principal),
             ),
             // While the EntityUID for Action is held in the request context,
             // entity types do not consider the id of the entity (only the
             // entity type), so the type of Action is only the entity type name
             // taken from the euid.
             ExprKind::Var(Var::Action) => {
-                let ty = if matches!(request_env.action.entity_type(), EntityType::Unspecified) {
-                    // The action entity may be unspecified. In this case it has
-                    // type AnyEntity
-                    Some(Type::any_entity_reference())
-                } else {
-                    // This returns `None` if the action entity is not defined
-                    // in the schema which will cause a typecheck fail in the
-                    // match below.
-                    Type::euid_literal(request_env.action.clone(), self.schema)
-                };
-
-                match ty {
+                match request_env.action_type(self.schema) {
                     Some(ty) => TypecheckAnswer::success(
                         ExprBuilder::with_data(Some(ty))
                             .with_same_source_info(e)
                             .var(Var::Action),
                     ),
+                    // `None` if the action entity is not defined in the schema.
+                    // This will only show up if we're typechecking with a
+                    // request environment that was not constructed from the
+                    // schema cross product, which will not happen through our
+                    // public entry points, but it can occur if calling
+                    // `typecheck` directly which happens in our tests.
                     None => TypecheckAnswer::fail(
                         ExprBuilder::new().with_same_source_info(e).var(Var::Action),
                     ),
                 }
             }
             ExprKind::Var(Var::Resource) => TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(Type::possibly_unspecified_entity_reference(
-                    request_env.resource.clone(),
-                )))
-                .with_same_source_info(e)
-                .var(Var::Resource),
+                ExprBuilder::with_data(Some(request_env.resource_type()))
+                    .with_same_source_info(e)
+                    .var(Var::Resource),
             ),
             ExprKind::Var(Var::Context) => TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(Type::record_with_attributes(
-                    request_env.context.clone(),
-                    OpenTag::ClosedAttributes,
-                )))
-                .with_same_source_info(e)
-                .var(Var::Context),
+                ExprBuilder::with_data(Some(request_env.context_type()))
+                    .with_same_source_info(e)
+                    .var(Var::Context),
             ),
             ExprKind::Unknown(u) => {
                 TypecheckAnswer::fail(ExprBuilder::with_data(None).unknown(u.clone()))
@@ -575,13 +585,13 @@ impl<'a> Typechecker<'a> {
             ExprKind::Slot(slotid) => TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(if slotid.is_principal() {
                     request_env
-                        .principal_slot
+                        .principal_slot()
                         .clone()
                         .map(Type::possibly_unspecified_entity_reference)
                         .unwrap_or(Type::any_entity_reference())
                 } else if slotid.is_resource() {
                     request_env
-                        .resource_slot
+                        .resource_slot()
                         .clone()
                         .map(Type::possibly_unspecified_entity_reference)
                         .unwrap_or(Type::any_entity_reference())
@@ -618,6 +628,17 @@ impl<'a> Typechecker<'a> {
                 // not generated here. We still return `TypecheckFail` so that
                 // typechecking is not considered successful.
                 match Type::euid_literal((**euid).clone(), self.schema) {
+                    // The entity type is undeclared, but that's OK for a
+                    // partial schema. The attributes record will be empty if we
+                    // try to access it later, so all attributes will have the
+                    // bottom type.
+                    None if self.mode.is_partial() => TypecheckAnswer::success(
+                        ExprBuilder::with_data(Some(Type::possibly_unspecified_entity_reference(
+                            euid.entity_type().clone(),
+                        )))
+                        .with_same_source_info(e)
+                        .val(euid.clone()),
+                    ),
                     Some(ty) => TypecheckAnswer::success(
                         ExprBuilder::with_data(Some(ty))
                             .with_same_source_info(e)
@@ -968,6 +989,19 @@ impl<'a> Typechecker<'a> {
                                     ));
                                     TypecheckAnswer::fail(annot_expr)
                                 }
+                            }
+                            // In partial schema validation, if we can't find
+                            // the attribute but there may be additional
+                            // attributes, we do not fail and instead return the
+                            // bottom type (`Never`).
+                            None if self.mode.is_partial()
+                                && Type::may_have_attr(self.schema, typ_actual, attr) =>
+                            {
+                                TypecheckAnswer::success(
+                                    ExprBuilder::with_data(Some(Type::Never))
+                                        .with_same_source_info(e)
+                                        .get_attr(typ_expr_actual, attr.clone()),
+                                )
                             }
                             None => {
                                 let borrowed =
@@ -1709,7 +1743,11 @@ impl<'a> Typechecker<'a> {
                             ),
 
                         // If none of the cases apply, then all we know is that `in` has
-                        // type boolean.
+                        // type boolean. Importantly for partial schema
+                        // validation, this case captures an `in` between entity
+                        // literals where the LHS is not an action defined in
+                        // the schema and does not have an entity type defined
+                        // in the schema.
                         _ => TypecheckAnswer::success(
                             ExprBuilder::with_data(Some(Type::primitive_boolean()))
                                 .with_same_source_info(in_expr)
@@ -1813,10 +1851,19 @@ impl<'a> Typechecker<'a> {
 
     fn is_unspecified_entity(query_env: &RequestEnv, expr: &Expr) -> bool {
         match expr.expr_kind() {
-            ExprKind::Var(Var::Principal) => matches!(query_env.principal, EntityType::Unspecified),
-            ExprKind::Var(Var::Resource) => matches!(query_env.resource, EntityType::Unspecified),
+            ExprKind::Var(Var::Principal) => matches!(
+                query_env.principal_entity_type(),
+                Some(EntityType::Unspecified)
+            ),
+            ExprKind::Var(Var::Resource) => matches!(
+                query_env.resource_entity_type(),
+                Some(EntityType::Unspecified)
+            ),
             ExprKind::Var(Var::Action) => {
-                matches!(query_env.action.entity_type(), EntityType::Unspecified)
+                matches!(
+                    query_env.action_entity_uid().map(EntityUID::entity_type),
+                    Some(EntityType::Unspecified)
+                )
             }
             _ => false,
         }
@@ -1835,22 +1882,39 @@ impl<'a> Typechecker<'a> {
     ) -> TypecheckAnswer<'c> {
         if let Some(rhs) = Typechecker::euids_from_euid_literals_or_action(request_env, rhs_elems) {
             let var_euid = if matches!(lhs_var, Var::Principal) {
-                request_env.principal
+                request_env.principal_entity_type()
             } else {
-                request_env.resource
+                request_env.resource_entity_type()
             };
             let descendants = self.schema.get_entity_types_in_set(rhs.iter());
-            match var_euid {
-                EntityType::Specified(var_name) => Typechecker::entity_in_descendants(
-                    var_name,
-                    descendants,
-                    in_expr,
-                    lhs_expr,
-                    rhs_expr,
-                ),
+            match (var_euid, descendants) {
+                // We failed to lookup the descendants because the entity type
+                // is not declared in the schema, or we failed to get the
+                // principal/resource entity type because the request is
+                // unknown.  We don't know if the euid would be in the
+                // descendants or not, so give it type boolean.
+                (_, None) | (None, _) => {
+                    let in_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                        .with_same_source_info(in_expr)
+                        .is_in(lhs_expr, rhs_expr);
+                    if self.mode.is_partial() {
+                        TypecheckAnswer::success(in_expr)
+                    } else {
+                        TypecheckAnswer::fail(in_expr)
+                    }
+                }
+                (Some(EntityType::Specified(var_name)), Some(descendants)) => {
+                    Typechecker::entity_in_descendants(
+                        var_name,
+                        descendants,
+                        in_expr,
+                        lhs_expr,
+                        rhs_expr,
+                    )
+                }
                 // Unspecified entities will be detected by a different part of the validator.
                 // Still return `TypecheckFail` so that typechecking is not considered successful.
-                EntityType::Unspecified => TypecheckAnswer::fail(
+                (Some(EntityType::Unspecified), _) => TypecheckAnswer::fail(
                     ExprBuilder::with_data(Some(Type::primitive_boolean()))
                         .with_same_source_info(in_expr)
                         .is_in(lhs_expr, rhs_expr),
@@ -1881,8 +1945,8 @@ impl<'a> Typechecker<'a> {
             match lhs_euid.entity_type() {
                 EntityType::Specified(name) => {
                     // We don't want to apply the action hierarchy check to
-                    // non-action entities.  We have a set of entities, so We
-                    // can apply the check as long as any are actions. The
+                    // non-action entities, but now we have a set of entities.
+                    // We can apply the check as long as any are actions. The
                     // non-actions are omitted from the check, but they can
                     // never be an ancestor of `Action`.
                     let lhs_is_action = is_action_entity_type(name);
@@ -1952,7 +2016,18 @@ impl<'a> Typechecker<'a> {
         rhs_expr: Expr<Option<Type>>,
     ) -> TypecheckAnswer<'b> {
         let rhs_descendants = self.schema.get_actions_in_set(rhs);
-        Typechecker::entity_in_descendants(lhs, rhs_descendants, in_expr, lhs_expr, rhs_expr)
+        if let Some(rhs_descendants) = rhs_descendants {
+            Typechecker::entity_in_descendants(lhs, rhs_descendants, in_expr, lhs_expr, rhs_expr)
+        } else {
+            let annotated_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                .with_same_source_info(in_expr)
+                .is_in(lhs_expr, rhs_expr);
+            if self.mode.is_partial() {
+                TypecheckAnswer::success(annotated_expr)
+            } else {
+                TypecheckAnswer::fail(annotated_expr)
+            }
+        }
     }
 
     // Get the type for `in` when it is applied to an non-action EUID literal
@@ -1971,13 +2046,28 @@ impl<'a> Typechecker<'a> {
         match lhs.entity_type() {
             EntityType::Specified(lhs_ety) => {
                 let rhs_descendants = self.schema.get_entity_types_in_set(rhs);
-                Typechecker::entity_in_descendants(
-                    lhs_ety,
-                    rhs_descendants,
-                    in_expr,
-                    lhs_expr,
-                    rhs_expr,
-                )
+                match rhs_descendants {
+                    Some(rhs_descendants) if self.schema.is_known_entity_type(lhs_ety) => {
+                        Typechecker::entity_in_descendants(
+                            lhs_ety,
+                            rhs_descendants,
+                            in_expr,
+                            lhs_expr,
+                            rhs_expr,
+                        )
+                    }
+                    _ => {
+                        let annotated_expr =
+                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                .with_same_source_info(in_expr)
+                                .is_in(lhs_expr, rhs_expr);
+                        if self.mode.is_partial() {
+                            TypecheckAnswer::success(annotated_expr)
+                        } else {
+                            TypecheckAnswer::fail(annotated_expr)
+                        }
+                    }
+                }
             }
             EntityType::Unspecified => {
                 // Unspecified entities will be detected by a different part of the validator.
@@ -2190,7 +2280,10 @@ impl<'a> Typechecker<'a> {
         maybe_action_var: &'a Expr,
     ) -> Cow<'a, Expr> {
         match maybe_action_var.expr_kind() {
-            ExprKind::Var(Var::Action) => Cow::Owned(Expr::val(request_env.action.clone())),
+            ExprKind::Var(Var::Action) => match request_env.action_entity_uid() {
+                Some(action) => Cow::Owned(Expr::val(action.clone())),
+                None => Cow::Borrowed(maybe_action_var),
+            },
             _ => Cow::Borrowed(maybe_action_var),
         }
     }

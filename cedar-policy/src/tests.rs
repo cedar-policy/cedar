@@ -2393,74 +2393,6 @@ mod schema_based_parsing_tests {
         );
     }
 
-    /// Test that involves open entities
-    #[test]
-    #[should_panic(
-        expected = "UnsupportedFeature(\"records and entities with additional attributes are not yet implemented\")"
-    )]
-    fn open_entities() {
-        let schema = Schema::from_str(
-            r#"
-        {"": {
-            "entityTypes": {
-                "Employee": {
-                    "memberOfTypes": [],
-                    "shape": {
-                        "type": "Record",
-                        "attributes": {
-                            "isFullTime": { "type": "Boolean" },
-                            "department": { "type": "String", "required": false },
-                            "manager": { "type": "Entity", "name": "Employee" }
-                        },
-                        "additionalAttributes": true
-                    }
-                }
-            },
-            "actions": {
-                "view": {}
-            }
-        }}
-        "#,
-        )
-        .expect("should be a valid schema");
-
-        // all good here
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "department": "Sales",
-                        "manager": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": []
-                }
-            ]
-        );
-        let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
-            .expect("Should parse without error");
-        assert_eq!(parsed.iter().count(), 1);
-
-        // providing another attribute "foobar" should be OK
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "foobar": 234,
-                        "manager": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": []
-                }
-            ]
-        );
-        let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
-            .expect("Should parse without error");
-        assert_eq!(parsed.iter().count(), 1);
-    }
-
     #[test]
     fn schema_sanity_check() {
         let src = "{ , .. }";
@@ -2933,6 +2865,92 @@ mod schema_based_parsing_tests {
             parsed.attr("tricky"),
             Some(Err(e)) => assert_contains_unknown(&e.to_string(), "ttt")
         );
+    }
+}
+
+#[cfg(not(feature = "partial-validate"))]
+#[test]
+fn partial_schema_unsupported() {
+    use cool_asserts::assert_panics;
+    use serde_json::json;
+    assert_panics!(
+        Schema::from_json_value( json!({"": { "entityTypes": { "A": { "shape": { "type": "Record", "attributes": {}, "additionalAttributes": true } } }, "actions": {} }})).unwrap(),
+        includes("records and entities with `additionalAttributes` are experimental, but the experimental `partial-validate` feature is not enabled")
+    );
+}
+
+#[cfg(feature = "partial-validate")]
+mod partial_schema {
+    use super::*;
+    use serde_json::json;
+
+    fn partial_schema() -> Schema {
+        Schema::from_json_value(json!(
+        {
+            "": {
+                "entityTypes": {
+                    "Employee": {
+                        "memberOfTypes": [],
+                        "shape": {
+                            "type": "Record",
+                            "attributes": { },
+                            "additionalAttributes": true,
+                        },
+                    }
+                },
+                "actions": {
+                    "Act": {
+                        "appliesTo": {
+                            "context": {
+                                "type": "Record",
+                                "attributes": {},
+                                "additionalAttributes": true,
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn entity_extra_attr() {
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {
+                        "isFullTime": true,
+                        "foobar": 234,
+                        "manager": { "type": "Employee", "id": "34FB87" }
+                    },
+                    "parents": []
+                }
+            ]
+        );
+
+        let schema = partial_schema();
+        let parsed = Entities::from_json_value(entitiesjson.clone(), Some(&schema))
+            .expect("Parsing with a partial schema should allow unknown attributes.");
+        let parsed_without_schema = Entities::from_json_value(entitiesjson, None).unwrap();
+
+        let uid = EntityUid::from_strs("Employee", "12UA45");
+        assert_eq!(
+            parsed.get(&uid),
+            parsed_without_schema.get(&uid),
+            "Parsing with a partial schema should give the same result as parsing without a schema"
+        );
+    }
+
+    #[test]
+    fn context_extra_attr() {
+        Context::from_json_value(
+            json!({"foo": true, "bar": 123}),
+            Some((&partial_schema(), &EntityUid::from_strs("Action", "Act"))),
+        )
+        .unwrap();
     }
 }
 

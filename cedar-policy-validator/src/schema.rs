@@ -34,7 +34,7 @@ use serde_with::serde_as;
 use super::NamespaceDefinition;
 use crate::{
     err::*,
-    types::{Attributes, EntityRecordKind, Type},
+    types::{Attributes, EntityRecordKind, OpenTag, Type},
     SchemaFragment,
 };
 
@@ -254,17 +254,19 @@ impl ValidatorSchema {
                 // error for any other undeclared entity types by
                 // `check_for_undeclared`.
                 let descendants = entity_children.remove(&name).unwrap_or_default();
+                let (attributes, open_attributes) = Self::record_attributes_or_none(
+                    entity_type.attributes.resolve_type_defs(&type_defs)?,
+                )
+                .ok_or(SchemaError::ContextOrShapeNotRecord(
+                    ContextOrShape::EntityTypeShape(name.clone()),
+                ))?;
                 Ok((
                     name.clone(),
                     ValidatorEntityType {
-                        name: name.clone(),
+                        name,
                         descendants,
-                        attributes: Self::record_attributes_or_none(
-                            entity_type.attributes.resolve_type_defs(&type_defs)?,
-                        )
-                        .ok_or(SchemaError::ContextOrShapeNotRecord(
-                            ContextOrShape::EntityTypeShape(name),
-                        ))?,
+                        attributes,
+                        open_attributes,
                     },
                 ))
             })
@@ -283,19 +285,21 @@ impl ValidatorSchema {
             .into_iter()
             .map(|(name, action)| -> Result<_> {
                 let descendants = action_children.remove(&name).unwrap_or_default();
-
+                let (context, open_context_attributes) =
+                    Self::record_attributes_or_none(action.context.resolve_type_defs(&type_defs)?)
+                        .ok_or(SchemaError::ContextOrShapeNotRecord(
+                            ContextOrShape::ActionContext(name.clone()),
+                        ))?;
                 Ok((
                     name.clone(),
                     ValidatorActionId {
-                        name: name.clone(),
+                        name,
                         applies_to: action.applies_to,
                         descendants,
-                        context: Self::record_attributes_or_none(
-                            action.context.resolve_type_defs(&type_defs)?,
-                        )
-                        .ok_or(SchemaError::ContextOrShapeNotRecord(
-                            ContextOrShape::ActionContext(name),
-                        ))?,
+                        context: Type::record_with_attributes(
+                            context.attrs,
+                            open_context_attributes,
+                        ),
                         attribute_types: action.attribute_types,
                         attributes: action.attributes,
                     },
@@ -371,13 +375,7 @@ impl ValidatorSchema {
         // types and `appliesTo` lists. See the `entity_types` loop for why the
         // `descendants` list is not checked.
         for action in action_ids.values() {
-            for (_, attr_typ) in action.context.iter() {
-                Self::check_undeclared_in_type(
-                    &attr_typ.attr_type,
-                    entity_types,
-                    &mut undeclared_e,
-                );
-            }
+            Self::check_undeclared_in_type(&action.context, entity_types, &mut undeclared_e);
 
             for p_entity in action.applies_to.applicable_principal_types() {
                 match p_entity {
@@ -411,9 +409,12 @@ impl ValidatorSchema {
         Ok(())
     }
 
-    fn record_attributes_or_none(ty: Type) -> Option<Attributes> {
+    fn record_attributes_or_none(ty: Type) -> Option<(Attributes, OpenTag)> {
         match ty {
-            Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => Some(attrs),
+            Type::EntityOrRecord(EntityRecordKind::Record {
+                attrs,
+                open_attributes,
+            }) => Some((attrs, open_attributes)),
             _ => None,
         }
     }
@@ -493,19 +494,18 @@ impl ValidatorSchema {
     /// includes all entity types that are descendants of the type of `entity`
     /// according  to the schema, and the type of `entity` itself because
     /// `entity in entity` evaluates to `true`.
-    pub(crate) fn get_entity_types_in<'a>(
-        &'a self,
-        entity: &'a EntityUID,
-    ) -> impl Iterator<Item = &Name> + 'a {
+    pub(crate) fn get_entity_types_in<'a>(&'a self, entity: &'a EntityUID) -> Option<Vec<&Name>> {
         let ety = match entity.entity_type() {
             EntityType::Specified(ety) => Some(ety),
             EntityType::Unspecified => None,
         };
 
-        ety.and_then(|ety| self.get_entity_type(ety))
-            .into_iter()
-            .flat_map(|ety| ety.descendants.iter())
-            .chain(ety.filter(|ety| self.is_known_entity_type(ety)))
+        ety.and_then(|ety| self.get_entity_type(ety)).map(|ety| {
+            ety.descendants
+                .iter()
+                .chain(std::iter::once(&ety.name))
+                .collect()
+        })
     }
 
     /// Get all entity types in the schema where an `{entity0} in {euids}` can
@@ -514,10 +514,12 @@ impl ValidatorSchema {
     pub(crate) fn get_entity_types_in_set<'a>(
         &'a self,
         euids: impl IntoIterator<Item = &'a EntityUID> + 'a,
-    ) -> impl Iterator<Item = &Name> + 'a {
+    ) -> Option<Vec<&Name>> {
         euids
             .into_iter()
-            .flat_map(move |e| self.get_entity_types_in(e))
+            .map(|e| self.get_entity_types_in(e))
+            .collect::<Option<Vec<_>>>()
+            .map(|v| v.into_iter().flatten().collect::<Vec<_>>())
     }
 
     /// Get all action entities in the schema where `action in euids` evaluates
@@ -526,17 +528,19 @@ impl ValidatorSchema {
     pub(crate) fn get_actions_in_set<'a>(
         &'a self,
         euids: impl IntoIterator<Item = &'a EntityUID> + 'a,
-    ) -> impl Iterator<Item = &'a EntityUID> + 'a {
-        euids.into_iter().flat_map(|e| {
-            self.get_action_id(e)
-                .into_iter()
-                .flat_map(|action| action.descendants.iter())
-                .chain(if self.is_known_action_id(e) {
-                    Some(e)
-                } else {
-                    None
+    ) -> Option<Vec<&'a EntityUID>> {
+        euids
+            .into_iter()
+            .map(|e| {
+                self.get_action_id(e).map(|action| {
+                    action
+                        .descendants
+                        .iter()
+                        .chain(std::iter::once(&action.name))
                 })
-        })
+            })
+            .collect::<Option<Vec<_>>>()
+            .map(|v| v.into_iter().flatten().collect::<Vec<_>>())
     }
 
     /// Get the `Type` of context expected for the given `action`.
