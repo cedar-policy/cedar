@@ -101,7 +101,7 @@ impl Validator {
             .flat_map(|p| self.validate_policy(p, mode));
         let link_errs = policies
             .policies()
-            .filter_map(|p| self.validate_slots(p))
+            .filter_map(|p| self.validate_slots(p, mode))
             .flatten();
         ValidationResult::new(
             template_and_static_policy_errs.chain(link_errs),
@@ -149,9 +149,16 @@ impl Validator {
     fn validate_slots<'a>(
         &'a self,
         p: &'a Policy,
+        mode: ValidationMode,
     ) -> Option<impl Iterator<Item = ValidationError> + 'a> {
         // Ignore static policies since they are already handled by `validate_policy`
         if p.is_static() {
+            return None;
+        }
+        // In partial validation, there may be arbitrary extra entity types and
+        // actions, so we can never claim that one doesn't exist or that the
+        // action application is invalid.
+        if mode.is_partial() {
             return None;
         }
         // For template-linked policies `Policy::principal_constraint()` and
