@@ -671,60 +671,227 @@ mod parse_tests {
 
     #[test]
     fn no_slots_in_condition() {
-        let srcs = [
-            r#"
+        /// Assert that at least one of the errors in the `ParseErrors` contains the given text.
+        ///
+        /// `src` is the original policy source, just for better assertion-failure messages
+        fn assert_some_error_contains(errs: &err::ParseErrors, text: &str, src: &str) {
+            assert!(
+                errs.iter().any(|e| e.to_string().contains(text)),
+                "for the following policy:\n{src}\nactual errors were:\n{errs}"
+            );
+        }
+
+        let src = r#"
             permit(principal, action, resource) when {
                 resource == ?resource
             };
-            "#,
-            r#"
+            "#;
+        let slot_in_when_clause_error =
+            "found template slot ?resource in a `when` clause; slots are currently unsupported in `when` clauses";
+        let unexpected_template_error =
+            "expected a static policy, got a template containing the slot ?resource; try removing the template slot(s) from this policy";
+        assert_matches!(parse_policy(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_when_clause_error, src);
+            assert_some_error_contains(&e, unexpected_template_error, src);
+        });
+        assert_matches!(parse_policy_template(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_when_clause_error, src);
+        });
+        assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_when_clause_error, src);
+            assert_some_error_contains(&e, unexpected_template_error, src);
+        });
+        assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_when_clause_error, src);
+        });
+        assert_matches!(parse_policyset(src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_when_clause_error, src);
+        });
+        assert_matches!(parse_policyset_to_ests_and_pset(src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_when_clause_error, src);
+        });
+
+        let src = r#"
             permit(principal, action, resource) when {
                 resource == ?principal
             };
-            "#,
-            r#"
+            "#;
+        let slot_in_when_clause_error =
+            "found template slot ?principal in a `when` clause; slots are currently unsupported in `when` clauses";
+        let unexpected_template_error =
+            "expected a static policy, got a template containing the slot ?principal; try removing the template slot(s) from this policy";
+        assert_matches!(parse_policy(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_when_clause_error, src);
+            assert_some_error_contains(&e, unexpected_template_error, src);
+        });
+        assert_matches!(parse_policy_template(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_when_clause_error, src);
+        });
+        assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_when_clause_error, src);
+            assert_some_error_contains(&e, unexpected_template_error, src);
+        });
+        assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_when_clause_error, src);
+        });
+        assert_matches!(parse_policyset(src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_when_clause_error, src);
+        });
+        assert_matches!(parse_policyset_to_ests_and_pset(src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_when_clause_error, src);
+        });
+
+        let src = r#"
             permit(principal, action, resource) when {
                 resource == ?blah
             };
-            "#,
-            r#"
+            "#;
+        // TODO(#451): improve these errors
+        let error = "invalid token";
+        assert_matches!(parse_policy(None, src), Err(e) => {
+            assert_some_error_contains(&e, error, src);
+        });
+        assert_matches!(parse_policy_template(None, src), Err(e) => {
+            assert_some_error_contains(&e, error, src);
+        });
+        assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
+            assert_some_error_contains(&e, error, src);
+        });
+        assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
+            assert_some_error_contains(&e, error, src);
+        });
+        assert_matches!(parse_policyset(src), Err(e) => {
+            assert_some_error_contains(&e, error, src);
+        });
+        assert_matches!(parse_policyset_to_ests_and_pset(src), Err(e) => {
+            assert_some_error_contains(&e, error, src);
+        });
+
+        let src = r#"
             permit(principal, action, resource) unless {
                 resource == ?resource
             };
-            "#,
-            r#"
+            "#;
+        let slot_in_unless_clause_error =
+            "found template slot ?resource in a `unless` clause; slots are currently unsupported in `unless` clauses";
+        let unexpected_template_error =
+            "expected a static policy, got a template containing the slot ?resource; try removing the template slot(s) from this policy";
+        assert_matches!(parse_policy(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_unless_clause_error, src);
+            assert_some_error_contains(&e, unexpected_template_error, src);
+        });
+        assert_matches!(parse_policy_template(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_unless_clause_error, src);
+        });
+        assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_unless_clause_error, src);
+            assert_some_error_contains(&e, unexpected_template_error, src);
+        });
+        assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_unless_clause_error, src);
+        });
+        assert_matches!(parse_policyset(src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_unless_clause_error, src);
+        });
+        assert_matches!(parse_policyset_to_ests_and_pset(src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_unless_clause_error, src);
+        });
+
+        let src = r#"
             permit(principal, action, resource) unless {
                 resource == ?principal
             };
-            "#,
-            r#"
+            "#;
+        let slot_in_unless_clause_error =
+            "found template slot ?principal in a `unless` clause; slots are currently unsupported in `unless` clauses";
+        let unexpected_template_error =
+            "expected a static policy, got a template containing the slot ?principal; try removing the template slot(s) from this policy";
+        assert_matches!(parse_policy(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_unless_clause_error, src);
+            assert_some_error_contains(&e, unexpected_template_error, src);
+        });
+        assert_matches!(parse_policy_template(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_unless_clause_error, src);
+        });
+        assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_unless_clause_error, src);
+            assert_some_error_contains(&e, unexpected_template_error, src);
+        });
+        assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_unless_clause_error, src);
+        });
+        assert_matches!(parse_policyset(src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_unless_clause_error, src);
+        });
+        assert_matches!(parse_policyset_to_ests_and_pset(src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_unless_clause_error, src);
+        });
+
+        let src = r#"
             permit(principal, action, resource) unless {
                 resource == ?blah
             };
-            "#,
-            r#"
+            "#;
+        // TODO(#451): improve these errors
+        let error = "invalid token";
+        assert_matches!(parse_policy(None, src), Err(e) => {
+            assert_some_error_contains(&e, error, src);
+        });
+        assert_matches!(parse_policy_template(None, src), Err(e) => {
+            assert_some_error_contains(&e, error, src);
+        });
+        assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
+            assert_some_error_contains(&e, error, src);
+        });
+        assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
+            assert_some_error_contains(&e, error, src);
+        });
+        assert_matches!(parse_policyset(src), Err(e) => {
+            assert_some_error_contains(&e, error, src);
+        });
+        assert_matches!(parse_policyset_to_ests_and_pset(src), Err(e) => {
+            assert_some_error_contains(&e, error, src);
+        });
+
+        let src = r#"
             permit(principal, action, resource) unless {
                 resource == ?resource
             } when {
                 resource == ?resource
-            }
-            "#,
-        ];
-
-        for src in srcs {
-            let p = parse_policy(None, src);
-            assert_matches!(p, Err(_));
-            let p = parse_policy_template(None, src);
-            assert_matches!(p, Err(_));
-            let p = parse_policy_to_est_and_ast(None, src);
-            assert_matches!(p, Err(_));
-            let p = parse_policy_template_to_est_and_ast(None, src);
-            assert_matches!(p, Err(_));
-            let p = parse_policyset(src);
-            assert_matches!(p, Err(_));
-            let p = parse_policyset_to_ests_and_pset(src);
-            assert_matches!(p, Err(_));
-        }
+            };
+            "#;
+        let slot_in_when_clause_error =
+            "found template slot ?resource in a `when` clause; slots are currently unsupported in `when` clauses";
+        let slot_in_unless_clause_error =
+            "found template slot ?resource in a `unless` clause; slots are currently unsupported in `unless` clauses";
+        let unexpected_template_error =
+            "expected a static policy, got a template containing the slot ?resource; try removing the template slot(s) from this policy";
+        assert_matches!(parse_policy(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_when_clause_error, src);
+            assert_some_error_contains(&e, slot_in_unless_clause_error, src);
+            assert_some_error_contains(&e, unexpected_template_error, src);
+        });
+        assert_matches!(parse_policy_template(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_when_clause_error, src);
+            assert_some_error_contains(&e, slot_in_unless_clause_error, src);
+        });
+        assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_when_clause_error, src);
+            assert_some_error_contains(&e, slot_in_unless_clause_error, src);
+            assert_some_error_contains(&e, unexpected_template_error, src);
+        });
+        assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_when_clause_error, src);
+            assert_some_error_contains(&e, slot_in_unless_clause_error, src);
+        });
+        assert_matches!(parse_policyset(src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_when_clause_error, src);
+            assert_some_error_contains(&e, slot_in_unless_clause_error, src);
+        });
+        assert_matches!(parse_policyset_to_ests_and_pset(src), Err(e) => {
+            assert_some_error_contains(&e, slot_in_when_clause_error, src);
+            assert_some_error_contains(&e, slot_in_unless_clause_error, src);
+        });
     }
 
     #[test]

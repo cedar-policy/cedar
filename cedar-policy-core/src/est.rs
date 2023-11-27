@@ -2710,8 +2710,8 @@ mod test {
         assert_matches!(
             ast,
             Err(FromJsonError::TemplateToPolicy(
-                ast::UnexpectedSlotError::Named(_)
-            ))
+                ast::UnexpectedSlotError::FoundSlot(s)
+            )) => assert_eq!(s, ast::SlotId::principal())
         );
     }
 

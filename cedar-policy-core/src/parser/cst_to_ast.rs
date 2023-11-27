@@ -166,24 +166,40 @@ impl ASTNode<Option<cst::Policy>> {
         let policy = tp.map(ast::StaticPolicy::try_from);
         // Check if our above values actually contains a Static Policy
         // The possible states are as follows:
-        // None -> The source failed to parse completely
-        // Some(Err(_)) -> The source parsed as a template, but not a static policy
-        // Some(Ok(p)) -> We have a policy
-        // We want to add `[ToASTError::UnexpectedTemplate]` in two cases:
+        // - None -> The source failed to parse completely
+        // - Some(Err(e)) -> The source parsed as a template, but not a static policy (note that the type of `e` is [`UnexpectedSlotError`])
+        // - Some(Ok(p)) -> We have a policy
+        //
+        // We want to add [`ToASTError::UnexpectedTemplate`] in two cases:
         //  1) The obvious: if we parsed a template not a StaticPolicy
         //  2) Even if we fail to parse anything, if our parse errors include anything about slots,
         //     we also throw in this error. Ideally we'd do this if the partially parsed AST included
         //     any template slots at all, but we don't have an easy mechanism for that currently
-        let is_template = policy.as_ref().map(|r| r.is_err()).unwrap_or(false);
 
-        let found_slot_error =
-            errs.contains(&ParseError::ToAST(ToASTError::SlotsInConditionClause));
+        // case 2 first: if we failed to parse, but the parse errors include a
+        // `SlotsInConditionClause`, we can report that as `UnexpectedTemplate`
+        let new_errs = errs
+            .iter()
+            .flat_map(|err| match err {
+                ParseError::ToAST(ToASTError::SlotsInConditionClause { slot, .. }) => {
+                    Some(ToASTError::UnexpectedTemplate { slot: slot.clone() })
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        errs.extend(new_errs);
 
-        if found_slot_error || is_template {
-            errs.push(ToASTError::UnexpectedTemplate);
+        // now case 1: if `policy` is `Some(Err(e))`, there is a slot where there shouldn't be;
+        // report that as `UnexpectedTemplate`
+        match policy {
+            Some(Err(ast::UnexpectedSlotError::FoundSlot(slot))) => {
+                errs.push(ToASTError::UnexpectedTemplate { slot: slot.into() });
+                None
+            }
+            // in other cases, we're done reporting errors, so we can return the policy, if we have one
+            Some(Ok(p)) => Some(p),
+            None => None,
         }
-
-        policy?.ok()
     }
 
     /// Convert `cst::Policy` to `ast::Template`. Works for inline policies as
@@ -220,14 +236,17 @@ impl ASTNode<Option<cst::Policy>> {
         let conds: Vec<_> = policy
             .conds
             .iter()
-            .filter_map(|c| c.to_expr(errs))
+            .filter_map(|c| {
+                let (e, is_when) = c.to_expr(errs)?;
+                for slot in e.slots() {
+                    errs.push(ToASTError::SlotsInConditionClause {
+                        slot: slot.clone().into(),
+                        clausetype: if is_when { "when" } else { "unless" },
+                    });
+                }
+                Some(e)
+            })
             .collect();
-
-        for e in conds.iter() {
-            for _slot in e.slots() {
-                errs.push(ToASTError::SlotsInConditionClause)
-            }
-        }
 
         if conds.len() != policy.conds.len() {
             failure = true
@@ -638,8 +657,11 @@ fn euid_has_action_type(euid: &EntityUID) -> bool {
 }
 
 impl ASTNode<Option<cst::Cond>> {
-    /// to expr
-    fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
+    /// to expr. Also returns, for informational purposes, a `bool` which is
+    /// `true` if the cond is a `when` clause, `false` if it is an `unless`
+    /// clause. (The returned `expr` is already adjusted for this, the `bool` is
+    /// for information only.)
+    fn to_expr(&self, errs: &mut ParseErrors) -> Option<(ast::Expr, bool)> {
         let (src, maybe_cond) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let cond = maybe_cond?;
@@ -664,9 +686,9 @@ impl ASTNode<Option<cst::Cond>> {
 
         maybe_expr.map(|e| {
             if maybe_is_when {
-                e
+                (e, true)
             } else {
-                construct_expr_not(e, src.clone())
+                (construct_expr_not(e, src.clone()), false)
             }
         })
     }
@@ -1687,7 +1709,7 @@ impl ASTNode<Option<cst::Primary>> {
         match prim {
             cst::Primary::Literal(l) => l.to_expr_or_special(errs),
             cst::Primary::Ref(r) => r.to_expr(errs).map(ExprOrSpecial::Expr),
-            cst::Primary::Slot(s) => s.to_expr(errs).map(ExprOrSpecial::Expr),
+            cst::Primary::Slot(s) => s.clone().into_expr(errs).map(ExprOrSpecial::Expr),
             #[allow(clippy::manual_map)]
             cst::Primary::Name(n) => {
                 // if `n` isn't a var we don't want errors, we'll get them later
@@ -1740,16 +1762,27 @@ impl ASTNode<Option<cst::Primary>> {
 }
 
 impl ASTNode<Option<cst::Slot>> {
-    fn to_expr(&self, _errs: &mut ParseErrors) -> Option<ast::Expr> {
-        let (src, s) = self.as_inner_pair();
-        s.map(|s| {
-            ast::ExprBuilder::new()
-                .with_source_info(src.clone())
-                .slot(match s {
-                    cst::Slot::Principal => ast::SlotId::principal(),
-                    cst::Slot::Resource => ast::SlotId::resource(),
-                })
-        })
+    fn into_expr(self, _errs: &mut ParseErrors) -> Option<ast::Expr> {
+        let (s, src) = self.into_inner();
+        s.map(|s| ast::ExprBuilder::new().with_source_info(src).slot(s.into()))
+    }
+}
+
+impl From<cst::Slot> for ast::SlotId {
+    fn from(slot: cst::Slot) -> ast::SlotId {
+        match slot {
+            cst::Slot::Principal => ast::SlotId::principal(),
+            cst::Slot::Resource => ast::SlotId::resource(),
+        }
+    }
+}
+
+impl From<ast::SlotId> for cst::Slot {
+    fn from(slot: ast::SlotId) -> cst::Slot {
+        match slot {
+            ast::SlotId(ast::ValidSlotId::Principal) => cst::Slot::Principal,
+            ast::SlotId(ast::ValidSlotId::Resource) => cst::Slot::Resource,
+        }
     }
 }
 

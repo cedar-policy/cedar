@@ -11,13 +11,13 @@ when { User::"alice" is User in Group::"friends" };
 permit // 0
 ( // 1
 principal // 2
-  is // 3
+    is // 3
     User // 4
   , // 5
   action // 6
   , // 7
   resource // 8
-  is // 9
+    is // 9
     Photo // 10
 ) // 11
 when // 12
@@ -33,7 +33,7 @@ when // 12
 permit // 0
 ( // 1
   principal // 2
-  is // 3
+    is // 3
     User // 4
   in // 5
     Group // 6
@@ -42,7 +42,7 @@ permit // 0
   , // 9
   action, // 10
   resource // 11
-  is // 12
+    is // 12
     Photo // 13
   in // 14
     Album // 15
