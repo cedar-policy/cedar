@@ -140,7 +140,7 @@ impl SchemaType {
                             }
                             None => {
                                 // attrs1 has the attribute, attrs2 does not.
-                                // if required in attrs1 and and attrs2 is
+                                // if required in attrs1 and attrs2 is
                                 // closed, incompatible.  otherwise fine
                                 !v.required || *open2
                             }
