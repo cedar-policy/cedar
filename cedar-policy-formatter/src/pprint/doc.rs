@@ -38,7 +38,6 @@ impl Doc for ASTNode<Option<VariableDef>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let vd = self.as_inner()?;
         let start_comment = get_comment_at_start(self.info.0.start, &mut context.tokens)?;
-        let end_comment = get_comment_at_end(self.info.0.end, &mut context.tokens)?;
         let var_doc = vd.variable.as_inner()?.to_doc(context)?;
 
         let is_doc = match &vd.entity_type {
@@ -50,15 +49,18 @@ impl Doc for ASTNode<Option<VariableDef>> {
                         RcDoc::nil(),
                     ))
                     .group()
-                    .append(
-                        RcDoc::line()
-                            .append(entity_type.to_doc(context)?)
-                            .nest(context.config.indent_width),
-                    )
+                    .append(RcDoc::line().append(add_comment(
+                        entity_type.to_doc(context)?,
+                        get_comment_at_start(entity_type.info.0.start, &mut context.tokens)?,
+                        RcDoc::nil(),
+                    )))
+                    .nest(context.config.indent_width)
                     .group(),
             ),
             None => Some(RcDoc::nil()),
         }?;
+
+        let end_comment = get_comment_at_end(self.info.0.end, &mut context.tokens)?;
 
         Some(match &vd.ineq {
             Some((op, rhs)) => {
