@@ -42,6 +42,7 @@ pub use api::*;
 /// Frontend utilities, see comments in the module itself
 pub mod frontend;
 
+mod prop_test_policy_set;
 mod tests;
 
 #[cfg(feature = "integration_testing")]
