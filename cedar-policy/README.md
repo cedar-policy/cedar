@@ -12,7 +12,7 @@ Just add `cedar-policy` as a dependency in your `Cargo.toml`. For example:
 
 ```toml
 [dependencies]
-cedar-policy = "2.4"
+cedar-policy = "3.0"
 ```
 
 ## Quick Start
