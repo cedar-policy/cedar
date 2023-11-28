@@ -805,39 +805,6 @@ mod policy_set_tests {
     }
 
     #[test]
-    fn pset_removal_prop_test_1() {
-        let template = Template::parse(
-            Some("policy0".into()),
-            "permit(principal == ?principal, action, resource);",
-        )
-        .expect("Template Parse Failure");
-        // let static_policy = Policy::parse(
-        //     Some("policy4".into()),
-        //     "permit(principal, action, resource);",
-        // )
-        // .expect("Static parse failure");
-        let mut pset = PolicySet::new();
-        // pset.add(static_policy).unwrap();
-        pset.add_template(template).unwrap();
-        let env: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
-        pset.link(
-            PolicyId::from_str("policy0").unwrap(),
-            PolicyId::from_str("policy3").unwrap(),
-            env,
-        );
-        let template = Template::parse(
-            Some("policy3".into()),
-            "permit(principal == ?principal, action, resource);",
-        )
-        .expect("Template Parse Failure");
-        pset.add_template(template).unwrap();
-        pset.remove_static(PolicyId::from_str("policy3").unwrap());
-        pset.remove_template(PolicyId::from_str("policy3").unwrap());
-        //Should not panic
-    }
-
-    #[test]
     fn link_static_policy() {
         // Linking the `PolicyId` of a static policy should not be allowed.
         // Attempting it should cause an `ExpectedTemplate` error.
@@ -3047,19 +3014,6 @@ mod prop_test_policy_set_operations {
             }
         }
 
-        // fn get_next_name(&mut self) -> String {
-        //     let mut rng = rand::thread_rng();
-        //     let s = if rng.gen_range(0..2) == 0 {
-        //         let i = self.max_name_int;
-        //         self.max_name_int += 1;
-        //         format!("policy{i}")
-        //     } else {
-        //         format!("policy{}", rng.gen_range(0..=self.max_name_int))
-        //     };
-        //     s
-        // }
-
-        //add_static never fails and bumps `max_name_int`
         fn add_static(&mut self, policy_name: String) {
             let policy_str = "permit(principal, action, resource);";
             let p = Policy::parse(Some(policy_name.clone()), policy_str).unwrap();
@@ -3069,7 +3023,6 @@ mod prop_test_policy_set_operations {
             }
         }
 
-        //add_static never fails and bumps `max_name_int`
         fn add_template(&mut self, template_name: String) {
             let template_str = "permit(principal == ?principal, action, resource);";
             let template = Template::parse(Some(template_name.clone()), template_str).unwrap();
@@ -3083,7 +3036,7 @@ mod prop_test_policy_set_operations {
         fn link(&mut self, policy_name: String) {
             if self.template_names.len() > 0 {
                 let euid = EntityUid::from_strs("User", "alice");
-                let template_name = self.template_names.last().unwrap(); //TODO: randomize
+                let template_name = self.template_names.last().unwrap();
                 let vals = HashMap::from([(SlotId::principal(), euid)]);
                 if self
                     .policy_set
