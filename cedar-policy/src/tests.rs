@@ -2985,13 +2985,21 @@ mod prop_test_policy_set_operations {
 
     /// Production PolicySet along with simplified model of policy set
     /// for Proptesting
+    ///
+    /// We model the PolicySet state machine as lists of static policies, links and templates.
+    /// In the real policy set, a static policy will be a in both `ast.links` and `ast.templates`
+    /// (with the same `PolicyId`). Links and templates will be in `ast.links` and `ast.templates`
+    /// respectively.
+    ///
+    /// In the model, no name should occur in multiple lists or in the same list multiple times.
+    /// Every links should have a templates and a template should store a (possibly empty) list of it's links.
     struct PolicySetModel {
         //The production PolicySet implementation
         policy_set: PolicySet,
 
-        //We model the PolicySet state machine in terms of the below:
+        // The model
+        static_policy_names: Vec<String>,
         link_names: Vec<String>,
-
         template_names: Vec<String>,
 
         //Every existent template has a (possibly empty) vector of the links to that template
@@ -3007,6 +3015,7 @@ mod prop_test_policy_set_operations {
         fn new() -> Self {
             Self {
                 policy_set: PolicySet::new(),
+                static_policy_names: Vec::new(),
                 link_names: Vec::new(),
                 template_names: Vec::new(),
                 template_to_link_map: HashMap::new(),
@@ -3014,12 +3023,18 @@ mod prop_test_policy_set_operations {
             }
         }
 
+        fn assert_name_unique(&self, policy_id: &String) {
+            assert!(!self.static_policy_names.iter().any(|p| p == policy_id));
+            assert!(!self.link_names.iter().any(|p| p == policy_id));
+            assert!(!self.template_names.iter().any(|p| p == policy_id));
+        }
+
         fn add_static(&mut self, policy_name: String) {
             let policy_str = "permit(principal, action, resource);";
             let p = Policy::parse(Some(policy_name.clone()), policy_str).unwrap();
             if self.policy_set.add(p).is_ok() {
-                println!("Add_static {policy_name}");
-                self.link_names.push(policy_name);
+                self.assert_name_unique(&policy_name);
+                self.static_policy_names.push(policy_name);
             }
         }
 
@@ -3027,7 +3042,7 @@ mod prop_test_policy_set_operations {
             let template_str = "permit(principal == ?principal, action, resource);";
             let template = Template::parse(Some(template_name.clone()), template_str).unwrap();
             if self.policy_set.add_template(template).is_ok() {
-                println!("Add_template {template_name}");
+                self.assert_name_unique(&template_name);
                 self.template_names.push(template_name.clone());
                 self.template_to_link_map.insert(template_name, Vec::new());
             }
@@ -3047,7 +3062,7 @@ mod prop_test_policy_set_operations {
                     )
                     .is_ok()
                 {
-                    println!("Link {policy_name}");
+                    self.assert_name_unique(&policy_name);
                     self.link_names.push(policy_name.clone());
                     match self.template_to_link_map.entry(template_name.clone()) {
                         Entry::Occupied(v) => v.into_mut().push(policy_name.clone()),
@@ -3078,7 +3093,7 @@ mod prop_test_policy_set_operations {
                 .is_ok()
             {
                 println!("Remove_static {policy_id}");
-                Self::remove_policy_name(&mut self.link_names, policy_id);
+                Self::remove_policy_name(&mut self.static_policy_names, policy_id);
             }
         }
 
@@ -3135,11 +3150,14 @@ mod prop_test_policy_set_operations {
             }
         }
 
-        /// Panics if policy_set.links() or policy_set.templates() doesn't match the model's
+        /// Panics if policy_set.policies() or policy_set.templates() doesn't match the model's
         /// static policies, links or templates
         fn check_equiv(&self) {
             let real_policy_set_links: Vec<_> = self.policy_set.policies().collect();
-            for policy_name in &self.link_names {
+            let real_policy_set_templates: Vec<_> = self.policy_set.templates().collect();
+            // A static policy (in the model) should be in the `PolicySet`'s ast.links and ast.templates,
+            // but is only returned by policy_set.policies().
+            for policy_name in &self.static_policy_names {
                 assert!(real_policy_set_links
                     .iter()
                     .any(|p| p.id() == &PolicyId::from_str(&policy_name).unwrap()));
@@ -3149,9 +3167,10 @@ mod prop_test_policy_set_operations {
                     .iter()
                     .any(|p| p.id() == &PolicyId::from_str(&policy_name).unwrap()));
             }
+
             for link_name in real_policy_set_links {
                 assert!(
-                    self.link_names
+                    self.static_policy_names
                         .iter()
                         .any(|p| link_name.id() == &PolicyId::from_str(p).unwrap())
                         || self
@@ -3161,7 +3180,6 @@ mod prop_test_policy_set_operations {
                 );
             }
 
-            let real_policy_set_templates: Vec<_> = self.policy_set.templates().collect();
             for template_name in &self.template_names {
                 assert!(real_policy_set_templates
                     .iter()
