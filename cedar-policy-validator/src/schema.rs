@@ -474,7 +474,10 @@ impl ValidatorSchema {
         is_action_entity_type(entity_type) || self.entity_types.contains_key(entity_type)
     }
 
-    /// Return true when `euid` has an entity type declared by the schema.
+    /// Return true when `euid` has an entity type declared by the schema. We
+    /// treat an Unspecified as "known" because it is always possible to declare
+    /// an action using an unspecified principal/resource type without first
+    /// declaring unspecified as an entity type in the entity types list.
     pub(crate) fn euid_has_known_entity_type(&self, euid: &EntityUID) -> bool {
         match euid.entity_type() {
             EntityType::Specified(ety) => self.is_known_entity_type(ety),
