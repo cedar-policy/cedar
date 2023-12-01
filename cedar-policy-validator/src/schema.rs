@@ -471,7 +471,18 @@ impl ValidatorSchema {
 
     /// Return true when the entity_type_id corresponds to a valid entity type.
     pub(crate) fn is_known_entity_type(&self, entity_type: &Name) -> bool {
-        self.entity_types.contains_key(entity_type)
+        is_action_entity_type(entity_type) || self.entity_types.contains_key(entity_type)
+    }
+
+    /// Return true when `euid` has an entity type declared by the schema. We
+    /// treat an Unspecified as "known" because it is always possible to declare
+    /// an action using an unspecified principal/resource type without first
+    /// declaring unspecified as an entity type in the entity types list.
+    pub(crate) fn euid_has_known_entity_type(&self, euid: &EntityUID) -> bool {
+        match euid.entity_type() {
+            EntityType::Specified(ety) => self.is_known_entity_type(ety),
+            EntityType::Unspecified => true,
+        }
     }
 
     /// An iterator over the action ids in the schema.
@@ -494,18 +505,18 @@ impl ValidatorSchema {
     /// includes all entity types that are descendants of the type of `entity`
     /// according  to the schema, and the type of `entity` itself because
     /// `entity in entity` evaluates to `true`.
-    pub(crate) fn get_entity_types_in<'a>(&'a self, entity: &'a EntityUID) -> Option<Vec<&Name>> {
-        let ety = match entity.entity_type() {
-            EntityType::Specified(ety) => Some(ety),
-            EntityType::Unspecified => None,
-        };
-
-        ety.and_then(|ety| self.get_entity_type(ety)).map(|ety| {
-            ety.descendants
-                .iter()
-                .chain(std::iter::once(&ety.name))
-                .collect()
-        })
+    pub(crate) fn get_entity_types_in<'a>(&'a self, entity: &'a EntityUID) -> Vec<&Name> {
+        match entity.entity_type() {
+            EntityType::Specified(ety) => {
+                let mut descendants = self
+                    .get_entity_type(ety)
+                    .map(|v_ety| v_ety.descendants.iter().collect::<Vec<_>>())
+                    .unwrap_or_default();
+                descendants.push(ety);
+                descendants
+            }
+            EntityType::Unspecified => Vec::new(),
+        }
     }
 
     /// Get all entity types in the schema where an `{entity0} in {euids}` can
@@ -514,12 +525,11 @@ impl ValidatorSchema {
     pub(crate) fn get_entity_types_in_set<'a>(
         &'a self,
         euids: impl IntoIterator<Item = &'a EntityUID> + 'a,
-    ) -> Option<Vec<&Name>> {
+    ) -> impl Iterator<Item = &Name> {
         euids
             .into_iter()
             .map(|e| self.get_entity_types_in(e))
-            .collect::<Option<Vec<_>>>()
-            .map(|v| v.into_iter().flatten().collect::<Vec<_>>())
+            .flatten()
     }
 
     /// Get all action entities in the schema where `action in euids` evaluates

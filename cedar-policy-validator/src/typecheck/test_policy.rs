@@ -427,6 +427,66 @@ fn policy_in_action_impossible() {
         p.clone(),
         vec![TypeError::impossible_policy(p.condition())],
     );
+
+    let p = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action, resource) when { User::"alice" in [Action::"view_photo"] };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typecheck_fails_simple_schema(
+        p.clone(),
+        vec![TypeError::impossible_policy(p.condition())],
+    );
+
+    let p = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action, resource) when { principal in [action] };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typecheck_fails_simple_schema(
+        p.clone(),
+        vec![TypeError::impossible_policy(p.condition())],
+    );
+
+    let p = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action, resource) when { principal in action };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typecheck_fails_simple_schema(
+        p.clone(),
+        vec![TypeError::impossible_policy(p.condition())],
+    );
+
+    let p = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action, resource) when { principal in Action::"view_photo" };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typecheck_fails_simple_schema(
+        p.clone(),
+        vec![TypeError::impossible_policy(p.condition())],
+    );
+
+    let p = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action, resource) when { principal in [Action::"view_photo", Action::"delete_group"] };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typecheck_fails_simple_schema(
+        p.clone(),
+        vec![TypeError::impossible_policy(p.condition())],
+    );
+
+    let p = parse_policy(
+        Some("0".to_string()),
+        r#"permit(principal, action, resource) when { principal in [Action::"view_photo", Photo::"bar"] };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typecheck_permissive_fails_simple_schema(
+        p.clone(),
+        vec![TypeError::impossible_policy(p.condition())],
+    );
 }
 
 #[test]

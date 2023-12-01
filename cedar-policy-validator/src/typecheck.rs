@@ -1886,35 +1886,54 @@ impl<'a> Typechecker<'a> {
             } else {
                 request_env.resource_entity_type()
             };
-            let descendants = self.schema.get_entity_types_in_set(rhs.iter());
-            match (var_euid, descendants) {
-                // We failed to lookup the descendants because the entity type
-                // is not declared in the schema, or we failed to get the
-                // principal/resource entity type because the request is
-                // unknown.  We don't know if the euid would be in the
-                // descendants or not, so give it type boolean.
-                (_, None) | (None, _) => {
+            match var_euid {
+                // We failed to get the principal/resource entity type because
+                // we are typechecking a request for some action which isn't
+                // declared in the schema.  We don't know if the euid would be
+                // in the descendants or not, so give it type boolean.
+                None => {
                     let in_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
                         .with_same_source_info(in_expr)
                         .is_in(lhs_expr, rhs_expr);
                     if self.mode.is_partial() {
                         TypecheckAnswer::success(in_expr)
                     } else {
+                        // This should only happen when doing partial validation
+                        // since we never construct the undeclared action
+                        // request environment otherwise.
                         TypecheckAnswer::fail(in_expr)
                     }
                 }
-                (Some(EntityType::Specified(var_name)), Some(descendants)) => {
-                    Typechecker::entity_in_descendants(
-                        var_name,
-                        descendants,
-                        in_expr,
-                        lhs_expr,
-                        rhs_expr,
-                    )
+                Some(EntityType::Specified(var_name)) => {
+                    let all_rhs_known = rhs
+                        .iter()
+                        .all(|e| self.schema.euid_has_known_entity_type(e));
+                    if self.schema.is_known_entity_type(var_name) && all_rhs_known {
+                        let descendants = self.schema.get_entity_types_in_set(rhs.iter());
+                        Typechecker::entity_in_descendants(
+                            var_name,
+                            descendants,
+                            in_expr,
+                            lhs_expr,
+                            rhs_expr,
+                        )
+                    } else {
+                        let annotated_expr =
+                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                .with_same_source_info(in_expr)
+                                .is_in(lhs_expr, rhs_expr);
+                        if self.mode.is_partial() {
+                            // In partial schema mode, undeclared entity types are
+                            // expected.
+                            TypecheckAnswer::success(annotated_expr)
+                        } else {
+                            TypecheckAnswer::fail(annotated_expr)
+                        }
+                    }
                 }
                 // Unspecified entities will be detected by a different part of the validator.
                 // Still return `TypecheckFail` so that typechecking is not considered successful.
-                (Some(EntityType::Unspecified), _) => TypecheckAnswer::fail(
+                Some(EntityType::Unspecified) => TypecheckAnswer::fail(
                     ExprBuilder::with_data(Some(Type::primitive_boolean()))
                         .with_same_source_info(in_expr)
                         .is_in(lhs_expr, rhs_expr),
@@ -1966,7 +1985,7 @@ impl<'a> Typechecker<'a> {
                     } else if !lhs_is_action && !non_actions.is_empty() {
                         self.type_of_non_action_in_entities(
                             lhs_euid,
-                            non_actions.iter(),
+                            &non_actions,
                             in_expr,
                             lhs_expr,
                             rhs_expr,
@@ -2038,34 +2057,33 @@ impl<'a> Typechecker<'a> {
     fn type_of_non_action_in_entities<'b>(
         &self,
         lhs: &EntityUID,
-        rhs: impl IntoIterator<Item = &'a EntityUID> + 'a,
+        rhs: &Vec<EntityUID>,
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
     ) -> TypecheckAnswer<'b> {
         match lhs.entity_type() {
             EntityType::Specified(lhs_ety) => {
-                let rhs_descendants = self.schema.get_entity_types_in_set(rhs);
-                match rhs_descendants {
-                    Some(rhs_descendants) if self.schema.is_known_entity_type(lhs_ety) => {
-                        Typechecker::entity_in_descendants(
-                            lhs_ety,
-                            rhs_descendants,
-                            in_expr,
-                            lhs_expr,
-                            rhs_expr,
-                        )
-                    }
-                    _ => {
-                        let annotated_expr =
-                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                .with_same_source_info(in_expr)
-                                .is_in(lhs_expr, rhs_expr);
-                        if self.mode.is_partial() {
-                            TypecheckAnswer::success(annotated_expr)
-                        } else {
-                            TypecheckAnswer::fail(annotated_expr)
-                        }
+                let all_rhs_known = rhs
+                    .iter()
+                    .all(|e| self.schema.euid_has_known_entity_type(e));
+                if self.schema.is_known_entity_type(lhs_ety) && all_rhs_known {
+                    let rhs_descendants = self.schema.get_entity_types_in_set(rhs.iter());
+                    Typechecker::entity_in_descendants(
+                        lhs_ety,
+                        rhs_descendants,
+                        in_expr,
+                        lhs_expr,
+                        rhs_expr,
+                    )
+                } else {
+                    let annotated_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                        .with_same_source_info(in_expr)
+                        .is_in(lhs_expr, rhs_expr);
+                    if self.mode.is_partial() {
+                        TypecheckAnswer::success(annotated_expr)
+                    } else {
+                        TypecheckAnswer::fail(annotated_expr)
                     }
                 }
             }
