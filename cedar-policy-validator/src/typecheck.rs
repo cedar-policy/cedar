@@ -1905,22 +1905,11 @@ impl<'a> Typechecker<'a> {
                     }
                 }
                 Some(EntityType::Specified(var_name)) => {
-                    let any_rhs_not_declared = rhs.iter().any(|e| !self.schema.euid_has_known_entity_type(e));
-                    if any_rhs_not_declared && self.mode.is_partial() {
-                        // In partial schema mode, undeclared entity types are
-                        // expected.
-                        TypecheckAnswer::success(
-                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                .with_same_source_info(in_expr)
-                                .is_in(lhs_expr, rhs_expr),
-                        )
-                    } else if any_rhs_not_declared {
-                        TypecheckAnswer::fail(
-                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                .with_same_source_info(in_expr)
-                                .is_in(lhs_expr, rhs_expr),
-                        )
-                    } else {
+                    if self.schema.is_known_entity_type(var_name)
+                        && rhs
+                            .iter()
+                            .all(|e| self.schema.euid_has_known_entity_type(e))
+                    {
                         let descendants = self.schema.get_entity_types_in_set(rhs.iter());
                         Typechecker::entity_in_descendants(
                             var_name,
@@ -1929,6 +1918,18 @@ impl<'a> Typechecker<'a> {
                             lhs_expr,
                             rhs_expr,
                         )
+                    } else {
+                        let annotated_expr =
+                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                .with_same_source_info(in_expr)
+                                .is_in(lhs_expr, rhs_expr);
+                        if self.mode.is_partial() {
+                            // In partial schema mode, undeclared entity types are
+                            // expected.
+                            TypecheckAnswer::success(annotated_expr)
+                        } else {
+                            TypecheckAnswer::fail(annotated_expr)
+                        }
                     }
                 }
                 // Unspecified entities will be detected by a different part of the validator.
@@ -2064,9 +2065,20 @@ impl<'a> Typechecker<'a> {
     ) -> TypecheckAnswer<'b> {
         match lhs.entity_type() {
             EntityType::Specified(lhs_ety) => {
-                let rhs_descendants = self.schema.get_entity_types_in_set(rhs.iter());
-                let any_rhs_not_declared = rhs.iter().any(|e| !self.schema.euid_has_known_entity_type(e));
-                if !self.schema.is_known_entity_type(lhs_ety) || any_rhs_not_declared {
+                if self.schema.is_known_entity_type(lhs_ety)
+                    && rhs
+                        .iter()
+                        .all(|e| self.schema.euid_has_known_entity_type(e))
+                {
+                    let rhs_descendants = self.schema.get_entity_types_in_set(rhs.iter());
+                    Typechecker::entity_in_descendants(
+                        lhs_ety,
+                        rhs_descendants,
+                        in_expr,
+                        lhs_expr,
+                        rhs_expr,
+                    )
+                } else {
                     let annotated_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
                         .with_same_source_info(in_expr)
                         .is_in(lhs_expr, rhs_expr);
@@ -2075,14 +2087,6 @@ impl<'a> Typechecker<'a> {
                     } else {
                         TypecheckAnswer::fail(annotated_expr)
                     }
-                } else {
-                    Typechecker::entity_in_descendants(
-                        lhs_ety,
-                        rhs_descendants,
-                        in_expr,
-                        lhs_expr,
-                        rhs_expr,
-                    )
                 }
             }
             EntityType::Unspecified => {
