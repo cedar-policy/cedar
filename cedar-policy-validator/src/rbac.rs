@@ -383,12 +383,9 @@ impl Validator {
                 .into_iter(),
             ),
             // <var> in <literal euid>
-            PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)) => Box::new(
-                self.schema
-                    .get_entity_types_in(euid.as_ref())
-                    .unwrap_or_default()
-                    .into_iter(),
-            ),
+            PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)) => {
+                Box::new(self.schema.get_entity_types_in(euid.as_ref()).into_iter())
+            }
             PrincipalOrResourceConstraint::Eq(EntityReference::Slot)
             | PrincipalOrResourceConstraint::In(EntityReference::Slot) => {
                 Box::new(self.schema.known_entity_types())
@@ -406,7 +403,6 @@ impl Validator {
                 Box::new(
                     self.schema
                         .get_entity_types_in(in_entity.as_ref())
-                        .unwrap_or_default()
                         .into_iter()
                         .filter(move |k| &entity_type == k),
                 )
