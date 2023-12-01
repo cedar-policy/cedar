@@ -1898,17 +1898,14 @@ impl<'a> Typechecker<'a> {
                     if self.mode.is_partial() {
                         TypecheckAnswer::success(in_expr)
                     } else {
-                        // This should only happen if are doing partial since we
-                        // never construct the undeclared action request
-                        // environment otherwise.
+                        // This should only happen when doing partial validation
+                        // since we never construct the undeclared action
+                        // request environment otherwise.
                         TypecheckAnswer::fail(in_expr)
                     }
                 }
                 Some(EntityType::Specified(var_name)) => {
-                    let any_rhs_not_declared = rhs.iter().any(|e| match e.entity_type() {
-                        EntityType::Specified(ety) => !self.schema.is_known_entity_type(ety),
-                        EntityType::Unspecified => false,
-                    });
+                    let any_rhs_not_declared = rhs.iter().any(|e| !self.schema.euid_has_known_entity_type(e));
                     if any_rhs_not_declared && self.mode.is_partial() {
                         // In partial schema mode, undeclared entity types are
                         // expected.
@@ -2068,10 +2065,7 @@ impl<'a> Typechecker<'a> {
         match lhs.entity_type() {
             EntityType::Specified(lhs_ety) => {
                 let rhs_descendants = self.schema.get_entity_types_in_set(rhs.iter());
-                let any_rhs_not_declared = rhs.iter().any(|e| match e.entity_type() {
-                    EntityType::Specified(ety) => !self.schema.is_known_entity_type(ety),
-                    EntityType::Unspecified => false,
-                });
+                let any_rhs_not_declared = rhs.iter().any(|e| !self.schema.euid_has_known_entity_type(e));
                 if !self.schema.is_known_entity_type(lhs_ety) || any_rhs_not_declared {
                     let annotated_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
                         .with_same_source_info(in_expr)

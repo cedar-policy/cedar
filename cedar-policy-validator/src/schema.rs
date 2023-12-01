@@ -474,6 +474,14 @@ impl ValidatorSchema {
         is_action_entity_type(entity_type) || self.entity_types.contains_key(entity_type)
     }
 
+    /// Return true when `euid` has an entity type declared by the schema.
+    pub(crate) fn euid_has_known_entity_type(&self, euid: &EntityUID) -> bool {
+        match euid.entity_type() {
+            EntityType::Specified(ety) => self.is_known_entity_type(ety),
+            EntityType::Unspecified => true,
+        }
+    }
+
     /// An iterator over the action ids in the schema.
     pub(crate) fn known_action_ids(&self) -> impl Iterator<Item = &EntityUID> {
         self.action_ids.keys()
