@@ -1905,11 +1905,10 @@ impl<'a> Typechecker<'a> {
                     }
                 }
                 Some(EntityType::Specified(var_name)) => {
-                    if self.schema.is_known_entity_type(var_name)
-                        && rhs
-                            .iter()
-                            .all(|e| self.schema.euid_has_known_entity_type(e))
-                    {
+                    let all_rhs_known = rhs
+                        .iter()
+                        .all(|e| self.schema.euid_has_known_entity_type(e));
+                    if self.schema.is_known_entity_type(var_name) && all_rhs_known {
                         let descendants = self.schema.get_entity_types_in_set(rhs.iter());
                         Typechecker::entity_in_descendants(
                             var_name,
@@ -2065,11 +2064,10 @@ impl<'a> Typechecker<'a> {
     ) -> TypecheckAnswer<'b> {
         match lhs.entity_type() {
             EntityType::Specified(lhs_ety) => {
-                if self.schema.is_known_entity_type(lhs_ety)
-                    && rhs
-                        .iter()
-                        .all(|e| self.schema.euid_has_known_entity_type(e))
-                {
+                let all_rhs_known = rhs
+                    .iter()
+                    .all(|e| self.schema.euid_has_known_entity_type(e));
+                if self.schema.is_known_entity_type(lhs_ety) && all_rhs_known {
                     let rhs_descendants = self.schema.get_entity_types_in_set(rhs.iter());
                     Typechecker::entity_in_descendants(
                         lhs_ety,
