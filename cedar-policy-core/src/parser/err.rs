@@ -35,7 +35,7 @@ use crate::parser::unescape::UnescapeError;
 use crate::parser::fmt::join_with_conjunction;
 use crate::parser::node::ASTNode;
 
-use super::cst;
+use super::{cst, SourceInfo};
 
 pub(crate) type RawLocation = usize;
 pub(crate) type RawToken<'a> = lalr::lexer::Token<'a>;
@@ -72,10 +72,11 @@ impl ParseError {
     pub fn primary_source_span(&self) -> Option<SourceSpan> {
         match self {
             ParseError::ToCST(to_cst_err) => Some(to_cst_err.primary_source_span()),
+            ParseError::ToAST(to_ast_err) => Some(to_ast_err.source_info.clone().into()),
             ParseError::RestrictedExpr(restricted_expr_err) => match restricted_expr_err {
                 RestrictedExprError::InvalidRestrictedExpression { .. } => None,
             },
-            ParseError::ToAST(_) | ParseError::ParseLiteral(_) => None,
+            ParseError::ParseLiteral(_) => None,
         }
     }
 }
@@ -90,9 +91,34 @@ pub enum ParseLiteralError {
 }
 
 /// Errors in the CST -> AST transform, mostly well-formedness issues.
+#[derive(Debug, Error, Diagnostic, Clone, PartialEq, Eq)]
+#[diagnostic(code(cedar_policy_core::parser::to_ast_error))]
+#[error("{}", .kind)]
+pub struct ToASTError {
+    kind: ToASTErrorKind,
+    #[label]
+    source_info: SourceInfo,
+}
+
+impl ToASTError {
+    /// Construct a new `ToASTError`.
+    pub fn new(kind: ToASTErrorKind, source_info: SourceInfo) -> Self {
+        Self { kind, source_info }
+    }
+
+    pub(crate) fn kind(&self) -> &ToASTErrorKind {
+        &self.kind
+    }
+
+    pub(crate) fn source_info(&self) -> &SourceInfo {
+        &self.source_info
+    }
+}
+
+/// Details about a particular kind of `ToASTError`.
 #[derive(Debug, Diagnostic, Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum ToASTError {
+pub enum ToASTErrorKind {
     /// Returned when we attempt to parse a template with a conflicting id
     #[error("a template with id `{0}` already exists in the policy set")]
     DuplicateTemplateId(PolicyID),
@@ -323,7 +349,7 @@ pub enum ToASTError {
     InvalidIs(#[from] InvalidIsError),
 }
 
-impl ToASTError {
+impl ToASTErrorKind {
     /// Constructor for the [`ToASTError::WrongNode`] error
     pub fn wrong_node(
         expected: &'static str,
@@ -377,12 +403,6 @@ impl RefCreationError {
     pub fn two_expected(r1: Ref, r2: Ref, got: Ref) -> Self {
         let expected = Either::Right((r1, r2));
         Self::RefCreation { expected, got }
-    }
-}
-
-impl From<RefCreationError> for ParseError {
-    fn from(value: RefCreationError) -> Self {
-        ParseError::ToAST(value.into())
     }
 }
 

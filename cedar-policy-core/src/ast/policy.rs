@@ -1651,8 +1651,8 @@ mod test {
     use crate::{
         ast::{entity, name, EntityUID},
         parser::{
-            err::{ParseError, ParseErrors, ToASTError},
-            parse_policy,
+            err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind},
+            parse_policy, SourceInfo,
         },
     };
 
@@ -1996,19 +1996,23 @@ mod test {
         let ParseErrors(errs) = parse_policy(Some("id".into()), policy_str).err().unwrap();
         assert_eq!(
             &errs[0],
-            &ParseError::ToAST(ToASTError::UnexpectedTemplate {
-                slot: crate::parser::cst::Slot::Principal
-            })
+            &ParseError::ToAST(ToASTError::new(
+                ToASTErrorKind::UnexpectedTemplate {
+                    slot: crate::parser::cst::Slot::Principal
+                },
+                SourceInfo(0..50)
+            ))
         );
         assert_eq!(errs.len(), 1);
         let policy_str =
             r#"permit(principal == ?principal, action, resource) when { ?principal == 3 } ;"#;
         let ParseErrors(errs) = parse_policy(Some("id".into()), policy_str).err().unwrap();
-        assert!(
-            errs.contains(&ParseError::ToAST(ToASTError::UnexpectedTemplate {
+        assert!(errs.contains(&ParseError::ToAST(ToASTError::new(
+            ToASTErrorKind::UnexpectedTemplate {
                 slot: crate::parser::cst::Slot::Principal
-            }))
-        );
+            },
+            SourceInfo(50..74)
+        ))));
         assert_eq!(errs.len(), 2);
     }
 }

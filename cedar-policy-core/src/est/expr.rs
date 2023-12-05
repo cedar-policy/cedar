@@ -22,9 +22,9 @@ use crate::entities::{
 };
 use crate::extensions::Extensions;
 use crate::parser::cst::{self, Ident};
-use crate::parser::err::{ParseErrors, ToASTError};
-use crate::parser::unescape;
+use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::ASTNode;
+use crate::parser::{unescape, SourceInfo};
 use crate::{ast, FromNormalizedStr};
 use either::Either;
 use itertools::Itertools;
@@ -864,12 +864,12 @@ impl TryFrom<&ASTNode<Option<cst::Relation>>> for Expr {
                     Ok(field_expr) => {
                         let field_str = field_expr
                             .into_string_literal()
-                            .map_err(|_| ToASTError::HasNonLiteralRHS)?;
+                            .map_err(|_| field.to_ast_err(ToASTErrorKind::HasNonLiteralRHS))?;
                         Ok(Expr::has_attr(target_expr, field_str))
                     }
                     Err(_) => match is_add_name(field.ok_or_missing()?) {
                         Some(name) => Ok(Expr::has_attr(target_expr, name.to_string().into())),
-                        None => Err(ToASTError::HasNonLiteralRHS.into()),
+                        None => Err(field.to_ast_err(ToASTErrorKind::HasNonLiteralRHS).into()),
                     },
                 }
             }
@@ -877,9 +877,9 @@ impl TryFrom<&ASTNode<Option<cst::Relation>>> for Expr {
                 let target_expr = target.try_into()?;
                 let pat_expr: Expr = pattern.try_into()?;
                 let pat_str = pat_expr.into_string_literal().map_err(|e| {
-                    ToASTError::InvalidPattern(
+                    pattern.to_ast_err(ToASTErrorKind::InvalidPattern(
                         serde_json::to_string(&e).unwrap_or_else(|_| "<malformed est>".to_string()),
-                    )
+                    ))
                 })?;
                 Ok(Expr::like(target_expr, pat_str))
             }
@@ -995,8 +995,12 @@ impl TryFrom<&ASTNode<Option<cst::Mult>>> for Expr {
                 cst::MultOp::Times => {
                     expr = Expr::mul(expr, rhs);
                 }
-                cst::MultOp::Divide => return Err(ToASTError::UnsupportedDivision.into()),
-                cst::MultOp::Mod => return Err(ToASTError::UnsupportedModulo.into()),
+                cst::MultOp::Divide => {
+                    return Err(node.to_ast_err(ToASTErrorKind::UnsupportedDivision).into())
+                }
+                cst::MultOp::Mod => {
+                    return Err(node.to_ast_err(ToASTErrorKind::UnsupportedModulo).into())
+                }
             }
         }
         Ok(expr)
@@ -1055,8 +1059,12 @@ impl TryFrom<&ASTNode<Option<cst::Unary>>> for Expr {
                     }
                 }
             }
-            Some(cst::NegOp::OverBang) => Err(ToASTError::UnaryOpLimit(ast::UnaryOp::Not).into()),
-            Some(cst::NegOp::OverDash) => Err(ToASTError::UnaryOpLimit(ast::UnaryOp::Neg).into()),
+            Some(cst::NegOp::OverBang) => Err(u
+                .to_ast_err(ToASTErrorKind::UnaryOpLimit(ast::UnaryOp::Not))
+                .into()),
+            Some(cst::NegOp::OverDash) => Err(u
+                .to_ast_err(ToASTErrorKind::UnaryOpLimit(ast::UnaryOp::Neg))
+                .into()),
             None => Ok(inner),
         }
     }
@@ -1091,7 +1099,9 @@ fn interpret_primary(
                     _ => Err(errs),
                 }
             }
-            cst::Ref::Ref { .. } => Err(ToASTError::UnsupportedEntityLiterals.into()),
+            cst::Ref::Ref { .. } => Err(node
+                .to_ast_err(ToASTErrorKind::UnsupportedEntityLiterals)
+                .into()),
         },
         cst::Primary::Name(node) => {
             let name = node.ok_or_missing()?;
@@ -1119,10 +1129,13 @@ fn interpret_primary(
                         ),
                         (_, _) => (0, 0),
                     };
-                    Err(ToASTError::InvalidExpression(cst::Name {
-                        path: path.to_vec(),
-                        name: ASTNode::new(Some(id.clone()), l, r),
-                    })
+                    Err(ToASTError::new(
+                        ToASTErrorKind::InvalidExpression(cst::Name {
+                            path: path.to_vec(),
+                            name: ASTNode::new(Some(id.clone()), l, r),
+                        }),
+                        SourceInfo(l..r),
+                    )
                     .into())
                 }
             }
@@ -1151,7 +1164,7 @@ fn interpret_primary(
                 } else {
                     match s {
                         Some(s) => Ok((s, v.try_into()?)),
-                        None => Err(ToASTError::MissingNodeData.into()),
+                        None => Err(node.to_ast_err(ToASTErrorKind::MissingNodeData).into()),
                     }
                 }
             })
@@ -1172,12 +1185,18 @@ impl TryFrom<&ASTNode<Option<cst::Member>>> for Expr {
                     cst::Ident::Ident(i) => {
                         item = match item {
                             Either::Left(name) => {
-                                return Err(ToASTError::InvalidAccess(name, i.clone()).into())
+                                return Err(node
+                                    .to_ast_err(ToASTErrorKind::InvalidAccess(name, i.clone()))
+                                    .into())
                             }
                             Either::Right(expr) => Either::Right(Expr::get_attr(expr, i.clone())),
                         };
                     }
-                    i => return Err(ToASTError::InvalidIdentifier(i.to_string()).into()),
+                    i => {
+                        return Err(node
+                            .to_ast_err(ToASTErrorKind::InvalidIdentifier(i.to_string()))
+                            .into())
+                    }
                 },
                 cst::MemAccess::Call(args) => {
                     // we have item(args).  We hope item is either:
@@ -1204,15 +1223,27 @@ impl TryFrom<&ASTNode<Option<cst::Member>>> for Expr {
                             match attr.as_str() {
                                 "contains" => Either::Right(Expr::contains(
                                     left,
-                                    extract_single_argument(args, "contains()")?,
+                                    extract_single_argument(
+                                        args,
+                                        "contains()",
+                                        access.info.clone(),
+                                    )?,
                                 )),
                                 "containsAll" => Either::Right(Expr::contains_all(
                                     left,
-                                    extract_single_argument(args, "containsAll()")?,
+                                    extract_single_argument(
+                                        args,
+                                        "containsAll()",
+                                        access.info.clone(),
+                                    )?,
                                 )),
                                 "containsAny" => Either::Right(Expr::contains_any(
                                     left,
-                                    extract_single_argument(args, "containsAny()")?,
+                                    extract_single_argument(
+                                        args,
+                                        "containsAny()",
+                                        access.info.clone(),
+                                    )?,
                                 )),
                                 _ => {
                                     // have to add the "receiver" argument as
@@ -1223,22 +1254,26 @@ impl TryFrom<&ASTNode<Option<cst::Member>>> for Expr {
                                 }
                             }
                         }
-                        _ => return Err(ToASTError::ExpressionCall.into()),
+                        _ => return Err(access.to_ast_err(ToASTErrorKind::ExpressionCall).into()),
                     };
                 }
                 cst::MemAccess::Index(node) => {
                     let s = Expr::try_from(node)?
                         .into_string_literal()
-                        .map_err(|_| ToASTError::NonStringIndex)?;
+                        .map_err(|_| node.to_ast_err(ToASTErrorKind::NonStringIndex))?;
                     item = match item {
-                        Either::Left(name) => return Err(ToASTError::InvalidIndex(name, s).into()),
+                        Either::Left(name) => {
+                            return Err(node
+                                .to_ast_err(ToASTErrorKind::InvalidIndex(name, s))
+                                .into())
+                        }
                         Either::Right(expr) => Either::Right(Expr::get_attr(expr, s)),
                     };
                 }
             }
         }
         match item {
-            Either::Left(_) => Err(ToASTError::MembershipInvariantViolation)?,
+            Either::Left(_) => Err(m.to_ast_err(ToASTErrorKind::MembershipInvariantViolation))?,
             Either::Right(expr) => Ok(expr),
         }
     }
@@ -1247,13 +1282,16 @@ impl TryFrom<&ASTNode<Option<cst::Member>>> for Expr {
 fn extract_single_argument(
     es: impl ExactSizeIterator<Item = Expr>,
     fn_name: &'static str,
+    info: SourceInfo,
 ) -> Result<Expr, ParseErrors> {
     let mut iter = es.fuse().peekable();
     let first = iter.next();
     let second = iter.peek();
     match (first, second) {
-        (None, _) => Err(ToASTError::wrong_arity(fn_name, 1, 0).into()),
-        (Some(_), Some(_)) => Err(ToASTError::wrong_arity(fn_name, 1, iter.len()).into()),
+        (None, _) => Err(ToASTError::new(ToASTErrorKind::wrong_arity(fn_name, 1, 0), info).into()),
+        (Some(_), Some(_)) => {
+            Err(ToASTError::new(ToASTErrorKind::wrong_arity(fn_name, 1, iter.len()), info).into())
+        }
         (Some(first), None) => Ok(first),
     }
 }
@@ -1266,13 +1304,13 @@ impl TryFrom<&ASTNode<Option<cst::Literal>>> for Expr {
             cst::Literal::False => Ok(Expr::lit(CedarValueJson::Bool(false))),
             cst::Literal::Num(n) => Ok(Expr::lit(CedarValueJson::Long(
                 (*n).try_into()
-                    .map_err(|_| ToASTError::IntegerLiteralTooLarge(*n))?,
+                    .map_err(|_| lit.to_ast_err(ToASTErrorKind::IntegerLiteralTooLarge(*n)))?,
             ))),
             cst::Literal::Str(node) => match node.ok_or_missing()? {
                 cst::Str::String(s) => Ok(Expr::lit(CedarValueJson::String(s.clone()))),
-                cst::Str::Invalid(invalid_str) => {
-                    Err(ToASTError::InvalidString(invalid_str.to_string()).into())
-                }
+                cst::Str::Invalid(invalid_str) => Err(node
+                    .to_ast_err(ToASTErrorKind::InvalidString(invalid_str.to_string()))
+                    .into()),
             },
         }
     }
@@ -1296,11 +1334,12 @@ impl TryFrom<&ASTNode<Option<cst::Name>>> for Expr {
                     ),
                     (_, _) => (0, 0),
                 };
-                Err(ToASTError::InvalidExpression(cst::Name {
-                    path: path.to_vec(),
-                    name: ASTNode::new(Some(id.clone()), l, r),
-                })
-                .into())
+                Err(name
+                    .to_ast_err(ToASTErrorKind::InvalidExpression(cst::Name {
+                        path: path.to_vec(),
+                        name: ASTNode::new(Some(id.clone()), l, r),
+                    }))
+                    .into())
             }
         }
     }
@@ -1337,6 +1376,8 @@ fn ident_to_str_len(i: &Ident) -> usize {
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 mod test {
+    use cool_asserts::assert_matches;
+
     use crate::parser::err::ParseError;
 
     use super::*;
@@ -1354,13 +1395,15 @@ mod test {
             Ok(_) => panic!("wrong error"),
             Err(e) => {
                 assert!(e.len() == 1);
-                match &e[0] {
-                    ParseError::ToAST(ToASTError::InvalidExpression(e)) => {
-                        println!("{:?}", e);
-                        assert_eq!(e.name.info.range_end(), 16);
+                assert_matches!(&e[0],
+                    ParseError::ToAST(to_ast_error) => {
+                        assert_matches!(to_ast_error.kind(), ToASTErrorKind::InvalidExpression(e) =>  {
+                            println!("{:?}", e);
+                            assert_eq!(e.name.info.range_end(), 16);
+                        }
+                    )
                     }
-                    _ => panic!("wrong error"),
-                }
+                );
             }
         }
     }

@@ -622,7 +622,10 @@ pub enum RestrictedExprParseError {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::parser::err::{ParseError, ToASTError};
+    use crate::parser::{
+        err::{ParseError, ToASTError, ToASTErrorKind},
+        SourceInfo,
+    };
     use std::str::FromStr;
 
     #[test]
@@ -670,7 +673,10 @@ mod test {
         assert_eq!(
             RestrictedExpr::from_str(r#"{ foo: 37, bar: "hi", foo: 101 }"#),
             Err(RestrictedExprParseError::Parse(ParseErrors(vec![
-                ParseError::ToAST(ToASTError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+                ParseError::ToAST(ToASTError::new(
+                    ToASTErrorKind::DuplicateKeyInRecordLiteral { key: "foo".into() },
+                    SourceInfo(0..32)
+                ))
             ]))),
         )
     }
