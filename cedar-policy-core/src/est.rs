@@ -28,7 +28,6 @@ use crate::ast;
 use crate::entities::EntityUidJson;
 use crate::parser::cst;
 use crate::parser::err::{ParseError, ParseErrors, ToASTError};
-use crate::parser::ASTNode;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
@@ -167,10 +166,7 @@ impl TryFrom<cst::Cond> for Clause {
                 });
                 Err(ParseError::ToAST(ToASTError::EmptyClause(ident)).into())
             }
-            Some(ASTNode { node: Some(e), .. }) => e.try_into(),
-            Some(ASTNode { node: None, .. }) => {
-                Err(ParseError::ToAST(ToASTError::MissingNodeData).into())
-            }
+            Some(e) => e.try_into(),
         };
         let expr = match expr {
             Ok(expr) => Some(expr),
