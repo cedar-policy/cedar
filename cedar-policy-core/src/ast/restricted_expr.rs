@@ -21,6 +21,7 @@ use super::{
 use crate::entities::JsonSerializationError;
 use crate::parser;
 use crate::parser::err::ParseErrors;
+use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::hash::{Hash, Hasher};
@@ -590,7 +591,7 @@ impl<'a> Hash for RestrictedExprShapeOnly<'a> {
 
 /// Error when constructing a restricted expression from unrestricted
 
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
 pub enum RestrictedExprError {
     /// An expression was expected to be a "restricted" expression, but contained
     /// a feature that is not allowed in restricted expressions. The `feature`

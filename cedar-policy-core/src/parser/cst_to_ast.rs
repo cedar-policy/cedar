@@ -1164,7 +1164,7 @@ impl ASTNode<Option<cst::Add>> {
         match add.extended.len() {
             0 => add.initial.to_ref_or_refs::<T>(errs, var),
             _n => {
-                errs.push(ToASTError::wrong_node(T::err_str(), "a `+/-` expression", Some("note that entity types and namespaces cannot use `+` or `-` characters -- perhaps try `_` or `::` instead?")));
+                errs.push(ToASTError::wrong_node(T::err_str(), "a `+/-` expression", Some("entity types and namespaces cannot use `+` or `-` characters -- perhaps try `_` or `::` instead?")));
                 None
             }
         }
@@ -1415,7 +1415,7 @@ impl ASTNode<Option<cst::Member>> {
         match mem.access.len() {
             0 => mem.item.to_ref_or_refs::<T>(errs, var),
             _n => {
-                errs.push(ToASTError::wrong_node(T::err_str(), "a `.` expression", Some("note that entity types and namespaces cannot use `.` characters -- perhaps try `_` or `::` instead?")));
+                errs.push(ToASTError::wrong_node(T::err_str(), "a `.` expression", Some("entity types and namespaces cannot use `.` characters -- perhaps try `_` or `::` instead?")));
                 None
             }
         }
@@ -2186,7 +2186,7 @@ mod tests {
     use super::*;
     use crate::{
         ast::Expr,
-        parser::{err::ParseErrors, *},
+        parser::{err::ParseErrors, test_utils::*, *},
     };
     use cool_asserts::assert_matches;
     use std::str::FromStr;
@@ -3392,29 +3392,31 @@ mod tests {
 
     fn expect_action_error(test: &str, euid_strs: Vec<&str>) {
         let euids = euid_strs
-            .into_iter()
+            .iter()
             .map(|euid_str| {
                 EntityUID::from_str(euid_str).expect("Test was provided with invalid euid")
             })
             .collect::<Vec<_>>();
-        let p = parse_policyset(test);
-        match p {
-            Ok(pset) => panic!("Policy: {pset}, shouln't have parsed!"),
-            Err(es) => {
-                if es.len() != euids.len() {
-                    panic!(
-                        "Parse should have produced exactly {} parse errors, produced: {:?}",
-                        euids.len(),
-                        es
+        assert_matches!(parse_policyset(test), Err(es) => {
+            if es.len() != euids.len() {
+                panic!(
+                    "Parse should have produced exactly {} parse errors, produced: {}",
+                    euids.len(),
+                    es.pretty_with_helps()
+                );
+            } else {
+                for euid in euids {
+                    expect_some_error_matches(
+                        test,
+                        &es,
+                        &ExpectedErrorMessage::error_and_help(
+                            &format!("expected an entity uid with the type `Action` but got `{euid}`"),
+                            "action entities must have type `Action`, optionally in a namespace",
+                        ),
                     );
-                } else {
-                    for euid in euids {
-                        let err = ToASTError::InvalidActionType(euid).into();
-                        assert!(es.contains(&err));
-                    }
                 }
             }
-        }
+        });
     }
 
     #[test]
@@ -3477,18 +3479,14 @@ mod tests {
 
     #[test]
     fn method_style() {
-        let policy = parse_policyset(
-            r#"permit(principal, action, resource)
-            when { contains(true) < 1 };"#,
-        );
-        assert!(
-            policy.is_err()
-                && matches!(
-                    policy.as_ref().unwrap_err().as_slice(),
-                    [err::ParseError::ToAST(_)]
-                ),
-            "builtin functions must be called in method-style"
-        );
+        let src = r#"permit(principal, action, resource)
+            when { contains(true) < 1 };"#;
+        assert_matches!(parse_policyset(src), Err(e) => {
+            expect_some_error_matches(src, &e, &ExpectedErrorMessage::error_and_help(
+                "`contains` is a method, not a function",
+                "use a method-style call: `e.contains(..)`",
+            ));
+        });
     }
 
     #[test]
@@ -3534,6 +3532,11 @@ mod tests {
                 .expect("should construct a CST")
                 .to_expr(&mut errs);
             assert!(e.is_none());
+            expect_some_error_matches(
+                es,
+                &errs,
+                &ExpectedErrorMessage::error("multiplication must be by an integer literal"),
+            );
         }
     }
 
@@ -3644,8 +3647,7 @@ mod tests {
                 .expect("should construct a CST")
                 .to_expr(&mut errs);
             assert!(e.is_none());
-            println!("{:?}", errs);
-            assert!(errs.contains(&em));
+            assert!(errs.contains(&em), "errs was\n{}", errs.pretty_with_helps());
         }
     }
 
@@ -3820,90 +3822,97 @@ mod tests {
         let invalid_is_policies = [
             (
                 r#"permit(principal == ?resource, action, resource);"#,
-                "?resource instead of ?principal",
+                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?resource instead of ?principal"),
             ),
             (
                 r#"permit(principal, action, resource == ?principal);"#,
-                "?principal instead of ?resource",
+                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?principal instead of ?resource"),
             ),
             (
                 r#"permit(principal in Group::"friends" is User, action, resource);"#,
-                "expected an entity uid or matching template slot",
+                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found an `is` expression"),
             ),
             (
                 r#"permit(principal, action, resource in Folder::"folder" is File);"#,
-                "expected an entity uid or matching template slot",
+                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found an `is` expression"),
             ),
             (
                 r#"permit(principal is User == User::"Alice", action, resource);"#,
-                "`is` cannot appear in the scope at the same time as `==`",
+                ExpectedErrorMessage::error(
+                    "`is` cannot appear in the scope at the same time as `==`",
+                ),
             ),
             (
                 r#"permit(principal, action, resource is Doc == Doc::"a");"#,
-                "`is` cannot appear in the scope at the same time as `==`",
+                ExpectedErrorMessage::error(
+                    "`is` cannot appear in the scope at the same time as `==`",
+                ),
             ),
             (
                 r#"permit(principal is User::"alice", action, resource);"#,
-                r#"unexpected token `"alice"`"#,
+                ExpectedErrorMessage::error(r#"unexpected token `"alice"`"#),
             ),
             (
                 r#"permit(principal, action, resource is File::"f");"#,
-                r#"unexpected token `"f"`"#,
+                ExpectedErrorMessage::error(r#"unexpected token `"f"`"#),
             ),
             (
                 r#"permit(principal is User in 1, action, resource);"#,
-                "expected an entity uid or matching template slot, found literal `1`",
+                ExpectedErrorMessage::error(
+                    "expected an entity uid or matching template slot, found literal `1`",
+                ),
             ),
             (
                 r#"permit(principal, action, resource is File in 1);"#,
-                "expected an entity uid or matching template slot, found literal `1`",
+                ExpectedErrorMessage::error(
+                    "expected an entity uid or matching template slot, found literal `1`",
+                ),
             ),
             (
                 r#"permit(principal is User in User, action, resource);"#,
-                "expected an entity uid or matching template slot, found name `User`",
+                ExpectedErrorMessage::error(
+                    "expected an entity uid or matching template slot, found name `User`",
+                ),
             ),
             (
                 r#"permit(principal, action, resource is File in File);"#,
-                "expected an entity uid or matching template slot, found name `File`",
+                ExpectedErrorMessage::error(
+                    "expected an entity uid or matching template slot, found name `File`",
+                ),
             ),
             (
                 r#"permit(principal is 1, action, resource);"#,
-                "unexpected token `1`",
+                ExpectedErrorMessage::error("unexpected token `1`"),
             ),
             (
                 r#"permit(principal, action, resource is 1);"#,
-                "unexpected token `1`",
+                ExpectedErrorMessage::error("unexpected token `1`"),
             ),
             (
                 r#"permit(principal, action is Action, resource);"#,
-                "`is` cannot appear in the action scope",
+                ExpectedErrorMessage::error("`is` cannot appear in the action scope"),
             ),
             (
                 r#"permit(principal, action is Action in Action::"A", resource);"#,
-                "`is` cannot appear in the action scope",
+                ExpectedErrorMessage::error("`is` cannot appear in the action scope"),
             ),
             (
                 r#"permit(principal is User in ?resource, action, resource);"#,
-                "expected an entity uid or matching template slot",
+                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?resource instead of ?principal"),
             ),
             (
                 r#"permit(principal, action, resource is Folder in ?principal);"#,
-                "expected an entity uid or matching template slot",
+                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?principal instead of ?resource"),
             ),
             (
                 r#"permit(principal, action, resource) when { principal is 1 };"#,
-                "unexpected token `1`",
+                ExpectedErrorMessage::error("unexpected token `1`"),
             ),
         ];
         for (p_src, expected) in invalid_is_policies {
-            let err = parse_policy_template(None, p_src).unwrap_err().to_string();
-
-            assert!(
-                err.contains(expected),
-                "expected error containing `{}`, saw `{}`",
-                expected,
-                err
-            );
+            assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+                expect_err(p_src, &e, &expected);
+            });
         }
     }
 
@@ -3919,11 +3928,11 @@ mod tests {
         assert_matches!(
             parse_policy(None, policy),
             Err(e) => {
-                assert!(
-                    e.to_string().contains("expected an entity uid or matching template slot, found a `+/-` expression; note that entity types and namespaces cannot use `+` or `-` characters -- perhaps try `_` or `::` instead?"),
-                    "actual error message was {e}"
-                )
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessage::error_and_help(
+                    "expected an entity uid or matching template slot, found a `+/-` expression",
+                    "entity types and namespaces cannot use `+` or `-` characters -- perhaps try `_` or `::` instead?",
+                ));
             }
-        )
+        );
     }
 }
