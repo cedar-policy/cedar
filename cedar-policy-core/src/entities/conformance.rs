@@ -8,11 +8,12 @@ use crate::ast::{
 };
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use either::Either;
+use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
 
 /// Errors raised when entities do not conform to the schema
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum EntitySchemaConformanceError {
     /// Encountered attribute that shouldn't exist on entities of this type
     #[error("attribute `{attr}` on `{uid}` should not exist according to the schema")]
@@ -39,6 +40,7 @@ pub enum EntitySchemaConformanceError {
         /// Name of the attribute where the type mismatch occurred
         attr: SmolStr,
         /// Underlying error
+        #[diagnostic(transparent)]
         err: TypeMismatchError,
     },
     /// Found a set whose elements don't all have the same type. This doesn't match
@@ -50,6 +52,7 @@ pub enum EntitySchemaConformanceError {
         /// Name of the attribute where the error occurred
         attr: SmolStr,
         /// Underlying error
+        #[diagnostic(transparent)]
         err: HeterogeneousSetError,
     },
     /// Found an ancestor of a type that's not allowed for that entity
@@ -64,14 +67,14 @@ pub enum EntitySchemaConformanceError {
     },
     /// Encountered an entity of a type which is not declared in the schema.
     /// Note that this error is only used for non-Action entity types.
-    #[error("entity `{uid}` has type `{}` which is not declared in the schema{}",
-        &.uid.entity_type(),
+    #[error("entity `{uid}` has type `{}` which is not declared in the schema", .uid.entity_type())]
+    #[diagnostic(help("{}",
         match .suggested_types.as_slice() {
             [] => String::new(),
-            [ty] => format!(". Did you mean `{ty}`?"),
-            tys => format!(". Did you mean one of {:?}?", tys.iter().map(ToString::to_string).collect::<Vec<String>>())
+            [ty] => format!("did you mean `{ty}`?"),
+            tys => format!("did you mean one of {:?}?", tys.iter().map(ToString::to_string).collect::<Vec<String>>())
         }
-    )]
+    ))]
     UnexpectedEntityType {
         /// Entity that had the unexpected type
         uid: EntityUID,
@@ -101,6 +104,7 @@ pub enum EntitySchemaConformanceError {
         /// Name of the attribute where the error occurred
         attr: SmolStr,
         /// Underlying error
+        #[diagnostic(transparent)]
         err: ExtensionFunctionLookupError,
     },
 }
@@ -307,14 +311,16 @@ pub fn typecheck_restricted_expr_against_schematype(
 
 /// Errors returned by [`typecheck_value_against_schematype()`] and
 /// [`typecheck_restricted_expr_against_schematype()`]
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum TypecheckError {
     /// The given value had a type different than what was expected
     #[error(transparent)]
+    #[diagnostic(transparent)]
     TypeMismatch(#[from] TypeMismatchError),
     /// The given value contained a heterogeneous set, which doesn't conform to
     /// any possible `SchemaType`
     #[error(transparent)]
+    #[diagnostic(transparent)]
     HeterogeneousSet(#[from] HeterogeneousSetError),
     /// Error looking up an extension function. This error can occur when
     /// typechecking a `RestrictedExpr` because that may require getting
@@ -323,5 +329,6 @@ pub enum TypecheckError {
     /// because that may require getting information about any extension
     /// functions referenced in residuals.
     #[error(transparent)]
+    #[diagnostic(transparent)]
     ExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
 }

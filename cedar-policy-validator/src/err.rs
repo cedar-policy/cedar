@@ -22,9 +22,10 @@ use cedar_policy_core::{
     transitive_closure,
 };
 use itertools::Itertools;
+use miette::Diagnostic;
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum SchemaError {
     /// Error thrown by the `serde_json` crate during deserialization
     #[error("failed to parse schema: {0}")]
@@ -32,13 +33,16 @@ pub enum SchemaError {
     /// Errors occurring while computing or enforcing transitive closure on
     /// action hierarchy.
     #[error("transitive closure computation/enforcement error on action hierarchy: {0}")]
+    #[diagnostic(transparent)]
     ActionTransitiveClosure(Box<transitive_closure::TcError<EntityUID>>),
     /// Errors occurring while computing or enforcing transitive closure on
     /// entity type hierarchy.
     #[error("transitive closure computation/enforcement error on entity type hierarchy: {0}")]
+    #[diagnostic(transparent)]
     EntityTypeTransitiveClosure(#[from] transitive_closure::TcError<Name>),
     /// Error generated when processing a schema file that uses unsupported features
     #[error("unsupported feature used in schema: {0}")]
+    #[diagnostic(transparent)]
     UnsupportedFeature(UnsupportedFeature),
     /// Undeclared entity type(s) used in the `memberOf` field of an entity
     /// type, the `appliesTo` fields of an action, or an attribute type in a
@@ -68,16 +72,20 @@ pub enum SchemaError {
     CycleInActionHierarchy(EntityUID),
     /// Parse errors occurring while parsing an entity type.
     #[error("parse error in entity type: {}", Self::format_parse_errs(.0))]
+    #[diagnostic(transparent)]
     ParseEntityType(ParseErrors),
     /// Parse errors occurring while parsing a namespace identifier.
     #[error("parse error in namespace identifier: {}", Self::format_parse_errs(.0))]
+    #[diagnostic(transparent)]
     ParseNamespace(ParseErrors),
     /// Parse errors occurring while parsing an extension type.
     #[error("parse error in extension type: {}", Self::format_parse_errs(.0))]
+    #[diagnostic(transparent)]
     ParseExtensionType(ParseErrors),
     /// Parse errors occurring while parsing the name of one of reusable
     /// declared types.
     #[error("parse error in common type identifier: {}", Self::format_parse_errs(.0))]
+    #[diagnostic(transparent)]
     ParseCommonType(ParseErrors),
     /// The schema file included an entity type `Action` in the entity type
     /// list. The `Action` entity type is always implicitly declared, and it
@@ -99,6 +107,7 @@ pub enum SchemaError {
     UnsupportedActionAttribute(EntityUID, String),
     /// Error when evaluating an action attribute
     #[error(transparent)]
+    #[diagnostic(transparent)]
     ActionAttrEval(EntityAttrEvaluationError),
     /// Error thrown when the schema contains the `__expr` escape.
     /// Support for this escape form has been dropped.
@@ -147,25 +156,11 @@ impl std::fmt::Display for ContextOrShape {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum UnsupportedFeature {
+    #[error("records and entities with `additionalAttributes` are experimental, but the experimental `partial-validate` feature is not enabled")]
     OpenRecordsAndEntities,
     // Action attributes are allowed if `ActionBehavior` is `PermitAttributes`
+    #[error("action declared with attributes: [{}]", .0.iter().join(", "))]
     ActionAttributes(Vec<String>),
-}
-
-impl std::fmt::Display for UnsupportedFeature {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::OpenRecordsAndEntities => write!(
-                f,
-                "records and entities with `additionalAttributes` are experimental, but the experimental `partial-validate` feature is not enabled"
-            ),
-            Self::ActionAttributes(attrs) => write!(
-                f,
-                "action declared with attributes: [{}]",
-                attrs.iter().join(", ")
-            ),
-        }
-    }
 }

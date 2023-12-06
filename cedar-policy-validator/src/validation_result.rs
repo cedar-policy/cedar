@@ -15,6 +15,7 @@
  */
 
 use cedar_policy_core::ast::PolicyID;
+use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::{TypeErrorKind, ValidationWarning};
@@ -136,48 +137,32 @@ impl<'a> SourceLocation<'a> {
 
 /// Enumeration of the possible diagnostic error that could be found by the
 /// verification steps.
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[non_exhaustive]
 pub enum ValidationErrorKind {
     /// A policy contains an entity type that is not declared in the schema.
-    #[error(
-        "unrecognized entity type `{}`{}",
-        .0.actual_entity_type,
-        match &.0.suggested_entity_type {
-            Some(s) => format!(", did you mean `{}`?", s),
-            None => "".to_string()
-        }
-    )]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     UnrecognizedEntityType(UnrecognizedEntityType),
     /// A policy contains an action that is not declared in the schema.
-    #[error(
-        "unrecognized action `{}`{}",
-        .0.actual_action_id,
-        match &.0.suggested_action_id {
-            Some(s) => format!(", did you mean `{}`?", s),
-            None => "".to_string()
-        }
-    )]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     UnrecognizedActionId(UnrecognizedActionId),
     /// There is no action satisfying the action head constraint that can be
     /// applied to a principal and resources that both satisfy their respective
     /// head conditions.
-    #[error(
-        "unable to find an applicable action given the policy head constraints{}{}",
-        if .0.would_in_fix_principal { ". Note: Try replacing `==` with `in` in the principal clause" } else { "" },
-        if .0.would_in_fix_resource { ". Note: Try replacing `==` with `in` in the resource clause" } else { "" }
-    )]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     InvalidActionApplication(InvalidActionApplication),
     /// The type checker found an error.
     #[error(transparent)]
+    #[diagnostic(transparent)]
     TypeError(TypeErrorKind),
     /// An unspecified entity was used in a policy. This should be impossible,
     /// assuming that the policy was constructed by the parser.
-    #[error(
-        "unspecified entity with eid `{}`. Unspecified entities cannot be used in policies",
-        .0.entity_id,
-    )]
+    #[error("unspecified entity with eid `{}`", .0.entity_id)]
+    #[diagnostic(help("unspecified entities cannot be used in policies"))]
     UnspecifiedEntity(UnspecifiedEntity),
 }
 
@@ -222,8 +207,9 @@ impl ValidationErrorKind {
 }
 
 /// Structure containing details about an unrecognized entity type error.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
+#[error("unrecognized entity type `{}`", .actual_entity_type)]
 pub struct UnrecognizedEntityType {
     /// The entity type seen in the policy.
     pub(crate) actual_entity_type: String,
@@ -232,9 +218,19 @@ pub struct UnrecognizedEntityType {
     pub(crate) suggested_entity_type: Option<String>,
 }
 
+impl Diagnostic for UnrecognizedEntityType {
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        match &self.suggested_entity_type {
+            Some(s) => Some(Box::new(format!("did you mean `{s}`?"))),
+            None => None,
+        }
+    }
+}
+
 /// Structure containing details about an unrecognized action id error.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
+#[error("unrecognized action `{}`", .actual_action_id)]
 pub struct UnrecognizedActionId {
     /// Action Id seen in the policy.
     pub(crate) actual_action_id: String,
@@ -243,12 +239,33 @@ pub struct UnrecognizedActionId {
     pub(crate) suggested_action_id: Option<String>,
 }
 
+impl Diagnostic for UnrecognizedActionId {
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        match &self.suggested_action_id {
+            Some(s) => Some(Box::new(format!("did you mean `{s}`?"))),
+            None => None,
+        }
+    }
+}
+
 /// Structure containing details about an invalid action application error.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
+#[error("unable to find an applicable action given the policy head constraints")]
 pub struct InvalidActionApplication {
     pub(crate) would_in_fix_principal: bool,
     pub(crate) would_in_fix_resource: bool,
+}
+
+impl Diagnostic for InvalidActionApplication {
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        match (self.would_in_fix_principal, self.would_in_fix_resource) {
+            (true, false) => Some(Box::new("try replacing `==` with `in` in the principal clause")),
+            (false, true) => Some(Box::new("try replacing `==` with `in` in the resource clause")),
+            (true, true) => Some(Box::new("try replacing `==` with `in` in the principal clause and the resource clause")),
+            (false, false) => None,
+        }
+    }
 }
 
 /// Structure containing details about an unspecified entity error.

@@ -24,6 +24,7 @@ use crate::ast::{
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
+use miette::Diagnostic;
 use std::str::FromStr;
 use std::sync::Arc;
 use thiserror::Error;
@@ -54,19 +55,20 @@ mod names {
 
 /// Help message to display when a String was provided where a decimal value was expected.
 /// This error is likely due to confusion between "1.23" and decimal("1.23").
-const ADVICE_MSG: &str = "Maybe you forgot to apply the `decimal` constructor?";
+const ADVICE_MSG: &str = "maybe you forgot to apply the `decimal` constructor?";
 
 /// Potential errors when working with decimal values. Note that these are
 /// converted to evaluator::Err::ExtensionErr (which takes a string argument)
 /// before being reported to users.
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 enum Error {
     /// Error parsing the input string as a decimal value
     #[error("`{0}` is not a well-formed decimal value")]
     FailedParse(String),
 
     /// Too many digits after the decimal point
-    #[error("too many digits after the decimal in `{0}`. We support at most {NUM_DIGITS} digits")]
+    #[error("too many digits after the decimal in `{0}`")]
+    #[diagnostic(help("at most {NUM_DIGITS} digits are supported"))]
     TooManyDigits(String),
 
     /// Overflow occurred when converting to a decimal value

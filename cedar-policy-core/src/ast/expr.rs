@@ -15,6 +15,7 @@
  */
 
 use crate::{ast::*, parser::err::ParseErrors};
+use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::{
@@ -600,7 +601,7 @@ impl std::str::FromStr for Expr {
 }
 
 /// Enum for errors encountered during substitution
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Clone, Diagnostic, Error)]
 pub enum SubstitutionError {
     /// The supplied value did not match the type annotation on the unknown.
     #[error("expected a value of type {expected}, got a value of type {actual}")]
@@ -1059,7 +1060,7 @@ impl<T: Clone> ExprBuilder<T> {
 }
 
 /// Errors when constructing an `Expr`
-#[derive(Debug, PartialEq, Error)]
+#[derive(Debug, PartialEq, Diagnostic, Error)]
 pub enum ExprConstructionError {
     /// A key occurred twice (or more) in a record literal
     #[error("duplicate key `{key}` in record literal")]

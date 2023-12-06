@@ -21,6 +21,7 @@ use crate::parser::err::ParseErrors;
 use crate::transitive_closure::TCNode;
 use crate::FromNormalizedStr;
 use itertools::Itertools;
+use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, TryFromInto};
 use smol_str::SmolStr;
@@ -448,7 +449,7 @@ impl std::fmt::Display for PartialValueSerializedAsExpr {
 /// Error type for evaluation errors when evaluating an entity attribute.
 /// Contains some extra contextual information and the underlying
 /// `EvaluationError`.
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 #[error("failed to evaluate attribute `{attr}` of `{uid}`: {err}")]
 pub struct EntityAttrEvaluationError {
     /// UID of the entity where the error was encountered
@@ -456,6 +457,7 @@ pub struct EntityAttrEvaluationError {
     /// Attribute of the entity where the error was encountered
     pub attr: SmolStr,
     /// Underlying evaluation error
+    #[diagnostic(transparent)]
     pub err: EvaluationError,
 }
 

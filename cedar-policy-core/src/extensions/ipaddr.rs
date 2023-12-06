@@ -41,7 +41,7 @@ mod names {
 
 /// Help message to display when a String was provided where an IP value was expected.
 /// This error is likely due to confusion between "127.0.0.1" and ip("127.0.0.1").
-const ADVICE_MSG: &str = "Maybe you forgot to apply the `ip` constructor?";
+const ADVICE_MSG: &str = "maybe you forgot to apply the `ip` constructor?";
 
 /// Maximum prefix size for IpV4 addresses
 const PREFIX_MAX_LEN_V4: u8 = 32;

@@ -17,6 +17,7 @@
 use super::{JsonDeserializationError, JsonDeserializationErrorContext, SchemaType, ValueParser};
 use crate::ast::{Context, ContextCreationError};
 use crate::extensions::Extensions;
+use miette::Diagnostic;
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -97,15 +98,17 @@ impl<'e, 's, S: ContextSchema> ContextJsonParser<'e, 's, S> {
 }
 
 /// Errors possible when deserializing request context from JSON
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum ContextJsonDeserializationError {
     /// Any JSON deserialization error
     ///
     /// (TODO: as of this writing, `JsonDeserializationError` actually contains
     /// many variants that aren't possible here)
     #[error("while parsing context, {0}")]
+    #[diagnostic(transparent)]
     JsonDeserialization(#[from] JsonDeserializationError),
     /// Error constructing the `Context` itself
     #[error(transparent)]
+    #[diagnostic(transparent)]
     ContextCreation(#[from] ContextCreationError),
 }

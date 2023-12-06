@@ -16,6 +16,7 @@
 
 use crate::ast::*;
 use itertools::Itertools;
+use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::BTreeMap;
@@ -242,7 +243,7 @@ impl std::fmt::Display for Template {
 }
 
 /// Errors instantiating templates
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
 pub enum LinkingError {
     /// An error with the slot arguments provided
     // INVARIANT: `unbound_values` and `extra_values` can't both be empty
@@ -567,13 +568,14 @@ mod hashing_tests {
 // GRCOV_BEGIN_COVERAGE
 
 /// Errors that can happen during policy reification
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum ReificationError {
     /// The [`PolicyID`] linked to did not exist
     #[error("the id linked to does not exist")]
     NoSuchTemplate(PolicyID),
     /// Error instantiating the policy
     #[error(transparent)]
+    #[diagnostic(transparent)]
     Instantiation(#[from] LinkingError),
 }
 
@@ -1209,7 +1211,7 @@ impl EntityReference {
 }
 
 /// Error for unexpected slots
-#[derive(Debug, Clone, PartialEq, Error)]
+#[derive(Debug, Clone, PartialEq, Diagnostic, Error)]
 pub enum UnexpectedSlotError {
     /// Found this slot where slots are not allowed
     #[error("found slot `{0}` where slots are not allowed")]

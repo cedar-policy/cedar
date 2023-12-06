@@ -45,6 +45,7 @@ pub use cedar_policy_validator::{
     TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
 };
 use itertools::Itertools;
+use miette::Diagnostic;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -1156,7 +1157,7 @@ impl Schema {
 }
 
 /// Errors encountered during construction of a Validation Schema
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum SchemaError {
     /// Error thrown by the `serde_json` crate during deserialization
     #[error("failed to parse schema: {0}")]
@@ -1200,16 +1201,20 @@ pub enum SchemaError {
     CycleInActionHierarchy(EntityUid),
     /// Parse errors occurring while parsing an entity type.
     #[error("parse error in entity type: {0}")]
+    #[diagnostic(transparent)]
     ParseEntityType(ParseErrors),
     /// Parse errors occurring while parsing a namespace identifier.
     #[error("parse error in namespace identifier: {0}")]
+    #[diagnostic(transparent)]
     ParseNamespace(ParseErrors),
     /// Parse errors occurring while parsing an extension type.
     #[error("parse error in extension type: {0}")]
+    #[diagnostic(transparent)]
     ParseExtensionType(ParseErrors),
     /// Parse errors occurring while parsing the name of a reusable
     /// declared type.
     #[error("parse error in common type identifier: {0}")]
+    #[diagnostic(transparent)]
     ParseCommonType(ParseErrors),
     /// The schema file included an entity type `Action` in the entity type
     /// list. The `Action` entity type is always implicitly declared, and it
@@ -1231,15 +1236,16 @@ pub enum SchemaError {
     UnsupportedActionAttribute(EntityUid, String),
     /// Error when evaluating an action attribute
     #[error(transparent)]
+    #[diagnostic(transparent)]
     ActionAttrEval(EntityAttrEvaluationError),
     /// Error thrown when the schema contains the `__expr` escape.
     /// Support for this escape form has been dropped.
-    #[error("schema contained the non-supported `__expr` escape.")]
+    #[error("schema contained the non-supported `__expr` escape")]
     ExprEscapeUsed,
 }
 
 /// Error when evaluating an entity attribute
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 #[error("in attribute `{attr}` of `{uid}`: {err}")]
 pub struct EntityAttrEvaluationError {
     /// Action that had the attribute with the error
@@ -1247,6 +1253,7 @@ pub struct EntityAttrEvaluationError {
     /// Attribute that had the error
     pub attr: SmolStr,
     /// Underlying evaluation error
+    #[diagnostic(transparent)]
     pub err: EvaluationError,
 }
 
@@ -1421,6 +1428,7 @@ impl<'a> ValidationError<'a> {
     }
 }
 
+#[doc(hidden)]
 impl<'a> From<cedar_policy_validator::ValidationError<'a>> for ValidationError<'a> {
     fn from(err: cedar_policy_validator::ValidationError<'a>) -> Self {
         let (location, error_kind) = err.into_location_and_error_kind();
@@ -1428,6 +1436,44 @@ impl<'a> From<cedar_policy_validator::ValidationError<'a>> for ValidationError<'
             location: SourceLocation::from(location),
             error_kind,
         }
+    }
+}
+
+// custom impl of Diagnostic: source location is from .location, everything else
+// forwarded to .error_kind
+impl<'a> Diagnostic for ValidationError<'a> {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        let label = miette::LabeledSpan::underline(self.location.miette_span()?);
+        let ret: Box<dyn Iterator<Item = miette::LabeledSpan>> = Box::new(std::iter::once(label));
+        Some(ret)
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.error_kind.source_code()
+    }
+
+    fn code<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+        self.error_kind.code()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.error_kind.severity()
+    }
+
+    fn url<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+        self.error_kind.url()
+    }
+
+    fn help<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+        self.error_kind.help()
+    }
+
+    fn related<'s>(&'s self) -> Option<Box<dyn Iterator<Item = &'s dyn Diagnostic> + 's>> {
+        self.error_kind.related()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.error_kind.diagnostic_source()
     }
 }
 
@@ -1456,6 +1502,11 @@ impl<'a> SourceLocation<'a> {
         self.source_range
             .as_ref()
             .map(|span| span.offset() + span.len())
+    }
+
+    /// Get the location as a `miette::SourceSpan`
+    fn miette_span(&self) -> Option<miette::SourceSpan> {
+        self.source_range.as_ref().map(|info| info.clone().into())
     }
 }
 
@@ -1524,6 +1575,44 @@ impl<'a> From<cedar_policy_validator::ValidationWarning<'a>> for ValidationWarni
             location: loc.into(),
             kind,
         }
+    }
+}
+
+// custom impl of Diagnostic: source location is from .location, everything else
+// forwarded to .kind
+impl<'a> Diagnostic for ValidationWarning<'a> {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        let label = miette::LabeledSpan::underline(self.location.miette_span()?);
+        let ret: Box<dyn Iterator<Item = miette::LabeledSpan>> = Box::new(std::iter::once(label));
+        Some(ret)
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.kind.source_code()
+    }
+
+    fn code<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+        self.kind.code()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.kind.severity()
+    }
+
+    fn url<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+        self.kind.url()
+    }
+
+    fn help<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+        self.kind.help()
+    }
+
+    fn related<'s>(&'s self) -> Option<Box<dyn Iterator<Item = &'s dyn Diagnostic> + 's>> {
+        self.kind.related()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.kind.diagnostic_source()
     }
 }
 
@@ -1752,7 +1841,7 @@ impl std::fmt::Display for EntityUid {
 }
 
 /// Potential errors when adding to a `PolicySet`.
-#[derive(Error, Debug)]
+#[derive(Debug, Diagnostic, Error)]
 #[non_exhaustive]
 pub enum PolicySetError {
     /// There was a duplicate [`PolicyId`] encountered in either the set of
@@ -1764,6 +1853,7 @@ pub enum PolicySetError {
     },
     /// Error when linking a template
     #[error("unable to link template: {0}")]
+    #[diagnostic(transparent)]
     LinkingError(#[from] ast::LinkingError),
     /// Expected a static policy, but a template-linked policy was provided
     #[error("expected a static policy, but a template-linked policy was provided")]
@@ -2887,13 +2977,15 @@ impl std::fmt::Display for LosslessPolicy {
 }
 
 /// Errors that can happen when getting the JSON representation of a policy
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum PolicyToJsonError {
     /// Parse error in the policy text
     #[error(transparent)]
+    #[diagnostic(transparent)]
     Parse(#[from] ParseErrors),
     /// For linked policies, error linking the JSON representation
     #[error(transparent)]
+    #[diagnostic(transparent)]
     Link(#[from] est::InstantiationError),
     /// Error in the JSON serialization
     #[error(transparent)]
@@ -3468,10 +3560,11 @@ impl Context {
 }
 
 /// Error type for parsing `Context` from JSON
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum ContextJsonError {
     /// Error deserializing the JSON into a Context
     #[error(transparent)]
+    #[diagnostic(transparent)]
     JsonDeserialization(#[from] ContextJsonDeserializationError),
     /// The supplied action doesn't exist in the supplied schema
     #[error("action `{action}` does not exist in the supplied schema")]

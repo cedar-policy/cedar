@@ -19,6 +19,7 @@ use super::{
     StaticPolicy, Template,
 };
 use itertools::Itertools;
+use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::{borrow::Borrow, sync::Arc};
@@ -109,7 +110,7 @@ impl From<PolicySet> for LiteralPolicySet {
 }
 
 /// Potential errors when working with `PolicySet`s.
-#[derive(Error, Debug)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum PolicySetError {
     /// There was a duplicate [`PolicyID`] encountered in either the set of
     /// templates or the set of policies.
@@ -121,7 +122,7 @@ pub enum PolicySetError {
 }
 
 /// Potential errors when working with `PolicySet`s.
-#[derive(Error, Debug)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum PolicySetGetLinksError {
     /// There was no [`PolicyID`] in the set of templates.
     #[error("No template `{0}`")]
@@ -129,7 +130,7 @@ pub enum PolicySetGetLinksError {
 }
 
 /// Potential errors when unlinking from a `PolicySet`.
-#[derive(Error, Debug)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum PolicySetUnlinkError {
     /// There was no [`PolicyID`] linked policy to unlink
     #[error("unable to unlink policy id `{0}` because it does not exist")]
@@ -140,7 +141,7 @@ pub enum PolicySetUnlinkError {
 }
 
 /// Potential errors when removing templates from a `PolicySet`.
-#[derive(Error, Debug)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum PolicySetTemplateRemovalError {
     /// There was no [`PolicyID`] template in the list of templates.
     #[error("unable to remove template id `{0}` from template list because it does not exist")]
@@ -156,7 +157,7 @@ pub enum PolicySetTemplateRemovalError {
 }
 
 /// Potential errors when removing policies from a `PolicySet`.
-#[derive(Error, Debug)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum PolicySetPolicyRemovalError {
     /// There was no link [`PolicyID`] in the list of links.
     #[error("unable to remove static policy id `{0}` from link list because it does not exist")]
