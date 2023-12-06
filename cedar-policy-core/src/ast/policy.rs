@@ -1652,7 +1652,7 @@ mod test {
         ast::{entity, name, EntityUID},
         parser::{
             err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind},
-            parse_policy, SourceInfo,
+            parse_policy,
         },
     };
 
@@ -2000,7 +2000,7 @@ mod test {
                 ToASTErrorKind::UnexpectedTemplate {
                     slot: crate::parser::cst::Slot::Principal
                 },
-                SourceInfo(0..50)
+                miette::SourceSpan::from(0..50)
             ))
         );
         assert_eq!(errs.len(), 1);
@@ -2011,7 +2011,7 @@ mod test {
             ToASTErrorKind::UnexpectedTemplate {
                 slot: crate::parser::cst::Slot::Principal
             },
-            SourceInfo(50..74)
+            miette::SourceSpan::from(50..74)
         ))));
         assert_eq!(errs.len(), 2);
     }

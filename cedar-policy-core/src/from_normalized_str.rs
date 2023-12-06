@@ -1,5 +1,4 @@
 use crate::parser::err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind};
-use crate::parser::SourceInfo;
 use std::fmt::Display;
 use std::str::FromStr;
 
@@ -40,7 +39,7 @@ pub trait FromNormalizedStr: FromStr<Err = ParseErrors> + Display {
                     src: s.to_string(),
                     normalized_src,
                 },
-                SourceInfo::from_offset(diff_byte),
+                miette::SourceSpan::from(diff_byte),
             ))
             .into())
         }

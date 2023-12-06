@@ -39,7 +39,6 @@ pub use cedar_policy_core::extensions;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 pub use cedar_policy_core::parser::err::ParseErrors;
-use cedar_policy_core::parser::SourceInfo;
 use cedar_policy_core::FromNormalizedStr;
 use cedar_policy_validator::RequestValidationError; // this type is unsuitable for `pub use` because it contains internal types like `EntityUID` and `EntityType`
 pub use cedar_policy_validator::{
@@ -1436,7 +1435,7 @@ impl<'a> From<cedar_policy_validator::ValidationError<'a>> for ValidationError<'
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SourceLocation<'a> {
     policy_id: &'a PolicyId,
-    source_range: Option<SourceInfo>,
+    source_range: Option<miette::SourceSpan>,
 }
 
 impl<'a> SourceLocation<'a> {
@@ -1448,13 +1447,15 @@ impl<'a> SourceLocation<'a> {
     /// Get the start of the location. Returns `None` if this location does not
     /// have a range.
     pub fn range_start(&self) -> Option<usize> {
-        self.source_range.as_ref().map(SourceInfo::range_start)
+        self.source_range.as_ref().map(miette::SourceSpan::offset)
     }
 
     /// Get the end of the location. Returns `None` if this location does not
     /// have a range.
     pub fn range_end(&self) -> Option<usize> {
-        self.source_range.as_ref().map(SourceInfo::range_end)
+        self.source_range
+            .as_ref()
+            .map(|span| span.offset() + span.len())
     }
 }
 
@@ -1465,8 +1466,8 @@ impl<'a> std::fmt::Display for SourceLocation<'a> {
             write!(
                 f,
                 " at offset {}-{}",
-                source_range.range_start(),
-                source_range.range_end()
+                source_range.offset(),
+                source_range.offset() + source_range.len()
             )?;
         }
         Ok(())
@@ -1476,7 +1477,7 @@ impl<'a> std::fmt::Display for SourceLocation<'a> {
 impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation<'a> {
     fn from(loc: cedar_policy_validator::SourceLocation<'a>) -> SourceLocation<'a> {
         let policy_id: &'a PolicyId = PolicyId::ref_cast(loc.policy_id());
-        let source_range = loc.into_source_info();
+        let source_range = loc.source_span();
         Self {
             policy_id,
             source_range,

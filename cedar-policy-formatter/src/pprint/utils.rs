@@ -49,39 +49,65 @@ pub fn get_trailing_comment_doc_from_str<'a>(trailing_comment: &str) -> RcDoc<'a
     }
 }
 
-fn get_token_at_start(start: usize, tokens: &mut [WrappedToken]) -> Option<&mut WrappedToken> {
-    tokens.as_mut().iter_mut().find(|t| t.span.start == start)
+fn get_token_at_start(
+    span: miette::SourceSpan,
+    tokens: &mut [WrappedToken],
+) -> Option<&mut WrappedToken> {
+    tokens
+        .as_mut()
+        .iter_mut()
+        .find(|t| t.span.start == span.offset())
 }
 
-pub fn get_comment_at_start(start: usize, tokens: &mut [WrappedToken]) -> Option<Comment> {
-    Some(get_token_at_start(start, tokens)?.consume_comment())
+pub fn get_comment_at_start(
+    span: miette::SourceSpan,
+    tokens: &mut [WrappedToken],
+) -> Option<Comment> {
+    Some(get_token_at_start(span, tokens)?.consume_comment())
 }
 
-pub fn get_leading_comment_at_start(start: usize, tokens: &mut [WrappedToken]) -> Option<String> {
-    Some(get_token_at_start(start, tokens)?.consume_leading_comment())
+pub fn get_leading_comment_at_start(
+    span: miette::SourceSpan,
+    tokens: &mut [WrappedToken],
+) -> Option<String> {
+    Some(get_token_at_start(span, tokens)?.consume_leading_comment())
 }
 
-fn get_token_after_end(end: usize, tokens: &mut [WrappedToken]) -> Option<&mut WrappedToken> {
+fn get_token_after_end(
+    span: miette::SourceSpan,
+    tokens: &mut [WrappedToken],
+) -> Option<&mut WrappedToken> {
+    let end = span.offset() + span.len();
     tokens.iter_mut().find_or_first(|t| t.span.start >= end)
 }
 
-fn get_token_at_end(end: usize, tokens: &mut [WrappedToken]) -> Option<&mut WrappedToken> {
+fn get_token_at_end(
+    span: miette::SourceSpan,
+    tokens: &mut [WrappedToken],
+) -> Option<&mut WrappedToken> {
+    let end = span.offset() + span.len();
     tokens.iter_mut().find(|t| t.span.end == end)
 }
 
-pub fn get_comment_at_end(end: usize, tokens: &mut [WrappedToken]) -> Option<Comment> {
-    Some(get_token_at_end(end, tokens)?.consume_comment())
+pub fn get_comment_at_end(
+    span: miette::SourceSpan,
+    tokens: &mut [WrappedToken],
+) -> Option<Comment> {
+    Some(get_token_at_end(span, tokens)?.consume_comment())
 }
 
-pub fn get_comment_after_end(end: usize, tokens: &mut [WrappedToken]) -> Option<Comment> {
-    Some(get_token_after_end(end, tokens)?.consume_comment())
+pub fn get_comment_after_end(
+    span: miette::SourceSpan,
+    tokens: &mut [WrappedToken],
+) -> Option<Comment> {
+    Some(get_token_after_end(span, tokens)?.consume_comment())
 }
 
-pub fn get_comment_in_range(start: usize, end: usize, tokens: &mut [WrappedToken]) -> Vec<Comment> {
+pub fn get_comment_in_range(span: miette::SourceSpan, tokens: &mut [WrappedToken]) -> Vec<Comment> {
     tokens
         .iter_mut()
-        .skip_while(|t| t.span.start < start)
-        .take_while(|t| t.span.end <= end)
+        .skip_while(|t| t.span.start < span.offset())
+        .take_while(|t| t.span.end <= span.offset() + span.len())
         .map(|t| t.consume_comment())
         .collect()
 }

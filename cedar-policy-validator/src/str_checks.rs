@@ -96,7 +96,7 @@ pub fn confusable_string_checks<'a>(
 
             if let Some(w) = warning {
                 warnings.push(ValidationWarning {
-                    location: SourceLocation::new(policy.id(), loc.clone()),
+                    location: SourceLocation::new(policy.id(), loc),
                     kind: w,
                 })
             }
@@ -151,7 +151,7 @@ mod test {
     use super::*;
     use cedar_policy_core::{
         ast::{PolicyID, PolicySet},
-        parser::{parse_policy, SourceInfo},
+        parser::parse_policy,
     };
 
     #[test]
@@ -248,7 +248,10 @@ mod test {
         );
         assert_eq!(
             location,
-            &SourceLocation::new(&PolicyID::from_string("test"), Some(SourceInfo(64..94))),
+            &SourceLocation::new(
+                &PolicyID::from_string("test"),
+                Some(miette::SourceSpan::from(64..94))
+            ),
         );
     }
 
@@ -276,7 +279,10 @@ mod test {
         assert_eq!(format!("{warning}"), "validation warning on policy `test`: string `\"user‮ ⁦&& principal.is_admin⁩ ⁦\"` contains BIDI control characters");
         assert_eq!(
             location,
-            &SourceLocation::new(&PolicyID::from_string("test"), Some(SourceInfo(90..131)))
+            &SourceLocation::new(
+                &PolicyID::from_string("test"),
+                Some(miette::SourceSpan::from(90..131))
+            )
         );
     }
 }

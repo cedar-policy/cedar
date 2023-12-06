@@ -36,7 +36,7 @@
 // cloning.
 
 use super::err::{ParseError, ParseErrors, Ref, RefCreationError, ToASTError, ToASTErrorKind};
-use super::node::{ASTNode, SourceInfo};
+use super::node::ASTNode;
 use super::unescape::{to_pattern, to_unescaped_string};
 use super::{cst, err};
 use crate::ast::{
@@ -184,7 +184,7 @@ impl ASTNode<Option<cst::Policy>> {
                 ParseError::ToAST(err) => match err.kind() {
                     ToASTErrorKind::SlotsInConditionClause { slot, .. } => Some(ToASTError::new(
                         ToASTErrorKind::UnexpectedTemplate { slot: slot.clone() },
-                        err.source_info().clone(),
+                        err.source_span(),
                     )),
                     _ => None,
                 },
@@ -215,7 +215,7 @@ impl ASTNode<Option<cst::Policy>> {
         id: ast::PolicyID,
         errs: &mut ParseErrors,
     ) -> Option<ast::Template> {
-        let (src, maybe_policy) = self.as_inner_pair();
+        let (maybe_policy, src) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let policy = maybe_policy?;
 
@@ -275,7 +275,7 @@ impl ASTNode<Option<cst::Policy>> {
             action,
             resource,
             conds,
-            src.clone(),
+            src,
         ))
     }
 }
@@ -292,26 +292,26 @@ impl cst::Policy {
     ) {
         // Tracks where the last variable in the scope ended. We'll point to
         // this position to indicate where to fill in vars if we're missing one.
-        let mut end_of_last_var = self.effect.info.range_end();
+        let mut end_of_last_var = self.effect.loc.offset() + self.effect.loc.len();
 
         let mut vars = self.variables.iter().peekable();
         let principal = if let Some(head1) = vars.next() {
-            end_of_last_var = head1.info.range_end();
+            end_of_last_var = head1.loc.offset() + head1.loc.len();
             head1.to_principal_constraint(errs)
         } else {
             errs.push(ToASTError::new(
                 ToASTErrorKind::MissingScopeConstraint(ast::Var::Principal),
-                SourceInfo::from_offset(end_of_last_var),
+                miette::SourceSpan::from(end_of_last_var),
             ));
             None
         };
         let action = if let Some(head2) = vars.next() {
-            end_of_last_var = head2.info.range_end();
+            end_of_last_var = head2.loc.offset() + head2.loc.len();
             head2.to_action_constraint(errs)
         } else {
             errs.push(ToASTError::new(
                 ToASTErrorKind::MissingScopeConstraint(ast::Var::Action),
-                SourceInfo::from_offset(end_of_last_var),
+                miette::SourceSpan::from(end_of_last_var),
             ));
             None
         };
@@ -320,7 +320,7 @@ impl cst::Policy {
         } else {
             errs.push(ToASTError::new(
                 ToASTErrorKind::MissingScopeConstraint(ast::Var::Resource),
-                SourceInfo::from_offset(end_of_last_var),
+                miette::SourceSpan::from(end_of_last_var),
             ));
             None
         };
@@ -449,7 +449,7 @@ impl ast::Id {
         e: ast::Expr,
         mut args: Vec<ast::Expr>,
         errs: &mut ParseErrors,
-        l: SourceInfo,
+        span: miette::SourceSpan,
     ) -> Option<ast::Expr> {
         let mut adj_args = args.iter_mut().peekable();
         match (self.as_ref(), adj_args.next(), adj_args.peek()) {
@@ -457,25 +457,25 @@ impl ast::Id {
                 // move the value out of the argument, replacing it with a dummy,
                 // after this we can no longer use the original args
                 let arg = mem::replace(a, ast::Expr::val(false));
-                Some(construct_method_contains(e, arg, l))
+                Some(construct_method_contains(e, arg, span))
             }
             ("containsAll", Some(a), None) => {
                 let arg = mem::replace(a, ast::Expr::val(false));
-                Some(construct_method_contains_all(e, arg, l))
+                Some(construct_method_contains_all(e, arg, span))
             }
             ("containsAny", Some(a), None) => {
                 let arg = mem::replace(a, ast::Expr::val(false));
-                Some(construct_method_contains_any(e, arg, l))
+                Some(construct_method_contains_any(e, arg, span))
             }
             (name, _, _) => {
                 if EXTENSION_STYLES.methods.contains(&name) {
                     args.insert(0, e);
                     // INVARIANT (MethodStyleArgs), we call insert above, so args is non-empty
-                    Some(construct_ext_meth(name.to_string(), args, l))
+                    Some(construct_ext_meth(name.to_string(), args, span))
                 } else {
                     errs.push(ToASTError::new(
                         ToASTErrorKind::InvalidMethodName(name.to_string()),
-                        l,
+                        span,
                     ));
                     None
                 }
@@ -632,7 +632,7 @@ impl ASTNode<Option<cst::VariableDef>> {
             Some(ActionConstraint::Any)
         }?;
 
-        match action_constraint_contains_only_action_types(action_constraint, &self.info) {
+        match action_constraint_contains_only_action_types(action_constraint, self.loc) {
             Ok(a) => Some(a),
             Err(mut id_errs) => {
                 errs.append(&mut id_errs);
@@ -645,7 +645,7 @@ impl ASTNode<Option<cst::VariableDef>> {
 /// Check that all of the EUIDs in an action constraint have the type `Action`, under an arbitrary namespace
 fn action_constraint_contains_only_action_types(
     a: ActionConstraint,
-    info: &SourceInfo,
+    span: miette::SourceSpan,
 ) -> Result<ActionConstraint, ParseErrors> {
     match a {
         ActionConstraint::Any => Ok(a),
@@ -662,7 +662,7 @@ fn action_constraint_contains_only_action_types(
                     .map(|euid| {
                         ToASTError::new(
                             ToASTErrorKind::InvalidActionType(euid.as_ref().clone()),
-                            info.clone(),
+                            span,
                         )
                     })
                     .collect())
@@ -674,7 +674,7 @@ fn action_constraint_contains_only_action_types(
             } else {
                 Err(ParseErrors(vec![ToASTError::new(
                     ToASTErrorKind::InvalidActionType(euid.as_ref().clone()),
-                    info.clone(),
+                    span,
                 )
                 .into()]))
             }
@@ -697,7 +697,7 @@ impl ASTNode<Option<cst::Cond>> {
     /// clause. (The returned `expr` is already adjusted for this, the `bool` is
     /// for information only.)
     fn to_expr(&self, errs: &mut ParseErrors) -> Option<(ast::Expr, bool)> {
-        let (src, maybe_cond) = self.as_inner_pair();
+        let (maybe_cond, src) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let cond = maybe_cond?;
 
@@ -725,7 +725,7 @@ impl ASTNode<Option<cst::Cond>> {
             if maybe_is_when {
                 (e, true)
             } else {
-                (construct_expr_not(e, src.clone()), false)
+                (construct_expr_not(e, src), false)
             }
         })
     }
@@ -755,14 +755,14 @@ impl ASTNode<Option<cst::Str>> {
 /// terms to a general Expr expression and then immediately unwrapping them.
 pub(crate) enum ExprOrSpecial<'a> {
     /// Any expression except a variable, name, or string literal
-    Expr(ast::Expr, SourceInfo),
+    Expr(ast::Expr, miette::SourceSpan),
     /// Variables, which act as expressions or names
-    Var(ast::Var, SourceInfo),
+    Var(ast::Var, miette::SourceSpan),
     /// Name that isn't an expr and couldn't be converted to var
-    Name(ast::Name, SourceInfo),
+    Name(ast::Name, miette::SourceSpan),
     /// String literal, not yet unescaped
     /// Must be processed with to_unescaped_string or to_pattern before inclusion in the AST
-    StrLit(&'a SmolStr, SourceInfo),
+    StrLit(&'a SmolStr, miette::SourceSpan),
 }
 
 impl ExprOrSpecial<'_> {
@@ -770,10 +770,10 @@ impl ExprOrSpecial<'_> {
         ToASTError::new(
             kind.into(),
             match self {
-                ExprOrSpecial::Expr(_, l) => l,
-                ExprOrSpecial::Var(_, l) => l,
-                ExprOrSpecial::Name(_, l) => l,
-                ExprOrSpecial::StrLit(_, l) => l,
+                ExprOrSpecial::Expr(_, span) => span,
+                ExprOrSpecial::Var(_, span) => span,
+                ExprOrSpecial::Name(_, span) => span,
+                ExprOrSpecial::StrLit(_, span) => span,
             }
             .clone(),
         )
@@ -782,21 +782,21 @@ impl ExprOrSpecial<'_> {
     fn into_expr(self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         match self {
             Self::Expr(e, _) => Some(e),
-            Self::Var(v, l) => Some(construct_expr_var(v, l)),
-            Self::Name(n, l) => {
+            Self::Var(v, span) => Some(construct_expr_var(v, span)),
+            Self::Name(n, span) => {
                 errs.push(ToASTError::new(
                     ToASTErrorKind::ArbitraryVariable(n.to_string().into()),
-                    l,
+                    span,
                 ));
                 None
             }
-            Self::StrLit(s, l) => match to_unescaped_string(s) {
-                Ok(s) => Some(construct_expr_string(s, l)),
+            Self::StrLit(s, span) => match to_unescaped_string(s) {
+                Ok(s) => Some(construct_expr_string(s, span)),
                 Err(escape_errs) => {
                     errs.extend(
                         escape_errs
                             .into_iter()
-                            .map(|e| ToASTError::new(ToASTErrorKind::Unescape(e), l.clone())),
+                            .map(|e| ToASTError::new(ToASTErrorKind::Unescape(e), span)),
                     );
                     None
                 }
@@ -808,22 +808,22 @@ impl ExprOrSpecial<'_> {
     pub(crate) fn into_valid_attr(self, errs: &mut ParseErrors) -> Option<SmolStr> {
         match self {
             Self::Var(var, _) => Some(construct_string_from_var(var)),
-            Self::Name(name, l) => name.into_valid_attr(errs, l),
-            Self::StrLit(s, l) => match to_unescaped_string(s) {
+            Self::Name(name, span) => name.into_valid_attr(errs, span),
+            Self::StrLit(s, span) => match to_unescaped_string(s) {
                 Ok(s) => Some(s),
                 Err(escape_errs) => {
                     errs.extend(
                         escape_errs
                             .into_iter()
-                            .map(|e| ToASTError::new(ToASTErrorKind::Unescape(e), l.clone())),
+                            .map(|e| ToASTError::new(ToASTErrorKind::Unescape(e), span)),
                     );
                     None
                 }
             },
-            Self::Expr(e, l) => {
+            Self::Expr(e, span) => {
                 errs.push(ToASTError::new(
                     ToASTErrorKind::InvalidAttribute(e.to_string().into()),
-                    l,
+                    span,
                 ));
                 None
             }
@@ -922,7 +922,7 @@ impl ASTNode<Option<cst::Expr>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     pub(crate) fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (src, maybe_expr) = self.as_inner_pair();
+        let (maybe_expr, src) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let expr = &*maybe_expr?.expr;
 
@@ -934,10 +934,9 @@ impl ASTNode<Option<cst::Expr>> {
                 let maybe_else = e.to_expr(errs);
 
                 match (maybe_guard, maybe_then, maybe_else) {
-                    (Some(i), Some(t), Some(e)) => Some(ExprOrSpecial::Expr(
-                        construct_expr_if(i, t, e, src.clone()),
-                        src.clone(),
-                    )),
+                    (Some(i), Some(t), Some(e)) => {
+                        Some(ExprOrSpecial::Expr(construct_expr_if(i, t, e, src), src))
+                    }
                     _ => None,
                 }
             }
@@ -950,13 +949,17 @@ impl ASTNode<Option<cst::Expr>> {
 /// or runtime data.
 trait RefKind: Sized {
     fn err_str() -> &'static str;
-    fn create_single_ref(e: EntityUID, errs: &mut ParseErrors, info: SourceInfo) -> Option<Self>;
+    fn create_single_ref(
+        e: EntityUID,
+        errs: &mut ParseErrors,
+        span: miette::SourceSpan,
+    ) -> Option<Self>;
     fn create_multiple_refs(
         es: Vec<EntityUID>,
         errs: &mut ParseErrors,
-        info: SourceInfo,
+        span: miette::SourceSpan,
     ) -> Option<Self>;
-    fn create_slot(errs: &mut ParseErrors, info: SourceInfo) -> Option<Self>;
+    fn create_slot(errs: &mut ParseErrors, span: miette::SourceSpan) -> Option<Self>;
 }
 
 struct SingleEntity(pub EntityUID);
@@ -966,26 +969,30 @@ impl RefKind for SingleEntity {
         "an entity uid"
     }
 
-    fn create_single_ref(e: EntityUID, _errs: &mut ParseErrors, _info: SourceInfo) -> Option<Self> {
+    fn create_single_ref(
+        e: EntityUID,
+        _errs: &mut ParseErrors,
+        _span: miette::SourceSpan,
+    ) -> Option<Self> {
         Some(SingleEntity(e))
     }
 
     fn create_multiple_refs(
         _es: Vec<EntityUID>,
         errs: &mut ParseErrors,
-        info: SourceInfo,
+        span: miette::SourceSpan,
     ) -> Option<Self> {
         errs.push(ToASTError::new(
             RefCreationError::one_expected(Ref::Single, Ref::Set).into(),
-            info,
+            span,
         ));
         None
     }
 
-    fn create_slot(errs: &mut ParseErrors, info: SourceInfo) -> Option<Self> {
+    fn create_slot(errs: &mut ParseErrors, span: miette::SourceSpan) -> Option<Self> {
         errs.push(ToASTError::new(
             RefCreationError::one_expected(Ref::Single, Ref::Template).into(),
-            info,
+            span,
         ));
         None
     }
@@ -996,22 +1003,26 @@ impl RefKind for EntityReference {
         "an entity uid or matching template slot"
     }
 
-    fn create_slot(_: &mut ParseErrors, _info: SourceInfo) -> Option<Self> {
+    fn create_slot(_: &mut ParseErrors, _span: miette::SourceSpan) -> Option<Self> {
         Some(EntityReference::Slot)
     }
 
-    fn create_single_ref(e: EntityUID, _errs: &mut ParseErrors, _info: SourceInfo) -> Option<Self> {
+    fn create_single_ref(
+        e: EntityUID,
+        _errs: &mut ParseErrors,
+        _span: miette::SourceSpan,
+    ) -> Option<Self> {
         Some(EntityReference::euid(e))
     }
 
     fn create_multiple_refs(
         _es: Vec<EntityUID>,
         errs: &mut ParseErrors,
-        info: SourceInfo,
+        span: miette::SourceSpan,
     ) -> Option<Self> {
         errs.push(ToASTError::new(
             RefCreationError::two_expected(Ref::Single, Ref::Template, Ref::Set).into(),
-            info,
+            span,
         ));
         None
     }
@@ -1029,22 +1040,26 @@ impl RefKind for OneOrMultipleRefs {
         "an entity uid, set of entity uids, or template slot"
     }
 
-    fn create_slot(errs: &mut ParseErrors, info: SourceInfo) -> Option<Self> {
+    fn create_slot(errs: &mut ParseErrors, span: miette::SourceSpan) -> Option<Self> {
         errs.push(ToASTError::new(
             RefCreationError::two_expected(Ref::Single, Ref::Set, Ref::Template).into(),
-            info,
+            span,
         ));
         None
     }
 
-    fn create_single_ref(e: EntityUID, _errs: &mut ParseErrors, _info: SourceInfo) -> Option<Self> {
+    fn create_single_ref(
+        e: EntityUID,
+        _errs: &mut ParseErrors,
+        _span: miette::SourceSpan,
+    ) -> Option<Self> {
         Some(OneOrMultipleRefs::Single(e))
     }
 
     fn create_multiple_refs(
         es: Vec<EntityUID>,
         _errs: &mut ParseErrors,
-        _info: SourceInfo,
+        _span: miette::SourceSpan,
     ) -> Option<Self> {
         Some(OneOrMultipleRefs::Multiple(es))
     }
@@ -1052,7 +1067,7 @@ impl RefKind for OneOrMultipleRefs {
 
 impl ASTNode<Option<cst::Or>> {
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (src, maybe_or) = self.as_inner_pair();
+        let (maybe_or, src) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let or = maybe_or?;
 
@@ -1065,9 +1080,9 @@ impl ASTNode<Option<cst::Or>> {
 
         match (maybe_first, maybe_second, rest.len(), or.extended.len()) {
             (f, None, _, 0) => f,
-            (Some(f), Some(s), r, e) if 1 + r == e => f.into_expr(errs).map(|e| {
-                ExprOrSpecial::Expr(construct_expr_or(e, s, rest, src.clone()), src.clone())
-            }),
+            (Some(f), Some(s), r, e) if 1 + r == e => f
+                .into_expr(errs)
+                .map(|e| ExprOrSpecial::Expr(construct_expr_or(e, s, rest, src), src)),
             _ => None,
         }
     }
@@ -1110,7 +1125,7 @@ impl ASTNode<Option<cst::And>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (src, maybe_and) = self.as_inner_pair();
+        let (maybe_and, src) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let and = maybe_and?;
 
@@ -1123,9 +1138,9 @@ impl ASTNode<Option<cst::And>> {
 
         match (maybe_first, maybe_second, rest.len(), and.extended.len()) {
             (f, None, _, 0) => f,
-            (Some(f), Some(s), r, e) if 1 + r == e => f.into_expr(errs).map(|e| {
-                ExprOrSpecial::Expr(construct_expr_and(e, s, rest, src.clone()), src.clone())
-            }),
+            (Some(f), Some(s), r, e) if 1 + r == e => f
+                .into_expr(errs)
+                .map(|e| ExprOrSpecial::Expr(construct_expr_and(e, s, rest, src), src)),
             _ => None,
         }
     }
@@ -1177,7 +1192,7 @@ impl ASTNode<Option<cst::Relation>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (src, maybe_rel) = self.as_inner_pair();
+        let (maybe_rel, src) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let rel = maybe_rel?;
 
@@ -1200,9 +1215,9 @@ impl ASTNode<Option<cst::Relation>> {
                     // error reported and result filtered out
                     (_, None, 1) => None,
                     (f, None, 0) => f,
-                    (Some(f), Some((op, s)), _) => f.into_expr(errs).map(|e| {
-                        ExprOrSpecial::Expr(construct_expr_rel(e, *op, s, src.clone()), src.clone())
-                    }),
+                    (Some(f), Some((op, s)), _) => f
+                        .into_expr(errs)
+                        .map(|e| ExprOrSpecial::Expr(construct_expr_rel(e, *op, s, src), src)),
                     _ => None,
                 }
             }
@@ -1211,10 +1226,9 @@ impl ASTNode<Option<cst::Relation>> {
                     target.to_expr(errs),
                     field.to_expr_or_special(errs)?.into_valid_attr(errs),
                 ) {
-                    (Some(t), Some(s)) => Some(ExprOrSpecial::Expr(
-                        construct_expr_has(t, s, src.clone()),
-                        src.clone(),
-                    )),
+                    (Some(t), Some(s)) => {
+                        Some(ExprOrSpecial::Expr(construct_expr_has(t, s, src), src))
+                    }
                     _ => None,
                 }
             }
@@ -1223,10 +1237,9 @@ impl ASTNode<Option<cst::Relation>> {
                     target.to_expr(errs),
                     pattern.to_expr_or_special(errs)?.into_pattern(errs),
                 ) {
-                    (Some(t), Some(s)) => Some(ExprOrSpecial::Expr(
-                        construct_expr_like(t, s, src.clone()),
-                        src.clone(),
-                    )),
+                    (Some(t), Some(s)) => {
+                        Some(ExprOrSpecial::Expr(construct_expr_like(t, s, src), src))
+                    }
                     _ => None,
                 }
             }
@@ -1239,18 +1252,15 @@ impl ASTNode<Option<cst::Relation>> {
                     Some(in_entity) => in_entity.to_expr(errs).map(|in_entity| {
                         ExprOrSpecial::Expr(
                             construct_expr_and(
-                                construct_expr_is(t.clone(), n, src.clone()),
-                                construct_expr_rel(t, cst::RelOp::In, in_entity, src.clone()),
+                                construct_expr_is(t.clone(), n, src),
+                                construct_expr_rel(t, cst::RelOp::In, in_entity, src),
                                 std::iter::empty(),
-                                src.clone(),
+                                src,
                             ),
-                            src.clone(),
+                            src,
                         )
                     }),
-                    None => Some(ExprOrSpecial::Expr(
-                        construct_expr_is(t, n, src.clone()),
-                        src.clone(),
-                    )),
+                    None => Some(ExprOrSpecial::Expr(construct_expr_is(t, n, src), src)),
                 },
                 _ => None,
             },
@@ -1275,7 +1285,7 @@ impl ASTNode<Option<cst::Add>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (src, maybe_add) = self.as_inner_pair();
+        let (maybe_add, src) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let add = maybe_add?;
 
@@ -1288,8 +1298,8 @@ impl ASTNode<Option<cst::Add>> {
             .collect();
         if !more.is_empty() {
             Some(ExprOrSpecial::Expr(
-                construct_expr_add(maybe_first?.into_expr(errs)?, more, src.clone()),
-                src.clone(),
+                construct_expr_add(maybe_first?.into_expr(errs)?, more, src),
+                src,
             ))
         } else {
             maybe_first
@@ -1318,7 +1328,7 @@ impl ASTNode<Option<cst::Mult>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (src, maybe_mult) = self.as_inner_pair();
+        let (maybe_mult, src) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let mult = maybe_mult?;
 
@@ -1375,11 +1385,11 @@ impl ASTNode<Option<cst::Mult>> {
                 #[allow(clippy::indexing_slicing)]
                 Some(ExprOrSpecial::Expr(
                     construct_expr_mul(
-                        construct_expr_num(constantints[0], src.clone()),
+                        construct_expr_num(constantints[0], src),
                         constantints[1..].iter().copied(),
-                        src.clone(),
+                        src,
                     ),
-                    src.clone(),
+                    src,
                 ))
             } else {
                 // PANIC SAFETY Checked above that `nonconstantints` has at least one element
@@ -1389,8 +1399,8 @@ impl ASTNode<Option<cst::Mult>> {
                     .next()
                     .expect("already checked that it's not empty");
                 Some(ExprOrSpecial::Expr(
-                    construct_expr_mul(nonconstantint, constantints, src.clone()),
-                    src.clone(),
+                    construct_expr_mul(nonconstantint, constantints, src),
+                    src,
                 ))
             }
         } else {
@@ -1420,7 +1430,7 @@ impl ASTNode<Option<cst::Unary>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (src, maybe_unary) = self.as_inner_pair();
+        let (maybe_unary, src) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let unary = maybe_unary?;
 
@@ -1436,15 +1446,13 @@ impl ASTNode<Option<cst::Unary>> {
                 if n % 2 == 0 {
                     item.map(|i| {
                         ExprOrSpecial::Expr(
-                            construct_expr_not(construct_expr_not(i, src.clone()), src.clone()),
-                            src.clone(),
+                            construct_expr_not(construct_expr_not(i, src), src),
+                            src,
                         )
                     })
                 } else {
                     // safe to collapse to !
-                    item.map(|i| {
-                        ExprOrSpecial::Expr(construct_expr_not(i, src.clone()), src.clone())
-                    })
+                    item.map(|i| ExprOrSpecial::Expr(construct_expr_not(i, src), src))
                 }
             }
             Some(cst::NegOp::Dash(c)) => {
@@ -1455,12 +1463,11 @@ impl ASTNode<Option<cst::Unary>> {
                 // decreases by one.
                 let (last, rc) = if let Some(cst::Literal::Num(n)) = unary.item.to_lit() {
                     match n.cmp(&(i64::MAX as u64 + 1)) {
-                        Ordering::Equal => (
-                            Some(construct_expr_num(i64::MIN, unary.item.info.clone())),
-                            c - 1,
-                        ),
+                        Ordering::Equal => {
+                            (Some(construct_expr_num(i64::MIN, unary.item.loc)), c - 1)
+                        }
                         Ordering::Less => (
-                            Some(construct_expr_num(-(*n as i64), unary.item.info.clone())),
+                            Some(construct_expr_num(-(*n as i64), unary.item.loc)),
                             c - 1,
                         ),
                         Ordering::Greater => {
@@ -1475,8 +1482,8 @@ impl ASTNode<Option<cst::Unary>> {
                 };
                 // Fold the expression into a series of negation operations.
                 (0..rc)
-                    .fold(last, |r, _| r.map(|e| (construct_expr_neg(e, src.clone()))))
-                    .map(|e| ExprOrSpecial::Expr(e, src.clone()))
+                    .fold(last, |r, _| r.map(|e| (construct_expr_neg(e, src))))
+                    .map(|e| ExprOrSpecial::Expr(e, src))
             }
             Some(cst::NegOp::OverBang) => {
                 errs.push(self.to_ast_err(ToASTErrorKind::UnaryOpLimit(ast::UnaryOp::Not)));
@@ -1508,7 +1515,7 @@ impl ASTNode<Option<cst::Member>> {
             return None;
         }
         match m.item.as_ref().node.as_ref()? {
-            cst::Primary::Literal(l) => l.as_ref().node.as_ref(),
+            cst::Primary::Literal(lit) => lit.as_ref().node.as_ref(),
             _ => None,
         }
     }
@@ -1526,7 +1533,7 @@ impl ASTNode<Option<cst::Member>> {
     }
 
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (src, maybe_mem) = self.as_inner_pair();
+        let (maybe_mem, src) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let mem = maybe_mem?;
 
@@ -1574,9 +1581,7 @@ impl ASTNode<Option<cst::Member>> {
                     // replace the object `n` refers to with a default value since it won't be used afterwards
                     let nn =
                         mem::replace(n, ast::Name::unqualified_name(ast::Id::new_unchecked("")));
-                    head = nn
-                        .into_func(args, errs, src.clone())
-                        .map(|e| Expr(e, src.clone()));
+                    head = nn.into_func(args, errs, src).map(|e| Expr(e, src));
                     tail = rest;
                 }
                 // variable call - error
@@ -1609,8 +1614,8 @@ impl ASTNode<Option<cst::Member>> {
                     // move the id out of the slice as well, to avoid cloning the internal string
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
                     head = id
-                        .to_meth(construct_expr_var(var, vl.clone()), args, errs, src.clone())
-                        .map(|e| Expr(e, src.clone()));
+                        .to_meth(construct_expr_var(var, vl.clone()), args, errs, src)
+                        .map(|e| Expr(e, src));
                     tail = rest;
                 }
                 // method call on arbitrary expression
@@ -1620,9 +1625,7 @@ impl ASTNode<Option<cst::Member>> {
                     let expr = mem::replace(e, ast::Expr::val(false));
                     // move the id out of the slice as well, to avoid cloning the internal string
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
-                    head = id
-                        .to_meth(expr, args, errs, src.clone())
-                        .map(|e| Expr(e, src.clone()));
+                    head = id.to_meth(expr, args, errs, src).map(|e| Expr(e, src));
                     tail = rest;
                 }
                 // method call on string literal (same as Expr case)
@@ -1640,10 +1643,8 @@ impl ASTNode<Option<cst::Member>> {
                             None
                         }
                     };
-                    head = maybe_expr.and_then(|e| {
-                        id.to_meth(e, args, errs, src.clone())
-                            .map(|e| Expr(e, src.clone()))
-                    });
+                    head = maybe_expr
+                        .and_then(|e| id.to_meth(e, args, errs, src).map(|e| Expr(e, src)));
                     tail = rest;
                 }
                 // access of failure - ignore
@@ -1672,9 +1673,9 @@ impl ASTNode<Option<cst::Member>> {
                         construct_expr_attr(
                             construct_expr_var(var, vl.clone()),
                             id.to_smolstr(),
-                            src.clone(),
+                            src,
                         ),
-                        src.clone(),
+                        src,
                     ));
                     tail = rest;
                 }
@@ -1682,10 +1683,7 @@ impl ASTNode<Option<cst::Member>> {
                 (Some(Expr(e, _)), [Some(Field(i)), rest @ ..]) => {
                     let expr = mem::replace(e, ast::Expr::val(false));
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
-                    head = Some(Expr(
-                        construct_expr_attr(expr, id.to_smolstr(), src.clone()),
-                        src.clone(),
-                    ));
+                    head = Some(Expr(construct_expr_attr(expr, id.to_smolstr(), src), src));
                     tail = rest;
                 }
                 // field of string literal (same as Expr case)
@@ -1702,12 +1700,8 @@ impl ASTNode<Option<cst::Member>> {
                             None
                         }
                     };
-                    head = maybe_expr.map(|e| {
-                        Expr(
-                            construct_expr_attr(e, id.to_smolstr(), src.clone()),
-                            src.clone(),
-                        )
-                    });
+                    head =
+                        maybe_expr.map(|e| Expr(construct_expr_attr(e, id.to_smolstr(), src), src));
                     tail = rest;
                 }
                 // index into var
@@ -1715,8 +1709,8 @@ impl ASTNode<Option<cst::Member>> {
                     let var = mem::replace(v, ast::Var::Principal);
                     let s = mem::take(i);
                     head = Some(Expr(
-                        construct_expr_attr(construct_expr_var(var, vl.clone()), s, src.clone()),
-                        src.clone(),
+                        construct_expr_attr(construct_expr_var(var, vl.clone()), s, src),
+                        src,
                     ));
                     tail = rest;
                 }
@@ -1724,7 +1718,7 @@ impl ASTNode<Option<cst::Member>> {
                 (Some(Expr(e, _)), [Some(Index(i)), rest @ ..]) => {
                     let expr = mem::replace(e, ast::Expr::val(false));
                     let s = mem::take(i);
-                    head = Some(Expr(construct_expr_attr(expr, s, src.clone()), src.clone()));
+                    head = Some(Expr(construct_expr_attr(expr, s, src), src));
                     tail = rest;
                 }
                 // index into string literal (same as Expr case)
@@ -1741,8 +1735,7 @@ impl ASTNode<Option<cst::Member>> {
                             None
                         }
                     };
-                    head = maybe_expr
-                        .map(|e| Expr(construct_expr_attr(e, id, src.clone()), src.clone()));
+                    head = maybe_expr.map(|e| Expr(construct_expr_attr(e, id, src), src));
                     tail = rest;
                 }
             }
@@ -1785,7 +1778,7 @@ impl ASTNode<Option<cst::Primary>> {
             cst::Primary::Slot(s) => {
                 let slot = s.as_inner()?;
                 if slot.matches(var) {
-                    T::create_slot(errs, self.info.clone())
+                    T::create_slot(errs, self.loc)
                 } else {
                     errs.push(self.to_ast_err(ToASTErrorKind::wrong_node(
                         T::err_str(),
@@ -1807,7 +1800,7 @@ impl ASTNode<Option<cst::Primary>> {
                 )));
                 None
             }
-            cst::Primary::Ref(x) => T::create_single_ref(x.to_ref(errs)?, errs, self.info.clone()),
+            cst::Primary::Ref(x) => T::create_single_ref(x.to_ref(errs)?, errs, self.loc),
             cst::Primary::Name(name) => {
                 let found = match name.as_inner() {
                     Some(name) => format!("name `{name}`"),
@@ -1824,7 +1817,7 @@ impl ASTNode<Option<cst::Primary>> {
             cst::Primary::EList(lst) => {
                 let v: Option<Vec<EntityUID>> =
                     lst.iter().map(|expr| expr.to_ref(var, errs)).collect();
-                T::create_multiple_refs(v?, errs, self.info.clone())
+                T::create_multiple_refs(v?, errs, self.loc)
             }
             cst::Primary::RInits(_) => {
                 errs.push(self.to_ast_err(ToASTErrorKind::wrong_node(
@@ -1841,40 +1834,33 @@ impl ASTNode<Option<cst::Primary>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (src, maybe_prim) = self.as_inner_pair();
+        let (maybe_prim, src) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let prim = maybe_prim?;
 
         match prim {
-            cst::Primary::Literal(l) => l.to_expr_or_special(errs),
-            cst::Primary::Ref(r) => r
-                .to_expr(errs)
-                .map(|e| ExprOrSpecial::Expr(e, r.info.clone())),
+            cst::Primary::Literal(lit) => lit.to_expr_or_special(errs),
+            cst::Primary::Ref(r) => r.to_expr(errs).map(|e| ExprOrSpecial::Expr(e, r.loc)),
             cst::Primary::Slot(s) => s
                 .clone()
                 .into_expr(errs)
-                .map(|e| ExprOrSpecial::Expr(e, s.info.clone())),
+                .map(|e| ExprOrSpecial::Expr(e, s.loc)),
             #[allow(clippy::manual_map)]
             cst::Primary::Name(n) => {
                 // if `n` isn't a var we don't want errors, we'll get them later
                 if let Some(v) = n.to_var(&mut ParseErrors::new()) {
-                    Some(ExprOrSpecial::Var(v, src.clone()))
+                    Some(ExprOrSpecial::Var(v, src))
                 } else if let Some(n) = n.to_name(errs) {
-                    Some(ExprOrSpecial::Name(n, src.clone()))
+                    Some(ExprOrSpecial::Name(n, src))
                 } else {
                     None
                 }
             }
-            cst::Primary::Expr(e) => e
-                .to_expr(errs)
-                .map(|expr| ExprOrSpecial::Expr(expr, e.info.clone())),
+            cst::Primary::Expr(e) => e.to_expr(errs).map(|expr| ExprOrSpecial::Expr(expr, e.loc)),
             cst::Primary::EList(es) => {
                 let list: Vec<_> = es.iter().filter_map(|e| e.to_expr(errs)).collect();
                 if list.len() == es.len() {
-                    Some(ExprOrSpecial::Expr(
-                        construct_expr_set(list, src.clone()),
-                        src.clone(),
-                    ))
+                    Some(ExprOrSpecial::Expr(construct_expr_set(list, src), src))
                 } else {
                     None
                 }
@@ -1882,8 +1868,8 @@ impl ASTNode<Option<cst::Primary>> {
             cst::Primary::RInits(is) => {
                 let rec: Vec<_> = is.iter().filter_map(|i| i.to_init(errs)).collect();
                 if rec.len() == is.len() {
-                    match construct_expr_record(rec, src.clone()) {
-                        Ok(rec) => Some(ExprOrSpecial::Expr(rec, src.clone())),
+                    match construct_expr_record(rec, src) {
+                        Ok(rec) => Some(ExprOrSpecial::Expr(rec, src)),
                         Err(e) => {
                             errs.push(e);
                             None
@@ -1904,7 +1890,7 @@ impl ASTNode<Option<cst::Primary>> {
         let prim = maybe_prim?;
 
         match prim {
-            cst::Primary::Literal(l) => l.to_expr_or_special(errs)?.into_string_literal(errs),
+            cst::Primary::Literal(lit) => lit.to_expr_or_special(errs)?.into_string_literal(errs),
             _ => None,
         }
     }
@@ -1913,7 +1899,7 @@ impl ASTNode<Option<cst::Primary>> {
 impl ASTNode<Option<cst::Slot>> {
     fn into_expr(self, _errs: &mut ParseErrors) -> Option<ast::Expr> {
         let (s, src) = self.into_inner();
-        s.map(|s| ast::ExprBuilder::new().with_source_info(src).slot(s.into()))
+        s.map(|s| ast::ExprBuilder::new().with_source_span(src).slot(s.into()))
     }
 }
 
@@ -1938,13 +1924,13 @@ impl From<ast::SlotId> for cst::Slot {
 impl ASTNode<Option<cst::Name>> {
     /// Build type constraints
     fn to_type_constraint(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
-        let (src, maybe_name) = self.as_inner_pair();
+        let (maybe_name, src) = self.as_inner_pair();
         match maybe_name {
             Some(_) => {
                 errs.push(self.to_ast_err(ToASTErrorKind::TypeConstraints));
                 None
             }
-            None => Some(construct_expr_bool(true, src.clone())),
+            None => Some(construct_expr_bool(true, src)),
         }
     }
 
@@ -2001,11 +1987,11 @@ impl ASTNode<Option<cst::Name>> {
 
 impl ast::Name {
     /// Convert the `Name` into a `String` attribute, which fails if it had any namespaces
-    fn into_valid_attr(self, errs: &mut ParseErrors, l: SourceInfo) -> Option<SmolStr> {
+    fn into_valid_attr(self, errs: &mut ParseErrors, span: miette::SourceSpan) -> Option<SmolStr> {
         if !self.path.is_empty() {
             errs.push(ToASTError::new(
                 ToASTErrorKind::PathAsAttribute(self.to_string()),
-                l,
+                span,
             ));
             None
         } else {
@@ -2017,7 +2003,7 @@ impl ast::Name {
         self,
         args: Vec<ast::Expr>,
         errs: &mut ParseErrors,
-        l: SourceInfo,
+        span: miette::SourceSpan,
     ) -> Option<ast::Expr> {
         // error on standard methods
         if self.path.is_empty() {
@@ -2026,7 +2012,7 @@ impl ast::Name {
                 "contains" | "containsAll" | "containsAny" => {
                     errs.push(ToASTError::new(
                         ToASTErrorKind::FunctionCallOnMethod(self.id),
-                        l,
+                        span,
                     ));
                     return None;
                 }
@@ -2034,9 +2020,9 @@ impl ast::Name {
             }
         }
         if EXTENSION_STYLES.functions.contains(&self) {
-            Some(construct_ext_func(self, args, l))
+            Some(construct_ext_func(self, args, span))
         } else {
-            errs.push(ToASTError::new(ToASTErrorKind::NotAFunction(self), l));
+            errs.push(ToASTError::new(ToASTErrorKind::NotAFunction(self), span));
             None
         }
     }
@@ -2081,30 +2067,21 @@ impl ASTNode<Option<cst::Ref>> {
     }
     fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         self.to_ref(errs)
-            .map(|euid| construct_expr_ref(euid, self.info.clone()))
+            .map(|euid| construct_expr_ref(euid, self.loc))
     }
 }
 
 impl ASTNode<Option<cst::Literal>> {
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (src, maybe_lit) = self.as_inner_pair();
+        let (maybe_lit, src) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let lit = maybe_lit?;
 
         match lit {
-            cst::Literal::True => Some(ExprOrSpecial::Expr(
-                construct_expr_bool(true, src.clone()),
-                src.clone(),
-            )),
-            cst::Literal::False => Some(ExprOrSpecial::Expr(
-                construct_expr_bool(false, src.clone()),
-                src.clone(),
-            )),
+            cst::Literal::True => Some(ExprOrSpecial::Expr(construct_expr_bool(true, src), src)),
+            cst::Literal::False => Some(ExprOrSpecial::Expr(construct_expr_bool(false, src), src)),
             cst::Literal::Num(n) => match i64::try_from(*n) {
-                Ok(i) => Some(ExprOrSpecial::Expr(
-                    construct_expr_num(i, src.clone()),
-                    src.clone(),
-                )),
+                Ok(i) => Some(ExprOrSpecial::Expr(construct_expr_num(i, src), src)),
                 Err(_) => {
                     errs.push(self.to_ast_err(ToASTErrorKind::IntegerLiteralTooLarge(*n)));
                     None
@@ -2112,7 +2089,7 @@ impl ASTNode<Option<cst::Literal>> {
             },
             cst::Literal::Str(s) => {
                 let maybe_str = s.as_valid_string(errs);
-                maybe_str.map(|s| ExprOrSpecial::StrLit(s, src.clone()))
+                maybe_str.map(|s| ExprOrSpecial::StrLit(s, src))
             }
         }
     }
@@ -2120,7 +2097,7 @@ impl ASTNode<Option<cst::Literal>> {
 
 impl ASTNode<Option<cst::RecInit>> {
     fn to_init(&self, errs: &mut ParseErrors) -> Option<(SmolStr, ast::Expr)> {
-        let (_src, maybe_lit) = self.as_inner_pair();
+        let (maybe_lit, _src) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
         let lit = maybe_lit?;
 
@@ -2145,7 +2122,7 @@ fn construct_template_policy(
     action: ast::ActionConstraint,
     resource: ast::ResourceConstraint,
     conds: Vec<ast::Expr>,
-    l: SourceInfo,
+    span: miette::SourceSpan,
 ) -> ast::Template {
     let construct_template = |non_head_constraint| {
         ast::Template::new(
@@ -2163,12 +2140,12 @@ fn construct_template_policy(
         // a left fold of conditions
         // e.g., [c1, c2, c3,] --> ((c1 && c2) && c3)
         construct_template(match conds_iter.next() {
-            Some(e) => construct_expr_and(first_expr, e, conds_iter, l),
+            Some(e) => construct_expr_and(first_expr, e, conds_iter, span),
             None => first_expr,
         })
     } else {
         // use `true` to mark the absence of non-head constraints
-        construct_template(construct_expr_bool(true, l))
+        construct_template(construct_expr_bool(true, span))
     }
 }
 fn construct_id(s: String) -> ast::Id {
@@ -2192,59 +2169,72 @@ fn construct_refr(p: ast::Name, n: SmolStr) -> ast::EntityUID {
     let eid = ast::Eid::new(n);
     ast::EntityUID::from_components(p, eid)
 }
-
-fn construct_expr_ref(r: ast::EntityUID, l: SourceInfo) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_info(l).val(r)
+fn construct_expr_ref(r: ast::EntityUID, span: miette::SourceSpan) -> ast::Expr {
+    ast::ExprBuilder::new().with_source_span(span).val(r)
 }
-fn construct_expr_num(n: i64, l: SourceInfo) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_info(l).val(n)
+fn construct_expr_num(n: i64, span: miette::SourceSpan) -> ast::Expr {
+    ast::ExprBuilder::new().with_source_span(span).val(n)
 }
-fn construct_expr_string(s: SmolStr, l: SourceInfo) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_info(l).val(s)
+fn construct_expr_string(s: SmolStr, span: miette::SourceSpan) -> ast::Expr {
+    ast::ExprBuilder::new().with_source_span(span).val(s)
 }
-fn construct_expr_bool(b: bool, l: SourceInfo) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_info(l).val(b)
+fn construct_expr_bool(b: bool, span: miette::SourceSpan) -> ast::Expr {
+    ast::ExprBuilder::new().with_source_span(span).val(b)
 }
-fn construct_expr_neg(e: ast::Expr, l: SourceInfo) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_info(l).neg(e)
+fn construct_expr_neg(e: ast::Expr, span: miette::SourceSpan) -> ast::Expr {
+    ast::ExprBuilder::new().with_source_span(span).neg(e)
 }
-fn construct_expr_not(e: ast::Expr, l: SourceInfo) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_info(l).not(e)
+fn construct_expr_not(e: ast::Expr, span: miette::SourceSpan) -> ast::Expr {
+    ast::ExprBuilder::new().with_source_span(span).not(e)
 }
-fn construct_expr_var(v: ast::Var, l: SourceInfo) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_info(l).var(v)
+fn construct_expr_var(v: ast::Var, span: miette::SourceSpan) -> ast::Expr {
+    ast::ExprBuilder::new().with_source_span(span).var(v)
 }
-fn construct_expr_if(i: ast::Expr, t: ast::Expr, e: ast::Expr, l: SourceInfo) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_info(l).ite(i, t, e)
+fn construct_expr_if(
+    i: ast::Expr,
+    t: ast::Expr,
+    e: ast::Expr,
+    span: miette::SourceSpan,
+) -> ast::Expr {
+    ast::ExprBuilder::new().with_source_span(span).ite(i, t, e)
 }
 fn construct_expr_or(
     f: ast::Expr,
     s: ast::Expr,
     chained: impl IntoIterator<Item = ast::Expr>,
-    l: SourceInfo,
+    span: miette::SourceSpan,
 ) -> ast::Expr {
-    let first = ast::ExprBuilder::new().with_source_info(l.clone()).or(f, s);
+    let first = ast::ExprBuilder::new()
+        .with_source_span(span.clone())
+        .or(f, s);
     chained.into_iter().fold(first, |a, n| {
-        ast::ExprBuilder::new().with_source_info(l.clone()).or(a, n)
+        ast::ExprBuilder::new()
+            .with_source_span(span.clone())
+            .or(a, n)
     })
 }
 fn construct_expr_and(
     f: ast::Expr,
     s: ast::Expr,
     chained: impl IntoIterator<Item = ast::Expr>,
-    l: SourceInfo,
+    span: miette::SourceSpan,
 ) -> ast::Expr {
     let first = ast::ExprBuilder::new()
-        .with_source_info(l.clone())
+        .with_source_span(span.clone())
         .and(f, s);
     chained.into_iter().fold(first, |a, n| {
         ast::ExprBuilder::new()
-            .with_source_info(l.clone())
+            .with_source_span(span.clone())
             .and(a, n)
     })
 }
-fn construct_expr_rel(f: ast::Expr, rel: cst::RelOp, s: ast::Expr, l: SourceInfo) -> ast::Expr {
-    let builder = ast::ExprBuilder::new().with_source_info(l);
+fn construct_expr_rel(
+    f: ast::Expr,
+    rel: cst::RelOp,
+    s: ast::Expr,
+    span: miette::SourceSpan,
+) -> ast::Expr {
+    let builder = ast::ExprBuilder::new().with_source_span(span);
     match rel {
         cst::RelOp::Less => builder.less(f, s),
         cst::RelOp::LessEq => builder.lesseq(f, s),
@@ -2259,11 +2249,11 @@ fn construct_expr_rel(f: ast::Expr, rel: cst::RelOp, s: ast::Expr, l: SourceInfo
 fn construct_expr_add(
     f: ast::Expr,
     chained: impl IntoIterator<Item = (cst::AddOp, ast::Expr)>,
-    l: SourceInfo,
+    span: miette::SourceSpan,
 ) -> ast::Expr {
     let mut expr = f;
     for (op, next_expr) in chained {
-        let builder = ast::ExprBuilder::new().with_source_info(l.clone());
+        let builder = ast::ExprBuilder::new().with_source_span(span.clone());
         expr = match op {
             cst::AddOp::Plus => builder.add(expr, next_expr),
             cst::AddOp::Minus => builder.sub(expr, next_expr),
@@ -2275,73 +2265,91 @@ fn construct_expr_add(
 fn construct_expr_mul(
     f: ast::Expr,
     chained: impl IntoIterator<Item = i64>,
-    l: SourceInfo,
+    span: miette::SourceSpan,
 ) -> ast::Expr {
     let mut expr = f;
     for next_expr in chained {
         expr = ast::ExprBuilder::new()
-            .with_source_info(l.clone())
+            .with_source_span(span.clone())
             .mul(expr, next_expr)
     }
     expr
 }
-fn construct_expr_has(t: ast::Expr, s: SmolStr, l: SourceInfo) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_info(l).has_attr(t, s)
-}
-fn construct_expr_attr(e: ast::Expr, s: SmolStr, l: SourceInfo) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_info(l).get_attr(e, s)
-}
-fn construct_expr_like(e: ast::Expr, s: Vec<PatternElem>, l: SourceInfo) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_info(l).like(e, s)
-}
-fn construct_expr_is(e: ast::Expr, n: ast::Name, l: SourceInfo) -> ast::Expr {
+fn construct_expr_has(t: ast::Expr, s: SmolStr, span: miette::SourceSpan) -> ast::Expr {
     ast::ExprBuilder::new()
-        .with_source_info(l)
+        .with_source_span(span)
+        .has_attr(t, s)
+}
+fn construct_expr_attr(e: ast::Expr, s: SmolStr, span: miette::SourceSpan) -> ast::Expr {
+    ast::ExprBuilder::new()
+        .with_source_span(span)
+        .get_attr(e, s)
+}
+fn construct_expr_like(e: ast::Expr, s: Vec<PatternElem>, span: miette::SourceSpan) -> ast::Expr {
+    ast::ExprBuilder::new().with_source_span(span).like(e, s)
+}
+fn construct_expr_is(e: ast::Expr, n: ast::Name, span: miette::SourceSpan) -> ast::Expr {
+    ast::ExprBuilder::new()
+        .with_source_span(span)
         .is_entity_type(e, n)
 }
-fn construct_ext_func(name: ast::Name, args: Vec<ast::Expr>, l: SourceInfo) -> ast::Expr {
+fn construct_ext_func(
+    name: ast::Name,
+    args: Vec<ast::Expr>,
+    span: miette::SourceSpan,
+) -> ast::Expr {
     // INVARIANT (MethodStyleArgs): CallStyle is not MethodStyle, so any args vector is fine
     ast::ExprBuilder::new()
-        .with_source_info(l)
+        .with_source_span(span)
         .call_extension_fn(name, args)
 }
 
-fn construct_method_contains(e0: ast::Expr, e1: ast::Expr, l: SourceInfo) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_info(l).contains(e0, e1)
-}
-fn construct_method_contains_all(e0: ast::Expr, e1: ast::Expr, l: SourceInfo) -> ast::Expr {
+fn construct_method_contains(e0: ast::Expr, e1: ast::Expr, span: miette::SourceSpan) -> ast::Expr {
     ast::ExprBuilder::new()
-        .with_source_info(l)
+        .with_source_span(span)
+        .contains(e0, e1)
+}
+fn construct_method_contains_all(
+    e0: ast::Expr,
+    e1: ast::Expr,
+    span: miette::SourceSpan,
+) -> ast::Expr {
+    ast::ExprBuilder::new()
+        .with_source_span(span)
         .contains_all(e0, e1)
 }
-fn construct_method_contains_any(e0: ast::Expr, e1: ast::Expr, l: SourceInfo) -> ast::Expr {
+fn construct_method_contains_any(
+    e0: ast::Expr,
+    e1: ast::Expr,
+    span: miette::SourceSpan,
+) -> ast::Expr {
     ast::ExprBuilder::new()
-        .with_source_info(l)
+        .with_source_span(span)
         .contains_any(e0, e1)
 }
 
 // INVARIANT (MethodStyleArgs), args must be non-empty
-fn construct_ext_meth(n: String, args: Vec<ast::Expr>, l: SourceInfo) -> ast::Expr {
+fn construct_ext_meth(n: String, args: Vec<ast::Expr>, span: miette::SourceSpan) -> ast::Expr {
     let id = ast::Id::new_unchecked(n);
     let name = ast::Name::unqualified_name(id);
     // INVARIANT (MethodStyleArgs), args must be non-empty
     ast::ExprBuilder::new()
-        .with_source_info(l)
+        .with_source_span(span)
         .call_extension_fn(name, args)
 }
-fn construct_expr_set(s: Vec<ast::Expr>, l: SourceInfo) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_info(l).set(s)
+fn construct_expr_set(s: Vec<ast::Expr>, span: miette::SourceSpan) -> ast::Expr {
+    ast::ExprBuilder::new().with_source_span(span).set(s)
 }
 fn construct_expr_record(
     kvs: Vec<(SmolStr, ast::Expr)>,
-    l: SourceInfo,
+    span: miette::SourceSpan,
 ) -> Result<ast::Expr, ToASTError> {
     ast::ExprBuilder::new()
-        .with_source_info(l.clone())
+        .with_source_span(span)
         .record(kvs)
         .map_err(|e| match e {
             ExprConstructionError::DuplicateKeyInRecordLiteral { key } => {
-                ToASTError::new(ToASTErrorKind::DuplicateKeyInRecordLiteral { key }, l)
+                ToASTError::new(ToASTErrorKind::DuplicateKeyInRecordLiteral { key }, span)
             }
         })
 }

@@ -14,9 +14,8 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::{
-    ast::{EntityType, EntityUID, Expr, ExprKind, Literal, Name, PatternElem, Template},
-    parser::SourceInfo,
+use cedar_policy_core::ast::{
+    EntityType, EntityUID, Expr, ExprKind, Literal, Name, PatternElem, Template,
 };
 
 /// Returns an iterator over all literal entity uids in the expression.
@@ -77,11 +76,11 @@ pub(super) fn policy_entity_type_names(template: &Template) -> impl Iterator<Ite
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum TextKind<'a> {
     /// String Literals
-    String(&'a Option<SourceInfo>, &'a str),
+    String(Option<miette::SourceSpan>, &'a str),
     /// Identifiers
-    Identifier(&'a Option<SourceInfo>, &'a str),
+    Identifier(Option<miette::SourceSpan>, &'a str),
     /// Pattern Strings
-    Pattern(&'a Option<SourceInfo>, &'a [PatternElem]),
+    Pattern(Option<miette::SourceSpan>, &'a [PatternElem]),
 }
 
 /// Returns an iterator over all text (strings and identifiers) in the expression.
@@ -92,65 +91,65 @@ pub(super) fn expr_text(e: &'_ Expr) -> impl Iterator<Item = TextKind<'_>> {
 // Returns a vector containing the text in the top level expression
 fn text_in_expr(e: &'_ Expr) -> impl IntoIterator<Item = TextKind<'_>> {
     match e.expr_kind() {
-        ExprKind::Lit(l) => text_in_lit(e.source_info(), l).into_iter().collect(),
+        ExprKind::Lit(lit) => text_in_lit(e.source_span(), lit).into_iter().collect(),
         ExprKind::ExtensionFunctionApp { fn_name, .. } => {
-            text_in_name(e.source_info(), fn_name).collect()
+            text_in_name(e.source_span(), fn_name).collect()
         }
-        ExprKind::GetAttr { attr, .. } => vec![TextKind::Identifier(e.source_info(), attr)],
-        ExprKind::HasAttr { attr, .. } => vec![TextKind::Identifier(e.source_info(), attr)],
+        ExprKind::GetAttr { attr, .. } => vec![TextKind::Identifier(e.source_span(), attr)],
+        ExprKind::HasAttr { attr, .. } => vec![TextKind::Identifier(e.source_span(), attr)],
         ExprKind::Like { pattern, .. } => {
-            vec![TextKind::Pattern(e.source_info(), pattern.get_elems())]
+            vec![TextKind::Pattern(e.source_span(), pattern.get_elems())]
         }
         ExprKind::Record(map) => map
             .keys()
-            .map(|attr| TextKind::Identifier(e.source_info(), attr))
+            .map(|attr| TextKind::Identifier(e.source_span(), attr))
             .collect(),
         _ => vec![],
     }
 }
 
 fn text_in_lit<'a>(
-    l: &'a Option<SourceInfo>,
+    span: Option<miette::SourceSpan>,
     lit: &'a Literal,
 ) -> impl IntoIterator<Item = TextKind<'a>> {
     match lit {
         Literal::Bool(_) => vec![],
         Literal::Long(_) => vec![],
-        Literal::String(s) => vec![TextKind::String(l, s)],
-        Literal::EntityUID(euid) => text_in_euid(l, euid).collect(),
+        Literal::String(s) => vec![TextKind::String(span, s)],
+        Literal::EntityUID(euid) => text_in_euid(span, euid).collect(),
     }
 }
 
 fn text_in_euid<'a>(
-    l: &'a Option<SourceInfo>,
+    span: Option<miette::SourceSpan>,
     euid: &'a EntityUID,
 ) -> impl Iterator<Item = TextKind<'a>> {
-    text_in_entity_type(l, euid.entity_type())
+    text_in_entity_type(span, euid.entity_type())
         .into_iter()
         .chain(std::iter::once(TextKind::Identifier(
-            l,
+            span,
             euid.eid().as_ref(),
         )))
 }
 
 fn text_in_entity_type<'a>(
-    l: &'a Option<SourceInfo>,
+    span: Option<miette::SourceSpan>,
     ty: &'a EntityType,
 ) -> impl IntoIterator<Item = TextKind<'a>> {
     match ty {
-        EntityType::Specified(ty) => text_in_name(l, ty).collect::<Vec<_>>(),
+        EntityType::Specified(ty) => text_in_name(span, ty).collect::<Vec<_>>(),
         EntityType::Unspecified => vec![],
     }
 }
 
 fn text_in_name<'a>(
-    l: &'a Option<SourceInfo>,
+    span: Option<miette::SourceSpan>,
     name: &'a Name,
 ) -> impl Iterator<Item = TextKind<'a>> {
     name.namespace_components()
-        .map(|id| TextKind::Identifier(l, id.as_ref()))
+        .map(move |id| TextKind::Identifier(span, id.as_ref()))
         .chain(std::iter::once(TextKind::Identifier(
-            l,
+            span,
             name.basename().as_ref(),
         )))
 }
@@ -337,10 +336,10 @@ mod tests {
         let strs: HashSet<_> = expr_text(&p).collect();
         assert_eq!(
             HashSet::from([
-                TextKind::Identifier(&None, "test"),
-                TextKind::Identifier(&None, "a"),
-                TextKind::Identifier(&None, "b"),
-                TextKind::Identifier(&None, "c")
+                TextKind::Identifier(None, "test"),
+                TextKind::Identifier(None, "a"),
+                TextKind::Identifier(None, "b"),
+                TextKind::Identifier(None, "c")
             ]),
             strs
         );
@@ -361,10 +360,10 @@ mod tests {
         let strs: HashSet<_> = expr_text(&e).collect();
         assert_eq!(
             HashSet::from([
-                TextKind::Identifier(&None, "a"),
-                TextKind::Identifier(&None, "b"),
-                TextKind::Identifier(&None, "c"),
-                TextKind::String(&None, "this is a test"),
+                TextKind::Identifier(None, "a"),
+                TextKind::Identifier(None, "b"),
+                TextKind::Identifier(None, "c"),
+                TextKind::String(None, "this is a test"),
             ]),
             strs
         );
@@ -390,12 +389,12 @@ mod tests {
 
         assert_eq!(
             HashSet::from([
-                TextKind::Identifier(&None, "a1"),
-                TextKind::Identifier(&None, "a2"),
-                TextKind::Identifier(&None, "another"),
-                TextKind::Identifier(&None, "euid"),
-                TextKind::Identifier(&None, "myattr"),
-                TextKind::Identifier(&None, "myattr2"),
+                TextKind::Identifier(None, "a1"),
+                TextKind::Identifier(None, "a2"),
+                TextKind::Identifier(None, "another"),
+                TextKind::Identifier(None, "euid"),
+                TextKind::Identifier(None, "myattr"),
+                TextKind::Identifier(None, "myattr2"),
             ]),
             strs
         );
@@ -407,8 +406,8 @@ mod tests {
         let strs: HashSet<_> = expr_text(&e).collect();
         assert_eq!(
             HashSet::from([
-                TextKind::Identifier(&None, "test"),
-                TextKind::String(&None, "arg"),
+                TextKind::Identifier(None, "test"),
+                TextKind::String(None, "arg"),
             ]),
             strs
         );
@@ -421,10 +420,7 @@ mod tests {
         let strs: HashSet<_> = expr_text(&e).collect();
 
         assert_eq!(
-            HashSet::from([
-                TextKind::Pattern(&None, &p),
-                TextKind::String(&None, "test")
-            ]),
+            HashSet::from([TextKind::Pattern(None, &p), TextKind::String(None, "test")]),
             strs
         );
     }
