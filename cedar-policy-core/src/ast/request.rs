@@ -350,7 +350,7 @@ pub enum ContextCreationError {
 /// Trait for schemas capable of validating `Request`s
 pub trait RequestSchema {
     /// Error type returned when a request fails validation
-    type Error: std::error::Error;
+    type Error: miette::Diagnostic;
     /// Validate the given `request`, returning `Err` if it fails validation
     fn validate_request(
         &self,
@@ -363,7 +363,7 @@ pub trait RequestSchema {
 #[derive(Debug, Clone)]
 pub struct RequestSchemaAllPass;
 impl RequestSchema for RequestSchemaAllPass {
-    type Error = std::convert::Infallible;
+    type Error = Infallible;
     fn validate_request(
         &self,
         _request: &Request,
@@ -372,6 +372,12 @@ impl RequestSchema for RequestSchemaAllPass {
         Ok(())
     }
 }
+
+/// Wrapper around `std::convert::Infallible` which also implements
+/// `miette::Diagnostic`
+#[derive(Debug, Diagnostic, Error)]
+#[error(transparent)]
+pub struct Infallible(pub std::convert::Infallible);
 
 #[cfg(test)]
 mod test {

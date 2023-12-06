@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-use std::error::Error;
 use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
 
@@ -102,8 +101,8 @@ impl<N: Display> Display for ASTNode<N> {
     }
 }
 
-impl<N: Error> Error for ASTNode<N> {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
+impl<N: std::error::Error> std::error::Error for ASTNode<N> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         self.node.source()
     }
 
@@ -112,7 +111,7 @@ impl<N: Error> Error for ASTNode<N> {
         self.node.description()
     }
 
-    fn cause(&self) -> Option<&dyn Error> {
+    fn cause(&self) -> Option<&dyn std::error::Error> {
         #[allow(deprecated)]
         self.node.cause()
     }

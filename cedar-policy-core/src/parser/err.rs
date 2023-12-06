@@ -15,7 +15,6 @@
  */
 
 use std::collections::HashMap;
-use std::error::Error;
 use std::fmt::{self, Display, Write};
 use std::iter;
 use std::ops::{Deref, DerefMut};
@@ -637,9 +636,9 @@ impl Display for ParseErrors {
     }
 }
 
-impl Error for ParseErrors {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.first().and_then(Error::source)
+impl std::error::Error for ParseErrors {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.first().and_then(std::error::Error::source)
     }
 
     #[allow(deprecated)]
@@ -651,8 +650,8 @@ impl Error for ParseErrors {
     }
 
     #[allow(deprecated)]
-    fn cause(&self) -> Option<&dyn Error> {
-        self.first().and_then(Error::cause)
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        self.first().and_then(std::error::Error::cause)
     }
 }
 

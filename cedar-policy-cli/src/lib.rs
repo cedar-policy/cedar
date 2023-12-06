@@ -19,8 +19,6 @@
 // omitted.
 #![allow(clippy::needless_return)]
 
-mod err;
-
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use serde::{Deserialize, Serialize};

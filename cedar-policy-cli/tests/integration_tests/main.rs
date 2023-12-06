@@ -86,7 +86,7 @@ fn constant_true() -> bool {
     true
 }
 
-fn value_to_euid_string(v: serde_json::Value) -> Result<String, impl std::error::Error> {
+fn value_to_euid_string(v: serde_json::Value) -> Result<String, impl miette::Diagnostic> {
     EntityUid::from_json(v).map(|euid| euid.to_string())
 }
 

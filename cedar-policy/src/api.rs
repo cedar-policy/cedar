@@ -202,7 +202,7 @@ impl Entity {
     /// assert_eq!(entity.attr("department").unwrap().unwrap(), EvalResult::String("CS".to_string()));
     /// assert!(entity.attr("foo").is_none());
     /// ```
-    pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, impl std::error::Error>> {
+    pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, impl miette::Diagnostic>> {
         let v = match ast::Value::try_from(self.0.get(attr)?.clone()) {
             Ok(v) => v,
             Err(e) => return Some(Err(e)),
@@ -1784,7 +1784,7 @@ impl EntityUid {
     /// let euid = EntityUid::from_json(json_data).unwrap();
     /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
     /// ```
-    pub fn from_json(json: serde_json::Value) -> Result<Self, impl std::error::Error> {
+    pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
         let parsed: entities::EntityUidJson = serde_json::from_value(json)?;
         // INVARIANT: There is no way to write down the unspecified entityuid
         Ok::<Self, entities::JsonDeserializationError>(Self(
@@ -2425,7 +2425,7 @@ impl Template {
     }
 
     /// Get the JSON representation of this `Template`.
-    pub fn to_json(&self) -> Result<serde_json::Value, impl std::error::Error> {
+    pub fn to_json(&self) -> Result<serde_json::Value, impl miette::Diagnostic> {
         let est = self.lossless.est()?;
         let json = serde_json::to_value(est)?;
         Ok::<_, PolicyToJsonError>(json)
@@ -2846,7 +2846,7 @@ impl Policy {
     /// println!("{}", json);
     /// assert_eq!(json, Policy::from_json(None, json.clone()).unwrap().to_json().unwrap());
     /// ```
-    pub fn to_json(&self) -> Result<serde_json::Value, impl std::error::Error> {
+    pub fn to_json(&self) -> Result<serde_json::Value, impl miette::Diagnostic> {
         let est = self.lossless.est()?;
         let json = serde_json::to_value(est)?;
         Ok::<_, PolicyToJsonError>(json)
