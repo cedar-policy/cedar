@@ -1443,7 +1443,7 @@ impl<'a> From<cedar_policy_validator::ValidationError<'a>> for ValidationError<'
 // forwarded to .error_kind
 impl<'a> Diagnostic for ValidationError<'a> {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        let label = miette::LabeledSpan::underline(self.location.miette_span()?);
+        let label = miette::LabeledSpan::underline(self.location.source_range?);
         let ret: Box<dyn Iterator<Item = miette::LabeledSpan>> = Box::new(std::iter::once(label));
         Some(ret)
     }
@@ -1502,11 +1502,6 @@ impl<'a> SourceLocation<'a> {
         self.source_range
             .as_ref()
             .map(|span| span.offset() + span.len())
-    }
-
-    /// Get the location as a `miette::SourceSpan`
-    fn miette_span(&self) -> Option<miette::SourceSpan> {
-        self.source_range.as_ref().map(|info| info.clone().into())
     }
 }
 
@@ -1582,7 +1577,7 @@ impl<'a> From<cedar_policy_validator::ValidationWarning<'a>> for ValidationWarni
 // forwarded to .kind
 impl<'a> Diagnostic for ValidationWarning<'a> {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        let label = miette::LabeledSpan::underline(self.location.miette_span()?);
+        let label = miette::LabeledSpan::underline(self.location.source_range?);
         let ret: Box<dyn Iterator<Item = miette::LabeledSpan>> = Box::new(std::iter::once(label));
         Some(ret)
     }

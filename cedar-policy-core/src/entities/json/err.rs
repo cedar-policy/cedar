@@ -206,7 +206,9 @@ pub enum JsonDeserializationError {
     /// To pass an unknown to an extension function, use the
     /// explicit-constructor form.
     #[error("{ctx}, argument `{arg}` to implicit constructor contains an unknown; this is not currently supported")]
-    #[diagnostic(help("to pass an unknown to an extension function, use the explicit constructor form"))]
+    #[diagnostic(help(
+        "to pass an unknown to an extension function, use the explicit constructor form"
+    ))]
     UnknownInImplicitConstructorArg {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -228,7 +230,9 @@ pub enum JsonSerializationError {
     /// Extension-function calls with 0 arguments are not currently supported in
     /// our JSON format.
     #[error("unsupported call to `{func}` with 0 arguments")]
-    #[diagnostic(help("extension function calls with 0 arguments are not currently supported in our JSON format"))]
+    #[diagnostic(help(
+        "extension function calls with 0 arguments are not currently supported in our JSON format"
+    ))]
     ExtnCall0Arguments {
         /// Name of the function which was called with 0 arguments
         func: Name,

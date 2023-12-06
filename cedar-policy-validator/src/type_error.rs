@@ -46,13 +46,14 @@ pub struct TypeError {
     pub(crate) kind: TypeErrorKind,
 }
 
-// custom impl of Diagnostic: source location is from .source_location,
+// custom impl of Diagnostic: source location is from .source_span(),
 // everything else forwarded to .kind
 impl Diagnostic for TypeError {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        self.source_location.as_ref().map(|info| {
+        self.source_span().as_ref().map(|info| {
             let label = miette::LabeledSpan::underline(info.clone());
-            let ret: Box<dyn Iterator<Item = miette::LabeledSpan>> = Box::new(std::iter::once(label));
+            let ret: Box<dyn Iterator<Item = miette::LabeledSpan>> =
+                Box::new(std::iter::once(label));
             ret
         })
     }

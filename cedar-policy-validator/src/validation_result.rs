@@ -260,9 +260,15 @@ pub struct InvalidActionApplication {
 impl Diagnostic for InvalidActionApplication {
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match (self.would_in_fix_principal, self.would_in_fix_resource) {
-            (true, false) => Some(Box::new("try replacing `==` with `in` in the principal clause")),
-            (false, true) => Some(Box::new("try replacing `==` with `in` in the resource clause")),
-            (true, true) => Some(Box::new("try replacing `==` with `in` in the principal clause and the resource clause")),
+            (true, false) => Some(Box::new(
+                "try replacing `==` with `in` in the principal clause",
+            )),
+            (false, true) => Some(Box::new(
+                "try replacing `==` with `in` in the resource clause",
+            )),
+            (true, true) => Some(Box::new(
+                "try replacing `==` with `in` in the principal clause and the resource clause",
+            )),
             (false, false) => None,
         }
     }
