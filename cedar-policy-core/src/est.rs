@@ -166,7 +166,7 @@ impl TryFrom<cst::Cond> for Clause {
                 });
                 Err(ParseError::ToAST(ToASTError::EmptyClause(ident)).into())
             }
-            Some(e) => e.try_into(),
+            Some(ref e) => e.try_into(),
         };
         let expr = match expr {
             Ok(expr) => Some(expr),
