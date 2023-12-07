@@ -477,7 +477,7 @@ mod test {
 
 #[cfg(test)]
 mod eval_tests {
-    use super::err::{ParseErrors, ToASTError};
+    use super::err::{ParseErrors, ToASTErrorKind};
     use super::*;
     use crate::evaluator as eval;
     use crate::extensions::Extensions;
@@ -488,8 +488,10 @@ mod eval_tests {
         let src = r#"Test::{ test : "Test" }"#;
         let ParseErrors(errs) = parse_euid(src).err().unwrap();
         assert_eq!(errs.len(), 1);
-        let expected = ParseError::ToAST(ToASTError::UnsupportedEntityLiterals);
-        assert!(errs.contains(&expected));
+        let expected = ToASTErrorKind::UnsupportedEntityLiterals;
+        assert!(errs
+            .iter()
+            .any(|e| matches!(e, ParseError::ToAST(e) if e.kind() == &expected)));
     }
 
     #[test]
@@ -497,8 +499,10 @@ mod eval_tests {
         let src = r#"permit(principal == Test::{ test : "Test" }, action, resource);"#;
         let ParseErrors(errs) = parse_policy(None, src).err().unwrap();
         assert_eq!(errs.len(), 1);
-        let expected = ParseError::ToAST(ToASTError::UnsupportedEntityLiterals);
-        assert!(errs.contains(&expected));
+        let expected = ToASTErrorKind::UnsupportedEntityLiterals;
+        assert!(errs
+            .iter()
+            .any(|e| matches!(e, ParseError::ToAST(e) if e.kind() == &expected)));
     }
 
     #[test]

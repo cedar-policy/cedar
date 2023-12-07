@@ -638,7 +638,8 @@ mod test {
     use crate::{SchemaType, SchemaTypeVariant};
 
     use cedar_policy_core::ast::RestrictedExpr;
-    use cedar_policy_core::parser::err::{ParseError, ToASTError};
+    use cedar_policy_core::parser::err::{ParseError, ToASTError, ToASTErrorKind};
+    use cedar_policy_core::parser::SourceInfo;
     use cool_asserts::assert_matches;
     use serde_json::json;
 
@@ -1701,11 +1702,14 @@ mod test {
             .expect("constructing the fragment itself should succeed"); // should this fail in the future?
         let err = ValidatorSchema::try_from(fragment)
             .expect_err("should error due to invalid entity type name");
-        let expected_err = ParseError::ToAST(ToASTError::NonNormalizedString {
-            kind: "Id",
-            src: "User // comment".to_string(),
-            normalized_src: "User".to_string(),
-        })
+        let expected_err = ParseError::ToAST(ToASTError::new(
+            ToASTErrorKind::NonNormalizedString {
+                kind: "Id",
+                src: "User // comment".to_string(),
+                normalized_src: "User".to_string(),
+            },
+            SourceInfo(4..4),
+        ))
         .into();
 
         match err {
@@ -1728,11 +1732,14 @@ mod test {
             .expect("constructing the fragment itself should succeed"); // should this fail in the future?
         let err = ValidatorSchema::try_from(fragment)
             .expect_err("should error due to invalid schema namespace");
-        let expected_err = ParseError::ToAST(ToASTError::NonNormalizedString {
-            kind: "Name",
-            src: "ABC     :: //comment \n XYZ  ".to_string(),
-            normalized_src: "ABC::XYZ".to_string(),
-        })
+        let expected_err = ParseError::ToAST(ToASTError::new(
+            ToASTErrorKind::NonNormalizedString {
+                kind: "Name",
+                src: "ABC     :: //comment \n XYZ  ".to_string(),
+                normalized_src: "ABC::XYZ".to_string(),
+            },
+            SourceInfo(3..3),
+        ))
         .into();
         match err {
             SchemaError::ParseNamespace(parse_error) => assert_eq!(parse_error, expected_err),

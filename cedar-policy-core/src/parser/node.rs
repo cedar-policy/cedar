@@ -23,7 +23,7 @@ use std::ops::Range;
 use miette::{Diagnostic, LabeledSpan, Severity, SourceCode};
 use serde::{Deserialize, Serialize};
 
-use super::err::ToASTError;
+use super::err::{ToASTError, ToASTErrorKind};
 
 /// Describes where in policy source code a node in the CST or expression AST
 /// occurs.
@@ -111,6 +111,12 @@ impl From<SourceInfo> for Range<usize> {
     }
 }
 
+impl From<SourceInfo> for miette::SourceSpan {
+    fn from(value: SourceInfo) -> Self {
+        value.0.into()
+    }
+}
+
 /// Metadata for our syntax trees
 #[derive(Clone, Deserialize, Serialize)]
 pub struct ASTNode<N> {
@@ -162,6 +168,11 @@ impl<N> ASTNode<N> {
     /// Consume the `ASTNode`, yielding the node and attached source info.
     pub fn into_inner(self) -> (N, SourceInfo) {
         (self.node, self.info)
+    }
+
+    /// Utility to construct a `ToAstError` with the source location taken from this node.
+    pub fn to_ast_err(&self, error_kind: impl Into<ToASTErrorKind>) -> ToASTError {
+        ToASTError::new(error_kind.into(), self.info.clone())
     }
 }
 
@@ -298,6 +309,8 @@ impl<N> ASTNode<Option<N>> {
     /// Get node data if present, or return an error result for `MissingNodeData`
     /// if it is `None`.
     pub fn ok_or_missing(&self) -> Result<&N, ToASTError> {
-        self.node.as_ref().ok_or(ToASTError::MissingNodeData)
+        self.node
+            .as_ref()
+            .ok_or_else(|| self.to_ast_err(ToASTErrorKind::MissingNodeData))
     }
 }

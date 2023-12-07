@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Include source spans on more parser error messages.
 - Better integration with `miette` for `ParseErrors`. If you have previously
   been just using the `Display` trait to get the error message from a
   `ParseErrors`, you may want to consider also examining other data provided by

@@ -27,7 +27,7 @@ mod utils;
 use crate::ast;
 use crate::entities::EntityUidJson;
 use crate::parser::cst;
-use crate::parser::err::{ParseError, ParseErrors, ToASTError};
+use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
@@ -118,9 +118,11 @@ impl TryFrom<cst::Policy> for Policy {
                 .conds
                 .into_iter()
                 .map(|node| {
-                    let (cond, _) = node.into_inner();
+                    let (cond, l) = node.into_inner();
                     let cond = cond.ok_or_else(|| {
-                        ParseErrors(vec![ParseError::ToAST(ToASTError::EmptyClause(None))])
+                        ParseErrors(vec![
+                            ToASTError::new(ToASTErrorKind::EmptyClause(None), l).into()
+                        ])
                     })?;
                     cond.try_into()
                 })
@@ -134,9 +136,9 @@ impl TryFrom<cst::Policy> for Policy {
                     match (errs.is_empty(), kv) {
                         (true, Some((k, v))) => Ok((k, v)),
                         (false, _) => Err(errs),
-                        (true, None) => {
-                            Err(ParseError::ToAST(ToASTError::AnnotationInvariantViolation).into())
-                        }
+                        (true, None) => Err(node
+                            .to_ast_err(ToASTErrorKind::AnnotationInvariantViolation)
+                            .into()),
                     }
                 })
                 .collect::<Result<_, ParseErrors>>()?;
@@ -164,7 +166,10 @@ impl TryFrom<cst::Cond> for Clause {
                 let ident = is_when.map(|is_when| {
                     cst::Ident::Ident(if is_when { "when" } else { "unless" }.into())
                 });
-                Err(ParseError::ToAST(ToASTError::EmptyClause(ident)).into())
+                Err(cond
+                    .cond
+                    .to_ast_err(ToASTErrorKind::EmptyClause(ident))
+                    .into())
             }
             Some(ref e) => e.try_into(),
         };

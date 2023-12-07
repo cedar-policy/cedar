@@ -1,4 +1,5 @@
-use crate::parser::err::{ParseError, ParseErrors, ToASTError};
+use crate::parser::err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind};
+use crate::parser::SourceInfo;
 use std::fmt::Display;
 use std::str::FromStr;
 
@@ -25,11 +26,22 @@ pub trait FromNormalizedStr: FromStr<Err = ParseErrors> + Display {
             // the normalized representation is indeed the one that was provided
             Ok(parsed)
         } else {
-            Err(ParseError::ToAST(ToASTError::NonNormalizedString {
-                kind: Self::describe_self(),
-                src: s.to_string(),
-                normalized_src,
-            })
+            let diff_byte = s
+                .bytes()
+                .zip(normalized_src.bytes())
+                .enumerate()
+                .find(|(_, (b0, b1))| b0 != b1)
+                .map(|(idx, _)| idx)
+                .unwrap_or(s.len().min(normalized_src.len()));
+
+            Err(ParseError::ToAST(ToASTError::new(
+                ToASTErrorKind::NonNormalizedString {
+                    kind: Self::describe_self(),
+                    src: s.to_string(),
+                    normalized_src,
+                },
+                SourceInfo::from_offset(diff_byte),
+            ))
             .into())
         }
     }
