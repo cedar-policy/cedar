@@ -620,7 +620,7 @@ impl ASTNode<Option<cst::VariableDef>> {
                     Some(ActionConstraint::is_eq(euid))
                 }
                 (cst::RelOp::Eq, OneOrMultipleRefs::Multiple(_)) => {
-                    errs.push(self.to_ast_err(ToASTErrorKind::InvalidScopeEqualityRHS));
+                    errs.push(rel_expr.to_ast_err(ToASTErrorKind::InvalidScopeEqualityRHS));
                     None
                 }
                 (op, _) => {
@@ -1885,7 +1885,7 @@ impl ASTNode<Option<cst::Primary>> {
                     match construct_expr_record(rec, src.clone()) {
                         Ok(rec) => Some(ExprOrSpecial::Expr(rec, src.clone())),
                         Err(e) => {
-                            errs.push(self.to_ast_err(e));
+                            errs.push(e);
                             None
                         }
                     }
@@ -2335,13 +2335,13 @@ fn construct_expr_set(s: Vec<ast::Expr>, l: SourceInfo) -> ast::Expr {
 fn construct_expr_record(
     kvs: Vec<(SmolStr, ast::Expr)>,
     l: SourceInfo,
-) -> Result<ast::Expr, ToASTErrorKind> {
+) -> Result<ast::Expr, ToASTError> {
     ast::ExprBuilder::new()
-        .with_source_info(l)
+        .with_source_info(l.clone())
         .record(kvs)
         .map_err(|e| match e {
             ExprConstructionError::DuplicateKeyInRecordLiteral { key } => {
-                ToASTErrorKind::DuplicateKeyInRecordLiteral { key }
+                ToASTError::new(ToASTErrorKind::DuplicateKeyInRecordLiteral { key }, l)
             }
         })
 }
