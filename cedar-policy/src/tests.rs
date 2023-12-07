@@ -2978,3 +2978,32 @@ mod template_tests {
         );
     }
 }
+
+mod issue_326 {
+    #[test]
+    fn shows_only_the_first_parse_error_in_display() {
+        use crate::PolicySet;
+        use cool_asserts::assert_matches;
+        use itertools::Itertools;
+        use miette::Diagnostic;
+        use std::str::FromStr;
+
+        let src = r#"
+            permit (
+                principal
+                action
+                resource
+            );
+        "#;
+        assert_matches!(PolicySet::from_str(src), Err(e) => {
+            assert!(e.to_string().contains("unexpected token `action`"), "actual error message was {e}");
+            assert!(!e.to_string().contains("unexpected token `resource`"), "actual error message was {e}");
+            // but the other error should show in related()
+            assert!(
+                e.related().into_iter().flatten().any(|err| err.to_string().contains("unexpected token `resource`")),
+                "actual related error messages were\n{}",
+                e.related().into_iter().flatten().map(ToString::to_string).join("\n")
+            );
+        });
+    }
+}

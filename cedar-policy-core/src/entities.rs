@@ -982,7 +982,7 @@ mod json_parsing_tests {
         let error = eparser.from_json_value(json).err().unwrap().to_string();
         assert!(
             error.contains("in uid field of <unknown entity>, invalid escape. The `__expr` escape is no longer supported"),
-            "{}",
+            "actual error message was: {}",
             error
         );
     }

@@ -35,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Better integration with `miette` for `ParseErrors`. If you have previously
+  been just using the `Display` trait to get the error message from a
+  `ParseErrors`, you may want to consider also examining other data provided by
+  the `miette::Diagnostic` trait, for instance `.help()`.
+  Alternately, you can use `miette` and its `fancy` feature to format the error
+  and all associated information in a pretty human-readable format or as JSON.
+  For more details, see `miette`'s
+  [documentation](https://docs.rs/miette/latest/miette/index.html).
 - Rename `cedar_policy_core::est::EstToAstError` to
   `cedar_policy_core::est::FromJsonError`. (#197)
 - Rename `cedar_policy_core::entities::JsonDeserializationError::ExtensionsError`
