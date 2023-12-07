@@ -33,18 +33,12 @@ use thiserror::Error;
 /// kinds of type errors.
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct TypeError {
-    // This struct has `on_expr` and `source_location` because many tests were
-    // written to check that an error was raised on a particular expression
-    // rather than at a source location. We can eliminate an AST clone by
-    // dropping `on_expr` and rewriting test to check for the correct source
-    // location.
-    //
-    // TODO: I'm confused by the above comment; note also that `Expr` already
-    // contains a source location, so `self.source_span()` is written to take
-    // `self.source_location` or, if that is not present, then the location
-    // embedded in the `Expr`.  This is redundant and we could use just
-    // `.on_expr`, but the above comment suggests using just `.source_location`
-    // instead, which is also fine if we don't need the `Expr`
+    // This struct has both `on_expr` and `source_location` because many tests
+    // were written to check that an error was raised on a particular expression
+    // rather than at a source location. This is redundant (particularly since
+    // an `Expr` already has a source location embedded in it).
+    // For greater efficiency, we could remove `on_expr` and rewrite the affected
+    // tests to only check for the correct `source_location`.
     pub(crate) on_expr: Option<Expr>,
     pub(crate) source_location: Option<miette::SourceSpan>,
     pub(crate) kind: TypeErrorKind,
