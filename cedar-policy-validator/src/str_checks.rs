@@ -85,12 +85,12 @@ pub fn confusable_string_checks<'a>(
         let e = policy.condition();
         for str in expr_text(&e) {
             let (loc, warning) = match str {
-                TextKind::String(l, s) => (l, permissable_str(s)),
-                TextKind::Identifier(l, i) => (l, permissable_ident(i)),
-                TextKind::Pattern(l, p) => {
+                TextKind::String(span, s) => (span, permissable_str(s)),
+                TextKind::Identifier(span, i) => (span, permissable_ident(i)),
+                TextKind::Pattern(span, p) => {
                     let pat = Pattern::new(p.iter().copied());
                     let as_str = format!("{pat}");
-                    (l, permissable_str(&as_str))
+                    (span, permissable_str(&as_str))
                 }
             };
 

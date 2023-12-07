@@ -1208,7 +1208,7 @@ impl ASTNode<Option<cst::Relation>> {
                 let _rest: Vec<_> = more.collect();
 
                 match (maybe_first, maybe_second, extended.len()) {
-                    (_, _, l) if l > 1 => {
+                    (_, _, len) if len > 1 => {
                         errs.push(self.to_ast_err(ToASTErrorKind::AmbiguousOperators));
                         None
                     }
@@ -1948,7 +1948,7 @@ impl ASTNode<Option<cst::Name>> {
 
         // computation and error generation is complete, so fail or construct
         match (maybe_name, path.len()) {
-            (Some(r), l) if l == name.path.len() => Some(construct_name(path, r)),
+            (Some(r), len) if len == name.path.len() => Some(construct_name(path, r)),
             _ => None,
         }
     }

@@ -563,7 +563,7 @@ impl Doc for ASTNode<Option<Primary>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let e = self.as_inner()?;
         match e {
-            Primary::Literal(l) => l.to_doc(context),
+            Primary::Literal(lit) => lit.to_doc(context),
             Primary::Ref(r) => r.to_doc(context),
             Primary::Name(n) => n.to_doc(context),
             Primary::Expr(e) => Some(

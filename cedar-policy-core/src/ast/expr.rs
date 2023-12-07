@@ -157,7 +157,7 @@ pub enum ExprKind<T = ()> {
 impl From<Value> for Expr {
     fn from(v: Value) -> Self {
         match v {
-            Value::Lit(l) => Expr::val(l),
+            Value::Lit(lit) => Expr::val(lit),
             Value::Set(s) => Expr::set(s.iter().map(|v| Expr::from(v.clone()))),
             // PANIC SAFETY: cannot have duplicate key because the input was already a BTreeMap
             #[allow(clippy::expect_used)]
@@ -1106,7 +1106,7 @@ impl<T> Expr<T> {
     pub fn eq_shape<U>(&self, other: &Expr<U>) -> bool {
         use ExprKind::*;
         match (self.expr_kind(), other.expr_kind()) {
-            (Lit(l), Lit(l1)) => l == l1,
+            (Lit(lit), Lit(lit1)) => lit == lit1,
             (Var(v), Var(v1)) => v == v1,
             (Slot(s), Slot(s1)) => s == s1,
             (
@@ -1226,7 +1226,7 @@ impl<T> Expr<T> {
     {
         mem::discriminant(self).hash(state);
         match self.expr_kind() {
-            ExprKind::Lit(l) => l.hash(state),
+            ExprKind::Lit(lit) => lit.hash(state),
             ExprKind::Var(v) => v.hash(state),
             ExprKind::Slot(s) => s.hash(state),
             ExprKind::Unknown(u) => u.hash(state),

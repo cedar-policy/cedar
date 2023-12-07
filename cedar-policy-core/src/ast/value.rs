@@ -54,7 +54,7 @@ impl TryFrom<Expr> for Value {
 
     fn try_from(value: Expr) -> Result<Self, Self::Error> {
         match value.into_expr_kind() {
-            ExprKind::Lit(l) => Ok(Value::Lit(l)),
+            ExprKind::Lit(lit) => Ok(Value::Lit(lit)),
             ExprKind::Unknown(_) => Err(NotValue::NotValue),
             ExprKind::Var(_) => Err(NotValue::NotValue),
             ExprKind::Slot(_) => Err(NotValue::NotValue),
@@ -223,7 +223,7 @@ impl FromIterator<Value> for Set {
                     literals
                         .into_iter()
                         .map(|v| match v {
-                            Value::Lit(l) => l,
+                            Value::Lit(lit) => lit,
                             // PANIC SAFETY: This is unreachable as every item in `literals` matches Value::Lit
                             #[allow(clippy::unreachable)]
                             _ => unreachable!(),
