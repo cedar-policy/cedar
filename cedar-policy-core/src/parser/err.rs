@@ -91,13 +91,45 @@ pub enum ParseLiteralError {
 }
 
 /// Errors in the CST -> AST transform, mostly well-formedness issues.
-#[derive(Debug, Error, Diagnostic, Clone, PartialEq, Eq)]
-#[diagnostic(code(cedar_policy_core::parser::to_ast_error))]
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
 #[error("{}", .kind)]
 pub struct ToASTError {
     kind: ToASTErrorKind,
-    #[label]
     source_info: SourceInfo,
+}
+
+// Aside from `labels` which is constructed based on the `source_info` in this
+// struct, everything is forwarded directly from `kind`.
+impl Diagnostic for ToASTError {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        Some(Box::new(iter::once(LabeledSpan::underline(
+            self.source_info.clone(),
+        ))))
+    }
+
+    fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.kind.code()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.kind.severity()
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.kind.help()
+    }
+
+    fn url<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.kind.url()
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.kind.source_code()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.kind.diagnostic_source()
+    }
 }
 
 impl ToASTError {
