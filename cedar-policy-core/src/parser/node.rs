@@ -311,6 +311,6 @@ impl<N> ASTNode<Option<N>> {
     pub fn ok_or_missing(&self) -> Result<&N, ToASTError> {
         self.node
             .as_ref()
-            .ok_or_else(|| ToASTError::new(ToASTErrorKind::MissingNodeData, self.info.clone()))
+            .ok_or_else(|| self.to_ast_err(ToASTErrorKind::MissingNodeData))
     }
 }

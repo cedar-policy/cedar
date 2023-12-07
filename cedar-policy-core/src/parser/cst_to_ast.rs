@@ -3817,9 +3817,8 @@ mod tests {
             assert!(
                 errs.iter()
                     .any(|err| { matches!(err, ParseError::ToAST(err) if err.kind() == &em) }),
-                "Expected to find error `{:?}`, but saw `{:?}`",
-                em,
-                errs
+                "Expected to find error `{em:?}`, but saw `{}`",
+                errs.pretty_with_helps(),
             );
         }
     }

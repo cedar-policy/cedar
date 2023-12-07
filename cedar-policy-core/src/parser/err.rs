@@ -92,7 +92,7 @@ pub enum ParseLiteralError {
 
 /// Errors in the CST -> AST transform, mostly well-formedness issues.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
-#[error("{}", .kind)]
+#[error("{kind}")]
 pub struct ToASTError {
     kind: ToASTErrorKind,
     source_info: SourceInfo,
