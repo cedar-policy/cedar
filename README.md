@@ -138,6 +138,9 @@ cedar-policy = "2.4.2"
 
 Which expresses that 2.4.2 is the minimum version of Cedar you accept, and you implicitly accept anything newer that is semver-compatible. See <https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html>.
 
+## Using Cedar as a Library
+Cedar is built to be a general-purpose library. As such, we can't anticipate every use case. We don't provide limits on e.g., policy length, schema length, depth of nested expressions, complexity of `like` operator expressions or set operations. If any of these variables can be changed by untrusted actors in your application, you almost certainly want to choose and enforce some limits on these variables.
+
 ## Security
 
 See [SECURITY](SECURITY.md) for more information.
