@@ -138,7 +138,8 @@ impl ToASTError {
         Self { kind, source_info }
     }
 
-    pub(crate) fn kind(&self) -> &ToASTErrorKind {
+    /// Get the error kind.
+    pub fn kind(&self) -> &ToASTErrorKind {
         &self.kind
     }
 
