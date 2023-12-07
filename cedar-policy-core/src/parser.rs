@@ -378,6 +378,7 @@ mod test_utils {
     /// Expect that the given `err` is an error with the given `ExpectedErrorMessage`.
     ///
     /// `src` is the original input text, just for better assertion-failure messages
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     pub fn expect_err(src: &str, err: &impl miette::Diagnostic, msg: &ExpectedErrorMessage<'_>) {
         assert_eq!(
             &err.to_string(),
@@ -395,6 +396,7 @@ mod test_utils {
     /// Expect that the given `ParseErrors` contains at least one error with the given `ExpectedErrorMessage`.
     ///
     /// `src` is the original input text, just for better assertion-failure messages
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     pub fn expect_some_error_matches(
         src: &str,
         errs: &ParseErrors,
