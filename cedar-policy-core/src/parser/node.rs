@@ -23,6 +23,8 @@ use std::ops::Range;
 use miette::{Diagnostic, LabeledSpan, Severity, SourceCode};
 use serde::{Deserialize, Serialize};
 
+use super::err::ToASTError;
+
 /// Describes where in policy source code a node in the CST or expression AST
 /// occurs.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -291,5 +293,11 @@ impl<N> ASTNode<Option<N>> {
         F: FnOnce(N, SourceInfo) -> Option<R>,
     {
         f(self.node?, self.info)
+    }
+
+    /// Get node data if present, or return an error result for `MissingNodeData`
+    /// if it is `None`.
+    pub fn ok_or_missing(&self) -> Result<&N, ToASTError> {
+        self.node.as_ref().ok_or(ToASTError::MissingNodeData)
     }
 }
