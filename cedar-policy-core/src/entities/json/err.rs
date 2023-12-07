@@ -71,6 +71,9 @@ pub enum JsonDeserializationError {
     RestrictedExpressionError(#[from] RestrictedExprError),
     /// A field that needs to be a literal entity reference, was some other JSON value
     #[error("{ctx}, expected a literal entity reference, but got `{}`", display_json_value(.got.as_ref()))]
+    #[diagnostic(help(
+        r#"literal entity references can be made with `{{ "type": "SomeType", "id": "SomeId" }}`"#
+    ))]
     ExpectedLiteralEntityRef {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,

@@ -241,9 +241,7 @@ impl CedarValueJson {
                 })?,
             )),
             Self::ExtnEscape { __extn: extn } => extn.into_expr(ctx),
-            Self::ExprEscape { .. } => Err(JsonDeserializationError::ExprTag(Box::new(
-                JsonDeserializationErrorContext::Context,
-            ))),
+            Self::ExprEscape { .. } => Err(JsonDeserializationError::ExprTag(Box::new(ctx()))),
         }
     }
 
