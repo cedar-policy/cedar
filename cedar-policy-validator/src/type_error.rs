@@ -291,13 +291,8 @@ pub enum TypeErrorKind {
     /// To pass strict validation a policy cannot contain an `in` expression
     /// where the entity type on the left might not be able to be a member of
     /// the entity type on the right.
-    #[error("operands to `in` do not respect the entity hierarchy")]
-    #[diagnostic(help("{}",
-        match (&.0.in_lhs, &.0.in_rhs) {
-            (Some(in_lhs), Some(in_rhs)) => format!("`{}` is not a descendant of `{}`", in_lhs, in_rhs),
-            _ => "".to_string(),
-        }
-    ))]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     HierarchyNotRespected(HierarchyNotRespected),
 }
 
@@ -376,10 +371,22 @@ pub struct FunctionArgumentValidationError {
 }
 
 /// Structure containing details about a hierarchy not respected error
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug, Hash, Eq, PartialEq, Error)]
+#[error("operands to `in` do not respect the entity hierarchy")]
 pub struct HierarchyNotRespected {
     in_lhs: Option<Name>,
     in_rhs: Option<Name>,
+}
+
+impl Diagnostic for HierarchyNotRespected {
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        match (&self.in_lhs, &self.in_rhs) {
+            (Some(in_lhs), Some(in_rhs)) => Some(Box::new(format!(
+                "`{in_lhs}` cannot be a descendant of `{in_rhs}`"
+            ))),
+            _ => None,
+        }
+    }
 }
 
 /// Contains more detailed information about an attribute access when it occurs
