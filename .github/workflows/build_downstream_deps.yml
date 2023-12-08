@@ -51,7 +51,7 @@ jobs:
         run: source ~/.profile && source ./set_env_vars.sh && RUSTFLAGS="-D warnings" cargo build
       - name: build cedar-drt/fuzz
         working-directory: cedar-spec/cedar-drt/fuzz
-        run: source ~/.profile && source ./set_env_vars.sh && RUSTFLAGS="--cfg=fuzzing -D warnings" cargo build
+        run: source ~/.profile && source ../set_env_vars.sh && RUSTFLAGS="--cfg=fuzzing -D warnings" cargo build
 
   cedar-java:
     name: CedarJava
