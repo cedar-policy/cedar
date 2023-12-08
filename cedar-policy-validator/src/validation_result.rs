@@ -144,26 +144,26 @@ pub enum ValidationErrorKind {
     /// A policy contains an entity type that is not declared in the schema.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    UnrecognizedEntityType(UnrecognizedEntityType),
+    UnrecognizedEntityType(#[from] UnrecognizedEntityType),
     /// A policy contains an action that is not declared in the schema.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    UnrecognizedActionId(UnrecognizedActionId),
+    UnrecognizedActionId(#[from] UnrecognizedActionId),
     /// There is no action satisfying the action head constraint that can be
     /// applied to a principal and resources that both satisfy their respective
     /// head conditions.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    InvalidActionApplication(InvalidActionApplication),
+    InvalidActionApplication(#[from] InvalidActionApplication),
     /// The type checker found an error.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    TypeError(TypeErrorKind),
+    TypeError(#[from] TypeErrorKind),
     /// An unspecified entity was used in a policy. This should be impossible,
     /// assuming that the policy was constructed by the parser.
-    #[error("unspecified entity with eid `{}`", .0.entity_id)]
-    #[diagnostic(help("unspecified entities cannot be used in policies"))]
-    UnspecifiedEntity(UnspecifiedEntity),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnspecifiedEntity(#[from] UnspecifiedEntityError),
 }
 
 impl ValidationErrorKind {
@@ -171,45 +171,48 @@ impl ValidationErrorKind {
         actual_entity_type: String,
         suggested_entity_type: Option<String>,
     ) -> ValidationErrorKind {
-        Self::UnrecognizedEntityType(UnrecognizedEntityType {
+        UnrecognizedEntityType {
             actual_entity_type,
             suggested_entity_type,
-        })
+        }
+        .into()
     }
 
     pub(crate) fn unrecognized_action_id(
         actual_action_id: String,
         suggested_action_id: Option<String>,
     ) -> ValidationErrorKind {
-        Self::UnrecognizedActionId(UnrecognizedActionId {
+        UnrecognizedActionId {
             actual_action_id,
             suggested_action_id,
-        })
+        }
+        .into()
     }
 
     pub(crate) fn invalid_action_application(
         would_in_fix_principal: bool,
         would_in_fix_resource: bool,
     ) -> ValidationErrorKind {
-        Self::InvalidActionApplication(InvalidActionApplication {
+        InvalidActionApplication {
             would_in_fix_principal,
             would_in_fix_resource,
-        })
+        }
+        .into()
     }
 
     pub(crate) fn type_error(type_error: TypeErrorKind) -> ValidationErrorKind {
-        Self::TypeError(type_error)
+        type_error.into()
     }
 
     pub(crate) fn unspecified_entity(entity_id: String) -> ValidationErrorKind {
-        Self::UnspecifiedEntity(UnspecifiedEntity { entity_id })
+        UnspecifiedEntityError { entity_id }.into()
     }
 }
 
 /// Structure containing details about an unrecognized entity type error.
 #[derive(Debug, Error)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
-#[error("unrecognized entity type `{}`", .actual_entity_type)]
+#[error("unrecognized entity type `{actual_entity_type}`")]
 pub struct UnrecognizedEntityType {
     /// The entity type seen in the policy.
     pub(crate) actual_entity_type: String,
@@ -230,7 +233,7 @@ impl Diagnostic for UnrecognizedEntityType {
 /// Structure containing details about an unrecognized action id error.
 #[derive(Debug, Error)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
-#[error("unrecognized action `{}`", .actual_action_id)]
+#[error("unrecognized action `{actual_action_id}`")]
 pub struct UnrecognizedActionId {
     /// Action Id seen in the policy.
     pub(crate) actual_action_id: String,
@@ -275,9 +278,11 @@ impl Diagnostic for InvalidActionApplication {
 }
 
 /// Structure containing details about an unspecified entity error.
-#[derive(Debug)]
+#[derive(Debug, Diagnostic, Error)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
-pub struct UnspecifiedEntity {
+#[error("unspecified entity with id `{entity_id}`")]
+#[diagnostic(help("unspecified entities cannot be used in policies"))]
+pub struct UnspecifiedEntityError {
     /// EID of the unspecified entity.
     pub(crate) entity_id: String,
 }
