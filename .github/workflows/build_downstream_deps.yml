@@ -105,7 +105,6 @@ jobs:
       - name: build tinytodo
         working-directory: cedar-examples/tinytodo
         run: |
-             printf "\npath = \"../cedar/cedar-policy\"" >> Cargo.toml
              cargo build
              cargo test
 
