@@ -109,7 +109,7 @@ impl Validator {
         })
     }
 
-    /// Generate UnrecognizedEntityType or UnspecifiedEntity notes for every
+    /// Generate UnrecognizedEntityType or UnspecifiedEntityError notes for every
     /// entity type in the slot environment that is either not in the schema,
     /// or unspecified.
     pub(crate) fn validate_entity_types_in_slots<'a>(
@@ -427,9 +427,11 @@ mod test {
     use super::*;
     use crate::{
         err::*, schema_file_format::NamespaceDefinition, schema_file_format::*, TypeErrorKind,
-        UnrecognizedActionId, UnrecognizedEntityType, UnspecifiedEntity, ValidationError,
+        UnrecognizedActionId, UnrecognizedEntityType, UnspecifiedEntityError, ValidationError,
         ValidationMode, Validator,
     };
+
+    use cool_asserts::assert_matches;
 
     #[test]
     fn validate_entity_type_empty_schema() -> Result<()> {
@@ -1628,12 +1630,11 @@ mod test {
         );
         let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
         assert_eq!(1, notes.len());
-        match notes.get(0) {
-            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntity { entity_id })) => {
+        assert_matches!(notes.get(0),
+            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
                 assert_eq!("foo", entity_id);
             }
-            _ => panic!("Unexpected variant of ValidationErrorKind."),
-        };
+        );
 
         // principal in Unspecified::"foo"
         let policy = Template::new(
@@ -1647,12 +1648,11 @@ mod test {
         );
         let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
         assert_eq!(1, notes.len());
-        match notes.get(0) {
-            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntity { entity_id })) => {
+        assert_matches!(notes.get(0),
+            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
                 assert_eq!("foo", entity_id);
             }
-            _ => panic!("Unexpected variant of ValidationErrorKind."),
-        };
+        );
 
         Ok(())
     }
@@ -1677,12 +1677,11 @@ mod test {
         let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
         println!("{:?}", notes);
         assert_eq!(1, notes.len());
-        match notes.get(0) {
-            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntity { entity_id })) => {
+        assert_matches!(notes.get(0),
+            Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
                 assert_eq!("foo", entity_id);
             }
-            _ => panic!("Unexpected variant of ValidationErrorKind."),
-        };
+        );
 
         Ok(())
     }

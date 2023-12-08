@@ -21,6 +21,7 @@ use std::sync::Arc;
 
 use either::Either;
 use itertools::Itertools;
+use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -41,7 +42,7 @@ pub enum Value {
     ExtensionValue(Arc<ExtensionValueWithArgs>),
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 /// An error that can be thrown converting an expression to a value
 pub enum NotValue {
     /// General error for non-values
@@ -107,7 +108,7 @@ impl From<Expr> for PartialValue {
 }
 
 /// Errors encountered when converting `PartialValue` to `Value`
-#[derive(Debug, PartialEq, Error)]
+#[derive(Debug, PartialEq, Diagnostic, Error)]
 pub enum PartialValueToValueError {
     /// The `PartialValue` is a residual, i.e., contains an unknown
     #[error("value contains a residual expression: `{residual}`")]

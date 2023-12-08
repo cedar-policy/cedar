@@ -2,6 +2,7 @@ use crate::{ValidatorEntityType, ValidatorSchema};
 use cedar_policy_core::entities::GetSchemaTypeError;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::{ast, entities};
+use miette::Diagnostic;
 use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -237,7 +238,7 @@ impl<'a> ast::RequestSchema for CoreSchema<'a> {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum RequestValidationError {
     /// Request action is not declared in the schema
     #[error("request's action `{action}` is not declared in the schema")]
@@ -286,6 +287,7 @@ pub enum RequestValidationError {
     /// Error computing the type of the `Context`; see the contained error type
     /// for details about the kinds of errors that can occur
     #[error("context is not valid: {0}")]
+    #[diagnostic(transparent)]
     TypeOfContext(GetSchemaTypeError),
 }
 

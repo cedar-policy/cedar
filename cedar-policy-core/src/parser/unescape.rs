@@ -121,7 +121,12 @@ impl std::fmt::Display for UnescapeError {
     // PANIC SAFETY By invariant, the range will always be within the bounds of `input`
     #[allow(clippy::indexing_slicing)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}: `{}`", self.err, &self.input[self.range.clone()])
+        write!(
+            f,
+            "the input `{}` is not a valid escape: {:?}",
+            &self.input[self.range.clone()],
+            &self.err
+        )
     }
 }
 

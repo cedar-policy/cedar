@@ -15,6 +15,7 @@
  */
 
 use cedar_policy_core::ast::{Pattern, Template};
+use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::expr_iterator::expr_text;
@@ -55,7 +56,7 @@ impl std::fmt::Display for ValidationWarning<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Error, Eq)]
+#[derive(Debug, Clone, PartialEq, Diagnostic, Error, Eq)]
 #[non_exhaustive]
 pub enum ValidationWarningKind {
     /// A string contains mixed scripts. Different scripts can contain visually similar characters which may be confused for each other.

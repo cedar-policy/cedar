@@ -2362,6 +2362,7 @@ mod tests {
     use crate::{
         ast::Expr,
         parser::{err::ParseErrors, test_utils::*, *},
+        test_utils::*,
     };
     use cool_asserts::assert_matches;
     use std::str::FromStr;

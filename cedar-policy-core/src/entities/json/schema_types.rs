@@ -20,6 +20,7 @@ use crate::ast::{
 };
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use itertools::Itertools;
+use miette::Diagnostic;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use thiserror::Error;
@@ -256,17 +257,19 @@ impl std::fmt::Display for AttributeType {
 }
 
 /// Errors encountered when trying to compute the [`SchemaType`] of something
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum GetSchemaTypeError {
     /// Encountered a heterogeneous set. Heterogeneous sets do not have a valid
     /// [`SchemaType`].
     #[error(transparent)]
+    #[diagnostic(transparent)]
     HeterogeneousSet(#[from] HeterogeneousSetError),
     /// Error looking up an extension function, which may be necessary to
     /// compute the [`SchemaType`] of expressions that contain extension
     /// function calls -- not to actually call the extension function, but to
     /// get metadata about it
     #[error(transparent)]
+    #[diagnostic(transparent)]
     ExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
     /// Trying to compute the [`SchemaType`], but the value or expression
     /// contains an [`Unknown`] that has insufficient type information
@@ -290,8 +293,9 @@ pub enum GetSchemaTypeError {
 
 /// Found a set whose elements don't all have the same type.  This doesn't match
 /// any possible schema.
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 #[error("set elements have different types: {ty1} and {ty2}")]
+#[diagnostic(help("for sets declared in a schema, set elements must all have the same type"))]
 pub struct HeterogeneousSetError {
     /// First element type which was found
     ty1: Box<SchemaType>,

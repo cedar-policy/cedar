@@ -24,7 +24,7 @@ use crate::ast::{
 };
 use crate::entities::{
     schematype_of_partialvalue, unwrap_or_clone, Entities, EntitiesError,
-    EntitySchemaConformanceError, GetSchemaTypeError, TCComputation,
+    EntitySchemaConformanceError, GetSchemaTypeError, TCComputation, UnexpectedEntityTypeError,
 };
 use crate::extensions::Extensions;
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
@@ -244,10 +244,11 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                             EntityType::Unspecified => vec![],
                         };
                         JsonDeserializationError::EntitySchemaConformance(
-                            EntitySchemaConformanceError::UnexpectedEntityType {
+                            UnexpectedEntityTypeError {
                                 uid: uid.clone(),
                                 suggested_types,
-                            },
+                            }
+                            .into(),
                         )
                     })?)
                 }

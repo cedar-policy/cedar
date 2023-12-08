@@ -8,11 +8,12 @@ use crate::ast::{
 };
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use either::Either;
+use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
 
 /// Errors raised when entities do not conform to the schema
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum EntitySchemaConformanceError {
     /// Encountered attribute that shouldn't exist on entities of this type
     #[error("attribute `{attr}` on `{uid}` should not exist according to the schema")]
@@ -39,6 +40,7 @@ pub enum EntitySchemaConformanceError {
         /// Name of the attribute where the type mismatch occurred
         attr: SmolStr,
         /// Underlying error
+        #[diagnostic(transparent)]
         err: TypeMismatchError,
     },
     /// Found a set whose elements don't all have the same type. This doesn't match
@@ -50,6 +52,7 @@ pub enum EntitySchemaConformanceError {
         /// Name of the attribute where the error occurred
         attr: SmolStr,
         /// Underlying error
+        #[diagnostic(transparent)]
         err: HeterogeneousSetError,
     },
     /// Found an ancestor of a type that's not allowed for that entity
@@ -64,20 +67,9 @@ pub enum EntitySchemaConformanceError {
     },
     /// Encountered an entity of a type which is not declared in the schema.
     /// Note that this error is only used for non-Action entity types.
-    #[error("entity `{uid}` has type `{}` which is not declared in the schema{}",
-        &.uid.entity_type(),
-        match .suggested_types.as_slice() {
-            [] => String::new(),
-            [ty] => format!(". Did you mean `{ty}`?"),
-            tys => format!(". Did you mean one of {:?}?", tys.iter().map(ToString::to_string).collect::<Vec<String>>())
-        }
-    )]
-    UnexpectedEntityType {
-        /// Entity that had the unexpected type
-        uid: EntityUID,
-        /// Suggested similar entity types that actually are declared in the schema (if any)
-        suggested_types: Vec<EntityType>,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnexpectedEntityType(#[from] UnexpectedEntityTypeError),
     /// Encountered an action which was not declared in the schema
     #[error("found action entity `{uid}`, but it was not declared as an action in the schema")]
     UndeclaredAction {
@@ -87,6 +79,9 @@ pub enum EntitySchemaConformanceError {
     /// Encountered an action whose definition doesn't precisely match the
     /// schema's declaration of that action
     #[error("definition of action `{uid}` does not match its schema declaration")]
+    #[diagnostic(help(
+        "to use the schema's definition of `{uid}`, simply omit it from the entities input data"
+    ))]
     ActionDeclarationMismatch {
         /// Action whose definition mismatched between entity data and schema
         uid: EntityUID,
@@ -101,8 +96,33 @@ pub enum EntitySchemaConformanceError {
         /// Name of the attribute where the error occurred
         attr: SmolStr,
         /// Underlying error
+        #[diagnostic(transparent)]
         err: ExtensionFunctionLookupError,
     },
+}
+
+/// Encountered an entity of a type which is not declared in the schema.
+/// Note that this error is only used for non-Action entity types.
+#[derive(Debug, Error)]
+#[error("entity `{uid}` has type `{}` which is not declared in the schema", .uid.entity_type())]
+pub struct UnexpectedEntityTypeError {
+    /// Entity that had the unexpected type
+    pub uid: EntityUID,
+    /// Suggested similar entity types that actually are declared in the schema (if any)
+    pub suggested_types: Vec<EntityType>,
+}
+
+impl Diagnostic for UnexpectedEntityTypeError {
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        match self.suggested_types.as_slice() {
+            [] => None,
+            [ty] => Some(Box::new(format!("did you mean `{ty}`?"))),
+            tys => Some(Box::new(format!(
+                "did you mean one of {:?}?",
+                tys.iter().map(ToString::to_string).collect::<Vec<String>>()
+            ))),
+        }
+    }
 }
 
 /// Struct used to check whether entities conform to a schema
@@ -145,7 +165,7 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                         .collect(),
                     EntityType::Unspecified => vec![],
                 };
-                EntitySchemaConformanceError::UnexpectedEntityType {
+                UnexpectedEntityTypeError {
                     uid: uid.clone(),
                     suggested_types,
                 }
@@ -307,14 +327,16 @@ pub fn typecheck_restricted_expr_against_schematype(
 
 /// Errors returned by [`typecheck_value_against_schematype()`] and
 /// [`typecheck_restricted_expr_against_schematype()`]
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum TypecheckError {
     /// The given value had a type different than what was expected
     #[error(transparent)]
+    #[diagnostic(transparent)]
     TypeMismatch(#[from] TypeMismatchError),
     /// The given value contained a heterogeneous set, which doesn't conform to
     /// any possible `SchemaType`
     #[error(transparent)]
+    #[diagnostic(transparent)]
     HeterogeneousSet(#[from] HeterogeneousSetError),
     /// Error looking up an extension function. This error can occur when
     /// typechecking a `RestrictedExpr` because that may require getting
@@ -323,5 +345,6 @@ pub enum TypecheckError {
     /// because that may require getting information about any extension
     /// functions referenced in residuals.
     #[error(transparent)]
+    #[diagnostic(transparent)]
     ExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
 }

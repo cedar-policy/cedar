@@ -387,8 +387,8 @@ impl<'e> Evaluator<'e> {
                                 // If arg2 is a record, then possibly they intended `arg2 has arg1`.
                                 if matches!(e.error_kind(), EvaluationErrorKind::TypeError { .. }) {
                                     match arg2 {
-                                        Value::Set(_) => e.set_advice("`in` is for checking the entity hierarchy, use `.contains()` to test set membership".into()),
-                                        Value::Record(_) =>  e.set_advice("`in` is for checking the entity hierarchy, use `has` to test if a record has a key".into()),
+                                        Value::Set(_) => e.set_advice("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()),
+                                        Value::Record(_) =>  e.set_advice("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()),
                                         _ => {}
                                     }
                                 };
@@ -3037,7 +3037,7 @@ pub mod test {
                         .expect("should be a valid identifier")
                 )],
                 Type::Long,
-                "`in` is for checking the entity hierarchy, use `.contains()` to test set membership".into(),
+                "`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into(),
             ))
         );
         // "foo" in { "foo": 2, "bar": true }
@@ -3055,7 +3055,7 @@ pub mod test {
                         .expect("should be a valid identifier")
                 )],
                 Type::String,
-                "`in` is for checking the entity hierarchy, use `has` to test if a record has a key".into(),
+                "`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into(),
             ))
         );
         // A in { "foo": 2, "bar": true }

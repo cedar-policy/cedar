@@ -36,10 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Include source spans on more parser error messages.
-- Better integration with `miette` for `ParseErrors`. If you have previously
-  been just using the `Display` trait to get the error message from a
-  `ParseErrors`, you may want to consider also examining other data provided by
-  the `miette::Diagnostic` trait, for instance `.help()`.
+- Better integration with `miette` for various error types. If you have
+  previously been just using the `Display` trait to get the error message from a
+  Cedar error type, you may want to consider also examining other data provided
+  by the `miette::Diagnostic` trait, for instance `.help()`.
   Alternately, you can use `miette` and its `fancy` feature to format the error
   and all associated information in a pretty human-readable format or as JSON.
   For more details, see `miette`'s

@@ -25,13 +25,15 @@ use crate::types::{EntityLUB, EntityRecordKind, RequestEnv};
 use super::types::Type;
 
 use itertools::Itertools;
+use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
 
 /// The structure for type errors. A type errors knows the expression that
 /// triggered the type error, as well as additional information for specific
 /// kinds of type errors.
-#[derive(Debug, Hash, PartialEq, Eq)]
+#[derive(Debug, Hash, PartialEq, Eq, Error)]
+#[error("{kind}")]
 pub struct TypeError {
     // This struct has both `on_expr` and `source_location` because many tests
     // were written to check that an error was raised on a particular expression
@@ -42,6 +44,47 @@ pub struct TypeError {
     pub(crate) on_expr: Option<Expr>,
     pub(crate) source_location: Option<miette::SourceSpan>,
     pub(crate) kind: TypeErrorKind,
+}
+
+// custom impl of `Diagnostic`: source location is from .source_span(),
+// everything else forwarded to .kind
+impl Diagnostic for TypeError {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        self.source_span().as_ref().map(|info| {
+            let label = miette::LabeledSpan::underline(info.clone());
+            let ret: Box<dyn Iterator<Item = miette::LabeledSpan>> =
+                Box::new(std::iter::once(label));
+            ret
+        })
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.kind.source_code()
+    }
+
+    fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.kind.code()
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.kind.help()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.kind.severity()
+    }
+
+    fn url<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.kind.url()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.kind.diagnostic_source()
+    }
+
+    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
+        self.kind.related()
+    }
 }
 
 impl TypeError {
@@ -193,17 +236,9 @@ impl TypeError {
     }
 }
 
-impl Display for TypeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.kind.fmt(f)
-    }
-}
-
-impl std::error::Error for TypeError {}
-
 /// Represents the different kinds of type errors and contains information
 /// specific to that type error kind.
-#[derive(Debug, Error, Hash, Eq, PartialEq)]
+#[derive(Debug, Diagnostic, Error, Hash, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum TypeErrorKind {
     /// The typechecker expected to see a subtype of one of the types in
@@ -221,20 +256,8 @@ pub enum TypeErrorKind {
     IncompatibleTypes(IncompatibleTypes),
     /// The typechecker detected an access to a record or entity attribute
     /// that it could not statically guarantee would be present.
-    #[error(
-        "attribute {} not found{}{}{}",
-        .0.attribute_access,
-        match &.0.suggestion {
-            Some(suggestion) => format!(", did you mean `{suggestion}`?"),
-            None => "".to_string(),
-        },
-        if .0.suggestion.is_none() && .0.may_exist { "." } else { "" },
-        if .0.may_exist {
-            " There may be additional attributes that the validator is not able to reason about"
-        } else {
-            ""
-        }
-    )]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     UnsafeAttributeAccess(UnsafeAttributeAccess),
     /// The typechecker could not conclude that an access to an optional
     /// attribute was safe.
@@ -242,7 +265,7 @@ pub enum TypeErrorKind {
     UnsafeOptionalAttributeAccess(UnsafeOptionalAttributeAccess),
     /// The typechecker found that a policy condition will always evaluate to false.
     #[error(
-        "policy is impossible. The policy expression evaluates to false for all valid requests"
+        "policy is impossible: the policy expression evaluates to false for all valid requests"
     )]
     ImpossiblePolicy,
     /// Undefined extension function.
@@ -258,7 +281,8 @@ pub enum TypeErrorKind {
     #[error("wrong call style in extension function application. Expected {}, got {}", .0.expected, .0.actual)]
     WrongCallStyle(WrongCallStyle),
     /// Error returned by custom extension function argument validation
-    #[error("error during extension function argument validation: {}", .0.msg)]
+    #[error("error during extension function argument validation: {0}")]
+    #[diagnostic(transparent)]
     FunctionArgumentValidationError(FunctionArgumentValidationError),
     #[error("empty set literals are forbidden in policies")]
     EmptySetForbidden,
@@ -267,11 +291,8 @@ pub enum TypeErrorKind {
     /// To pass strict validation a policy cannot contain an `in` expression
     /// where the entity type on the left might not be able to be a member of
     /// the entity type on the right.
-    #[error("operands to `in` do not respect the entity hierarchy{}",
-        match (&.0.in_lhs, &.0.in_rhs) {
-            (Some(in_lhs), Some(in_rhs)) => format!(". `{}` is not a descendant of `{}`", in_lhs, in_rhs),
-            _ => "".to_string(),
-        })]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     HierarchyNotRespected(HierarchyNotRespected),
 }
 
@@ -289,13 +310,25 @@ pub struct IncompatibleTypes {
 }
 
 /// Structure containing details about a missing attribute error.
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug, Hash, Eq, PartialEq, Error)]
+#[error("attribute {attribute_access} not found")]
 pub struct UnsafeAttributeAccess {
     attribute_access: AttributeAccess,
     suggestion: Option<String>,
     /// When this is true, the attribute might still exist, but the validator
     /// cannot guarantee that it will.
     may_exist: bool,
+}
+
+impl Diagnostic for UnsafeAttributeAccess {
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        match (&self.suggestion, self.may_exist) {
+            (Some(suggestion), false) => Some(Box::new(format!("did you mean `{suggestion}`?"))),
+            (None, true) => Some(Box::new("there may be additional attributes that the validator is not able to reason about".to_string())),
+            (Some(suggestion), true) => Some(Box::new(format!("did you mean `{suggestion}`? (there may also be additional attributes that the validator is not able to reason about)"))),
+            (None, false) => None,
+        }
+    }
 }
 
 /// Structure containing details about an unsafe optional attribute error.
@@ -331,16 +364,29 @@ pub struct WrongCallStyle {
 }
 
 /// Structure containing details about a function argument validation error.
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug, Hash, Eq, PartialEq, Diagnostic, Error)]
+#[error("{msg}")]
 pub struct FunctionArgumentValidationError {
     msg: String,
 }
 
 /// Structure containing details about a hierarchy not respected error
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Debug, Hash, Eq, PartialEq, Error)]
+#[error("operands to `in` do not respect the entity hierarchy")]
 pub struct HierarchyNotRespected {
     in_lhs: Option<Name>,
     in_rhs: Option<Name>,
+}
+
+impl Diagnostic for HierarchyNotRespected {
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        match (&self.in_lhs, &self.in_rhs) {
+            (Some(in_lhs), Some(in_rhs)) => Some(Box::new(format!(
+                "`{in_lhs}` cannot be a descendant of `{in_rhs}`"
+            ))),
+            _ => None,
+        }
+    }
 }
 
 /// Contains more detailed information about an attribute access when it occurs

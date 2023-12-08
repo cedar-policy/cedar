@@ -16,10 +16,11 @@
 
 use crate::ast::*;
 use crate::evaluator::EvaluationError;
+use miette::Diagnostic;
 use thiserror::Error;
 
 /// Errors that can occur during authorization
-#[derive(Debug, PartialEq, Eq, Clone, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
 pub enum AuthorizationError {
     /// An error occurred when evaluating a policy.
     #[error("while evaluating policy `{id}`: {error}")]
@@ -27,6 +28,7 @@ pub enum AuthorizationError {
         /// Id of the policy with an error
         id: PolicyID,
         /// Underlying evaluation error
+        #[diagnostic(transparent)]
         error: EvaluationError,
     },
 }

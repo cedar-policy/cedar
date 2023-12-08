@@ -27,6 +27,7 @@ use crate::{
 };
 use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use itertools::Itertools;
+use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use serde_with::MapPreventDuplicates;
@@ -247,7 +248,7 @@ struct TemplateLink {
 struct Links(Vec<Link>);
 
 /// Error returned for duplicate link ids in a template instantiation
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Clone, Diagnostic, Error)]
 pub enum DuplicateLinkError {
     /// Duplicate instantiations for the same slot
     #[error("duplicate instantiations of the slot(s): {}", .0.iter().map(|s| format!("`{s}`")).join(", "))]

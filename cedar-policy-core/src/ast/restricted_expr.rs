@@ -276,7 +276,7 @@ impl TryFrom<PartialValue> for RestrictedExpr {
 }
 
 /// Errors when converting `PartialValue` to `RestrictedExpr`
-#[derive(Debug, PartialEq, Error)]
+#[derive(Debug, PartialEq, Diagnostic, Error)]
 pub enum PartialValueToRestrictedExprError {
     /// The `PartialValue` contains a nontrivial residual that isn't a valid `RestrictedExpr`
     #[error("residual is not a valid restricted expression: `{residual}`")]
@@ -608,14 +608,16 @@ pub enum RestrictedExprError {
 }
 
 /// Errors possible from `RestrictedExpr::from_str()`
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
 pub enum RestrictedExprParseError {
     /// Failed to parse the expression entirely
     #[error("failed to parse restricted expression: {0}")]
+    #[diagnostic(transparent)]
     Parse(#[from] ParseErrors),
     /// Parsed successfully as an expression, but failed to construct a
     /// restricted expression, for the reason indicated in the underlying error
     #[error(transparent)]
+    #[diagnostic(transparent)]
     RestrictedExpr(#[from] RestrictedExprError),
 }
 

@@ -17,6 +17,7 @@
 use crate::entities::{ContextJsonDeserializationError, ContextJsonParser, NullContextSchema};
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
+use miette::Diagnostic;
 use serde::Serialize;
 use smol_str::SmolStr;
 use std::sync::Arc;
@@ -327,7 +328,7 @@ impl std::fmt::Display for Context {
 }
 
 /// Errors while trying to create a `Context`
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum ContextCreationError {
     /// Tried to create a `Context` out of something other than a record
     #[error("expression is not a record: `{expr}`")]
@@ -337,17 +338,19 @@ pub enum ContextCreationError {
     },
     /// Error evaluating the expression given for the `Context`
     #[error(transparent)]
+    #[diagnostic(transparent)]
     Evaluation(#[from] EvaluationError),
     /// Error constructing the expression given for the `Context`.
     /// Only returned by `Context::from_pairs()`
     #[error(transparent)]
+    #[diagnostic(transparent)]
     ExprConstruction(#[from] ExprConstructionError),
 }
 
 /// Trait for schemas capable of validating `Request`s
 pub trait RequestSchema {
     /// Error type returned when a request fails validation
-    type Error: std::error::Error;
+    type Error: miette::Diagnostic;
     /// Validate the given `request`, returning `Err` if it fails validation
     fn validate_request(
         &self,
@@ -360,7 +363,7 @@ pub trait RequestSchema {
 #[derive(Debug, Clone)]
 pub struct RequestSchemaAllPass;
 impl RequestSchema for RequestSchemaAllPass {
-    type Error = std::convert::Infallible;
+    type Error = Infallible;
     fn validate_request(
         &self,
         _request: &Request,
@@ -369,6 +372,12 @@ impl RequestSchema for RequestSchemaAllPass {
         Ok(())
     }
 }
+
+/// Wrapper around `std::convert::Infallible` which also implements
+/// `miette::Diagnostic`
+#[derive(Debug, Diagnostic, Error)]
+#[error(transparent)]
+pub struct Infallible(pub std::convert::Infallible);
 
 #[cfg(test)]
 mod test {
