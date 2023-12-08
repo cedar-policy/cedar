@@ -362,7 +362,7 @@ pub enum ToASTErrorKind {
     /// Returned when a CST expression is invalid
     #[error("`{0}` is not a valid expression")]
     InvalidExpression(cst::Name),
-    /// Returned when a function or method is called with the wrong arity.
+    /// Returned when a function or method is called with the wrong arity
     #[error("call to `{name}` requires exactly {expected} argument{}, but got {got} argument{}", if .expected == &1 { "" } else { "s" }, if .got == &1 { "" } else { "s" })]
     WrongArity {
         /// Name of the function or method being called
