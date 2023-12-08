@@ -295,6 +295,7 @@ pub enum GetSchemaTypeError {
 /// any possible schema.
 #[derive(Debug, Diagnostic, Error)]
 #[error("set elements have different types: {ty1} and {ty2}")]
+#[diagnostic(help("for sets declared in a schema, set elements must all have the same type"))]
 pub struct HeterogeneousSetError {
     /// First element type which was found
     ty1: Box<SchemaType>,

@@ -49,12 +49,15 @@ pub enum SchemaError {
     /// context or entity attribute record. Entity types in the error message
     /// are fully qualified, including any implicit or explicit namespaces.
     #[error("undeclared entity type(s): {0:?}")]
+    #[diagnostic(help("any entity types appearing anywhere in a schema need to be declared in `entityTypes`"))]
     UndeclaredEntityTypes(HashSet<String>),
     /// Undeclared action(s) used in the `memberOf` field of an action.
     #[error("undeclared action(s): {0:?}")]
+    #[diagnostic(help("any actions appearing in `memberOf` need to be declared in `actions`"))]
     UndeclaredActions(HashSet<String>),
     /// Undeclared common type(s) used in entity or context attributes.
     #[error("undeclared common type(s): {0:?}")]
+    #[diagnostic(help("any common types used in entity or context attributes need to be declared in `commonTypes`"))]
     UndeclaredCommonTypes(HashSet<String>),
     /// Duplicate specifications for an entity type. Argument is the name of
     /// the duplicate entity type.
@@ -95,11 +98,16 @@ pub enum SchemaError {
     ActionEntityTypeDeclared,
     /// `context` or `shape` fields are not records
     #[error("{0} is declared with a type other than `Record`")]
+    #[diagnostic(help("{}", match .0 {
+        ContextOrShape::ActionContext(_) => "action contexts must have type `Record`",
+        ContextOrShape::EntityTypeShape(_) => "entity type shapes must have type `Record`",
+    }))]
     ContextOrShapeNotRecord(ContextOrShape),
     /// An action entity (transitively) has an attribute that is an empty set.
     /// The validator cannot assign a type to an empty set.
     /// This error variant should only be used when `PermitAttributes` is enabled.
     #[error("action `{0}` has an attribute that is an empty set")]
+    #[diagnostic(help("actions are not currently allowed to have attributes whose value is an empty set"))]
     ActionAttributesContainEmptySet(EntityUID),
     /// An action entity (transitively) has an attribute of unsupported type (`ExprEscape`, `EntityEscape` or `ExtnEscape`).
     /// This error variant should only be used when `PermitAttributes` is enabled.
@@ -111,7 +119,8 @@ pub enum SchemaError {
     ActionAttrEval(EntityAttrEvaluationError),
     /// Error thrown when the schema contains the `__expr` escape.
     /// Support for this escape form has been dropped.
-    #[error("uses the `__expr` escape, which is no longer supported")]
+    #[error("the `__expr` escape is no longer supported")]
+    #[diagnostic(help("to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly"))]
     ExprEscapeUsed,
 }
 

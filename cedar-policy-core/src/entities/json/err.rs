@@ -56,6 +56,10 @@ pub enum JsonDeserializationError {
     Serde(#[from] serde_json::Error),
     /// Contents of an escape failed to parse.
     #[error("failed to parse escape `{kind}`: {value}, errors: {errs}")]
+    #[diagnostic(help("{}", match .kind {
+        EscapeKind::Entity => r#"an __entity escape should have a value like `{ "type": "SomeType", "id": "SomeId" }`"#,
+        EscapeKind::Extension => r#"an __extn escape should have a value like `{ "fn": "SomeFn", "arg": "SomeArg" }`"#,
+    }))]
     ParseEscape {
         /// Escape kind
         kind: EscapeKind,
@@ -82,6 +86,7 @@ pub enum JsonDeserializationError {
     },
     /// A field that needs to be an extension value, was some other JSON value
     #[error("{ctx}, expected an extension value, but got `{}`", display_json_value(.got.as_ref()))]
+    #[diagnostic(help(r#"extension values can be made with `{{ "fn": "SomeFn", "id": "SomeId" }}`"#))]
     ExpectedExtnValue {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -94,6 +99,7 @@ pub enum JsonDeserializationError {
     ContextCreation(#[from] ContextCreationError),
     /// Parents of actions should be actions, but this action has a non-action parent
     #[error("action `{uid}` has a non-action parent `{parent}`")]
+    #[diagnostic(help("parents of actions need to have type `Action` themselves, perhaps namespaced"))]
     ActionParentIsNotAction {
         /// Action entity that had the invalid parent
         uid: EntityUID,
@@ -103,6 +109,7 @@ pub enum JsonDeserializationError {
     /// Schema-based parsing needed an implicit extension constructor, but no suitable
     /// constructor was found
     #[error("{ctx}, missing extension constructor for {arg_type} -> {return_type}")]
+    #[diagnostic(help("expected a value of type {return_type} because of the schema"))]
     MissingImpliedConstructor {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -210,7 +217,7 @@ pub enum JsonDeserializationError {
     /// explicit-constructor form.
     #[error("{ctx}, argument `{arg}` to implicit constructor contains an unknown; this is not currently supported")]
     #[diagnostic(help(
-        "to pass an unknown to an extension function, use the explicit constructor form"
+        r#"expected an extension value here because of the schema. To pass an unknown to an extension function, use the explicit constructor form: `{{ "fn": "SomeFn", "arg": "SomeArg" }}`"#
     ))]
     UnknownInImplicitConstructorArg {
         /// Context of this error
@@ -219,8 +226,8 @@ pub enum JsonDeserializationError {
         arg: Box<RestrictedExpr>,
     },
     /// Raised when a JsonValue contains the no longer supported `__expr` escape
-    #[error("{0}, invalid escape")]
-    #[diagnostic(help("the `__expr` escape is no longer supported"))]
+    #[error("{0}, the `__expr` escape is no longer supported")]
+    #[diagnostic(help("to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly"))]
     ExprTag(Box<JsonDeserializationErrorContext>),
 }
 
