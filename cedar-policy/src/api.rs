@@ -1439,7 +1439,7 @@ impl<'a> From<cedar_policy_validator::ValidationError<'a>> for ValidationError<'
     }
 }
 
-// custom impl of Diagnostic: source location is from .location, everything else
+// custom impl of `Diagnostic`: source location is from .location, everything else
 // forwarded to .error_kind
 impl<'a> Diagnostic for ValidationError<'a> {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
@@ -1572,7 +1572,7 @@ impl<'a> From<cedar_policy_validator::ValidationWarning<'a>> for ValidationWarni
     }
 }
 
-// custom impl of Diagnostic: source location is from .location, everything else
+// custom impl of `Diagnostic`: source location is from .location, everything else
 // forwarded to .kind
 impl<'a> Diagnostic for ValidationWarning<'a> {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {

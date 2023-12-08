@@ -30,7 +30,7 @@ pub struct EvaluationError {
     advice: Option<String>,
 }
 
-// custom impl of Diagnostic: non-trivial implementation of `help()`.
+// custom impl of `Diagnostic`: non-trivial implementation of `help()`,
 // everything else forwarded to `.error_kind`
 impl Diagnostic for EvaluationError {
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
