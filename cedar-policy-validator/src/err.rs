@@ -57,9 +57,11 @@ pub enum SchemaError {
     #[error("undeclared action(s): {0:?}")]
     #[diagnostic(help("any actions appearing in `memberOf` need to be declared in `actions`"))]
     UndeclaredActions(HashSet<String>),
-    /// Undeclared common type(s) used in entity or context attributes.
-    #[error("undeclared common type(s): {0:?}")]
-    #[diagnostic(help("any common types used in entity or context attributes need to be declared in `commonTypes`"))]
+    /// This error occurs in either of the following cases (see discussion on #477):
+    ///     - undeclared common type(s) appearing in entity or context attributes
+    ///     - common type(s) (declared or not) appearing in declarations of other common types
+    #[error("undeclared common type(s), or common type(s) used in the declaration of another common type: {0:?}")]
+    #[diagnostic(help("any common types used in entity or context attributes need to be declared in `commonTypes`, and currently, common types may not reference other common types"))]
     UndeclaredCommonTypes(HashSet<String>),
     /// Duplicate specifications for an entity type. Argument is the name of
     /// the duplicate entity type.
