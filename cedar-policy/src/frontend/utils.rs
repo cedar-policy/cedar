@@ -90,6 +90,7 @@ impl InterfaceResult {
 }
 
 #[cfg(test)]
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_is_failure(result: &InterfaceResult, internal: bool, err: &str) {
     use cool_asserts::assert_matches;
     use itertools::Itertools;

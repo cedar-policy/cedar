@@ -48,6 +48,7 @@ impl PolicySetModel {
         }
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_name_unique(&self, policy_id: &String) {
         assert!(!self.static_policy_names.iter().any(|p| p == policy_id));
         assert!(!self.link_names.iter().any(|p| p == policy_id));

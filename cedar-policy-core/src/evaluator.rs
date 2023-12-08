@@ -3865,14 +3865,11 @@ pub mod test {
         );
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_restricted_expression_error(v: Result<PartialValue>) {
-        match v {
-            Err(e) => assert_matches!(
-                e.error_kind(),
-                EvaluationErrorKind::InvalidRestrictedExpression { .. }
-            ),
-            Ok(v) => panic!("Got wrong response: {v}"),
-        }
+        assert_matches!(v, Err(e) => {
+            assert_matches!(e.error_kind(), EvaluationErrorKind::InvalidRestrictedExpression { .. });
+        });
     }
 
     #[test]

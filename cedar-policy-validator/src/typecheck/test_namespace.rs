@@ -67,10 +67,12 @@ fn namespaced_entity_type_schema() -> SchemaFragment {
     .expect("Expected valid schema")
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_expr_typechecks_namespace_schema(e: Expr, t: Type) {
     assert_typechecks(namespaced_entity_type_schema(), e, t)
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_expr_typecheck_fails_namespace_schema(e: Expr, t: Option<Type>, errs: Vec<TypeError>) {
     assert_typecheck_fails(namespaced_entity_type_schema(), e, t, errs)
 }
@@ -470,6 +472,7 @@ fn multiple_namespaces_applies_to() {
 
 // Test cases added for namespace bug found by DRT.
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typecheck_fails_namespace_schema(
     p: StaticPolicy,
     expected_type_errors: Vec<TypeError>,

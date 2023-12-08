@@ -1800,6 +1800,7 @@ mod partial_schema {
 
     use crate::{NamespaceDefinition, Validator};
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_validates_with_empty_schema(policy: StaticPolicy) {
         let schema = serde_json::from_str::<NamespaceDefinition>(
             r#"

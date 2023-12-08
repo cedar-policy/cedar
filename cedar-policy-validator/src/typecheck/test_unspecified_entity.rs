@@ -63,10 +63,12 @@ fn schema_with_unspecified() -> NamespaceDefinition {
     .expect("Expected valid schema.")
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typechecks(p: StaticPolicy) {
     test_utils::assert_policy_typechecks(schema_with_unspecified(), p);
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typecheck_fails(p: StaticPolicy, expected_type_errors: Vec<TypeError>) {
     test_utils::assert_policy_typecheck_fails(schema_with_unspecified(), p, expected_type_errors);
 }

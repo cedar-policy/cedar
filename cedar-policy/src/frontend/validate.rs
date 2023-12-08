@@ -146,8 +146,8 @@ enum ValidateAnswer {
 #[cfg(test)]
 mod test {
     use crate::frontend::utils::assert_is_failure;
-
     use super::*;
+    use cool_asserts::assert_matches;
     use std::collections::HashMap;
 
     #[test]
@@ -433,42 +433,24 @@ mod test {
         );
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_validates_without_notes(result: InterfaceResult) {
-        match result {
-            InterfaceResult::Success { result } => {
-                let parsed_result: ValidateAnswer = serde_json::from_str(result.as_str()).unwrap();
-                match parsed_result {
-                    ValidateAnswer::ParseFailed { .. } => {
-                        panic!("expected parse to succeed, but got {parsed_result:?}")
-                    }
-                    ValidateAnswer::Success { notes, .. } => {
-                        assert_eq!(notes.len(), 0, "Unexpected validation notes: {notes:?}");
-                    }
-                }
-            }
-            InterfaceResult::Failure { .. } => {
-                panic!("expected call to succeed but got {:?}", &result)
-            }
-        }
+        assert_matches!(result, InterfaceResult::Success { result } => {
+            let parsed_result: ValidateAnswer = serde_json::from_str(result.as_str()).unwrap();
+            assert_matches!(parsed_result, ValidateAnswer::Success { notes, .. } => {
+                assert_eq!(notes.len(), 0, "Unexpected validation notes: {notes:?}");
+            });
+        });
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_validates_with_notes(result: InterfaceResult, expected_num_notes: usize) {
-        match result {
-            InterfaceResult::Success { result } => {
-                let parsed_result: ValidateAnswer = serde_json::from_str(result.as_str()).unwrap();
-                match parsed_result {
-                    ValidateAnswer::ParseFailed { .. } => {
-                        panic!("expected parse to succeed, but got {parsed_result:?}")
-                    }
-                    ValidateAnswer::Success { notes, .. } => {
-                        assert_eq!(notes.len(), expected_num_notes);
-                    }
-                }
-            }
-            InterfaceResult::Failure { .. } => {
-                panic!("expected call to succeed but got {:?}", &result)
-            }
-        }
+        assert_matches!(result, InterfaceResult::Success { result } => {
+            let parsed_result: ValidateAnswer = serde_json::from_str(result.as_str()).unwrap();
+            assert_matches!(parsed_result, ValidateAnswer::Success { notes, .. } => {
+                assert_eq!(notes.len(), expected_num_notes);
+            });
+        });
     }
 
     #[test]

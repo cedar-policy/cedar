@@ -19,26 +19,23 @@
 #![allow(clippy::panic)]
 // PANIC SAFETY unit tests
 #![allow(clippy::indexing_slicing)]
+
+use cool_asserts::assert_matches;
+use serde_json::json;
 use std::collections::HashSet;
 
 use cedar_policy_core::ast::{EntityUID, Expr, ExprBuilder};
 
 use crate::{types::Type, SchemaFragment};
-
-use serde_json::json;
-
 use super::test_utils::{empty_schema_file, with_typechecker_from_schema};
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_expr_has_annotated_ast(e: &Expr, annotated: &Expr<Option<Type>>) {
     with_typechecker_from_schema(empty_schema_file(), |tc| {
         let mut errs = HashSet::new();
-        match tc.typecheck_expr(e, &mut errs) {
-            super::TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
-                assert_eq!(&expr_type, annotated)
-            }
-            super::TypecheckAnswer::TypecheckFail { .. } => panic!("Typechecking should succeed."),
-            super::TypecheckAnswer::RecursionLimit => panic!("Should not have hit recursion limit"),
-        }
+        assert_matches!(tc.typecheck_expr(e, &mut errs), super::TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
+            assert_eq!(&expr_type, annotated);
+        });
     });
 }
 

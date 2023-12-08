@@ -466,6 +466,7 @@ fn parse_policy_set_from_individual_policies(
 mod test {
     use super::*;
     use crate::{frontend::utils::assert_is_failure, EntityUid};
+    use cool_asserts::assert_matches;
     use std::collections::HashMap;
 
     #[test]
@@ -1138,46 +1139,28 @@ mod test {
         );
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_is_authorized(result: InterfaceResult) {
-        match result {
-            InterfaceResult::Success { result } => {
-                let parsed_result: AuthorizationAnswer =
-                    serde_json::from_str(result.as_str()).unwrap();
-                match parsed_result {
-                    AuthorizationAnswer::ParseFailed { .. } => {
-                        panic!("expected parse to succeed, but got {parsed_result:?}")
-                    }
-                    AuthorizationAnswer::Success { response } => {
-                        assert_eq!(response.decision, Decision::Allow);
-                        assert_eq!(response.diagnostics.errors.len(), 0);
-                    }
-                }
-            }
-            InterfaceResult::Failure { .. } => {
-                panic!("Expected a successful response, not {result:?}");
-            }
-        }
+        assert_matches!(result, InterfaceResult::Success { result } => {
+            let parsed_result: AuthorizationAnswer =
+                serde_json::from_str(result.as_str()).unwrap();
+            assert_matches!(parsed_result, AuthorizationAnswer::Success { response } => {
+                assert_eq!(response.decision, Decision::Allow);
+                assert_eq!(response.diagnostics.errors.len(), 0);
+            });
+        });
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_is_not_authorized(result: InterfaceResult) {
-        match result {
-            InterfaceResult::Success { result } => {
-                let parsed_result: AuthorizationAnswer =
-                    serde_json::from_str(result.as_str()).unwrap();
-                match parsed_result {
-                    AuthorizationAnswer::ParseFailed { .. } => {
-                        panic!("expected parse to succeed, but got {parsed_result:?}")
-                    }
-                    AuthorizationAnswer::Success { response } => {
-                        assert_eq!(response.decision, Decision::Deny);
-                        assert_eq!(response.diagnostics.errors.len(), 0);
-                    }
-                }
-            }
-            InterfaceResult::Failure { .. } => {
-                panic!("Expected a successful response, not {result:?}");
-            }
-        }
+        assert_matches!(result, InterfaceResult::Success { result } => {
+            let parsed_result: AuthorizationAnswer =
+                serde_json::from_str(result.as_str()).unwrap();
+            assert_matches!(parsed_result, AuthorizationAnswer::Success { response } => {
+                assert_eq!(response.decision, Decision::Deny);
+                assert_eq!(response.diagnostics.errors.len(), 0);
+            });
+        });
     }
 
     #[test]
