@@ -1266,8 +1266,8 @@ impl TryFrom<&ASTNode<Option<cst::Member>>> for Expr {
     }
 }
 
-/// Return the single argument in arguments iterator, or return a wrong arity
-/// error if the iterator has 0 more more than 1 element.
+/// Return the single argument in `args` iterator, or return a wrong arity error
+/// if the iterator has 0 elements or more than 1 element.
 pub fn extract_single_argument<T>(
     args: impl ExactSizeIterator<Item = T>,
     fn_name: &'static str,
