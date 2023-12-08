@@ -195,7 +195,6 @@ impl RequestArgs {
                     qjson.context,
                     schema.and_then(|s| Some((s, action.as_ref()?))),
                 )
-                .into_diagnostic()
                 .wrap_err_with(|| format!("failed to create a context from {jsonfile}"))?;
                 Request::new(
                     principal,
@@ -243,7 +242,6 @@ impl RequestArgs {
                             f,
                             schema.and_then(|s| Some((s, action.as_ref()?))),
                         )
-                        .into_diagnostic()
                         .wrap_err_with(|| format!("failed to create a context from {jsonfile}"))?,
                         Err(e) => Err(e).into_diagnostic().wrap_err_with(|| {
                             format!("error while loading context from {jsonfile}")
@@ -428,7 +426,7 @@ pub fn check_parse(args: &CheckParseArgs) -> CedarExitCode {
     match read_policy_set(args.policies_file.as_ref()) {
         Ok(_) => CedarExitCode::Success,
         Err(e) => {
-            println!("Error: {e:?}");
+            println!("{e:?}");
             CedarExitCode::Failure
         }
     }
@@ -450,7 +448,7 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
     let pset = match read_policy_set(Some(&args.policies_file)) {
         Ok(pset) => pset,
         Err(e) => {
-            println!("Error: {e:?}");
+            println!("{e:?}");
             return CedarExitCode::Failure;
         }
     };
@@ -458,7 +456,7 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
     let schema = match read_schema_file(&args.schema_file) {
         Ok(schema) => schema,
         Err(e) => {
-            println!("Error: {e:?}");
+            println!("{e:?}");
             return CedarExitCode::Failure;
         }
     };
@@ -501,14 +499,14 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
         None => None,
         Some(Ok(schema)) => Some(schema),
         Some(Err(e)) => {
-            println!("Error: {e:?}");
+            println!("{e:?}");
             return (CedarExitCode::Failure, EvalResult::Bool(false));
         }
     };
     let request = match args.request.get_request(schema.as_ref()) {
         Ok(q) => q,
         Err(e) => {
-            println!("Error: {e:?}");
+            println!("{e:?}");
             return (CedarExitCode::Failure, EvalResult::Bool(false));
         }
     };
@@ -516,7 +514,7 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
         match Expression::from_str(&args.expression).wrap_err("failed to parse the expression") {
             Ok(expr) => expr,
             Err(e) => {
-                println!("Error: {e:?}");
+                println!("{e:?}");
                 return (CedarExitCode::Failure, EvalResult::Bool(false));
             }
         };
@@ -525,17 +523,15 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
         Some(file) => match load_entities(file, schema.as_ref()) {
             Ok(entities) => entities,
             Err(e) => {
-                println!("Error: {e:?}");
+                println!("{e:?}");
                 return (CedarExitCode::Failure, EvalResult::Bool(false));
             }
         },
     };
-    match eval_expression(&request, &entities, &expr)
-        .into_diagnostic()
-        .wrap_err("failed to evaluate the expression")
+    match eval_expression(&request, &entities, &expr).wrap_err("failed to evaluate the expression")
     {
         Err(e) => {
-            println!("Error: {e:?}");
+            println!("{e:?}");
             return (CedarExitCode::Failure, EvalResult::Bool(false));
         }
         Ok(result) => {
@@ -547,7 +543,7 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
 
 pub fn link(args: &LinkArgs) -> CedarExitCode {
     if let Err(err) = link_inner(args) {
-        println!("Error: {err:?}");
+        println!("{err:?}");
         CedarExitCode::Failure
     } else {
         CedarExitCode::Success
@@ -566,7 +562,7 @@ fn format_policies_inner(args: &FormatArgs) -> Result<()> {
 
 pub fn format_policies(args: &FormatArgs) -> CedarExitCode {
     if let Err(err) = format_policies_inner(args) {
-        println!("Error: {err:?}");
+        println!("{err:?}");
         CedarExitCode::Failure
     } else {
         CedarExitCode::Success
@@ -664,7 +660,7 @@ fn new_inner(args: &NewArgs) -> Result<()> {
 
 pub fn new(args: &NewArgs) -> CedarExitCode {
     if let Err(err) = new_inner(args) {
-        println!("Error: {err:?}");
+        println!("{err:?}");
         CedarExitCode::Failure
     } else {
         CedarExitCode::Success
@@ -680,13 +676,11 @@ fn create_slot_env(data: &HashMap<SlotId, String>) -> Result<HashMap<SlotId, Ent
 fn link_inner(args: &LinkArgs) -> Result<()> {
     let mut policies = read_policy_set(Some(&args.policies_file))?;
     let slotenv = create_slot_env(&args.arguments.data)?;
-    policies
-        .link(
-            PolicyId::from_str(&args.template_id)?,
-            PolicyId::from_str(&args.new_id)?,
-            slotenv,
-        )
-        .into_diagnostic()?;
+    policies.link(
+        PolicyId::from_str(&args.template_id)?,
+        PolicyId::from_str(&args.new_id)?,
+        slotenv,
+    )?;
     let linked = policies
         .policy(&PolicyId::from_str(&args.new_id)?)
         .ok_or_else(|| miette!("Failed to add template-linked policy"))?;
@@ -761,13 +755,11 @@ impl From<TemplateLinked> for LiteralTemplateLinked {
 fn add_template_links_to_set(path: impl AsRef<Path>, policy_set: &mut PolicySet) -> Result<()> {
     for template_linked in load_liked_file(path)? {
         let slot_env = create_slot_env(&template_linked.args)?;
-        policy_set
-            .link(
-                PolicyId::from_str(&template_linked.template_id)?,
-                PolicyId::from_str(&template_linked.link_id)?,
-                slot_env,
-            )
-            .into_diagnostic()?;
+        policy_set.link(
+            PolicyId::from_str(&template_linked.template_id)?,
+            PolicyId::from_str(&template_linked.link_id)?,
+            slot_env,
+        )?;
     }
     Ok(())
 }
@@ -872,14 +864,12 @@ fn load_entities(entities_filename: impl AsRef<Path>, schema: Option<&Schema>) -
         .read(true)
         .open(entities_filename.as_ref())
     {
-        Ok(f) => Entities::from_json_file(f, schema)
-            .into_diagnostic()
-            .wrap_err_with(|| {
-                format!(
-                    "failed to parse entities from file {}",
-                    entities_filename.as_ref().display()
-                )
-            }),
+        Ok(f) => Entities::from_json_file(f, schema).wrap_err_with(|| {
+            format!(
+                "failed to parse entities from file {}",
+                entities_filename.as_ref().display()
+            )
+        }),
         Err(e) => Err(e).into_diagnostic().wrap_err_with(|| {
             format!(
                 "failed to open entities file {}",
@@ -902,12 +892,9 @@ fn rename_from_id_annotation(ps: PolicySet) -> Result<PolicySet> {
         Some(anno) => anno.parse().map(|a| t.new_id(a)),
     });
     for t in t_iter {
-        let template = t
-            .into_diagnostic()
-            .wrap_err("failed to parse policy id annotation")?;
+        let template = t.wrap_err("failed to parse policy id annotation")?;
         new_ps
             .add_template(template)
-            .into_diagnostic()
             .wrap_err("failed to add template to policy set")?;
     }
     let p_iter = ps.policies().map(|p| match p.annotation("id") {
@@ -915,12 +902,9 @@ fn rename_from_id_annotation(ps: PolicySet) -> Result<PolicySet> {
         Some(anno) => anno.parse().map(|a| p.new_id(a)),
     });
     for p in p_iter {
-        let policy = p
-            .into_diagnostic()
-            .wrap_err("failed to parse policy id annotation")?;
+        let policy = p.wrap_err("failed to parse policy id annotation")?;
         new_ps
             .add(policy)
-            .into_diagnostic()
             .wrap_err("failed to add template to policy set")?;
     }
     Ok(new_ps)
@@ -985,14 +969,12 @@ fn read_policy_set(
 
 fn read_schema_file(filename: impl AsRef<Path> + std::marker::Copy) -> Result<Schema> {
     let schema_src = read_from_file(filename, "schema")?;
-    Schema::from_str(&schema_src)
-        .into_diagnostic()
-        .wrap_err_with(|| {
-            format!(
-                "failed to parse schema from file {}",
-                filename.as_ref().display()
-            )
-        })
+    Schema::from_str(&schema_src).wrap_err_with(|| {
+        format!(
+            "failed to parse schema from file {}",
+            filename.as_ref().display()
+        )
+    })
 }
 
 /// This uses the Cedar API to call the authorization engine.

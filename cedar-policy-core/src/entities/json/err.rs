@@ -86,7 +86,9 @@ pub enum JsonDeserializationError {
     },
     /// A field that needs to be an extension value, was some other JSON value
     #[error("{ctx}, expected an extension value, but got `{}`", display_json_value(.got.as_ref()))]
-    #[diagnostic(help(r#"extension values can be made with `{{ "fn": "SomeFn", "id": "SomeId" }}`"#))]
+    #[diagnostic(help(
+        r#"extension values can be made with `{{ "fn": "SomeFn", "id": "SomeId" }}`"#
+    ))]
     ExpectedExtnValue {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -99,7 +101,9 @@ pub enum JsonDeserializationError {
     ContextCreation(#[from] ContextCreationError),
     /// Parents of actions should be actions, but this action has a non-action parent
     #[error("action `{uid}` has a non-action parent `{parent}`")]
-    #[diagnostic(help("parents of actions need to have type `Action` themselves, perhaps namespaced"))]
+    #[diagnostic(help(
+        "parents of actions need to have type `Action` themselves, perhaps namespaced"
+    ))]
     ActionParentIsNotAction {
         /// Action entity that had the invalid parent
         uid: EntityUID,

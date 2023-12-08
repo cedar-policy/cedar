@@ -21,15 +21,54 @@ use std::sync::Arc;
 use thiserror::Error;
 
 /// An error generated while evaluating an expression
-#[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Error)]
 #[error("{error_kind}")]
 pub struct EvaluationError {
     /// The kind of error that occurred
-    #[diagnostic(transparent)]
     error_kind: EvaluationErrorKind,
     /// Optional advice on how to fix the error
-    #[help]
     advice: Option<String>,
+}
+
+// custom impl of Diagnostic: non-trivial implementation of `help()`.
+// everything else forwarded to `.error_kind`
+impl Diagnostic for EvaluationError {
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        match (self.error_kind.help(), self.advice.as_ref()) {
+            (Some(help), None) => Some(help),
+            (None, Some(advice)) => Some(Box::new(advice)),
+            (Some(help), Some(advice)) => Some(Box::new(format!("{help}; {advice}"))),
+            (None, None) => None,
+        }
+    }
+
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.error_kind.code()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.error_kind.severity()
+    }
+
+    fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.error_kind.url()
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.error_kind.source_code()
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        self.error_kind.labels()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.error_kind.diagnostic_source()
+    }
+
+    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
+        self.error_kind.related()
+    }
 }
 
 impl EvaluationError {

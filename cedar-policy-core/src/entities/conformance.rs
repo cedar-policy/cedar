@@ -79,7 +79,9 @@ pub enum EntitySchemaConformanceError {
     /// Encountered an action whose definition doesn't precisely match the
     /// schema's declaration of that action
     #[error("definition of action `{uid}` does not match its schema declaration")]
-    #[diagnostic(help("to use the schema's definition of `{uid}`, simply omit it from the entities input data"))]
+    #[diagnostic(help(
+        "to use the schema's definition of `{uid}`, simply omit it from the entities input data"
+    ))]
     ActionDeclarationMismatch {
         /// Action whose definition mismatched between entity data and schema
         uid: EntityUID,

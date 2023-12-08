@@ -49,7 +49,9 @@ pub enum SchemaError {
     /// context or entity attribute record. Entity types in the error message
     /// are fully qualified, including any implicit or explicit namespaces.
     #[error("undeclared entity type(s): {0:?}")]
-    #[diagnostic(help("any entity types appearing anywhere in a schema need to be declared in `entityTypes`"))]
+    #[diagnostic(help(
+        "any entity types appearing anywhere in a schema need to be declared in `entityTypes`"
+    ))]
     UndeclaredEntityTypes(HashSet<String>),
     /// Undeclared action(s) used in the `memberOf` field of an action.
     #[error("undeclared action(s): {0:?}")]
@@ -107,7 +109,9 @@ pub enum SchemaError {
     /// The validator cannot assign a type to an empty set.
     /// This error variant should only be used when `PermitAttributes` is enabled.
     #[error("action `{0}` has an attribute that is an empty set")]
-    #[diagnostic(help("actions are not currently allowed to have attributes whose value is an empty set"))]
+    #[diagnostic(help(
+        "actions are not currently allowed to have attributes whose value is an empty set"
+    ))]
     ActionAttributesContainEmptySet(EntityUID),
     /// An action entity (transitively) has an attribute of unsupported type (`ExprEscape`, `EntityEscape` or `ExtnEscape`).
     /// This error variant should only be used when `PermitAttributes` is enabled.
