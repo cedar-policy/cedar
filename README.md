@@ -29,11 +29,10 @@ Cedar is designed for analysis using Automated Reasoning. This enables analyzer 
 
 Cedar can be used in your application by depending on the [`cedar-policy` crate](https://crates.io/crates/cedar-policy).
 
-Just add `cedar-policy` as a dependency in your `Cargo.toml`. For example:
+Just add `cedar-policy` as a dependency by running
 
-```toml
-[dependencies]
-cedar-policy = "2.4"
+```sh
+cargo add cedar-policy
 ```
 
 ## Crates in This Workspace
