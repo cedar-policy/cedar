@@ -63,7 +63,8 @@ pub enum FromJsonError {
         arg2: ast::Expr,
     },
     /// Error thrown while processing string escapes
-    #[error("invalid escape patterns: {:?}", .0.iter().map(|e| e.to_string()).collect::<Vec<String>>())]
+    // show just the first error in the main error message, like in [`ParseErrors`]; see #326 and discussion on #477
+    #[error("{}", match .0.first() { Some(err) => format!("{err}"), None => "invalid escape".into() })]
     UnescapeError(#[related] Vec<unescape::UnescapeError>),
     /// Error reported when the entity type tested by an `is` expression cannot be parsed.
     #[error("invalid entity type: {0}")]
