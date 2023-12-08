@@ -1139,10 +1139,11 @@ fn interpret_primary(
                 }
             }
         }
-        cst::Primary::Slot(node) => match node.ok_or_missing()? {
-            cst::Slot::Principal => Ok(Either::Right(Expr::slot(ast::SlotId::principal()))),
-            cst::Slot::Resource => Ok(Either::Right(Expr::slot(ast::SlotId::resource()))),
-        },
+        cst::Primary::Slot(node) => Ok(Either::Right(Expr::slot(
+            node.ok_or_missing()?
+                .try_into()
+                .map_err(|e| node.to_ast_err(e))?,
+        ))),
         cst::Primary::Expr(e) => Ok(Either::Right(e.try_into()?)),
         cst::Primary::EList(nodes) => nodes
             .into_iter()

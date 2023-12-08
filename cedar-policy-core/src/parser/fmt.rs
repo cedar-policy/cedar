@@ -442,10 +442,11 @@ impl fmt::Display for Str {
 impl std::fmt::Display for Slot {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let src = match self {
-            Slot::Principal => "principal",
-            Slot::Resource => "resource",
+            Slot::Principal => "?principal",
+            Slot::Resource => "?resource",
+            Slot::Other(slot) => slot.as_ref(),
         };
-        write!(f, "?{src}")
+        write!(f, "{src}")
     }
 }
 

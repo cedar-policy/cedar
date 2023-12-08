@@ -1043,7 +1043,7 @@ enum OneOrMultipleRefs {
 
 impl RefKind for OneOrMultipleRefs {
     fn err_str() -> &'static str {
-        "an entity uid, set of entity uids, or template slot"
+        "an entity uid or set of entity uids"
     }
 
     fn create_slot(errs: &mut ParseErrors, span: miette::SourceSpan) -> Option<Self> {
@@ -1782,9 +1782,15 @@ impl ASTNode<Option<cst::Primary>> {
         let prim = maybe_prim?;
         match prim {
             cst::Primary::Slot(s) => {
+                // Call `create_slot` first so that we fail immediately if the
+                // `RefKind` does not permit slots, and only then complain if
+                // it's the wrong slot. This avoids getting an error
+                // `found ?action instead of ?action` when `action` doesn't
+                // support slots.
+                let slot_ref = T::create_slot(errs, self.loc)?;
                 let slot = s.as_inner()?;
                 if slot.matches(var) {
-                    T::create_slot(errs, self.loc)
+                    Some(slot_ref)
                 } else {
                     errs.push(self.to_ast_err(ToASTErrorKind::wrong_node(
                         T::err_str(),
@@ -1903,17 +1909,29 @@ impl ASTNode<Option<cst::Primary>> {
 }
 
 impl ASTNode<Option<cst::Slot>> {
-    fn into_expr(self, _errs: &mut ParseErrors) -> Option<ast::Expr> {
-        let (s, src) = self.into_inner();
-        s.map(|s| ast::ExprBuilder::new().with_source_span(src).slot(s.into()))
+    fn into_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
+        match self.as_inner()?.try_into() {
+            Ok(slot_id) => Some(
+                ast::ExprBuilder::new()
+                    .with_source_span(self.loc)
+                    .slot(slot_id),
+            ),
+            Err(e) => {
+                errs.push(self.to_ast_err(e));
+                None
+            }
+        }
     }
 }
 
-impl From<cst::Slot> for ast::SlotId {
-    fn from(slot: cst::Slot) -> ast::SlotId {
+impl TryFrom<&cst::Slot> for ast::SlotId {
+    type Error = ToASTErrorKind;
+
+    fn try_from(slot: &cst::Slot) -> Result<Self, Self::Error> {
         match slot {
-            cst::Slot::Principal => ast::SlotId::principal(),
-            cst::Slot::Resource => ast::SlotId::resource(),
+            cst::Slot::Principal => Ok(ast::SlotId::principal()),
+            cst::Slot::Resource => Ok(ast::SlotId::resource()),
+            cst::Slot::Other(slot) => Err(ToASTErrorKind::InvalidSlot(slot.clone())),
         }
     }
 }
@@ -4186,6 +4204,41 @@ mod tests {
         for (src, expected) in invalid_exprs {
             assert_matches!(parse_expr(src), Err(e) => {
                 expect_err(src, &e, &expected);
+            });
+        }
+    }
+
+    #[test]
+    fn invalid_slot() {
+        let invalid_policies = [
+            (
+                r#"permit(principal, action, resource) when { principal == ?foo};"#,
+                ExpectedErrorMessage::error_and_help(
+                    "`?foo` is not a valid template slot",
+                    "a template slot may only be `?principal` or `?resource`",
+                )
+            ),
+            (
+                r#"permit(principal == ?foo, action, resource);"#,
+                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?foo instead of ?principal"),
+            ),
+            (
+                r#"permit(principal, action == ?action, resource);"#,
+                ExpectedErrorMessage::error("expected single entity uid or set of entity uids, got: template slot"),
+            ),
+            (
+                r#"permit(principal, action in [?bar], resource);"#,
+                ExpectedErrorMessage::error("expected single entity uid, got: template slot"),
+            ),
+            (
+                r#"permit(principal, action, resource in ?baz);"#,
+                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?baz instead of ?resource"),
+            ),
+        ];
+
+        for (p_src, expected) in invalid_policies {
+            assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+                expect_err(p_src, &e, &expected);
             });
         }
     }

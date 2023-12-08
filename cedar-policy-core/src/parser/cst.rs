@@ -369,6 +369,8 @@ pub enum Slot {
     Principal,
     /// Slot for Resource Constraints
     Resource,
+    /// Slot other than one of the valid slots
+    Other(SmolStr),
 }
 
 impl Slot {
