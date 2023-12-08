@@ -45,7 +45,7 @@ jobs:
       - name: build cedar-lean
         working-directory: cedar-spec/cedar-lean
         shell: bash
-        run: source ~/.profile && lake build Cedar
+        run: source ~/.profile && lake build Cedar:static DiffTest:static Std:static
       - name: build cedar-drt
         working-directory: cedar-spec/cedar-drt
         run: source ~/.profile && source ./set_env_vars.sh && RUSTFLAGS="-D warnings" cargo build
