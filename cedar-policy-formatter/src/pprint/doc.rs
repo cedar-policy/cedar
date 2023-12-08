@@ -37,7 +37,7 @@ impl Doc for Ident {
 impl Doc for ASTNode<Option<VariableDef>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let vd = self.as_inner()?;
-        let start_comment = get_comment_at_start(self.info.0.start, &mut context.tokens)?;
+        let start_comment = get_comment_at_start(self.loc, &mut context.tokens)?;
         let var_doc = vd.variable.as_inner()?.to_doc(context)?;
 
         let is_doc = match &vd.entity_type {
@@ -45,13 +45,13 @@ impl Doc for ASTNode<Option<VariableDef>> {
                 RcDoc::line()
                     .append(add_comment(
                         RcDoc::text("is"),
-                        get_comment_after_end(vd.variable.info.0.end, &mut context.tokens)?,
+                        get_comment_after_end(vd.variable.loc, &mut context.tokens)?,
                         RcDoc::nil(),
                     ))
                     .group()
                     .append(RcDoc::line().append(add_comment(
                         entity_type.to_doc(context)?,
-                        get_comment_at_start(entity_type.info.0.start, &mut context.tokens)?,
+                        get_comment_at_start(entity_type.loc, &mut context.tokens)?,
                         RcDoc::nil(),
                     )))
                     .nest(context.config.indent_width)
@@ -60,15 +60,15 @@ impl Doc for ASTNode<Option<VariableDef>> {
             None => Some(RcDoc::nil()),
         }?;
 
-        let end_comment = get_comment_at_end(self.info.0.end, &mut context.tokens)?;
+        let end_comment = get_comment_at_end(self.loc, &mut context.tokens)?;
 
         Some(match &vd.ineq {
             Some((op, rhs)) => {
                 let op_comment = match &vd.entity_type {
                     Some(entity_type) => {
-                        get_comment_after_end(entity_type.info.0.end, &mut context.tokens)?
+                        get_comment_after_end(entity_type.loc, &mut context.tokens)?
                     }
-                    None => get_comment_after_end(vd.variable.info.0.end, &mut context.tokens)?,
+                    None => get_comment_after_end(vd.variable.loc, &mut context.tokens)?,
                 };
                 get_leading_comment_doc_from_str(&start_comment.leading_comment).append(
                     var_doc
@@ -105,16 +105,16 @@ impl Doc for ASTNode<Option<VariableDef>> {
 impl Doc for ASTNode<Option<Cond>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let cond = self.as_inner()?;
-        let lb_comment = get_comment_after_end(cond.cond.info.0.end, &mut context.tokens)?;
-        let rb_comment = get_comment_at_end(self.info.0.end, &mut context.tokens)?;
-        let cond_comment = get_comment_at_start(cond.cond.info.0.start, &mut context.tokens)?;
+        let lb_comment = get_comment_after_end(cond.cond.loc, &mut context.tokens)?;
+        let rb_comment = get_comment_at_end(self.loc, &mut context.tokens)?;
+        let cond_comment = get_comment_at_start(cond.cond.loc, &mut context.tokens)?;
 
         let rb_doc = add_comment(RcDoc::text("}"), rb_comment, RcDoc::nil());
         let cond_doc = cond.cond.to_doc(context)?;
         Some(match cond.expr.as_ref() {
             Some(expr) => {
                 let expr_leading_comment =
-                    get_leading_comment_at_start(expr.info.0.start, &mut context.tokens)?;
+                    get_leading_comment_at_start(expr.loc, &mut context.tokens)?;
                 let expr_doc = expr.to_doc(context)?;
                 get_leading_comment_doc_from_str(&cond_comment.leading_comment).append(
                     cond_doc
@@ -180,9 +180,9 @@ impl Doc for ASTNode<Option<Expr>> {
                             .nest(context.config.indent_width),
                     )
                 }
-                let if_comment = get_comment_at_start(self.info.0.start, &mut context.tokens)?;
-                let else_comment = get_comment_after_end(c.info.0.end, &mut context.tokens)?;
-                let then_comment = get_comment_after_end(t.info.0.end, &mut context.tokens)?;
+                let if_comment = get_comment_at_start(self.loc, &mut context.tokens)?;
+                let else_comment = get_comment_after_end(c.loc, &mut context.tokens)?;
+                let then_comment = get_comment_after_end(t.loc, &mut context.tokens)?;
                 Some(
                     pp_group("if", if_comment, c, context)
                         .append(RcDoc::line())
@@ -207,7 +207,7 @@ impl Doc for ASTNode<Option<Or>> {
         let es: Vec<_> = std::iter::once(initial).chain(extended.iter()).collect();
         let mut d: RcDoc<'_> = RcDoc::nil();
         for e in es.iter().take(es.len() - 1) {
-            let op_comment = get_comment_after_end(e.info.0.end, &mut context.tokens)?;
+            let op_comment = get_comment_after_end(e.loc, &mut context.tokens)?;
             d = d
                 .append(e.to_doc(context))
                 .append(RcDoc::space())
@@ -227,7 +227,7 @@ impl Doc for ASTNode<Option<And>> {
         let es: Vec<_> = std::iter::once(initial).chain(extended.iter()).collect();
         let mut d: RcDoc<'_> = RcDoc::nil();
         for e in es.iter().take(es.len() - 1) {
-            let op_comment = get_comment_after_end(e.info.0.end, &mut context.tokens)?;
+            let op_comment = get_comment_after_end(e.loc, &mut context.tokens)?;
             d = d
                 .append(e.to_doc(context))
                 .append(RcDoc::space())
@@ -253,7 +253,7 @@ impl Doc for ASTNode<Option<Relation>> {
                                 .append(RcDoc::space())
                                 .append(add_comment(
                                     RcDoc::as_string(op),
-                                    get_comment_after_end(initial.info.0.end, &mut context.tokens)?,
+                                    get_comment_after_end(initial.loc, &mut context.tokens)?,
                                     RcDoc::nil(),
                                 ))
                                 .append(RcDoc::space())
@@ -269,7 +269,7 @@ impl Doc for ASTNode<Option<Relation>> {
                     .append(RcDoc::line())
                     .append(add_comment(
                         RcDoc::text("has"),
-                        get_comment_after_end(target.info.0.end, &mut context.tokens)?,
+                        get_comment_after_end(target.loc, &mut context.tokens)?,
                         RcDoc::nil(),
                     ))
                     .append(RcDoc::line())
@@ -282,7 +282,7 @@ impl Doc for ASTNode<Option<Relation>> {
                     .append(RcDoc::line())
                     .append(add_comment(
                         RcDoc::text("like"),
-                        get_comment_after_end(target.info.0.end, &mut context.tokens)?,
+                        get_comment_after_end(target.loc, &mut context.tokens)?,
                         RcDoc::nil(),
                     ))
                     .append(RcDoc::line())
@@ -299,7 +299,7 @@ impl Doc for ASTNode<Option<Relation>> {
                     .append(RcDoc::space())
                     .append(add_comment(
                         RcDoc::text("is"),
-                        get_comment_after_end(target.info.0.end, &mut context.tokens)?,
+                        get_comment_after_end(target.loc, &mut context.tokens)?,
                         RcDoc::nil(),
                     ))
                     .append(RcDoc::space())
@@ -314,7 +314,7 @@ impl Doc for ASTNode<Option<Relation>> {
                             .append(RcDoc::line())
                             .append(add_comment(
                                 RcDoc::text("in"),
-                                get_comment_after_end(entity_type.info.0.end, &mut context.tokens)?,
+                                get_comment_after_end(entity_type.loc, &mut context.tokens)?,
                                 RcDoc::nil(),
                             ))
                             .append(RcDoc::space())
@@ -350,7 +350,7 @@ impl Doc for ASTNode<Option<Add>> {
                             .append(RcDoc::space())
                             .append(add_comment(
                                 op.to_doc(context)?,
-                                get_comment_after_end(pair.1.info.0.end, &mut context.tokens)?,
+                                get_comment_after_end(pair.1.loc, &mut context.tokens)?,
                                 RcDoc::nil(),
                             ))
                             .append(RcDoc::line())
@@ -386,7 +386,7 @@ impl Doc for ASTNode<Option<Mult>> {
                             .append(RcDoc::space())
                             .append(add_comment(
                                 op.to_doc(context)?,
-                                get_comment_after_end(pair.1.info.0.end, &mut context.tokens)?,
+                                get_comment_after_end(pair.1.loc, &mut context.tokens)?,
                                 RcDoc::nil(),
                             ))
                             .append(RcDoc::line())
@@ -408,8 +408,7 @@ impl Doc for ASTNode<Option<Unary>> {
                 NegOp::OverBang | NegOp::OverDash => None,
                 NegOp::Bang(n) | NegOp::Dash(n) => {
                     let comment = get_comment_in_range(
-                        self.info.0.start,
-                        e.item.info.0.start,
+                        (self.loc.offset()..e.item.loc.offset()).into(),
                         &mut context.tokens,
                     );
                     if comment.len() != n as usize {
@@ -469,7 +468,7 @@ impl Doc for ASTNode<Option<RecInit>> {
                 .append(RcDoc::line_())
                 .append(add_comment(
                     RcDoc::as_string(":"),
-                    get_comment_after_end(e.0.info.0.end, &mut context.tokens)?,
+                    get_comment_after_end(e.0.loc, &mut context.tokens)?,
                     RcDoc::nil(),
                 ))
                 .append(value_doc),
@@ -493,7 +492,7 @@ impl Doc for ASTNode<Option<Name>> {
                         Some((
                             d.append(add_comment(
                                 RcDoc::as_string("::"),
-                                get_comment_after_end(e.info.0.end, &mut context.tokens)?,
+                                get_comment_after_end(e.loc, &mut context.tokens)?,
                                 RcDoc::nil(),
                             ))
                             .append(p.to_doc(context)?),
@@ -503,7 +502,7 @@ impl Doc for ASTNode<Option<Name>> {
                     .0
                     .append(add_comment(
                         RcDoc::as_string("::"),
-                        get_comment_after_end(path.last()?.info.0.end, &mut context.tokens)?,
+                        get_comment_after_end(path.last()?.loc, &mut context.tokens)?,
                         RcDoc::nil(),
                     ))
                     .append(n.to_doc(context)),
@@ -517,7 +516,7 @@ impl Doc for ASTNode<Option<Str>> {
         let e = self.as_inner()?;
         Some(add_comment(
             RcDoc::as_string(e),
-            get_comment_at_start(self.info.0.start, &mut context.tokens)?,
+            get_comment_at_start(self.loc, &mut context.tokens)?,
             RcDoc::nil(),
         ))
     }
@@ -530,7 +529,7 @@ impl Doc for ASTNode<Option<Ref>> {
                 path.to_doc(context)?
                     .append(add_comment(
                         RcDoc::text("::"),
-                        get_comment_after_end(path.info.0.end, &mut context.tokens)?,
+                        get_comment_after_end(path.loc, &mut context.tokens)?,
                         RcDoc::nil(),
                     ))
                     .append(eid.to_doc(context)?),
@@ -544,7 +543,7 @@ impl Doc for ASTNode<Option<Literal>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         Some(add_comment(
             RcDoc::as_string(self.as_inner()?),
-            get_comment_at_start(self.info.0.start, &mut context.tokens)?,
+            get_comment_at_start(self.loc, &mut context.tokens)?,
             RcDoc::nil(),
         ))
     }
@@ -554,7 +553,7 @@ impl Doc for ASTNode<Option<Slot>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         Some(add_comment(
             RcDoc::as_string(self.as_inner()?),
-            get_comment_at_start(self.info.0.start, &mut context.tokens)?,
+            get_comment_at_start(self.loc, &mut context.tokens)?,
             RcDoc::nil(),
         ))
     }
@@ -564,13 +563,13 @@ impl Doc for ASTNode<Option<Primary>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let e = self.as_inner()?;
         match e {
-            Primary::Literal(l) => l.to_doc(context),
+            Primary::Literal(lit) => lit.to_doc(context),
             Primary::Ref(r) => r.to_doc(context),
             Primary::Name(n) => n.to_doc(context),
             Primary::Expr(e) => Some(
                 add_comment(
                     RcDoc::text("("),
-                    get_comment_at_start(self.info.0.start, &mut context.tokens)?,
+                    get_comment_at_start(self.loc, &mut context.tokens)?,
                     RcDoc::nil(),
                 )
                 .append(RcDoc::nil())
@@ -578,7 +577,7 @@ impl Doc for ASTNode<Option<Primary>> {
                 .append(RcDoc::nil())
                 .append(add_comment(
                     RcDoc::text(")"),
-                    get_comment_at_end(self.info.0.end, &mut context.tokens)?,
+                    get_comment_at_end(self.loc, &mut context.tokens)?,
                     RcDoc::nil(),
                 ))
                 .group(),
@@ -594,7 +593,7 @@ impl Doc for ASTNode<Option<Primary>> {
                             Some((
                                 d.append(add_comment(
                                     RcDoc::as_string(","),
-                                    get_comment_after_end(e.info.0.end, &mut context.tokens)?,
+                                    get_comment_after_end(e.loc, &mut context.tokens)?,
                                     RcDoc::nil(),
                                 ))
                                 .append(RcDoc::line())
@@ -606,12 +605,12 @@ impl Doc for ASTNode<Option<Primary>> {
                 },
                 add_comment(
                     RcDoc::text("["),
-                    get_comment_at_start(self.info.0.start, &mut context.tokens)?,
+                    get_comment_at_start(self.loc, &mut context.tokens)?,
                     RcDoc::nil(),
                 ),
                 add_comment(
                     RcDoc::text("]"),
-                    get_comment_at_end(self.info.0.end, &mut context.tokens)?,
+                    get_comment_at_end(self.loc, &mut context.tokens)?,
                     RcDoc::nil(),
                 ),
             )),
@@ -626,7 +625,7 @@ impl Doc for ASTNode<Option<Primary>> {
                             Some((
                                 d.append(add_comment(
                                     RcDoc::as_string(","),
-                                    get_comment_after_end(e.info.0.end, &mut context.tokens)?,
+                                    get_comment_after_end(e.loc, &mut context.tokens)?,
                                     RcDoc::nil(),
                                 ))
                                 .append(RcDoc::line())
@@ -638,12 +637,12 @@ impl Doc for ASTNode<Option<Primary>> {
                 },
                 add_comment(
                     RcDoc::text("{"),
-                    get_comment_at_start(self.info.0.start, &mut context.tokens)?,
+                    get_comment_at_start(self.loc, &mut context.tokens)?,
                     RcDoc::nil(),
                 ),
                 add_comment(
                     RcDoc::text("}"),
-                    get_comment_at_end(self.info.0.end, &mut context.tokens)?,
+                    get_comment_at_end(self.loc, &mut context.tokens)?,
                     RcDoc::nil(),
                 ),
             )),
@@ -659,7 +658,7 @@ impl Doc for ASTNode<Option<MemAccess>> {
             MemAccess::Field(f) => Some(
                 add_comment(
                     RcDoc::text("."),
-                    get_comment_at_start(self.info.0.start, &mut context.tokens)?,
+                    get_comment_at_start(self.loc, &mut context.tokens)?,
                     RcDoc::nil(),
                 )
                 .append(f.to_doc(context)),
@@ -667,7 +666,7 @@ impl Doc for ASTNode<Option<MemAccess>> {
             MemAccess::Call(args) => Some(
                 add_comment(
                     RcDoc::text("("),
-                    get_comment_at_start(self.info.0.start, &mut context.tokens)?,
+                    get_comment_at_start(self.loc, &mut context.tokens)?,
                     RcDoc::nil(),
                 )
                 .append(RcDoc::line_())
@@ -683,7 +682,7 @@ impl Doc for ASTNode<Option<MemAccess>> {
                                 Some((
                                     d.append(add_comment(
                                         RcDoc::as_string(","),
-                                        get_comment_after_end(e.info.0.end, &mut context.tokens)?,
+                                        get_comment_after_end(e.loc, &mut context.tokens)?,
                                         RcDoc::nil(),
                                     ))
                                     .append(RcDoc::line())
@@ -698,14 +697,14 @@ impl Doc for ASTNode<Option<MemAccess>> {
                 .append(RcDoc::line_())
                 .append(add_comment(
                     RcDoc::text(")"),
-                    get_comment_at_end(self.info.0.end, &mut context.tokens)?,
+                    get_comment_at_end(self.loc, &mut context.tokens)?,
                     RcDoc::nil(),
                 )),
             ),
             MemAccess::Index(idx) => Some(
                 add_comment(
                     RcDoc::text("["),
-                    get_comment_at_start(self.info.0.start, &mut context.tokens)?,
+                    get_comment_at_start(self.loc, &mut context.tokens)?,
                     RcDoc::nil(),
                 )
                 .append(RcDoc::line_())
@@ -713,7 +712,7 @@ impl Doc for ASTNode<Option<MemAccess>> {
                 .append(RcDoc::line_())
                 .append(add_comment(
                     RcDoc::text("]"),
-                    get_comment_at_end(self.info.0.end, &mut context.tokens)?,
+                    get_comment_at_end(self.loc, &mut context.tokens)?,
                     RcDoc::nil(),
                 )),
             ),
@@ -728,17 +727,17 @@ impl Doc for ASTNode<Option<Annotation>> {
         let val_doc = annotation.value.to_doc(context);
         let at_doc = add_comment(
             RcDoc::text("@"),
-            get_comment_at_start(self.info.0.start, &mut context.tokens)?,
+            get_comment_at_start(self.loc, &mut context.tokens)?,
             RcDoc::nil(),
         );
         let lp_doc = add_comment(
             RcDoc::text("("),
-            get_comment_after_end(annotation.key.info.0.end, &mut context.tokens)?,
+            get_comment_after_end(annotation.key.loc, &mut context.tokens)?,
             RcDoc::nil(),
         );
         let rp_doc = add_comment(
             RcDoc::text(")"),
-            get_comment_at_end(self.info.0.end, &mut context.tokens)?,
+            get_comment_at_end(self.loc, &mut context.tokens)?,
             RcDoc::hardline(),
         );
         Some(
@@ -755,7 +754,7 @@ impl Doc for ASTNode<Option<Ident>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         Some(add_comment(
             self.as_inner()?.to_doc(context)?,
-            get_comment_at_start(self.info.0.start, &mut context.tokens)?,
+            get_comment_at_start(self.loc, &mut context.tokens)?,
             RcDoc::nil(),
         ))
     }
@@ -770,7 +769,7 @@ impl Doc for ASTNode<Option<Policy>> {
             RcDoc::nil(),
         );
         let eff_leading_comment =
-            get_leading_comment_at_start(policy.effect.info.0.start, &mut context.tokens)?;
+            get_leading_comment_at_start(policy.effect.loc, &mut context.tokens)?;
         let eff_doc = policy.effect.to_doc(context)?;
         let vars = &policy.variables;
         let principal_doc = vars.get(0)?.to_doc(context)?;
@@ -786,13 +785,13 @@ impl Doc for ASTNode<Option<Policy>> {
             principal_doc
                 .append(add_comment(
                     RcDoc::text(","),
-                    get_comment_after_end(vars.get(0)?.info.0.end, &mut context.tokens)?,
+                    get_comment_after_end(vars.get(0)?.loc, &mut context.tokens)?,
                     RcDoc::space(),
                 ))
                 .append(action_doc)
                 .append(add_comment(
                     RcDoc::text(","),
-                    get_comment_after_end(vars.get(1)?.info.0.end, &mut context.tokens)?,
+                    get_comment_after_end(vars.get(1)?.loc, &mut context.tokens)?,
                     RcDoc::space(),
                 ))
                 .append(resource_doc)
@@ -804,13 +803,13 @@ impl Doc for ASTNode<Option<Policy>> {
                     principal_doc
                         .append(add_comment(
                             RcDoc::text(","),
-                            get_comment_after_end(vars.get(0)?.info.0.end, &mut context.tokens)?,
+                            get_comment_after_end(vars.get(0)?.loc, &mut context.tokens)?,
                             RcDoc::hardline(),
                         ))
                         .append(action_doc)
                         .append(add_comment(
                             RcDoc::text(","),
-                            get_comment_after_end(vars.get(1)?.info.0.end, &mut context.tokens)?,
+                            get_comment_after_end(vars.get(1)?.loc, &mut context.tokens)?,
                             RcDoc::hardline(),
                         ))
                         .append(resource_doc),
@@ -829,10 +828,7 @@ impl Doc for ASTNode<Option<Policy>> {
                             .append(RcDoc::line())
                             .append(add_comment(
                                 RcDoc::text("("),
-                                get_comment_after_end(
-                                    policy.effect.info.0.end,
-                                    &mut context.tokens,
-                                )?,
+                                get_comment_after_end(policy.effect.loc, &mut context.tokens)?,
                                 RcDoc::nil(),
                             ))
                             .group(),
@@ -841,7 +837,7 @@ impl Doc for ASTNode<Option<Policy>> {
                 .append(vars_doc)
                 .append(add_comment(
                     RcDoc::text(")"),
-                    get_comment_after_end(vars.get(2)?.info.0.end, &mut context.tokens)?,
+                    get_comment_after_end(vars.get(2)?.loc, &mut context.tokens)?,
                     if conds.is_empty() {
                         RcDoc::nil()
                     } else {
@@ -851,7 +847,7 @@ impl Doc for ASTNode<Option<Policy>> {
                 .append(cond_doc)
                 .append(add_comment(
                     RcDoc::text(";"),
-                    get_comment_at_end(self.info.0.end, &mut context.tokens)?,
+                    get_comment_at_end(self.loc, &mut context.tokens)?,
                     RcDoc::nil(),
                 )),
         )

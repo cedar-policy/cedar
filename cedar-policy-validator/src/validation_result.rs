@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::{ast::PolicyID, parser::SourceInfo};
+use cedar_policy_core::ast::PolicyID;
 use thiserror::Error;
 
 use crate::{TypeErrorKind, ValidationWarning};
@@ -84,12 +84,12 @@ pub struct ValidationError<'a> {
 impl<'a> ValidationError<'a> {
     pub(crate) fn with_policy_id(
         id: &'a PolicyID,
-        source_info: Option<SourceInfo>,
+        source_span: Option<miette::SourceSpan>,
         error_kind: ValidationErrorKind,
     ) -> Self {
         Self {
             error_kind,
-            location: SourceLocation::new(id, source_info),
+            location: SourceLocation::new(id, source_span),
         }
     }
 
@@ -113,14 +113,14 @@ impl<'a> ValidationError<'a> {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SourceLocation<'a> {
     policy_id: &'a PolicyID,
-    source_info: Option<SourceInfo>,
+    source_span: Option<miette::SourceSpan>,
 }
 
 impl<'a> SourceLocation<'a> {
-    pub(crate) fn new(policy_id: &'a PolicyID, source_info: Option<SourceInfo>) -> Self {
+    pub(crate) fn new(policy_id: &'a PolicyID, source_span: Option<miette::SourceSpan>) -> Self {
         Self {
             policy_id,
-            source_info,
+            source_span,
         }
     }
 
@@ -129,12 +129,8 @@ impl<'a> SourceLocation<'a> {
         self.policy_id
     }
 
-    pub fn source_info(&self) -> &Option<SourceInfo> {
-        &self.source_info
-    }
-
-    pub fn into_source_info(self) -> Option<SourceInfo> {
-        self.source_info
+    pub fn source_span(&self) -> Option<miette::SourceSpan> {
+        self.source_span
     }
 }
 

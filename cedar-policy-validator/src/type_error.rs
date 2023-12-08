@@ -18,10 +18,7 @@
 
 use std::{collections::BTreeSet, fmt::Display};
 
-use cedar_policy_core::{
-    ast::{CallStyle, EntityUID, Expr, ExprKind, Name, Var},
-    parser::SourceInfo,
-};
+use cedar_policy_core::ast::{CallStyle, EntityUID, Expr, ExprKind, Name, Var};
 
 use crate::types::{EntityLUB, EntityRecordKind, RequestEnv};
 
@@ -36,36 +33,35 @@ use thiserror::Error;
 /// kinds of type errors.
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct TypeError {
-    // This struct has `on_expr` and `source_location` because many tests were
-    // written to check that an error was raised on a particular expression
-    // rather than at a source location. We can eliminate an AST clone by
-    // dropping `on_expr` and rewriting test to check for the correct source
-    // location.
+    // This struct has both `on_expr` and `source_location` because many tests
+    // were written to check that an error was raised on a particular expression
+    // rather than at a source location. This is redundant (particularly since
+    // an `Expr` already has a source location embedded in it).
+    // For greater efficiency, we could remove `on_expr` and rewrite the affected
+    // tests to only check for the correct `source_location`.
     pub(crate) on_expr: Option<Expr>,
-    pub(crate) source_location: Option<SourceInfo>,
+    pub(crate) source_location: Option<miette::SourceSpan>,
     pub(crate) kind: TypeErrorKind,
 }
 
 impl TypeError {
     /// Extract the type error kind for this type error.
     pub fn type_error_kind(self) -> TypeErrorKind {
-        self.kind_and_location().0
+        self.kind
     }
 
-    /// Extract the location of this type error.
-    pub fn source_location(self) -> Option<SourceInfo> {
-        self.kind_and_location().1
+    /// Extract the source location (span) of this type error.
+    pub fn source_span(&self) -> Option<miette::SourceSpan> {
+        match self.source_location {
+            Some(_) => self.source_location,
+            None => self.on_expr.as_ref().and_then(|e| e.source_span()),
+        }
     }
 
     /// Deconstruct the type error into its kind and location.
-    pub fn kind_and_location(self) -> (TypeErrorKind, Option<SourceInfo>) {
-        (
-            self.kind,
-            match self.source_location {
-                Some(_) => self.source_location,
-                None => self.on_expr.and_then(|e| e.into_source_info()),
-            },
-        )
+    pub fn kind_and_location(self) -> (TypeErrorKind, Option<miette::SourceSpan>) {
+        let span = self.source_span();
+        (self.kind, span)
     }
 
     /// Construct a type error for when an unexpected type occurs in an expression.
@@ -171,7 +167,7 @@ impl TypeError {
     pub(crate) fn empty_set_forbidden<T>(on_expr: Expr<T>) -> Self {
         Self {
             on_expr: None,
-            source_location: on_expr.into_source_info(),
+            source_location: on_expr.source_span(),
             kind: TypeErrorKind::EmptySetForbidden,
         }
     }
@@ -179,7 +175,7 @@ impl TypeError {
     pub(crate) fn non_lit_ext_constructor<T>(on_expr: Expr<T>) -> Self {
         Self {
             on_expr: None,
-            source_location: on_expr.into_source_info(),
+            source_location: on_expr.source_span(),
             kind: TypeErrorKind::NonLitExtConstructor,
         }
     }
@@ -191,7 +187,7 @@ impl TypeError {
     ) -> Self {
         Self {
             on_expr: None,
-            source_location: on_expr.into_source_info(),
+            source_location: on_expr.source_span(),
             kind: TypeErrorKind::HierarchyNotRespected(HierarchyNotRespected { in_lhs, in_rhs }),
         }
     }

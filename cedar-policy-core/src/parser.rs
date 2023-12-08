@@ -26,7 +26,7 @@ pub mod err;
 mod fmt;
 /// Metadata wrapper for CST Nodes
 mod node;
-pub use node::{ASTNode, SourceInfo};
+pub use node::ASTNode;
 /// Step one: Convert text to CST
 pub mod text_to_cst;
 /// Utility functions to unescape string literals
@@ -80,7 +80,12 @@ pub fn parse_policyset_and_also_return_policy_text(
         let texts = cst
             .with_generated_policyids()
             .expect("shouldn't be None since parse_policies() and to_policyset() didn't return Err")
-            .map(|(id, policy)| (id, &text[policy.info.0.clone()]))
+            .map(|(id, policy)| {
+                (
+                    id,
+                    &text[policy.loc.offset()..(policy.loc.offset() + policy.loc.len())],
+                )
+            })
             .collect::<HashMap<ast::PolicyID, &str>>();
         Ok((texts, pset))
     } else {

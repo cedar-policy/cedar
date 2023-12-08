@@ -23,8 +23,7 @@ use crate::entities::{
 use crate::extensions::Extensions;
 use crate::parser::cst::{self, Ident};
 use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
-use crate::parser::ASTNode;
-use crate::parser::{unescape, SourceInfo};
+use crate::parser::{unescape, ASTNode};
 use crate::{ast, FromNormalizedStr};
 use either::Either;
 use itertools::Itertools;
@@ -1124,8 +1123,8 @@ fn interpret_primary(
                 (path, id) => {
                     let (l, r) = match (path.first(), path.last()) {
                         (Some(l), Some(r)) => (
-                            l.info.range_start(),
-                            r.info.range_end() + ident_to_str_len(&id),
+                            l.loc.offset(),
+                            r.loc.offset() + r.loc.len() + ident_to_str_len(&id),
                         ),
                         (_, _) => (0, 0),
                     };
@@ -1134,7 +1133,7 @@ fn interpret_primary(
                             path: path.to_vec(),
                             name: ASTNode::new(Some(id.clone()), l, r),
                         }),
-                        SourceInfo(l..r),
+                        miette::SourceSpan::from(l..r),
                     )
                     .into())
                 }
@@ -1223,27 +1222,15 @@ impl TryFrom<&ASTNode<Option<cst::Member>>> for Expr {
                             match attr.as_str() {
                                 "contains" => Either::Right(Expr::contains(
                                     left,
-                                    extract_single_argument(
-                                        args,
-                                        "contains()",
-                                        access.info.clone(),
-                                    )?,
+                                    extract_single_argument(args, "contains()", access.loc)?,
                                 )),
                                 "containsAll" => Either::Right(Expr::contains_all(
                                     left,
-                                    extract_single_argument(
-                                        args,
-                                        "containsAll()",
-                                        access.info.clone(),
-                                    )?,
+                                    extract_single_argument(args, "containsAll()", access.loc)?,
                                 )),
                                 "containsAny" => Either::Right(Expr::contains_any(
                                     left,
-                                    extract_single_argument(
-                                        args,
-                                        "containsAny()",
-                                        access.info.clone(),
-                                    )?,
+                                    extract_single_argument(args, "containsAny()", access.loc)?,
                                 )),
                                 _ => {
                                     // have to add the "receiver" argument as
@@ -1282,15 +1269,15 @@ impl TryFrom<&ASTNode<Option<cst::Member>>> for Expr {
 fn extract_single_argument(
     es: impl ExactSizeIterator<Item = Expr>,
     fn_name: &'static str,
-    info: SourceInfo,
+    span: miette::SourceSpan,
 ) -> Result<Expr, ParseErrors> {
     let mut iter = es.fuse().peekable();
     let first = iter.next();
     let second = iter.peek();
     match (first, second) {
-        (None, _) => Err(ToASTError::new(ToASTErrorKind::wrong_arity(fn_name, 1, 0), info).into()),
+        (None, _) => Err(ToASTError::new(ToASTErrorKind::wrong_arity(fn_name, 1, 0), span).into()),
         (Some(_), Some(_)) => {
-            Err(ToASTError::new(ToASTErrorKind::wrong_arity(fn_name, 1, iter.len()), info).into())
+            Err(ToASTError::new(ToASTErrorKind::wrong_arity(fn_name, 1, iter.len()), span).into())
         }
         (Some(first), None) => Ok(first),
     }
@@ -1329,8 +1316,8 @@ impl TryFrom<&ASTNode<Option<cst::Name>>> for Expr {
             (path, id) => {
                 let (l, r) = match (path.first(), path.last()) {
                     (Some(l), Some(r)) => (
-                        l.info.range_start(),
-                        r.info.range_end() + ident_to_str_len(&id),
+                        l.loc.offset(),
+                        r.loc.offset() + r.loc.len() + ident_to_str_len(&id),
                     ),
                     (_, _) => (0, 0),
                 };
@@ -1376,11 +1363,11 @@ fn ident_to_str_len(i: &Ident) -> usize {
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 mod test {
-    use cool_asserts::assert_matches;
-
     use crate::parser::err::ParseError;
 
     use super::*;
+    use cool_asserts::assert_matches;
+
     #[test]
     fn test_invalid_expr_from_cst_name() {
         let path = vec![ASTNode::new(
@@ -1391,21 +1378,17 @@ mod test {
         let name = ASTNode::new(Some(cst::Ident::Else), 13, 16);
         let cst_name = ASTNode::new(Some(cst::Name { path, name }), 0, 16);
 
-        match Expr::try_from(&cst_name) {
-            Ok(_) => panic!("wrong error"),
-            Err(e) => {
-                assert!(e.len() == 1);
-                assert_matches!(&e[0],
-                    ParseError::ToAST(to_ast_error) => {
-                        assert_matches!(to_ast_error.kind(), ToASTErrorKind::InvalidExpression(e) =>  {
-                            println!("{:?}", e);
-                            assert_eq!(e.name.info.range_end(), 16);
-                        }
-                    )
-                    }
-                );
-            }
-        }
+        assert_matches!(Expr::try_from(&cst_name), Err(e) => {
+            assert!(e.len() == 1);
+            assert_matches!(&e[0],
+                ParseError::ToAST(to_ast_error) => {
+                    assert_matches!(to_ast_error.kind(), ToASTErrorKind::InvalidExpression(e) => {
+                        println!("{e:?}");
+                        assert_eq!(e.name.loc.offset() + e.name.loc.len(), 16);
+                    });
+                }
+            );
+        });
     }
 }
 

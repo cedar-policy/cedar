@@ -14,130 +14,36 @@
  * limitations under the License.
  */
 
-use std::cmp::Ordering;
 use std::error::Error;
 use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
-use std::ops::Range;
 
-use miette::{Diagnostic, LabeledSpan, Severity, SourceCode};
+use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 
 use super::err::{ToASTError, ToASTErrorKind};
 
-/// Describes where in policy source code a node in the CST or expression AST
-/// occurs.
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub struct SourceInfo(pub Range<usize>);
-
-impl SourceInfo {
-    /// Construct a new [`SourceInfo`] from a start offset and a length, in
-    /// bytes.
-    pub const fn new(start: usize, len: usize) -> Self {
-        SourceInfo(start..(start + len))
-    }
-
-    /// Construct a new zero-length [`SourceInfo`] pointing to a specific
-    /// offset.
-    pub const fn from_offset(offset: usize) -> Self {
-        SourceInfo(offset..offset)
-    }
-
-    /// Get the start of range, in bytes.
-    pub const fn range_start(&self) -> usize {
-        self.0.start
-    }
-
-    /// Get the end of range, in bytes.
-    pub const fn range_end(&self) -> usize {
-        self.0.end
-    }
-
-    /// Get the length of the source range, in bytes.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the end of the range is before the start.
-    pub const fn len(&self) -> usize {
-        assert!(self.range_start() <= self.range_end());
-        self.range_end() - self.range_start()
-    }
-
-    /// Tests whether this [`SourceInfo`] range is a zero-length offset.
-    pub const fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-}
-
-impl Display for SourceInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.is_empty() {
-            write!(f, "{}", self.range_start())
-        } else {
-            write!(f, "[{}, {})", self.range_start(), self.range_end())
-        }
-    }
-}
-
-impl Ord for SourceInfo {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.range_start()
-            .cmp(&other.range_start())
-            .then_with(|| self.len().cmp(&other.len()))
-    }
-}
-
-impl PartialOrd for SourceInfo {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl From<usize> for SourceInfo {
-    fn from(offset: usize) -> Self {
-        SourceInfo::from_offset(offset)
-    }
-}
-
-impl From<Range<usize>> for SourceInfo {
-    fn from(range: Range<usize>) -> Self {
-        SourceInfo(range)
-    }
-}
-
-impl From<SourceInfo> for Range<usize> {
-    fn from(info: SourceInfo) -> Self {
-        info.0
-    }
-}
-
-impl From<SourceInfo> for miette::SourceSpan {
-    fn from(value: SourceInfo) -> Self {
-        value.0.into()
-    }
-}
-
 /// Metadata for our syntax trees
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ASTNode<N> {
     /// Main data represented
     pub node: N,
 
-    /// additional information
-    pub info: SourceInfo,
+    /// Source location
+    pub loc: miette::SourceSpan,
 }
 
 impl<N> ASTNode<N> {
-    /// Create a new Node from main data
+    /// Create a new Node with the source location [left, right)
     pub fn new(node: N, left: usize, right: usize) -> Self {
-        ASTNode::from_source(left..right, node)
+        ASTNode::with_source_loc(node, left..right)
     }
 
-    /// Create a new Node from main data
-    pub fn from_source(info: impl Into<SourceInfo>, node: N) -> Self {
+    /// Create a new Node with the given source location
+    pub fn with_source_loc(node: N, loc: impl Into<miette::SourceSpan>) -> Self {
         ASTNode {
             node,
-            info: info.into(),
+            loc: loc.into(),
         }
     }
 
@@ -145,7 +51,7 @@ impl<N> ASTNode<N> {
     pub fn map<M>(self, f: impl FnOnce(N) -> M) -> ASTNode<M> {
         ASTNode {
             node: f(self.node),
-            info: self.info,
+            loc: self.loc,
         }
     }
 
@@ -153,7 +59,7 @@ impl<N> ASTNode<N> {
     pub fn as_ref(&self) -> ASTNode<&N> {
         ASTNode {
             node: &self.node,
-            info: self.info.clone(),
+            loc: self.loc,
         }
     }
 
@@ -161,18 +67,18 @@ impl<N> ASTNode<N> {
     pub fn as_mut(&mut self) -> ASTNode<&mut N> {
         ASTNode {
             node: &mut self.node,
-            info: self.info.clone(),
+            loc: self.loc,
         }
     }
 
     /// Consume the `ASTNode`, yielding the node and attached source info.
-    pub fn into_inner(self) -> (N, SourceInfo) {
-        (self.node, self.info)
+    pub fn into_inner(self) -> (N, miette::SourceSpan) {
+        (self.node, self.loc)
     }
 
     /// Utility to construct a `ToAstError` with the source location taken from this node.
     pub fn to_ast_err(&self, error_kind: impl Into<ToASTErrorKind>) -> ToASTError {
-        ToASTError::new(error_kind.into(), self.info.clone())
+        ToASTError::new(error_kind.into(), self.loc)
     }
 }
 
@@ -187,13 +93,6 @@ impl<N: Copy> ASTNode<&N> {
     /// Converts a `ASTNode<&N>` to a `ASTNode<N>` by copying the inner value.
     pub fn copied(self) -> ASTNode<N> {
         self.map(|value| *value)
-    }
-}
-
-impl<N: Debug> Debug for ASTNode<N> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Debug::fmt(&self.node, f)?;
-        write!(f, " @ {}", self.info)
     }
 }
 
@@ -219,12 +118,13 @@ impl<N: Error> Error for ASTNode<N> {
     }
 }
 
+// impl Diagnostic by taking `labels()` from .loc and everything else from .node
 impl<N: Diagnostic> Diagnostic for ASTNode<N> {
     fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         self.node.code()
     }
 
-    fn severity(&self) -> Option<Severity> {
+    fn severity(&self) -> Option<miette::Severity> {
         self.node.severity()
     }
 
@@ -236,12 +136,14 @@ impl<N: Diagnostic> Diagnostic for ASTNode<N> {
         self.node.url()
     }
 
-    fn source_code(&self) -> Option<&dyn SourceCode> {
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
         self.node.source_code()
     }
 
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        self.node.labels()
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        Some(Box::new(std::iter::once(miette::LabeledSpan::underline(
+            self.loc,
+        ))))
     }
 
     fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
@@ -270,9 +172,9 @@ impl<N: Hash> Hash for ASTNode<N> {
 
 /// Convenience methods on `ASTNode<Option<N>>`
 impl<N> ASTNode<Option<N>> {
-    /// Similar to `.as_inner()`, but also gives access to the `SourceInfo`
-    pub fn as_inner_pair(&self) -> (&SourceInfo, Option<&N>) {
-        (&self.info, self.node.as_ref())
+    /// Similar to `.as_inner()`, but also gives access to the `SourceSpan`
+    pub fn as_inner_pair(&self) -> (Option<&N>, miette::SourceSpan) {
+        (self.node.as_ref(), self.loc)
     }
 
     /// Get the inner data as `&N`, if it exists
@@ -284,7 +186,7 @@ impl<N> ASTNode<Option<N>> {
     pub fn collapse(&self) -> Option<ASTNode<&N>> {
         self.node.as_ref().map(|node| ASTNode {
             node,
-            info: self.info.clone(),
+            loc: self.loc,
         })
     }
 
@@ -292,18 +194,18 @@ impl<N> ASTNode<Option<N>> {
     /// if no main data or if `f` returns `None`.
     pub fn apply<F, R>(&self, f: F) -> Option<R>
     where
-        F: FnOnce(&N, &SourceInfo) -> Option<R>,
+        F: FnOnce(&N, miette::SourceSpan) -> Option<R>,
     {
-        f(self.node.as_ref()?, &self.info)
+        f(self.node.as_ref()?, self.loc)
     }
 
     /// Apply the function `f` to the main data and source info, consuming them.
     /// Returns `None` if no main data or if `f` returns `None`.
     pub fn into_apply<F, R>(self, f: F) -> Option<R>
     where
-        F: FnOnce(N, SourceInfo) -> Option<R>,
+        F: FnOnce(N, miette::SourceSpan) -> Option<R>,
     {
-        f(self.node?, self.info)
+        f(self.node?, self.loc)
     }
 
     /// Get node data if present, or return an error result for `MissingNodeData`

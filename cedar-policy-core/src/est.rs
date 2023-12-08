@@ -118,11 +118,13 @@ impl TryFrom<cst::Policy> for Policy {
                 .conds
                 .into_iter()
                 .map(|node| {
-                    let (cond, l) = node.into_inner();
+                    let (cond, span) = node.into_inner();
                     let cond = cond.ok_or_else(|| {
-                        ParseErrors(vec![
-                            ToASTError::new(ToASTErrorKind::EmptyClause(None), l).into()
-                        ])
+                        ParseErrors(vec![ToASTError::new(
+                            ToASTErrorKind::EmptyClause(None),
+                            span,
+                        )
+                        .into()])
                     })?;
                     cond.try_into()
                 })

@@ -639,7 +639,6 @@ mod test {
 
     use cedar_policy_core::ast::RestrictedExpr;
     use cedar_policy_core::parser::err::{ParseError, ToASTError, ToASTErrorKind};
-    use cedar_policy_core::parser::SourceInfo;
     use cool_asserts::assert_matches;
     use serde_json::json;
 
@@ -1708,7 +1707,7 @@ mod test {
                 src: "User // comment".to_string(),
                 normalized_src: "User".to_string(),
             },
-            SourceInfo(4..4),
+            miette::SourceSpan::from(4..4),
         ))
         .into();
 
@@ -1738,7 +1737,7 @@ mod test {
                 src: "ABC     :: //comment \n XYZ  ".to_string(),
                 normalized_src: "ABC::XYZ".to_string(),
             },
-            SourceInfo(3..3),
+            miette::SourceSpan::from(3..3),
         ))
         .into();
         match err {

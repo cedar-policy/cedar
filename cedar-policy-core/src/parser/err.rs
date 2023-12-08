@@ -35,7 +35,7 @@ use crate::parser::unescape::UnescapeError;
 use crate::parser::fmt::join_with_conjunction;
 use crate::parser::node::ASTNode;
 
-use super::{cst, SourceInfo};
+use super::cst;
 
 pub(crate) type RawLocation = usize;
 pub(crate) type RawToken<'a> = lalr::lexer::Token<'a>;
@@ -72,7 +72,7 @@ impl ParseError {
     pub fn primary_source_span(&self) -> Option<SourceSpan> {
         match self {
             ParseError::ToCST(to_cst_err) => Some(to_cst_err.primary_source_span()),
-            ParseError::ToAST(to_ast_err) => Some(to_ast_err.source_info.clone().into()),
+            ParseError::ToAST(to_ast_err) => Some(to_ast_err.source_span()),
             ParseError::RestrictedExpr(restricted_expr_err) => match restricted_expr_err {
                 RestrictedExprError::InvalidRestrictedExpression { .. } => None,
             },
@@ -95,15 +95,15 @@ pub enum ParseLiteralError {
 #[error("{kind}")]
 pub struct ToASTError {
     kind: ToASTErrorKind,
-    source_info: SourceInfo,
+    source_span: miette::SourceSpan,
 }
 
-// Aside from `labels` which is constructed based on the `source_info` in this
+// Aside from `labels` which is constructed based on the `source_span` in this
 // struct, everything is forwarded directly from `kind`.
 impl Diagnostic for ToASTError {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         Some(Box::new(iter::once(LabeledSpan::underline(
-            self.source_info.clone(),
+            self.source_span,
         ))))
     }
 
@@ -134,8 +134,8 @@ impl Diagnostic for ToASTError {
 
 impl ToASTError {
     /// Construct a new `ToASTError`.
-    pub fn new(kind: ToASTErrorKind, source_info: SourceInfo) -> Self {
-        Self { kind, source_info }
+    pub fn new(kind: ToASTErrorKind, source_span: miette::SourceSpan) -> Self {
+        Self { kind, source_span }
     }
 
     /// Get the error kind.
@@ -143,8 +143,8 @@ impl ToASTError {
         &self.kind
     }
 
-    pub(crate) fn source_info(&self) -> &SourceInfo {
-        &self.source_info
+    pub(crate) fn source_span(&self) -> miette::SourceSpan {
+        self.source_span
     }
 }
 
@@ -482,18 +482,17 @@ impl ToCSTError {
     /// Extract a primary source span locating the error.
     pub fn primary_source_span(&self) -> SourceSpan {
         match &self.err {
-            OwnedRawParseError::InvalidToken { location } => *location..*location,
-            OwnedRawParseError::UnrecognizedEof { location, .. } => *location..*location,
+            OwnedRawParseError::InvalidToken { location } => SourceSpan::from(*location),
+            OwnedRawParseError::UnrecognizedEof { location, .. } => SourceSpan::from(*location),
             OwnedRawParseError::UnrecognizedToken {
                 token: (token_start, _, token_end),
                 ..
-            } => *token_start..*token_end,
+            } => SourceSpan::from(*token_start..*token_end),
             OwnedRawParseError::ExtraToken {
                 token: (token_start, _, token_end),
-            } => *token_start..*token_end,
-            OwnedRawParseError::User { error } => error.info.0.clone(),
+            } => SourceSpan::from(*token_start..*token_end),
+            OwnedRawParseError::User { error } => error.loc,
         }
-        .into()
     }
 
     pub(crate) fn from_raw_parse_err(err: RawParseError<'_>) -> Self {
