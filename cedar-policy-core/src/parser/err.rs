@@ -260,6 +260,10 @@ pub enum ToASTErrorKind {
     #[error("`{0}` is a method, not a function")]
     #[diagnostic(help("use a method-style call: `e.{0}(..)`"))]
     FunctionCallOnMethod(crate::ast::Id),
+    /// Returned when a policy attempts to call a function in the method style
+    #[error("`{0}` is a function, not a method")]
+    #[diagnostic(help("use a function-style call: `{0}(..)`"))]
+    MethodCallOnFunction(crate::ast::Id),
     /// Returned when the right hand side of a `like` expression is not a constant pattern literal
     #[error("right hand side of a `like` expression must be a pattern literal, but got `{0}`")]
     InvalidPattern(String),
@@ -357,10 +361,10 @@ pub enum ToASTErrorKind {
     /// Returned when a CST expression is invalid
     #[error("`{0}` is not a valid expression")]
     InvalidExpression(cst::Name),
-    /// Returned when a function has wrong arity
+    /// Returned when a function or method is called with the wrong arity
     #[error("call to `{name}` requires exactly {expected} argument{}, but got {got} argument{}", if .expected == &1 { "" } else { "s" }, if .got == &1 { "" } else { "s" })]
     WrongArity {
-        /// Name of the function being called
+        /// Name of the function or method being called
         name: &'static str,
         /// The expected number of arguments
         expected: usize,

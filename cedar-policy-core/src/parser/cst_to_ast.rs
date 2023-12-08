@@ -44,6 +44,7 @@ use crate::ast::{
     ExprConstructionError, PatternElem, PolicySetError, PrincipalConstraint,
     PrincipalOrResourceConstraint, ResourceConstraint,
 };
+use crate::est::extract_single_argument;
 use itertools::Either;
 use smol_str::SmolStr;
 use std::cmp::Ordering;
@@ -451,32 +452,37 @@ impl ast::Id {
         errs: &mut ParseErrors,
         span: miette::SourceSpan,
     ) -> Option<ast::Expr> {
-        let mut adj_args = args.iter_mut().peekable();
-        match (self.as_ref(), adj_args.next(), adj_args.peek()) {
-            ("contains", Some(a), None) => {
-                // move the value out of the argument, replacing it with a dummy,
-                // after this we can no longer use the original args
-                let arg = mem::replace(a, ast::Expr::val(false));
-                Some(construct_method_contains(e, arg, span))
-            }
-            ("containsAll", Some(a), None) => {
-                let arg = mem::replace(a, ast::Expr::val(false));
-                Some(construct_method_contains_all(e, arg, span))
-            }
-            ("containsAny", Some(a), None) => {
-                let arg = mem::replace(a, ast::Expr::val(false));
-                Some(construct_method_contains_any(e, arg, span))
-            }
-            (name, _, _) => {
-                if EXTENSION_STYLES.methods.contains(&name) {
+        match self.as_ref() {
+            "contains" => extract_single_argument(args.into_iter(), "contains", span)
+                .map(|arg| construct_method_contains(e, arg, span))
+                .map_err(|err| errs.push(err))
+                .ok(),
+            "containsAll" => extract_single_argument(args.into_iter(), "containsAll", span)
+                .map(|arg| construct_method_contains_all(e, arg, span))
+                .map_err(|err| errs.push(err))
+                .ok(),
+            "containsAny" => extract_single_argument(args.into_iter(), "containsAny", span)
+                .map(|arg| construct_method_contains_any(e, arg, span))
+                .map_err(|err| errs.push(err))
+                .ok(),
+            id => {
+                if EXTENSION_STYLES.methods.contains(&id) {
                     args.insert(0, e);
                     // INVARIANT (MethodStyleArgs), we call insert above, so args is non-empty
-                    Some(construct_ext_meth(name.to_string(), args, span))
+                    Some(construct_ext_meth(id.to_string(), args, span))
                 } else {
-                    errs.push(ToASTError::new(
-                        ToASTErrorKind::InvalidMethodName(name.to_string()),
-                        span,
-                    ));
+                    let unqual_name = ast::Name::unqualified_name(self.clone());
+                    if EXTENSION_STYLES.functions.contains(&unqual_name) {
+                        errs.push(ToASTError::new(
+                            ToASTErrorKind::MethodCallOnFunction(unqual_name.id),
+                            span,
+                        ));
+                    } else {
+                        errs.push(ToASTError::new(
+                            ToASTErrorKind::InvalidMethodName(id.to_string()),
+                            span,
+                        ));
+                    }
                     None
                 }
             }
@@ -2008,15 +2014,14 @@ impl ast::Name {
         // error on standard methods
         if self.path.is_empty() {
             let id = self.id.as_ref();
-            match id {
-                "contains" | "containsAll" | "containsAny" => {
-                    errs.push(ToASTError::new(
-                        ToASTErrorKind::FunctionCallOnMethod(self.id),
-                        span,
-                    ));
-                    return None;
-                }
-                _ => {}
+            if EXTENSION_STYLES.methods.contains(id)
+                || matches!(id, "contains" | "containsAll" | "containsAny")
+            {
+                errs.push(ToASTError::new(
+                    ToASTErrorKind::FunctionCallOnMethod(self.id),
+                    span,
+                ));
+                return None;
             }
         }
         if EXTENSION_STYLES.functions.contains(&self) {
@@ -4115,5 +4120,73 @@ mod tests {
                 ));
             }
         );
+    }
+
+    #[test]
+    fn invalid_methods_function_calls() {
+        let invalid_exprs = [
+            (
+                r#"contains([], 1)"#,
+                ExpectedErrorMessage::error_and_help(
+                    "`contains` is a method, not a function",
+                    "use a method-style call: `e.contains(..)`",
+                ),
+            ),
+            (
+                r#"[].contains()"#,
+                ExpectedErrorMessage::error(
+                    "call to `contains` requires exactly 1 argument, but got 0 arguments",
+                ),
+            ),
+            (
+                r#"[].contains(1, 2)"#,
+                ExpectedErrorMessage::error(
+                    "call to `contains` requires exactly 1 argument, but got 2 arguments",
+                ),
+            ),
+            (
+                r#"[].containsAll()"#,
+                ExpectedErrorMessage::error(
+                    "call to `containsAll` requires exactly 1 argument, but got 0 arguments",
+                ),
+            ),
+            (
+                r#"[].containsAll(1, 2)"#,
+                ExpectedErrorMessage::error(
+                    "call to `containsAll` requires exactly 1 argument, but got 2 arguments",
+                ),
+            ),
+            (
+                r#"[].containsAny()"#,
+                ExpectedErrorMessage::error(
+                    "call to `containsAny` requires exactly 1 argument, but got 0 arguments",
+                ),
+            ),
+            (
+                r#"[].containsAny(1, 2)"#,
+                ExpectedErrorMessage::error(
+                    "call to `containsAny` requires exactly 1 argument, but got 2 arguments",
+                ),
+            ),
+            (
+                r#""1.1.1.1".ip()"#,
+                ExpectedErrorMessage::error_and_help(
+                    "`ip` is a function, not a method",
+                    "use a function-style call: `ip(..)`",
+                ),
+            ),
+            (
+                r#"greaterThan(1, 2)"#,
+                ExpectedErrorMessage::error_and_help(
+                    "`greaterThan` is a method, not a function",
+                    "use a method-style call: `e.greaterThan(..)`",
+                ),
+            ),
+        ];
+        for (src, expected) in invalid_exprs {
+            assert_matches!(parse_expr(src), Err(e) => {
+                expect_err(src, &e, &expected);
+            });
+        }
     }
 }
