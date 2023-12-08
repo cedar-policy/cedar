@@ -968,8 +968,8 @@ mod json_parsing_tests {
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         assert_matches!(eparser.from_json_value(json.clone()), Err(e) => {
             expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
-                "error during entity deserialization: in uid field of <unknown entity>, invalid escape",
-                "the `__expr` escape is no longer supported",
+                "error during entity deserialization: in uid field of <unknown entity>, the `__expr` escape is no longer supported",
+                "to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly",
             ));
         });
     }
@@ -1001,8 +1001,8 @@ mod json_parsing_tests {
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         assert_matches!(eparser.from_json_value(json.clone()), Err(e) => {
             expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
-                r#"error during entity deserialization: in attribute `pancakes` on `test_entity_type::"Alice"`, invalid escape"#,
-                "the `__expr` escape is no longer supported",
+                r#"error during entity deserialization: in attribute `pancakes` on `test_entity_type::"Alice"`, the `__expr` escape is no longer supported"#,
+                "to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly",
             ));
         });
     }
@@ -1032,8 +1032,8 @@ mod json_parsing_tests {
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         assert_matches!(eparser.from_json_value(json.clone()), Err(e) => {
             expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
-                r#"error during entity deserialization: in parents field of `test_entity_type::"Alice"`, invalid escape"#,
-                "the `__expr` escape is no longer supported",
+                r#"error during entity deserialization: in parents field of `test_entity_type::"Alice"`, the `__expr` escape is no longer supported"#,
+                "to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly",
             ));
         });
     }
@@ -1471,8 +1471,9 @@ mod json_parsing_tests {
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         assert_matches!(eparser.from_json_value(json.clone()), Err(e) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error(
-                r#"error during entity deserialization: action `XYZ::Action::"view"` has a non-action parent `User::"alice"`"#
+            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+                r#"error during entity deserialization: action `XYZ::Action::"view"` has a non-action parent `User::"alice"`"#,
+                "parents of actions need to have type `Action` themselves, perhaps namespaced",
             ));
         });
     }
@@ -2568,8 +2569,9 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
-                r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+                r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#,
+                r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#,
             ));
         });
     }
@@ -2596,8 +2598,9 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
-                r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+                r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#,
+                r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#,
             ));
         });
     }
@@ -2622,8 +2625,9 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
-                r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+                r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#,
+                r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#,
             ));
         });
     }
@@ -2651,8 +2655,9 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
-                r#"error during entity deserialization: definition of action `Action::"view"` does not match its schema declaration"#
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+                r#"error during entity deserialization: definition of action `Action::"view"` does not match its schema declaration"#,
+                r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#,
             ));
         });
     }
@@ -2677,8 +2682,9 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
-                r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+                r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#,
+                r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#,
             ));
         });
     }
@@ -2706,8 +2712,9 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
-                r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+                r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#,
+                r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#,
             ));
         });
     }

@@ -1444,8 +1444,7 @@ impl<'a> From<cedar_policy_validator::ValidationError<'a>> for ValidationError<'
 impl<'a> Diagnostic for ValidationError<'a> {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         let label = miette::LabeledSpan::underline(self.location.source_range?);
-        let ret: Box<dyn Iterator<Item = miette::LabeledSpan>> = Box::new(std::iter::once(label));
-        Some(ret)
+        Some(Box::new(std::iter::once(label)))
     }
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
@@ -1578,8 +1577,7 @@ impl<'a> From<cedar_policy_validator::ValidationWarning<'a>> for ValidationWarni
 impl<'a> Diagnostic for ValidationWarning<'a> {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         let label = miette::LabeledSpan::underline(self.location.source_range?);
-        let ret: Box<dyn Iterator<Item = miette::LabeledSpan>> = Box::new(std::iter::once(label));
-        Some(ret)
+        Some(Box::new(std::iter::once(label)))
     }
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
