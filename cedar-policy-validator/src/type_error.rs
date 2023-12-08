@@ -311,7 +311,7 @@ pub struct IncompatibleTypes {
 
 /// Structure containing details about a missing attribute error.
 #[derive(Debug, Hash, Eq, PartialEq, Error)]
-#[error("attribute {} not found", .attribute_access)]
+#[error("attribute {attribute_access} not found")]
 pub struct UnsafeAttributeAccess {
     attribute_access: AttributeAccess,
     suggestion: Option<String>,
