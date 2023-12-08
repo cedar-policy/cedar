@@ -1266,19 +1266,25 @@ impl TryFrom<&ASTNode<Option<cst::Member>>> for Expr {
     }
 }
 
-fn extract_single_argument(
-    es: impl ExactSizeIterator<Item = Expr>,
+/// Return the single argument in arguments iterator, or return a wrong arity
+/// error if the iterator has 0 more more than 1 element.
+pub fn extract_single_argument<T>(
+    args: impl ExactSizeIterator<Item = T>,
     fn_name: &'static str,
     span: miette::SourceSpan,
-) -> Result<Expr, ParseErrors> {
-    let mut iter = es.fuse().peekable();
+) -> Result<T, ToASTError> {
+    let mut iter = args.fuse().peekable();
     let first = iter.next();
     let second = iter.peek();
     match (first, second) {
-        (None, _) => Err(ToASTError::new(ToASTErrorKind::wrong_arity(fn_name, 1, 0), span).into()),
-        (Some(_), Some(_)) => {
-            Err(ToASTError::new(ToASTErrorKind::wrong_arity(fn_name, 1, iter.len()), span).into())
-        }
+        (None, _) => Err(ToASTError::new(
+            ToASTErrorKind::wrong_arity(fn_name, 1, 0),
+            span,
+        )),
+        (Some(_), Some(_)) => Err(ToASTError::new(
+            ToASTErrorKind::wrong_arity(fn_name, 1, iter.len() + 1),
+            span,
+        )),
         (Some(first), None) => Ok(first),
     }
 }
