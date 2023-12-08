@@ -42,6 +42,10 @@ jobs:
         uses: actions/checkout@v3
         with:
           path: cedar-spec/cedar
+      - name: build cedar-lean
+        working-directory: cedar-spec/cedar-lean
+        shell: bash
+        run: source ~/.profile && lake build Cedar
       - name: build cedar-drt
         working-directory: cedar-spec/cedar-drt
         run: source ~/.profile && source ./set_env_vars.sh && RUSTFLAGS="-D warnings" cargo build
