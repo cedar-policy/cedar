@@ -44,10 +44,10 @@ jobs:
           path: cedar-spec/cedar
       - name: build cedar-drt
         working-directory: cedar-spec/cedar-drt
-        run: RUSTFLAGS="-D warnings" cargo build
+        run: source ~/.profile && RUSTFLAGS="-D warnings" cargo build
       - name: build cedar-drt/fuzz
         working-directory: cedar-spec/cedar-drt/fuzz
-        run: RUSTFLAGS="--cfg=fuzzing -D warnings" cargo build
+        run: source ~/.profile && RUSTFLAGS="--cfg=fuzzing -D warnings" cargo build
 
   cedar-java:
     name: CedarJava
