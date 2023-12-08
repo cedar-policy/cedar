@@ -8,11 +8,10 @@ Cedar is a language for defining permissions as policies, which describe who sho
 
 Cedar can be used in your application by depending on the [`cedar-policy` crate](https://crates.io/crates/cedar-policy).
 
-Just add `cedar-policy` as a dependency in your `Cargo.toml`. For example:
+Just add `cedar-policy` as a dependency by running
 
-```toml
-[dependencies]
-cedar-policy = "2.4"
+```sh
+cargo add cedar-policy
 ```
 
 ## Quick Start
