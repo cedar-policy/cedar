@@ -572,7 +572,7 @@ lazy_static! {
         ("CONTEXT", "`context`"),
         ("PRINCIPAL_SLOT", "`?principal`"),
         ("RESOURCE_SLOT", "`?resource`"),
-        ("OTHER SLOT", "template slot"),
+        ("OTHER_SLOT", "template slot"),
         ("IDENTIFIER", "identifier"),
         ("NUMBER", "number"),
         ("STRINGLIT", "string literal"),
