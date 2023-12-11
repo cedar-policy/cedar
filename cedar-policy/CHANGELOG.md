@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Improve parer error message when a policy includes an invalid template slot.
+- Improve parser error message when a policy includes an invalid template slot.
   The error now identifies that the policy used an invalid slot and suggests using
   one of the valid slots.
 - Improve parser error messages to more reliably notice that a function or
