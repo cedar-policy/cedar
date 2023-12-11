@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "nO8888hI::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "nO8888hI::\"\"",
+      "principal": {
+        "type": "nO8888hI",
+        "id": ""
+      },
+      "resource": {
+        "type": "nO8888hI",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Fwwwwwwq": "",
         "i": "",
@@ -23,9 +32,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "nO8888hI::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "nO8888hI::\"\"",
+      "principal": {
+        "type": "nO8888hI",
+        "id": ""
+      },
+      "resource": {
+        "type": "nO8888hI",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Fwwwwwwq": "",
         "i": "",
@@ -40,9 +58,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "nO8888hI::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "nO8888hI::\"\"",
+      "principal": {
+        "type": "nO8888hI",
+        "id": ""
+      },
+      "resource": {
+        "type": "nO8888hI",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Fwwwwwwq": "",
         "i": "",
@@ -57,9 +84,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "nO8888hI::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "nO8888hI::\"\"",
+      "principal": {
+        "type": "nO8888hI",
+        "id": ""
+      },
+      "resource": {
+        "type": "nO8888hI",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Fwwwwwwq": "",
         "i": "",
@@ -74,9 +110,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "nO8888hI::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "nO8888hI::\"\"",
+      "principal": {
+        "type": "nO8888hI",
+        "id": ""
+      },
+      "resource": {
+        "type": "nO8888hI",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Fwwwwwwq": "",
         "i": "",
@@ -91,9 +136,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "nO8888hI::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "nO8888hI::\"\"",
+      "principal": {
+        "type": "nO8888hI",
+        "id": ""
+      },
+      "resource": {
+        "type": "nO8888hI",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Fwwwwwwq": "",
         "i": "",
@@ -108,9 +162,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "nO8888hI::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "nO8888hI::\"\"",
+      "principal": {
+        "type": "nO8888hI",
+        "id": ""
+      },
+      "resource": {
+        "type": "nO8888hI",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Fwwwwwwq": "",
         "i": "",
@@ -125,9 +188,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "nO8888hI::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "nO8888hI::\"\"",
+      "principal": {
+        "type": "nO8888hI",
+        "id": ""
+      },
+      "resource": {
+        "type": "nO8888hI",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Fwwwwwwq": "",
         "i": "",

@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "a::\"C\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"\"",
+      "principal": {
+        "type": "a",
+        "id": "C"
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -16,86 +25,149 @@
     },
     {
       "desc": "Query 1",
-      "principal": "a::\"C\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"C\"",
+      "principal": {
+        "type": "a",
+        "id": "C"
+      },
+      "resource": {
+        "type": "a",
+        "id": "C"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected long, got string"
+        "while evaluating policy `policy0`: type error: expected long, got string"
       ]
     },
     {
       "desc": "Query 2",
-      "principal": "a::\"C\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"C\"",
+      "principal": {
+        "type": "a",
+        "id": "C"
+      },
+      "resource": {
+        "type": "a",
+        "id": "C"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected long, got string"
+        "while evaluating policy `policy0`: type error: expected long, got string"
       ]
     },
     {
       "desc": "Query 3",
-      "principal": "a::\"C\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"C\"",
+      "principal": {
+        "type": "a",
+        "id": "C"
+      },
+      "resource": {
+        "type": "a",
+        "id": "C"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected long, got string"
+        "while evaluating policy `policy0`: type error: expected long, got string"
       ]
     },
     {
       "desc": "Query 4",
-      "principal": "a::\"C\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"C\"",
+      "principal": {
+        "type": "a",
+        "id": "C"
+      },
+      "resource": {
+        "type": "a",
+        "id": "C"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected long, got string"
+        "while evaluating policy `policy0`: type error: expected long, got string"
       ]
     },
     {
       "desc": "Query 5",
-      "principal": "a::\"C\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"C\"",
+      "principal": {
+        "type": "a",
+        "id": "C"
+      },
+      "resource": {
+        "type": "a",
+        "id": "C"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected long, got string"
+        "while evaluating policy `policy0`: type error: expected long, got string"
       ]
     },
     {
       "desc": "Query 6",
-      "principal": "a::\"C\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"C\"",
+      "principal": {
+        "type": "a",
+        "id": "C"
+      },
+      "resource": {
+        "type": "a",
+        "id": "C"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected long, got string"
+        "while evaluating policy `policy0`: type error: expected long, got string"
       ]
     },
     {
       "desc": "Query 7",
-      "principal": "a::\"C\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"C\"",
+      "principal": {
+        "type": "a",
+        "id": "C"
+      },
+      "resource": {
+        "type": "a",
+        "id": "C"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected long, got string"
+        "while evaluating policy `policy0`: type error: expected long, got string"
       ]
     }
   ]

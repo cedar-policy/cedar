@@ -54,37 +54,88 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
     // Entities must be added together because of some post-processing
     let entity_json = r#"
     [
-        {
-            "uid": { "__expr" :  "User::\"alice\""},
-            "attrs": {},
-            "parents": [ { "__expr" :"UserGroup::\"jane_friends\"" }]
-        },
-        {
-            "uid":  { "__expr" :"UserGroup::\"jane_friends\"" },
-            "attrs": {},
-            "parents": []
-        },
-        {
-            "uid":  { "__expr" :"Action::\"view\"" },
-            "attrs": {},
-            "parents": []
-        },
-        {
-            "uid":  { "__expr" :"Photo::\"VacationPhoto94.jpg\"" },
-            "attrs": {},
-            "parents": [ { "__expr" :"Album::\"jane_vacation\"" }]
-        },
-        {
-            "uid":  { "__expr" :"Album::\"jane_vacation\"" },
-            "attrs": {},
-            "parents": [ { "__expr" :"Account::\"jane\"" }]
-        },
-        {
-            "uid":  { "__expr" :"Account::\"jane\""},
-            "attrs": {},
-            "parents": []
-        }
-    ]
+ {
+  "uid": {
+   "__entity": {
+    "type": "User",
+    "id": "alice"
+   }
+  },
+  "attrs": {},
+  "parents": [
+   {
+    "__entity": {
+     "type": "UserGroup",
+     "id": "jane_friends"
+    }
+   }
+  ]
+ },
+ {
+  "uid": {
+   "__entity": {
+    "type": "UserGroup",
+    "id": "jane_friends"
+   }
+  },
+  "attrs": {},
+  "parents": []
+ },
+ {
+  "uid": {
+   "__entity": {
+    "type": "Action",
+    "id": "view"
+   }
+  },
+  "attrs": {},
+  "parents": []
+ },
+ {
+  "uid": {
+   "__entity": {
+    "type": "Photo",
+    "id": "VacationPhoto94.jpg"
+   }
+  },
+  "attrs": {},
+  "parents": [
+   {
+    "__entity": {
+     "type": "Album",
+     "id": "jane_vacation"
+    }
+   }
+  ]
+ },
+ {
+  "uid": {
+   "__entity": {
+    "type": "Album",
+    "id": "jane_vacation"
+   }
+  },
+  "attrs": {},
+  "parents": [
+   {
+    "__entity": {
+     "type": "Account",
+     "id": "jane"
+    }
+   }
+  ]
+ },
+ {
+  "uid": {
+   "__entity": {
+    "type": "Account",
+    "id": "jane"
+   }
+  },
+  "attrs": {},
+  "parents": []
+ }
+]
     "#;
     let entities = Entities::from_json_str(entity_json, None)?;
 
@@ -111,7 +162,8 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
             "suspicion".to_string(),
             RestrictedExpression::from_str("4")?,
         ),
-    ]);
+    ])
+    .unwrap();
 
     // Combine into request
     let request = Request::new(
@@ -119,7 +171,9 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
         Some(action.clone()),
         Some(resource.clone()),
         context,
-    );
+        None,
+    )
+    .unwrap();
 
     // Check that we got the "Deny" result
     assert_eq!(
@@ -134,7 +188,9 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
         Some(action.clone()),
         Some(resource.clone()),
         Context::empty(),
-    );
+        None,
+    )
+    .unwrap();
 
     // Check that we got the "Allow" result and it was based on the added policy
     assert_eq!(
@@ -152,7 +208,9 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
         None,
         Some(resource.clone()),
         Context::empty(),
-    );
+        None,
+    )
+    .unwrap();
 
     // Check that we got an "Allow" result
     assert_eq!(
@@ -162,13 +220,21 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
     );
 
     // Requesting with an unspecified principal or resource will return Deny (but not fail)
-    let request4 = Request::new(None, Some(action.clone()), Some(resource), Context::empty());
+    let request4 = Request::new(
+        None,
+        Some(action.clone()),
+        Some(resource),
+        Context::empty(),
+        None,
+    )
+    .unwrap();
     assert_eq!(
         auth.is_authorized(&request4, &policies, &entities)
             .decision(),
         Decision::Deny
     );
-    let request5 = Request::new(Some(principal), Some(action), None, Context::empty());
+    let request5 =
+        Request::new(Some(principal), Some(action), None, Context::empty(), None).unwrap();
     assert_eq!(
         auth.is_authorized(&request5, &policies, &entities)
             .decision(),
@@ -207,7 +273,9 @@ fn expression_eval_1() -> Result<(), Box<dyn Error>> {
         Some(action),
         Some(resource),
         Context::empty(),
-    );
+        None,
+    )
+    .unwrap();
 
     //try an evaluation
     let result = eval_expression(
@@ -225,7 +293,7 @@ fn expression_eval_1() -> Result<(), Box<dyn Error>> {
 fn expression_eval_attr() -> Result<(), Box<dyn Error>> {
     let entity_json = r#"[
         {
-        "uid": { "__expr" :  "User::\"alice\"" },
+        "uid": { "__entity" :  { "type" : "User", "id" : "alice" } },
         "attrs": {"age":19},
         "parents": []
         }
@@ -252,7 +320,9 @@ fn expression_eval_attr() -> Result<(), Box<dyn Error>> {
         Some(action),
         Some(resource),
         Context::empty(),
-    );
+        None,
+    )
+    .unwrap();
 
     //try an evaluation
     let result = eval_expression(
@@ -269,7 +339,7 @@ fn expression_eval_attr() -> Result<(), Box<dyn Error>> {
 fn expression_eval_context() -> Result<(), Box<dyn Error>> {
     let entity_json = r#"[
         {
-        "uid": { "__expr" :  "User::\"alice\"" },
+        "uid": { "__entity" : { "type" : "User", "id" : "alice" }},
         "attrs": {"age":19},
         "parents": []
         }
@@ -299,10 +369,12 @@ fn expression_eval_context() -> Result<(), Box<dyn Error>> {
             "suspicion".to_string(),
             RestrictedExpression::from_str("4")?,
         ),
-    ]);
+    ])
+    .unwrap();
 
     // Combine into request
-    let request = Request::new(Some(principal), Some(action), Some(resource), context);
+    let request =
+        Request::new(Some(principal), Some(action), Some(resource), context, None).unwrap();
 
     //try an evaluation
     let result = eval_expression(

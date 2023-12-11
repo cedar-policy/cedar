@@ -15,15 +15,15 @@
  */
 
 use std::collections::HashMap;
-use std::error::Error;
 use std::fmt::{self, Display, Write};
 use std::iter;
 use std::ops::{Deref, DerefMut};
 
 use either::Either;
+use itertools::Itertools;
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
-use miette::{Diagnostic, LabeledSpan, Severity, SourceCode, SourceSpan};
+use miette::{Diagnostic, LabeledSpan, SourceSpan};
 use smol_str::SmolStr;
 use thiserror::Error;
 
@@ -54,13 +54,15 @@ pub enum ParseError {
     ToCST(#[from] ToCSTError),
     /// Error in the CST -> AST transform, mostly well-formedness issues.
     #[error(transparent)]
-    #[diagnostic(code(cedar_policy_core::parser::to_ast_err))]
+    #[diagnostic(transparent)]
     ToAST(#[from] ToASTError),
     /// Error concerning restricted expressions.
     #[error(transparent)]
+    #[diagnostic(transparent)]
     RestrictedExpr(#[from] RestrictedExprError),
     /// Errors concerning parsing literals on their own
     #[error(transparent)]
+    #[diagnostic(transparent)]
     ParseLiteral(#[from] ParseLiteralError),
 }
 
@@ -69,30 +71,86 @@ impl ParseError {
     pub fn primary_source_span(&self) -> Option<SourceSpan> {
         match self {
             ParseError::ToCST(to_cst_err) => Some(to_cst_err.primary_source_span()),
+            ParseError::ToAST(to_ast_err) => Some(to_ast_err.source_span()),
             ParseError::RestrictedExpr(restricted_expr_err) => match restricted_expr_err {
                 RestrictedExprError::InvalidRestrictedExpression { .. } => None,
-                RestrictedExprError::Parse(ParseErrors(parse_errs)) => {
-                    parse_errs.first().and_then(ParseError::primary_source_span)
-                }
             },
-            ParseError::ToAST(_) | ParseError::ParseLiteral(_) => None,
+            ParseError::ParseLiteral(_) => None,
         }
     }
 }
 
 /// Errors in the top-level parse literal entrypoint
-#[derive(Debug, Clone, PartialEq, Error, Eq)]
+#[derive(Debug, Clone, PartialEq, Diagnostic, Error, Eq)]
 pub enum ParseLiteralError {
     /// The top-level parser endpoint for parsing a literal encountered a non-literal.
     /// Since this can be any possible other expression, we just return it as a string.
-    #[error("the source `{0}` is not a literal")]
+    #[error("`{0}` is not a literal")]
     ParseLiteral(String),
 }
 
-/// Errors in  the CST -> AST transform, mostly well-formedness issues.
+/// Errors in the CST -> AST transform, mostly well-formedness issues.
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+#[error("{kind}")]
+pub struct ToASTError {
+    kind: ToASTErrorKind,
+    source_span: miette::SourceSpan,
+}
+
+// Aside from `labels` which is constructed based on the `source_span` in this
+// struct, everything is forwarded directly from `kind`.
+impl Diagnostic for ToASTError {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        Some(Box::new(iter::once(LabeledSpan::underline(
+            self.source_span,
+        ))))
+    }
+
+    fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.kind.code()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.kind.severity()
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.kind.help()
+    }
+
+    fn url<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.kind.url()
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.kind.source_code()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.kind.diagnostic_source()
+    }
+}
+
+impl ToASTError {
+    /// Construct a new `ToASTError`.
+    pub fn new(kind: ToASTErrorKind, source_span: miette::SourceSpan) -> Self {
+        Self { kind, source_span }
+    }
+
+    /// Get the error kind.
+    pub fn kind(&self) -> &ToASTErrorKind {
+        &self.kind
+    }
+
+    pub(crate) fn source_span(&self) -> miette::SourceSpan {
+        self.source_span
+    }
+}
+
+/// Details about a particular kind of `ToASTError`.
 #[derive(Debug, Diagnostic, Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum ToASTError {
+pub enum ToASTErrorKind {
     /// Returned when we attempt to parse a template with a conflicting id
     #[error("a template with id `{0}` already exists in the policy set")]
     DuplicateTemplateId(PolicyID),
@@ -100,21 +158,32 @@ pub enum ToASTError {
     #[error("a policy with id `{0}` already exists in the policy set")]
     DuplicatePolicyId(PolicyID),
     /// Returned when a template is encountered but a static policy is expected
-    #[error(
-        "expected a static policy, got a template. Try removing the template slots from this policy"
-    )]
-    UnexpectedTemplate,
+    #[error("expected a static policy, got a template containing the slot {slot}")]
+    #[diagnostic(help("try removing the template slot(s) from this policy"))]
+    UnexpectedTemplate {
+        /// Slot that was found (which is not valid in a static policy)
+        slot: cst::Slot,
+    },
     /// Returned when we attempt to parse a policy with malformed or conflicting annotations
     #[error("this policy uses poorly formed or duplicate annotations")]
     BadAnnotations,
-    /// Returned when a policy contains Template Slots in the condition clause. This is not currently supported.
-    #[error("template slots are currently unsupported in policy condition clauses")]
-    SlotsInConditionClause,
+    /// Returned when a policy contains template slots in a when/unless clause. This is not currently supported. See RFC 3
+    #[error("found template slot {slot} in a `{clausetype}` clause")]
+    #[diagnostic(help("slots are currently unsupported in `{clausetype}` clauses"))]
+    SlotsInConditionClause {
+        /// Slot that was found in a when/unless clause
+        slot: cst::Slot,
+        /// Clause type, e.g. "when" or "unless"
+        clausetype: &'static str,
+    },
     /// Returned when a policy is missing one of the 3 required scope clauses. (`principal`, `action`, and `resource`)
     #[error("this policy is missing the `{0}` variable in the scope")]
     MissingScopeConstraint(Var),
     /// Returned when a policy has an extra scope clause. This is not valid syntax
-    #[error("this policy has an extra head constraint in the scope; a policy must have exactly `principal`, `action`, and `resource` constraints: `{0}`")]
+    #[error("this policy has an extra head constraint in the scope: `{0}`")]
+    #[diagnostic(help(
+        "a policy must have exactly `principal`, `action`, and `resource` constraints"
+    ))]
     ExtraHeadConstraints(cst::VariableDef),
     /// Returned when a policy uses a reserved keyword as an identifier.
     #[error("this identifier is reserved and cannot be used: `{0}`")]
@@ -125,13 +194,16 @@ pub enum ToASTError {
     #[error("not a valid identifier: `{0}`")]
     InvalidIdentifier(String),
     /// Returned when a policy uses a effect keyword beyond `permit` or `forbid`
-    #[error("not a valid policy effect: `{0}`. Effect must be either `permit` or `forbid`")]
+    #[error("not a valid policy effect: `{0}`")]
+    #[diagnostic(help("effect must be either `permit` or `forbid`"))]
     InvalidEffect(cst::Ident),
     /// Returned when a policy uses a condition keyword beyond `when` or `unless`
-    #[error("not a valid policy condition: `{0}`. Condition must be either `when` or `unless`")]
+    #[error("not a valid policy condition: `{0}`")]
+    #[diagnostic(help("condition must be either `when` or `unless`"))]
     InvalidCondition(cst::Ident),
     /// Returned when a policy uses a variable in the scope beyond `principal`, `action`, or `resource`
-    #[error("expected a variable that is valid in the policy scope. Must be one of `principal`, `action`, or `resource`. Found: `{0}`")]
+    #[error("expected a variable that is valid in the policy scope; found: `{0}`")]
+    #[diagnostic(help("must be one of `principal`, `action`, or `resource`"))]
     InvalidScopeConstraintVariable(cst::Ident),
     /// Returned when a policy contains an invalid method name
     #[error("not a valid method name: `{0}`")]
@@ -145,7 +217,8 @@ pub enum ToASTError {
         got: Var,
     },
     /// Returned when a policy scope clauses uses an operator beyond `==` or `in`.
-    #[error("policy scope constraints must either `==` or `in`. Found `{0}`")]
+    #[error("not a valid policy scope constraint: {0}")]
+    #[diagnostic(help("policy scope constraints must either `==`, `in`, `is`, or `_ is _ in _`"))]
     InvalidConstraintOperator(cst::RelOp),
     /// Returned when the right hand side of `==` in a policy scope clause is not a single Entity UID or a template slot.
     /// This is valid in Cedar conditions, but not in the Scope
@@ -154,7 +227,8 @@ pub enum ToASTError {
     )]
     InvalidScopeEqualityRHS,
     /// Returned when an Entity UID used as an action does not have the type `Action`
-    #[error("expected an entity uid with the type `Action` but got `{0}`. Action entities must have type `Action`")]
+    #[error("expected an entity uid with the type `Action` but got `{0}`")]
+    #[diagnostic(help("action entities must have type `Action`, optionally in a namespace"))]
     InvalidActionType(crate::ast::EntityUID),
     /// Returned when a condition clause is empty
     #[error("{}condition clause cannot be empty", match .0 { Some(ident) => format!("`{}` ", ident), None => "".to_string() })]
@@ -169,12 +243,12 @@ pub enum ToASTError {
     #[error("invalid string literal: `{0}`")]
     InvalidString(String),
     /// Returned for attempting to use an arbitrary variable name. Cedar does not support arbitrary variables.
-    #[error("arbitrary variables are not supported; did you mean to enclose `{0}` in quotes to make a string? The valid Cedar variable are `principal`, `action`, `resource`, and `context`")]
+    #[error("arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`")]
+    #[diagnostic(help("did you mean to enclose `{0}` in quotes to make a string?"))]
     ArbitraryVariable(SmolStr),
     /// Returned for attempting to use an invalid attribute name
-    #[error(
-        "invalid attribute name: `{0}`. Attribute names can either be identifiers or string literals"
-    )]
+    #[error("not a valid attribute name: `{0}`")]
+    #[diagnostic(help("attribute names can either be identifiers or string literals"))]
     InvalidAttribute(SmolStr),
     /// Returned for attempting to use an invalid attribute name in a record name
     #[error("record literal has invalid attributes")]
@@ -183,18 +257,26 @@ pub enum ToASTError {
     #[error("`{0}` cannot be used as an attribute as it contains a namespace")]
     PathAsAttribute(String),
     /// Returned when a policy attempts to call a method function-style
-    #[error("`{0}` is a method, not a function. Use a method-style call: `e.{0}(..)`")]
+    #[error("`{0}` is a method, not a function")]
+    #[diagnostic(help("use a method-style call: `e.{0}(..)`"))]
     FunctionCallOnMethod(crate::ast::Id),
+    /// Returned when a policy attempts to call a function in the method style
+    #[error("`{0}` is a function, not a method")]
+    #[diagnostic(help("use a function-style call: `{0}(..)`"))]
+    MethodCallOnFunction(crate::ast::Id),
     /// Returned when the right hand side of a `like` expression is not a constant pattern literal
     #[error("right hand side of a `like` expression must be a pattern literal, but got `{0}`")]
     InvalidPattern(String),
     /// Returned when an unexpected node is in the policy scope clause
-    #[error("expected a {expected}, found a `{got}` statement")]
+    #[error("expected {expected}, found {got}")]
     WrongNode {
         /// What the expected AST node kind was
         expected: &'static str,
         /// What AST node was present in the policy source
         got: String,
+        /// Optional free-form text with a suggestion for how to fix the problem
+        #[help]
+        suggestion: Option<String>,
     },
     /// Returned when a policy contains ambiguous ordering of operators.
     /// This can be resolved by using parenthesis to make order explicit
@@ -210,19 +292,17 @@ pub enum ToASTError {
     #[error("multiplication must be by an integer literal")]
     NonConstantMultiplication,
     /// Returned when a policy contains an integer literal that is out of range
-    #[error(
-        "integer literal `{0}` is too large. Maximum allowed integer literal is `{}`",
-        i64::MAX
-    )]
+    #[error("integer literal `{0}` is too large")]
+    #[diagnostic(help("maximum allowed integer literal is `{}`", i64::MAX))]
     IntegerLiteralTooLarge(u64),
     /// Returned when a unary operator is chained more than 4 times in a row
-    #[error(
-        "too many occurrences of `{0}`. Cannot chain more the 4 applications of a unary operator"
-    )]
+    #[error("too many occurrences of `{0}`")]
+    #[diagnostic(help("cannot chain more the 4 applications of a unary operator"))]
     UnaryOpLimit(crate::ast::UnaryOp),
     /// Returned when a variable is called as a function, which is not allowed.
     /// Functions are not first class values in Cedar
-    #[error("variables cannot be called as functions. `{0}(...)` is not a valid function call")]
+    #[error("`{0}(...)` is not a valid function call")]
+    #[diagnostic(help("variables cannot be called as functions"))]
     VariableCall(crate::ast::Var),
     /// Returned when a policy attempts to call a method on a value that has no methods
     #[error("attempted to call `{0}.{1}`, but `{0}` does not have any methods")]
@@ -246,14 +326,24 @@ pub enum ToASTError {
     /// Returned when the contents of an indexing expression is not a string literal
     #[error("the contents of an index expression must be a string literal")]
     NonStringIndex,
-    /// Returned when a user attempts to use type-constraint syntax. This is not currently supported
-    #[error("type constraints are not currently supported")]
+    /// Returned when the same key appears two or more times in a single record literal
+    #[error("duplicate key `{key}` in record literal")]
+    DuplicateKeyInRecordLiteral {
+        /// The key that appeared two or more times
+        key: SmolStr,
+    },
+    /// Returned when a user attempts to use type-constraint `:` syntax. This
+    /// syntax was not adopted, but `is` can be used to write type constraints
+    /// in the policy scope.
+    #[error("type constraints using `:` are not supported")]
+    #[diagnostic(help("try using `is` instead"))]
     TypeConstraints,
     /// Returned when a policy uses a path in an invalid context
     #[error("a path is not valid in this context")]
     InvalidPath,
     /// Returned when a string needs to be fully normalized
-    #[error("`{kind}` needs to be normalized (e.g., whitespace removed): `{src}`. The normalized form is `{normalized_src}`")]
+    #[error("`{kind}` needs to be normalized (e.g., whitespace removed): `{src}`")]
+    #[diagnostic(help("the normalized form is `{normalized_src}`"))]
     NonNormalizedString {
         /// The kind of string we are expecting
         kind: &'static str,
@@ -271,10 +361,10 @@ pub enum ToASTError {
     /// Returned when a CST expression is invalid
     #[error("`{0}` is not a valid expression")]
     InvalidExpression(cst::Name),
-    /// Returned when a function has wrong arity
-    #[error("call to `{name}` requires exactly {expected} argument{}, but got {got} arguments", if .expected == &1 { "" } else { "s" })]
+    /// Returned when a function or method is called with the wrong arity
+    #[error("call to `{name}` requires exactly {expected} argument{}, but got {got} argument{}", if .expected == &1 { "" } else { "s" }, if .got == &1 { "" } else { "s" })]
     WrongArity {
-        /// Name of the function being called
+        /// Name of the function or method being called
         name: &'static str,
         /// The expected number of arguments
         expected: usize,
@@ -283,18 +373,33 @@ pub enum ToASTError {
     },
     /// Returned when a string contains invalid escapes
     #[error(transparent)]
+    #[diagnostic(transparent)]
     Unescape(#[from] UnescapeError),
     /// Returns when a policy scope has incorrect EntityUIDs/Template Slots
     #[error(transparent)]
+    #[diagnostic(transparent)]
     RefCreation(#[from] RefCreationError),
+    /// Returned when an `is` appears in an invalid position in the policy scope
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidIs(#[from] InvalidIsError),
+    /// Returned when a policy contains a template slot other than `?principal` or `?resource`
+    #[error("`{0}` is not a valid template slot")]
+    #[diagnostic(help("a template slot may only be `?principal` or `?resource`"))]
+    InvalidSlot(SmolStr),
 }
 
-impl ToASTError {
+impl ToASTErrorKind {
     /// Constructor for the [`ToASTError::WrongNode`] error
-    pub fn wrong_node(expected: &'static str, got: impl Into<String>) -> Self {
+    pub fn wrong_node(
+        expected: &'static str,
+        got: impl Into<String>,
+        suggestion: Option<impl Into<String>>,
+    ) -> Self {
         Self::WrongNode {
             expected,
             got: got.into(),
+            suggestion: suggestion.map(Into::into),
         }
     }
 
@@ -312,7 +417,7 @@ impl ToASTError {
 // Either::Right((r1, r2)) => write!(f, "expected {r1} or {r2}, got: {}", self.got),
 
 /// Error surrounding EntityUIds/Template slots in policy scopes
-#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
 pub enum RefCreationError {
     /// Error surrounding EntityUIds/Template slots in policy scopes
     #[error("expected {}, got: {got}", match .expected { Either::Left(r) => r.to_string(), Either::Right((r1, r2)) => format!("{r1} or {r2}") })]
@@ -341,12 +446,6 @@ impl RefCreationError {
     }
 }
 
-impl From<RefCreationError> for ParseError {
-    fn from(value: RefCreationError) -> Self {
-        ParseError::ToAST(value.into())
-    }
-}
-
 /// The 3 kinds of literals that can be in a policy scope
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ref {
@@ -367,6 +466,19 @@ impl std::fmt::Display for Ref {
         }
     }
 }
+
+/// Error when `is` appears in the policy scope in a position where it is
+/// forbidden.
+#[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
+pub enum InvalidIsError {
+    /// The action scope may not contain an `is`
+    #[error("`is` cannot appear in the action scope")]
+    ActionScope,
+    /// An `is` cannot appear with this operator in the policy scope
+    #[error("`is` cannot appear in the scope at the same time as `{0}`")]
+    WrongOp(cst::RelOp),
+}
+
 /// Error from the CST parser.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub struct ToCSTError {
@@ -377,18 +489,17 @@ impl ToCSTError {
     /// Extract a primary source span locating the error.
     pub fn primary_source_span(&self) -> SourceSpan {
         match &self.err {
-            OwnedRawParseError::InvalidToken { location } => *location..*location,
-            OwnedRawParseError::UnrecognizedEof { location, .. } => *location..*location,
+            OwnedRawParseError::InvalidToken { location } => SourceSpan::from(*location),
+            OwnedRawParseError::UnrecognizedEof { location, .. } => SourceSpan::from(*location),
             OwnedRawParseError::UnrecognizedToken {
                 token: (token_start, _, token_end),
                 ..
-            } => *token_start..*token_end,
+            } => SourceSpan::from(*token_start..*token_end),
             OwnedRawParseError::ExtraToken {
                 token: (token_start, _, token_end),
-            } => *token_start..*token_end,
-            OwnedRawParseError::User { error } => error.info.0.clone(),
+            } => SourceSpan::from(*token_start..*token_end),
+            OwnedRawParseError::User { error } => error.loc,
         }
-        .into()
     }
 
     pub(crate) fn from_raw_parse_err(err: RawParseError<'_>) -> Self {
@@ -421,10 +532,6 @@ impl Display for ToCSTError {
 }
 
 impl Diagnostic for ToCSTError {
-    fn code(&self) -> Option<Box<dyn Display + '_>> {
-        Some(Box::new("cedar_policy_core::parser::to_cst_error"))
-    }
-
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         let primary_source_span = self.primary_source_span();
         let labeled_span = match &self.err {
@@ -435,9 +542,7 @@ impl Diagnostic for ToCSTError {
             OwnedRawParseError::UnrecognizedToken { expected, .. } => {
                 LabeledSpan::new_with_span(expected_to_string(expected), primary_source_span)
             }
-            OwnedRawParseError::ExtraToken {
-                token: (token_start, _, token_end),
-            } => LabeledSpan::underline(*token_start..*token_end),
+            OwnedRawParseError::ExtraToken { .. } => LabeledSpan::underline(primary_source_span),
             OwnedRawParseError::User { .. } => LabeledSpan::underline(primary_source_span),
         };
         Some(Box::new(iter::once(labeled_span)))
@@ -458,6 +563,7 @@ lazy_static! {
         ("IN", "`in`"),
         ("HAS", "`has`"),
         ("LIKE", "`like`"),
+        ("IS", "`is`"),
         ("THEN", "`then`"),
         ("ELSE", "`else`"),
         ("PRINCIPAL", "`principal`"),
@@ -466,6 +572,7 @@ lazy_static! {
         ("CONTEXT", "`context`"),
         ("PRINCIPAL_SLOT", "`?principal`"),
         ("RESOURCE_SLOT", "`?resource`"),
+        ("OTHER_SLOT", "template slot"),
         ("IDENTIFIER", "identifier"),
         ("NUMBER", "number"),
         ("STRINGLIT", "string literal"),
@@ -490,7 +597,7 @@ fn expected_to_string(expected: &[String]) -> Option<String> {
     Some(expected_string)
 }
 
-/// Multiple related parse errors.
+/// Multiple parse errors.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ParseErrors(pub Vec<ParseError>);
 
@@ -507,28 +614,40 @@ impl ParseErrors {
         ParseErrors(Vec::with_capacity(capacity))
     }
 
+    /// Add an error to the `ParseErrors`
+    pub(super) fn push(&mut self, err: impl Into<ParseError>) {
+        self.0.push(err.into());
+    }
+
     // TODO(spinda): Can we get rid of this?
-    /// returns a Vec with stringified versions of the ParserErrors
+    /// returns a Vec with stringified versions of the ParseErrors
     pub fn errors_as_strings(&self) -> Vec<String> {
-        self.0
-            .iter()
-            .map(|parser_error| format!("{}", parser_error))
-            .collect()
+        self.0.iter().map(ToString::to_string).collect()
+    }
+
+    /// Display the `ParseErrors`, newline-separated, with `help()`s if present
+    pub fn pretty_with_helps(&self) -> String {
+        self.iter()
+            .map(|e| match e.help() {
+                Some(help) => format!("{e}\n  help: {help}"),
+                None => format!("{e}"),
+            })
+            .join("\n")
     }
 }
 
 impl Display for ParseErrors {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.first() {
-            Some(first_err) => Display::fmt(first_err, f),
+            Some(first_err) => write!(f, "{first_err}"), // intentionally showing only the first error; see #326
             None => write!(f, "{}", Self::DESCRIPTION_IF_EMPTY),
         }
     }
 }
 
-impl Error for ParseErrors {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.first().and_then(Error::source)
+impl std::error::Error for ParseErrors {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.first().and_then(std::error::Error::source)
     }
 
     #[allow(deprecated)]
@@ -540,13 +659,18 @@ impl Error for ParseErrors {
     }
 
     #[allow(deprecated)]
-    fn cause(&self) -> Option<&dyn Error> {
-        self.first().and_then(Error::cause)
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        self.first().and_then(std::error::Error::cause)
     }
 }
 
+// Except for `.related()`, everything else is forwarded to the first error, if it is present.
+// This ensures that users who only use `Display`, `.code()`, `.labels()` etc, still get rich
+// information for the first error, even if they don't realize there are multiple errors here.
+// See #326.
 impl Diagnostic for ParseErrors {
     fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
+        // the .related() on the first error, and then the 2nd through Nth errors (but not their own .related())
         let mut errs = self.iter().map(|err| err as &dyn Diagnostic);
         errs.next().map(move |first_err| match first_err.related() {
             Some(first_err_related) => Box::new(first_err_related.chain(errs)),
@@ -558,7 +682,7 @@ impl Diagnostic for ParseErrors {
         self.first().and_then(Diagnostic::code)
     }
 
-    fn severity(&self) -> Option<Severity> {
+    fn severity(&self) -> Option<miette::Severity> {
         self.first().and_then(Diagnostic::severity)
     }
 
@@ -570,7 +694,7 @@ impl Diagnostic for ParseErrors {
         self.first().and_then(Diagnostic::url)
     }
 
-    fn source_code(&self) -> Option<&dyn SourceCode> {
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
         self.first().and_then(Diagnostic::source_code)
     }
 
@@ -621,15 +745,9 @@ impl DerefMut for ParseErrors {
     }
 }
 
-impl From<ParseError> for ParseErrors {
-    fn from(err: ParseError) -> Self {
-        vec![err].into()
-    }
-}
-
-impl From<ToCSTError> for ParseErrors {
-    fn from(err: ToCSTError) -> Self {
-        ParseError::from(err).into()
+impl<T: Into<ParseError>> From<T> for ParseErrors {
+    fn from(err: T) -> Self {
+        vec![err.into()].into()
     }
 }
 
@@ -639,9 +757,15 @@ impl From<Vec<ParseError>> for ParseErrors {
     }
 }
 
-impl FromIterator<ParseError> for ParseErrors {
-    fn from_iter<T: IntoIterator<Item = ParseError>>(errs: T) -> Self {
-        ParseErrors(errs.into_iter().collect())
+impl<T: Into<ParseError>> FromIterator<T> for ParseErrors {
+    fn from_iter<I: IntoIterator<Item = T>>(errs: I) -> Self {
+        ParseErrors(errs.into_iter().map(Into::into).collect())
+    }
+}
+
+impl<T: Into<ParseError>> Extend<T> for ParseErrors {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        self.0.extend(iter.into_iter().map(Into::into))
     }
 }
 

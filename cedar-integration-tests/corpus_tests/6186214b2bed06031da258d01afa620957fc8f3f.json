@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "Gxt833777::vxxnjjjjjj::\"\"",
-      "action": "Gxt833777::Action::\"action\"",
-      "resource": "Gxt833777::vxxnjjjjjj::\"\"",
+      "principal": {
+        "type": "Gxt833777::vxxnjjjjjj",
+        "id": ""
+      },
+      "resource": {
+        "type": "Gxt833777::vxxnjjjjjj",
+        "id": ""
+      },
+      "action": {
+        "type": "Gxt833777::Action",
+        "id": "action"
+      },
       "context": {
         "K00000000": ""
       },
@@ -20,9 +29,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "Gxt833777::vxxnjjjjjj::\"\"",
-      "action": "Gxt833777::Action::\"action\"",
-      "resource": "Gxt833777::vxxnjjjjjj::\"\"",
+      "principal": {
+        "type": "Gxt833777::vxxnjjjjjj",
+        "id": ""
+      },
+      "resource": {
+        "type": "Gxt833777::vxxnjjjjjj",
+        "id": ""
+      },
+      "action": {
+        "type": "Gxt833777::Action",
+        "id": "action"
+      },
       "context": {
         "K00000000": ""
       },
@@ -34,9 +52,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "Gxt833777::vxxnjjjjjj::\"\"",
-      "action": "Gxt833777::Action::\"action\"",
-      "resource": "Gxt833777::vxxnjjjjjj::\"\"",
+      "principal": {
+        "type": "Gxt833777::vxxnjjjjjj",
+        "id": ""
+      },
+      "resource": {
+        "type": "Gxt833777::vxxnjjjjjj",
+        "id": ""
+      },
+      "action": {
+        "type": "Gxt833777::Action",
+        "id": "action"
+      },
       "context": {
         "K00000000": ""
       },
@@ -48,9 +75,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "Gxt833777::vxxnjjjjjj::\"\"",
-      "action": "Gxt833777::Action::\"action\"",
-      "resource": "Gxt833777::vxxnjjjjjj::\"\"",
+      "principal": {
+        "type": "Gxt833777::vxxnjjjjjj",
+        "id": ""
+      },
+      "resource": {
+        "type": "Gxt833777::vxxnjjjjjj",
+        "id": ""
+      },
+      "action": {
+        "type": "Gxt833777::Action",
+        "id": "action"
+      },
       "context": {
         "K00000000": ""
       },
@@ -62,9 +98,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "Gxt833777::vxxnjjjjjj::\"\"",
-      "action": "Gxt833777::Action::\"action\"",
-      "resource": "Gxt833777::vxxnjjjjjj::\"\"",
+      "principal": {
+        "type": "Gxt833777::vxxnjjjjjj",
+        "id": ""
+      },
+      "resource": {
+        "type": "Gxt833777::vxxnjjjjjj",
+        "id": ""
+      },
+      "action": {
+        "type": "Gxt833777::Action",
+        "id": "action"
+      },
       "context": {
         "K00000000": ""
       },
@@ -76,9 +121,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "Gxt833777::vxxnjjjjjj::\"\"",
-      "action": "Gxt833777::Action::\"action\"",
-      "resource": "Gxt833777::vxxnjjjjjj::\"\"",
+      "principal": {
+        "type": "Gxt833777::vxxnjjjjjj",
+        "id": ""
+      },
+      "resource": {
+        "type": "Gxt833777::vxxnjjjjjj",
+        "id": ""
+      },
+      "action": {
+        "type": "Gxt833777::Action",
+        "id": "action"
+      },
       "context": {
         "K00000000": ""
       },
@@ -90,9 +144,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "Gxt833777::vxxnjjjjjj::\"\"",
-      "action": "Gxt833777::Action::\"action\"",
-      "resource": "Gxt833777::vxxnjjjjjj::\"\"",
+      "principal": {
+        "type": "Gxt833777::vxxnjjjjjj",
+        "id": ""
+      },
+      "resource": {
+        "type": "Gxt833777::vxxnjjjjjj",
+        "id": ""
+      },
+      "action": {
+        "type": "Gxt833777::Action",
+        "id": "action"
+      },
       "context": {
         "K00000000": ""
       },
@@ -104,9 +167,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "Gxt833777::vxxnjjjjjj::\"\"",
-      "action": "Gxt833777::Action::\"action\"",
-      "resource": "Gxt833777::vxxnjjjjjj::\"\"",
+      "principal": {
+        "type": "Gxt833777::vxxnjjjjjj",
+        "id": ""
+      },
+      "resource": {
+        "type": "Gxt833777::vxxnjjjjjj",
+        "id": ""
+      },
+      "action": {
+        "type": "Gxt833777::Action",
+        "id": "action"
+      },
       "context": {
         "K00000000": ""
       },

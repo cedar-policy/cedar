@@ -16,13 +16,16 @@
 
 //! This module contains the extension for including unknown values
 use crate::{
-    ast::{CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, Value},
+    ast::{CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, Unknown, Value},
     entities::SchemaType,
     evaluator::{self, EvaluationError},
 };
 
+/// Create a new untyped `Unknown`
 fn create_new_unknown(v: Value) -> evaluator::Result<ExtensionOutputValue> {
-    Ok(ExtensionOutputValue::Unknown(v.get_as_string()?.clone()))
+    Ok(ExtensionOutputValue::Unknown(Unknown::new_untyped(
+        v.get_as_string()?.clone(),
+    )))
 }
 
 fn throw_error(v: Value) -> evaluator::Result<ExtensionOutputValue> {

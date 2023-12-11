@@ -16,14 +16,19 @@
 
 use super::utils::unwrap_or_clone;
 use super::FromJsonError;
-use crate::ast;
-use crate::entities::{EscapeKind, JSONValue, JsonDeserializationError, TypeAndId};
+use crate::entities::{
+    CedarValueJson, EscapeKind, FnAndArg, JsonDeserializationError,
+    JsonDeserializationErrorContext, TypeAndId,
+};
+use crate::extensions::Extensions;
 use crate::parser::cst::{self, Ident};
-use crate::parser::err::{ParseError, ParseErrors, ToASTError};
-use crate::parser::unescape;
-use crate::parser::ASTNode;
+use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
+use crate::parser::{unescape, ASTNode};
+use crate::{ast, FromNormalizedStr};
 use either::Either;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -43,12 +48,13 @@ pub enum Expr {
 
 /// Serde JSON structure for [any Cedar expression other than an extension
 /// function call] in the EST format
+#[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum ExprNoExt {
     /// Literal value (including anything that's legal to express in the
     /// attribute-value JSON format)
-    Value(JSONValue),
+    Value(CedarValueJson),
     /// Var
     Var(ast::Var),
     /// Template slot
@@ -214,6 +220,18 @@ pub enum ExprNoExt {
         /// Pattern
         pattern: SmolStr,
     },
+    /// `<entity> is <entity_type> in <entity_or_entity_set> `
+    #[serde(rename = "is")]
+    Is {
+        /// Left-hand entity argument
+        left: Arc<Expr>,
+        /// Entity type
+        entity_type: SmolStr,
+        /// Entity or entity set
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(rename = "in")]
+        in_expr: Option<Arc<Expr>>,
+    },
     /// Ternary
     #[serde(rename = "if-then-else")]
     If {
@@ -234,10 +252,11 @@ pub enum ExprNoExt {
     /// Record literal, whose elements may be arbitrary expressions
     /// (which is why we need this case specifically and can't just
     /// use Expr::Value)
-    Record(HashMap<SmolStr, Expr>),
+    Record(#[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")] HashMap<SmolStr, Expr>),
 }
 
 /// Serde JSON structure for an extension function call in the EST format
+#[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExtFuncCall {
     /// maps the name of the function to a JSON list/array of the arguments.
@@ -245,16 +264,18 @@ pub struct ExtFuncCall {
     /// For example, for `a.isInRange(b)`, the first argument is `a` and the
     /// second argument is `b`.
     ///
-    /// This map should only ever have one k-v pair, but we make it a map in
-    /// order to get the correct JSON structure we want.
+    /// INVARIANT: This map should always have exactly one k-v pair (not more or
+    /// less), but we make it a map in order to get the correct JSON structure
+    /// we want.
     #[serde(flatten)]
+    #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
     call: HashMap<SmolStr, Vec<Expr>>,
 }
 
 #[allow(clippy::should_implement_trait)] // the names of arithmetic constructors alias with those of certain trait methods such as `add` of `std::ops::Add`
 impl Expr {
     /// literal
-    pub fn lit(lit: JSONValue) -> Self {
+    pub fn lit(lit: CedarValueJson) -> Self {
         Expr::ExprNoExt(ExprNoExt::Value(lit))
     }
 
@@ -427,6 +448,24 @@ impl Expr {
         })
     }
 
+    /// `left is entity_type`
+    pub fn is_entity_type(left: Expr, entity_type: SmolStr) -> Self {
+        Expr::ExprNoExt(ExprNoExt::Is {
+            left: Arc::new(left),
+            entity_type,
+            in_expr: None,
+        })
+    }
+
+    /// `left is entity_type in entity`
+    pub fn is_entity_type_in(left: Expr, entity_type: SmolStr, entity: Expr) -> Self {
+        Expr::ExprNoExt(ExprNoExt::Is {
+            left: Arc::new(left),
+            entity_type,
+            in_expr: Some(Arc::new(entity)),
+        })
+    }
+
     /// `if cond_expr then then_expr else else_expr`
     pub fn ite(cond_expr: Expr, then_expr: Expr, else_expr: Expr) -> Self {
         Expr::ExprNoExt(ExprNoExt::If {
@@ -456,75 +495,80 @@ impl Expr {
     /// Consume the `Expr`, producing a string literal if it was a string literal, otherwise returns the literal in the `Err` variant.
     pub fn into_string_literal(self) -> Result<SmolStr, Self> {
         match self {
-            Expr::ExprNoExt(ExprNoExt::Value(JSONValue::String(s))) => Ok(s),
+            Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::String(s))) => Ok(s),
             _ => Err(self),
         }
     }
 }
 
-impl TryFrom<Expr> for ast::Expr {
-    type Error = FromJsonError;
-    fn try_from(expr: Expr) -> Result<ast::Expr, Self::Error> {
-        match expr {
-            Expr::ExprNoExt(ExprNoExt::Value(jsonvalue)) => {
-                jsonvalue.into_expr().map(Into::into).map_err(Into::into)
-            }
+impl Expr {
+    /// Attempt to convert this `est::Expr` into an `ast::Expr`
+    ///
+    /// `id`: the ID of the policy this `Expr` belongs to, used only for reporting errors
+    pub fn try_into_ast(self, id: ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
+        match self {
+            Expr::ExprNoExt(ExprNoExt::Value(jsonvalue)) => jsonvalue
+                .into_expr(|| JsonDeserializationErrorContext::Policy { id: id.clone() })
+                .map(Into::into)
+                .map_err(Into::into),
             Expr::ExprNoExt(ExprNoExt::Var(var)) => Ok(ast::Expr::var(var)),
             Expr::ExprNoExt(ExprNoExt::Slot(slot)) => Ok(ast::Expr::slot(slot)),
-            Expr::ExprNoExt(ExprNoExt::Unknown { name }) => Ok(ast::Expr::unknown(name)),
+            Expr::ExprNoExt(ExprNoExt::Unknown { name }) => {
+                Ok(ast::Expr::unknown(ast::Unknown::new_untyped(name)))
+            }
             Expr::ExprNoExt(ExprNoExt::Not { arg }) => {
-                Ok(ast::Expr::not((*arg).clone().try_into()?))
+                Ok(ast::Expr::not((*arg).clone().try_into_ast(id)?))
             }
             Expr::ExprNoExt(ExprNoExt::Neg { arg }) => {
-                Ok(ast::Expr::neg((*arg).clone().try_into()?))
+                Ok(ast::Expr::neg((*arg).clone().try_into_ast(id)?))
             }
             Expr::ExprNoExt(ExprNoExt::Eq { left, right }) => Ok(ast::Expr::is_eq(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::NotEq { left, right }) => Ok(ast::Expr::noteq(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::In { left, right }) => Ok(ast::Expr::is_in(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Less { left, right }) => Ok(ast::Expr::less(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::LessEq { left, right }) => Ok(ast::Expr::lesseq(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Greater { left, right }) => Ok(ast::Expr::greater(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::GreaterEq { left, right }) => Ok(ast::Expr::greatereq(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::And { left, right }) => Ok(ast::Expr::and(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Or { left, right }) => Ok(ast::Expr::or(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Add { left, right }) => Ok(ast::Expr::add(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Sub { left, right }) => Ok(ast::Expr::sub(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Mul { left, right }) => {
-                let left: ast::Expr = (*left).clone().try_into()?;
-                let right: ast::Expr = (*right).clone().try_into()?;
+                let left: ast::Expr = (*left).clone().try_into_ast(id.clone())?;
+                let right: ast::Expr = (*right).clone().try_into_ast(id)?;
                 let left_c = match left.expr_kind() {
                     ast::ExprKind::Lit(ast::Literal::Long(c)) => Some(c),
                     _ => None,
@@ -536,59 +580,83 @@ impl TryFrom<Expr> for ast::Expr {
                 match (left_c, right_c) {
                     (_, Some(c)) => Ok(ast::Expr::mul(left, *c)),
                     (Some(c), _) => Ok(ast::Expr::mul(right, *c)),
-                    (None, None) => Err(Self::Error::MultiplicationByNonConstant {
+                    (None, None) => Err(FromJsonError::MultiplicationByNonConstant {
                         arg1: left,
                         arg2: right,
                     })?,
                 }
             }
             Expr::ExprNoExt(ExprNoExt::Contains { left, right }) => Ok(ast::Expr::contains(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::ContainsAll { left, right }) => Ok(ast::Expr::contains_all(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::ContainsAny { left, right }) => Ok(ast::Expr::contains_any(
-                (*left).clone().try_into()?,
-                (*right).clone().try_into()?,
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::GetAttr { left, attr }) => {
-                Ok(ast::Expr::get_attr((*left).clone().try_into()?, attr))
+                Ok(ast::Expr::get_attr((*left).clone().try_into_ast(id)?, attr))
             }
             Expr::ExprNoExt(ExprNoExt::HasAttr { left, attr }) => {
-                Ok(ast::Expr::has_attr((*left).clone().try_into()?, attr))
+                Ok(ast::Expr::has_attr((*left).clone().try_into_ast(id)?, attr))
             }
             Expr::ExprNoExt(ExprNoExt::Like { left, pattern }) => {
                 match unescape::to_pattern(&pattern) {
-                    Ok(pattern) => Ok(ast::Expr::like((*left).clone().try_into()?, pattern)),
-                    Err(errs) => Err(Self::Error::UnescapeError(errs)),
+                    Ok(pattern) => Ok(ast::Expr::like((*left).clone().try_into_ast(id)?, pattern)),
+                    Err(errs) => Err(FromJsonError::UnescapeError(errs)),
                 }
             }
+            Expr::ExprNoExt(ExprNoExt::Is {
+                left,
+                entity_type,
+                in_expr,
+            }) => ast::Name::from_normalized_str(entity_type.as_str())
+                .map_err(FromJsonError::InvalidEntityType)
+                .and_then(|entity_type_name| {
+                    let left: ast::Expr = (*left).clone().try_into_ast(id.clone())?;
+                    let is_expr = ast::Expr::is_entity_type(left.clone(), entity_type_name);
+                    match in_expr {
+                        // The AST doesn't have an `... is ... in ..` node, so
+                        // we represent it as a conjunction of `is` and `in`.
+                        Some(in_expr) => Ok(ast::Expr::and(
+                            is_expr,
+                            ast::Expr::is_in(left, (*in_expr).clone().try_into_ast(id)?),
+                        )),
+                        None => Ok(is_expr),
+                    }
+                }),
             Expr::ExprNoExt(ExprNoExt::If {
                 cond_expr,
                 then_expr,
                 else_expr,
             }) => Ok(ast::Expr::ite(
-                (*cond_expr).clone().try_into()?,
-                (*then_expr).clone().try_into()?,
-                (*else_expr).clone().try_into()?,
+                (*cond_expr).clone().try_into_ast(id.clone())?,
+                (*then_expr).clone().try_into_ast(id.clone())?,
+                (*else_expr).clone().try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Set(elements)) => Ok(ast::Expr::set(
                 elements
                     .into_iter()
-                    .map(|el| el.try_into())
-                    .collect::<Result<Vec<_>, Self::Error>>()?,
+                    .map(|el| el.try_into_ast(id.clone()))
+                    .collect::<Result<Vec<_>, FromJsonError>>()?,
             )),
-            Expr::ExprNoExt(ExprNoExt::Record(map)) => Ok(ast::Expr::record(
-                map.into_iter()
-                    .map(|(k, v)| Ok((k, v.try_into()?)))
-                    .collect::<Result<HashMap<SmolStr, _>, Self::Error>>()?,
-            )),
+            Expr::ExprNoExt(ExprNoExt::Record(map)) => {
+                // PANIC SAFETY: can't have duplicate keys here because the input was already a HashMap
+                #[allow(clippy::expect_used)]
+                Ok(ast::Expr::record(
+                    map.into_iter()
+                        .map(|(k, v)| Ok((k, v.try_into_ast(id.clone())?)))
+                        .collect::<Result<HashMap<SmolStr, _>, FromJsonError>>()?,
+                )
+                .expect("can't have duplicate keys here because the input was already a HashMap"))
+            }
             Expr::ExtFuncCall(ExtFuncCall { call }) => {
                 match call.len() {
-                    0 => Err(Self::Error::MissingOperator),
+                    0 => Err(FromJsonError::MissingOperator),
                     1 => {
                         // PANIC SAFETY checked that `call.len() == 1`
                         #[allow(clippy::expect_used)]
@@ -606,11 +674,11 @@ impl TryFrom<Expr> for ast::Expr {
                         Ok(ast::Expr::call_extension_fn(
                             fn_name,
                             args.into_iter()
-                                .map(TryInto::try_into)
+                                .map(|arg| arg.try_into_ast(id.clone()))
                                 .collect::<Result<_, _>>()?,
                         ))
                     }
-                    _ => Err(Self::Error::MultipleOperators {
+                    _ => Err(FromJsonError::MultipleOperators {
                         ops: call.into_keys().collect(),
                     }),
                 }
@@ -625,7 +693,7 @@ impl From<ast::Expr> for Expr {
             ast::ExprKind::Lit(lit) => lit.into(),
             ast::ExprKind::Var(var) => var.into(),
             ast::ExprKind::Slot(slot) => slot.into(),
-            ast::ExprKind::Unknown { name, .. } => Expr::unknown(name),
+            ast::ExprKind::Unknown(ast::Unknown { name, .. }) => Expr::unknown(name),
             ast::ExprKind::If {
                 test_expr,
                 then_expr,
@@ -665,7 +733,7 @@ impl From<ast::Expr> for Expr {
             }
             ast::ExprKind::MulByConst { arg, constant } => Expr::mul(
                 unwrap_or_clone(arg).into(),
-                Expr::lit(JSONValue::Long(constant)),
+                Expr::lit(CedarValueJson::Long(constant)),
             ),
             ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let args = unwrap_or_clone(args).into_iter().map(Into::into).collect();
@@ -680,11 +748,14 @@ impl From<ast::Expr> for Expr {
             ast::ExprKind::Like { expr, pattern } => {
                 Expr::like(unwrap_or_clone(expr).into(), pattern.to_string().into())
             }
+            ast::ExprKind::Is { expr, entity_type } => {
+                Expr::is_entity_type(unwrap_or_clone(expr).into(), entity_type.to_string().into())
+            }
             ast::ExprKind::Set(set) => {
                 Expr::set(unwrap_or_clone(set).into_iter().map(Into::into).collect())
             }
-            ast::ExprKind::Record { pairs } => Expr::record(
-                unwrap_or_clone(pairs)
+            ast::ExprKind::Record(map) => Expr::record(
+                unwrap_or_clone(map)
                     .into_iter()
                     .map(|(k, v)| (k, v.into()))
                     .collect(),
@@ -695,7 +766,7 @@ impl From<ast::Expr> for Expr {
 
 impl From<ast::Literal> for Expr {
     fn from(lit: ast::Literal) -> Expr {
-        Expr::lit(JSONValue::from_lit(lit))
+        Expr::lit(CedarValueJson::from_lit(lit))
     }
 }
 
@@ -711,85 +782,55 @@ impl From<ast::SlotId> for Expr {
     }
 }
 
-impl TryFrom<cst::Expr> for Expr {
+impl TryFrom<&ASTNode<Option<cst::Expr>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(e: cst::Expr) -> Result<Expr, ParseErrors> {
-        match *e.expr {
-            cst::ExprData::Or(ASTNode { node, .. }) => match node {
-                Some(o) => o.try_into(),
-                None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-            },
-            cst::ExprData::If(
-                ASTNode { node: if_node, .. },
-                ASTNode {
-                    node: then_node, ..
-                },
-                ASTNode {
-                    node: else_node, ..
-                },
-            ) => match (if_node, then_node, else_node) {
-                (Some(if_node), Some(then_node), Some(else_node)) => {
-                    let cond_expr = if_node.try_into()?;
-                    let then_expr = then_node.try_into()?;
-                    let else_expr = else_node.try_into()?;
-                    Ok(Expr::ite(cond_expr, then_expr, else_expr))
-                }
-                (_, _, _) => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-            },
+    fn try_from(e: &ASTNode<Option<cst::Expr>>) -> Result<Expr, ParseErrors> {
+        match &*e.ok_or_missing()?.expr {
+            cst::ExprData::Or(node) => node.try_into(),
+            cst::ExprData::If(if_node, then_node, else_node) => {
+                let cond_expr = if_node.try_into()?;
+                let then_expr = then_node.try_into()?;
+                let else_expr = else_node.try_into()?;
+                Ok(Expr::ite(cond_expr, then_expr, else_expr))
+            }
         }
     }
 }
 
-impl TryFrom<cst::Or> for Expr {
+impl TryFrom<&ASTNode<Option<cst::Or>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(o: cst::Or) -> Result<Expr, ParseErrors> {
-        let mut expr = match o.initial.node {
-            Some(a) => a.try_into(),
-            None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-        }?;
-        for node in o.extended {
-            let rhs = match node.node {
-                Some(a) => a.try_into(),
-                None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-            }?;
+    fn try_from(o: &ASTNode<Option<cst::Or>>) -> Result<Expr, ParseErrors> {
+        let o_node = o.ok_or_missing()?;
+        let mut expr = (&o_node.initial).try_into()?;
+        for node in &o_node.extended {
+            let rhs = node.try_into()?;
             expr = Expr::or(expr, rhs);
         }
         Ok(expr)
     }
 }
 
-impl TryFrom<cst::And> for Expr {
+impl TryFrom<&ASTNode<Option<cst::And>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(a: cst::And) -> Result<Expr, ParseErrors> {
-        let mut expr = match a.initial.node {
-            Some(r) => r.try_into(),
-            None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-        }?;
-        for node in a.extended {
-            let rhs = match node.node {
-                Some(r) => r.try_into(),
-                None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-            }?;
+    fn try_from(a: &ASTNode<Option<cst::And>>) -> Result<Expr, ParseErrors> {
+        let a_node = a.ok_or_missing()?;
+        let mut expr = (&a_node.initial).try_into()?;
+        for node in &a_node.extended {
+            let rhs = node.try_into()?;
             expr = Expr::and(expr, rhs);
         }
         Ok(expr)
     }
 }
 
-impl TryFrom<cst::Relation> for Expr {
+impl TryFrom<&ASTNode<Option<cst::Relation>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(r: cst::Relation) -> Result<Expr, ParseErrors> {
-        match r {
+    fn try_from(r: &ASTNode<Option<cst::Relation>>) -> Result<Expr, ParseErrors> {
+        match r.ok_or_missing()? {
             cst::Relation::Common { initial, extended } => {
-                let mut expr = match initial.node {
-                    Some(a) => a.try_into(),
-                    None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-                }?;
-                for (op, ASTNode { node, .. }) in extended {
-                    let rhs = match node {
-                        Some(a) => a.try_into(),
-                        None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-                    }?;
+                let mut expr = initial.try_into()?;
+                for (op, node) in extended {
+                    let rhs = node.try_into()?;
                     match op {
                         cst::RelOp::Eq => {
                             expr = Expr::eq(expr, rhs);
@@ -816,69 +857,58 @@ impl TryFrom<cst::Relation> for Expr {
                 }
                 Ok(expr)
             }
-            cst::Relation::Has { target, field } => match (target, field) {
-                (
-                    ASTNode {
-                        node: Some(target), ..
-                    },
-                    ASTNode {
-                        node: Some(field), ..
-                    },
-                ) => {
-                    let target_expr = target.try_into()?;
-                    match Expr::try_from(field.clone()) {
-                        Ok(field_expr) => {
-                            let field_str = field_expr
-                                .into_string_literal()
-                                .map_err(|_| ParseError::ToAST(ToASTError::HasNonLiteralRHS))?;
-                            Ok(Expr::has_attr(target_expr, field_str))
-                        }
-                        Err(_) => match is_add_name(field) {
-                            Some(name) => Ok(Expr::has_attr(target_expr, name.to_string().into())),
-                            None => Err(ParseError::ToAST(ToASTError::HasNonLiteralRHS).into()),
-                        },
+            cst::Relation::Has { target, field } => {
+                let target_expr = target.try_into()?;
+                match Expr::try_from(field) {
+                    Ok(field_expr) => {
+                        let field_str = field_expr
+                            .into_string_literal()
+                            .map_err(|_| field.to_ast_err(ToASTErrorKind::HasNonLiteralRHS))?;
+                        Ok(Expr::has_attr(target_expr, field_str))
                     }
-                }
-                (_, _) => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-            },
-            cst::Relation::Like { target, pattern } => match (target, pattern) {
-                (
-                    ASTNode {
-                        node: Some(target), ..
+                    Err(_) => match is_add_name(field.ok_or_missing()?) {
+                        Some(name) => Ok(Expr::has_attr(target_expr, name.to_string().into())),
+                        None => Err(field.to_ast_err(ToASTErrorKind::HasNonLiteralRHS).into()),
                     },
-                    ASTNode {
-                        node: Some(pattern),
-                        ..
-                    },
-                ) => {
-                    let target_expr = target.try_into()?;
-                    let pat_expr: Expr = pattern.try_into()?;
-                    let pat_str = pat_expr.into_string_literal().map_err(|e| {
-                        ParseError::ToAST(ToASTError::InvalidPattern(
-                            serde_json::to_string(&e)
-                                .unwrap_or_else(|_| "<malformed est>".to_string()),
-                        ))
-                    })?;
-                    Ok(Expr::like(target_expr, pat_str))
                 }
-                (_, _) => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-            },
+            }
+            cst::Relation::Like { target, pattern } => {
+                let target_expr = target.try_into()?;
+                let pat_expr: Expr = pattern.try_into()?;
+                let pat_str = pat_expr.into_string_literal().map_err(|e| {
+                    pattern.to_ast_err(ToASTErrorKind::InvalidPattern(
+                        serde_json::to_string(&e).unwrap_or_else(|_| "<malformed est>".to_string()),
+                    ))
+                })?;
+                Ok(Expr::like(target_expr, pat_str))
+            }
+            cst::Relation::IsIn {
+                target,
+                entity_type,
+                in_entity,
+            } => {
+                let target = target.try_into()?;
+                let type_str = entity_type.ok_or_missing()?.to_string().into();
+                match in_entity {
+                    Some(in_entity) => Ok(Expr::is_entity_type_in(
+                        target,
+                        type_str,
+                        in_entity.try_into()?,
+                    )),
+                    None => Ok(Expr::is_entity_type(target, type_str)),
+                }
+            }
         }
     }
 }
 
-impl TryFrom<cst::Add> for Expr {
+impl TryFrom<&ASTNode<Option<cst::Add>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(a: cst::Add) -> Result<Expr, ParseErrors> {
-        let mut expr = match a.initial.node {
-            Some(m) => m.try_into(),
-            None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-        }?;
-        for (op, node) in a.extended {
-            let rhs = match node.node {
-                Some(m) => m.try_into(),
-                None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-            }?;
+    fn try_from(a: &ASTNode<Option<cst::Add>>) -> Result<Expr, ParseErrors> {
+        let a_node = a.ok_or_missing()?;
+        let mut expr = (&a_node.initial).try_into()?;
+        for (op, node) in &a_node.extended {
+            let rhs = node.try_into()?;
             match op {
                 cst::AddOp::Plus => {
                     expr = Expr::add(expr, rhs);
@@ -894,9 +924,9 @@ impl TryFrom<cst::Add> for Expr {
 
 /// Returns `Some` if this is just a cst::Name. For example the
 /// `foobar` in `context has foobar`
-fn is_add_name(add: cst::Add) -> Option<cst::Name> {
+fn is_add_name(add: &cst::Add) -> Option<&cst::Name> {
     if add.extended.is_empty() {
-        match add.initial.node {
+        match &add.initial.node {
             Some(mult) => is_mult_name(mult),
             None => None,
         }
@@ -907,9 +937,9 @@ fn is_add_name(add: cst::Add) -> Option<cst::Name> {
 
 /// Returns `Some` if this is just a cst::Name. For example the
 /// `foobar` in `context has foobar`
-fn is_mult_name(mult: cst::Mult) -> Option<cst::Name> {
+fn is_mult_name(mult: &cst::Mult) -> Option<&cst::Name> {
     if mult.extended.is_empty() {
-        match mult.initial.node {
+        match &mult.initial.node {
             Some(unary) => is_unary_name(unary),
             None => None,
         }
@@ -920,9 +950,9 @@ fn is_mult_name(mult: cst::Mult) -> Option<cst::Name> {
 
 /// Returns `Some` if this is just a cst::Name. For example the
 /// `foobar` in `context has foobar`
-fn is_unary_name(unary: cst::Unary) -> Option<cst::Name> {
+fn is_unary_name(unary: &cst::Unary) -> Option<&cst::Name> {
     if unary.op.is_none() {
-        match unary.item.node {
+        match &unary.item.node {
             Some(mem) => is_mem_name(mem),
             None => None,
         }
@@ -933,9 +963,9 @@ fn is_unary_name(unary: cst::Unary) -> Option<cst::Name> {
 
 /// Returns `Some` if this is just a cst::Name. For example the
 /// `foobar` in `context has foobar`
-fn is_mem_name(mem: cst::Member) -> Option<cst::Name> {
+fn is_mem_name(mem: &cst::Member) -> Option<&cst::Name> {
     if mem.access.is_empty() {
-        match mem.item.node {
+        match &mem.item.node {
             Some(primary) => is_primary_name(primary),
             None => None,
         }
@@ -946,34 +976,29 @@ fn is_mem_name(mem: cst::Member) -> Option<cst::Name> {
 
 /// Returns `Some` if this is just a cst::Name. For example the
 /// `foobar` in `context has foobar`
-fn is_primary_name(primary: cst::Primary) -> Option<cst::Name> {
+fn is_primary_name(primary: &cst::Primary) -> Option<&cst::Name> {
     match primary {
-        cst::Primary::Name(node) => node.node,
+        cst::Primary::Name(node) => node.node.as_ref(),
         _ => None,
     }
 }
 
-impl TryFrom<cst::Mult> for Expr {
+impl TryFrom<&ASTNode<Option<cst::Mult>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(m: cst::Mult) -> Result<Expr, ParseErrors> {
-        let mut expr = match m.initial.node {
-            Some(u) => u.try_into(),
-            None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-        }?;
-        for (op, node) in m.extended {
-            let rhs = match node.node {
-                Some(u) => u.try_into(),
-                None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-            }?;
+    fn try_from(m: &ASTNode<Option<cst::Mult>>) -> Result<Expr, ParseErrors> {
+        let m_node = m.ok_or_missing()?;
+        let mut expr = (&m_node.initial).try_into()?;
+        for (op, node) in &m_node.extended {
+            let rhs = node.try_into()?;
             match op {
                 cst::MultOp::Times => {
                     expr = Expr::mul(expr, rhs);
                 }
                 cst::MultOp::Divide => {
-                    return Err(ParseError::ToAST(ToASTError::UnsupportedDivision).into())
+                    return Err(node.to_ast_err(ToASTErrorKind::UnsupportedDivision).into())
                 }
                 cst::MultOp::Mod => {
-                    return Err(ParseError::ToAST(ToASTError::UnsupportedModulo).into())
+                    return Err(node.to_ast_err(ToASTErrorKind::UnsupportedModulo).into())
                 }
             }
         }
@@ -981,14 +1006,12 @@ impl TryFrom<cst::Mult> for Expr {
     }
 }
 
-impl TryFrom<cst::Unary> for Expr {
+impl TryFrom<&ASTNode<Option<cst::Unary>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(u: cst::Unary) -> Result<Expr, ParseErrors> {
-        let inner = match u.item.node {
-            Some(m) => m.try_into(),
-            None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-        }?;
-        match u.op {
+    fn try_from(u: &ASTNode<Option<cst::Unary>>) -> Result<Expr, ParseErrors> {
+        let u_node = u.ok_or_missing()?;
+        let inner = (&u_node.item).try_into()?;
+        match u_node.op {
             Some(cst::NegOp::Bang(0)) => Ok(inner),
             Some(cst::NegOp::Bang(1)) => Ok(Expr::not(inner)),
             Some(cst::NegOp::Bang(2)) => {
@@ -1007,11 +1030,13 @@ impl TryFrom<cst::Unary> for Expr {
             Some(cst::NegOp::Dash(0)) => Ok(inner),
             Some(cst::NegOp::Dash(mut num_dashes)) => {
                 let inner = match inner {
-                    Expr::ExprNoExt(ExprNoExt::Value(JSONValue::Long(n))) if n != std::i64::MIN => {
+                    Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(n)))
+                        if n != std::i64::MIN =>
+                    {
                         // collapse the negated literal into a single negative literal.
                         // Important for multiplication-by-constant to allow multiplication by negative constants.
                         num_dashes -= 1;
-                        Expr::lit(JSONValue::Long(-n))
+                        Expr::lit(CedarValueJson::Long(-n))
                     }
                     _ => inner,
                 };
@@ -1033,12 +1058,12 @@ impl TryFrom<cst::Unary> for Expr {
                     }
                 }
             }
-            Some(cst::NegOp::OverBang) => {
-                Err(ParseError::ToAST(ToASTError::UnaryOpLimit(ast::UnaryOp::Not)).into())
-            }
-            Some(cst::NegOp::OverDash) => {
-                Err(ParseError::ToAST(ToASTError::UnaryOpLimit(ast::UnaryOp::Neg)).into())
-            }
+            Some(cst::NegOp::OverBang) => Err(u
+                .to_ast_err(ToASTErrorKind::UnaryOpLimit(ast::UnaryOp::Not))
+                .into()),
+            Some(cst::NegOp::OverDash) => Err(u
+                .to_ast_err(ToASTErrorKind::UnaryOpLimit(ast::UnaryOp::Neg))
+                .into()),
             None => Ok(inner),
         }
     }
@@ -1050,21 +1075,20 @@ impl TryFrom<cst::Unary> for Expr {
 /// (Upstream, the case where the `Primary` is a function name needs special
 /// handling, because in that case it is not a valid expression. In all other
 /// cases a `Primary` can be converted into an `Expr`.)
-fn interpret_primary(p: cst::Primary) -> Result<Either<ast::Name, Expr>, ParseErrors> {
-    match p {
-        cst::Primary::Literal(ASTNode { node, .. }) => match node {
-            Some(lit) => Ok(Either::Right(lit.try_into()?)),
-            None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-        },
-        cst::Primary::Ref(ASTNode { node, .. }) => match node {
-            Some(cst::Ref::Uid { path, eid }) => {
+fn interpret_primary(
+    p: &ASTNode<Option<cst::Primary>>,
+) -> Result<Either<ast::Name, Expr>, ParseErrors> {
+    match p.ok_or_missing()? {
+        cst::Primary::Literal(lit) => Ok(Either::Right(lit.try_into()?)),
+        cst::Primary::Ref(node) => match node.ok_or_missing()? {
+            cst::Ref::Uid { path, eid } => {
                 let mut errs = ParseErrors::new();
                 let maybe_name = path.to_name(&mut errs);
                 let maybe_eid = eid.as_valid_string(&mut errs);
 
                 match (maybe_name, maybe_eid) {
                     (Some(name), Some(eid)) => {
-                        Ok(Either::Right(Expr::lit(JSONValue::EntityEscape {
+                        Ok(Either::Right(Expr::lit(CedarValueJson::EntityEscape {
                             __entity: TypeAndId::from(ast::EntityUID::from_components(
                                 name,
                                 ast::Eid::new(eid.clone()),
@@ -1074,89 +1098,75 @@ fn interpret_primary(p: cst::Primary) -> Result<Either<ast::Name, Expr>, ParseEr
                     _ => Err(errs),
                 }
             }
-            Some(cst::Ref::Ref { .. }) => {
-                Err(ParseError::ToAST(ToASTError::UnsupportedEntityLiterals).into())
-            }
-            None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
+            cst::Ref::Ref { .. } => Err(node
+                .to_ast_err(ToASTErrorKind::UnsupportedEntityLiterals)
+                .into()),
         },
-        cst::Primary::Name(ASTNode { node, .. }) => match node {
-            Some(name) => match (&name.path[..], name.name.node) {
-                (&[], Some(cst::Ident::Principal)) => {
-                    Ok(Either::Right(Expr::var(ast::Var::Principal)))
-                }
-                (&[], Some(cst::Ident::Action)) => Ok(Either::Right(Expr::var(ast::Var::Action))),
-                (&[], Some(cst::Ident::Resource)) => {
-                    Ok(Either::Right(Expr::var(ast::Var::Resource)))
-                }
-                (&[], Some(cst::Ident::Context)) => Ok(Either::Right(Expr::var(ast::Var::Context))),
-                (path, Some(cst::Ident::Ident(id))) => Ok(Either::Left(ast::Name::new(
+        cst::Primary::Name(node) => {
+            let name = node.ok_or_missing()?;
+            let base_name = name.name.ok_or_missing()?;
+            match (&name.path[..], base_name) {
+                (&[], cst::Ident::Principal) => Ok(Either::Right(Expr::var(ast::Var::Principal))),
+                (&[], cst::Ident::Action) => Ok(Either::Right(Expr::var(ast::Var::Action))),
+                (&[], cst::Ident::Resource) => Ok(Either::Right(Expr::var(ast::Var::Resource))),
+                (&[], cst::Ident::Context) => Ok(Either::Right(Expr::var(ast::Var::Context))),
+                (path, cst::Ident::Ident(id)) => Ok(Either::Left(ast::Name::new(
                     id.parse()?,
                     path.iter()
-                        .map(|ASTNode { node, .. }| {
-                            node.as_ref()
-                                .ok_or_else(|| {
-                                    ParseErrors(vec![ParseError::ToAST(
-                                        ToASTError::MissingNodeData,
-                                    )])
-                                })
+                        .map(|node| {
+                            node.ok_or_missing()
+                                .map_err(Into::into)
                                 .and_then(|id| id.to_string().parse().map_err(Into::into))
                         })
-                        .collect::<Result<Vec<ast::Id>, _>>()?,
+                        .collect::<Result<Vec<ast::Id>, ParseErrors>>()?,
                 ))),
-                (path, Some(id)) => {
+                (path, id) => {
                     let (l, r) = match (path.first(), path.last()) {
                         (Some(l), Some(r)) => (
-                            l.info.range_start(),
-                            r.info.range_end() + ident_to_str_len(&id),
+                            l.loc.offset(),
+                            r.loc.offset() + r.loc.len() + ident_to_str_len(&id),
                         ),
                         (_, _) => (0, 0),
                     };
-                    Err(ParseError::ToAST(ToASTError::InvalidExpression(cst::Name {
-                        path: path.to_vec(),
-                        name: ASTNode::new(Some(id), l, r),
-                    }))
+                    Err(ToASTError::new(
+                        ToASTErrorKind::InvalidExpression(cst::Name {
+                            path: path.to_vec(),
+                            name: ASTNode::new(Some(id.clone()), l, r),
+                        }),
+                        miette::SourceSpan::from(l..r),
+                    )
                     .into())
                 }
-                (_, None) => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-            },
-            None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-        },
-        cst::Primary::Slot(ASTNode { node, .. }) => match node {
-            Some(cst::Slot::Principal) => Ok(Either::Right(Expr::slot(ast::SlotId::principal()))),
-            Some(cst::Slot::Resource) => Ok(Either::Right(Expr::slot(ast::SlotId::resource()))),
-            None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-        },
-        cst::Primary::Expr(ASTNode { node, .. }) => match node {
-            Some(e) => Ok(Either::Right(e.try_into()?)),
-            None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-        },
+            }
+        }
+        cst::Primary::Slot(node) => Ok(Either::Right(Expr::slot(
+            node.ok_or_missing()?
+                .try_into()
+                .map_err(|e| node.to_ast_err(e))?,
+        ))),
+        cst::Primary::Expr(e) => Ok(Either::Right(e.try_into()?)),
         cst::Primary::EList(nodes) => nodes
             .into_iter()
-            .map(|node| match node.node {
-                Some(e) => e.try_into(),
-                None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-            })
+            .map(|node| node.try_into())
             .collect::<Result<Vec<Expr>, _>>()
             .map(Expr::set)
             .map(Either::Right),
         cst::Primary::RInits(nodes) => nodes
             .into_iter()
-            .map(|node| match node.node {
-                Some(cst::RecInit(k, v)) => {
-                    let mut errs = ParseErrors::new();
-                    let s = k
-                        .to_expr_or_special(&mut errs)
-                        .and_then(|es| es.into_valid_attr(&mut errs));
-                    if !errs.is_empty() {
-                        Err(errs)
-                    } else {
-                        match (s, v.node) {
-                            (Some(s), Some(e)) => Ok((s, e.try_into()?)),
-                            (_, _) => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-                        }
+            .map(|node| {
+                let cst::RecInit(k, v) = node.ok_or_missing()?;
+                let mut errs = ParseErrors::new();
+                let s = k
+                    .to_expr_or_special(&mut errs)
+                    .and_then(|es| es.into_valid_attr(&mut errs));
+                if !errs.is_empty() {
+                    Err(errs)
+                } else {
+                    match s {
+                        Some(s) => Ok((s, v.try_into()?)),
+                        None => Err(node.to_ast_err(ToASTErrorKind::MissingNodeData).into()),
                     }
                 }
-                None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
             })
             .collect::<Result<HashMap<SmolStr, Expr>, ParseErrors>>()
             .map(Expr::record)
@@ -1164,34 +1174,31 @@ fn interpret_primary(p: cst::Primary) -> Result<Either<ast::Name, Expr>, ParseEr
     }
 }
 
-impl TryFrom<cst::Member> for Expr {
+impl TryFrom<&ASTNode<Option<cst::Member>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(m: cst::Member) -> Result<Expr, ParseErrors> {
-        let mut item: Either<ast::Name, Expr> = match m.item.node {
-            Some(p) => interpret_primary(p),
-            None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
-        }?;
-        for access in m.access {
-            match access.node {
-                Some(cst::MemAccess::Field(ASTNode { node, .. })) => match node {
-                    Some(cst::Ident::Ident(i)) => {
+    fn try_from(m: &ASTNode<Option<cst::Member>>) -> Result<Expr, ParseErrors> {
+        let m_node = m.ok_or_missing()?;
+        let mut item: Either<ast::Name, Expr> = interpret_primary(&m_node.item)?;
+        for access in &m_node.access {
+            match access.ok_or_missing()? {
+                cst::MemAccess::Field(node) => match node.ok_or_missing()? {
+                    cst::Ident::Ident(i) => {
                         item = match item {
                             Either::Left(name) => {
-                                return Err(
-                                    ParseError::ToAST(ToASTError::InvalidAccess(name, i)).into()
-                                )
+                                return Err(node
+                                    .to_ast_err(ToASTErrorKind::InvalidAccess(name, i.clone()))
+                                    .into())
                             }
-                            Either::Right(expr) => Either::Right(Expr::get_attr(expr, i)),
+                            Either::Right(expr) => Either::Right(Expr::get_attr(expr, i.clone())),
                         };
                     }
-                    Some(i) => {
-                        return Err(
-                            ParseError::ToAST(ToASTError::InvalidIdentifier(i.to_string())).into(),
-                        )
+                    i => {
+                        return Err(node
+                            .to_ast_err(ToASTErrorKind::InvalidIdentifier(i.to_string()))
+                            .into())
                     }
-                    None => return Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
                 },
-                Some(cst::MemAccess::Call(args)) => {
+                cst::MemAccess::Call(args) => {
                     // we have item(args).  We hope item is either:
                     //   - an `ast::Name`, in which case we have a standard function call
                     //   - or an expr of the form `x.y`, in which case y is the method
@@ -1204,37 +1211,27 @@ impl TryFrom<cst::Member> for Expr {
                         Either::Left(name) => Either::Right(Expr::ext_call(
                             name.to_string().into(),
                             args.into_iter()
-                                .map(|ASTNode { node, .. }| match node {
-                                    Some(expr) => expr.try_into(),
-                                    None => {
-                                        Err(ParseError::ToAST(ToASTError::MissingNodeData).into())
-                                    }
-                                })
+                                .map(|node| node.try_into())
                                 .collect::<Result<Vec<_>, _>>()?,
                         )),
                         Either::Right(Expr::ExprNoExt(ExprNoExt::GetAttr { left, attr })) => {
                             let args = args
                                 .into_iter()
-                                .map(|node| match node.node {
-                                    Some(arg) => arg.try_into(),
-                                    None => {
-                                        Err(ParseError::ToAST(ToASTError::MissingNodeData).into())
-                                    }
-                                })
+                                .map(|node| node.try_into())
                                 .collect::<Result<Vec<Expr>, ParseErrors>>()?;
                             let args = args.into_iter();
                             match attr.as_str() {
                                 "contains" => Either::Right(Expr::contains(
                                     left,
-                                    extract_single_argument(args, "contains()")?,
+                                    extract_single_argument(args, "contains()", access.loc)?,
                                 )),
                                 "containsAll" => Either::Right(Expr::contains_all(
                                     left,
-                                    extract_single_argument(args, "containsAll()")?,
+                                    extract_single_argument(args, "containsAll()", access.loc)?,
                                 )),
                                 "containsAny" => Either::Right(Expr::contains_any(
                                     left,
-                                    extract_single_argument(args, "containsAny()")?,
+                                    extract_single_argument(args, "containsAny()", access.loc)?,
                                 )),
                                 _ => {
                                     // have to add the "receiver" argument as
@@ -1245,94 +1242,99 @@ impl TryFrom<cst::Member> for Expr {
                                 }
                             }
                         }
-                        _ => return Err(ParseError::ToAST(ToASTError::ExpressionCall).into()),
+                        _ => return Err(access.to_ast_err(ToASTErrorKind::ExpressionCall).into()),
                     };
                 }
-                Some(cst::MemAccess::Index(ASTNode {
-                    node: Some(node), ..
-                })) => {
+                cst::MemAccess::Index(node) => {
                     let s = Expr::try_from(node)?
                         .into_string_literal()
-                        .map_err(|_| ParseError::ToAST(ToASTError::NonStringIndex))?;
+                        .map_err(|_| node.to_ast_err(ToASTErrorKind::NonStringIndex))?;
                     item = match item {
                         Either::Left(name) => {
-                            return Err(ParseError::ToAST(ToASTError::InvalidIndex(name, s)).into())
+                            return Err(node
+                                .to_ast_err(ToASTErrorKind::InvalidIndex(name, s))
+                                .into())
                         }
                         Either::Right(expr) => Either::Right(Expr::get_attr(expr, s)),
                     };
                 }
-                _ => return Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
             }
         }
         match item {
-            Either::Left(_) => Err(ParseError::ToAST(ToASTError::MembershipInvariantViolation))?,
+            Either::Left(_) => Err(m.to_ast_err(ToASTErrorKind::MembershipInvariantViolation))?,
             Either::Right(expr) => Ok(expr),
         }
     }
 }
 
-fn extract_single_argument(
-    es: impl ExactSizeIterator<Item = Expr>,
+/// Return the single argument in `args` iterator, or return a wrong arity error
+/// if the iterator has 0 elements or more than 1 element.
+pub fn extract_single_argument<T>(
+    args: impl ExactSizeIterator<Item = T>,
     fn_name: &'static str,
-) -> Result<Expr, ParseErrors> {
-    let mut iter = es.fuse().peekable();
+    span: miette::SourceSpan,
+) -> Result<T, ToASTError> {
+    let mut iter = args.fuse().peekable();
     let first = iter.next();
     let second = iter.peek();
     match (first, second) {
-        (None, _) => Err(ParseError::ToAST(ToASTError::wrong_arity(fn_name, 1, 0)).into()),
-        (Some(_), Some(_)) => {
-            Err(ParseError::ToAST(ToASTError::wrong_arity(fn_name, 1, iter.len())).into())
-        }
+        (None, _) => Err(ToASTError::new(
+            ToASTErrorKind::wrong_arity(fn_name, 1, 0),
+            span,
+        )),
+        (Some(_), Some(_)) => Err(ToASTError::new(
+            ToASTErrorKind::wrong_arity(fn_name, 1, iter.len() + 1),
+            span,
+        )),
         (Some(first), None) => Ok(first),
     }
 }
 
-impl TryFrom<cst::Literal> for Expr {
+impl TryFrom<&ASTNode<Option<cst::Literal>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(lit: cst::Literal) -> Result<Expr, ParseErrors> {
-        match lit {
-            cst::Literal::True => Ok(Expr::lit(JSONValue::Bool(true))),
-            cst::Literal::False => Ok(Expr::lit(JSONValue::Bool(false))),
-            cst::Literal::Num(n) => {
-                Ok(Expr::lit(JSONValue::Long(n.try_into().map_err(|_| {
-                    ParseError::ToAST(ToASTError::IntegerLiteralTooLarge(n))
-                })?)))
-            }
-            cst::Literal::Str(ASTNode { node, .. }) => match node {
-                Some(cst::Str::String(s)) => Ok(Expr::lit(JSONValue::String(s))),
-                Some(cst::Str::Invalid(invalid_str)) => Err(ParseError::ToAST(
-                    ToASTError::InvalidString(invalid_str.to_string()),
-                )
-                .into()),
-                None => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
+    fn try_from(lit: &ASTNode<Option<cst::Literal>>) -> Result<Expr, ParseErrors> {
+        match lit.ok_or_missing()? {
+            cst::Literal::True => Ok(Expr::lit(CedarValueJson::Bool(true))),
+            cst::Literal::False => Ok(Expr::lit(CedarValueJson::Bool(false))),
+            cst::Literal::Num(n) => Ok(Expr::lit(CedarValueJson::Long(
+                (*n).try_into()
+                    .map_err(|_| lit.to_ast_err(ToASTErrorKind::IntegerLiteralTooLarge(*n)))?,
+            ))),
+            cst::Literal::Str(node) => match node.ok_or_missing()? {
+                cst::Str::String(s) => Ok(Expr::lit(CedarValueJson::String(s.clone()))),
+                cst::Str::Invalid(invalid_str) => Err(node
+                    .to_ast_err(ToASTErrorKind::InvalidString(invalid_str.to_string()))
+                    .into()),
             },
         }
     }
 }
 
-impl TryFrom<cst::Name> for Expr {
+impl TryFrom<&ASTNode<Option<cst::Name>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(name: cst::Name) -> Result<Expr, ParseErrors> {
-        match (&name.path[..], name.name.node) {
-            (&[], Some(cst::Ident::Principal)) => Ok(Expr::var(ast::Var::Principal)),
-            (&[], Some(cst::Ident::Action)) => Ok(Expr::var(ast::Var::Action)),
-            (&[], Some(cst::Ident::Resource)) => Ok(Expr::var(ast::Var::Resource)),
-            (&[], Some(cst::Ident::Context)) => Ok(Expr::var(ast::Var::Context)),
-            (path, Some(id)) => {
+    fn try_from(name: &ASTNode<Option<cst::Name>>) -> Result<Expr, ParseErrors> {
+        let name_node = name.ok_or_missing()?;
+        let base_name = name_node.name.ok_or_missing()?;
+        match (&name_node.path[..], base_name) {
+            (&[], cst::Ident::Principal) => Ok(Expr::var(ast::Var::Principal)),
+            (&[], cst::Ident::Action) => Ok(Expr::var(ast::Var::Action)),
+            (&[], cst::Ident::Resource) => Ok(Expr::var(ast::Var::Resource)),
+            (&[], cst::Ident::Context) => Ok(Expr::var(ast::Var::Context)),
+            (path, id) => {
                 let (l, r) = match (path.first(), path.last()) {
                     (Some(l), Some(r)) => (
-                        l.info.range_start(),
-                        r.info.range_end() + ident_to_str_len(&id),
+                        l.loc.offset(),
+                        r.loc.offset() + r.loc.len() + ident_to_str_len(&id),
                     ),
                     (_, _) => (0, 0),
                 };
-                Err(ParseError::ToAST(ToASTError::InvalidExpression(cst::Name {
-                    path: path.to_vec(),
-                    name: ASTNode::new(Some(id), l, r),
-                }))
-                .into())
+                Err(name
+                    .to_ast_err(ToASTErrorKind::InvalidExpression(cst::Name {
+                        path: path.to_vec(),
+                        name: ASTNode::new(Some(id.clone()), l, r),
+                    }))
+                    .into())
             }
-            (_, None) => Err(ParseError::ToAST(ToASTError::MissingNodeData).into()),
         }
     }
 }
@@ -1358,6 +1360,7 @@ fn ident_to_str_len(i: &Ident) -> usize {
         Ident::Else => 4,
         Ident::Ident(s) => s.len(),
         Ident::Invalid(s) => s.len(),
+        Ident::Is => 2,
     }
 }
 
@@ -1367,7 +1370,11 @@ fn ident_to_str_len(i: &Ident) -> usize {
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 mod test {
+    use crate::parser::err::ParseError;
+
     use super::*;
+    use cool_asserts::assert_matches;
+
     #[test]
     fn test_invalid_expr_from_cst_name() {
         let path = vec![ASTNode::new(
@@ -1376,20 +1383,318 @@ mod test {
             12,
         )];
         let name = ASTNode::new(Some(cst::Ident::Else), 13, 16);
-        let cst_name = cst::Name { path, name };
+        let cst_name = ASTNode::new(Some(cst::Name { path, name }), 0, 16);
 
-        match Expr::try_from(cst_name) {
-            Ok(_) => panic!("wrong error"),
-            Err(e) => {
-                assert!(e.len() == 1);
-                match &e[0] {
-                    ParseError::ToAST(ToASTError::InvalidExpression(e)) => {
-                        println!("{:?}", e);
-                        assert_eq!(e.name.info.range_end(), 16);
-                    }
-                    _ => panic!("wrong error"),
+        assert_matches!(Expr::try_from(&cst_name), Err(e) => {
+            assert!(e.len() == 1);
+            assert_matches!(&e[0],
+                ParseError::ToAST(to_ast_error) => {
+                    assert_matches!(to_ast_error.kind(), ToASTErrorKind::InvalidExpression(e) => {
+                        println!("{e:?}");
+                        assert_eq!(e.name.loc.offset() + e.name.loc.len(), 16);
+                    });
+                }
+            );
+        });
+    }
+}
+
+impl std::fmt::Display for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ExprNoExt(e) => write!(f, "{e}"),
+            Self::ExtFuncCall(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+fn display_cedarvaluejson(f: &mut std::fmt::Formatter<'_>, v: &CedarValueJson) -> std::fmt::Result {
+    match v {
+        // Add parentheses around negative numeric literals otherwise
+        // round-tripping fuzzer fails for expressions like `(-1)["a"]`.
+        CedarValueJson::Long(n) if *n < 0 => write!(f, "({n})"),
+        CedarValueJson::Long(n) => write!(f, "{n}"),
+        CedarValueJson::Bool(b) => write!(f, "{b}"),
+        CedarValueJson::String(s) => write!(f, "\"{}\"", s.escape_debug()),
+        CedarValueJson::EntityEscape { __entity } => {
+            match ast::EntityUID::try_from(__entity.clone()) {
+                Ok(euid) => write!(f, "{euid}"),
+                Err(e) => write!(f, "(invalid entity uid: {})", e),
+            }
+        }
+        CedarValueJson::ExprEscape { __expr } => write!(f, "({__expr})"),
+        CedarValueJson::ExtnEscape {
+            __extn: FnAndArg { ext_fn, arg },
+        } => {
+            // search for the name and callstyle
+            let style = Extensions::all_available().all_funcs().find_map(|f| {
+                if &f.name().to_string() == ext_fn {
+                    Some(f.style())
+                } else {
+                    None
+                }
+            });
+            match style {
+                Some(ast::CallStyle::MethodStyle) => {
+                    display_cedarvaluejson(f, arg)?;
+                    write!(f, ".{ext_fn}()")?;
+                    Ok(())
+                }
+                Some(ast::CallStyle::FunctionStyle) | None => {
+                    write!(f, "{ext_fn}(")?;
+                    display_cedarvaluejson(f, arg)?;
+                    write!(f, ")")?;
+                    Ok(())
                 }
             }
         }
+        CedarValueJson::Set(v) => {
+            write!(f, "[")?;
+            for (i, val) in v.iter().enumerate() {
+                display_cedarvaluejson(f, val)?;
+                if i < (v.len() - 1) {
+                    write!(f, ", ")?;
+                }
+            }
+            write!(f, "]")?;
+            Ok(())
+        }
+        CedarValueJson::Record(m) => {
+            write!(f, "{{")?;
+            for (i, (k, v)) in m.iter().enumerate() {
+                write!(f, "\"{}\": ", k.escape_debug())?;
+                display_cedarvaluejson(f, v)?;
+                if i < (m.len() - 1) {
+                    write!(f, ", ")?;
+                }
+            }
+            write!(f, "}}")?;
+            Ok(())
+        }
+    }
+}
+
+impl std::fmt::Display for ExprNoExt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self {
+            ExprNoExt::Value(v) => display_cedarvaluejson(f, v),
+            ExprNoExt::Var(v) => write!(f, "{v}"),
+            ExprNoExt::Slot(id) => write!(f, "{id}"),
+            ExprNoExt::Unknown { name } => write!(f, "unknown(\"{}\")", name.escape_debug()),
+            ExprNoExt::Not { arg } => write!(f, "!{}", maybe_with_parens(arg)),
+            ExprNoExt::Neg { arg } => {
+                // Always add parentheses instead of calling
+                // `maybe_with_parens`.
+                // This makes sure that we always get a negation operation back
+                // (as opposed to e.g., a negative number) when parsing the
+                // printed form, thus preserving the round-tripping property.
+                write!(f, "-({arg})")
+            }
+            ExprNoExt::Eq { left, right } => write!(
+                f,
+                "{} == {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::NotEq { left, right } => write!(
+                f,
+                "{} != {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::In { left, right } => write!(
+                f,
+                "{} in {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::Less { left, right } => write!(
+                f,
+                "{} < {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::LessEq { left, right } => write!(
+                f,
+                "{} <= {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::Greater { left, right } => write!(
+                f,
+                "{} > {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::GreaterEq { left, right } => write!(
+                f,
+                "{} >= {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::And { left, right } => write!(
+                f,
+                "{} && {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::Or { left, right } => write!(
+                f,
+                "{} || {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::Add { left, right } => write!(
+                f,
+                "{} + {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::Sub { left, right } => write!(
+                f,
+                "{} - {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::Mul { left, right } => write!(
+                f,
+                "{} * {}",
+                maybe_with_parens(left),
+                maybe_with_parens(right)
+            ),
+            ExprNoExt::Contains { left, right } => {
+                write!(f, "{}.contains({right})", maybe_with_parens(left))
+            }
+            ExprNoExt::ContainsAll { left, right } => {
+                write!(f, "{}.containsAll({right})", maybe_with_parens(left))
+            }
+            ExprNoExt::ContainsAny { left, right } => {
+                write!(f, "{}.containsAny({right})", maybe_with_parens(left))
+            }
+            ExprNoExt::GetAttr { left, attr } => write!(
+                f,
+                "{}[\"{}\"]",
+                maybe_with_parens(left),
+                attr.escape_debug()
+            ),
+            ExprNoExt::HasAttr { left, attr } => write!(
+                f,
+                "{} has \"{}\"",
+                maybe_with_parens(left),
+                attr.escape_debug()
+            ),
+            ExprNoExt::Like { left, pattern } => {
+                write!(f, "{} like \"{}\"", maybe_with_parens(left), pattern) // intentionally not using .escape_debug() for pattern
+            }
+            ExprNoExt::Is {
+                left,
+                entity_type,
+                in_expr,
+            } => {
+                write!(f, "{} is {}", maybe_with_parens(left), entity_type)?;
+                match in_expr {
+                    Some(in_expr) => write!(f, " in {}", maybe_with_parens(in_expr)),
+                    None => Ok(()),
+                }
+            }
+            ExprNoExt::If {
+                cond_expr,
+                then_expr,
+                else_expr,
+            } => write!(
+                f,
+                "if {} then {} else {}",
+                maybe_with_parens(cond_expr),
+                maybe_with_parens(then_expr),
+                maybe_with_parens(else_expr)
+            ),
+            ExprNoExt::Set(v) => write!(f, "[{}]", v.iter().join(", ")),
+            ExprNoExt::Record(m) => write!(
+                f,
+                "{{{}}}",
+                m.iter()
+                    .map(|(k, v)| format!("\"{}\": {}", k.escape_debug(), v))
+                    .join(", ")
+            ),
+        }
+    }
+}
+
+impl std::fmt::Display for ExtFuncCall {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // PANIC SAFETY: safe due to INVARIANT on `ExtFuncCall`
+        #[allow(clippy::unreachable)]
+        let Some((fn_name, args)) = self.call.iter().next() else {
+            unreachable!("invariant violated: empty ExtFuncCall")
+        };
+        // search for the name and callstyle
+        let style = Extensions::all_available().all_funcs().find_map(|ext_fn| {
+            if &ext_fn.name().to_string() == fn_name {
+                Some(ext_fn.style())
+            } else {
+                None
+            }
+        });
+        match (style, args.iter().next()) {
+            (Some(ast::CallStyle::MethodStyle), Some(receiver)) => {
+                write!(
+                    f,
+                    "{}.{}({})",
+                    maybe_with_parens(receiver),
+                    fn_name,
+                    args.iter().skip(1).join(", ")
+                )
+            }
+            (_, _) => {
+                write!(f, "{}({})", fn_name, args.iter().join(", "))
+            }
+        }
+    }
+}
+
+/// returns the `Display` representation of the Expr, adding parens around
+/// the entire string if necessary.
+/// E.g., won't add parens for constants or `principal` etc, but will for things
+/// like `(2 < 5)`.
+/// When in doubt, add the parens.
+fn maybe_with_parens(expr: &Expr) -> String {
+    match expr {
+        Expr::ExprNoExt(ExprNoExt::Value(_)) => expr.to_string(),
+        Expr::ExprNoExt(ExprNoExt::Var(_)) => expr.to_string(),
+        Expr::ExprNoExt(ExprNoExt::Slot(_)) => expr.to_string(),
+        Expr::ExprNoExt(ExprNoExt::Unknown { .. }) => expr.to_string(),
+        Expr::ExprNoExt(ExprNoExt::Not { .. }) => {
+            // we want parens here because things like parse((!x).y)
+            // would be printed into !x.y which has a different meaning
+            format!("({expr})")
+        }
+        Expr::ExprNoExt(ExprNoExt::Neg { .. }) => {
+            // we want parens here because things like parse((-x).y)
+            // would be printed into -x.y which has a different meaning
+            format!("({expr})")
+        }
+        Expr::ExprNoExt(ExprNoExt::Eq { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::NotEq { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::In { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Less { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::LessEq { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Greater { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::GreaterEq { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::And { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Or { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Add { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Sub { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Mul { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Contains { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::ContainsAll { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::ContainsAny { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::GetAttr { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::HasAttr { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Like { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Is { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::If { .. }) => format!("({expr})"),
+        Expr::ExprNoExt(ExprNoExt::Set(_)) => expr.to_string(),
+        Expr::ExprNoExt(ExprNoExt::Record(_)) => expr.to_string(),
+        Expr::ExtFuncCall { .. } => format!("({expr})"),
     }
 }

@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "Qmc::Qx0xxu_YYYY::qmlAURxxx::\"\"",
-      "action": "Qmc::Qx0xxu_YYYY::Action::\"action\"",
-      "resource": "Qmc::Qx0xxu_YYYY::qmlAURxxx::\"\"",
+      "principal": {
+        "type": "Qmc::Qx0xxu_YYYY::qmlAURxxx",
+        "id": ""
+      },
+      "resource": {
+        "type": "Qmc::Qx0xxu_YYYY::qmlAURxxx",
+        "id": ""
+      },
+      "action": {
+        "type": "Qmc::Qx0xxu_YYYY::Action",
+        "id": "action"
+      },
       "context": {
         "A000": ""
       },
@@ -20,9 +29,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "Qmc::Qx0xxu_YYYY::qmlAURxxx::\"\"",
-      "action": "Qmc::Qx0xxu_YYYY::Action::\"action\"",
-      "resource": "Qmc::Qx0xxu_YYYY::qmlAURxxx::\"\"",
+      "principal": {
+        "type": "Qmc::Qx0xxu_YYYY::qmlAURxxx",
+        "id": ""
+      },
+      "resource": {
+        "type": "Qmc::Qx0xxu_YYYY::qmlAURxxx",
+        "id": ""
+      },
+      "action": {
+        "type": "Qmc::Qx0xxu_YYYY::Action",
+        "id": "action"
+      },
       "context": {
         "A000": ""
       },
@@ -34,9 +52,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "Qmc::Qx0xxu_YYYY::qmlAURxxx::\"\"",
-      "action": "Qmc::Qx0xxu_YYYY::Action::\"action\"",
-      "resource": "Qmc::Qx0xxu_YYYY::qmlAURxxx::\"\"",
+      "principal": {
+        "type": "Qmc::Qx0xxu_YYYY::qmlAURxxx",
+        "id": ""
+      },
+      "resource": {
+        "type": "Qmc::Qx0xxu_YYYY::qmlAURxxx",
+        "id": ""
+      },
+      "action": {
+        "type": "Qmc::Qx0xxu_YYYY::Action",
+        "id": "action"
+      },
       "context": {
         "A000": ""
       },
@@ -48,9 +75,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "Qmc::Qx0xxu_YYYY::qmlAURxxx::\"\"",
-      "action": "Qmc::Qx0xxu_YYYY::Action::\"action\"",
-      "resource": "Qmc::Qx0xxu_YYYY::qmlAURxxx::\"\"",
+      "principal": {
+        "type": "Qmc::Qx0xxu_YYYY::qmlAURxxx",
+        "id": ""
+      },
+      "resource": {
+        "type": "Qmc::Qx0xxu_YYYY::qmlAURxxx",
+        "id": ""
+      },
+      "action": {
+        "type": "Qmc::Qx0xxu_YYYY::Action",
+        "id": "action"
+      },
       "context": {
         "A000": ""
       },
@@ -62,9 +98,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "Qmc::Qx0xxu_YYYY::qmlAURxxx::\"\"",
-      "action": "Qmc::Qx0xxu_YYYY::Action::\"action\"",
-      "resource": "Qmc::Qx0xxu_YYYY::qmlAURxxx::\"\"",
+      "principal": {
+        "type": "Qmc::Qx0xxu_YYYY::qmlAURxxx",
+        "id": ""
+      },
+      "resource": {
+        "type": "Qmc::Qx0xxu_YYYY::qmlAURxxx",
+        "id": ""
+      },
+      "action": {
+        "type": "Qmc::Qx0xxu_YYYY::Action",
+        "id": "action"
+      },
       "context": {
         "A000": ""
       },
@@ -76,9 +121,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "Qmc::Qx0xxu_YYYY::qmlAURxxx::\"\"",
-      "action": "Qmc::Qx0xxu_YYYY::Action::\"action\"",
-      "resource": "Qmc::Qx0xxu_YYYY::qmlAURxxx::\"\"",
+      "principal": {
+        "type": "Qmc::Qx0xxu_YYYY::qmlAURxxx",
+        "id": ""
+      },
+      "resource": {
+        "type": "Qmc::Qx0xxu_YYYY::qmlAURxxx",
+        "id": ""
+      },
+      "action": {
+        "type": "Qmc::Qx0xxu_YYYY::Action",
+        "id": "action"
+      },
       "context": {
         "A000": ""
       },
@@ -90,9 +144,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "Qmc::Qx0xxu_YYYY::qmlAURxxx::\"\"",
-      "action": "Qmc::Qx0xxu_YYYY::Action::\"action\"",
-      "resource": "Qmc::Qx0xxu_YYYY::qmlAURxxx::\"\"",
+      "principal": {
+        "type": "Qmc::Qx0xxu_YYYY::qmlAURxxx",
+        "id": ""
+      },
+      "resource": {
+        "type": "Qmc::Qx0xxu_YYYY::qmlAURxxx",
+        "id": ""
+      },
+      "action": {
+        "type": "Qmc::Qx0xxu_YYYY::Action",
+        "id": "action"
+      },
       "context": {
         "A000": ""
       },
@@ -104,9 +167,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "Qmc::Qx0xxu_YYYY::qmlAURxxx::\"\"",
-      "action": "Qmc::Qx0xxu_YYYY::Action::\"action\"",
-      "resource": "Qmc::Qx0xxu_YYYY::qmlAURxxx::\"\"",
+      "principal": {
+        "type": "Qmc::Qx0xxu_YYYY::qmlAURxxx",
+        "id": ""
+      },
+      "resource": {
+        "type": "Qmc::Qx0xxu_YYYY::qmlAURxxx",
+        "id": ""
+      },
+      "action": {
+        "type": "Qmc::Qx0xxu_YYYY::Action",
+        "id": "action"
+      },
       "context": {
         "A000": ""
       },

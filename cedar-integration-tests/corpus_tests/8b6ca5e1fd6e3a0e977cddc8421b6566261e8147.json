@@ -6,98 +6,170 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "nww_ww00000::a::\"\"",
-      "action": "nww_ww00000::Action::\"action\"",
-      "resource": "nww_ww00000::a::\"\"",
+      "principal": {
+        "type": "nww_ww00000::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "nww_ww00000::a",
+        "id": ""
+      },
+      "action": {
+        "type": "nww_ww00000::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `nww_ww00000::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `nww_ww00000::a`)"
       ]
     },
     {
       "desc": "Query 1",
-      "principal": "nww_ww00000::a::\"\"",
-      "action": "nww_ww00000::Action::\"action\"",
-      "resource": "nww_ww00000::a::\"\"",
+      "principal": {
+        "type": "nww_ww00000::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "nww_ww00000::a",
+        "id": ""
+      },
+      "action": {
+        "type": "nww_ww00000::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `nww_ww00000::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `nww_ww00000::a`)"
       ]
     },
     {
       "desc": "Query 2",
-      "principal": "nww_ww00000::a::\"\"",
-      "action": "nww_ww00000::Action::\"action\"",
-      "resource": "nww_ww00000::a::\"\"",
+      "principal": {
+        "type": "nww_ww00000::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "nww_ww00000::a",
+        "id": ""
+      },
+      "action": {
+        "type": "nww_ww00000::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `nww_ww00000::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `nww_ww00000::a`)"
       ]
     },
     {
       "desc": "Query 3",
-      "principal": "nww_ww00000::a::\"\"",
-      "action": "nww_ww00000::Action::\"action\"",
-      "resource": "nww_ww00000::a::\"\"",
+      "principal": {
+        "type": "nww_ww00000::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "nww_ww00000::a",
+        "id": ""
+      },
+      "action": {
+        "type": "nww_ww00000::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `nww_ww00000::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `nww_ww00000::a`)"
       ]
     },
     {
       "desc": "Query 4",
-      "principal": "nww_ww00000::a::\"\"",
-      "action": "nww_ww00000::Action::\"action\"",
-      "resource": "nww_ww00000::a::\"\"",
+      "principal": {
+        "type": "nww_ww00000::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "nww_ww00000::a",
+        "id": ""
+      },
+      "action": {
+        "type": "nww_ww00000::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `nww_ww00000::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `nww_ww00000::a`)"
       ]
     },
     {
       "desc": "Query 5",
-      "principal": "nww_ww00000::a::\"\"",
-      "action": "nww_ww00000::Action::\"action\"",
-      "resource": "nww_ww00000::a::\"\"",
+      "principal": {
+        "type": "nww_ww00000::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "nww_ww00000::a",
+        "id": ""
+      },
+      "action": {
+        "type": "nww_ww00000::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `nww_ww00000::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `nww_ww00000::a`)"
       ]
     },
     {
       "desc": "Query 6",
-      "principal": "nww_ww00000::a::\"\"",
-      "action": "nww_ww00000::Action::\"action\"",
-      "resource": "nww_ww00000::a::\"\"",
+      "principal": {
+        "type": "nww_ww00000::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "nww_ww00000::a",
+        "id": ""
+      },
+      "action": {
+        "type": "nww_ww00000::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `nww_ww00000::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `nww_ww00000::a`)"
       ]
     },
     {
       "desc": "Query 7",
-      "principal": "nww_ww00000::a::\"\"",
-      "action": "nww_ww00000::Action::\"action\"",
-      "resource": "nww_ww00000::a::\"\"",
+      "principal": {
+        "type": "nww_ww00000::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "nww_ww00000::a",
+        "id": ""
+      },
+      "action": {
+        "type": "nww_ww00000::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `nww_ww00000::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `nww_ww00000::a`)"
       ]
     }
   ]

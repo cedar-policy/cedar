@@ -6,98 +6,170 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "m::r::a::\"\"",
-      "action": "m::r::Action::\"action\"",
-      "resource": "m::r::a::\"\"",
+      "principal": {
+        "type": "m::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "m::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "m::r::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected string, got (entity of type `m::r::a`)"
+        "while evaluating policy `policy0`: type error: expected string, got (entity of type `m::r::a`)"
       ]
     },
     {
       "desc": "Query 1",
-      "principal": "m::r::a::\"\"",
-      "action": "m::r::Action::\"action\"",
-      "resource": "m::r::a::\"\"",
+      "principal": {
+        "type": "m::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "m::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "m::r::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected string, got (entity of type `m::r::a`)"
+        "while evaluating policy `policy0`: type error: expected string, got (entity of type `m::r::a`)"
       ]
     },
     {
       "desc": "Query 2",
-      "principal": "m::r::a::\"\"",
-      "action": "m::r::Action::\"action\"",
-      "resource": "m::r::a::\"\"",
+      "principal": {
+        "type": "m::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "m::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "m::r::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected string, got (entity of type `m::r::a`)"
+        "while evaluating policy `policy0`: type error: expected string, got (entity of type `m::r::a`)"
       ]
     },
     {
       "desc": "Query 3",
-      "principal": "m::r::a::\"\"",
-      "action": "m::r::Action::\"action\"",
-      "resource": "m::r::a::\"\"",
+      "principal": {
+        "type": "m::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "m::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "m::r::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected string, got (entity of type `m::r::a`)"
+        "while evaluating policy `policy0`: type error: expected string, got (entity of type `m::r::a`)"
       ]
     },
     {
       "desc": "Query 4",
-      "principal": "m::r::a::\"\"",
-      "action": "m::r::Action::\"action\"",
-      "resource": "m::r::a::\"\"",
+      "principal": {
+        "type": "m::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "m::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "m::r::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected string, got (entity of type `m::r::a`)"
+        "while evaluating policy `policy0`: type error: expected string, got (entity of type `m::r::a`)"
       ]
     },
     {
       "desc": "Query 5",
-      "principal": "m::r::a::\"\"",
-      "action": "m::r::Action::\"action\"",
-      "resource": "m::r::a::\"\"",
+      "principal": {
+        "type": "m::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "m::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "m::r::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected string, got (entity of type `m::r::a`)"
+        "while evaluating policy `policy0`: type error: expected string, got (entity of type `m::r::a`)"
       ]
     },
     {
       "desc": "Query 6",
-      "principal": "m::r::a::\"\"",
-      "action": "m::r::Action::\"action\"",
-      "resource": "m::r::a::\"\"",
+      "principal": {
+        "type": "m::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "m::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "m::r::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected string, got (entity of type `m::r::a`)"
+        "while evaluating policy `policy0`: type error: expected string, got (entity of type `m::r::a`)"
       ]
     },
     {
       "desc": "Query 7",
-      "principal": "m::r::a::\"\"",
-      "action": "m::r::Action::\"action\"",
-      "resource": "m::r::a::\"\"",
+      "principal": {
+        "type": "m::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "m::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "m::r::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected string, got (entity of type `m::r::a`)"
+        "while evaluating policy `policy0`: type error: expected string, got (entity of type `m::r::a`)"
       ]
     }
   ]

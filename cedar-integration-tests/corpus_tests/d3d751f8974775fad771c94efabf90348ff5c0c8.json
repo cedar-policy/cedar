@@ -6,98 +6,170 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "a::\"RR\\0\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"RR\\0\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "RR\u0000\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "RR\u0000\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected one of [record, (entity of type `any_entity_type`)], got string"
+        "while evaluating policy `policy0`: type error: expected one of [record, (entity of type `any_entity_type`)], got string"
       ]
     },
     {
       "desc": "Query 1",
-      "principal": "a::\"RR\\0\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"RR\\0\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "RR\u0000\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "RR\u0000\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected one of [record, (entity of type `any_entity_type`)], got string"
+        "while evaluating policy `policy0`: type error: expected one of [record, (entity of type `any_entity_type`)], got string"
       ]
     },
     {
       "desc": "Query 2",
-      "principal": "a::\"RR\\0\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"RR\\0\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "RR\u0000\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "RR\u0000\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected one of [record, (entity of type `any_entity_type`)], got string"
+        "while evaluating policy `policy0`: type error: expected one of [record, (entity of type `any_entity_type`)], got string"
       ]
     },
     {
       "desc": "Query 3",
-      "principal": "a::\"RR\\0\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"RR\\0\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "RR\u0000\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "RR\u0000\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected one of [record, (entity of type `any_entity_type`)], got string"
+        "while evaluating policy `policy0`: type error: expected one of [record, (entity of type `any_entity_type`)], got string"
       ]
     },
     {
       "desc": "Query 4",
-      "principal": "a::\"RR\\0\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"RR\\0\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "RR\u0000\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "RR\u0000\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected one of [record, (entity of type `any_entity_type`)], got string"
+        "while evaluating policy `policy0`: type error: expected one of [record, (entity of type `any_entity_type`)], got string"
       ]
     },
     {
       "desc": "Query 5",
-      "principal": "a::\"RR\\0\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"RR\\0\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "RR\u0000\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "RR\u0000\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected one of [record, (entity of type `any_entity_type`)], got string"
+        "while evaluating policy `policy0`: type error: expected one of [record, (entity of type `any_entity_type`)], got string"
       ]
     },
     {
       "desc": "Query 6",
-      "principal": "a::\"RR\\0\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"RR\\0\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "RR\u0000\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "RR\u0000\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected one of [record, (entity of type `any_entity_type`)], got string"
+        "while evaluating policy `policy0`: type error: expected one of [record, (entity of type `any_entity_type`)], got string"
       ]
     },
     {
       "desc": "Query 7",
-      "principal": "a::\"RR\\0\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"RR\\0\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "RR\u0000\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "RR\u0000\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected one of [record, (entity of type `any_entity_type`)], got string"
+        "while evaluating policy `policy0`: type error: expected one of [record, (entity of type `any_entity_type`)], got string"
       ]
     }
   ]

@@ -14,7 +14,12 @@
  * limitations under the License.
  */
 
-//! Public Rust interface for Cedar
+// Includes the cedar-policy README as the top-level documentation for this
+// crate. This also acts as a test that the example code in the README
+// compiles. If changing the docs away from using the readme verbatim, be sure
+// to add a separate test specifically for README examples by introducing a
+// private, empty, and unused function with `#[doc = include_str!("../README.md")]`.
+#![doc = include_str!("../README.md")]
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, clippy::pedantic, clippy::nursery)]
 #![deny(
@@ -36,6 +41,9 @@ pub use api::*;
 
 /// Frontend utilities, see comments in the module itself
 pub mod frontend;
+
+mod prop_test_policy_set;
+mod tests;
 
 #[cfg(feature = "integration_testing")]
 pub mod integration_testing;

@@ -6,98 +6,170 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "g::r::A::Q::a::\"\"",
-      "action": "g::r::A::Q::Action::\"action\"",
-      "resource": "g::r::A::Q::a::\"\"",
+      "principal": {
+        "type": "g::r::A::Q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "g::r::A::Q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "g::r::A::Q::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `g::r::A::Q::a`)"
+        "while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `g::r::A::Q::a`)"
       ]
     },
     {
       "desc": "Query 1",
-      "principal": "g::r::A::Q::a::\"\"",
-      "action": "g::r::A::Q::Action::\"action\"",
-      "resource": "g::r::A::Q::a::\"\"",
+      "principal": {
+        "type": "g::r::A::Q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "g::r::A::Q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "g::r::A::Q::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `g::r::A::Q::a`)"
+        "while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `g::r::A::Q::a`)"
       ]
     },
     {
       "desc": "Query 2",
-      "principal": "g::r::A::Q::a::\"\"",
-      "action": "g::r::A::Q::Action::\"action\"",
-      "resource": "g::r::A::Q::a::\"\"",
+      "principal": {
+        "type": "g::r::A::Q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "g::r::A::Q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "g::r::A::Q::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `g::r::A::Q::a`)"
+        "while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `g::r::A::Q::a`)"
       ]
     },
     {
       "desc": "Query 3",
-      "principal": "g::r::A::Q::a::\"\"",
-      "action": "g::r::A::Q::Action::\"action\"",
-      "resource": "g::r::A::Q::a::\"\"",
+      "principal": {
+        "type": "g::r::A::Q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "g::r::A::Q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "g::r::A::Q::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `g::r::A::Q::a`)"
+        "while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `g::r::A::Q::a`)"
       ]
     },
     {
       "desc": "Query 4",
-      "principal": "g::r::A::Q::a::\"\"",
-      "action": "g::r::A::Q::Action::\"action\"",
-      "resource": "g::r::A::Q::a::\"\"",
+      "principal": {
+        "type": "g::r::A::Q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "g::r::A::Q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "g::r::A::Q::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `g::r::A::Q::a`)"
+        "while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `g::r::A::Q::a`)"
       ]
     },
     {
       "desc": "Query 5",
-      "principal": "g::r::A::Q::a::\"\"",
-      "action": "g::r::A::Q::Action::\"action\"",
-      "resource": "g::r::A::Q::a::\"\"",
+      "principal": {
+        "type": "g::r::A::Q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "g::r::A::Q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "g::r::A::Q::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `g::r::A::Q::a`)"
+        "while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `g::r::A::Q::a`)"
       ]
     },
     {
       "desc": "Query 6",
-      "principal": "g::r::A::Q::a::\"\"",
-      "action": "g::r::A::Q::Action::\"action\"",
-      "resource": "g::r::A::Q::a::\"\"",
+      "principal": {
+        "type": "g::r::A::Q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "g::r::A::Q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "g::r::A::Q::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `g::r::A::Q::a`)"
+        "while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `g::r::A::Q::a`)"
       ]
     },
     {
       "desc": "Query 7",
-      "principal": "g::r::A::Q::a::\"\"",
-      "action": "g::r::A::Q::Action::\"action\"",
-      "resource": "g::r::A::Q::a::\"\"",
+      "principal": {
+        "type": "g::r::A::Q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "g::r::A::Q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "g::r::A::Q::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `g::r::A::Q::a`)"
+        "while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `g::r::A::Q::a`)"
       ]
     }
   ]

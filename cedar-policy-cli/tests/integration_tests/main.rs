@@ -18,6 +18,10 @@
 //! package, and shared among multiple interfaces (Rust bindings, Java bindings,
 //! CLI [here], etc).
 
+// PANIC SAFETY tests
+#![allow(clippy::expect_used)]
+// PANIC SAFETY tests
+#![allow(clippy::panic)]
 mod corpus_tests;
 mod decimal;
 mod example_use_cases_doc;
@@ -25,6 +29,7 @@ mod ip;
 mod multi;
 
 use cedar_policy::Decision;
+use cedar_policy::EntityUid;
 use cedar_policy::PolicySet;
 use serde::Deserialize;
 use std::env;
@@ -57,15 +62,18 @@ struct JsonRequest {
     desc: String,
     /// Principal for the request
     #[serde(default)]
-    principal: Option<String>,
+    principal: Option<serde_json::Value>,
     /// Action for the request
     #[serde(default)]
-    action: Option<String>,
+    action: Option<serde_json::Value>,
     /// Resource for the request
     #[serde(default)]
-    resource: Option<String>,
+    resource: Option<serde_json::Value>,
     /// Context for the request
     context: serde_json::Value,
+    /// Whether to enable request validation for this request
+    #[serde(default = "constant_true")]
+    enable_request_validation: bool,
     /// Expected decision for the request
     decision: Decision,
     /// Expected "reasons" for the request
@@ -74,9 +82,19 @@ struct JsonRequest {
     errors: Vec<String>,
 }
 
+fn constant_true() -> bool {
+    true
+}
+
+fn value_to_euid_string(v: serde_json::Value) -> Result<String, impl miette::Diagnostic> {
+    EntityUid::from_json(v).map(|euid| euid.to_string())
+}
+
 /// For relative paths, return the absolute path, assuming that the path
 /// is relative to the root of the CedarIntegrationTests repo.
 /// For absolute paths, return them unchanged.
+// PANIC SAFETY: this is all test code
+#[allow(clippy::expect_used)]
 fn resolve_integration_test_path(path: impl AsRef<Path>) -> PathBuf {
     if path.as_ref().is_relative() {
         let manifest_dir = env::var("CARGO_MANIFEST_DIR")
@@ -97,6 +115,10 @@ fn resolve_integration_test_path(path: impl AsRef<Path>) -> PathBuf {
 /// Relative paths are assumed to be relative to the root of the
 /// cedar-integration-tests folder.
 /// Absolute paths are handled without modification.
+// PANIC SAFETY: this is all test code
+#[allow(clippy::unwrap_used)]
+// PANIC SAFETY: this is all test code
+#[allow(clippy::expect_used)]
 fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
     let jsonfile = resolve_integration_test_path(jsonfile);
     let jsonstr = std::fs::read_to_string(&jsonfile)
@@ -161,15 +183,18 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
         let mut entity_args = Vec::new();
         if let Some(s) = json_request.principal {
             entity_args.push("--principal".to_string());
-            entity_args.push(s);
+            entity_args.push(value_to_euid_string(s).unwrap());
         }
         if let Some(s) = json_request.resource {
             entity_args.push("--resource".to_string());
-            entity_args.push(s);
+            entity_args.push(value_to_euid_string(s).unwrap());
         }
         if let Some(s) = json_request.action {
             entity_args.push("--action".to_string());
-            entity_args.push(s);
+            entity_args.push(value_to_euid_string(s).unwrap());
+        }
+        if !json_request.enable_request_validation {
+            entity_args.push("--request-validation=false".to_string());
         }
 
         let authorize_cmd = assert_cmd::Command::cargo_bin("cedar")
@@ -197,15 +222,33 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             .expect("output should be valid UTF-8");
 
         for error in &json_request.errors {
-            assert!(output.contains(error));
+            assert!(
+                output.contains(error),
+                "test {} failed for request \"{}\": output does not contain expected error {error:?}.\noutput was: {output}\nstderr was: {}",
+                jsonfile.display(),
+                &json_request.desc,
+                String::from_utf8(authorize_cmd.get_output().stderr.clone()).expect("stderr should be valid UTF-8"),
+            );
         }
 
         if json_request.reasons.is_empty() {
-            assert!(output.contains("no policies applied to this request"));
+            assert!(
+                output.contains("no policies applied to this request"),
+                "test {} failed for request \"{}\": output does not contain the string \"no policies applied to this request\", as expected.\noutput was: {output}\nstderr was: {}",
+                jsonfile.display(),
+                &json_request.desc,
+                String::from_utf8(authorize_cmd.get_output().stderr.clone()).expect("stderr should be valid UTF-8"),
+            );
         } else {
             assert!(output.contains("this decision was due to the following policies"));
             for reason in &json_request.reasons {
-                assert!(output.contains(&reason.escape_debug().to_string()));
+                assert!(
+                    output.contains(&reason.escape_debug().to_string()),
+                    "test {} failed for request \"{}\": output does not contain the reason string {reason:?}.\noutput was: {output}\nstderr was: {}",
+                    jsonfile.display(),
+                    &json_request.desc,
+                    String::from_utf8(authorize_cmd.get_output().stderr.clone()).expect("stderr should be valid UTF-8"),
+                );
             }
         };
     }

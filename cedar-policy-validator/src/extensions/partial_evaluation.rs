@@ -22,7 +22,12 @@ use crate::extension_schema::{ExtensionFunctionType, ExtensionSchema};
 use crate::types::{self, Type};
 use cedar_policy_core::extensions::partial_evaluation;
 
-// PANIC SAFETY see note on panic safety above
+/// Note on safety:
+/// This module depends on the Cedar parser only constructing AST with valid extension calls
+/// If any of the panics in this file are triggered, that means that this file has become
+/// out-of-date with the decimal extension definition in CedarCore.
+
+// PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
 fn get_argument_types(fname: &str) -> Vec<types::Type> {
     match fname {
@@ -32,7 +37,7 @@ fn get_argument_types(fname: &str) -> Vec<types::Type> {
     }
 }
 
-// PANIC SAFETY see note on panic safety above
+// PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
 fn get_return_type(fname: &str) -> Type {
     match fname {

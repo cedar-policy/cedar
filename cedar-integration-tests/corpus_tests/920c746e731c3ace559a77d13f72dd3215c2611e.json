@@ -6,98 +6,170 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "a::\"j\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"j\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "j\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "j\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected set, got record"
+        "while evaluating policy `policy0`: type error: expected set, got record"
       ]
     },
     {
       "desc": "Query 1",
-      "principal": "a::\"j\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"j\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "j\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "j\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected set, got record"
+        "while evaluating policy `policy0`: type error: expected set, got record"
       ]
     },
     {
       "desc": "Query 2",
-      "principal": "a::\"j\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"j\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "j\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "j\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected set, got record"
+        "while evaluating policy `policy0`: type error: expected set, got record"
       ]
     },
     {
       "desc": "Query 3",
-      "principal": "a::\"j\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"j\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "j\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "j\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected set, got record"
+        "while evaluating policy `policy0`: type error: expected set, got record"
       ]
     },
     {
       "desc": "Query 4",
-      "principal": "a::\"j\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"j\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "j\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "j\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected set, got record"
+        "while evaluating policy `policy0`: type error: expected set, got record"
       ]
     },
     {
       "desc": "Query 5",
-      "principal": "a::\"j\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"j\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "j\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "j\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected set, got record"
+        "while evaluating policy `policy0`: type error: expected set, got record"
       ]
     },
     {
       "desc": "Query 6",
-      "principal": "a::\"j\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"j\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "j\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "j\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected set, got record"
+        "while evaluating policy `policy0`: type error: expected set, got record"
       ]
     },
     {
       "desc": "Query 7",
-      "principal": "a::\"j\\0\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"j\\0\"",
+      "principal": {
+        "type": "a",
+        "id": "j\u0000"
+      },
+      "resource": {
+        "type": "a",
+        "id": "j\u0000"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected set, got record"
+        "while evaluating policy `policy0`: type error: expected set, got record"
       ]
     }
   ]

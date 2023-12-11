@@ -14,17 +14,12 @@
  * limitations under the License.
  */
 
-use crate::{
-    ast::*,
-    extensions::Extensions,
-    parser::{err::ParseErrors, SourceInfo},
-};
-use itertools::Itertools;
+use crate::{ast::*, parser::err::ParseErrors};
+use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::{
-    collections::HashMap,
-    collections::HashSet,
+    collections::{btree_map, BTreeMap, HashMap},
     hash::{Hash, Hasher},
     mem,
     sync::Arc,
@@ -40,7 +35,7 @@ use thiserror::Error;
 #[derive(Serialize, Deserialize, Hash, Debug, Clone, PartialEq, Eq)]
 pub struct Expr<T = ()> {
     expr_kind: ExprKind<T>,
-    source_info: Option<SourceInfo>,
+    source_span: Option<miette::SourceSpan>,
     data: T,
 }
 
@@ -55,13 +50,7 @@ pub enum ExprKind<T = ()> {
     /// Template Slots
     Slot(SlotId),
     /// Symbolic Unknown for partial-eval
-    Unknown {
-        /// The name of the unknown
-        name: SmolStr,
-        /// The type of the values that can be substituted in for the unknown
-        /// If `None`, we have no type annotation, and thus a value of any type can be substituted.
-        type_annotation: Option<Type>,
-    },
+    Unknown(Unknown),
     /// Ternary expression
     If {
         /// Condition for the ternary expression. Must evaluate to Bool type
@@ -147,6 +136,14 @@ pub enum ExprKind<T = ()> {
         /// Be careful the backslash in `\*` must not be another escape sequence. For instance, `\\*` matches a backslash plus an arbitrary string.
         pattern: Pattern,
     },
+    /// Entity type test. Does the first argument have the entity type
+    /// specified by the second argument.
+    Is {
+        /// Expression to test. Must evaluate to an Entity.
+        expr: Arc<Expr<T>>,
+        /// The entity type `Name` used for the type membership test.
+        entity_type: Name,
+    },
     /// Set (whose elements may be arbitrary expressions)
     //
     // This is backed by `Vec` (and not e.g. `HashSet`), because two `Expr`s
@@ -155,35 +152,41 @@ pub enum ExprKind<T = ()> {
     // evaluated into `Value`s
     Set(Arc<Vec<Expr<T>>>),
     /// Anonymous record (whose elements may be arbitrary expressions)
-    /// This is a `Vec` for the same reason as above.
-    Record {
-        /// key/value pairs
-        pairs: Arc<Vec<(SmolStr, Expr<T>)>>,
-    },
+    Record(Arc<BTreeMap<SmolStr, Expr<T>>>),
 }
 
 impl From<Value> for Expr {
     fn from(v: Value) -> Self {
         match v {
-            Value::Lit(l) => Expr::val(l),
+            Value::Lit(lit) => Expr::val(lit),
             Value::Set(s) => Expr::set(s.iter().map(|v| Expr::from(v.clone()))),
+            // PANIC SAFETY: cannot have duplicate key because the input was already a BTreeMap
+            #[allow(clippy::expect_used)]
             Value::Record(fields) => Expr::record(
-                fields
-                    .as_ref()
-                    .clone()
+                unwrap_or_clone(fields)
                     .into_iter()
                     .map(|(k, v)| (k, Expr::from(v))),
-            ),
+            )
+            .expect("cannot have duplicate key because the input was already a BTreeMap"),
             Value::ExtensionValue(ev) => ev.as_ref().clone().into(),
         }
     }
 }
 
+impl From<PartialValue> for Expr {
+    fn from(pv: PartialValue) -> Self {
+        match pv {
+            PartialValue::Value(v) => Expr::from(v),
+            PartialValue::Residual(expr) => expr,
+        }
+    }
+}
+
 impl<T> Expr<T> {
-    fn new(expr_kind: ExprKind<T>, source_info: Option<SourceInfo>, data: T) -> Self {
+    fn new(expr_kind: ExprKind<T>, source_span: Option<miette::SourceSpan>, data: T) -> Self {
         Self {
             expr_kind,
-            source_info,
+            source_span,
             data,
         }
     }
@@ -210,14 +213,9 @@ impl<T> Expr<T> {
         self.data
     }
 
-    /// Access the data stored on the `Expr`.
-    pub fn source_info(&self) -> &Option<SourceInfo> {
-        &self.source_info
-    }
-
-    /// Access the data stored on the `Expr`, taking ownership.
-    pub fn into_source_info(self) -> Option<SourceInfo> {
-        self.source_info
+    /// Access the `SourceSpan` stored on the `Expr`.
+    pub fn source_span(&self) -> Option<miette::SourceSpan> {
+        self.source_span
     }
 
     /// Update the data for this `Expr`. A convenient function used by the
@@ -273,18 +271,10 @@ impl<T> Expr<T> {
     pub fn is_projectable(&self) -> bool {
         self.subexpressions().all(|e| match e.expr_kind() {
             ExprKind::Lit(_) => true,
-            ExprKind::Unknown { .. } => true,
+            ExprKind::Unknown(_) => true,
             ExprKind::Set(_) => true,
             ExprKind::Var(_) => true,
-            ExprKind::Record { pairs } => {
-                // We need to ensure there are no duplicate keys in the expression
-                let uniq_keys = pairs
-                    .as_ref()
-                    .iter()
-                    .map(|(key, _)| key)
-                    .collect::<HashSet<_>>();
-                pairs.len() == uniq_keys.len()
-            }
+            ExprKind::Record(_) => true,
             _ => false,
         })
     }
@@ -300,14 +290,9 @@ impl Expr {
         ExprBuilder::new().val(v)
     }
 
-    /// Create an unknown value
-    pub fn unknown(name: impl Into<SmolStr>) -> Self {
-        Self::unknown_with_type(name, None)
-    }
-
-    /// Create an unknown value, with an optional type annotation
-    pub fn unknown_with_type(name: impl Into<SmolStr>, t: Option<Type>) -> Self {
-        ExprBuilder::new().unknown(name.into(), t)
+    /// Create an `Expr` that's just a single `Unknown`.
+    pub fn unknown(u: Unknown) -> Self {
+        ExprBuilder::new().unknown(u)
     }
 
     /// Create an `Expr` that's just this literal `Var`
@@ -421,8 +406,21 @@ impl Expr {
     }
 
     /// Create an `Expr` which evaluates to a Record with the given (key, value) pairs.
-    pub fn record(pairs: impl IntoIterator<Item = (SmolStr, Expr)>) -> Self {
+    pub fn record(
+        pairs: impl IntoIterator<Item = (SmolStr, Expr)>,
+    ) -> Result<Self, ExprConstructionError> {
         ExprBuilder::new().record(pairs)
+    }
+
+    /// Create an `Expr` which evaluates to a Record with the given key-value mapping.
+    ///
+    /// If you have an iterator of pairs, generally prefer calling
+    /// `Expr::record()` instead of `.collect()`-ing yourself and calling this,
+    /// potentially for efficiency reasons but also because `Expr::record()`
+    /// will properly handle duplicate keys but your own `.collect()` will not
+    /// (by default).
+    pub fn record_arc(map: Arc<BTreeMap<SmolStr, Expr>>) -> Self {
+        ExprBuilder::new().record_arc(map)
     }
 
     /// Create an `Expr` which calls the extension function with the given
@@ -466,17 +464,22 @@ impl Expr {
         ExprBuilder::new().like(expr, pattern)
     }
 
+    /// Create an `is` expression.
+    pub fn is_entity_type(expr: Expr, entity_type: Name) -> Self {
+        ExprBuilder::new().is_entity_type(expr, entity_type)
+    }
+
     /// Check if an expression contains any symbolic unknowns
     pub fn is_unknown(&self) -> bool {
         self.subexpressions()
-            .any(|e| matches!(e.expr_kind(), ExprKind::Unknown { .. }))
+            .any(|e| matches!(e.expr_kind(), ExprKind::Unknown(_)))
     }
 
     /// Get all unknowns in an expression
-    pub fn unknowns(&self) -> impl Iterator<Item = &str> {
+    pub fn unknowns(&self) -> impl Iterator<Item = &Unknown> {
         self.subexpressions()
             .filter_map(|subexpr| match subexpr.expr_kind() {
-                ExprKind::Unknown { name, .. } => Some(name.as_str()),
+                ExprKind::Unknown(u) => Some(u),
                 _ => None,
             })
     }
@@ -490,10 +493,10 @@ impl Expr {
     ) -> Result<Expr, SubstitutionError> {
         match self.expr_kind() {
             ExprKind::Lit(_) => Ok(self.clone()),
-            ExprKind::Unknown {
+            ExprKind::Unknown(Unknown {
                 name,
                 type_annotation,
-            } => match (definitions.get(name), type_annotation) {
+            }) => match (definitions.get(name), type_annotation) {
                 (None, _) => Ok(self.clone()),
                 (Some(value), None) => Ok(value.clone().into()),
                 (Some(value), Some(t)) => {
@@ -559,210 +562,33 @@ impl Expr {
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(Expr::set(members))
             }
-            ExprKind::Record { pairs } => {
-                let pairs = pairs
+            ExprKind::Record(map) => {
+                let map = map
                     .iter()
                     .map(|(name, e)| Ok((name.clone(), e.substitute(definitions)?)))
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(Expr::record(pairs))
+                    .collect::<Result<BTreeMap<_, _>, _>>()?;
+                // PANIC SAFETY: cannot have a duplicate key because the input was already a BTreeMap
+                #[allow(clippy::expect_used)]
+                Ok(Expr::record(map)
+                    .expect("cannot have a duplicate key because the input was already a BTreeMap"))
             }
             ExprKind::MulByConst { arg, constant } => {
                 Ok(Expr::mul(arg.substitute(definitions)?, *constant))
             }
+            ExprKind::Is { expr, entity_type } => Ok(Expr::is_entity_type(
+                expr.substitute(definitions)?,
+                entity_type.clone(),
+            )),
         }
     }
 }
 
 impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.expr_kind {
-            // Add parenthesis around negative numeric literals otherwise
-            // round-tripping fuzzer fails for expressions like `(-1)["a"]`.
-            ExprKind::Lit(Literal::Long(n)) if *n < 0 => write!(f, "({})", n),
-            ExprKind::Lit(l) => write!(f, "{}", l),
-            ExprKind::Var(v) => write!(f, "{}", v),
-            ExprKind::Unknown {
-                name,
-                type_annotation,
-            } => match type_annotation.as_ref() {
-                Some(type_annotation) => write!(f, "unknown({name:?}:{type_annotation})"),
-                None => write!(f, "unknown({name})"),
-            },
-            ExprKind::Slot(id) => write!(f, "{id}"),
-            ExprKind::If {
-                test_expr,
-                then_expr,
-                else_expr,
-            } => write!(
-                f,
-                "if {} then {} else {}",
-                maybe_with_parens(test_expr),
-                maybe_with_parens(then_expr),
-                maybe_with_parens(else_expr)
-            ),
-            ExprKind::And { left, right } => write!(
-                f,
-                "{} && {}",
-                maybe_with_parens(left),
-                maybe_with_parens(right)
-            ),
-            ExprKind::Or { left, right } => write!(
-                f,
-                "{} || {}",
-                maybe_with_parens(left),
-                maybe_with_parens(right)
-            ),
-            ExprKind::UnaryApp { op, arg } => match op {
-                UnaryOp::Not => write!(f, "!{}", maybe_with_parens(arg)),
-                // Always add parentheses instead of calling
-                // `maybe_with_parens`.
-                // This makes sure that we always get a negation operation back
-                // (as opposed to e.g., a negative number) when parsing the
-                // printed form, thus preserving the round-tripping property.
-                UnaryOp::Neg => write!(f, "-({})", arg),
-            },
-            ExprKind::BinaryApp { op, arg1, arg2 } => match op {
-                BinaryOp::Eq => write!(
-                    f,
-                    "{} == {}",
-                    maybe_with_parens(arg1),
-                    maybe_with_parens(arg2),
-                ),
-                BinaryOp::Less => write!(
-                    f,
-                    "{} < {}",
-                    maybe_with_parens(arg1),
-                    maybe_with_parens(arg2),
-                ),
-                BinaryOp::LessEq => write!(
-                    f,
-                    "{} <= {}",
-                    maybe_with_parens(arg1),
-                    maybe_with_parens(arg2),
-                ),
-                BinaryOp::Add => write!(
-                    f,
-                    "{} + {}",
-                    maybe_with_parens(arg1),
-                    maybe_with_parens(arg2),
-                ),
-                BinaryOp::Sub => write!(
-                    f,
-                    "{} - {}",
-                    maybe_with_parens(arg1),
-                    maybe_with_parens(arg2),
-                ),
-                BinaryOp::In => write!(
-                    f,
-                    "{} in {}",
-                    maybe_with_parens(arg1),
-                    maybe_with_parens(arg2),
-                ),
-                BinaryOp::Contains => {
-                    write!(f, "{}.contains({})", maybe_with_parens(arg1), &arg2)
-                }
-                BinaryOp::ContainsAll => {
-                    write!(f, "{}.containsAll({})", maybe_with_parens(arg1), &arg2)
-                }
-                BinaryOp::ContainsAny => {
-                    write!(f, "{}.containsAny({})", maybe_with_parens(arg1), &arg2)
-                }
-            },
-            ExprKind::MulByConst { arg, constant } => {
-                write!(f, "{} * {}", maybe_with_parens(arg), constant)
-            }
-            ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                // search for the name and callstyle
-                let style = Extensions::all_available().all_funcs().find_map(|f| {
-                    if f.name() == fn_name {
-                        Some(f.style())
-                    } else {
-                        None
-                    }
-                });
-                // PANIC SAFETY Args list must be non empty by INVARIANT (MethodStyleArgs)
-                #[allow(clippy::indexing_slicing)]
-                if matches!(style, Some(CallStyle::MethodStyle)) && !args.is_empty() {
-                    write!(
-                        f,
-                        "{}.{}({})",
-                        maybe_with_parens(&args[0]),
-                        fn_name,
-                        args[1..].iter().join(", ")
-                    )
-                } else {
-                    // This case can only be reached for a manually constructed AST.
-                    // In order to reach this case, either the function name `fn_name`
-                    // is not in the list of available extension functions, or this
-                    // is a method-style function call with zero arguments. Both of
-                    // these cases can be displayed, but neither will parse. The
-                    // resulting `ParseError` will be `NotAFunction`.
-                    write!(f, "{}({})", fn_name, args.iter().join(", "))
-                }
-            }
-            ExprKind::GetAttr { expr, attr } => write!(
-                f,
-                "{}[\"{}\"]",
-                maybe_with_parens(expr),
-                attr.escape_debug()
-            ),
-            ExprKind::HasAttr { expr, attr } => {
-                write!(
-                    f,
-                    "{} has \"{}\"",
-                    maybe_with_parens(expr),
-                    attr.escape_debug()
-                )
-            }
-            ExprKind::Like { expr, pattern } => {
-                // during parsing we convert \* in the pattern into \u{0000},
-                // so when printing we need to convert back
-                write!(f, "{} like \"{}\"", maybe_with_parens(expr), pattern,)
-            }
-            ExprKind::Set(v) => write!(f, "[{}]", v.iter().join(", ")),
-            ExprKind::Record { pairs } => write!(
-                f,
-                "{{{}}}",
-                pairs
-                    .iter()
-                    .map(|(k, v)| format!("\"{}\": {}", k.escape_debug(), v))
-                    .join(", ")
-            ),
-        }
-    }
-}
-
-/// returns the `Display` representation of the Expr, adding parens around the
-/// entire Expr if necessary.
-/// E.g., won't add parens for constants or `principal` etc, but will for things
-/// like `(2 < 5)`.
-/// When in doubt, add the parens.
-fn maybe_with_parens(expr: &Expr) -> String {
-    match expr.expr_kind {
-        ExprKind::Lit(_) => expr.to_string(),
-        ExprKind::Var(_) => expr.to_string(),
-        ExprKind::Unknown { .. } => expr.to_string(),
-        ExprKind::Slot(_) => expr.to_string(),
-        ExprKind::If { .. } => format!("({})", expr),
-        ExprKind::And { .. } => format!("({})", expr),
-        ExprKind::Or { .. } => format!("({})", expr),
-        ExprKind::UnaryApp {
-            op: UnaryOp::Not | UnaryOp::Neg,
-            ..
-        } => {
-            // we want parens here because things like parse((!x).y)
-            // would be printed into !x.y which has a different meaning,
-            // albeit being semantically incorrect.
-            format!("({})", expr)
-        }
-        ExprKind::BinaryApp { .. } => format!("({})", expr),
-        ExprKind::MulByConst { .. } => format!("({})", expr),
-        ExprKind::ExtensionFunctionApp { .. } => format!("({})", expr),
-        ExprKind::GetAttr { .. } => format!("({})", expr),
-        ExprKind::HasAttr { .. } => format!("({})", expr),
-        ExprKind::Like { .. } => format!("({})", expr),
-        ExprKind::Set { .. } => expr.to_string(),
-        ExprKind::Record { .. } => expr.to_string(),
+        // To avoid code duplication between pretty-printers for AST Expr and EST Expr,
+        // we just convert to EST and use the EST pretty-printer.
+        // Note that converting AST->EST is lossless and infallible.
+        write!(f, "{}", crate::est::Expr::from(self.clone()))
     }
 }
 
@@ -775,7 +601,7 @@ impl std::str::FromStr for Expr {
 }
 
 /// Enum for errors encountered during substitution
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Clone, Diagnostic, Error)]
 pub enum SubstitutionError {
     /// The supplied value did not match the type annotation on the unknown.
     #[error("expected a value of type {expected}, got a value of type {actual}")]
@@ -787,11 +613,49 @@ pub enum SubstitutionError {
     },
 }
 
+/// Representation of a partial-evaluation Unknown at the AST level
+#[derive(Serialize, Deserialize, Hash, Debug, Clone, PartialEq, Eq)]
+pub struct Unknown {
+    /// The name of the unknown
+    pub name: SmolStr,
+    /// The type of the values that can be substituted in for the unknown.
+    /// If `None`, we have no type annotation, and thus a value of any type can
+    /// be substituted.
+    pub type_annotation: Option<Type>,
+}
+
+impl Unknown {
+    /// Create a new untyped `Unknown`
+    pub fn new_untyped(name: impl Into<SmolStr>) -> Self {
+        Self {
+            name: name.into(),
+            type_annotation: None,
+        }
+    }
+
+    /// Create a new `Unknown` with type annotation. (Only values of the given
+    /// type can be substituted.)
+    pub fn new_with_type(name: impl Into<SmolStr>, ty: Type) -> Self {
+        Self {
+            name: name.into(),
+            type_annotation: Some(ty),
+        }
+    }
+}
+
+impl std::fmt::Display for Unknown {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Like the Display impl for Expr, we delegate to the EST pretty-printer,
+        // to avoid code duplication
+        write!(f, "{}", crate::est::Expr::from(Expr::unknown(self.clone())))
+    }
+}
+
 /// Builder for constructing `Expr` objects annotated with some `data`
-/// (possibly taking default value) and optional some `source_info`.
+/// (possibly taking default value) and optionally a `source_span`.
 #[derive(Debug)]
 pub struct ExprBuilder<T> {
-    source_info: Option<SourceInfo>,
+    source_span: Option<miette::SourceSpan>,
     data: T,
 }
 
@@ -803,7 +667,7 @@ where
     /// takes a default value.
     pub fn new() -> Self {
         Self {
-            source_info: None,
+            source_span: None,
             data: T::default(),
         }
     }
@@ -812,8 +676,8 @@ where
     /// Defined only for `T: Default` because the caller would otherwise need to
     /// provide a `data` for the intermediate `not` Expr node.
     pub fn noteq(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
-        match &self.source_info {
-            Some(source_info) => ExprBuilder::new().with_source_info(source_info.clone()),
+        match self.source_span {
+            Some(source_span) => ExprBuilder::new().with_source_span(source_span),
             None => ExprBuilder::new(),
         }
         .not(self.with_expr_kind(ExprKind::BinaryApp {
@@ -832,40 +696,40 @@ impl<T: Default> Default for ExprBuilder<T> {
 
 impl<T> ExprBuilder<T> {
     /// Construct a new `ExprBuild` where the specified data will be stored on
-    /// the `Expr`. This constructor does not populate the `source_info` field,
-    /// so `with_source_info` should be called if constructing an `Expr` where
+    /// the `Expr`. This constructor does not populate the `source_span` field,
+    /// so `with_source_span` should be called if constructing an `Expr` where
     /// the source location is known.
     pub fn with_data(data: T) -> Self {
         Self {
-            source_info: None,
+            source_span: None,
             data,
         }
     }
 
     /// Update the `ExprBuilder` to build an expression with some known location
     /// in policy source code.
-    pub fn with_source_info(self, source_info: SourceInfo) -> Self {
-        self.with_maybe_source_info(Some(source_info))
+    pub fn with_source_span(self, source_span: miette::SourceSpan) -> Self {
+        self.with_maybe_source_span(Some(source_span))
     }
 
     /// Utility used the validator to get an expression with the same source
     /// location as an existing expression. This is done when reconstructing the
     /// `Expr` with type information.
-    pub fn with_same_source_info<U>(self, expr: &Expr<U>) -> Self {
-        self.with_maybe_source_info(expr.source_info.clone())
+    pub fn with_same_source_span<U>(self, expr: &Expr<U>) -> Self {
+        self.with_maybe_source_span(expr.source_span)
     }
 
-    /// internally used to update SourceInfo to the given `Some` or `None`
-    fn with_maybe_source_info(mut self, maybe_source_info: Option<SourceInfo>) -> Self {
-        self.source_info = maybe_source_info;
+    /// internally used to update SourceSpan to the given `Some` or `None`
+    fn with_maybe_source_span(mut self, maybe_source_span: Option<miette::SourceSpan>) -> Self {
+        self.source_span = maybe_source_span;
         self
     }
 
     /// Internally used by the following methods to construct an `Expr`
-    /// containing the `data` and `source_info` in this `ExprBuilder` with some
+    /// containing the `data` and `source_span` in this `ExprBuilder` with some
     /// inner `ExprKind`.
     fn with_expr_kind(self, expr_kind: ExprKind<T>) -> Expr<T> {
-        Expr::new(expr_kind, self.source_info, self.data)
+        Expr::new(expr_kind, self.source_span, self.data)
     }
 
     /// Create an `Expr` that's just a single `Literal`.
@@ -876,11 +740,8 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an `Unknown` `Expr`
-    pub fn unknown(self, name: impl Into<SmolStr>, type_annotation: Option<Type>) -> Expr<T> {
-        self.with_expr_kind(ExprKind::Unknown {
-            name: name.into(),
-            type_annotation,
-        })
+    pub fn unknown(self, u: Unknown) -> Expr<T> {
+        self.with_expr_kind(ExprKind::Unknown(u))
     }
 
     /// Create an `Expr` that's just this literal `Var`
@@ -966,16 +827,6 @@ impl<T> ExprBuilder<T> {
         })
     }
 
-    /// Create a '>' expression. Arguments must evaluate to Long type
-    pub fn greater(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
-        self.less(e2, e1)
-    }
-
-    /// Create a '>=' expression. Arguments must evaluate to Long type
-    pub fn greatereq(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
-        self.lesseq(e2, e1)
-    }
-
     /// Create an 'add' expression. Arguments must evaluate to Long type
     pub fn add(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
@@ -1055,18 +906,46 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an `Expr` which evaluates to a Record with the given (key, value) pairs.
-    pub fn record(self, pairs: impl IntoIterator<Item = (SmolStr, Expr<T>)>) -> Expr<T> {
-        self.with_expr_kind(ExprKind::Record {
-            pairs: Arc::new(pairs.into_iter().collect()),
-        })
+    pub fn record(
+        self,
+        pairs: impl IntoIterator<Item = (SmolStr, Expr<T>)>,
+    ) -> Result<Expr<T>, ExprConstructionError> {
+        let mut map = BTreeMap::new();
+        for (k, v) in pairs {
+            match map.entry(k) {
+                btree_map::Entry::Occupied(oentry) => {
+                    return Err(ExprConstructionError::DuplicateKeyInRecordLiteral {
+                        key: oentry.key().clone(),
+                    });
+                }
+                btree_map::Entry::Vacant(ventry) => {
+                    ventry.insert(v);
+                }
+            }
+        }
+        Ok(self.with_expr_kind(ExprKind::Record(Arc::new(map))))
+    }
+
+    /// Create an `Expr` which evalutes to a Record with the given key-value mapping.
+    ///
+    /// If you have an iterator of pairs, generally prefer calling `.record()`
+    /// instead of `.collect()`-ing yourself and calling this, potentially for
+    /// efficiency reasons but also because `.record()` will properly handle
+    /// duplicate keys but your own `.collect()` will not (by default).
+    pub fn record_arc(self, map: Arc<BTreeMap<SmolStr, Expr<T>>>) -> Expr<T> {
+        self.with_expr_kind(ExprKind::Record(map))
     }
 
     /// Create an `Expr` which calls the extension function with the given
     /// `Name` on `args`
-    pub fn call_extension_fn(self, fn_name: Name, args: Vec<Expr<T>>) -> Expr<T> {
+    pub fn call_extension_fn(
+        self,
+        fn_name: Name,
+        args: impl IntoIterator<Item = Expr<T>>,
+    ) -> Expr<T> {
         self.with_expr_kind(ExprKind::ExtensionFunctionApp {
             fn_name,
-            args: Arc::new(args),
+            args: Arc::new(args.into_iter().collect()),
         })
     }
 
@@ -1120,6 +999,14 @@ impl<T> ExprBuilder<T> {
             pattern: Pattern::new(pattern),
         })
     }
+
+    /// Create an 'is' expression.
+    pub fn is_entity_type(self, expr: Expr<T>, entity_type: Name) -> Expr<T> {
+        self.with_expr_kind(ExprKind::Is {
+            expr: Arc::new(expr),
+            entity_type,
+        })
+    }
 }
 
 impl<T: Clone> ExprBuilder<T> {
@@ -1129,11 +1016,11 @@ impl<T: Clone> ExprBuilder<T> {
     ///
     /// This may create multiple AST `&&` nodes. If it does, all the nodes will have the same
     /// source location and the same `T` data (taken from this builder) unless overridden, e.g.,
-    /// with another call to `with_source_info()`.
+    /// with another call to `with_source_span()`.
     pub fn and_nary(self, first: Expr<T>, others: impl IntoIterator<Item = Expr<T>>) -> Expr<T> {
         others.into_iter().fold(first, |acc, next| {
             Self::with_data(self.data.clone())
-                .with_maybe_source_info(self.source_info.clone())
+                .with_maybe_source_span(self.source_span.clone())
                 .and(acc, next)
         })
     }
@@ -1144,14 +1031,43 @@ impl<T: Clone> ExprBuilder<T> {
     ///
     /// This may create multiple AST `||` nodes. If it does, all the nodes will have the same
     /// source location and the same `T` data (taken from this builder) unless overridden, e.g.,
-    /// with another call to `with_source_info()`.
+    /// with another call to `with_source_span()`.
     pub fn or_nary(self, first: Expr<T>, others: impl IntoIterator<Item = Expr<T>>) -> Expr<T> {
         others.into_iter().fold(first, |acc, next| {
             Self::with_data(self.data.clone())
-                .with_maybe_source_info(self.source_info.clone())
+                .with_maybe_source_span(self.source_span.clone())
                 .or(acc, next)
         })
     }
+
+    /// Create a '>' expression. Arguments must evaluate to Long type
+    pub fn greater(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+        // e1 > e2 is defined as !(e1 <= e2)
+        let leq = Self::with_data(self.data.clone())
+            .with_maybe_source_span(self.source_span.clone())
+            .lesseq(e1, e2);
+        self.not(leq)
+    }
+
+    /// Create a '>=' expression. Arguments must evaluate to Long type
+    pub fn greatereq(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+        // e1 >= e2 is defined as !(e1 < e2)
+        let leq = Self::with_data(self.data.clone())
+            .with_maybe_source_span(self.source_span.clone())
+            .less(e1, e2);
+        self.not(leq)
+    }
+}
+
+/// Errors when constructing an `Expr`
+#[derive(Debug, PartialEq, Diagnostic, Error)]
+pub enum ExprConstructionError {
+    /// A key occurred twice (or more) in a record literal
+    #[error("duplicate key `{key}` in record literal")]
+    DuplicateKeyInRecordLiteral {
+        /// The key which occurred twice (or more) in the record literal
+        key: SmolStr,
+    },
 }
 
 /// A new type wrapper around `Expr` that provides `Eq` and `Hash`
@@ -1191,18 +1107,18 @@ impl<T> Expr<T> {
     pub fn eq_shape<U>(&self, other: &Expr<U>) -> bool {
         use ExprKind::*;
         match (self.expr_kind(), other.expr_kind()) {
-            (Lit(l), Lit(l1)) => l == l1,
+            (Lit(lit), Lit(lit1)) => lit == lit1,
             (Var(v), Var(v1)) => v == v1,
             (Slot(s), Slot(s1)) => s == s1,
             (
-                Unknown {
+                Unknown(self::Unknown {
                     name: name1,
                     type_annotation: ta_1,
-                },
-                Unknown {
+                }),
+                Unknown(self::Unknown {
                     name: name2,
                     type_annotation: ta_2,
-                },
+                }),
             ) => (name1 == name2) && (ta_1 == ta_2),
             (
                 If {
@@ -1284,10 +1200,20 @@ impl<T> Expr<T> {
                 .iter()
                 .zip(elems1.iter())
                 .all(|(e, e1)| e.eq_shape(e1)),
-            (Record { pairs }, Record { pairs: pairs1 }) => pairs
-                .iter()
-                .zip(pairs1.iter())
-                .all(|((a, e), (a1, e1))| a == a1 && e.eq_shape(e1)),
+            (Record(map), Record(map1)) => {
+                map.len() == map1.len()
+                    && map
+                        .iter()
+                        .zip(map1.iter()) // relying on BTreeMap producing an iterator sorted by key
+                        .all(|((a, e), (a1, e1))| a == a1 && e.eq_shape(e1))
+            }
+            (
+                Is { expr, entity_type },
+                Is {
+                    expr: expr1,
+                    entity_type: entity_type1,
+                },
+            ) => entity_type == entity_type1 && expr.eq_shape(expr1),
             _ => false,
         }
     }
@@ -1301,16 +1227,10 @@ impl<T> Expr<T> {
     {
         mem::discriminant(self).hash(state);
         match self.expr_kind() {
-            ExprKind::Lit(l) => l.hash(state),
+            ExprKind::Lit(lit) => lit.hash(state),
             ExprKind::Var(v) => v.hash(state),
             ExprKind::Slot(s) => s.hash(state),
-            ExprKind::Unknown {
-                name,
-                type_annotation,
-            } => {
-                name.hash(state);
-                type_annotation.hash(state);
-            }
+            ExprKind::Unknown(u) => u.hash(state),
             ExprKind::If {
                 test_expr,
                 then_expr,
@@ -1366,12 +1286,16 @@ impl<T> Expr<T> {
                     e.hash_shape(state);
                 })
             }
-            ExprKind::Record { pairs } => {
-                state.write_usize(pairs.len());
-                pairs.iter().for_each(|(s, a)| {
+            ExprKind::Record(map) => {
+                state.write_usize(map.len());
+                map.iter().for_each(|(s, a)| {
                     s.hash(state);
                     a.hash_shape(state);
                 });
+            }
+            ExprKind::Is { expr, entity_type } => {
+                expr.hash_shape(state);
+                entity_type.hash(state);
             }
         }
     }
@@ -1441,6 +1365,7 @@ impl std::fmt::Display for Var {
 
 #[cfg(test)]
 mod test {
+    use itertools::Itertools;
     use std::{
         collections::{hash_map::DefaultHasher, HashSet},
         sync::Arc,
@@ -1531,6 +1456,24 @@ mod test {
                 ()
             )
         );
+        assert_eq!(
+            Expr::is_entity_type(
+                Expr::val(EntityUID::with_eid("foo")),
+                "Type".parse().unwrap()
+            ),
+            Expr::new(
+                ExprKind::Is {
+                    expr: Arc::new(Expr::new(
+                        ExprKind::Lit(Literal::from(EntityUID::with_eid("foo"))),
+                        None,
+                        ()
+                    )),
+                    entity_type: "Type".parse().unwrap()
+                },
+                None,
+                ()
+            ),
+        );
     }
 
     #[test]
@@ -1556,6 +1499,16 @@ mod test {
             vec![PatternElem::Char('\\'), PatternElem::Char('*')],
         );
         assert_eq!(format!("{e}"), r#""a" like "\\\*""#);
+    }
+
+    #[test]
+    fn has_display() {
+        // `\0` escaped form is `\0`.
+        let e = Expr::has_attr(Expr::val("a"), "\0".into());
+        assert_eq!(format!("{e}"), r#""a" has "\0""#);
+        // `\`'s escaped form is `\\`
+        let e = Expr::has_attr(Expr::val("a"), r#"\"#.into());
+        assert_eq!(format!("{e}"), r#""a" has "\\""#);
     }
 
     #[test]
@@ -1590,23 +1543,23 @@ mod test {
     #[test]
     fn unknowns() {
         let e = Expr::ite(
-            Expr::not(Expr::unknown("a".to_string())),
-            Expr::and(Expr::unknown("b".to_string()), Expr::val(3)),
-            Expr::unknown("c".to_string()),
+            Expr::not(Expr::unknown(Unknown::new_untyped("a"))),
+            Expr::and(Expr::unknown(Unknown::new_untyped("b")), Expr::val(3)),
+            Expr::unknown(Unknown::new_untyped("c")),
         );
         let unknowns = e.unknowns().collect_vec();
         assert_eq!(unknowns.len(), 3);
-        assert!(unknowns.contains(&"a"));
-        assert!(unknowns.contains(&"b"));
-        assert!(unknowns.contains(&"c"));
+        assert!(unknowns.contains(&&Unknown::new_untyped("a")));
+        assert!(unknowns.contains(&&Unknown::new_untyped("b")));
+        assert!(unknowns.contains(&&Unknown::new_untyped("c")));
     }
 
     #[test]
     fn is_unknown() {
         let e = Expr::ite(
-            Expr::not(Expr::unknown("a".to_string())),
-            Expr::and(Expr::unknown("b".to_string()), Expr::val(3)),
-            Expr::unknown("c".to_string()),
+            Expr::not(Expr::unknown(Unknown::new_untyped("a"))),
+            Expr::and(Expr::unknown(Unknown::new_untyped("b")), Expr::val(3)),
+            Expr::unknown(Unknown::new_untyped("c")),
         );
         assert!(e.is_unknown());
         let e = Expr::ite(
@@ -1710,8 +1663,10 @@ mod test {
                 Expr::set([Expr::val(1)]),
             ),
             (
-                ExprBuilder::with_data(1).record([("foo".into(), temp.clone())]),
-                Expr::record([("foo".into(), Expr::val(1))]),
+                ExprBuilder::with_data(1)
+                    .record([("foo".into(), temp.clone())])
+                    .unwrap(),
+                Expr::record([("foo".into(), Expr::val(1))]).unwrap(),
             ),
             (
                 ExprBuilder::with_data(1)
@@ -1727,8 +1682,12 @@ mod test {
                 Expr::has_attr(Expr::val(1), "foo".into()),
             ),
             (
-                ExprBuilder::with_data(1).like(temp, vec![PatternElem::Wildcard]),
+                ExprBuilder::with_data(1).like(temp.clone(), vec![PatternElem::Wildcard]),
                 Expr::like(Expr::val(1), vec![PatternElem::Wildcard]),
+            ),
+            (
+                ExprBuilder::with_data(1).is_entity_type(temp, "T".parse().unwrap()),
+                Expr::is_entity_type(Expr::val(1), "T".parse().unwrap()),
             ),
         ];
 

@@ -123,7 +123,7 @@ impl fmt::Display for Annotation {
 impl fmt::Display for VariableDef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", View(&self.variable))?;
-        if let Some(name) = &self.name {
+        if let Some(name) = &self.unused_type_name {
             write!(f, ": {}", View(name))?;
         }
         if let Some((op, expr)) = &self.ineq {
@@ -189,6 +189,26 @@ impl fmt::Display for Relation {
             }
             Relation::Like { target, pattern } => {
                 write!(f, "{} like {}", View(target), View(pattern))?;
+            }
+            Relation::IsIn {
+                target,
+                entity_type,
+                in_entity: None,
+            } => {
+                write!(f, "{} is {}", View(target), View(entity_type))?;
+            }
+            Relation::IsIn {
+                target,
+                entity_type,
+                in_entity: Some(in_entity),
+            } => {
+                write!(
+                    f,
+                    "{} is {} in {}",
+                    View(target),
+                    View(entity_type),
+                    View(in_entity)
+                )?;
             }
         }
         Ok(())
@@ -390,6 +410,7 @@ impl fmt::Display for Ident {
             Ident::In => write!(f, "in"),
             Ident::Has => write!(f, "has"),
             Ident::Like => write!(f, "like"),
+            Ident::Is => write!(f, "is"),
             Ident::If => write!(f, "if"),
             Ident::Then => write!(f, "then"),
             Ident::Else => write!(f, "else"),
@@ -421,10 +442,11 @@ impl fmt::Display for Str {
 impl std::fmt::Display for Slot {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let src = match self {
-            Slot::Principal => "principal",
-            Slot::Resource => "resource",
+            Slot::Principal => "?principal",
+            Slot::Resource => "?resource",
+            Slot::Other(slot) => slot.as_ref(),
         };
-        write!(f, "?{src}")
+        write!(f, "{src}")
     }
 }
 

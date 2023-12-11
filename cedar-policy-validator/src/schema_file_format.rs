@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::entities::JSONValue;
+use cedar_policy_core::entities::CedarValueJson;
 use serde::{
     de::{MapAccess, Visitor},
     Deserialize, Serialize,
@@ -124,7 +124,7 @@ impl Default for AttributesOrContext {
     fn default() -> Self {
         Self(SchemaType::Type(SchemaTypeVariant::Record {
             attributes: BTreeMap::new(),
-            additional_attributes: false,
+            additional_attributes: partial_schema_default(),
         }))
     }
 }
@@ -135,10 +135,10 @@ impl Default for AttributesOrContext {
 #[serde(deny_unknown_fields)]
 pub struct ActionType {
     /// This maps attribute names to
-    /// `cedar_policy_core::entities::json::jsonvalue::JSONValue` which is the
+    /// `cedar_policy_core::entities::json::value::CedarValueJson` which is the
     /// canonical representation of a cedar value as JSON.
     #[serde(default)]
-    pub attributes: Option<HashMap<SmolStr, JSONValue>>,
+    pub attributes: Option<HashMap<SmolStr, CedarValueJson>>,
     #[serde(default)]
     #[serde(rename = "appliesTo")]
     pub applies_to: Option<ApplySpec>,
@@ -425,7 +425,7 @@ impl SchemaTypeVisitor {
 
                 if let Some(attributes) = attributes {
                     let additional_attributes =
-                        additional_attributes.unwrap_or(Ok(additional_attributes_default()));
+                        additional_attributes.unwrap_or(Ok(partial_schema_default()));
                     Ok(SchemaType::Type(SchemaTypeVariant::Record {
                         attributes: attributes?.0,
                         additional_attributes: additional_attributes?,
@@ -609,9 +609,9 @@ pub struct TypeOfAttribute {
     pub required: bool,
 }
 
-/// Defines the default value for `additionalAttributes` on records and
-/// entities
-fn additional_attributes_default() -> bool {
+/// By default schema properties which enable parts of partial schema validation
+/// should be `false`.  Defines the default value for `additionalAttributes`.
+fn partial_schema_default() -> bool {
     false
 }
 

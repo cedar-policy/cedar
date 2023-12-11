@@ -23,28 +23,34 @@
 pub use ast::Effect;
 pub use authorizer::Decision;
 use cedar_policy_core::ast;
-use cedar_policy_core::ast::RestrictedExprError;
+use cedar_policy_core::ast::{
+    ContextCreationError, ExprConstructionError, RestrictedExprParseError,
+}; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
 use cedar_policy_core::authorizer;
 pub use cedar_policy_core::authorizer::AuthorizationError;
-use cedar_policy_core::entities;
-use cedar_policy_core::entities::JsonDeserializationErrorContext;
-use cedar_policy_core::entities::{ContextSchema, Dereference, JsonDeserializationError};
+use cedar_policy_core::entities::{
+    self, ContextJsonDeserializationError, ContextSchema, Dereference, JsonDeserializationError,
+    JsonDeserializationErrorContext,
+};
 use cedar_policy_core::est;
+use cedar_policy_core::evaluator::Evaluator;
 pub use cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind};
-use cedar_policy_core::evaluator::{Evaluator, RestrictedEvaluator};
 pub use cedar_policy_core::extensions;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 pub use cedar_policy_core::parser::err::ParseErrors;
-use cedar_policy_core::parser::SourceInfo;
 use cedar_policy_core::FromNormalizedStr;
+use cedar_policy_validator::RequestValidationError; // this type is unsuitable for `pub use` because it contains internal types like `EntityUID` and `EntityType`
 pub use cedar_policy_validator::{
     TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
 };
+use itertools::Itertools;
+use miette::Diagnostic;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::convert::Infallible;
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -84,7 +90,7 @@ impl From<SlotId> for ast::SlotId {
 }
 
 /// Entity datatype
-// INVARIANT The `EntityUid` of an `Entity` cannot be unspecified
+// INVARIANT(UidOfEntityNotUnspecified): The `EntityUid` of an `Entity` cannot be unspecified
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, RefCast)]
 pub struct Entity(ast::Entity);
@@ -115,16 +121,32 @@ impl Entity {
         uid: EntityUid,
         attrs: HashMap<String, RestrictedExpression>,
         parents: HashSet<EntityUid>,
-    ) -> Self {
+    ) -> Result<Self, EntityAttrEvaluationError> {
         // note that we take a "parents" parameter here; we will compute TC when
         // the `Entities` object is created
-        // INVARIANT by invariant on `EntityUid`
-        Self(ast::Entity::new(
+        // INVARIANT(UidOfEntityNotUnspecified): by invariant on `EntityUid`
+        Ok(Self(ast::Entity::new(
             uid.0,
             attrs
                 .into_iter()
                 .map(|(k, v)| (SmolStr::from(k), v.0))
                 .collect(),
+            parents.into_iter().map(|uid| uid.0).collect(),
+            &Extensions::all_available(),
+        )?))
+    }
+
+    /// Create a new `Entity` with no attributes.
+    ///
+    /// Unlike [`Entity::new()`], this constructor cannot error.
+    /// (The only source of errors in `Entity::new()` are attributes.)
+    pub fn new_no_attrs(uid: EntityUid, parents: HashSet<EntityUid>) -> Self {
+        // note that we take a "parents" parameter here; we will compute TC when
+        // the `Entities` object is created
+        // INVARIANT(UidOfEntityNotUnspecified): by invariant on `EntityUid`
+        Self(ast::Entity::new_with_attr_partial_value(
+            uid.0,
+            HashMap::new(),
             parents.into_iter().map(|uid| uid.0).collect(),
         ))
     }
@@ -137,10 +159,10 @@ impl Entity {
     /// let type_name = EntityTypeName::from_str("User").unwrap();
     /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
     /// let alice = Entity::with_uid(euid);
-    /// # assert_eq!(alice.attr("age"), None);
+    /// # cool_asserts::assert_matches!(alice.attr("age"), None);
     /// ```
     pub fn with_uid(uid: EntityUid) -> Self {
-        // INVARIANT: by invariant on `EntityUid`
+        // INVARIANT(UidOfEntityNotUnspecified): by invariant on `EntityUid`
         Self(ast::Entity::with_uid(uid.0))
     }
 
@@ -161,7 +183,8 @@ impl Entity {
 
     /// Get the value for the given attribute, or `None` if not present.
     ///
-    /// This can also return Some(Err) if the attribute had an illegal value.
+    /// This can also return Some(Err) if the attribute is not a value (i.e., is
+    /// unknown due to partial evaluation).
     /// ```
     /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid, EvalResult,
     ///     RestrictedExpression};
@@ -174,19 +197,17 @@ impl Entity {
     ///     ("age".to_string(), RestrictedExpression::from_str("21").unwrap()),
     ///     ("department".to_string(), RestrictedExpression::from_str("\"CS\"").unwrap()),
     /// ]);
-    /// let entity = Entity::new(euid, attrs, HashSet::new());
-    /// assert_eq!(entity.attr("age").unwrap(), Ok(EvalResult::Long(21)));
-    /// assert_eq!(entity.attr("department").unwrap(), Ok(EvalResult::String("CS".to_string())));
-    ///```
-    pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, EvaluationError>> {
-        let expr = self.0.get(attr)?;
-        let all_ext = Extensions::all_available();
-        let evaluator = RestrictedEvaluator::new(&all_ext);
-        Some(
-            evaluator
-                .interpret(expr.as_borrowed())
-                .map(EvalResult::from),
-        )
+    /// let entity = Entity::new(euid, attrs, HashSet::new()).unwrap();
+    /// assert_eq!(entity.attr("age").unwrap().unwrap(), EvalResult::Long(21));
+    /// assert_eq!(entity.attr("department").unwrap().unwrap(), EvalResult::String("CS".to_string()));
+    /// assert!(entity.attr("foo").is_none());
+    /// ```
+    pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, impl miette::Diagnostic>> {
+        let v = match ast::Value::try_from(self.0.get(attr)?.clone()) {
+            Ok(v) => v,
+            Err(e) => return Some(Err(e)),
+        };
+        Some(Ok(EvalResult::from(v)))
     }
 }
 
@@ -231,124 +252,184 @@ impl Entities {
         Self(self.0.partial())
     }
 
-    /// Attempt to eagerly compute the values of attributes for all entities in the slice.
-    /// This can fail if evaluation of the [`RestrictedExpression`] fails.
-    /// In a future major version, we will likely make this function automatically called via the constructor.
-    pub fn evaluate(self) -> Result<Self, EvaluationError> {
-        Ok(Self(self.0.evaluate()?))
-    }
-
     /// Iterate over the `Entity`'s in the `Entities`
     pub fn iter(&self) -> impl Iterator<Item = &Entity> {
         self.0.iter().map(Entity::ref_cast)
     }
 
     /// Create an `Entities` object with the given entities.
-    /// It will error if the entities cannot be read or if the entities hierarchy is cyclic
+    ///
+    /// `schema` represents a source of `Action` entities, which will be added
+    /// to the entities provided.
+    /// (If any `Action` entities are present in the provided entities, and a
+    /// `schema` is also provided, each `Action` entity in the provided entities
+    /// must exactly match its definition in the schema or an error is
+    /// returned.)
+    ///
+    /// If a `schema` is present, this function will also ensure that the
+    /// produced entities fully conform to the `schema` -- for instance, it will
+    /// error if attributes have the wrong types (e.g., string instead of
+    /// integer), or if required attributes are missing or superfluous
+    /// attributes are provided.
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
+        schema: Option<&Schema>,
     ) -> Result<Self, entities::EntitiesError> {
         entities::Entities::from_entities(
             entities.into_iter().map(|e| e.0),
+            schema
+                .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
+                .as_ref(),
             entities::TCComputation::ComputeNow,
+            Extensions::all_available(),
         )
         .map(Entities)
     }
 
-    /// Add all of the [`Entity`]s in the collection to this [`Entities`] structure, re-computing the transitive closure
-    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    /// Add all of the [`Entity`]s in the collection to this [`Entities`]
+    /// structure, re-computing the transitive closure.
+    ///
+    /// If a `schema` is provided, this method will ensure that the added
+    /// entities fully conform to the schema -- for instance, it will error if
+    /// attributes have the wrong types (e.g., string instead of integer), or if
+    /// required attributes are missing or superfluous attributes are provided.
+    /// (This method will not add action entities from the `schema`.)
+    ///
+    /// Re-computing the transitive closure can be expensive, so it is advised
+    /// to not call this method in a loop.
     pub fn add_entities(
         self,
         entities: impl IntoIterator<Item = Entity>,
+        schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
-        Ok(Self(self.0.add_entities(
-            entities.into_iter().map(|e| e.0),
-            entities::TCComputation::ComputeNow,
-        )?))
+        Ok(Self(
+            self.0.add_entities(
+                entities.into_iter().map(|e| e.0),
+                schema
+                    .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
+                    .as_ref(),
+                entities::TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )?,
+        ))
     }
 
-    /// Parse an entities JSON file (in [&str] form) and add them into this [`Entities`] structure, re-computing the transitive closure
+    /// Parse an entities JSON file (in [&str] form) and add them into this
+    /// [`Entities`] structure, re-computing the transitive closure
     ///
     /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
-    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    /// will allow `__entity` and `__extn` escapes to be implicit.
+    /// This method will also ensure that the added entities fully conform to the
+    /// schema -- for instance, it will error if attributes have the wrong types
+    /// (e.g., string instead of integer), or if required attributes are missing
+    /// or superfluous attributes are provided.
+    /// (This method will not add action entities from the `schema`.)
+    ///
+    /// Re-computing the transitive closure can be expensive, so it is advised
+    /// to not call this method in a loop.
     pub fn add_entities_from_json_str(
         self,
         json: &str,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            schema.as_ref(),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
-        let new_entities = eparser
-            .iter_from_json_str(json)?
-            .collect::<Result<Vec<_>, _>>()?;
+        let new_entities = eparser.iter_from_json_str(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
+            schema.as_ref(),
             entities::TCComputation::ComputeNow,
+            Extensions::all_available(),
         )?))
     }
 
-    /// Parse an entities JSON file (in [`serde_json::Value`] form) and add them into this [`Entities`] structure, re-computing the transitive closure
+    /// Parse an entities JSON file (in [`serde_json::Value`] form) and add them
+    /// into this [`Entities`] structure, re-computing the transitive closure
     ///
     /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// will allow `__entity` and `__extn` escapes to be implicit.
+    /// This method will also ensure that the added entities fully conform to the
+    /// schema -- for instance, it will error if attributes have the wrong types
+    /// (e.g., string instead of integer), or if required attributes are missing
+    /// or superfluous attributes are provided.
+    /// (This method will not add action entities from the `schema`.)
     ///
-    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    /// Re-computing the transitive closure can be expensive, so it is advised
+    /// to not call this method in a loop.
     pub fn add_entities_from_json_value(
         self,
         json: serde_json::Value,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            schema.as_ref(),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
-        let new_entities = eparser
-            .iter_from_json_value(json)?
-            .collect::<Result<Vec<_>, _>>()?;
+        let new_entities = eparser.iter_from_json_value(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
+            schema.as_ref(),
             entities::TCComputation::ComputeNow,
+            Extensions::all_available(),
         )?))
     }
 
-    /// Parse an entities JSON file (in [`std::io::Read`] form) and add them into this [`Entities`] structure, re-computing the transitive closure
+    /// Parse an entities JSON file (in [`std::io::Read`] form) and add them
+    /// into this [`Entities`] structure, re-computing the transitive closure
     ///
     /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// will allow `__entity` and `__extn` escapes to be implicit.
+    /// This method will also ensure that the added entities fully conform to the
+    /// schema -- for instance, it will error if attributes have the wrong types
+    /// (e.g., string instead of integer), or if required attributes are missing
+    /// or superfluous attributes are provided.
+    /// (This method will not add action entities from the `schema`.)
     ///
-    /// Re-computing the transitive closure can be expensive, so it is advised to not call this method in a loop
+    /// Re-computing the transitive closure can be expensive, so it is advised
+    /// to not call this method in a loop.
     pub fn add_entities_from_json_file(
         self,
         json: impl std::io::Read,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            schema.as_ref(),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
-        let new_entities = eparser
-            .iter_from_json_file(json)?
-            .collect::<Result<Vec<_>, _>>()?;
+        let new_entities = eparser.iter_from_json_file(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
+            schema.as_ref(),
             entities::TCComputation::ComputeNow,
+            Extensions::all_available(),
         )?))
     }
 
     /// Parse an entities JSON file (in `&str` form) into an `Entities` object
     ///
-    /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// `schema` represents a source of `Action` entities, which will be added
+    /// to the entities parsed from JSON.
+    /// (If any `Action` entities are present in the JSON, and a `schema` is
+    /// also provided, each `Action` entity in the JSON must exactly match its
+    /// definition in the schema or an error is returned.)
+    ///
+    /// If a `schema` is present, this will also inform the parsing: for
+    /// instance, it will allow `__entity` and `__extn` escapes to be implicit.
+    ///
+    /// Finally, if a `schema` is present, this function will ensure
+    /// that the produced entities fully conform to the `schema` -- for
+    /// instance, it will error if attributes have the wrong types (e.g., string
+    /// instead of integer), or if required attributes are missing or
+    /// superfluous attributes are provided.
+    ///
     /// ```
     /// use std::collections::HashMap;
     /// use std::str::FromStr;
@@ -375,7 +456,7 @@ impl Entities {
     /// let type_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
     /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
     /// let entity = entities.get(&euid).unwrap();
-    /// assert_eq!(entity.attr("age").unwrap(), Ok(EvalResult::Long(19)));
+    /// assert_eq!(entity.attr("age").unwrap().unwrap(), EvalResult::Long(19));
     /// let ip = entity.attr("ip_addr").unwrap().unwrap();
     /// assert_eq!(ip, EvalResult::ExtensionValue("10.0.1.101/32".to_string()));
     /// ```
@@ -383,8 +464,9 @@ impl Entities {
         json: &str,
         schema: Option<&Schema>,
     ) -> Result<Self, entities::EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            schema.as_ref(),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
@@ -394,9 +476,21 @@ impl Entities {
     /// Parse an entities JSON file (in `serde_json::Value` form) into an
     /// `Entities` object
     ///
-    /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// `schema` represents a source of `Action` entities, which will be added
+    /// to the entities parsed from JSON.
+    /// (If any `Action` entities are present in the JSON, and a `schema` is
+    /// also provided, each `Action` entity in the JSON must exactly match its
+    /// definition in the schema or an error is returned.)
+    ///
+    /// If a `schema` is present, this will also inform the parsing: for
+    /// instance, it will allow `__entity` and `__extn` escapes to be implicit.
+    ///
+    /// Finally, if a `schema` is present, this function will ensure
+    /// that the produced entities fully conform to the `schema` -- for
+    /// instance, it will error if attributes have the wrong types (e.g., string
+    /// instead of integer), or if required attributes are missing or
+    /// superfluous attributes are provided.
+    ///
     /// ```
     /// use std::collections::HashMap;
     /// use std::str::FromStr;
@@ -424,8 +518,9 @@ impl Entities {
         json: serde_json::Value,
         schema: Option<&Schema>,
     ) -> Result<Self, entities::EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            schema.as_ref(),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
@@ -435,15 +530,27 @@ impl Entities {
     /// Parse an entities JSON file (in `std::io::Read` form) into an `Entities`
     /// object
     ///
-    /// If a `schema` is provided, this will inform the parsing: for instance, it
-    /// will allow `__entity` and `__extn` escapes to be implicit, and it will error
-    /// if attributes have the wrong types (e.g., string instead of integer).
+    /// `schema` represents a source of `Action` entities, which will be added
+    /// to the entities parsed from JSON.
+    /// (If any `Action` entities are present in the JSON, and a `schema` is
+    /// also provided, each `Action` entity in the JSON must exactly match its
+    /// definition in the schema or an error is returned.)
+    ///
+    /// If a `schema` is present, this will also inform the parsing: for
+    /// instance, it will allow `__entity` and `__extn` escapes to be implicit.
+    ///
+    /// Finally, if a `schema` is present, this function will ensure
+    /// that the produced entities fully conform to the `schema` -- for
+    /// instance, it will error if attributes have the wrong types (e.g., string
+    /// instead of integer), or if required attributes are missing or
+    /// superfluous attributes are provided.
     pub fn from_json_file(
         json: impl std::io::Read,
         schema: Option<&Schema>,
     ) -> Result<Self, entities::EntitiesError> {
+        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
         let eparser = entities::EntityJsonParser::new(
-            schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0)),
+            schema.as_ref(),
             Extensions::all_available(),
             entities::TCComputation::ComputeNow,
         );
@@ -524,7 +631,7 @@ impl Authorizer {
     /// #
     /// # let c = Context::empty();
     /// #
-    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), c);
+    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), c, None).unwrap();
     /// #
     /// # // create a policy
     /// # let s = r#"permit(
@@ -580,7 +687,7 @@ impl Authorizer {
     ///
     /// let c = Context::empty();
     ///
-    /// let request: Request = Request::new(Some(p), Some(a), Some(r), c);
+    /// let request: Request = Request::new(Some(p), Some(a), Some(r), c, None).unwrap();
     ///
     /// // create a policy
     /// let s = r#"
@@ -611,7 +718,7 @@ impl Authorizer {
     /// println!("{:?}", r);
     /// ```
     pub fn is_authorized(&self, r: &Request, p: &PolicySet, e: &Entities) -> Response {
-        self.0.is_authorized(&r.0, &p.ast, &e.0).into()
+        self.0.is_authorized(r.0.clone(), &p.ast, &e.0).into()
     }
 
     /// A partially evaluated authorization request.
@@ -627,7 +734,7 @@ impl Authorizer {
     ) -> PartialResponse {
         let response = self
             .0
-            .is_authorized_core(&query.0, &policy_set.ast, &entities.0);
+            .is_authorized_core(query.0.clone(), &policy_set.ast, &entities.0);
         match response {
             authorizer::ResponseKind::FullyEvaluated(a) => PartialResponse::Concrete(a.into()),
             authorizer::ResponseKind::Partial(p) => PartialResponse::Residual(p.into()),
@@ -706,7 +813,7 @@ impl Diagnostics {
     /// #
     /// # let c = Context::empty();
     /// #
-    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), c);
+    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), c, None).unwrap();
     /// #
     /// # // create a policy
     /// # let s = r#"permit(
@@ -765,7 +872,7 @@ impl Diagnostics {
     /// #
     /// # let c = Context::empty();
     /// #
-    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), c);
+    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), c, None).unwrap();
     /// #
     /// # // create a policy
     /// # let s = r#"permit(
@@ -880,15 +987,22 @@ pub enum ValidationMode {
     /// have a restricted form which is amenable for analysis.
     #[default]
     Strict,
+    #[cfg(feature = "permissive-validate")]
     /// Validate that policies do not contain any type errors.
     Permissive,
+    /// Validate using a partial schema. Policies may contain type errors.
+    #[cfg(feature = "partial-validate")]
+    Partial,
 }
 
 impl From<ValidationMode> for cedar_policy_validator::ValidationMode {
     fn from(mode: ValidationMode) -> Self {
         match mode {
             ValidationMode::Strict => Self::Strict,
+            #[cfg(feature = "permissive-validate")]
             ValidationMode::Permissive => Self::Permissive,
+            #[cfg(feature = "partial-validate")]
+            ValidationMode::Partial => Self::Partial,
         }
     }
 }
@@ -1020,7 +1134,10 @@ impl Schema {
     /// shape required for Cedar schemas).
     pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
         Ok(Self(
-            cedar_policy_validator::ValidatorSchema::from_json_value(json)?,
+            cedar_policy_validator::ValidatorSchema::from_json_value(
+                json,
+                Extensions::all_available(),
+            )?,
         ))
     }
 
@@ -1028,18 +1145,19 @@ impl Schema {
     pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         Ok(Self(cedar_policy_validator::ValidatorSchema::from_file(
             file,
+            Extensions::all_available(),
         )?))
     }
 
     /// Extract from the schema an `Entities` containing the action entities
     /// declared in the schema.
-    pub fn action_entities(&self) -> Result<Entities, entities::EntitiesError> {
+    pub fn action_entities(&self) -> Result<Entities, EntitiesError> {
         Ok(Entities(self.0.action_entities()?))
     }
 }
 
 /// Errors encountered during construction of a Validation Schema
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum SchemaError {
     /// Error thrown by the `serde_json` crate during deserialization
     #[error("failed to parse schema: {0}")]
@@ -1079,20 +1197,24 @@ pub enum SchemaError {
     #[error("duplicate common type `{0}`")]
     DuplicateCommonType(String),
     /// Cycle in the schema's action hierarchy.
-    #[error("cycle in action hierarchy")]
-    CycleInActionHierarchy,
+    #[error("cycle in action hierarchy containing `{0}`")]
+    CycleInActionHierarchy(EntityUid),
     /// Parse errors occurring while parsing an entity type.
     #[error("parse error in entity type: {0}")]
+    #[diagnostic(transparent)]
     ParseEntityType(ParseErrors),
     /// Parse errors occurring while parsing a namespace identifier.
     #[error("parse error in namespace identifier: {0}")]
+    #[diagnostic(transparent)]
     ParseNamespace(ParseErrors),
     /// Parse errors occurring while parsing an extension type.
     #[error("parse error in extension type: {0}")]
+    #[diagnostic(transparent)]
     ParseExtensionType(ParseErrors),
     /// Parse errors occurring while parsing the name of a reusable
     /// declared type.
     #[error("parse error in common type identifier: {0}")]
+    #[diagnostic(transparent)]
     ParseCommonType(ParseErrors),
     /// The schema file included an entity type `Action` in the entity type
     /// list. The `Action` entity type is always implicitly declared, and it
@@ -1112,6 +1234,37 @@ pub enum SchemaError {
     /// This error variant should only be used when `PermitAttributes` is enabled.
     #[error("action `{0}` has an attribute with unsupported JSON representation: {1}")]
     UnsupportedActionAttribute(EntityUid, String),
+    /// Error when evaluating an action attribute
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ActionAttrEval(EntityAttrEvaluationError),
+    /// Error thrown when the schema contains the `__expr` escape.
+    /// Support for this escape form has been dropped.
+    #[error("schema contained the non-supported `__expr` escape")]
+    ExprEscapeUsed,
+}
+
+/// Error when evaluating an entity attribute
+#[derive(Debug, Diagnostic, Error)]
+#[error("in attribute `{attr}` of `{uid}`: {err}")]
+pub struct EntityAttrEvaluationError {
+    /// Action that had the attribute with the error
+    pub uid: EntityUid,
+    /// Attribute that had the error
+    pub attr: SmolStr,
+    /// Underlying evaluation error
+    #[diagnostic(transparent)]
+    pub err: EvaluationError,
+}
+
+impl From<ast::EntityAttrEvaluationError> for EntityAttrEvaluationError {
+    fn from(err: ast::EntityAttrEvaluationError) -> Self {
+        Self {
+            uid: EntityUid(err.uid),
+            attr: err.attr,
+            err: err.err,
+        }
+    }
 }
 
 /// Describes in what action context or entity type shape a schema parsing error
@@ -1178,8 +1331,8 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             cedar_policy_validator::SchemaError::DuplicateCommonType(c) => {
                 Self::DuplicateCommonType(c)
             }
-            cedar_policy_validator::SchemaError::CycleInActionHierarchy => {
-                Self::CycleInActionHierarchy
+            cedar_policy_validator::SchemaError::CycleInActionHierarchy(e) => {
+                Self::CycleInActionHierarchy(EntityUid(e))
             }
             cedar_policy_validator::SchemaError::ParseEntityType(e) => Self::ParseEntityType(e),
             cedar_policy_validator::SchemaError::ParseNamespace(e) => Self::ParseNamespace(e),
@@ -1199,38 +1352,55 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             cedar_policy_validator::SchemaError::UnsupportedActionAttribute(uid, escape_type) => {
                 Self::UnsupportedActionAttribute(EntityUid(uid), escape_type)
             }
+            cedar_policy_validator::SchemaError::ActionAttrEval(err) => {
+                Self::ActionAttrEval(err.into())
+            }
+            cedar_policy_validator::SchemaError::ExprEscapeUsed => Self::ExprEscapeUsed,
         }
     }
 }
 
-/// Contains the result of policy validation. The result includes the list of of
-/// issues found by the validation and whether validation succeeds or fails.
-/// Validation succeeds if there are no fatal errors.  There are currently no
-/// non-fatal warnings, so any issues found will cause validation to fail.
+/// Contains the result of policy validation. The result includes the list of
+/// issues found by validation and whether validation succeeds or fails.
+/// Validation succeeds if there are no fatal errors. There may still be
+/// non-fatal warnings present when validation passes.
 #[derive(Debug)]
 pub struct ValidationResult<'a> {
     validation_errors: Vec<ValidationError<'a>>,
+    validation_warnings: Vec<ValidationWarning<'a>>,
 }
 
 impl<'a> ValidationResult<'a> {
-    /// True when validation passes. There are no fatal errors.
+    /// True when validation passes. There are no errors, but there may be
+    /// non-fatal warnings. Use [`ValidationResult::validation_passed_without_warnings`]
+    /// to check that there are also no warnings.
     pub fn validation_passed(&self) -> bool {
         self.validation_errors.is_empty()
     }
 
-    /// Get the list of errors found by the validator.
+    /// True when validation passes (i.e., there are no errors) and there are
+    /// additionally no non-fatal warnings.
+    pub fn validation_passed_without_warnings(&self) -> bool {
+        self.validation_errors.is_empty() && self.validation_warnings.is_empty()
+    }
+
+    /// Get an iterator over the errors found by the validator.
     pub fn validation_errors(&self) -> impl Iterator<Item = &ValidationError<'a>> {
         self.validation_errors.iter()
+    }
+
+    /// Get an iterator over the warnings found by the validator.
+    pub fn validation_warnings(&self) -> impl Iterator<Item = &ValidationWarning<'a>> {
+        self.validation_warnings.iter()
     }
 }
 
 impl<'a> From<cedar_policy_validator::ValidationResult<'a>> for ValidationResult<'a> {
     fn from(r: cedar_policy_validator::ValidationResult<'a>) -> Self {
+        let (errors, warnings) = r.into_errors_and_warnings();
         Self {
-            validation_errors: r
-                .into_validation_errors()
-                .map(ValidationError::from)
-                .collect(),
+            validation_errors: errors.map(ValidationError::from).collect(),
+            validation_warnings: warnings.map(ValidationWarning::from).collect(),
         }
     }
 }
@@ -1240,6 +1410,7 @@ impl<'a> From<cedar_policy_validator::ValidationResult<'a>> for ValidationResult
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
 #[derive(Debug, Error)]
+#[error("validation error on `{}`: {}", self.location, self.error_kind())]
 pub struct ValidationError<'a> {
     location: SourceLocation<'a>,
     error_kind: ValidationErrorKind,
@@ -1257,6 +1428,7 @@ impl<'a> ValidationError<'a> {
     }
 }
 
+#[doc(hidden)]
 impl<'a> From<cedar_policy_validator::ValidationError<'a>> for ValidationError<'a> {
     fn from(err: cedar_policy_validator::ValidationError<'a>) -> Self {
         let (location, error_kind) = err.into_location_and_error_kind();
@@ -1267,19 +1439,40 @@ impl<'a> From<cedar_policy_validator::ValidationError<'a>> for ValidationError<'
     }
 }
 
-impl<'a> std::fmt::Display for ValidationError<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "validation error on policy `{}`",
-            self.location.policy_id
-        )?;
-        if let (Some(range_start), Some(range_end)) =
-            (self.location().range_start(), self.location().range_end())
-        {
-            write!(f, " at offset {range_start}-{range_end}")?;
-        }
-        write!(f, ": {}", self.error_kind())
+// custom impl of `Diagnostic`: source location is from .location, everything else
+// forwarded to .error_kind
+impl<'a> Diagnostic for ValidationError<'a> {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        let label = miette::LabeledSpan::underline(self.location.source_range?);
+        Some(Box::new(std::iter::once(label)))
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.error_kind.source_code()
+    }
+
+    fn code<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+        self.error_kind.code()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.error_kind.severity()
+    }
+
+    fn url<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+        self.error_kind.url()
+    }
+
+    fn help<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+        self.error_kind.help()
+    }
+
+    fn related<'s>(&'s self) -> Option<Box<dyn Iterator<Item = &'s dyn Diagnostic> + 's>> {
+        self.error_kind.related()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.error_kind.diagnostic_source()
     }
 }
 
@@ -1287,7 +1480,7 @@ impl<'a> std::fmt::Display for ValidationError<'a> {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SourceLocation<'a> {
     policy_id: &'a PolicyId,
-    source_range: Option<SourceInfo>,
+    source_range: Option<miette::SourceSpan>,
 }
 
 impl<'a> SourceLocation<'a> {
@@ -1299,20 +1492,37 @@ impl<'a> SourceLocation<'a> {
     /// Get the start of the location. Returns `None` if this location does not
     /// have a range.
     pub fn range_start(&self) -> Option<usize> {
-        self.source_range.as_ref().map(SourceInfo::range_start)
+        self.source_range.as_ref().map(miette::SourceSpan::offset)
     }
 
     /// Get the end of the location. Returns `None` if this location does not
     /// have a range.
     pub fn range_end(&self) -> Option<usize> {
-        self.source_range.as_ref().map(SourceInfo::range_end)
+        self.source_range
+            .as_ref()
+            .map(|span| span.offset() + span.len())
+    }
+}
+
+impl<'a> std::fmt::Display for SourceLocation<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "policy `{}`", self.policy_id)?;
+        if let Some(source_range) = &self.source_range {
+            write!(
+                f,
+                " at offset {}-{}",
+                source_range.offset(),
+                source_range.offset() + source_range.len()
+            )?;
+        }
+        Ok(())
     }
 }
 
 impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation<'a> {
     fn from(loc: cedar_policy_validator::SourceLocation<'a>) -> SourceLocation<'a> {
         let policy_id: &'a PolicyId = PolicyId::ref_cast(loc.policy_id());
-        let source_range = loc.into_source_info();
+        let source_range = loc.source_span();
         Self {
             policy_id,
             source_range,
@@ -1320,7 +1530,10 @@ impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation<'a>
     }
 }
 
-/// Scan a set of policies for potentially confusing/obfuscating text.
+/// Scan a set of policies for potentially confusing/obfuscating text. These
+/// checks are also provided through [`Validator::validate`] which provides more
+/// comprehensive error detection, but this function can be used to check for
+/// confusable strings without defining a schema.
 pub fn confusable_string_checker<'a>(
     templates: impl Iterator<Item = &'a Template>,
 ) -> impl Iterator<Item = ValidationWarning<'a>> {
@@ -1329,7 +1542,7 @@ pub fn confusable_string_checker<'a>(
 }
 
 #[derive(Debug, Error)]
-#[error("validation warning on policy `{}`: {}", .location.policy_id, .kind)]
+#[error("validation warning on `{}`: {}", .location, .kind)]
 /// Warnings found in Cedar policies
 pub struct ValidationWarning<'a> {
     location: SourceLocation<'a>,
@@ -1353,12 +1566,46 @@ impl<'a> From<cedar_policy_validator::ValidationWarning<'a>> for ValidationWarni
     fn from(w: cedar_policy_validator::ValidationWarning<'a>) -> Self {
         let (loc, kind) = w.to_kind_and_location();
         ValidationWarning {
-            location: SourceLocation {
-                policy_id: PolicyId::ref_cast(loc),
-                source_range: None,
-            },
+            location: loc.into(),
             kind,
         }
+    }
+}
+
+// custom impl of `Diagnostic`: source location is from .location, everything else
+// forwarded to .kind
+impl<'a> Diagnostic for ValidationWarning<'a> {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        let label = miette::LabeledSpan::underline(self.location.source_range?);
+        Some(Box::new(std::iter::once(label)))
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.kind.source_code()
+    }
+
+    fn code<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+        self.kind.code()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.kind.severity()
+    }
+
+    fn url<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+        self.kind.url()
+    }
+
+    fn help<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+        self.kind.help()
+    }
+
+    fn related<'s>(&'s self) -> Option<Box<dyn Iterator<Item = &'s dyn Diagnostic> + 's>> {
+        self.kind.related()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.kind.diagnostic_source()
     }
 }
 
@@ -1368,7 +1615,7 @@ impl<'a> From<cedar_policy_validator::ValidationWarning<'a>> for ValidationWarni
 pub struct EntityId(ast::Eid);
 
 impl FromStr for EntityId {
-    type Err = ParseErrors;
+    type Err = Infallible;
     fn from_str(eid_str: &str) -> Result<Self, Self::Err> {
         Ok(Self(ast::Eid::new(eid_str)))
     }
@@ -1489,7 +1736,7 @@ impl EntityUid {
         #[allow(clippy::panic)]
         match self.0.entity_type() {
             ast::EntityType::Unspecified => panic!("Impossible to have an unspecified entity"),
-            ast::EntityType::Concrete(name) => EntityTypeName::ref_cast(name),
+            ast::EntityType::Specified(name) => EntityTypeName::ref_cast(name),
         }
     }
 
@@ -1530,8 +1777,8 @@ impl EntityUid {
     /// let euid = EntityUid::from_json(json_data).unwrap();
     /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
     /// ```
-    pub fn from_json(json: serde_json::Value) -> Result<Self, impl std::error::Error> {
-        let parsed: entities::EntityUidJSON = serde_json::from_value(json)?;
+    pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
+        let parsed: entities::EntityUidJson = serde_json::from_value(json)?;
         // INVARIANT: There is no way to write down the unspecified entityuid
         Ok::<Self, entities::JsonDeserializationError>(Self(
             parsed.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
@@ -1587,7 +1834,7 @@ impl std::fmt::Display for EntityUid {
 }
 
 /// Potential errors when adding to a `PolicySet`.
-#[derive(Error, Debug)]
+#[derive(Debug, Diagnostic, Error)]
 #[non_exhaustive]
 pub enum PolicySetError {
     /// There was a duplicate [`PolicyId`] encountered in either the set of
@@ -1599,6 +1846,7 @@ pub enum PolicySetError {
     },
     /// Error when linking a template
     #[error("unable to link template: {0}")]
+    #[diagnostic(transparent)]
     LinkingError(#[from] ast::LinkingError),
     /// Expected a static policy, but a template-linked policy was provided
     #[error("expected a static policy, but a template-linked policy was provided")]
@@ -1606,6 +1854,24 @@ pub enum PolicySetError {
     /// Expected a template, but a static policy was provided.
     #[error("expected a template, but a static policy was provided")]
     ExpectedTemplate,
+    /// Error when removing a static policy
+    #[error("unable to remove static policy `{0}` because it does not exist")]
+    PolicyNonexistentError(PolicyId),
+    /// Error when removing a template that doesn't exist
+    #[error("unable to remove policy template `{0}` because it does not exist")]
+    TemplateNonexistentError(PolicyId),
+    /// Error when removing a template with active links
+    #[error("unable to remove policy template `{0}` because it has active links")]
+    RemoveTemplateWithActiveLinksError(PolicyId),
+    /// Error when removing a template that is not a template
+    #[error("unable to remove policy template `{0}` because it is not a template")]
+    RemoveTemplateNotTemplateError(PolicyId),
+    /// Error when unlinking a template
+    #[error("unable to unlink policy template `{0}` because it does not exist")]
+    LinkNonexistentError(PolicyId),
+    /// Error when removing a link that is not a link
+    #[error("unable to unlink `{0}` because it is not a link")]
+    UnlinkLinkNotLinkError(PolicyId),
 }
 
 impl From<ast::PolicySetError> for PolicySetError {
@@ -1712,12 +1978,79 @@ impl PolicySet {
         }
     }
 
+    /// Remove a static `Policy` from the `PolicySet`.
+    ///
+    /// This will error if the policy is not a static policy.
+    pub fn remove_static(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
+        let Some(policy) = self.policies.remove(&policy_id) else {
+            return Err(PolicySetError::PolicyNonexistentError(policy_id));
+        };
+        match self
+            .ast
+            .remove_static(&ast::PolicyID::from_string(policy_id.to_string()))
+        {
+            Ok(_) => Ok(policy),
+            Err(_) => {
+                //Restore self.policies
+                self.policies.insert(policy_id.clone(), policy);
+                Err(PolicySetError::PolicyNonexistentError(policy_id.clone()))
+            }
+        }
+    }
+
     /// Add a `Template` to the `PolicySet`
     pub fn add_template(&mut self, template: Template) -> Result<(), PolicySetError> {
         let id = PolicyId(template.ast.id().clone());
         self.ast.add_template(template.ast.clone())?;
         self.templates.insert(id, template);
         Ok(())
+    }
+
+    /// Remove a `Template` from the `PolicySet`.
+    ///
+    /// This will error if any policy is linked to the template.
+    /// This will error if `policy_id` is not a template.
+    pub fn remove_template(&mut self, template_id: PolicyId) -> Result<Template, PolicySetError> {
+        let Some(template) = self.templates.remove(&template_id) else {
+            return Err(PolicySetError::TemplateNonexistentError(template_id));
+        };
+        // If self.templates and self.ast disagree, authorization cannot be trusted.
+        // PANIC SAFETY: We just found the policy in self.templates.
+        #[allow(clippy::panic)]
+        match self
+            .ast
+            .remove_template(&ast::PolicyID::from_string(template_id.to_string()))
+        {
+            Ok(_) => Ok(template),
+            Err(ast::PolicySetTemplateRemovalError::RemoveTemplateWithLinksError(_)) => {
+                self.templates.insert(template_id.clone(), template);
+                Err(PolicySetError::RemoveTemplateWithActiveLinksError(
+                    template_id,
+                ))
+            }
+            Err(ast::PolicySetTemplateRemovalError::NotTemplateError(_)) => {
+                self.templates.insert(template_id.clone(), template);
+                Err(PolicySetError::RemoveTemplateNotTemplateError(template_id))
+            }
+            Err(ast::PolicySetTemplateRemovalError::RemovePolicyNoTemplateError(_)) => {
+                panic!("Found template policy in self.templates but not in self.ast");
+            }
+        }
+    }
+
+    /// Get policies linked to a `Template` in the `PolicySet`.
+    /// If any policy is linked to the template, this will error
+    pub fn get_linked_policies(
+        &self,
+        template_id: PolicyId,
+    ) -> Result<impl Iterator<Item = &PolicyId>, PolicySetError> {
+        match self
+            .ast
+            .get_linked_policies(&ast::PolicyID::from_string(template_id.to_string()))
+        {
+            Ok(v) => Ok(v.map(PolicyId::ref_cast)),
+            Err(_) => Err(PolicySetError::TemplateNonexistentError(template_id)),
+        }
     }
 
     /// Iterate over all the `Policy`s in the `PolicySet`.
@@ -1786,6 +2119,21 @@ impl PolicySet {
             .into_iter()
             .map(|(key, value)| (key.into(), value.0))
             .collect();
+
+        // Try to get the template with the id we're linking from.  We do this
+        // _before_ calling `self.ast.link` because `link` mutates the policy
+        // set by creating a new link entry in a hashmap. This happens even when
+        // trying to link a static policy, which we want to error on here.
+        let Some(template) = self.templates.get(&template_id) else {
+            return Err(if self.policies.contains_key(&template_id) {
+                PolicySetError::ExpectedTemplate
+            } else {
+                PolicySetError::LinkingError(ast::LinkingError::NoSuchTemplate {
+                    id: template_id.0,
+                })
+            });
+        };
+
         let linked_ast = self
             .ast
             .link(
@@ -1794,17 +2142,10 @@ impl PolicySet {
                 unwrapped_vals.clone(),
             )
             .map_err(PolicySetError::LinkingError)?;
+
         // PANIC SAFETY: `lossless.link()` will not fail after `ast.link()` succeeds
         #[allow(clippy::expect_used)]
-        let linked_lossless = self
-            .templates
-            .get(&template_id)
-            // We know `template_id` exists in the policy set as either a
-            // template or a static policy because otherwise `ast.link()` would
-            // have errored. If `ast.link()` did not error, then it could still
-            // be that the id corresponds to a static policy. This function
-            // should only be used to link templates, so this is an error.
-            .ok_or(PolicySetError::ExpectedTemplate)?
+        let linked_lossless = template
             .lossless
             .clone()
             .link(unwrapped_vals.iter().map(|(k, v)| (*k, v)))
@@ -1821,6 +2162,58 @@ impl PolicySet {
             },
         );
         Ok(())
+    }
+
+    /// Get all the unknown entities from the policy set
+    #[cfg(feature = "partial-eval")]
+    pub fn unknown_entities(&self) -> HashSet<EntityUid> {
+        let mut entity_uids = HashSet::new();
+        for policy in self.policies.values() {
+            let ids: Vec<EntityUid> = policy
+                .ast
+                .condition()
+                .unknowns()
+                .filter_map(
+                    |ast::Unknown {
+                         name,
+                         type_annotation,
+                     }| {
+                        if matches!(type_annotation, Some(ast::Type::Entity { .. })) {
+                            EntityUid::from_str(name.as_str()).ok()
+                        } else {
+                            None
+                        }
+                    },
+                )
+                .collect();
+            entity_uids.extend(ids);
+        }
+        entity_uids
+    }
+
+    /// Unlink a template link from the policy set.
+    /// Returns the policy that was unlinked.
+    pub fn unlink(&mut self, policy_id: PolicyId) -> Result<Policy, PolicySetError> {
+        let Some(policy) = self.policies.remove(&policy_id) else {
+            return Err(PolicySetError::LinkNonexistentError(policy_id));
+        };
+        // If self.policies and self.ast disagree, authorization cannot be trusted.
+        // PANIC SAFETY: We just found the policy in self.policies.
+        #[allow(clippy::panic)]
+        match self
+            .ast
+            .unlink(&ast::PolicyID::from_string(policy_id.to_string()))
+        {
+            Ok(_) => Ok(policy),
+            Err(ast::PolicySetUnlinkError::NotLinkError(_)) => {
+                //Restore self.policies
+                self.policies.insert(policy_id.clone(), policy);
+                Err(PolicySetError::UnlinkLinkNotLinkError(policy_id))
+            }
+            Err(ast::PolicySetUnlinkError::UnlinkingError(_)) => {
+                panic!("Found linked policy in self.policies but not in self.ast")
+            }
+        }
     }
 
     /// Create a `PolicySet` from its AST representation only. The EST will
@@ -1848,7 +2241,8 @@ impl PolicySet {
 
 impl std::fmt::Display for PolicySet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.ast)
+        // prefer to display the lossless format
+        write!(f, "{}", self.policies().map(|p| &p.lossless).join("\n"))
     }
 }
 
@@ -1947,6 +2341,18 @@ impl Template {
                     ast::EntityReference::Slot => None,
                 })
             }
+            ast::PrincipalOrResourceConstraint::Is(entity_type) => {
+                TemplatePrincipalConstraint::Is(EntityTypeName(entity_type.clone()))
+            }
+            ast::PrincipalOrResourceConstraint::IsIn(entity_type, eref) => {
+                TemplatePrincipalConstraint::IsIn(
+                    EntityTypeName(entity_type.clone()),
+                    match eref {
+                        ast::EntityReference::EUID(e) => Some(EntityUid(e.as_ref().clone())),
+                        ast::EntityReference::Slot => None,
+                    },
+                )
+            }
         }
     }
 
@@ -1980,6 +2386,18 @@ impl Template {
                     ast::EntityReference::Slot => None,
                 })
             }
+            ast::PrincipalOrResourceConstraint::Is(entity_type) => {
+                TemplateResourceConstraint::Is(EntityTypeName(entity_type.clone()))
+            }
+            ast::PrincipalOrResourceConstraint::IsIn(entity_type, eref) => {
+                TemplateResourceConstraint::IsIn(
+                    EntityTypeName(entity_type.clone()),
+                    match eref {
+                        ast::EntityReference::EUID(e) => Some(EntityUid(e.as_ref().clone())),
+                        ast::EntityReference::Slot => None,
+                    },
+                )
+            }
         }
     }
 
@@ -1987,8 +2405,7 @@ impl Template {
     /// If `id` is Some, the policy will be given that Policy Id.
     /// If `id` is None, then "JSON policy" will be used.
     /// The behavior around None may change in the future.
-    #[allow(dead_code)] // planned to be a public method in the future
-    fn from_json(
+    pub fn from_json(
         id: Option<PolicyId>,
         json: serde_json::Value,
     ) -> Result<Self, cedar_policy_core::est::FromJsonError> {
@@ -2001,8 +2418,7 @@ impl Template {
     }
 
     /// Get the JSON representation of this `Template`.
-    #[allow(dead_code)] // planned to be a public method in the future
-    fn to_json(&self) -> Result<serde_json::Value, impl std::error::Error> {
+    pub fn to_json(&self) -> Result<serde_json::Value, impl miette::Diagnostic> {
         let est = self.lossless.est()?;
         let json = serde_json::to_value(est)?;
         Ok::<_, PolicyToJsonError>(json)
@@ -2023,6 +2439,13 @@ impl Template {
     }
 }
 
+impl std::fmt::Display for Template {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // prefer to display the lossless format
+        self.lossless.fmt(f)
+    }
+}
+
 impl FromStr for Template {
     type Err = ParseErrors;
 
@@ -2040,6 +2463,10 @@ pub enum PrincipalConstraint {
     In(EntityUid),
     /// Must be equal to the given EntityUid
     Eq(EntityUid),
+    /// Must be the given EntityTypeName
+    Is(EntityTypeName),
+    /// Must be the given EntityTypeName, and `in` the EntityUID
+    IsIn(EntityTypeName, EntityUid),
 }
 
 /// Head constraint on policy principals for templates.
@@ -2053,14 +2480,19 @@ pub enum TemplatePrincipalConstraint {
     /// Must be equal to the given EntityUid.
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
+    /// Must be the given EntityTypeName.
+    Is(EntityTypeName),
+    /// Must be the given EntityTypeName, and `in` the EntityUID.
+    /// If the EntityUID is [`None`], then it is a template slot.
+    IsIn(EntityTypeName, Option<EntityUid>),
 }
 
 impl TemplatePrincipalConstraint {
     /// Does this constraint contain a slot?
     pub fn has_slot(&self) -> bool {
         match self {
-            Self::Any => false,
-            Self::In(o) | Self::Eq(o) => o.is_none(),
+            Self::Any | Self::Is(_) => false,
+            Self::In(o) | Self::Eq(o) | Self::IsIn(_, o) => o.is_none(),
         }
     }
 }
@@ -2085,6 +2517,10 @@ pub enum ResourceConstraint {
     In(EntityUid),
     /// Must be equal to the given EntityUid
     Eq(EntityUid),
+    /// Must be the given EntityTypeName
+    Is(EntityTypeName),
+    /// Must be the given EntityTypeName, and `in` the EntityUID
+    IsIn(EntityTypeName, EntityUid),
 }
 
 /// Head constraint on policy resources for templates.
@@ -2098,14 +2534,19 @@ pub enum TemplateResourceConstraint {
     /// Must be equal to the given EntityUid.
     /// If [`None`], then it is a template slot.
     Eq(Option<EntityUid>),
+    /// Must be the given EntityTypeName.
+    Is(EntityTypeName),
+    /// Must be the given EntityTypeName, and `in` the EntityUID.
+    /// If the EntityUID is [`None`], then it is a template slot.
+    IsIn(EntityTypeName, Option<EntityUid>),
 }
 
 impl TemplateResourceConstraint {
     /// Does this constraint contain a slot?
     pub fn has_slot(&self) -> bool {
         match self {
-            Self::Any => false,
-            Self::In(o) | Self::Eq(o) => o.is_none(),
+            Self::Any | Self::Is(_) => false,
+            Self::In(o) | Self::Eq(o) | Self::IsIn(_, o) => o.is_none(),
         }
     }
 }
@@ -2214,6 +2655,15 @@ impl Policy {
             ast::PrincipalOrResourceConstraint::Eq(eref) => {
                 PrincipalConstraint::Eq(self.convert_entity_reference(eref, slot_id).clone())
             }
+            ast::PrincipalOrResourceConstraint::Is(entity_type) => {
+                PrincipalConstraint::Is(EntityTypeName(entity_type.clone()))
+            }
+            ast::PrincipalOrResourceConstraint::IsIn(entity_type, eref) => {
+                PrincipalConstraint::IsIn(
+                    EntityTypeName(entity_type.clone()),
+                    self.convert_entity_reference(eref, slot_id).clone(),
+                )
+            }
         }
     }
 
@@ -2243,6 +2693,15 @@ impl Policy {
             }
             ast::PrincipalOrResourceConstraint::Eq(eref) => {
                 ResourceConstraint::Eq(self.convert_entity_reference(eref, slot_id).clone())
+            }
+            ast::PrincipalOrResourceConstraint::Is(entity_type) => {
+                ResourceConstraint::Is(EntityTypeName(entity_type.clone()))
+            }
+            ast::PrincipalOrResourceConstraint::IsIn(entity_type, eref) => {
+                ResourceConstraint::IsIn(
+                    EntityTypeName(entity_type.clone()),
+                    self.convert_entity_reference(eref, slot_id).clone(),
+                )
             }
         }
     }
@@ -2293,7 +2752,7 @@ impl Policy {
     /// use cedar_policy::{Policy, PolicyId};
     /// use std::str::FromStr;
     ///
-    /// let data : serde_json::Value = serde_json::json!(
+    /// let json: serde_json::Value = serde_json::json!(
     ///        {
     ///            "effect":"permit",
     ///            "principal":{
@@ -2339,7 +2798,7 @@ impl Policy {
     ///            ]
     ///        }
     /// );
-    /// let policy = Policy::from_json(None, data).unwrap();
+    /// let json_policy = Policy::from_json(None, json).unwrap();
     /// let src = r#"
     ///   permit(
     ///     principal == User::"bob",
@@ -2347,8 +2806,8 @@ impl Policy {
     ///     resource == Album::"trip"
     ///   )
     ///   when { principal.age > 18 };"#;
-    /// let expected_output = Policy::parse(None, src).unwrap();
-    /// assert_eq!(policy.to_string(), expected_output.to_string());
+    /// let text_policy = Policy::parse(None, src).unwrap();
+    /// assert_eq!(json_policy.to_json().unwrap(), text_policy.to_json().unwrap());
     /// ```
     pub fn from_json(
         id: Option<PolicyId>,
@@ -2364,7 +2823,7 @@ impl Policy {
 
     /// Get the JSON representation of this `Policy`.
     ///  ```
-    /// use cedar_policy::Policy;
+    /// # use cedar_policy::Policy;
     /// let src = r#"
     ///   permit(
     ///     principal == User::"bob",
@@ -2372,15 +2831,15 @@ impl Policy {
     ///     resource == Album::"trip"
     ///   )
     ///   when { principal.age > 18 };"#;
-
+    ///
     /// let policy = Policy::parse(None, src).unwrap();
     /// println!("{}", policy);
     /// // convert the policy to JSON
     /// let json = policy.to_json().unwrap();
     /// println!("{}", json);
-    /// assert_eq!(policy.to_string(), Policy::from_json(None, json).unwrap().to_string());
+    /// assert_eq!(json, Policy::from_json(None, json.clone()).unwrap().to_json().unwrap());
     /// ```
-    pub fn to_json(&self) -> Result<serde_json::Value, impl std::error::Error> {
+    pub fn to_json(&self) -> Result<serde_json::Value, impl miette::Diagnostic> {
         let est = self.lossless.est()?;
         let json = serde_json::to_value(est)?;
         Ok::<_, PolicyToJsonError>(json)
@@ -2392,7 +2851,7 @@ impl Policy {
     /// conversion to AST is lossy. ESTs for policies generated by this method
     /// will reflect the AST and not the original policy syntax.
     #[cfg_attr(not(feature = "partial-eval"), allow(unused))]
-    fn from_ast(ast: ast::Policy) -> Self {
+    pub(crate) fn from_ast(ast: ast::Policy) -> Self {
         let text = ast.to_string(); // assume that pretty-printing is faster than `est::Policy::from(ast.clone())`; is that true?
         Self {
             ast,
@@ -2403,7 +2862,8 @@ impl Policy {
 
 impl std::fmt::Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.ast.fmt(f)
+        // prefer to display the lossless format
+        self.lossless.fmt(f)
     }
 }
 
@@ -2470,7 +2930,7 @@ impl LosslessPolicy {
     ) -> Result<Self, est::InstantiationError> {
         match self {
             Self::Est(est) => {
-                let unwrapped_est_vals: HashMap<ast::SlotId, entities::EntityUidJSON> =
+                let unwrapped_est_vals: HashMap<ast::SlotId, entities::EntityUidJson> =
                     vals.into_iter().map(|(k, v)| (k, v.into())).collect();
                 Ok(Self::Est(est.link(&unwrapped_est_vals)?))
             }
@@ -2486,14 +2946,39 @@ impl LosslessPolicy {
     }
 }
 
+impl std::fmt::Display for LosslessPolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Est(est) => write!(f, "{est}"),
+            Self::Text { text, slots } => {
+                if slots.is_empty() {
+                    write!(f, "{text}")
+                } else {
+                    // need to replace placeholders according to `slots`.
+                    // just find-and-replace wouldn't be safe/perfect, we
+                    // want to use the actual parser; right now we reuse
+                    // another implementation by just converting to EST and
+                    // printing that
+                    match self.est() {
+                        Ok(est) => write!(f, "{est}"),
+                        Err(e) => write!(f, "<invalid linked policy: {e}>"),
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Errors that can happen when getting the JSON representation of a policy
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum PolicyToJsonError {
     /// Parse error in the policy text
     #[error(transparent)]
+    #[diagnostic(transparent)]
     Parse(#[from] ParseErrors),
     /// For linked policies, error linking the JSON representation
     #[error(transparent)]
+    #[diagnostic(transparent)]
     Link(#[from] est::InstantiationError),
     /// Error in the JSON serialization
     #[error(transparent)]
@@ -2522,10 +3007,14 @@ impl Expression {
     }
 
     /// Create an expression representing a record.
-    pub fn new_record(fields: impl IntoIterator<Item = (String, Self)>) -> Self {
-        Self(ast::Expr::record(
+    ///
+    /// Error if any key appears two or more times in `fields`.
+    pub fn new_record(
+        fields: impl IntoIterator<Item = (String, Self)>,
+    ) -> Result<Self, ExprConstructionError> {
+        Ok(Self(ast::Expr::record(
             fields.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
-        ))
+        )?))
     }
 
     /// Create an expression representing a Set.
@@ -2578,11 +3067,20 @@ impl RestrictedExpression {
         Self(ast::RestrictedExpr::val(value))
     }
 
+    /// Create an expression representing a literal `EntityUid`.
+    pub fn new_entity_uid(value: EntityUid) -> Self {
+        Self(ast::RestrictedExpr::val(value.0))
+    }
+
     /// Create an expression representing a record.
-    pub fn new_record(fields: impl IntoIterator<Item = (String, Self)>) -> Self {
-        Self(ast::RestrictedExpr::record(
+    ///
+    /// Error if any key appears two or more times in `fields`.
+    pub fn new_record(
+        fields: impl IntoIterator<Item = (String, Self)>,
+    ) -> Result<Self, ExprConstructionError> {
+        Ok(Self(ast::RestrictedExpr::record(
             fields.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
-        ))
+        )?))
     }
 
     /// Create an expression representing a Set.
@@ -2592,7 +3090,7 @@ impl RestrictedExpression {
 }
 
 impl FromStr for RestrictedExpression {
-    type Err = RestrictedExprError;
+    type Err = RestrictedExprParseError;
 
     /// create a `RestrictedExpression` using Cedar syntax
     fn from_str(expression: &str) -> Result<Self, Self::Err> {
@@ -2602,66 +3100,99 @@ impl FromStr for RestrictedExpression {
 
 /// Builder for a [`Request`]
 ///
-/// Note that you can create the `EntityUid`s using `.parse()` on any
-/// string (via the `FromStr` implementation for `EntityUid`).
-/// The principal, action, and resource fields are optional to support
-/// the case where these fields do not contribute to authorization
-/// decisions (e.g., because they are not used in your policies).
-/// If any of the fields are `None`, we will automatically generate
-/// a unique entity UID that is not equal to any UID in the store.
-///
-/// The default for principal, action and resource fields is Unknown.
+/// The default for principal, action, resource, and context fields is Unknown
+/// for partial evaluation.
 #[cfg(feature = "partial-eval")]
-#[derive(Debug, Default)]
-pub struct RequestBuilder {
-    principal: Option<ast::EntityUIDEntry>,
-    action: Option<ast::EntityUIDEntry>,
-    resource: Option<ast::EntityUIDEntry>,
+#[derive(Debug)]
+pub struct RequestBuilder<'a> {
+    principal: ast::EntityUIDEntry,
+    action: ast::EntityUIDEntry,
+    resource: ast::EntityUIDEntry,
+    /// Here, `None` means unknown
     context: Option<ast::Context>,
+    /// Here, `None` means no request validation is performed
+    schema: Option<&'a Schema>,
 }
 
 #[cfg(feature = "partial-eval")]
-impl RequestBuilder {
-    /// Set the principal
+impl<'a> Default for RequestBuilder<'a> {
+    fn default() -> Self {
+        Self {
+            principal: ast::EntityUIDEntry::Unknown,
+            action: ast::EntityUIDEntry::Unknown,
+            resource: ast::EntityUIDEntry::Unknown,
+            context: None,
+            schema: None,
+        }
+    }
+}
+
+#[cfg(feature = "partial-eval")]
+impl<'a> RequestBuilder<'a> {
+    /// Set the principal.
+    ///
+    /// Note that you can create the `EntityUid` using `.parse()` on any
+    /// string (via the `FromStr` implementation for `EntityUid`).
+    ///
+    /// Here, passing `None` for `principal` indicates that `principal` does
+    /// not contribute to authorization decisions (e.g., because it is not
+    /// used in your policies).
+    /// This is different than Unknown for partial-evaluation purposes.
     pub fn principal(self, principal: Option<EntityUid>) -> Self {
         Self {
-            principal: Some(match principal {
+            principal: match principal {
                 Some(p) => ast::EntityUIDEntry::concrete(p.0),
                 None => ast::EntityUIDEntry::concrete(ast::EntityUID::unspecified_from_eid(
                     ast::Eid::new("principal"),
                 )),
-            }),
+            },
             ..self
         }
     }
 
-    /// Set the action
+    /// Set the action.
+    ///
+    /// Note that you can create the `EntityUid` using `.parse()` on any
+    /// string (via the `FromStr` implementation for `EntityUid`).
+    ///
+    /// Here, passing `None` for `action` indicates that `action` does
+    /// not contribute to authorization decisions (e.g., because it is not
+    /// used in your policies).
+    /// This is different than Unknown for partial-evaluation purposes.
     pub fn action(self, action: Option<EntityUid>) -> Self {
         Self {
-            action: Some(match action {
+            action: match action {
                 Some(a) => ast::EntityUIDEntry::concrete(a.0),
                 None => ast::EntityUIDEntry::concrete(ast::EntityUID::unspecified_from_eid(
                     ast::Eid::new("action"),
                 )),
-            }),
+            },
             ..self
         }
     }
 
-    /// Set the resource
+    /// Set the resource.
+    ///
+    /// Note that you can create the `EntityUid` using `.parse()` on any
+    /// string (via the `FromStr` implementation for `EntityUid`).
+    ///
+    /// Here, passing `None` for `resource` indicates that `resource` does
+    /// not contribute to authorization decisions (e.g., because it is not
+    /// used in your policies).
+    /// This is different than Unknown for partial-evaluation purposes.
     pub fn resource(self, resource: Option<EntityUid>) -> Self {
         Self {
-            resource: Some(match resource {
+            resource: match resource {
                 Some(r) => ast::EntityUIDEntry::concrete(r.0),
                 None => ast::EntityUIDEntry::concrete(ast::EntityUID::unspecified_from_eid(
                     ast::Eid::new("resource"),
                 )),
-            }),
+            },
             ..self
         }
     }
 
-    /// Set the context
+    /// Set the context.
     pub fn context(self, context: Context) -> Self {
         Self {
             context: Some(context.0),
@@ -2669,21 +3200,24 @@ impl RequestBuilder {
         }
     }
 
+    /// Set the schema. If present, this will be used for request validation.
+    pub fn schema(self, schema: &'a Schema) -> Self {
+        Self {
+            schema: Some(schema),
+            ..self
+        }
+    }
+
     /// Create the [`Request`]
-    pub fn build(self) -> Request {
-        let p = match self.principal {
-            Some(p) => p,
-            None => ast::EntityUIDEntry::Unknown,
-        };
-        let a = match self.action {
-            Some(a) => a,
-            None => ast::EntityUIDEntry::Unknown,
-        };
-        let r = match self.resource {
-            Some(r) => r,
-            None => ast::EntityUIDEntry::Unknown,
-        };
-        Request(ast::Request::new_with_unknowns(p, a, r, self.context))
+    pub fn build(self) -> Result<Request, RequestValidationError> {
+        Ok(Request(ast::Request::new_with_unknowns(
+            self.principal,
+            self.action,
+            self.resource,
+            self.context,
+            self.schema.map(|schema| &schema.0),
+            Extensions::all_available(),
+        )?))
     }
 }
 
@@ -2695,7 +3229,7 @@ pub struct Request(pub(crate) ast::Request);
 impl Request {
     /// Create a [`RequestBuilder`]
     #[cfg(feature = "partial-eval")]
-    pub fn builder() -> RequestBuilder {
+    pub fn builder<'a>() -> RequestBuilder<'a> {
         RequestBuilder::default()
     }
 
@@ -2708,12 +3242,16 @@ impl Request {
     /// decisions (e.g., because they are not used in your policies).
     /// If any of the fields are `None`, we will automatically generate
     /// a unique entity UID that is not equal to any UID in the store.
+    ///
+    /// If `schema` is present, this constructor will validate that the
+    /// `Request` complies with the given `schema`.
     pub fn new(
         principal: Option<EntityUid>,
         action: Option<EntityUid>,
         resource: Option<EntityUid>,
         context: Context,
-    ) -> Self {
+        schema: Option<&Schema>,
+    ) -> Result<Self, RequestValidationError> {
         let p = match principal {
             Some(p) => p.0,
             None => ast::EntityUID::unspecified_from_eid(ast::Eid::new("principal")),
@@ -2726,7 +3264,14 @@ impl Request {
             Some(r) => r.0,
             None => ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")),
         };
-        Self(ast::Request::new(p, a, r, context.0))
+        Ok(Self(ast::Request::new(
+            p,
+            a,
+            r,
+            context.0,
+            schema.map(|schema| &schema.0),
+            Extensions::all_available(),
+        )?))
     }
 
     /// Get the principal component of the request. Returns `None` if the principal is
@@ -2734,9 +3279,9 @@ impl Request {
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn principal(&self) -> Option<&EntityUid> {
         match self.0.principal() {
-            ast::EntityUIDEntry::Concrete(euid) => match euid.entity_type() {
+            ast::EntityUIDEntry::Known(euid) => match euid.entity_type() {
                 // INVARIANT: we ensure Concrete-ness here
-                ast::EntityType::Concrete(_) => Some(EntityUid::ref_cast(euid.as_ref())),
+                ast::EntityType::Specified(_) => Some(EntityUid::ref_cast(euid.as_ref())),
                 ast::EntityType::Unspecified => None,
             },
             ast::EntityUIDEntry::Unknown => None,
@@ -2748,9 +3293,9 @@ impl Request {
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn action(&self) -> Option<&EntityUid> {
         match self.0.action() {
-            ast::EntityUIDEntry::Concrete(euid) => match euid.entity_type() {
+            ast::EntityUIDEntry::Known(euid) => match euid.entity_type() {
                 // INVARIANT: we ensure Concrete-ness here
-                ast::EntityType::Concrete(_) => Some(EntityUid::ref_cast(euid.as_ref())),
+                ast::EntityType::Specified(_) => Some(EntityUid::ref_cast(euid.as_ref())),
                 ast::EntityType::Unspecified => None,
             },
             ast::EntityUIDEntry::Unknown => None,
@@ -2762,9 +3307,9 @@ impl Request {
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn resource(&self) -> Option<&EntityUid> {
         match self.0.resource() {
-            ast::EntityUIDEntry::Concrete(euid) => match euid.entity_type() {
+            ast::EntityUIDEntry::Known(euid) => match euid.entity_type() {
                 // INVARIANT: we ensure Concrete-ness here
-                ast::EntityType::Concrete(_) => Some(EntityUid::ref_cast(euid.as_ref())),
+                ast::EntityType::Specified(_) => Some(EntityUid::ref_cast(euid.as_ref())),
                 ast::EntityType::Unspecified => None,
             },
             ast::EntityUIDEntry::Unknown => None,
@@ -2781,8 +3326,7 @@ impl Context {
     /// Create an empty `Context`
     /// ```
     /// use cedar_policy::Context;
-    /// let c = Context::empty();
-    /// // let request: Request = Request::new(Some(principal), Some(action), Some(resource), c);
+    /// let context = Context::empty();
     /// ```
     pub fn empty() -> Self {
         Self(ast::Context::empty())
@@ -2793,7 +3337,7 @@ impl Context {
     /// of `(key, restricted expression)` pairs.
     /// ```
     /// use cedar_policy::{Context, RestrictedExpression};
-    /// use std::collections::HashMap;
+    /// # use std::collections::HashMap;
     /// use std::str::FromStr;
     /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request,PolicySet};
     /// let data : serde_json::Value = serde_json::json!({
@@ -2808,7 +3352,7 @@ impl Context {
     /// let mut groups: HashMap<String, RestrictedExpression> = HashMap::new();
     /// groups.insert("key".to_string(), RestrictedExpression::from_str(&data.to_string()).unwrap());
     /// groups.insert("age".to_string(), RestrictedExpression::from_str("18").unwrap());
-    /// let context = Context::from_pairs(groups);
+    /// let context = Context::from_pairs(groups).unwrap();
     /// # // create a request
     /// # let p_eid = EntityId::from_str("alice").unwrap();
     /// # let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
@@ -2820,12 +3364,15 @@ impl Context {
     /// # let r_eid = EntityId::from_str("trip").unwrap();
     /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
     /// # let r = EntityUid::from_type_name_and_id(r_name, r_eid);
-    /// let request: Request = Request::new(Some(p), Some(a), Some(r), context);
+    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), context, None).unwrap();
     /// ```
-    pub fn from_pairs(pairs: impl IntoIterator<Item = (String, RestrictedExpression)>) -> Self {
-        Self(ast::Context::from_pairs(
+    pub fn from_pairs(
+        pairs: impl IntoIterator<Item = (String, RestrictedExpression)>,
+    ) -> Result<Self, ContextCreationError> {
+        Ok(Self(ast::Context::from_pairs(
             pairs.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
-        ))
+            Extensions::all_available(),
+        )?))
     }
 
     /// Create a `Context` from a string containing JSON (which must be a JSON
@@ -2840,7 +3387,7 @@ impl Context {
     /// must specify the `Action` for schema-based parsing.
     /// ```
     /// use cedar_policy::{Context, RestrictedExpression};
-    /// use std::collections::HashMap;
+    /// # use std::collections::HashMap;
     /// use std::str::FromStr;
     /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request,PolicySet};
     /// let data =r#"{
@@ -2864,7 +3411,7 @@ impl Context {
     /// # let r_eid = EntityId::from_str("trip").unwrap();
     /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
     /// # let r = EntityUid::from_type_name_and_id(r_name, r_eid);
-    /// let request: Request = Request::new(Some(p), Some(a), Some(r), context);
+    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), context, None).unwrap();
     /// ```
     pub fn from_json_str(
         json: &str,
@@ -2891,33 +3438,36 @@ impl Context {
     /// must specify the `Action` for schema-based parsing.
     /// ```
     /// use cedar_policy::{Context, RestrictedExpression, Schema};
-    /// use std::collections::HashMap;
+    /// # use std::collections::HashMap;
     /// use std::str::FromStr;
     /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request,PolicySet};
     /// let data = serde_json::json!(
     /// {
-    ///     "sub": "1234"
+    ///     "sub": 1234
     /// });
-    /// let schema_data =r#"
+    /// let schema_json = serde_json::json!(
     ///     {
     ///       "": {
-    ///         "entityTypes": {},
-    ///           "actions": {
-    ///             "view": {
-    ///                "appliesTo": {
-    ///                  "principalTypes": [],
-    ///                   "resourceTypes": [],
-    ///                   "context": {
-    ///                     "type": "Record",
-    ///                     "attributes": {
-    ///                       "sub": { "type": "Long" }
-    ///                     }
+    ///         "entityTypes": {
+    ///           "User": {},
+    ///           "Album": {},
+    ///         },
+    ///         "actions": {
+    ///           "view": {
+    ///              "appliesTo": {
+    ///                "principalTypes": ["User"],
+    ///                 "resourceTypes": ["Album"],
+    ///                 "context": {
+    ///                   "type": "Record",
+    ///                   "attributes": {
+    ///                     "sub": { "type": "Long" }
     ///                   }
     ///                 }
     ///               }
+    ///             }
     ///           }
     ///       }
-    ///     }"#;
+    ///     });
     /// # // create a request
     /// # let p_eid = EntityId::from_str("alice").unwrap();
     /// # let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
@@ -2928,9 +3478,9 @@ impl Context {
     /// # let r_eid = EntityId::from_str("trip").unwrap();
     /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
     /// # let resource = EntityUid::from_type_name_and_id(r_name, r_eid);
-    /// let schema = Schema::from_str(schema_data).unwrap();
+    /// let schema = Schema::from_json_value(schema_json).unwrap();
     /// let context = Context::from_json_value(data, Some((&schema, &action))).unwrap();
-    /// let request: Request = Request::new(Some(principal), Some(action), Some(resource), context);
+    /// # let request: Request = Request::new(Some(principal), Some(action), Some(resource), context, Some(&schema)).unwrap();
     /// ```
     pub fn from_json_value(
         json: serde_json::Value,
@@ -2961,7 +3511,7 @@ impl Context {
     /// # use std::collections::HashMap;
     /// # use std::str::FromStr;
     /// # use std::fs::File;
-    /// let mut json = File::open("json_file.txt").expect("failed");
+    /// let mut json = File::open("json_file.txt").unwrap();
     /// let context = Context::from_json_file(&json, None).unwrap();
     /// # // create a request
     /// # let p_eid = EntityId::from_str("alice").unwrap();
@@ -2974,7 +3524,7 @@ impl Context {
     /// # let r_eid = EntityId::from_str("trip").unwrap();
     /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
     /// # let r = EntityUid::from_type_name_and_id(r_name, r_eid);
-    /// let request: Request = Request::new(Some(p), Some(a), Some(r), context);
+    /// # let request: Request = Request::new(Some(p), Some(a), Some(r), context, None).unwrap();
     /// ```
     pub fn from_json_file(
         json: impl std::io::Read,
@@ -2994,21 +3544,21 @@ impl Context {
         schema: &Schema,
         action: &EntityUid,
     ) -> Result<impl ContextSchema, ContextJsonError> {
-        schema
-            .0
-            .get_context_schema(&action.0)
-            .ok_or_else(|| ContextJsonError::MissingAction {
+        cedar_policy_validator::context_schema_for_action(&schema.0, &action.0).ok_or_else(|| {
+            ContextJsonError::MissingAction {
                 action: action.clone(),
-            })
+            }
+        })
     }
 }
 
 /// Error type for parsing `Context` from JSON
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum ContextJsonError {
     /// Error deserializing the JSON into a Context
     #[error(transparent)]
-    JsonDeserialization(#[from] JsonDeserializationError),
+    #[diagnostic(transparent)]
+    JsonDeserialization(#[from] ContextJsonDeserializationError),
     /// The supplied action doesn't exist in the supplied schema
     #[error("action `{action}` does not exist in the supplied schema")]
     MissingAction {
@@ -3167,7 +3717,7 @@ pub fn eval_expression(
     expr: &Expression,
 ) -> Result<EvalResult, EvaluationError> {
     let all_ext = Extensions::all_available();
-    let eval = Evaluator::new(&request.0, &entities.0, &all_ext)?;
+    let eval = Evaluator::new(request.0.clone(), &entities.0, &all_ext);
     Ok(EvalResult::from(
         // Evaluate under the empty slot map, as an expression should not have slots
         eval.interpret(&expr.0, &ast::SlotEnv::new())?,
@@ -3190,1698 +3740,5 @@ mod partial_eval_test {
         assert_eq!(a.diagnostics().errors, errors);
         assert_eq!(a.diagnostics().reason, reason);
         assert_eq!(a.residuals(), &p);
-    }
-}
-
-// PANIC SAFETY unit tests
-#[allow(clippy::panic)]
-#[cfg(test)]
-mod entity_uid_tests {
-    use super::*;
-
-    /// building an `EntityUid` from components
-    #[test]
-    fn entity_uid_from_parts() {
-        let entity_id = EntityId::from_str("bobby").expect("failed at constructing EntityId");
-        let entity_type_name = EntityTypeName::from_str("Chess::Master")
-            .expect("failed at constructing EntityTypeName");
-        let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
-        assert_eq!(euid.id().as_ref(), "bobby");
-        assert_eq!(euid.type_name().to_string(), "Chess::Master");
-        assert_eq!(euid.type_name().basename(), "Master");
-        assert_eq!(euid.type_name().namespace(), "Chess");
-        assert_eq!(euid.type_name().namespace_components().count(), 1);
-    }
-
-    /// building an `EntityUid` from components, with no namespace
-    #[test]
-    fn entity_uid_no_namespace() {
-        let entity_id = EntityId::from_str("bobby").expect("failed at constructing EntityId");
-        let entity_type_name =
-            EntityTypeName::from_str("User").expect("failed at constructing EntityTypeName");
-        let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
-        assert_eq!(euid.id().as_ref(), "bobby");
-        assert_eq!(euid.type_name().to_string(), "User");
-        assert_eq!(euid.type_name().basename(), "User");
-        assert_eq!(euid.type_name().namespace(), String::new());
-        assert_eq!(euid.type_name().namespace_components().count(), 0);
-    }
-
-    /// building an `EntityUid` from components, with many nested namespaces
-    #[test]
-    fn entity_uid_nested_namespaces() {
-        let entity_id = EntityId::from_str("bobby").expect("failed at constructing EntityId");
-        let entity_type_name = EntityTypeName::from_str("A::B::C::D::Z")
-            .expect("failed at constructing EntityTypeName");
-        let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
-        assert_eq!(euid.id().as_ref(), "bobby");
-        assert_eq!(euid.type_name().to_string(), "A::B::C::D::Z");
-        assert_eq!(euid.type_name().basename(), "Z");
-        assert_eq!(euid.type_name().namespace(), "A::B::C::D");
-        assert_eq!(euid.type_name().namespace_components().count(), 4);
-    }
-
-    /// building an `EntityUid` from components, including escapes
-    #[test]
-    fn entity_uid_with_escape() {
-        // EntityId contains some things that look like escapes
-        let entity_id = EntityId::from_str(r"bobby\'s sister:\nVeronica")
-            .expect("failed at constructing EntityId");
-        let entity_type_name = EntityTypeName::from_str("Hockey::Master")
-            .expect("failed at constructing EntityTypeName");
-        let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
-        // these are passed through (no escape interpretation):
-        //   the EntityId has the literal backslash characters in it
-        assert_eq!(euid.id().as_ref(), r"bobby\'s sister:\nVeronica");
-        assert_eq!(euid.type_name().to_string(), "Hockey::Master");
-        assert_eq!(euid.type_name().basename(), "Master");
-        assert_eq!(euid.type_name().namespace(), "Hockey");
-        assert_eq!(euid.type_name().namespace_components().count(), 1);
-    }
-
-    /// building an `EntityUid` from components, including backslashes
-    #[test]
-    fn entity_uid_with_backslashes() {
-        // backslashes preceding a variety of characters
-        let entity_id =
-            EntityId::from_str(r#"\ \a \b \' \" \\"#).expect("failed at constructing EntityId");
-        let entity_type_name =
-            EntityTypeName::from_str("Test::User").expect("failed at constructing EntityTypeName");
-        let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
-        // the backslashes appear the same way in the EntityId
-        assert_eq!(euid.id().as_ref(), r#"\ \a \b \' \" \\"#);
-        assert_eq!(euid.type_name().to_string(), "Test::User");
-    }
-
-    /// building an `EntityUid` from components, including single and double quotes (and backslashes)
-    #[test]
-    fn entity_uid_with_quotes() {
-        let euid: EntityUid = EntityUid::from_type_name_and_id(
-            EntityTypeName::from_str("Test::User").unwrap(),
-            EntityId::from_str(r#"b'ob"by\'s sis\"ter"#).unwrap(),
-        );
-        // EntityId is passed through (no escape interpretation):
-        //   the EntityId has all the same literal characters in it
-        assert_eq!(euid.id().as_ref(), r#"b'ob"by\'s sis\"ter"#);
-        assert_eq!(euid.type_name().to_string(), r#"Test::User"#);
-    }
-
-    /// building an `EntityUid` from components, including whitespace in various places
-    #[test]
-    fn entity_uid_with_whitespace() {
-        EntityTypeName::from_str("A ::   B::C").expect_err("should fail due to RFC 9");
-        EntityTypeName::from_str(" A :: B\n::C \n  ::D\n").expect_err("should fail due to RFC 9");
-
-        // but embedded whitespace should be OK when parsing an actual policy
-        let policy = Policy::from_str(
-            r#"permit(principal == A ::   B::C :: " hi there are spaces ", action, resource);"#,
-        )
-        .expect("should succeed, see RFC 9");
-        let euid = match policy.principal_constraint() {
-            PrincipalConstraint::Eq(euid) => euid,
-            _ => panic!("expected Eq constraint"),
-        };
-        assert_eq!(euid.id().as_ref(), " hi there are spaces ");
-        assert_eq!(euid.type_name().to_string(), "A::B::C"); // expect to have been normalized
-        assert_eq!(euid.type_name().basename(), "C");
-        assert_eq!(euid.type_name().namespace(), "A::B");
-        assert_eq!(euid.type_name().namespace_components().count(), 2);
-
-        let policy = Policy::from_str(
-            r#"
-permit(principal ==  A :: B
-    ::C
-    :: D
-    ::  " hi there are
-    spaces and
-    newlines ", action, resource);"#,
-        )
-        .expect("should succeed, see RFC 9");
-        let euid = match policy.principal_constraint() {
-            PrincipalConstraint::Eq(euid) => euid,
-            _ => panic!("expected Eq constraint"),
-        };
-        assert_eq!(
-            euid.id().as_ref(),
-            " hi there are\n    spaces and\n    newlines "
-        );
-        assert_eq!(euid.type_name().to_string(), "A::B::C::D"); // expect to have been normalized
-        assert_eq!(euid.type_name().basename(), "D");
-        assert_eq!(euid.type_name().namespace(), "A::B::C");
-        assert_eq!(euid.type_name().namespace_components().count(), 3);
-    }
-
-    #[test]
-    fn malformed_entity_type_name_should_fail() {
-        let result = EntityTypeName::from_str("I'm an invalid name");
-
-        assert!(matches!(result, Err(ParseErrors(_))));
-        let error = result.err().unwrap();
-        assert!(error.to_string().contains("invalid token"));
-    }
-
-    /// parsing an `EntityUid` from string
-    #[test]
-    fn parse_euid() {
-        let parsed_eid: EntityUid = r#"Test::User::"bobby""#.parse().expect("Failed to parse");
-        assert_eq!(parsed_eid.id().as_ref(), r#"bobby"#);
-        assert_eq!(parsed_eid.type_name().to_string(), r#"Test::User"#);
-    }
-
-    /// parsing an `EntityUid` from string, including escapes
-    #[test]
-    fn parse_euid_with_escape() {
-        // the EntityUid string has an escaped single-quote and escaped double-quote
-        let parsed_eid: EntityUid = r#"Test::User::"b\'ob\"by""#.parse().expect("Failed to parse");
-        // the escapes were interpreted:
-        //   the EntityId has single-quote and double-quote characters (but no backslash characters)
-        assert_eq!(parsed_eid.id().as_ref(), r#"b'ob"by"#);
-        assert_eq!(parsed_eid.type_name().to_string(), r#"Test::User"#);
-    }
-
-    /// parsing an `EntityUid` from string, including both escaped and unescaped single-quotes
-    #[test]
-    fn parse_euid_single_quotes() {
-        // the EntityUid string has an unescaped and escaped single-quote
-        let euid_str = r#"Test::User::"b'obby\'s sister""#;
-        EntityUid::from_str(euid_str).expect_err("Should fail, not normalized -- see RFC 9");
-        // but this should be accepted in an actual policy
-        let policy_str = "permit(principal == ".to_string() + euid_str + ", action, resource);";
-        let policy = Policy::from_str(&policy_str).expect("Should parse; see RFC 9");
-        let parsed_euid = match policy.principal_constraint() {
-            PrincipalConstraint::Eq(euid) => euid,
-            _ => panic!("Expected an Eq constraint"),
-        };
-        // the escape was interpreted:
-        //   the EntityId has both single-quote characters (but no backslash characters)
-        assert_eq!(parsed_euid.id().as_ref(), r#"b'obby's sister"#);
-        assert_eq!(parsed_euid.type_name().to_string(), r#"Test::User"#);
-    }
-
-    /// parsing an `EntityUid` from string, including whitespace
-    #[test]
-    fn parse_euid_whitespace() {
-        let euid_str = " A ::B :: C:: D \n :: \n E\n :: \"hi\"";
-        EntityUid::from_str(euid_str).expect_err("Should fail, not normalized -- see RFC 9");
-        // but this should be accepted in an actual policy
-        let policy_str = "permit(principal == ".to_string() + euid_str + ", action, resource);";
-        let policy = Policy::from_str(&policy_str).expect("Should parse; see RFC 9");
-        let parsed_euid = match policy.principal_constraint() {
-            PrincipalConstraint::Eq(euid) => euid,
-            _ => panic!("Expected an Eq constraint"),
-        };
-        assert_eq!(parsed_euid.id().as_ref(), "hi");
-        assert_eq!(parsed_euid.type_name().to_string(), "A::B::C::D::E"); // expect to have been normalized
-        assert_eq!(parsed_euid.type_name().basename(), "E");
-        assert_eq!(parsed_euid.type_name().namespace(), "A::B::C::D");
-        assert_eq!(parsed_euid.type_name().namespace_components().count(), 4);
-    }
-
-    /// test that we can parse the `Display` output of `EntityUid`
-    #[test]
-    fn euid_roundtrip() {
-        let parsed_euid: EntityUid = r#"Test::User::"b\'ob""#.parse().expect("Failed to parse");
-        assert_eq!(parsed_euid.id().as_ref(), r#"b'ob"#);
-        let reparsed: EntityUid = format!("{parsed_euid}")
-            .parse()
-            .expect("failed to roundtrip");
-        assert_eq!(reparsed.id().as_ref(), r#"b'ob"#);
-    }
-
-    #[test]
-    fn accessing_unspecified_entity_returns_none() {
-        let c = Context::empty();
-        let request: Request = Request::new(None, None, None, c);
-        let p = request.principal();
-        let a = request.action();
-        let r = request.resource();
-        assert!(p.is_none());
-        assert!(a.is_none());
-        assert!(r.is_none());
-    }
-}
-
-#[cfg(test)]
-mod head_constraints_tests {
-    use super::*;
-
-    #[test]
-    fn principal_constraint_inline() {
-        let p = Policy::from_str("permit(principal,action,resource);").unwrap();
-        assert_eq!(p.principal_constraint(), PrincipalConstraint::Any);
-        let euid = EntityUid::from_strs("T", "a");
-        assert_eq!(euid.id().as_ref(), "a");
-        assert_eq!(
-            euid.type_name(),
-            &EntityTypeName::from_str("T").expect("Failed to parse EntityTypeName")
-        );
-        let p =
-            Policy::from_str("permit(principal == T::\"a\",action,resource == T::\"b\");").unwrap();
-        assert_eq!(
-            p.principal_constraint(),
-            PrincipalConstraint::Eq(euid.clone())
-        );
-        let p = Policy::from_str("permit(principal in T::\"a\",action,resource);").unwrap();
-        assert_eq!(p.principal_constraint(), PrincipalConstraint::In(euid));
-    }
-
-    #[test]
-    fn action_constraint_inline() {
-        let p = Policy::from_str("permit(principal,action,resource);").unwrap();
-        assert_eq!(p.action_constraint(), ActionConstraint::Any);
-        let euid = EntityUid::from_strs("NN::N::Action", "a");
-        assert_eq!(
-            euid.type_name(),
-            &EntityTypeName::from_str("NN::N::Action").expect("Failed to parse EntityTypeName")
-        );
-        let p = Policy::from_str(
-            "permit(principal == T::\"b\",action == NN::N::Action::\"a\",resource == T::\"c\");",
-        )
-        .unwrap();
-        assert_eq!(p.action_constraint(), ActionConstraint::Eq(euid.clone()));
-        let p = Policy::from_str("permit(principal,action in [NN::N::Action::\"a\"],resource);")
-            .unwrap();
-        assert_eq!(p.action_constraint(), ActionConstraint::In(vec![euid]));
-    }
-
-    #[test]
-    fn resource_constraint_inline() {
-        let p = Policy::from_str("permit(principal,action,resource);").unwrap();
-        assert_eq!(p.resource_constraint(), ResourceConstraint::Any);
-        let euid = EntityUid::from_strs("NN::N::T", "a");
-        assert_eq!(
-            euid.type_name(),
-            &EntityTypeName::from_str("NN::N::T").expect("Failed to parse EntityTypeName")
-        );
-        let p =
-            Policy::from_str("permit(principal == T::\"b\",action,resource == NN::N::T::\"a\");")
-                .unwrap();
-        assert_eq!(
-            p.resource_constraint(),
-            ResourceConstraint::Eq(euid.clone())
-        );
-        let p = Policy::from_str("permit(principal,action,resource in NN::N::T::\"a\");").unwrap();
-        assert_eq!(p.resource_constraint(), ResourceConstraint::In(euid));
-    }
-
-    #[test]
-    fn principal_constraint_link() {
-        let p = link("permit(principal,action,resource);", HashMap::new());
-        assert_eq!(p.principal_constraint(), PrincipalConstraint::Any);
-        let euid = EntityUid::from_strs("T", "a");
-        let p = link(
-            "permit(principal == T::\"a\",action,resource);",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.principal_constraint(),
-            PrincipalConstraint::Eq(euid.clone())
-        );
-        let p = link(
-            "permit(principal in T::\"a\",action,resource);",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.principal_constraint(),
-            PrincipalConstraint::In(euid.clone())
-        );
-        let map: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::principal(), euid.clone())).collect();
-        let p = link(
-            "permit(principal in ?principal,action,resource);",
-            map.clone(),
-        );
-        assert_eq!(
-            p.principal_constraint(),
-            PrincipalConstraint::In(euid.clone())
-        );
-        let p = link("permit(principal == ?principal,action,resource);", map);
-        assert_eq!(p.principal_constraint(), PrincipalConstraint::Eq(euid));
-    }
-
-    #[test]
-    fn action_constraint_link() {
-        let p = link("permit(principal,action,resource);", HashMap::new());
-        assert_eq!(p.action_constraint(), ActionConstraint::Any);
-        let euid = EntityUid::from_strs("Action", "a");
-        let p = link(
-            "permit(principal,action == Action::\"a\",resource);",
-            HashMap::new(),
-        );
-        assert_eq!(p.action_constraint(), ActionConstraint::Eq(euid.clone()));
-        let p = link(
-            "permit(principal,action in [Action::\"a\",Action::\"b\"],resource);",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.action_constraint(),
-            ActionConstraint::In(vec![euid, EntityUid::from_strs("Action", "b"),])
-        );
-    }
-
-    #[test]
-    fn resource_constraint_link() {
-        let p = link("permit(principal,action,resource);", HashMap::new());
-        assert_eq!(p.resource_constraint(), ResourceConstraint::Any);
-        let euid = EntityUid::from_strs("T", "a");
-        let p = link(
-            "permit(principal,action,resource == T::\"a\");",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.resource_constraint(),
-            ResourceConstraint::Eq(euid.clone())
-        );
-        let p = link(
-            "permit(principal,action,resource in T::\"a\");",
-            HashMap::new(),
-        );
-        assert_eq!(
-            p.resource_constraint(),
-            ResourceConstraint::In(euid.clone())
-        );
-        let map: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::resource(), euid.clone())).collect();
-        let p = link(
-            "permit(principal,action,resource in ?resource);",
-            map.clone(),
-        );
-        assert_eq!(
-            p.resource_constraint(),
-            ResourceConstraint::In(euid.clone())
-        );
-        let p = link("permit(principal,action,resource == ?resource);", map);
-        assert_eq!(p.resource_constraint(), ResourceConstraint::Eq(euid));
-    }
-
-    fn link(src: &str, values: HashMap<SlotId, EntityUid>) -> Policy {
-        let mut pset = PolicySet::new();
-        let template = Template::parse(Some("Id".to_string()), src).unwrap();
-
-        pset.add_template(template).unwrap();
-
-        let link_id = PolicyId::from_str("link").unwrap();
-        pset.link(PolicyId::from_str("Id").unwrap(), link_id.clone(), values)
-            .unwrap();
-        pset.policy(&link_id).unwrap().clone()
-    }
-}
-
-// PANIC SAFETY unit tests
-#[allow(clippy::panic)]
-/// Tests in this module are adapted from Core's `policy_set.rs` tests
-#[cfg(test)]
-mod policy_set_tests {
-    use super::*;
-    use ast::LinkingError;
-    use cool_asserts::assert_matches;
-
-    #[test]
-    fn link_conflicts() {
-        let mut pset = PolicySet::new();
-        let p1 = Policy::parse(Some("id".into()), "permit(principal,action,resource);")
-            .expect("Failed to parse");
-        pset.add(p1).expect("Failed to add");
-        let template = Template::parse(
-            Some("t".into()),
-            "permit(principal == ?principal, action, resource);",
-        )
-        .expect("Failed to parse");
-        pset.add_template(template).expect("Add failed");
-
-        let env: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
-
-        let r = pset.link(
-            PolicyId::from_str("t").unwrap(),
-            PolicyId::from_str("id").unwrap(),
-            env,
-        );
-
-        match r {
-            Ok(_) => panic!("Should have failed due to conflict"),
-            Err(PolicySetError::LinkingError(LinkingError::PolicyIdConflict { id })) => {
-                assert_eq!(id, ast::PolicyID::from_string("id"))
-            }
-            Err(e) => panic!("Incorrect error: {e}"),
-        };
-    }
-
-    #[test]
-    fn policyset_add() {
-        let mut pset = PolicySet::new();
-        let static_policy = Policy::parse(Some("id".into()), "permit(principal,action,resource);")
-            .expect("Failed to parse");
-        pset.add(static_policy).expect("Failed to add");
-
-        let template = Template::parse(
-            Some("t".into()),
-            "permit(principal == ?principal, action, resource);",
-        )
-        .expect("Failed to parse");
-        pset.add_template(template).expect("Failed to add");
-
-        let env1: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test1"))).collect();
-        pset.link(
-            PolicyId::from_str("t").unwrap(),
-            PolicyId::from_str("link").unwrap(),
-            env1,
-        )
-        .expect("Failed to link");
-
-        let env2: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test2"))).collect();
-
-        let err = pset
-            .link(
-                PolicyId::from_str("t").unwrap(),
-                PolicyId::from_str("link").unwrap(),
-                env2.clone(),
-            )
-            .expect_err("Should have failed due to conflict with existing link id");
-        match err {
-            PolicySetError::LinkingError(_) => (),
-            e => panic!("Wrong error: {e}"),
-        }
-
-        pset.link(
-            PolicyId::from_str("t").unwrap(),
-            PolicyId::from_str("link2").unwrap(),
-            env2,
-        )
-        .expect("Failed to link");
-
-        let template2 = Template::parse(
-            Some("t".into()),
-            "forbid(principal, action, resource == ?resource);",
-        )
-        .expect("Failed to parse");
-        pset.add_template(template2)
-            .expect_err("should have failed due to conflict on template id");
-        let template2 = Template::parse(
-            Some("t2".into()),
-            "forbid(principal, action, resource == ?resource);",
-        )
-        .expect("Failed to parse");
-        pset.add_template(template2)
-            .expect("Failed to add template");
-        let env3: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::resource(), EntityUid::from_strs("Test", "test3"))).collect();
-
-        pset.link(
-            PolicyId::from_str("t").unwrap(),
-            PolicyId::from_str("unique3").unwrap(),
-            env3.clone(),
-        )
-        .expect_err("should have failed due to conflict on template id");
-
-        pset.link(
-            PolicyId::from_str("t2").unwrap(),
-            PolicyId::from_str("unique3").unwrap(),
-            env3,
-        )
-        .expect("should succeed with unique ids");
-    }
-
-    #[test]
-    fn pset_requests() {
-        let template = Template::parse(
-            Some("template".into()),
-            "permit(principal == ?principal, action, resource);",
-        )
-        .expect("Template Parse Failure");
-        let static_policy = Policy::parse(
-            Some("static".into()),
-            "permit(principal, action, resource);",
-        )
-        .expect("Static parse failure");
-        let mut pset = PolicySet::new();
-        pset.add_template(template).unwrap();
-        pset.add(static_policy).unwrap();
-        pset.link(
-            PolicyId::from_str("template").unwrap(),
-            PolicyId::from_str("linked").unwrap(),
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
-        )
-        .expect("Link failure");
-
-        assert_eq!(pset.templates().count(), 1);
-        assert_eq!(pset.policies().count(), 2);
-        assert_eq!(pset.policies().filter(|p| p.is_static()).count(), 1);
-
-        assert_eq!(
-            pset.template(&"template".parse().unwrap())
-                .expect("lookup failed")
-                .id(),
-            &"template".parse().unwrap()
-        );
-        assert_eq!(
-            pset.policy(&"static".parse().unwrap())
-                .expect("lookup failed")
-                .id(),
-            &"static".parse().unwrap()
-        );
-        assert_eq!(
-            pset.policy(&"linked".parse().unwrap())
-                .expect("lookup failed")
-                .id(),
-            &"linked".parse().unwrap()
-        );
-    }
-
-    #[test]
-    fn link_static_policy() {
-        // Linking the `PolicyId` of a static policy should not be allowed.
-        // Attempting it should cause an `ExpectedTemplate` error.
-        let static_policy = Policy::parse(
-            Some("static".into()),
-            "permit(principal, action, resource);",
-        )
-        .expect("Static parse failure");
-        let mut pset = PolicySet::new();
-        pset.add(static_policy).unwrap();
-
-        let result = pset.link(
-            PolicyId::from_str("static").unwrap(),
-            PolicyId::from_str("linked").unwrap(),
-            HashMap::new(),
-        );
-        assert_matches!(result, Err(PolicySetError::ExpectedTemplate));
-    }
-
-    #[test]
-    fn link_linked_policy() {
-        let template = Template::parse(
-            Some("template".into()),
-            "permit(principal == ?principal, action, resource);",
-        )
-        .expect("Template Parse Failure");
-        let mut pset = PolicySet::new();
-        pset.add_template(template).unwrap();
-
-        pset.link(
-            PolicyId::from_str("template").unwrap(),
-            PolicyId::from_str("linked").unwrap(),
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
-        )
-        .unwrap();
-
-        let result = pset.link(
-            PolicyId::from_str("linked").unwrap(),
-            PolicyId::from_str("linked2").unwrap(),
-            HashMap::new(),
-        );
-        assert_matches!(
-            result,
-            Err(PolicySetError::LinkingError(
-                LinkingError::NoSuchTemplate { .. }
-            ))
-        );
-    }
-}
-
-#[cfg(test)]
-mod schema_tests {
-    use super::*;
-    use cool_asserts::assert_matches;
-    use serde_json::json;
-
-    /// A minimal test that a valid Schema parses
-    #[test]
-    fn valid_schema() {
-        Schema::from_json_value(json!(
-        { "": {
-            "entityTypes": {
-                "Photo": {
-                    "memberOfTypes": [ "Album" ],
-                    "shape": {
-                        "type": "Record",
-                        "attributes": {
-                            "foo": {
-                                "type": "Boolean",
-                                "required": false
-                            }
-                        }
-                    }
-                },
-                "Album": {
-                    "memberOfTypes": [ ],
-                    "shape": {
-                        "type": "Record",
-                        "attributes": {
-                            "foo": {
-                                "type": "Boolean",
-                                "required": false
-                            }
-                        }
-                    }
-                }
-            },
-            "actions": {
-                "view": {
-                    "appliesTo": {
-                        "principalTypes": ["Photo", "Album"],
-                        "resourceTypes": ["Photo"]
-                    }
-                }
-            }
-        }}))
-        .expect("schema should be valid");
-    }
-
-    /// Test that an invalid schema returns the appropriate error
-    #[test]
-    fn invalid_schema() {
-        assert_matches!(
-            Schema::from_json_value(json!(
-                // Written as a string because duplicate entity types are detected
-                // by the serde-json string parser.
-                r#""{"": {
-                "entityTypes": {
-                    "Photo": {
-                        "memberOfTypes": [ "Album" ],
-                        "shape": {
-                            "type": "Record",
-                            "attributes": {
-                                "foo": {
-                                    "type": "Boolean",
-                                    "required": false
-                                }
-                            }
-                        }
-                    },
-                    "Album": {
-                        "memberOfTypes": [ ],
-                        "shape": {
-                            "type": "Record",
-                            "attributes": {
-                                "foo": {
-                                    "type": "Boolean",
-                                    "required": false
-                                }
-                            }
-                        }
-                    },
-                    "Photo": {
-                        "memberOfTypes": [ "Album" ],
-                        "shape": {
-                            "type": "Record",
-                            "attributes": {
-                                "foo": {
-                                    "type": "Boolean",
-                                    "required": false
-                                }
-                            }
-                        }
-                    }
-                },
-                "actions": {
-                    "view": {
-                        "appliesTo": {
-                            "principalTypes": ["Photo", "Album"],
-                            "resourceTypes": ["Photo"]
-                        }
-                    }
-                }
-            }}"#
-            )),
-            Err(SchemaError::Serde(_))
-        );
-    }
-}
-
-#[cfg(test)]
-mod ancestors_tests {
-    use super::*;
-
-    #[test]
-    fn test_ancestors() {
-        let a_euid: EntityUid = EntityUid::from_strs("test", "A");
-        let b_euid: EntityUid = EntityUid::from_strs("test", "b");
-        let c_euid: EntityUid = EntityUid::from_strs("test", "C");
-        let a = Entity::new(a_euid.clone(), HashMap::new(), HashSet::new());
-        let b = Entity::new(
-            b_euid.clone(),
-            HashMap::new(),
-            std::iter::once(a_euid.clone()).collect(),
-        );
-        let c = Entity::new(
-            c_euid.clone(),
-            HashMap::new(),
-            std::iter::once(b_euid.clone()).collect(),
-        );
-        let es = Entities::from_entities([a, b, c]).unwrap();
-        let ans = es.ancestors(&c_euid).unwrap().collect::<HashSet<_>>();
-        assert_eq!(ans.len(), 2);
-        assert!(ans.contains(&b_euid));
-        assert!(ans.contains(&a_euid));
-    }
-}
-
-/// The main unit tests for schema-based parsing live here, as they require both
-/// the Validator and Core packages working together.
-///
-/// (Core has similar tests, but using a stubbed implementation of Schema.)
-// PANIC SAFETY unit tests
-#[allow(clippy::panic)]
-#[cfg(test)]
-mod schema_based_parsing_tests {
-    use std::assert_eq;
-
-    use super::*;
-    use cool_asserts::assert_matches;
-    use serde_json::json;
-
-    /// Simple test that exercises a variety of attribute types.
-    #[test]
-    #[allow(clippy::too_many_lines)]
-    #[allow(clippy::cognitive_complexity)]
-    fn attr_types() {
-        let schema = Schema::from_json_value(json!(
-        {"": {
-            "entityTypes": {
-                "Employee": {
-                    "memberOfTypes": [],
-                    "shape": {
-                        "type": "Record",
-                        "attributes": {
-                            "isFullTime": { "type": "Boolean" },
-                            "numDirectReports": { "type": "Long" },
-                            "department": { "type": "String" },
-                            "manager": { "type": "Entity", "name": "Employee" },
-                            "hr_contacts": { "type": "Set", "element": {
-                                "type": "Entity", "name": "HR" } },
-                            "json_blob": { "type": "Record", "attributes": {
-                                "inner1": { "type": "Boolean" },
-                                "inner2": { "type": "String" },
-                                "inner3": { "type": "Record", "attributes": {
-                                    "innerinner": { "type": "Entity", "name": "Employee" }
-                                }}
-                            }},
-                            "home_ip": { "type": "Extension", "name": "ipaddr" },
-                            "work_ip": { "type": "Extension", "name": "ipaddr" },
-                            "trust_score": { "type": "Extension", "name": "decimal" },
-                            "tricky": { "type": "Record", "attributes": {
-                                "type": { "type": "String" },
-                                "id": { "type": "String" }
-                            }}
-                        }
-                    }
-                },
-                "HR": {
-                    "memberOfTypes": []
-                }
-            },
-            "actions": {
-                "view": { }
-            }
-        }}
-        ))
-        .expect("should be a valid schema");
-
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "numDirectReports": 3,
-                        "department": "Sales",
-                        "manager": { "type": "Employee", "id": "34FB87" },
-                        "hr_contacts": [
-                            { "type": "HR", "id": "aaaaa" },
-                            { "type": "HR", "id": "bbbbb" }
-                        ],
-                        "json_blob": {
-                            "inner1": false,
-                            "inner2": "-*/",
-                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
-                        },
-                        "home_ip": "222.222.222.101",
-                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
-                        "trust_score": "5.7",
-                        "tricky": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": []
-                }
-            ]
-        );
-        // without schema-based parsing, `home_ip` and `trust_score` are
-        // strings, `manager` and `work_ip` are Records, `hr_contacts` contains
-        // Records, and `json_blob.inner3.innerinner` is a Record
-        let parsed = Entities::from_json_value(entitiesjson.clone(), None)
-            .expect("Should parse without error");
-        assert_eq!(parsed.iter().count(), 1);
-        let parsed = parsed
-            .get(&EntityUid::from_strs("Employee", "12UA45"))
-            .expect("that should be the employee id");
-        assert_eq!(
-            parsed.attr("home_ip"),
-            Some(Ok(EvalResult::String("222.222.222.101".into())))
-        );
-        assert_eq!(
-            parsed.attr("trust_score"),
-            Some(Ok(EvalResult::String("5.7".into())))
-        );
-        assert!(matches!(
-            parsed.attr("manager"),
-            Some(Ok(EvalResult::Record(_)))
-        ));
-        assert!(matches!(
-            parsed.attr("work_ip"),
-            Some(Ok(EvalResult::Record(_)))
-        ));
-        {
-            let Some(Ok(EvalResult::Set(set))) = parsed.attr("hr_contacts") else {
-                panic!("expected hr_contacts attr to exist and be a Set")
-            };
-            let contact = set.iter().next().expect("should be at least one contact");
-            assert!(matches!(contact, EvalResult::Record(_)));
-        };
-        {
-            let Some(Ok(EvalResult::Record(rec))) = parsed.attr("json_blob") else {
-                panic!("expected json_blob attr to exist and be a Record")
-            };
-            let inner3 = rec.get("inner3").expect("expected inner3 attr to exist");
-            let EvalResult::Record(rec) = inner3 else {
-                panic!("expected inner3 to be a Record")
-            };
-            let innerinner = rec
-                .get("innerinner")
-                .expect("expected innerinner attr to exist");
-            assert!(matches!(innerinner, EvalResult::Record(_)));
-        };
-        // but with schema-based parsing, we get these other types
-        let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
-            .expect("Should parse without error");
-        assert_eq!(parsed.iter().count(), 1);
-        let parsed = parsed
-            .get(&EntityUid::from_strs("Employee", "12UA45"))
-            .expect("that should be the employee id");
-        assert_eq!(parsed.attr("isFullTime"), Some(Ok(EvalResult::Bool(true))));
-        assert_eq!(
-            parsed.attr("numDirectReports"),
-            Some(Ok(EvalResult::Long(3)))
-        );
-        assert_eq!(
-            parsed.attr("department"),
-            Some(Ok(EvalResult::String("Sales".into())))
-        );
-        assert_eq!(
-            parsed.attr("manager"),
-            Some(Ok(EvalResult::EntityUid(EntityUid::from_strs(
-                "Employee", "34FB87"
-            ))))
-        );
-        {
-            let Some(Ok(EvalResult::Set(set))) = parsed.attr("hr_contacts") else {
-                panic!("expected hr_contacts attr to exist and be a Set")
-            };
-            let contact = set.iter().next().expect("should be at least one contact");
-            assert!(matches!(contact, EvalResult::EntityUid(_)));
-        };
-        {
-            let Some(Ok(EvalResult::Record(rec))) = parsed.attr("json_blob") else {
-                panic!("expected json_blob attr to exist and be a Record")
-            };
-            let inner3 = rec.get("inner3").expect("expected inner3 attr to exist");
-            let EvalResult::Record(rec) = inner3 else {
-                panic!("expected inner3 to be a Record")
-            };
-            let innerinner = rec
-                .get("innerinner")
-                .expect("expected innerinner attr to exist");
-            assert!(matches!(innerinner, EvalResult::EntityUid(_)));
-        };
-        assert_eq!(
-            parsed.attr("home_ip"),
-            Some(Ok(EvalResult::ExtensionValue("222.222.222.101/32".into())))
-        );
-        assert_eq!(
-            parsed.attr("work_ip"),
-            Some(Ok(EvalResult::ExtensionValue("2.2.2.0/24".into())))
-        );
-        assert_eq!(
-            parsed.attr("trust_score"),
-            Some(Ok(EvalResult::ExtensionValue("5.7000".into())))
-        );
-
-        // simple type mismatch with expected type
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "numDirectReports": "3",
-                        "department": "Sales",
-                        "manager": { "type": "Employee", "id": "34FB87" },
-                        "hr_contacts": [
-                            { "type": "HR", "id": "aaaaa" },
-                            { "type": "HR", "id": "bbbbb" }
-                        ],
-                        "json_blob": {
-                            "inner1": false,
-                            "inner2": "-*/",
-                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
-                        },
-                        "home_ip": "222.222.222.101",
-                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
-                        "trust_score": "5.7",
-                        "tricky": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": []
-                }
-            ]
-        );
-        let err = Entities::from_json_value(entitiesjson, Some(&schema))
-            .expect_err("should fail due to type mismatch on numDirectReports");
-        assert!(
-            err.to_string().contains(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type long, but actually has type string"#),
-            "actual error message was {err}"
-        );
-
-        // another simple type mismatch with expected type
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "numDirectReports": 3,
-                        "department": "Sales",
-                        "manager": "34FB87",
-                        "hr_contacts": [
-                            { "type": "HR", "id": "aaaaa" },
-                            { "type": "HR", "id": "bbbbb" }
-                        ],
-                        "json_blob": {
-                            "inner1": false,
-                            "inner2": "-*/",
-                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
-                        },
-                        "home_ip": "222.222.222.101",
-                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
-                        "trust_score": "5.7",
-                        "tricky": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": []
-                }
-            ]
-        );
-        let err = Entities::from_json_value(entitiesjson, Some(&schema))
-            .expect_err("should fail due to type mismatch on manager");
-        assert!(
-            err.to_string()
-                .contains(r#"in attribute `manager` on `Employee::"12UA45"`, expected a literal entity reference, but got `"34FB87"`"#),
-            "actual error message was {err}"
-        );
-
-        // type mismatch where we expect a set and get just a single element
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "numDirectReports": 3,
-                        "department": "Sales",
-                        "manager": { "type": "Employee", "id": "34FB87" },
-                        "hr_contacts": { "type": "HR", "id": "aaaaa" },
-                        "json_blob": {
-                            "inner1": false,
-                            "inner2": "-*/",
-                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
-                        },
-                        "home_ip": "222.222.222.101",
-                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
-                        "trust_score": "5.7",
-                        "tricky": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": []
-                }
-            ]
-        );
-        let err = Entities::from_json_value(entitiesjson, Some(&schema))
-            .expect_err("should fail due to type mismatch on hr_contacts");
-        assert!(
-            err.to_string().contains(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type (set of (entity of type `HR`)), but actually has type record with attributes: ("#),
-            "actual error message was {err}"
-        );
-
-        // type mismatch where we just get the wrong entity type
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "numDirectReports": 3,
-                        "department": "Sales",
-                        "manager": { "type": "HR", "id": "34FB87" },
-                        "hr_contacts": [
-                            { "type": "HR", "id": "aaaaa" },
-                            { "type": "HR", "id": "bbbbb" }
-                        ],
-                        "json_blob": {
-                            "inner1": false,
-                            "inner2": "-*/",
-                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
-                        },
-                        "home_ip": "222.222.222.101",
-                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
-                        "trust_score": "5.7",
-                        "tricky": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": []
-                }
-            ]
-        );
-        let err = Entities::from_json_value(entitiesjson, Some(&schema))
-            .expect_err("should fail due to type mismatch on manager");
-        assert!(
-            err.to_string().contains(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type (entity of type `Employee`), but actually has type (entity of type `HR`)"#),
-            "actual error message was {err}"
-        );
-
-        // type mismatch where we're expecting an extension type and get a
-        // different extension type
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "numDirectReports": 3,
-                        "department": "Sales",
-                        "manager": { "type": "Employee", "id": "34FB87" },
-                        "hr_contacts": [
-                            { "type": "HR", "id": "aaaaa" },
-                            { "type": "HR", "id": "bbbbb" }
-                        ],
-                        "json_blob": {
-                            "inner1": false,
-                            "inner2": "-*/",
-                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
-                        },
-                        "home_ip": { "fn": "decimal", "arg": "3.33" },
-                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
-                        "trust_score": "5.7",
-                        "tricky": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": []
-                }
-            ]
-        );
-        let err = Entities::from_json_value(entitiesjson, Some(&schema))
-            .expect_err("should fail due to type mismatch on home_ip");
-        assert!(
-            err.to_string().contains(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type ipaddr, but actually has type decimal"#),
-            "actual error message was {err}"
-        );
-
-        // missing a record attribute entirely
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "numDirectReports": 3,
-                        "department": "Sales",
-                        "manager": { "type": "Employee", "id": "34FB87" },
-                        "hr_contacts": [
-                            { "type": "HR", "id": "aaaaa" },
-                            { "type": "HR", "id": "bbbbb" }
-                        ],
-                        "json_blob": {
-                            "inner1": false,
-                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
-                        },
-                        "home_ip": "222.222.222.101",
-                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
-                        "trust_score": "5.7",
-                        "tricky": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": []
-                }
-            ]
-        );
-        let err = Entities::from_json_value(entitiesjson, Some(&schema))
-            .expect_err("should fail due to missing attribute \"inner2\"");
-        assert!(
-            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, expected the record to have an attribute `inner2`, but it does not"#),
-            "actual error message was {err}"
-        );
-
-        // record attribute has the wrong type
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "numDirectReports": 3,
-                        "department": "Sales",
-                        "manager": { "type": "Employee", "id": "34FB87" },
-                        "hr_contacts": [
-                            { "type": "HR", "id": "aaaaa" },
-                            { "type": "HR", "id": "bbbbb" }
-                        ],
-                        "json_blob": {
-                            "inner1": 33,
-                            "inner2": "-*/",
-                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
-                        },
-                        "home_ip": "222.222.222.101",
-                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
-                        "trust_score": "5.7",
-                        "tricky": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": []
-                }
-            ]
-        );
-        let err = Entities::from_json_value(entitiesjson, Some(&schema))
-            .expect_err("should fail due to type mismatch on attribute \"inner1\"");
-        assert!(
-            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: attribute was expected to have type record with attributes: "#),
-            "actual error message was {err}"
-        );
-
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "__entity": { "type": "Employee", "id": "12UA45" } },
-                    "attrs": {
-                        "isFullTime": true,
-                        "numDirectReports": 3,
-                        "department": "Sales",
-                        "manager": { "__entity": { "type": "Employee", "id": "34FB87" } },
-                        "hr_contacts": [
-                            { "type": "HR", "id": "aaaaa" },
-                            { "type": "HR", "id": "bbbbb" }
-                        ],
-                        "json_blob": {
-                            "inner1": false,
-                            "inner2": "-*/",
-                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
-                        },
-                        "home_ip": { "__extn": { "fn": "ip", "arg": "222.222.222.101" } },
-                        "work_ip": { "__extn": { "fn": "ip", "arg": "2.2.2.0/24" } },
-                        "trust_score": { "__extn": { "fn": "decimal", "arg": "5.7" } },
-                        "tricky": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": []
-                }
-            ]
-        );
-
-        Entities::from_json_value(entitiesjson, Some(&schema))
-            .expect("this version with explicit __entity and __extn escapes should also pass");
-    }
-
-    /// Test that involves namespaced entity types
-    #[test]
-    fn namespaces() {
-        let schema = Schema::from_str(
-            r#"
-        {"XYZCorp": {
-            "entityTypes": {
-                "Employee": {
-                    "memberOfTypes": [],
-                    "shape": {
-                        "type": "Record",
-                        "attributes": {
-                            "isFullTime": { "type": "Boolean" },
-                            "department": { "type": "String" },
-                            "manager": {
-                                "type": "Entity",
-                                "name": "XYZCorp::Employee"
-                            }
-                        }
-                    }
-                }
-            },
-            "actions": {
-                "view": {}
-            }
-        }}
-        "#,
-        )
-        .expect("should be a valid schema");
-
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "XYZCorp::Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "department": "Sales",
-                        "manager": { "type": "XYZCorp::Employee", "id": "34FB87" }
-                    },
-                    "parents": []
-                }
-            ]
-        );
-        let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
-            .expect("Should parse without error");
-        assert_eq!(parsed.iter().count(), 1);
-        let parsed = parsed
-            .get(&EntityUid::from_strs("XYZCorp::Employee", "12UA45"))
-            .expect("that should be the employee type and id");
-        assert_eq!(parsed.attr("isFullTime"), Some(Ok(EvalResult::Bool(true))));
-        assert_eq!(
-            parsed.attr("department"),
-            Some(Ok(EvalResult::String("Sales".into())))
-        );
-        assert_eq!(
-            parsed.attr("manager"),
-            Some(Ok(EvalResult::EntityUid(EntityUid::from_strs(
-                "XYZCorp::Employee",
-                "34FB87"
-            ))))
-        );
-
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "XYZCorp::Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "department": "Sales",
-                        "manager": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": []
-                }
-            ]
-        );
-        let err = Entities::from_json_value(entitiesjson, Some(&schema))
-            .expect_err("should fail due to manager being wrong entity type (missing namespace)");
-        assert!(
-            err.to_string().contains(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: attribute was expected to have type (entity of type `XYZCorp::Employee`), but actually has type (entity of type `Employee`)"#),
-            "actual error message was {err}"
-        );
-    }
-
-    /// Test that involves optional attributes
-    #[test]
-    fn optional_attrs() {
-        let schema = Schema::from_str(
-            r#"
-        {"": {
-            "entityTypes": {
-                "Employee": {
-                    "memberOfTypes": [],
-                    "shape": {
-                        "type": "Record",
-                        "attributes": {
-                            "isFullTime": { "type": "Boolean" },
-                            "department": { "type": "String", "required": false },
-                            "manager": { "type": "Entity", "name": "Employee" }
-                        }
-                    }
-                }
-            },
-            "actions": {
-                "view": {}
-            }
-        }}
-        "#,
-        )
-        .expect("should be a valid schema");
-
-        // all good here
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "department": "Sales",
-                        "manager": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": []
-                }
-            ]
-        );
-        let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
-            .expect("Should parse without error");
-        assert_eq!(parsed.iter().count(), 1);
-
-        // "department" shouldn't be required
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "manager": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": []
-                }
-            ]
-        );
-        let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
-            .expect("Should parse without error");
-        assert_eq!(parsed.iter().count(), 1);
-    }
-
-    /// Test that involves open entities
-    #[test]
-    #[should_panic(
-        expected = "UnsupportedFeature(\"records and entities with additional attributes are not yet implemented\")"
-    )]
-    fn open_entities() {
-        let schema = Schema::from_str(
-            r#"
-        {"": {
-            "entityTypes": {
-                "Employee": {
-                    "memberOfTypes": [],
-                    "shape": {
-                        "type": "Record",
-                        "attributes": {
-                            "isFullTime": { "type": "Boolean" },
-                            "department": { "type": "String", "required": false },
-                            "manager": { "type": "Entity", "name": "Employee" }
-                        },
-                        "additionalAttributes": true
-                    }
-                }
-            },
-            "actions": {
-                "view": {}
-            }
-        }}
-        "#,
-        )
-        .expect("should be a valid schema");
-
-        // all good here
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "department": "Sales",
-                        "manager": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": []
-                }
-            ]
-        );
-        let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
-            .expect("Should parse without error");
-        assert_eq!(parsed.iter().count(), 1);
-
-        // providing another attribute "foobar" should be OK
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "foobar": 234,
-                        "manager": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": []
-                }
-            ]
-        );
-        let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
-            .expect("Should parse without error");
-        assert_eq!(parsed.iter().count(), 1);
-    }
-
-    #[test]
-    fn schema_sanity_check() {
-        let src = "{ , .. }";
-        assert_matches!(Schema::from_str(src), Err(super::SchemaError::Serde(_)));
-    }
-
-    #[test]
-    fn template_constraint_sanity_checks() {
-        assert!(!TemplatePrincipalConstraint::Any.has_slot());
-        assert!(!TemplatePrincipalConstraint::In(Some(EntityUid::from_strs("a", "a"))).has_slot());
-        assert!(!TemplatePrincipalConstraint::Eq(Some(EntityUid::from_strs("a", "a"))).has_slot());
-        assert!(TemplatePrincipalConstraint::In(None).has_slot());
-        assert!(TemplatePrincipalConstraint::Eq(None).has_slot());
-        assert!(!TemplateResourceConstraint::Any.has_slot());
-        assert!(!TemplateResourceConstraint::In(Some(EntityUid::from_strs("a", "a"))).has_slot());
-        assert!(!TemplateResourceConstraint::Eq(Some(EntityUid::from_strs("a", "a"))).has_slot());
-        assert!(TemplateResourceConstraint::In(None).has_slot());
-        assert!(TemplateResourceConstraint::Eq(None).has_slot());
-    }
-
-    #[test]
-    fn template_principal_constraints() {
-        let src = r#"
-            permit(principal, action, resource);
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(t.principal_constraint(), TemplatePrincipalConstraint::Any);
-
-        let src = r#"
-            permit(principal == ?principal, action, resource);
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.principal_constraint(),
-            TemplatePrincipalConstraint::Eq(None)
-        );
-
-        let src = r#"
-            permit(principal == A::"a", action, resource);
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.principal_constraint(),
-            TemplatePrincipalConstraint::Eq(Some(EntityUid::from_strs("A", "a")))
-        );
-
-        let src = r#"
-            permit(principal in ?principal, action, resource);
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.principal_constraint(),
-            TemplatePrincipalConstraint::In(None)
-        );
-
-        let src = r#"
-            permit(principal in A::"a", action, resource);
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.principal_constraint(),
-            TemplatePrincipalConstraint::In(Some(EntityUid::from_strs("A", "a")))
-        );
-    }
-
-    #[test]
-    fn template_action_constraints() {
-        let src = r#"
-            permit(principal, action, resource);
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(t.action_constraint(), ActionConstraint::Any);
-
-        let src = r#"
-            permit(principal, action == Action::"A", resource);
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.action_constraint(),
-            ActionConstraint::Eq(EntityUid::from_strs("Action", "A"))
-        );
-
-        let src = r#"
-            permit(principal, action in [Action::"A", Action::"B"], resource);
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.action_constraint(),
-            ActionConstraint::In(vec![
-                EntityUid::from_strs("Action", "A"),
-                EntityUid::from_strs("Action", "B")
-            ])
-        );
-    }
-
-    #[test]
-    fn template_resource_constraints() {
-        let src = r#"
-            permit(principal, action, resource);
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(t.resource_constraint(), TemplateResourceConstraint::Any);
-
-        let src = r#"
-            permit(principal, action, resource == ?resource);
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.resource_constraint(),
-            TemplateResourceConstraint::Eq(None)
-        );
-
-        let src = r#"
-            permit(principal, action, resource == A::"a");
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.resource_constraint(),
-            TemplateResourceConstraint::Eq(Some(EntityUid::from_strs("A", "a")))
-        );
-
-        let src = r#"
-            permit(principal, action, resource in ?resource);
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.resource_constraint(),
-            TemplateResourceConstraint::In(None)
-        );
-
-        let src = r#"
-            permit(principal, action, resource in A::"a");
-        "#;
-        let t = Template::parse(None, src).unwrap();
-        assert_eq!(
-            t.resource_constraint(),
-            TemplateResourceConstraint::In(Some(EntityUid::from_strs("A", "a")))
-        );
-    }
-
-    #[test]
-    fn schema_namespace() {
-        let fragment: SchemaFragment = r#"
-        {
-            "Foo::Bar": {
-                "entityTypes": {},
-                "actions": {}
-            }
-        }
-        "#
-        .parse()
-        .unwrap();
-        let namespaces = fragment.namespaces().next().unwrap();
-        assert_eq!(
-            namespaces.map(|ns| ns.to_string()),
-            Some("Foo::Bar".to_string())
-        );
-        let _schema: Schema = fragment.try_into().expect("Should convert to schema");
-
-        let fragment: SchemaFragment = r#"
-        {
-            "": {
-                "entityTypes": {},
-                "actions": {}
-            }
-        }
-        "#
-        .parse()
-        .unwrap();
-        let namespaces = fragment.namespaces().next().unwrap();
-        assert_eq!(namespaces, None);
-        let _schema: Schema = fragment.try_into().expect("Should convert to schema");
-    }
-
-    #[test]
-    fn load_multiple_namespaces() {
-        let fragment = SchemaFragment::from_json_value(json!({
-            "Foo::Bar": {
-                "entityTypes": {
-                    "Baz": {
-                        "memberOfTypes": ["Bar::Foo::Baz"]
-                    }
-                },
-                "actions": {}
-            },
-            "Bar::Foo": {
-                "entityTypes": {
-                    "Baz": {
-                        "memberOfTypes": ["Foo::Bar::Baz"]
-                    }
-                },
-                "actions": {}
-            }
-        }))
-        .unwrap();
-
-        let schema = Schema::from_schema_fragments([fragment]).unwrap();
-
-        assert!(schema
-            .0
-            .get_entity_type(&"Foo::Bar::Baz".parse().unwrap())
-            .is_some());
-        assert!(schema
-            .0
-            .get_entity_type(&"Bar::Foo::Baz".parse().unwrap())
-            .is_some());
-    }
-
-    #[test]
-    fn get_attributes_from_schema() {
-        let fragment: SchemaFragment = SchemaFragment::from_json_value(json!({
-        "": {
-            "entityTypes": {},
-            "actions": {
-                "A": {},
-                "B": {
-                    "memberOf": [{"id": "A"}]
-                },
-                "C": {
-                    "memberOf": [{"id": "A"}]
-                },
-                "D": {
-                    "memberOf": [{"id": "B"}, {"id": "C"}]
-                },
-                "E": {
-                    "memberOf": [{"id": "D"}]
-                }
-            }
-        }}))
-        .unwrap();
-
-        let schema = Schema::from_schema_fragments([fragment]).unwrap();
-        let action_entities = schema.action_entities().unwrap();
-
-        let a_euid = EntityUid::from_strs("Action", "A");
-        let b_euid = EntityUid::from_strs("Action", "B");
-        let c_euid = EntityUid::from_strs("Action", "C");
-        let d_euid = EntityUid::from_strs("Action", "D");
-        let e_euid = EntityUid::from_strs("Action", "E");
-
-        assert_eq!(
-            action_entities,
-            Entities::from_entities([
-                Entity::new(a_euid.clone(), HashMap::new(), HashSet::new()),
-                Entity::new(
-                    b_euid.clone(),
-                    HashMap::new(),
-                    HashSet::from([a_euid.clone()])
-                ),
-                Entity::new(
-                    c_euid.clone(),
-                    HashMap::new(),
-                    HashSet::from([a_euid.clone()])
-                ),
-                Entity::new(
-                    d_euid.clone(),
-                    HashMap::new(),
-                    HashSet::from([a_euid.clone(), b_euid.clone(), c_euid.clone()])
-                ),
-                Entity::new(
-                    e_euid,
-                    HashMap::new(),
-                    HashSet::from([a_euid, b_euid, c_euid, d_euid])
-                ),
-            ])
-            .unwrap()
-        );
     }
 }

@@ -18,6 +18,7 @@ body:
         - Cedar validation features
         - Cedar syntax changes/additions
         - User level API changes
+        - CLI features/changes
         - Internal refactors/changes
         - Documentation and code comments
         - Other

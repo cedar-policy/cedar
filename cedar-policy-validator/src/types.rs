@@ -20,11 +20,18 @@
 use serde::Serialize;
 use smol_str::SmolStr;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::Display,
 };
 
-use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprShapeOnly, Name};
+use cedar_policy_core::{
+    ast::{
+        BorrowedRestrictedExpr, EntityType, EntityUID, Expr, ExprShapeOnly, Name, PartialValue,
+        RestrictedExpr, Value,
+    },
+    entities::{typecheck_restricted_expr_against_schematype, GetSchemaTypeError},
+    extensions::Extensions,
+};
 
 use crate::ValidationMode;
 
@@ -32,18 +39,89 @@ use super::schema::{
     is_action_entity_type, ValidatorActionId, ValidatorEntityType, ValidatorSchema,
 };
 
-/// Contains the four variables bound in the type environment. These together
-/// represent the full type of (principal, action, resource, context)
-/// authorization request.
 #[derive(Clone, Debug, PartialEq)]
-pub struct RequestEnv<'a> {
-    pub principal: &'a EntityType,
-    pub action: &'a EntityUID,
-    pub resource: &'a EntityType,
-    pub context: &'a Attributes,
+pub enum RequestEnv<'a> {
+    /// Contains the four variables bound in the type environment. These together
+    /// represent the full type of (principal, action, resource, context)
+    /// authorization request.
+    DeclaredAction {
+        principal: &'a EntityType,
+        action: &'a EntityUID,
+        resource: &'a EntityType,
+        context: &'a Type,
 
-    pub principal_slot: Option<EntityType>,
-    pub resource_slot: Option<EntityType>,
+        principal_slot: Option<EntityType>,
+        resource_slot: Option<EntityType>,
+    },
+    /// Only in partial schema validation, the action might not have been
+    /// declared in the schema, so this encodes the environment where we know
+    /// nothing about the environment.
+    UndeclaredAction,
+}
+
+impl<'a> RequestEnv<'a> {
+    pub fn principal_entity_type(&self) -> Option<&'a EntityType> {
+        match self {
+            RequestEnv::UndeclaredAction => None,
+            RequestEnv::DeclaredAction { principal, .. } => Some(principal),
+        }
+    }
+
+    pub fn principal_type(&self) -> Type {
+        match self.principal_entity_type() {
+            Some(principal) => Type::possibly_unspecified_entity_reference(principal.clone()),
+            None => Type::any_entity_reference(),
+        }
+    }
+
+    pub fn action_entity_uid(&self) -> Option<&'a EntityUID> {
+        match self {
+            RequestEnv::UndeclaredAction => None,
+            RequestEnv::DeclaredAction { action, .. } => Some(action),
+        }
+    }
+
+    pub fn action_type(&self, schema: &ValidatorSchema) -> Option<Type> {
+        match self.action_entity_uid() {
+            Some(action) => Type::euid_literal(action.clone(), schema),
+            None => Some(Type::any_entity_reference()),
+        }
+    }
+
+    pub fn resource_entity_type(&self) -> Option<&'a EntityType> {
+        match self {
+            RequestEnv::UndeclaredAction => None,
+            RequestEnv::DeclaredAction { resource, .. } => Some(resource),
+        }
+    }
+
+    pub fn resource_type(&self) -> Type {
+        match self.resource_entity_type() {
+            Some(resource) => Type::possibly_unspecified_entity_reference(resource.clone()),
+            None => Type::any_entity_reference(),
+        }
+    }
+
+    pub fn context_type(&self) -> Type {
+        match self {
+            RequestEnv::UndeclaredAction => Type::any_record(),
+            RequestEnv::DeclaredAction { context, .. } => (*context).clone(),
+        }
+    }
+
+    pub fn principal_slot(&self) -> &Option<EntityType> {
+        match self {
+            RequestEnv::UndeclaredAction => &None,
+            RequestEnv::DeclaredAction { principal_slot, .. } => principal_slot,
+        }
+    }
+
+    pub fn resource_slot(&self) -> &Option<EntityType> {
+        match self {
+            RequestEnv::UndeclaredAction => &None,
+            RequestEnv::DeclaredAction { resource_slot, .. } => resource_slot,
+        }
+    }
 }
 
 /// The main type structure.
@@ -113,8 +191,8 @@ impl Type {
     /// type for the type of the EntityUID.
     pub(crate) fn euid_literal(entity: EntityUID, schema: &ValidatorSchema) -> Option<Type> {
         match entity.entity_type() {
-            EntityType::Unspecified => None,
-            EntityType::Concrete(name) => {
+            EntityType::Unspecified => Some(Type::any_entity_reference()),
+            EntityType::Specified(name) => {
                 if is_action_entity_type(name) {
                     schema
                         .get_action_id(&entity)
@@ -174,7 +252,7 @@ impl Type {
         validator_action_id: &ValidatorActionId,
     ) -> Option<Type> {
         match validator_action_id.name.entity_type() {
-            EntityType::Concrete(name) => {
+            EntityType::Specified(name) => {
                 Some(Type::EntityOrRecord(EntityRecordKind::ActionEntity {
                     name: name.clone(),
                     attrs: Attributes::with_attributes(validator_action_id.attribute_types.clone()),
@@ -186,7 +264,7 @@ impl Type {
 
     pub(crate) fn possibly_unspecified_entity_reference(ety: EntityType) -> Type {
         match ety {
-            EntityType::Concrete(name) => Type::named_entity_reference(name),
+            EntityType::Specified(name) => Type::named_entity_reference(name),
             EntityType::Unspecified => Type::any_entity_reference(),
         }
     }
@@ -373,7 +451,7 @@ impl Type {
             Type::Never => true,
             // An EntityOrRecord might have an open attributes record, in which
             // case it could have any attribute.
-            Type::EntityOrRecord(k) if k.has_open_attributes_record() => true,
+            Type::EntityOrRecord(k) if k.has_open_attributes_record(schema) => true,
             // In this case and all following `EntityOrRecord` cases, we know it
             // does not have an open attributes record, so we know that an
             // attribute may not exist if it is not explicitly listed in the
@@ -388,7 +466,7 @@ impl Type {
                         .map_or(false, |entity_type| entity_type.attr(attr).is_some())
                 })
             }
-            // UBs of ActionEntities are AnyEntity. So if we have an ActionEntity here its attrs are known
+            // UBs of ActionEntities are AnyEntity. So if we have an ActionEntity here its attrs are known.
             Type::EntityOrRecord(EntityRecordKind::ActionEntity { attrs, .. }) => {
                 attrs.iter().any(|(found_attr, _)| attr.eq(found_attr))
             }
@@ -540,40 +618,52 @@ impl Type {
             CoreSchemaType::Set { element_ty } => {
                 matches!(self, Type::Set { element_type: Some(element_type) } if element_type.is_consistent_with(element_ty))
             }
-            CoreSchemaType::EmptySet => matches!(self, Type::Set { .. }), // empty-set matches a set of any element type
-            CoreSchemaType::Record { attrs } => match self {
+            CoreSchemaType::EmptySet => {
+                // for any given validator Set type, there is some value (namely, the empty set)
+                // that could have the EmptySet CoreSchemaType and that validator Set type.
+                matches!(self, Type::Set { .. })
+            }
+            CoreSchemaType::Record {
+                attrs: core_attrs,
+                open_attrs: core_open,
+            } => match self {
                 Type::EntityOrRecord(kind) => match kind {
                     EntityRecordKind::Record {
-                        attrs: self_attrs, ..
+                        attrs: self_attrs,
+                        open_attributes: self_open,
                     } => {
-                        attrs.iter().all(|(k, v)| {
+                        core_attrs.iter().all(|(k, core_attr_ty)| {
                             match self_attrs.get_attr(k) {
-                                Some(ty) => {
+                                Some(self_attr_ty) => {
                                     // both have the attribute, doesn't matter
                                     // if one or both consider it required or
                                     // optional
-                                    ty.attr_type.is_consistent_with(v.schema_type())
+                                    self_attr_ty
+                                        .attr_type
+                                        .is_consistent_with(core_attr_ty.schema_type())
                                 }
                                 None => {
-                                    // attrs has the attribute, self_attrs does not.
-                                    // if required in attrs, incompatible.
+                                    // core_attrs has the attribute, self_attrs does not.
+                                    // if required in core_attrs, incompatible.
                                     // otherwise fine
-                                    !v.is_required()
+                                    !core_attr_ty.is_required() || self_open.is_open()
                                 }
                             }
-                        }) && self_attrs.iter().all(|(k, v)| {
-                            match attrs.get(k) {
-                                Some(ty) => {
+                        }) && self_attrs.iter().all(|(k, self_attr_ty)| {
+                            match core_attrs.get(k) {
+                                Some(core_attr_ty) => {
                                     // both have the attribute, doesn't matter
                                     // if one or both consider it required or
                                     // optional
-                                    v.attr_type.is_consistent_with(ty.schema_type())
+                                    self_attr_ty
+                                        .attr_type
+                                        .is_consistent_with(core_attr_ty.schema_type())
                                 }
                                 None => {
-                                    // self_attrs has the attribute, attrs does not.
+                                    // self_attrs has the attribute, core_attrs does not.
                                     // if required in self_attrs, incompatible.
                                     // otherwise fine
-                                    !v.is_required
+                                    !self_attr_ty.is_required || *core_open
                                 }
                             }
                         })
@@ -585,7 +675,7 @@ impl Type {
                 _ => false,
             },
             CoreSchemaType::Entity {
-                ty: CoreEntityType::Concrete(concrete_name),
+                ty: CoreEntityType::Specified(concrete_name),
             } => match self {
                 Type::EntityOrRecord(kind) => match kind {
                     EntityRecordKind::Entity(lub) => {
@@ -614,6 +704,171 @@ impl Type {
             }
         }
     }
+
+    /// Does the given `PartialValue` have this validator type?
+    ///
+    /// If the `PartialValue` is a residual with not enough information to
+    /// determine conclusively that it either does or does not typecheck (i.e.,
+    /// it does typecheck for some permissible substitutions of the unknowns,
+    /// but does not typecheck for other permissible substitutions), this is
+    /// reported as an error.
+    ///
+    /// TODO(#437): Handling of `Unknown`s is not yet complete and doesn't
+    /// properly behave according to the above description, as of this writing.
+    pub(crate) fn typecheck_partial_value(
+        &self,
+        value: &PartialValue,
+        extensions: Extensions<'_>,
+    ) -> Result<bool, GetSchemaTypeError> {
+        match value {
+            PartialValue::Value(value) => self.typecheck_value(&value, extensions),
+            PartialValue::Residual(expr) => match BorrowedRestrictedExpr::new(expr) {
+                Ok(rexpr) => self.typecheck_restricted_expr(rexpr, extensions),
+                Err(_) => Ok(false), // TODO(#437): instead of just reporting typecheck fails for all nontrivial residuals, we should do something more intelligent
+            },
+        }
+    }
+
+    /// Does the given `Value` have this validator type?
+    pub(crate) fn typecheck_value(
+        &self,
+        value: &Value,
+        extensions: Extensions<'_>,
+    ) -> Result<bool, GetSchemaTypeError> {
+        // we accept the overhead of cloning the `Value` and converting to
+        // `RestrictedExpr` in order to improve code reuse and maintainability
+        let rexpr = RestrictedExpr::from(value.clone());
+        self.typecheck_restricted_expr(rexpr.as_borrowed(), extensions)
+    }
+
+    /// Does the given `BorrowedRestrictedExpr` have this validator type?
+    ///
+    /// TODO(#437): Handling of restricted exprs containing `Unknown`s is not
+    /// yet complete or correct, as of this writing.
+    pub(crate) fn typecheck_restricted_expr(
+        &self,
+        restricted_expr: BorrowedRestrictedExpr<'_>,
+        extensions: Extensions<'_>,
+    ) -> Result<bool, GetSchemaTypeError> {
+        match self {
+            Type::Never => Ok(false), // no expr has type Never
+            Type::Primitive {
+                primitive_type: Primitive::Bool,
+            } => Ok(restricted_expr.as_bool().is_some()),
+            Type::Primitive {
+                primitive_type: Primitive::Long,
+            } => Ok(restricted_expr.as_long().is_some()),
+            Type::Primitive {
+                primitive_type: Primitive::String,
+            } => Ok(restricted_expr.as_string().is_some()),
+            Type::True => Ok(restricted_expr.as_bool() == Some(true)),
+            Type::False => Ok(restricted_expr.as_bool() == Some(false)),
+            Type::Set { element_type: None } => Ok(restricted_expr.as_set_elements().is_some()),
+            Type::Set {
+                element_type: Some(el_type),
+            } => match restricted_expr.as_set_elements() {
+                Some(elts) => {
+                    for elt in elts {
+                        if !el_type.typecheck_restricted_expr(elt, extensions)? {
+                            return Ok(false);
+                        }
+                    }
+                    Ok(true)
+                }
+                None => Ok(false),
+            },
+            Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => {
+                match restricted_expr.as_euid() {
+                    Some(euid) => match euid.entity_type() {
+                        EntityType::Specified(name) => Ok(lub.contains(name)),
+                        EntityType::Unspecified => Ok(false), // Unspecified can only have the validator type `AnyEntity`, not any specific lub
+                    },
+                    None => Ok(false),
+                }
+            }
+            Type::EntityOrRecord(EntityRecordKind::ActionEntity { name, .. }) => {
+                match restricted_expr.as_euid() {
+                    Some(euid) if euid.is_action() => match euid.entity_type() {
+                        EntityType::Specified(euid_name) => Ok(euid_name == name),
+                        EntityType::Unspecified => Ok(false), // `euid.is_action()` should never be true for an Unspecified, so this should be unreachable, but it's safe to return Ok(false), because Unspecified can only have the validator type `AnyEntity` anyway
+                    },
+                    _ => Ok(false),
+                }
+            }
+            Type::EntityOrRecord(EntityRecordKind::AnyEntity) => {
+                Ok(restricted_expr.as_euid().is_some())
+            }
+            Type::EntityOrRecord(EntityRecordKind::Record {
+                attrs,
+                open_attributes,
+            }) => match restricted_expr.as_record_pairs() {
+                Some(pairs) => {
+                    let record: HashMap<_, BorrowedRestrictedExpr<'_>> = pairs.collect();
+                    for (k, attr_val) in &record {
+                        match attrs.get_attr(k) {
+                            Some(attr_ty) => {
+                                if !attr_ty
+                                    .attr_type
+                                    .typecheck_restricted_expr(attr_val.to_owned(), extensions)?
+                                {
+                                    return Ok(false);
+                                }
+                            }
+                            None => {
+                                if open_attributes != &OpenTag::OpenAttributes {
+                                    // the restricted expr has an attribute not
+                                    // listed in the Type, and the Type doesn't
+                                    // have open attributes
+                                    return Ok(false);
+                                }
+                            }
+                        }
+                    }
+                    // we've now checked that all of the attrs in `restricted_expr` are OK and have the right types.
+                    // what remains is making sure that all the required attrs are actually in `restricted_expr`
+                    for (k, attr_ty) in attrs.iter() {
+                        if attr_ty.is_required && !record.contains_key(k) {
+                            return Ok(false);
+                        }
+                    }
+                    Ok(true)
+                }
+                None => Ok(false),
+            },
+            Type::ExtensionType { name } => match restricted_expr.as_extn_fn_call() {
+                Some((fn_name, args)) => {
+                    let func = extensions.func(fn_name)?;
+                    match func.return_type() {
+                        Some(cedar_policy_core::entities::SchemaType::Extension {
+                            name: actual_name,
+                        }) => {
+                            if actual_name != name {
+                                return Ok(false);
+                            }
+                        }
+                        _ => return Ok(false),
+                    }
+                    for (actual_arg, expected_arg_ty) in args.zip(func.arg_types()) {
+                        match expected_arg_ty {
+                            None => {} // in this case, the docs on `.arg_types()` say that multiple types are allowed, we just approximate as saying you can pass any type to this argument
+                            Some(ty) => {
+                                if typecheck_restricted_expr_against_schematype(
+                                    actual_arg, ty, extensions,
+                                )
+                                .is_err()
+                                {
+                                    return Ok(false);
+                                }
+                            }
+                        }
+                    }
+                    // if we got here, then the return type and arg types typecheck
+                    Ok(true)
+                }
+                None => Ok(false), // no other kinds of restricted expr (other than fn calls) can produce extension-typed values
+            },
+        }
+    }
 }
 
 impl Display for Type {
@@ -632,7 +887,7 @@ impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
         use cedar_policy_core::entities::AttributeType as CoreAttributeType;
         use cedar_policy_core::entities::SchemaType as CoreSchemaType;
         match ty {
-            Type::Never => Err("'Never' type is not representable in core::Type".into()),
+            Type::Never => Err("'Never' type is not representable in core::SchemaType".into()),
             Type::True | Type::False => Ok(CoreSchemaType::Bool),
             Type::Primitive {
                 primitive_type: Primitive::Bool,
@@ -648,44 +903,43 @@ impl TryFrom<Type> for cedar_policy_core::entities::SchemaType {
             } => Ok(CoreSchemaType::Set {
                 element_ty: Box::new(CoreSchemaType::try_from(*element_type)?),
             }),
-            Type::Set { element_type: None } => {
-                Err("Set<None> type is not representable in core::SchemaType".into())
-            }
+            Type::Set { element_type: None } => Ok(CoreSchemaType::EmptySet),
             Type::EntityOrRecord(kind @ EntityRecordKind::AnyEntity) => Err(format!(
-                "any-entity type is not representable in core::Type: {:?}",
-                kind
+                "any-entity type is not representable in core::SchemaType: {kind:?}"
             )),
             Type::EntityOrRecord(EntityRecordKind::ActionEntity { name, .. }) => {
                 Ok(CoreSchemaType::Entity {
-                    ty: EntityType::Concrete(name),
+                    ty: EntityType::Specified(name),
                 })
             }
-            Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
-                Ok(CoreSchemaType::Record {
-                    attrs: {
-                        attrs
-                            .into_iter()
-                            .map(|(k, v)| {
-                                let schema_type = v.attr_type.try_into()?;
-                                Ok((
-                                    k,
-                                    match v.is_required {
-                                        true => CoreAttributeType::required(schema_type),
-                                        false => CoreAttributeType::optional(schema_type),
-                                    },
-                                ))
-                            })
-                            .collect::<Result<_, String>>()?
-                    },
-                })
-            }
+            Type::EntityOrRecord(EntityRecordKind::Record {
+                attrs,
+                open_attributes,
+            }) => Ok(CoreSchemaType::Record {
+                attrs: {
+                    attrs
+                        .into_iter()
+                        .map(|(k, v)| {
+                            let schema_type = v.attr_type.try_into()?;
+                            Ok((
+                                k,
+                                match v.is_required {
+                                    true => CoreAttributeType::required(schema_type),
+                                    false => CoreAttributeType::optional(schema_type),
+                                },
+                            ))
+                        })
+                        .collect::<Result<_, String>>()?
+                },
+                open_attrs: open_attributes.is_open(),
+            }),
             Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => match lub.into_single_entity() {
                 Some(name) => Ok(CoreSchemaType::Entity {
-                    ty: EntityType::Concrete(name),
+                    ty: EntityType::Specified(name),
                 }),
-                None => {
-                    Err("non-singleton LUB type is not representable in core::Type".to_string())
-                }
+                None => Err(
+                    "non-singleton LUB type is not representable in core::SchemaType".to_string(),
+                ),
             },
             Type::ExtensionType { name } => Ok(CoreSchemaType::Extension { name }),
         }
@@ -803,10 +1057,21 @@ impl EntityLUB {
         self.lub_elements.is_disjoint(&other.lub_elements)
     }
 
+    /// Return true if the given entity type `Name` is in the set of entity
+    /// types comprising this LUB.
+    pub(crate) fn contains(&self, ty: &Name) -> bool {
+        self.lub_elements.contains(ty)
+    }
+
     /// An iterator over the entity type `Name`s in the set of entity types
     /// comprising this LUB.
     pub(crate) fn iter(&self) -> impl Iterator<Item = &Name> {
         self.lub_elements.iter()
+    }
+
+    // Check if this EntityLUB contains a particular entity type.
+    pub(crate) fn contains_entity_type(&self, ety: &Name) -> bool {
+        self.lub_elements.contains(ety)
     }
 
     fn to_type_json(&self) -> serde_json::value::Map<String, serde_json::value::Value> {
@@ -1063,7 +1328,7 @@ impl EntityRecordKind {
 
     /// Return `true` if this entity or record may have additional undeclared
     /// attributes.
-    pub(crate) fn has_open_attributes_record(&self) -> bool {
+    pub(crate) fn has_open_attributes_record(&self, schema: &ValidatorSchema) -> bool {
         match self {
             // Records explicitly store this information.
             EntityRecordKind::Record {
@@ -1078,11 +1343,18 @@ impl EntityRecordKind {
             // super type of all other entity types which may have attributes,
             // so it clearly may have additional attributes.
             EntityRecordKind::AnyEntity => true,
-            // An entity LUB may not have an open attributes record. The record
-            // type returned by `get_attributes_type` _may_ be open, but even in
-            // that case we can account for all attributes that might exist by
-            // examining the elements of the LUB.
-            EntityRecordKind::Entity(_) => false,
+            // An entity LUB may have additional attributes if any of the
+            // elements may have additional attributes.
+            EntityRecordKind::Entity(lub) => lub.iter().any(|e_name| {
+                schema
+                    .get_entity_type(e_name)
+                    .map(|e_type| e_type.open_attributes)
+                    // The entity type was not found in the schema, so we know
+                    // nothing about it and must assume that it may have
+                    // additional attributes.
+                    .unwrap_or(OpenTag::OpenAttributes)
+                    .is_open()
+            }),
         }
     }
 
@@ -1378,11 +1650,10 @@ impl<'a> Effect<'a> {
 #[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
-
-    use crate::{ActionBehavior, SchemaType, ValidatorNamespaceDef};
-
     use super::*;
+    use crate::{ActionBehavior, SchemaType, ValidatorNamespaceDef};
+    use cool_asserts::assert_matches;
+    use std::collections::HashMap;
 
     impl Type {
         pub(crate) fn entity_lub<'a>(es: impl IntoIterator<Item = &'a str>) -> Type {
@@ -1421,6 +1692,7 @@ mod test {
         }
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_least_upper_bound(schema: ValidatorSchema, lhs: Type, rhs: Type, lub: Option<Type>) {
         assert_eq!(
             Type::least_upper_bound(&schema, &lhs, &rhs, ValidationMode::Permissive),
@@ -1432,6 +1704,7 @@ mod test {
         );
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_entity_lub(
         schema: ValidatorSchema,
         lhs: Type,
@@ -1440,38 +1713,36 @@ mod test {
         lub_attrs: &[(&str, Type)],
     ) {
         let lub = Type::least_upper_bound(&schema, &lhs, &rhs, ValidationMode::Permissive);
-        match lub {
-            Some(Type::EntityOrRecord(EntityRecordKind::Entity(entity_lub))) => {
-                assert_eq!(
-                    lub_names
+        assert_matches!(lub, Some(Type::EntityOrRecord(EntityRecordKind::Entity(entity_lub))) => {
+            assert_eq!(
+                lub_names
+                    .iter()
+                    .map(|s| s.parse().expect("Expected valid entity type name."))
+                    .collect::<BTreeSet<_>>(),
+                entity_lub.lub_elements,
+                "Incorrect entity types composing LUB."
+            );
+            assert_eq!(
+                Attributes::with_attributes(
+                    lub_attrs
                         .iter()
-                        .map(|s| s.parse().expect("Expected valid entity type name."))
-                        .collect::<BTreeSet<_>>(),
-                    entity_lub.lub_elements,
-                    "Incorrect entity types composing LUB."
-                );
-                assert_eq!(
-                    Attributes::with_attributes(
-                        lub_attrs
-                            .iter()
-                            .map(|(s, t)| (
-                                AsRef::<str>::as_ref(s).into(),
-                                AttributeType::required_attribute(t.clone())
-                            ))
-                            .collect::<BTreeMap<_, _>>()
-                    ),
-                    entity_lub.get_attribute_types(&schema),
-                    "Incorrect computed record type for LUB."
-                );
-            }
-            _ => panic!("Expected entity least upper bound."),
-        }
+                        .map(|(s, t)| (
+                            AsRef::<str>::as_ref(s).into(),
+                            AttributeType::required_attribute(t.clone())
+                        ))
+                        .collect::<BTreeMap<_, _>>()
+                ),
+                entity_lub.get_attribute_types(&schema),
+                "Incorrect computed record type for LUB."
+            );
+        });
     }
 
     fn empty_schema() -> ValidatorSchema {
         ValidatorSchema::empty()
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_least_upper_bound_empty_schema(lhs: Type, rhs: Type, lub: Option<Type>) {
         assert_least_upper_bound(empty_schema(), lhs, rhs, lub);
     }
@@ -1748,14 +2019,17 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
+            Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_least_upper_bound_simple_schema(lhs: Type, rhs: Type, lub: Option<Type>) {
         assert_least_upper_bound(simple_schema(), lhs, rhs, lub);
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_entity_lub_attrs_simple_schema(
         lhs: Type,
         rhs: Type,
@@ -1856,14 +2130,17 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
+            Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_least_upper_bound_attr_schema(lhs: Type, rhs: Type, lub: Option<Type>) {
         assert_least_upper_bound(attr_schema(), lhs, rhs, lub);
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_entity_lub_attrs_attr_schema(
         lhs: Type,
         rhs: Type,
@@ -1979,6 +2256,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
+            Extensions::all_available(),
         )
         .expect("Expected valid schema");
 
@@ -2020,10 +2298,12 @@ mod test {
             ))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
+            Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_entity_lub_attrs_rec_schema(
         lhs: Type,
         rhs: Type,
@@ -2057,9 +2337,10 @@ mod test {
         );
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_json_parses_to_schema_type(ty: Type) {
         let json_str = serde_json::value::Value::Object(ty.to_type_json()).to_string();
-        println!("{}", json_str);
+        println!("{json_str}");
         let parsed_schema_type: SchemaType = serde_json::from_str(&json_str)
             .expect("JSON representation should have parsed into a schema type");
         let type_from_schema_type =
@@ -2098,6 +2379,7 @@ mod test {
         ]));
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_displays_as(ty: Type, repr: &str) {
         assert_eq!(
             ty.to_string(),

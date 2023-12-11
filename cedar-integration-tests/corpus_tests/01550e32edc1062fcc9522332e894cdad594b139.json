@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "G::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "G::\"\"",
+      "principal": {
+        "type": "G",
+        "id": ""
+      },
+      "resource": {
+        "type": "G",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "G": ""
       },
@@ -20,9 +29,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "G::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "G::\"\"",
+      "principal": {
+        "type": "G",
+        "id": ""
+      },
+      "resource": {
+        "type": "G",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "G": ""
       },
@@ -34,9 +52,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "G::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "G::\"\"",
+      "principal": {
+        "type": "G",
+        "id": ""
+      },
+      "resource": {
+        "type": "G",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "G": ""
       },
@@ -48,9 +75,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "G::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "G::\"\"",
+      "principal": {
+        "type": "G",
+        "id": ""
+      },
+      "resource": {
+        "type": "G",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "G": ""
       },
@@ -62,9 +98,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "G::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "G::\"\"",
+      "principal": {
+        "type": "G",
+        "id": ""
+      },
+      "resource": {
+        "type": "G",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "G": ""
       },
@@ -76,9 +121,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "G::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "G::\"\"",
+      "principal": {
+        "type": "G",
+        "id": ""
+      },
+      "resource": {
+        "type": "G",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "G": ""
       },
@@ -90,9 +144,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "G::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "G::\"\"",
+      "principal": {
+        "type": "G",
+        "id": ""
+      },
+      "resource": {
+        "type": "G",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "G": ""
       },
@@ -104,9 +167,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "G::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "G::\"\"",
+      "principal": {
+        "type": "G",
+        "id": ""
+      },
+      "resource": {
+        "type": "G",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "G": ""
       },

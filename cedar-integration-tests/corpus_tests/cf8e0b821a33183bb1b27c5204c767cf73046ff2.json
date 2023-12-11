@@ -6,98 +6,170 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "a::\"V\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"V\"",
+      "principal": {
+        "type": "a",
+        "id": "V"
+      },
+      "resource": {
+        "type": "a",
+        "id": "V"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected long, got bool"
+        "while evaluating policy `policy0`: type error: expected long, got bool"
       ]
     },
     {
       "desc": "Query 1",
-      "principal": "a::\"V\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"V\"",
+      "principal": {
+        "type": "a",
+        "id": "V"
+      },
+      "resource": {
+        "type": "a",
+        "id": "V"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected long, got bool"
+        "while evaluating policy `policy0`: type error: expected long, got bool"
       ]
     },
     {
       "desc": "Query 2",
-      "principal": "a::\"V\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"V\"",
+      "principal": {
+        "type": "a",
+        "id": "V"
+      },
+      "resource": {
+        "type": "a",
+        "id": "V"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected long, got bool"
+        "while evaluating policy `policy0`: type error: expected long, got bool"
       ]
     },
     {
       "desc": "Query 3",
-      "principal": "a::\"V\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"V\"",
+      "principal": {
+        "type": "a",
+        "id": "V"
+      },
+      "resource": {
+        "type": "a",
+        "id": "V"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected long, got bool"
+        "while evaluating policy `policy0`: type error: expected long, got bool"
       ]
     },
     {
       "desc": "Query 4",
-      "principal": "a::\"V\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"V\"",
+      "principal": {
+        "type": "a",
+        "id": "V"
+      },
+      "resource": {
+        "type": "a",
+        "id": "V"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected long, got bool"
+        "while evaluating policy `policy0`: type error: expected long, got bool"
       ]
     },
     {
       "desc": "Query 5",
-      "principal": "a::\"V\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"V\"",
+      "principal": {
+        "type": "a",
+        "id": "V"
+      },
+      "resource": {
+        "type": "a",
+        "id": "V"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected long, got bool"
+        "while evaluating policy `policy0`: type error: expected long, got bool"
       ]
     },
     {
       "desc": "Query 6",
-      "principal": "a::\"V\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"V\"",
+      "principal": {
+        "type": "a",
+        "id": "V"
+      },
+      "resource": {
+        "type": "a",
+        "id": "V"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected long, got bool"
+        "while evaluating policy `policy0`: type error: expected long, got bool"
       ]
     },
     {
       "desc": "Query 7",
-      "principal": "a::\"V\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"V\"",
+      "principal": {
+        "type": "a",
+        "id": "V"
+      },
+      "resource": {
+        "type": "a",
+        "id": "V"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected long, got bool"
+        "while evaluating policy `policy0`: type error: expected long, got bool"
       ]
     }
   ]

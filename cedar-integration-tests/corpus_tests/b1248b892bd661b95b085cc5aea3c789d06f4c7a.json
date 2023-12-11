@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "f111::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "f111::\"\"",
+      "principal": {
+        "type": "f111",
+        "id": ""
+      },
+      "resource": {
+        "type": "f111",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "A": []
       },
@@ -20,9 +29,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "f111::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "f111::\"\"",
+      "principal": {
+        "type": "f111",
+        "id": ""
+      },
+      "resource": {
+        "type": "f111",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "A": []
       },
@@ -34,9 +52,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "f111::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "f111::\"\"",
+      "principal": {
+        "type": "f111",
+        "id": ""
+      },
+      "resource": {
+        "type": "f111",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "A": []
       },
@@ -48,9 +75,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "f111::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "f111::\"\"",
+      "principal": {
+        "type": "f111",
+        "id": ""
+      },
+      "resource": {
+        "type": "f111",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "A": []
       },
@@ -62,9 +98,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "f111::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "f111::\"\"",
+      "principal": {
+        "type": "f111",
+        "id": ""
+      },
+      "resource": {
+        "type": "f111",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "A": []
       },
@@ -76,9 +121,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "f111::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "f111::\"\"",
+      "principal": {
+        "type": "f111",
+        "id": ""
+      },
+      "resource": {
+        "type": "f111",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "A": []
       },
@@ -90,9 +144,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "f111::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "f111::\"\"",
+      "principal": {
+        "type": "f111",
+        "id": ""
+      },
+      "resource": {
+        "type": "f111",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "A": []
       },
@@ -104,9 +167,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "f111::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "f111::\"\"",
+      "principal": {
+        "type": "f111",
+        "id": ""
+      },
+      "resource": {
+        "type": "f111",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "A": []
       },

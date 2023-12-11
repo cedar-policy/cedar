@@ -6,98 +6,170 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "n::g::F::r::a::\"\"",
-      "action": "n::g::F::r::Action::\"action\"",
-      "resource": "n::g::F::r::a::\"\"",
+      "principal": {
+        "type": "n::g::F::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "n::g::F::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "n::g::F::r::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `n::g::F::r::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `n::g::F::r::a`)"
       ]
     },
     {
       "desc": "Query 1",
-      "principal": "n::g::F::r::a::\"\"",
-      "action": "n::g::F::r::Action::\"action\"",
-      "resource": "n::g::F::r::a::\"\"",
+      "principal": {
+        "type": "n::g::F::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "n::g::F::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "n::g::F::r::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `n::g::F::r::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `n::g::F::r::a`)"
       ]
     },
     {
       "desc": "Query 2",
-      "principal": "n::g::F::r::a::\"\"",
-      "action": "n::g::F::r::Action::\"action\"",
-      "resource": "n::g::F::r::a::\"\"",
+      "principal": {
+        "type": "n::g::F::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "n::g::F::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "n::g::F::r::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `n::g::F::r::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `n::g::F::r::a`)"
       ]
     },
     {
       "desc": "Query 3",
-      "principal": "n::g::F::r::a::\"\"",
-      "action": "n::g::F::r::Action::\"action\"",
-      "resource": "n::g::F::r::a::\"\"",
+      "principal": {
+        "type": "n::g::F::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "n::g::F::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "n::g::F::r::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `n::g::F::r::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `n::g::F::r::a`)"
       ]
     },
     {
       "desc": "Query 4",
-      "principal": "n::g::F::r::a::\"\"",
-      "action": "n::g::F::r::Action::\"action\"",
-      "resource": "n::g::F::r::a::\"\"",
+      "principal": {
+        "type": "n::g::F::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "n::g::F::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "n::g::F::r::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `n::g::F::r::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `n::g::F::r::a`)"
       ]
     },
     {
       "desc": "Query 5",
-      "principal": "n::g::F::r::a::\"\"",
-      "action": "n::g::F::r::Action::\"action\"",
-      "resource": "n::g::F::r::a::\"\"",
+      "principal": {
+        "type": "n::g::F::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "n::g::F::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "n::g::F::r::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `n::g::F::r::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `n::g::F::r::a`)"
       ]
     },
     {
       "desc": "Query 6",
-      "principal": "n::g::F::r::a::\"\"",
-      "action": "n::g::F::r::Action::\"action\"",
-      "resource": "n::g::F::r::a::\"\"",
+      "principal": {
+        "type": "n::g::F::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "n::g::F::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "n::g::F::r::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `n::g::F::r::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `n::g::F::r::a`)"
       ]
     },
     {
       "desc": "Query 7",
-      "principal": "n::g::F::r::a::\"\"",
-      "action": "n::g::F::r::Action::\"action\"",
-      "resource": "n::g::F::r::a::\"\"",
+      "principal": {
+        "type": "n::g::F::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "n::g::F::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "n::g::F::r::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `n::g::F::r::a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `n::g::F::r::a`)"
       ]
     }
   ]

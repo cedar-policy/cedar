@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "a::\"\"",
-      "action": "Action::\"zzzz\"",
-      "resource": "a::\"\"",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "zzzz"
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -19,8 +28,11 @@
     {
       "desc": "Query 1",
       "principal": null,
-      "action": "Action::\"\"",
       "resource": null,
+      "action": {
+        "type": "Action",
+        "id": ""
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -31,8 +43,11 @@
     {
       "desc": "Query 2",
       "principal": null,
-      "action": "Action::\"\"",
       "resource": null,
+      "action": {
+        "type": "Action",
+        "id": ""
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -43,8 +58,11 @@
     {
       "desc": "Query 3",
       "principal": null,
-      "action": "Action::\"\"",
       "resource": null,
+      "action": {
+        "type": "Action",
+        "id": ""
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -55,8 +73,11 @@
     {
       "desc": "Query 4",
       "principal": null,
-      "action": "Action::\"\"",
       "resource": null,
+      "action": {
+        "type": "Action",
+        "id": ""
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -67,8 +88,11 @@
     {
       "desc": "Query 5",
       "principal": null,
-      "action": "Action::\"\"",
       "resource": null,
+      "action": {
+        "type": "Action",
+        "id": ""
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -79,8 +103,11 @@
     {
       "desc": "Query 6",
       "principal": null,
-      "action": "Action::\"\"",
       "resource": null,
+      "action": {
+        "type": "Action",
+        "id": ""
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [
@@ -91,8 +118,11 @@
     {
       "desc": "Query 7",
       "principal": null,
-      "action": "Action::\"\"",
       "resource": null,
+      "action": {
+        "type": "Action",
+        "id": ""
+      },
       "context": {},
       "decision": "Allow",
       "reasons": [

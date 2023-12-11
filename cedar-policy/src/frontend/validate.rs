@@ -38,7 +38,7 @@ fn validate(call: &ValidateCall) -> Result<ValidateAnswer, String> {
                 parse_errors.extend(
                     policy_set_parse_errs
                         .into_iter()
-                        .map(|pe| format!("{pe:?}")),
+                        .map(|pe| format!("parse error in policy: {pe}")),
                 );
             }
         },
@@ -68,7 +68,7 @@ fn validate(call: &ValidateCall) -> Result<ValidateAnswer, String> {
         .schema
         .clone()
         .try_into()
-        .map_err(|e| format!("couldn't construct schema - {e}"))?;
+        .map_err(|e| format!("could not construct schema: {e}"))?;
     let validator = Validator::new(schema);
 
     let notes: Vec<ValidationNote> = validator
@@ -146,6 +146,8 @@ enum ValidateAnswer {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::frontend::utils::assert_is_failure;
+    use cool_asserts::assert_matches;
     use std::collections::HashMap;
 
     #[test]
@@ -246,7 +248,11 @@ mod test {
         .to_string();
 
         let result = json_validate(&call_json);
-        assert_fails_with_user_errors(result);
+        assert_is_failure(
+            &result,
+            false,
+            "parse error in policy policy0: unexpected end of input",
+        );
     }
 
     #[test]
@@ -349,7 +355,11 @@ mod test {
         .to_string();
 
         let result = json_validate(&call_json);
-        assert_fails_with_user_errors(result);
+        assert_is_failure(
+            &result,
+            false,
+            "parse error in policy: unexpected end of input",
+        );
     }
 
     #[test]
@@ -391,77 +401,69 @@ mod test {
             "policySet": "permit(principal, action, resource);forbid"
         }"#
         .to_string();
-
         let result = json_validate(&call_json);
-        assert_fails_with_user_errors(result);
+        assert_is_failure(
+            &result,
+            false,
+            "parse error in policy: unexpected end of input",
+        );
     }
 
     #[test]
     fn test_bad_call_format_fails() {
         let result = json_validate("uerfheriufheiurfghtrg");
-        assert_fails(result);
+        assert_is_failure(&result, true, "error parsing call: expected value");
     }
 
-    fn assert_fails(result: InterfaceResult) {
-        match result {
-            InterfaceResult::Success { result } => {
-                panic!("expected call to fail but got {:?}", &result)
-            }
-            InterfaceResult::Failure { .. } => {}
-        }
+    #[test]
+    fn test_validate_fails_on_duplicate_namespace() {
+        let call_json = r#"{
+            "schema": {
+              "foo": { "entityTypes": {}, "actions": {} },
+              "foo": { "entityTypes": {}, "actions": {} }
+            },
+            "policySet": ""
+        }"#
+        .to_string();
+        let result = json_validate(&call_json);
+        assert_is_failure(
+            &result,
+            true,
+            "error parsing call: invalid entry: found duplicate key",
+        );
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_validates_without_notes(result: InterfaceResult) {
-        match result {
-            InterfaceResult::Success { result } => {
-                let parsed_result: ValidateAnswer = serde_json::from_str(result.as_str()).unwrap();
-                match parsed_result {
-                    ValidateAnswer::ParseFailed { .. } => {
-                        panic!("expected parse to succeed, but got {parsed_result:?}")
-                    }
-                    ValidateAnswer::Success { notes, .. } => {
-                        assert_eq!(notes.len(), 0, "Unexpected validation notes: {notes:?}");
-                    }
-                }
-            }
-            InterfaceResult::Failure { .. } => {
-                panic!("expected call to succeed but got {:?}", &result)
-            }
-        }
+        assert_matches!(result, InterfaceResult::Success { result } => {
+            let parsed_result: ValidateAnswer = serde_json::from_str(result.as_str()).unwrap();
+            assert_matches!(parsed_result, ValidateAnswer::Success { notes, .. } => {
+                assert_eq!(notes.len(), 0, "Unexpected validation notes: {notes:?}");
+            });
+        });
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_validates_with_notes(result: InterfaceResult, expected_num_notes: usize) {
-        match result {
-            InterfaceResult::Success { result } => {
-                let parsed_result: ValidateAnswer = serde_json::from_str(result.as_str()).unwrap();
-                match parsed_result {
-                    ValidateAnswer::ParseFailed { .. } => {
-                        panic!("expected parse to succeed, but got {parsed_result:?}")
-                    }
-                    ValidateAnswer::Success { notes, .. } => {
-                        assert_eq!(notes.len(), expected_num_notes);
-                    }
-                }
-            }
-            InterfaceResult::Failure { .. } => {
-                panic!("expected call to succeed but got {:?}", &result)
-            }
-        }
+        assert_matches!(result, InterfaceResult::Success { result } => {
+            let parsed_result: ValidateAnswer = serde_json::from_str(result.as_str()).unwrap();
+            assert_matches!(parsed_result, ValidateAnswer::Success { notes, .. } => {
+                assert_eq!(notes.len(), expected_num_notes);
+            });
+        });
     }
 
-    fn assert_fails_with_user_errors(result: InterfaceResult) {
-        dbg!(&result);
-        match result {
-            InterfaceResult::Success { result } => {
-                panic!("expected call to fail but got {:?}", &result)
+    #[test]
+    fn test_validate_fails_on_duplicate_policy_id() {
+        let call_json = r#"{
+            "schema": { "": { "entityTypes": {}, "actions": {} } },
+            "policySet": {
+              "ID0": "permit(principal, action, resource);",
+              "ID0": "permit(principal, action, resource);"
             }
-            InterfaceResult::Failure {
-                is_internal,
-                errors,
-            } => {
-                assert!(!is_internal);
-                assert_ne!(errors.len(), 0);
-            }
-        }
+        }"#
+        .to_string();
+        let result = json_validate(&call_json);
+        assert_is_failure(&result, true, "no duplicate IDs");
     }
 }

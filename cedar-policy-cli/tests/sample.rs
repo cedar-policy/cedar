@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+// PANIC SAFETY tests
+#![allow(clippy::expect_used)]
+// PANIC SAFETY tests
+#![allow(clippy::unwrap_used)]
 use std::collections::HashMap;
 
 use cedar_policy::EvalResult;
@@ -67,6 +71,7 @@ fn run_authorize_test_with_linked_policies(
             resource: Some(resource.into()),
             context_json_file: None,
             request_json_file: None,
+            request_validation: true,
         },
         policies_file: policies_file.into(),
         template_linked_file: links_file.map(|x| x.to_string()),
@@ -98,10 +103,15 @@ fn run_link_test(
     assert_eq!(output, expected);
 }
 
+// PANIC SAFETY: this is all test code
+#[allow(clippy::expect_used)]
+// PANIC SAFETY: this is all test code
+#[allow(clippy::unwrap_used)]
 fn run_format_test(policies_file: &str) {
     let format_cmd = assert_cmd::Command::cargo_bin("cedar")
         .expect("bin exists")
         .arg("format")
+        .arg("-p")
         .arg(policies_file)
         .assert();
     assert_eq!(
@@ -126,6 +136,7 @@ fn run_authorize_test_context(
             resource: Some(resource.into()),
             context_json_file: Some(context_file.into()),
             request_json_file: None,
+            request_validation: true,
         },
         policies_file: policies_file.into(),
         template_linked_file: None,
@@ -151,6 +162,7 @@ fn run_authorize_test_json(
             resource: None,
             context_json_file: None,
             request_json_file: Some(request_json.into()),
+            request_validation: true,
         },
         policies_file: policies_file.into(),
         template_linked_file: None,
@@ -415,12 +427,26 @@ fn test_authorize_samples() {
         "sample-data/tiny_sandboxes/sample7/request.json",
         CedarExitCode::Success,
     );
+    run_authorize_test_json(
+        "sample-data/tiny_sandboxes/sample8/policy.cedar",
+        "sample-data/tiny_sandboxes/sample8/entity.json",
+        "sample-data/tiny_sandboxes/sample8/request.json",
+        CedarExitCode::Success,
+    );
+    run_authorize_test_json(
+        "sample-data/tiny_sandboxes/sample9/policy.cedar",
+        "sample-data/tiny_sandboxes/sample9/entity.json",
+        "sample-data/tiny_sandboxes/sample9/request.json",
+        CedarExitCode::Success,
+    );
 }
 
 fn run_validate_test(policies_file: &str, schema_file: &str, exit_code: CedarExitCode) {
     let cmd = ValidateArgs {
         schema_file: schema_file.into(),
         policies_file: policies_file.into(),
+        deny_warnings: false,
+        partial_validate: false,
     };
     let output = validate(&cmd);
     assert_eq!(exit_code, output, "{:#?}", cmd);
@@ -515,6 +541,21 @@ fn test_validate_samples() {
         "sample-data/tiny_sandboxes/sample7/schema.cedarschema.json",
         CedarExitCode::Success,
     );
+    run_validate_test(
+        "sample-data/tiny_sandboxes/sample8/policy.cedar",
+        "sample-data/tiny_sandboxes/sample8/schema.cedarschema.json",
+        CedarExitCode::Success,
+    );
+    run_validate_test(
+        "sample-data/tiny_sandboxes/sample9/policy.cedar",
+        "sample-data/tiny_sandboxes/sample9/schema.cedarschema.json",
+        CedarExitCode::Success,
+    );
+    run_validate_test(
+        "sample-data/tiny_sandboxes/sample9/policy_bad.cedar",
+        "sample-data/tiny_sandboxes/sample9/schema.cedarschema.json",
+        CedarExitCode::ValidationFailure,
+    );
 }
 
 fn run_evaluate_test(
@@ -533,6 +574,7 @@ fn run_evaluate_test(
             resource: None,
             context_json_file: None,
             request_json_file: Some(request_json_file.into()),
+            request_validation: true,
         },
         expression: expression.to_owned(),
     };

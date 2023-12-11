@@ -14,17 +14,22 @@
  * limitations under the License.
  */
 
-use crate::ast::{BorrowedRestrictedExpr, EntityUID, ExprKind, RestrictedExpr};
-use crate::entities::{ContextJsonParser, JsonDeserializationError, NullContextSchema};
+use crate::entities::{ContextJsonDeserializationError, ContextJsonParser, NullContextSchema};
+use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
-use serde::{Deserialize, Serialize};
+use miette::Diagnostic;
+use serde::Serialize;
 use smol_str::SmolStr;
 use std::sync::Arc;
+use thiserror::Error;
 
-use super::{Expr, Literal, PartialValue, Value, Var};
+use super::{
+    BorrowedRestrictedExpr, EntityUID, Expr, ExprConstructionError, ExprKind, Literal,
+    PartialValue, PartialValueSerializedAsExpr, RestrictedExpr, Unknown, Value, Var,
+};
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Request {
     /// Principal associated with the request
     pub(crate) principal: EntityUIDEntry,
@@ -43,10 +48,10 @@ pub struct Request {
 /// An entry in a request for a Entity UID.
 /// It may either be a concrete EUID
 /// or an unknown in the case of partial evaluation
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub enum EntityUIDEntry {
     /// A concrete (but perhaps unspecified) EntityUID
-    Concrete(Arc<EntityUID>),
+    Known(Arc<EntityUID>),
     /// An EntityUID left as unknown for partial evaluation
     Unknown,
 }
@@ -57,54 +62,73 @@ impl EntityUIDEntry {
     /// An unknown corresponding to the passed `var`
     pub fn evaluate(&self, var: Var) -> PartialValue {
         match self {
-            EntityUIDEntry::Concrete(euid) => Value::Lit(Literal::EntityUID(euid.clone())).into(),
-            EntityUIDEntry::Unknown => Expr::unknown(var.to_string()).into(),
+            EntityUIDEntry::Known(euid) => Value::Lit(Literal::EntityUID(euid.clone())).into(),
+            EntityUIDEntry::Unknown => Expr::unknown(Unknown::new_untyped(var.to_string())).into(),
         }
     }
 
     /// Create an entry with a concrete EntityUID
     pub fn concrete(euid: EntityUID) -> Self {
-        Self::Concrete(Arc::new(euid))
+        Self::Known(Arc::new(euid))
     }
 
     /// Get the UID of the entry, or `None` if it is unknown (partial evaluation)
     pub fn uid(&self) -> Option<&EntityUID> {
         match self {
-            Self::Concrete(euid) => Some(euid),
+            Self::Known(euid) => Some(euid),
             Self::Unknown => None,
         }
     }
 }
 
 impl Request {
-    /// Default constructor
-    pub fn new(
+    /// Default constructor.
+    ///
+    /// If `schema` is provided, this constructor validates that this `Request`
+    /// complies with the given `schema`.
+    pub fn new<S: RequestSchema>(
         principal: EntityUID,
         action: EntityUID,
         resource: EntityUID,
         context: Context,
-    ) -> Self {
-        Self {
+        schema: Option<&S>,
+        extensions: Extensions<'_>,
+    ) -> Result<Self, S::Error> {
+        let req = Self {
             principal: EntityUIDEntry::concrete(principal),
             action: EntityUIDEntry::concrete(action),
             resource: EntityUIDEntry::concrete(resource),
             context: Some(context),
+        };
+        if let Some(schema) = schema {
+            schema.validate_request(&req, extensions)?;
         }
+        Ok(req)
     }
 
-    /// Create a new request with potentially unknown (for partial eval) head variables
-    pub fn new_with_unknowns(
+    /// Create a new `Request` with potentially unknown (for partial eval) variables.
+    ///
+    /// If `schema` is provided, this constructor validates that this `Request`
+    /// complies with the given `schema` (at least to the extent that we can
+    /// validate with the given information)
+    pub fn new_with_unknowns<S: RequestSchema>(
         principal: EntityUIDEntry,
         action: EntityUIDEntry,
         resource: EntityUIDEntry,
         context: Option<Context>,
-    ) -> Self {
-        Self {
+        schema: Option<&S>,
+        extensions: Extensions<'_>,
+    ) -> Result<Self, S::Error> {
+        let req = Self {
             principal,
             action,
             resource,
             context,
+        };
+        if let Some(schema) = schema {
+            schema.validate_request(&req, extensions)?;
         }
+        Ok(req)
     }
 
     /// Get the principal associated with the request
@@ -132,7 +156,7 @@ impl Request {
 impl std::fmt::Display for Request {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let display_euid = |maybe_euid: &EntityUIDEntry| match maybe_euid {
-            EntityUIDEntry::Concrete(euid) => format!("{euid}"),
+            EntityUIDEntry::Known(euid) => format!("{euid}"),
             EntityUIDEntry::Unknown => "unknown".to_string(),
         };
         write!(
@@ -150,39 +174,69 @@ impl std::fmt::Display for Request {
 }
 
 /// `Context` field of a `Request`
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Context {
-    /// an `Expr::Record` that qualifies as a "restricted expression"
-    // INVARIANT: `context` must be a `Record`
+    /// Context is internally represented as a `PartialValue`
+    ///
+    /// Context is serialized as a `RestrictedExpr`, for partly historical reasons.
+    //
+    // INVARIANT(ContextRecord): This must be a `Record`: either
+    // `PartialValue::Value(Value::Record)`, or
+    // `PartialValue::Residual(Expr::Record)`, or an appropriate unknown
+    // TODO: This should be refactored if possible to require this runtime invariant
     #[serde(flatten)]
-    context: RestrictedExpr,
+    context: PartialValueSerializedAsExpr,
 }
 
 impl Context {
     /// Create an empty `Context`
+    //
+    // INVARIANT(ContextRecord): via invariant on `Self::from_pairs`
     pub fn empty() -> Self {
-        Self::from_pairs([])
+        // PANIC SAFETY: empty set of keys cannot contain a duplicate key
+        #[allow(clippy::expect_used)]
+        Self::from_pairs([], Extensions::none())
+            .expect("empty set of keys cannot contain a duplicate key")
     }
 
     /// Create a `Context` from a `RestrictedExpr`, which must be a `Record`.
-    /// If it is not a `Record`, then this function returns `Err` (returning
-    /// ownership of the non-record expression), otherwise it returns `Ok` of
-    /// a context for that record.
-    pub fn from_expr(expr: RestrictedExpr) -> Result<Self, RestrictedExpr> {
+    ///
+    /// `extensions` provides the `Extensions` which should be active for
+    /// evaluating the `RestrictedExpr`.
+    //
+    // INVARIANT(ContextRecord): always constructs a record if it returns Ok
+    pub fn from_expr(
+        expr: BorrowedRestrictedExpr<'_>,
+        extensions: Extensions<'_>,
+    ) -> Result<Self, ContextCreationError> {
         match expr.expr_kind() {
-            // INVARIANT: `context` must be a `Record`, which is guaranteed by the match case.
-            ExprKind::Record { .. } => Ok(Self { context: expr }),
-            _ => Err(expr),
+            // INVARIANT(ContextRecord): guaranteed by the match case
+            ExprKind::Record { .. } => {
+                let evaluator = RestrictedEvaluator::new(&extensions);
+                let pval = evaluator.partial_interpret(expr)?;
+                Ok(Self {
+                    context: pval.into(),
+                })
+            }
+            _ => Err(ContextCreationError::NotARecord {
+                expr: Box::new(expr.to_owned()),
+            }),
         }
     }
 
     /// Create a `Context` from a map of key to `RestrictedExpr`, or a Vec of
     /// `(key, RestrictedExpr)` pairs, or any other iterator of `(key, RestrictedExpr)` pairs
-    // INVARIANT: always constructs a record
-    pub fn from_pairs(pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>) -> Self {
-        Self {
-            context: RestrictedExpr::record(pairs),
-        }
+    ///
+    /// `extensions` provides the `Extensions` which should be active for
+    /// evaluating the `RestrictedExpr`.
+    //
+    // INVARIANT(ContextRecord): always constructs a record if it returns Ok
+    pub fn from_pairs(
+        pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
+        extensions: Extensions<'_>,
+    ) -> Result<Self, ContextCreationError> {
+        // INVARIANT(ContextRecord): via invariant on `Self::from_expr`
+        Self::from_expr(RestrictedExpr::record(pairs)?.as_borrowed(), extensions)
     }
 
     /// Create a `Context` from a string containing JSON (which must be a JSON
@@ -191,7 +245,7 @@ impl Context {
     /// references, extension values, etc.
     ///
     /// For schema-based parsing, use `ContextJsonParser`.
-    pub fn from_json_str(json: &str) -> Result<Self, JsonDeserializationError> {
+    pub fn from_json_str(json: &str) -> Result<Self, ContextJsonDeserializationError> {
         // INVARIANT `.from_json_str` always produces an expression of variant `Record`
         ContextJsonParser::new(None::<&NullContextSchema>, Extensions::all_available())
             .from_json_str(json)
@@ -203,7 +257,9 @@ impl Context {
     /// references, extension values, etc.
     ///
     /// For schema-based parsing, use `ContextJsonParser`.
-    pub fn from_json_value(json: serde_json::Value) -> Result<Self, JsonDeserializationError> {
+    pub fn from_json_value(
+        json: serde_json::Value,
+    ) -> Result<Self, ContextJsonDeserializationError> {
         // INVARIANT `.from_json_value` always produces an expression of variant `Record`
         ContextJsonParser::new(None::<&NullContextSchema>, Extensions::all_available())
             .from_json_value(json)
@@ -215,28 +271,47 @@ impl Context {
     /// references, extension values, etc.
     ///
     /// For schema-based parsing, use `ContextJsonParser`.
-    pub fn from_json_file(json: impl std::io::Read) -> Result<Self, JsonDeserializationError> {
+    pub fn from_json_file(
+        json: impl std::io::Read,
+    ) -> Result<Self, ContextJsonDeserializationError> {
         // INVARIANT `.from_json_file` always produces an expression of variant `Record`
         ContextJsonParser::new(None::<&NullContextSchema>, Extensions::all_available())
             .from_json_file(json)
     }
 
-    /// Iterate over the (key, value) pairs in the `Context`
-    pub fn iter(&self) -> impl Iterator<Item = (&str, BorrowedRestrictedExpr<'_>)> {
-        // PANIC SAFETY invariant on `self.context` ensures that it is a Record
+    /// Iterate over the (key, value) pairs in the `Context`; or return `None`
+    /// if the `Context` is purely unknown
+    //
+    // PANIC SAFETY: This is safe due to the invariant on `self.context`, `self.context` must always be a record
+    pub fn iter<'s>(&'s self) -> Option<Box<dyn Iterator<Item = (&SmolStr, PartialValue)> + 's>> {
+        // PANIC SAFETY invariant on `self.context` ensures that it is a record
         #[allow(clippy::panic)]
-        match self.context.as_ref().expr_kind() {
-            ExprKind::Record { pairs } => pairs
-                .iter()
-                .map(|(k, v)| (k.as_str(), BorrowedRestrictedExpr::new_unchecked(v))), // given that the invariant holds for `self.context`, it will hold here
-            e => panic!("internal invariant violation: expected Expr::Record, got {e:?}"),
+        match self.context.as_ref() {
+            PartialValue::Value(Value::Record(map)) => Some(Box::new(
+                map.iter().map(|(k, v)| (k, PartialValue::Value(v.clone()))),
+            )),
+            PartialValue::Residual(expr) => match expr.expr_kind() {
+                ExprKind::Record(map) => Some(Box::new(
+                    map.iter()
+                        .map(|(k, v)| (k, PartialValue::Residual(v.clone()))),
+                )),
+                ExprKind::Unknown(_) => None,
+                kind => panic!("internal invariant violation: expected a record, got {kind:?}"),
+            },
+            v => panic!("internal invariant violation: expected a record, got {v:?}"),
         }
     }
 }
 
-impl AsRef<RestrictedExpr> for Context {
-    fn as_ref(&self) -> &RestrictedExpr {
+impl AsRef<PartialValue> for Context {
+    fn as_ref(&self) -> &PartialValue {
         &self.context
+    }
+}
+
+impl From<Context> for PartialValue {
+    fn from(ctx: Context) -> PartialValue {
+        ctx.context.into()
     }
 }
 
@@ -252,12 +327,74 @@ impl std::fmt::Display for Context {
     }
 }
 
+/// Errors while trying to create a `Context`
+#[derive(Debug, Diagnostic, Error)]
+pub enum ContextCreationError {
+    /// Tried to create a `Context` out of something other than a record
+    #[error("expression is not a record: `{expr}`")]
+    NotARecord {
+        /// Expression which is not a record
+        expr: Box<RestrictedExpr>,
+    },
+    /// Error evaluating the expression given for the `Context`
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Evaluation(#[from] EvaluationError),
+    /// Error constructing the expression given for the `Context`.
+    /// Only returned by `Context::from_pairs()`
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExprConstruction(#[from] ExprConstructionError),
+}
+
+/// Trait for schemas capable of validating `Request`s
+pub trait RequestSchema {
+    /// Error type returned when a request fails validation
+    type Error: miette::Diagnostic;
+    /// Validate the given `request`, returning `Err` if it fails validation
+    fn validate_request(
+        &self,
+        request: &Request,
+        extensions: Extensions<'_>,
+    ) -> Result<(), Self::Error>;
+}
+
+/// A `RequestSchema` that does no validation and always reports a passing result
+#[derive(Debug, Clone)]
+pub struct RequestSchemaAllPass;
+impl RequestSchema for RequestSchemaAllPass {
+    type Error = Infallible;
+    fn validate_request(
+        &self,
+        _request: &Request,
+        _extensions: Extensions<'_>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+/// Wrapper around `std::convert::Infallible` which also implements
+/// `miette::Diagnostic`
+#[derive(Debug, Diagnostic, Error)]
+#[error(transparent)]
+pub struct Infallible(pub std::convert::Infallible);
+
 #[cfg(test)]
 mod test {
+    use super::*;
+    use cool_asserts::assert_matches;
 
     #[test]
     fn test_json_from_str_non_record() {
-        let src = "1";
-        assert!(super::Context::from_json_str(src).is_err());
+        assert_matches!(
+            Context::from_expr(RestrictedExpr::val("1").as_borrowed(), Extensions::none()),
+            Err(ContextCreationError::NotARecord { .. })
+        );
+        assert_matches!(
+            Context::from_json_str("1"),
+            Err(ContextJsonDeserializationError::ContextCreation(
+                ContextCreationError::NotARecord { .. }
+            ))
+        );
     }
 }

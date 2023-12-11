@@ -6,98 +6,170 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "A000::a::\"\"",
-      "action": "A000::Action::\"action\"",
-      "resource": "A000::a::\"\"",
+      "principal": {
+        "type": "A000::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "A000::a",
+        "id": ""
+      },
+      "action": {
+        "type": "A000::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `A000::a`)"
+        "while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `A000::a`)"
       ]
     },
     {
       "desc": "Query 1",
-      "principal": "A000::a::\"\"",
-      "action": "A000::Action::\"action\"",
-      "resource": "A000::a::\"\"",
+      "principal": {
+        "type": "A000::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "A000::a",
+        "id": ""
+      },
+      "action": {
+        "type": "A000::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `A000::a`)"
+        "while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `A000::a`)"
       ]
     },
     {
       "desc": "Query 2",
-      "principal": "A000::a::\"\"",
-      "action": "A000::Action::\"action\"",
-      "resource": "A000::a::\"\"",
+      "principal": {
+        "type": "A000::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "A000::a",
+        "id": ""
+      },
+      "action": {
+        "type": "A000::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `A000::a`)"
+        "while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `A000::a`)"
       ]
     },
     {
       "desc": "Query 3",
-      "principal": "A000::a::\"\"",
-      "action": "A000::Action::\"action\"",
-      "resource": "A000::a::\"\"",
+      "principal": {
+        "type": "A000::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "A000::a",
+        "id": ""
+      },
+      "action": {
+        "type": "A000::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `A000::a`)"
+        "while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `A000::a`)"
       ]
     },
     {
       "desc": "Query 4",
-      "principal": "A000::a::\"\"",
-      "action": "A000::Action::\"action\"",
-      "resource": "A000::a::\"\"",
+      "principal": {
+        "type": "A000::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "A000::a",
+        "id": ""
+      },
+      "action": {
+        "type": "A000::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `A000::a`)"
+        "while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `A000::a`)"
       ]
     },
     {
       "desc": "Query 5",
-      "principal": "A000::a::\"\"",
-      "action": "A000::Action::\"action\"",
-      "resource": "A000::a::\"\"",
+      "principal": {
+        "type": "A000::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "A000::a",
+        "id": ""
+      },
+      "action": {
+        "type": "A000::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `A000::a`)"
+        "while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `A000::a`)"
       ]
     },
     {
       "desc": "Query 6",
-      "principal": "A000::a::\"\"",
-      "action": "A000::Action::\"action\"",
-      "resource": "A000::a::\"\"",
+      "principal": {
+        "type": "A000::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "A000::a",
+        "id": ""
+      },
+      "action": {
+        "type": "A000::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `A000::a`)"
+        "while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `A000::a`)"
       ]
     },
     {
       "desc": "Query 7",
-      "principal": "A000::a::\"\"",
-      "action": "A000::Action::\"action\"",
-      "resource": "A000::a::\"\"",
+      "principal": {
+        "type": "A000::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "A000::a",
+        "id": ""
+      },
+      "action": {
+        "type": "A000::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `A000::a`)"
+        "while evaluating policy `policy0`: type error: expected ipaddr, got (entity of type `A000::a`)"
       ]
     }
   ]

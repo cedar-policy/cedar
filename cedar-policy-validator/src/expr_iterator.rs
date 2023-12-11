@@ -26,6 +26,20 @@ pub(super) fn expr_entity_uids(expr: &Expr) -> impl Iterator<Item = &EntityUID> 
     })
 }
 
+/// Returns an iterator over all entity type names in the expression.
+/// The Unspecified entity type does not have a `Name`, so it is excluded
+/// from this iter.
+pub(super) fn expr_entity_type_names(expr: &Expr) -> impl Iterator<Item = &Name> {
+    expr.subexpressions().filter_map(|e| match e.expr_kind() {
+        ExprKind::Lit(Literal::EntityUID(uid)) => match uid.entity_type() {
+            EntityType::Specified(entity_type) => Some(entity_type),
+            EntityType::Unspecified => None,
+        },
+        ExprKind::Is { entity_type, .. } => Some(entity_type),
+        _ => None,
+    })
+}
+
 /// Returns an iterator over all literal entity uids in a policy. This iterates
 /// over any entities in the policy head condition in addition to any entities
 /// in the body.
@@ -39,15 +53,34 @@ pub(super) fn policy_entity_uids(template: &Template) -> impl Iterator<Item = &E
         .chain(expr_entity_uids(template.non_head_constraints()))
 }
 
+/// Returns an iterator over all entity type names in the policy. This iterates
+/// over the policy head condition in addition to the body.
+/// The Unspecified entity type does not have a `Name`, so it is excluded
+/// from this iter.
+pub(super) fn policy_entity_type_names(template: &Template) -> impl Iterator<Item = &Name> {
+    template
+        .principal_constraint()
+        .as_inner()
+        .iter_entity_type_names()
+        .chain(template.action_constraint().iter_entity_type_names())
+        .chain(
+            template
+                .resource_constraint()
+                .as_inner()
+                .iter_entity_type_names(),
+        )
+        .chain(expr_entity_type_names(template.non_head_constraints()))
+}
+
 /// The 3 different "classes" of text in an expression.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum TextKind<'a> {
     /// String Literals
-    String(&'a str),
+    String(Option<miette::SourceSpan>, &'a str),
     /// Identifiers
-    Identifier(&'a str),
+    Identifier(Option<miette::SourceSpan>, &'a str),
     /// Pattern Strings
-    Pattern(&'a [PatternElem]),
+    Pattern(Option<miette::SourceSpan>, &'a [PatternElem]),
 }
 
 /// Returns an iterator over all text (strings and identifiers) in the expression.
@@ -58,45 +91,65 @@ pub(super) fn expr_text(e: &'_ Expr) -> impl Iterator<Item = TextKind<'_>> {
 // Returns a vector containing the text in the top level expression
 fn text_in_expr(e: &'_ Expr) -> impl IntoIterator<Item = TextKind<'_>> {
     match e.expr_kind() {
-        ExprKind::Lit(l) => text_in_lit(l).into_iter().collect(),
-        ExprKind::ExtensionFunctionApp { fn_name, .. } => text_in_name(fn_name).collect(),
-        ExprKind::GetAttr { attr, .. } => vec![TextKind::Identifier(attr)],
-        ExprKind::HasAttr { attr, .. } => vec![TextKind::Identifier(attr)],
-        ExprKind::Like { pattern, .. } => vec![TextKind::Pattern(pattern.get_elems())],
-        ExprKind::Record { pairs } => pairs
-            .iter()
-            .map(|(attr, _)| TextKind::Identifier(attr))
+        ExprKind::Lit(lit) => text_in_lit(e.source_span(), lit).into_iter().collect(),
+        ExprKind::ExtensionFunctionApp { fn_name, .. } => {
+            text_in_name(e.source_span(), fn_name).collect()
+        }
+        ExprKind::GetAttr { attr, .. } => vec![TextKind::Identifier(e.source_span(), attr)],
+        ExprKind::HasAttr { attr, .. } => vec![TextKind::Identifier(e.source_span(), attr)],
+        ExprKind::Like { pattern, .. } => {
+            vec![TextKind::Pattern(e.source_span(), pattern.get_elems())]
+        }
+        ExprKind::Record(map) => map
+            .keys()
+            .map(|attr| TextKind::Identifier(e.source_span(), attr))
             .collect(),
         _ => vec![],
     }
 }
 
-fn text_in_lit(l: &'_ Literal) -> impl IntoIterator<Item = TextKind<'_>> {
-    match l {
+fn text_in_lit<'a>(
+    span: Option<miette::SourceSpan>,
+    lit: &'a Literal,
+) -> impl IntoIterator<Item = TextKind<'a>> {
+    match lit {
         Literal::Bool(_) => vec![],
         Literal::Long(_) => vec![],
-        Literal::String(s) => vec![TextKind::String(s)],
-        Literal::EntityUID(euid) => text_in_euid(euid).collect(),
+        Literal::String(s) => vec![TextKind::String(span, s)],
+        Literal::EntityUID(euid) => text_in_euid(span, euid).collect(),
     }
 }
 
-fn text_in_euid(euid: &'_ EntityUID) -> impl Iterator<Item = TextKind> {
-    text_in_entity_type(euid.entity_type())
+fn text_in_euid<'a>(
+    span: Option<miette::SourceSpan>,
+    euid: &'a EntityUID,
+) -> impl Iterator<Item = TextKind<'a>> {
+    text_in_entity_type(span, euid.entity_type())
         .into_iter()
-        .chain(std::iter::once(TextKind::Identifier(euid.eid().as_ref())))
+        .chain(std::iter::once(TextKind::Identifier(
+            span,
+            euid.eid().as_ref(),
+        )))
 }
 
-fn text_in_entity_type(ty: &'_ EntityType) -> impl IntoIterator<Item = TextKind> {
+fn text_in_entity_type<'a>(
+    span: Option<miette::SourceSpan>,
+    ty: &'a EntityType,
+) -> impl IntoIterator<Item = TextKind<'a>> {
     match ty {
-        EntityType::Concrete(ty) => text_in_name(ty).collect::<Vec<_>>(),
+        EntityType::Specified(ty) => text_in_name(span, ty).collect::<Vec<_>>(),
         EntityType::Unspecified => vec![],
     }
 }
 
-fn text_in_name(name: &'_ Name) -> impl Iterator<Item = TextKind> {
+fn text_in_name<'a>(
+    span: Option<miette::SourceSpan>,
+    name: &'a Name,
+) -> impl Iterator<Item = TextKind<'a>> {
     name.namespace_components()
-        .map(|id| TextKind::Identifier(id.as_ref()))
+        .map(move |id| TextKind::Identifier(span, id.as_ref()))
         .chain(std::iter::once(TextKind::Identifier(
+            span,
             name.basename().as_ref(),
         )))
 }
@@ -224,7 +277,7 @@ mod tests {
         let euid_foo =
             EntityUID::with_eid_and_type("test_entity_type", "foo").expect("valid identifier");
         let entity_get_elem = Expr::get_attr(
-            Expr::record(vec![("bar".into(), Expr::val(euid_foo.clone()))]),
+            Expr::record(vec![("bar".into(), Expr::val(euid_foo.clone()))]).unwrap(),
             "bar".into(),
         );
 
@@ -236,7 +289,8 @@ mod tests {
     fn entity_record() {
         let euid_foo =
             EntityUID::with_eid_and_type("test_entity_type", "foo").expect("valid identifier");
-        let entity_record = Expr::record(vec![("bar".into(), Expr::val(euid_foo.clone()))]);
+        let entity_record =
+            Expr::record(vec![("bar".into(), Expr::val(euid_foo.clone()))]).unwrap();
 
         let entities: Vec<EntityUID> = expr_entity_uids(&entity_record).cloned().collect();
         assert_eq!(vec![euid_foo], entities);
@@ -282,10 +336,10 @@ mod tests {
         let strs: HashSet<_> = expr_text(&p).collect();
         assert_eq!(
             HashSet::from([
-                TextKind::Identifier("test"),
-                TextKind::Identifier("a"),
-                TextKind::Identifier("b"),
-                TextKind::Identifier("c")
+                TextKind::Identifier(None, "test"),
+                TextKind::Identifier(None, "a"),
+                TextKind::Identifier(None, "b"),
+                TextKind::Identifier(None, "c")
             ]),
             strs
         );
@@ -306,10 +360,10 @@ mod tests {
         let strs: HashSet<_> = expr_text(&e).collect();
         assert_eq!(
             HashSet::from([
-                TextKind::Identifier("a"),
-                TextKind::Identifier("b"),
-                TextKind::Identifier("c"),
-                TextKind::String("this is a test"),
+                TextKind::Identifier(None, "a"),
+                TextKind::Identifier(None, "b"),
+                TextKind::Identifier(None, "c"),
+                TextKind::String(None, "this is a test"),
             ]),
             strs
         );
@@ -320,7 +374,8 @@ mod tests {
         let r = Expr::record([
             ("a1".into(), Expr::val(true)),
             ("a2".into(), Expr::val(false)),
-        ]);
+        ])
+        .unwrap();
         let e = Expr::ite(
             Expr::get_attr(
                 Expr::val(EntityUID::from_str("another::\"euid\"").unwrap()),
@@ -334,12 +389,12 @@ mod tests {
 
         assert_eq!(
             HashSet::from([
-                TextKind::Identifier("a1"),
-                TextKind::Identifier("a2"),
-                TextKind::Identifier("another"),
-                TextKind::Identifier("euid"),
-                TextKind::Identifier("myattr"),
-                TextKind::Identifier("myattr2"),
+                TextKind::Identifier(None, "a1"),
+                TextKind::Identifier(None, "a2"),
+                TextKind::Identifier(None, "another"),
+                TextKind::Identifier(None, "euid"),
+                TextKind::Identifier(None, "myattr"),
+                TextKind::Identifier(None, "myattr2"),
             ]),
             strs
         );
@@ -350,7 +405,10 @@ mod tests {
         let e = Expr::call_extension_fn("test".parse().unwrap(), vec![Expr::val("arg")]);
         let strs: HashSet<_> = expr_text(&e).collect();
         assert_eq!(
-            HashSet::from([TextKind::Identifier("test"), TextKind::String("arg"),]),
+            HashSet::from([
+                TextKind::Identifier(None, "test"),
+                TextKind::String(None, "arg"),
+            ]),
             strs
         );
     }
@@ -362,7 +420,7 @@ mod tests {
         let strs: HashSet<_> = expr_text(&e).collect();
 
         assert_eq!(
-            HashSet::from([TextKind::Pattern(&p), TextKind::String("test")]),
+            HashSet::from([TextKind::Pattern(None, &p), TextKind::String(None, "test")]),
             strs
         );
     }

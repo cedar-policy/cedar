@@ -14,10 +14,14 @@
  * limitations under the License.
  */
 
-use super::{Expr, ExprKind, Literal, Name};
+use super::{
+    unwrap_or_clone, EntityUID, Expr, ExprConstructionError, ExprKind, Literal, Name, PartialValue,
+    Unknown, Value,
+};
 use crate::entities::JsonSerializationError;
 use crate::parser;
 use crate::parser::err::ParseErrors;
+use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::hash::{Hash, Hasher};
@@ -90,6 +94,12 @@ impl RestrictedExpr {
         Self::new_unchecked(Expr::val(v))
     }
 
+    /// Create a `RestrictedExpr` that's just a single `Unknown`.
+    pub fn unknown(u: Unknown) -> Self {
+        // All unknowns are valid restricted-exprs
+        Self::new_unchecked(Expr::unknown(u))
+    }
+
     /// Create a `RestrictedExpr` which evaluates to a Set of the given `RestrictedExpr`s
     pub fn set(exprs: impl IntoIterator<Item = RestrictedExpr>) -> Self {
         // Set expressions are valid restricted-exprs if their elements are; and
@@ -98,16 +108,26 @@ impl RestrictedExpr {
         Self::new_unchecked(Expr::set(exprs.into_iter().map(Into::into)))
     }
 
-    /// Create a `RestrictedExpr` which evaluates to a Record with the given (key, value) pairs.
-    pub fn record(pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>) -> Self {
+    /// Create a `RestrictedExpr` which evaluates to a Record with the given
+    /// (key, value) pairs.
+    ///
+    /// Throws an error if any key occurs two or more times.
+    pub fn record(
+        pairs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
+    ) -> Result<Self, ExprConstructionError> {
         // Record expressions are valid restricted-exprs if their elements are;
         // and we know the elements are because we require `RestrictedExpr`s in
         // the parameter
-        Self::new_unchecked(Expr::record(pairs.into_iter().map(|(k, v)| (k, v.into()))))
+        Ok(Self::new_unchecked(Expr::record(
+            pairs.into_iter().map(|(k, v)| (k, v.into())),
+        )?))
     }
 
     /// Create a `RestrictedExpr` which calls the given extension function
-    pub fn call_extension_fn(function_name: Name, args: Vec<RestrictedExpr>) -> Self {
+    pub fn call_extension_fn(
+        function_name: Name,
+        args: impl IntoIterator<Item = RestrictedExpr>,
+    ) -> Self {
         // Extension-function calls are valid restricted-exprs if their
         // arguments are; and we know the arguments are because we require
         // `RestrictedExpr`s in the parameter
@@ -116,10 +136,158 @@ impl RestrictedExpr {
             args.into_iter().map(Into::into).collect(),
         ))
     }
+
+    /// Write a RestrictedExpr in "natural JSON" format.
+    ///
+    /// Used to output the context as a map from Strings to JSON Values
+    pub fn to_natural_json(&self) -> Result<serde_json::Value, JsonSerializationError> {
+        self.as_borrowed().to_natural_json()
+    }
+
+    /// Get the `bool` value of this `RestrictedExpr` if it's a boolean, or
+    /// `None` if it is not a boolean
+    pub fn as_bool(&self) -> Option<bool> {
+        // the only way a `RestrictedExpr` can be a boolean is if it's a literal
+        match self.expr_kind() {
+            ExprKind::Lit(Literal::Bool(b)) => Some(*b),
+            _ => None,
+        }
+    }
+
+    /// Get the `i64` value of this `RestrictedExpr` if it's a long, or `None`
+    /// if it is not a long
+    pub fn as_long(&self) -> Option<i64> {
+        // the only way a `RestrictedExpr` can be a long is if it's a literal
+        match self.expr_kind() {
+            ExprKind::Lit(Literal::Long(i)) => Some(*i),
+            _ => None,
+        }
+    }
+
+    /// Get the `SmolStr` value of this `RestrictedExpr` if it's a string, or
+    /// `None` if it is not a string
+    pub fn as_string(&self) -> Option<&SmolStr> {
+        // the only way a `RestrictedExpr` can be a string is if it's a literal
+        match self.expr_kind() {
+            ExprKind::Lit(Literal::String(s)) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// Get the `EntityUID` value of this `RestrictedExpr` if it's an entity
+    /// reference, or `None` if it is not an entity reference
+    pub fn as_euid(&self) -> Option<&EntityUID> {
+        // the only way a `RestrictedExpr` can be an entity reference is if it's
+        // a literal
+        match self.expr_kind() {
+            ExprKind::Lit(Literal::EntityUID(e)) => Some(e),
+            _ => None,
+        }
+    }
+
+    /// Get `Unknown` value of this `RestrictedExpr` if it's an `Unknown`, or
+    /// `None` if it is not an `Unknown`
+    pub fn as_unknown(&self) -> Option<&Unknown> {
+        match self.expr_kind() {
+            ExprKind::Unknown(u) => Some(u),
+            _ => None,
+        }
+    }
+
+    /// Iterate over the elements of the set if this `RestrictedExpr` is a set,
+    /// or `None` if it is not a set
+    pub fn as_set_elements<'s>(
+        &'s self,
+    ) -> Option<impl Iterator<Item = BorrowedRestrictedExpr<'s>>> {
+        match self.expr_kind() {
+            ExprKind::Set(set) => Some(set.iter().map(BorrowedRestrictedExpr::new_unchecked)), // since the RestrictedExpr invariant holds for the input set, it will hold for each element as well
+            _ => None,
+        }
+    }
+
+    /// Iterate over the (key, value) pairs of the record if this
+    /// `RestrictedExpr` is a record, or `None` if it is not a record
+    pub fn as_record_pairs<'s>(
+        &'s self,
+    ) -> Option<impl Iterator<Item = (&'s SmolStr, BorrowedRestrictedExpr<'s>)>> {
+        match self.expr_kind() {
+            ExprKind::Record(map) => Some(
+                map.iter()
+                    .map(|(k, v)| (k, BorrowedRestrictedExpr::new_unchecked(v))),
+            ), // since the RestrictedExpr invariant holds for the input record, it will hold for each attr value as well
+            _ => None,
+        }
+    }
+
+    /// Get the name and args of the called extension function if this
+    /// `RestrictedExpr` is an extension function call, or `None` if it is not
+    /// an extension function call
+    pub fn as_extn_fn_call<'s>(
+        &'s self,
+    ) -> Option<(&Name, impl Iterator<Item = BorrowedRestrictedExpr<'s>>)> {
+        match self.expr_kind() {
+            ExprKind::ExtensionFunctionApp { fn_name, args } => Some((
+                fn_name,
+                args.iter().map(BorrowedRestrictedExpr::new_unchecked),
+            )), // since the RestrictedExpr invariant holds for the input call, it will hold for each argument as well
+            _ => None,
+        }
+    }
+}
+
+impl From<Value> for RestrictedExpr {
+    fn from(value: Value) -> RestrictedExpr {
+        match value {
+            Value::Lit(lit) => RestrictedExpr::val(lit),
+            Value::Set(set) => {
+                RestrictedExpr::set(set.iter().map(|val| RestrictedExpr::from(val.clone())))
+            }
+            // PANIC SAFETY: cannot have duplicate key because the input was already a BTreeMap
+            #[allow(clippy::expect_used)]
+            Value::Record(map) => RestrictedExpr::record(
+                unwrap_or_clone(map)
+                    .into_iter()
+                    .map(|(k, v)| (k, RestrictedExpr::from(v))),
+            )
+            .expect("can't have duplicate keys, because the input `map` was already a BTreeMap"),
+            Value::ExtensionValue(ev) => {
+                let ev = unwrap_or_clone(ev);
+                RestrictedExpr::call_extension_fn(ev.constructor, ev.args)
+            }
+        }
+    }
+}
+
+impl TryFrom<PartialValue> for RestrictedExpr {
+    type Error = PartialValueToRestrictedExprError;
+    fn try_from(pvalue: PartialValue) -> Result<RestrictedExpr, PartialValueToRestrictedExprError> {
+        match pvalue {
+            PartialValue::Value(v) => Ok(RestrictedExpr::from(v)),
+            PartialValue::Residual(expr) => match RestrictedExpr::new(expr) {
+                Ok(e) => Ok(e),
+                Err(RestrictedExprError::InvalidRestrictedExpression { expr, .. }) => {
+                    Err(PartialValueToRestrictedExprError::NontrivialResidual {
+                        residual: Box::new(expr),
+                    })
+                }
+            },
+        }
+    }
+}
+
+/// Errors when converting `PartialValue` to `RestrictedExpr`
+#[derive(Debug, PartialEq, Diagnostic, Error)]
+pub enum PartialValueToRestrictedExprError {
+    /// The `PartialValue` contains a nontrivial residual that isn't a valid `RestrictedExpr`
+    #[error("residual is not a valid restricted expression: `{residual}`")]
+    NontrivialResidual {
+        /// Residual that isn't a valid `RestrictedExpr`
+        residual: Box<Expr>,
+    },
 }
 
 impl std::str::FromStr for RestrictedExpr {
-    type Err = RestrictedExprError;
+    type Err = RestrictedExprParseError;
 
     fn from_str(s: &str) -> Result<RestrictedExpr, Self::Err> {
         parser::parse_restrictedexpr(s)
@@ -128,7 +296,10 @@ impl std::str::FromStr for RestrictedExpr {
 
 /// While `RestrictedExpr` wraps an _owned_ `Expr`, `BorrowedRestrictedExpr`
 /// wraps a _borrowed_ `Expr`, with the same invariants.
-#[derive(Serialize, Hash, Debug, Clone, PartialEq, Eq)]
+///
+/// We derive `Copy` for this type because it's just a single reference, and
+/// `&T` is `Copy` for all `T`.
+#[derive(Serialize, Hash, Debug, Clone, PartialEq, Eq, Copy)]
 pub struct BorrowedRestrictedExpr<'a>(&'a Expr);
 
 impl<'a> BorrowedRestrictedExpr<'a> {
@@ -169,8 +340,102 @@ impl<'a> BorrowedRestrictedExpr<'a> {
     /// Used to output the context as a map from Strings to JSON Values
     pub fn to_natural_json(self) -> Result<serde_json::Value, JsonSerializationError> {
         Ok(serde_json::to_value(
-            crate::entities::JSONValue::from_expr(self)?,
+            crate::entities::CedarValueJson::from_expr(self)?,
         )?)
+    }
+
+    /// Convert `BorrowedRestrictedExpr` to `RestrictedExpr`.
+    /// This has approximately the cost of cloning the `Expr`.
+    pub fn to_owned(self) -> RestrictedExpr {
+        RestrictedExpr::new_unchecked(self.0.clone())
+    }
+
+    /// Get the `bool` value of this `RestrictedExpr` if it's a boolean, or
+    /// `None` if it is not a boolean
+    pub fn as_bool(&self) -> Option<bool> {
+        // the only way a `RestrictedExpr` can be a boolean is if it's a literal
+        match self.expr_kind() {
+            ExprKind::Lit(Literal::Bool(b)) => Some(*b),
+            _ => None,
+        }
+    }
+
+    /// Get the `i64` value of this `RestrictedExpr` if it's a long, or `None`
+    /// if it is not a long
+    pub fn as_long(&self) -> Option<i64> {
+        // the only way a `RestrictedExpr` can be a long is if it's a literal
+        match self.expr_kind() {
+            ExprKind::Lit(Literal::Long(i)) => Some(*i),
+            _ => None,
+        }
+    }
+
+    /// Get the `SmolStr` value of this `RestrictedExpr` if it's a string, or
+    /// `None` if it is not a string
+    pub fn as_string(&self) -> Option<&SmolStr> {
+        // the only way a `RestrictedExpr` can be a string is if it's a literal
+        match self.expr_kind() {
+            ExprKind::Lit(Literal::String(s)) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// Get the `EntityUID` value of this `RestrictedExpr` if it's an entity
+    /// reference, or `None` if it is not an entity reference
+    pub fn as_euid(&self) -> Option<&EntityUID> {
+        // the only way a `RestrictedExpr` can be an entity reference is if it's
+        // a literal
+        match self.expr_kind() {
+            ExprKind::Lit(Literal::EntityUID(e)) => Some(e),
+            _ => None,
+        }
+    }
+
+    /// Get `Unknown` value of this `RestrictedExpr` if it's an `Unknown`, or
+    /// `None` if it is not an `Unknown`
+    pub fn as_unknown(&self) -> Option<&Unknown> {
+        match self.expr_kind() {
+            ExprKind::Unknown(u) => Some(u),
+            _ => None,
+        }
+    }
+
+    /// Iterate over the elements of the set if this `RestrictedExpr` is a set,
+    /// or `None` if it is not a set
+    pub fn as_set_elements(&self) -> Option<impl Iterator<Item = BorrowedRestrictedExpr<'_>>> {
+        match self.expr_kind() {
+            ExprKind::Set(set) => Some(set.iter().map(BorrowedRestrictedExpr::new_unchecked)), // since the RestrictedExpr invariant holds for the input set, it will hold for each element as well
+            _ => None,
+        }
+    }
+
+    /// Iterate over the (key, value) pairs of the record if this
+    /// `RestrictedExpr` is a record, or `None` if it is not a record
+    pub fn as_record_pairs(
+        &self,
+    ) -> Option<impl Iterator<Item = (&'_ SmolStr, BorrowedRestrictedExpr<'_>)>> {
+        match self.expr_kind() {
+            ExprKind::Record(map) => Some(
+                map.iter()
+                    .map(|(k, v)| (k, BorrowedRestrictedExpr::new_unchecked(v))),
+            ), // since the RestrictedExpr invariant holds for the input record, it will hold for each attr value as well
+            _ => None,
+        }
+    }
+
+    /// Get the name and args of the called extension function if this
+    /// `RestrictedExpr` is an extension function call, or `None` if it is not
+    /// an extension function call
+    pub fn as_extn_fn_call(
+        &self,
+    ) -> Option<(&Name, impl Iterator<Item = BorrowedRestrictedExpr<'_>>)> {
+        match self.expr_kind() {
+            ExprKind::ExtensionFunctionApp { fn_name, args } => Some((
+                fn_name,
+                args.iter().map(BorrowedRestrictedExpr::new_unchecked),
+            )), // since the RestrictedExpr invariant holds for the input call, it will hold for each argument as well
+            _ => None,
+        }
     }
 }
 
@@ -180,7 +445,7 @@ impl<'a> BorrowedRestrictedExpr<'a> {
 fn is_restricted(expr: &Expr) -> Result<(), RestrictedExprError> {
     match expr.expr_kind() {
         ExprKind::Lit(_) => Ok(()),
-        ExprKind::Unknown { .. } => Ok(()),
+        ExprKind::Unknown(_) => Ok(()),
         ExprKind::Var(_) => Err(RestrictedExprError::InvalidRestrictedExpression {
             feature: "variables".into(),
             expr: expr.clone(),
@@ -225,9 +490,13 @@ fn is_restricted(expr: &Expr) -> Result<(), RestrictedExprError> {
             feature: "'like'".into(),
             expr: expr.clone(),
         }),
+        ExprKind::Is { .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
+            feature: "'is'".into(),
+            expr: expr.clone(),
+        }),
         ExprKind::ExtensionFunctionApp { args, .. } => args.iter().try_for_each(is_restricted),
         ExprKind::Set(exprs) => exprs.iter().try_for_each(is_restricted),
-        ExprKind::Record { pairs } => pairs.iter().map(|(_, v)| v).try_for_each(is_restricted),
+        ExprKind::Record(map) => map.values().try_for_each(is_restricted),
     }
 }
 
@@ -320,9 +589,9 @@ impl<'a> Hash for RestrictedExprShapeOnly<'a> {
     }
 }
 
-/// Errors related to restricted expressions
+/// Error when constructing a restricted expression from unrestricted
 
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
 pub enum RestrictedExprError {
     /// An expression was expected to be a "restricted" expression, but contained
     /// a feature that is not allowed in restricted expressions. The `feature`
@@ -336,8 +605,78 @@ pub enum RestrictedExprError {
         /// the (sub-)expression that uses the disallowed feature
         expr: Expr,
     },
+}
 
-    /// Failed to parse the expression that the restricted expression wraps.
+/// Errors possible from `RestrictedExpr::from_str()`
+#[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
+pub enum RestrictedExprParseError {
+    /// Failed to parse the expression entirely
     #[error("failed to parse restricted expression: {0}")]
+    #[diagnostic(transparent)]
     Parse(#[from] ParseErrors),
+    /// Parsed successfully as an expression, but failed to construct a
+    /// restricted expression, for the reason indicated in the underlying error
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    RestrictedExpr(#[from] RestrictedExprError),
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::parser::err::{ParseError, ToASTError, ToASTErrorKind};
+    use std::str::FromStr;
+
+    #[test]
+    fn duplicate_key() {
+        // duplicate key is an error when mapped to values of different types
+        assert_eq!(
+            RestrictedExpr::record([
+                ("foo".into(), RestrictedExpr::val(37),),
+                ("foo".into(), RestrictedExpr::val("hello"),),
+            ]),
+            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+        );
+
+        // duplicate key is an error when mapped to different values of same type
+        assert_eq!(
+            RestrictedExpr::record([
+                ("foo".into(), RestrictedExpr::val(37),),
+                ("foo".into(), RestrictedExpr::val(101),),
+            ]),
+            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+        );
+
+        // duplicate key is an error when mapped to the same value multiple times
+        assert_eq!(
+            RestrictedExpr::record([
+                ("foo".into(), RestrictedExpr::val(37),),
+                ("foo".into(), RestrictedExpr::val(37),),
+            ]),
+            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+        );
+
+        // duplicate key is an error even when other keys appear in between
+        assert_eq!(
+            RestrictedExpr::record([
+                ("bar".into(), RestrictedExpr::val(-3),),
+                ("foo".into(), RestrictedExpr::val(37),),
+                ("spam".into(), RestrictedExpr::val("eggs"),),
+                ("foo".into(), RestrictedExpr::val(37),),
+                ("eggs".into(), RestrictedExpr::val("spam"),),
+            ]),
+            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
+        );
+
+        // duplicate key is also an error when parsing from string
+        assert_eq!(
+            RestrictedExpr::from_str(r#"{ foo: 37, bar: "hi", foo: 101 }"#),
+            Err(RestrictedExprParseError::Parse(ParseErrors(vec![
+                ParseError::ToAST(ToASTError::new(
+                    ToASTErrorKind::DuplicateKeyInRecordLiteral { key: "foo".into() },
+                    miette::SourceSpan::from(0..32)
+                ))
+            ]))),
+        )
+    }
 }

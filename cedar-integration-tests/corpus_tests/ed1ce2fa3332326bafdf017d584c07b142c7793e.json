@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "o::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "o::\"\"",
+      "principal": {
+        "type": "o",
+        "id": ""
+      },
+      "resource": {
+        "type": "o",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Bcqs20000": ""
       },
@@ -20,9 +29,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "o::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "o::\"\"",
+      "principal": {
+        "type": "o",
+        "id": ""
+      },
+      "resource": {
+        "type": "o",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Bcqs20000": ""
       },
@@ -34,9 +52,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "o::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "o::\"\"",
+      "principal": {
+        "type": "o",
+        "id": ""
+      },
+      "resource": {
+        "type": "o",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Bcqs20000": ""
       },
@@ -48,9 +75,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "o::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "o::\"\"",
+      "principal": {
+        "type": "o",
+        "id": ""
+      },
+      "resource": {
+        "type": "o",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Bcqs20000": ""
       },
@@ -62,9 +98,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "o::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "o::\"\"",
+      "principal": {
+        "type": "o",
+        "id": ""
+      },
+      "resource": {
+        "type": "o",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Bcqs20000": ""
       },
@@ -76,9 +121,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "o::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "o::\"\"",
+      "principal": {
+        "type": "o",
+        "id": ""
+      },
+      "resource": {
+        "type": "o",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Bcqs20000": ""
       },
@@ -90,9 +144,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "o::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "o::\"\"",
+      "principal": {
+        "type": "o",
+        "id": ""
+      },
+      "resource": {
+        "type": "o",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Bcqs20000": ""
       },
@@ -104,9 +167,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "o::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "o::\"\"",
+      "principal": {
+        "type": "o",
+        "id": ""
+      },
+      "resource": {
+        "type": "o",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {
         "Bcqs20000": ""
       },

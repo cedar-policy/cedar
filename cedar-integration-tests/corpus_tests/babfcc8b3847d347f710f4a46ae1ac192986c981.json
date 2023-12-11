@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "a::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"66\"",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": "66"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -16,86 +25,149 @@
     },
     {
       "desc": "Query 1",
-      "principal": "a::\"66\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"66\"",
+      "principal": {
+        "type": "a",
+        "id": "66"
+      },
+      "resource": {
+        "type": "a",
+        "id": "66"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
       ]
     },
     {
       "desc": "Query 2",
-      "principal": "a::\"66\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"66\"",
+      "principal": {
+        "type": "a",
+        "id": "66"
+      },
+      "resource": {
+        "type": "a",
+        "id": "66"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
       ]
     },
     {
       "desc": "Query 3",
-      "principal": "a::\"66\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"66\"",
+      "principal": {
+        "type": "a",
+        "id": "66"
+      },
+      "resource": {
+        "type": "a",
+        "id": "66"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
       ]
     },
     {
       "desc": "Query 4",
-      "principal": "a::\"66\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"66\"",
+      "principal": {
+        "type": "a",
+        "id": "66"
+      },
+      "resource": {
+        "type": "a",
+        "id": "66"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
       ]
     },
     {
       "desc": "Query 5",
-      "principal": "a::\"66\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"66\"",
+      "principal": {
+        "type": "a",
+        "id": "66"
+      },
+      "resource": {
+        "type": "a",
+        "id": "66"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
       ]
     },
     {
       "desc": "Query 6",
-      "principal": "a::\"66\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"66\"",
+      "principal": {
+        "type": "a",
+        "id": "66"
+      },
+      "resource": {
+        "type": "a",
+        "id": "66"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
       ]
     },
     {
       "desc": "Query 7",
-      "principal": "a::\"66\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"66\"",
+      "principal": {
+        "type": "a",
+        "id": "66"
+      },
+      "resource": {
+        "type": "a",
+        "id": "66"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
       ]
     }
   ]

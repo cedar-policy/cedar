@@ -6,98 +6,170 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "Ruwa1u::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "Ruwa1u::\"\"",
+      "principal": {
+        "type": "Ruwa1u",
+        "id": ""
+      },
+      "resource": {
+        "type": "Ruwa1u",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `Ruwa1u`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `Ruwa1u`)"
       ]
     },
     {
       "desc": "Query 1",
-      "principal": "Ruwa1u::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "Ruwa1u::\"\"",
+      "principal": {
+        "type": "Ruwa1u",
+        "id": ""
+      },
+      "resource": {
+        "type": "Ruwa1u",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `Ruwa1u`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `Ruwa1u`)"
       ]
     },
     {
       "desc": "Query 2",
-      "principal": "Ruwa1u::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "Ruwa1u::\"\"",
+      "principal": {
+        "type": "Ruwa1u",
+        "id": ""
+      },
+      "resource": {
+        "type": "Ruwa1u",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `Ruwa1u`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `Ruwa1u`)"
       ]
     },
     {
       "desc": "Query 3",
-      "principal": "Ruwa1u::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "Ruwa1u::\"\"",
+      "principal": {
+        "type": "Ruwa1u",
+        "id": ""
+      },
+      "resource": {
+        "type": "Ruwa1u",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `Ruwa1u`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `Ruwa1u`)"
       ]
     },
     {
       "desc": "Query 4",
-      "principal": "Ruwa1u::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "Ruwa1u::\"\"",
+      "principal": {
+        "type": "Ruwa1u",
+        "id": ""
+      },
+      "resource": {
+        "type": "Ruwa1u",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `Ruwa1u`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `Ruwa1u`)"
       ]
     },
     {
       "desc": "Query 5",
-      "principal": "Ruwa1u::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "Ruwa1u::\"\"",
+      "principal": {
+        "type": "Ruwa1u",
+        "id": ""
+      },
+      "resource": {
+        "type": "Ruwa1u",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `Ruwa1u`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `Ruwa1u`)"
       ]
     },
     {
       "desc": "Query 6",
-      "principal": "Ruwa1u::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "Ruwa1u::\"\"",
+      "principal": {
+        "type": "Ruwa1u",
+        "id": ""
+      },
+      "resource": {
+        "type": "Ruwa1u",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `Ruwa1u`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `Ruwa1u`)"
       ]
     },
     {
       "desc": "Query 7",
-      "principal": "Ruwa1u::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "Ruwa1u::\"\"",
+      "principal": {
+        "type": "Ruwa1u",
+        "id": ""
+      },
+      "resource": {
+        "type": "Ruwa1u",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `Ruwa1u`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `Ruwa1u`)"
       ]
     }
   ]

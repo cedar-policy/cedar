@@ -31,6 +31,7 @@ match {
     "in" => IN,
     "has" => HAS,
     "like" => LIKE,
+    "is" => IS,
     "then" => THEN,
     "else" => ELSE,
 
@@ -43,6 +44,7 @@ match {
     // Valid slots, hardcoded for now, may be generalized later
     "?principal" => PRINCIPAL_SLOT,
     "?resource" => RESOURCE_SLOT,
+    r"\?[_a-zA-Z][_a-zA-Z0-9]*" => OTHER_SLOT,
 
     // data input
     r"[_a-zA-Z][_a-zA-Z0-9]*" => IDENTIFIER,
@@ -94,9 +96,9 @@ pub Policy: Node<Option<cst::Policy>> = {
 
 // VariableDef := Variable [':' Name] [('in' | '==') Expr]
 VariableDef: Node<Option<cst::VariableDef>> = {
-    <l:@L> <variable: AnyIdent> <name: (":" <Name>)?>
+    <l:@L> <variable: AnyIdent> <unused_type_name: (":" <Name>)?> <entity_type: (IS <Name>)?>
         <ineq: (RelOp Expr)?> <r:@R>
-        => Node::new(Some(cst::VariableDef{ variable,name,ineq }),l,r),
+        => Node::new(Some(cst::VariableDef{ variable,unused_type_name,entity_type,ineq, }),l,r),
 }
 
 // Identifier, but not the special ones
@@ -123,6 +125,8 @@ CommonIdent: Node<Option<cst::Ident>> = {
         => Node::new(Some(cst::Ident::Has),l,r),
     <l:@L> LIKE <r:@R>
         => Node::new(Some(cst::Ident::Like),l,r),
+    <l:@L> IS <r:@R>
+        => Node::new(Some(cst::Ident::Is),l,r),
     <l:@L> THEN <r:@R>
         => Node::new(Some(cst::Ident::Then),l,r),
     <l:@L> ELSE <r:@R>
@@ -174,7 +178,7 @@ And: Node<Option<cst::And>> = {
     <l:@L> <i:Relation> <e:("&&" <Relation>)*> <r:@R>
         => Node::new(Some(cst::And{initial: i, extended: e}),l,r),
 }
-// Relation := Add {RelOp Add} | Add HAS Add | Add LIKE Add
+// Relation := Add {RelOp Add} | Add HAS Add | Add LIKE Add | Add IS Name (IN Add)?
 Relation: Node<Option<cst::Relation>> = {
     <l:@L> <i:Add> <e:(RelOp Add)*> <r:@R>
         => Node::new(Some(cst::Relation::Common{initial: i, extended: e}),l,r),
@@ -194,6 +198,8 @@ Relation: Node<Option<cst::Relation>> = {
     },
     <l:@L> <t:Add> LIKE <p:Add> <r:@R>
         => Node::new(Some(cst::Relation::Like{target: t, pattern: p}),l,r),
+    <l:@L> <t:Add> IS <n:Name> <e: (IN <Add>)?> <r:@R>
+        => Node::new(Some(cst::Relation::IsIn{target: t, entity_type: n, in_entity: e}),l,r),
 }
 // RelOp     := '<' | '<=' | '>=' | '>' | '!=' | '==' | 'in'
 RelOp: cst::RelOp = {
@@ -340,6 +346,8 @@ Slot: Node<Option<cst::Slot>> = {
         => Node::new(Some(cst::Slot::Principal), l, r),
     <l:@L> RESOURCE_SLOT <r:@R>
         => Node::new(Some(cst::Slot::Resource), l, r),
+    <l:@L> <s: OTHER_SLOT> <r:@R>
+        => Node::new(Some(cst::Slot::Other(s.into())), l, r),
 }
 
 // LITERAL   := BOOL | INT | STR

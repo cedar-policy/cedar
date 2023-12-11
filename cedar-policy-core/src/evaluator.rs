@@ -17,7 +17,7 @@
 //! This module contains the Cedar evaluator.
 
 use crate::ast::*;
-use crate::entities::{Dereference, Entities, EntityAttrValues};
+use crate::entities::{Dereference, Entities};
 use crate::extensions::Extensions;
 #[cfg(test)]
 use std::collections::HashMap;
@@ -62,10 +62,6 @@ pub struct Evaluator<'e> {
     entities: &'e Entities,
     /// Extensions which are active for this evaluation
     extensions: &'e Extensions<'e>,
-    /// Entity attribute value cache
-    ///
-    /// We evaluate entity attribute expressions upon the creation of an evaluator.
-    entity_attr_values: EntityAttrValues<'e>,
 }
 
 /// Evaluator for "restricted" expressions. See notes on `RestrictedExpr`.
@@ -109,16 +105,24 @@ impl<'e> RestrictedEvaluator<'e> {
                     Either::Right(residuals) => Ok(Expr::set(residuals).into()),
                 }
             }
-            ExprKind::Unknown{name, type_annotation} => Ok(PartialValue::Residual(Expr::unknown_with_type(name.clone(), type_annotation.clone()))),
-            ExprKind::Record { pairs } => {
-                let map = pairs
+            ExprKind::Unknown(u) => Ok(PartialValue::unknown(u.clone())),
+            ExprKind::Record(map) => {
+                let map = map
                     .iter()
                     .map(|(k, v)| Ok((k.clone(), self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(v))?))) // assuming the invariant holds for `e`, it will hold here
                     .collect::<Result<Vec<_>>>()?;
                 let (names, attrs) : (Vec<_>, Vec<_>) = map.into_iter().unzip();
                 match split(attrs) {
                     Either::Left(values) => Ok(Value::Record(Arc::new(names.into_iter().zip(values).collect())).into()),
-                    Either::Right(residuals) => Ok(Expr::record(names.into_iter().zip(residuals)).into()),
+                    Either::Right(residuals) => {
+                        // PANIC SAFETY: can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`
+                        #[allow(clippy::expect_used)]
+                        Ok(
+                            Expr::record(names.into_iter().zip(residuals))
+                                .expect("can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`")
+                                .into()
+                        )
+                    }
                 }
             }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
@@ -142,43 +146,24 @@ impl<'e> RestrictedEvaluator<'e> {
     }
 }
 
-impl<'q, 'e> Evaluator<'e> {
+impl<'e> Evaluator<'e> {
     /// Create a fresh `Evaluator` for the given `request`, which uses the given
     /// `Entities` to resolve entity references. Use the given `Extension`s when
-    /// evaluating the request.
-    ///
-    /// (An `Entities` is the entity-hierarchy portion of a `Slice`, without the
-    /// policies.)
-    ///
-    /// Can throw an error, eg if evaluating attributes in the `context` throws
-    /// an error.
-    pub fn new(
-        q: &'q Request,
-        entities: &'e Entities,
-        extensions: &'e Extensions<'e>,
-    ) -> Result<Self> {
-        // Eagerly evaluate each attribute expression in the entities.
-        let entity_attr_values = entities.get_attr_values()?;
-        Ok(Self {
-            principal: q.principal().clone(),
-            action: q.action().clone(),
-            resource: q.resource().clone(),
+    /// evaluating.
+    pub fn new(q: Request, entities: &'e Entities, extensions: &'e Extensions<'e>) -> Self {
+        Self {
+            principal: q.principal,
+            action: q.action,
+            resource: q.resource,
             context: {
-                // evaluate each of the context attributes in an evaluator
-                // for "restricted" expressions.
-                // This prohibits them from referring to the `request`,
-                // ie, the variables `principal`, `resource`, etc.
-                // For more, see notes on `RestrictedExpr`.
-                let restricted_eval = RestrictedEvaluator::new(extensions);
-                match &q.context {
-                    None => PartialValue::Residual(Expr::unknown("context")),
-                    Some(ctxt) => restricted_eval.partial_interpret(ctxt.as_ref().as_borrowed())?,
+                match q.context {
+                    None => PartialValue::unknown(Unknown::new_untyped("context")),
+                    Some(ctx) => ctx.into(),
                 }
             },
             entities,
             extensions,
-            entity_attr_values,
-        })
+        }
     }
 
     /// Evaluate the given `Policy`, returning either a bool or an error.
@@ -262,7 +247,7 @@ impl<'q, 'e> Evaluator<'e> {
                 Var::Resource => Ok(self.resource.evaluate(*v)),
                 Var::Context => Ok(self.context.clone()),
             },
-            ExprKind::Unknown { .. } => Ok(PartialValue::Residual(e.clone())),
+            ExprKind::Unknown(_) => Ok(PartialValue::Residual(e.clone())),
             ExprKind::If {
                 test_expr,
                 then_expr,
@@ -402,8 +387,8 @@ impl<'q, 'e> Evaluator<'e> {
                                 // If arg2 is a record, then possibly they intended `arg2 has arg1`.
                                 if matches!(e.error_kind(), EvaluationErrorKind::TypeError { .. }) {
                                     match arg2 {
-                                        Value::Set(_) => e.set_advice("`in` is for checking the entity hierarchy, use `.contains()` to test set membership".into()),
-                                        Value::Record(_) =>  e.set_advice("`in` is for checking the entity hierarchy, use `has` to test if a record has a key".into()),
+                                        Value::Set(_) => e.set_advice("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()),
+                                        Value::Record(_) =>  e.set_advice("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()),
                                         _ => {}
                                     }
                                 };
@@ -539,6 +524,19 @@ impl<'q, 'e> Evaluator<'e> {
                     PartialValue::Residual(r) => Ok(Expr::like(r, pattern.iter().cloned()).into()),
                 }
             }
+            ExprKind::Is { expr, entity_type } => {
+                let v = self.partial_interpret(expr, slots)?;
+                match v {
+                    PartialValue::Value(v) => Ok(match v.get_as_entity()?.entity_type() {
+                        EntityType::Specified(expr_entity_type) => entity_type == expr_entity_type,
+                        EntityType::Unspecified => false,
+                    }
+                    .into()),
+                    PartialValue::Residual(r) => {
+                        Ok(Expr::is_entity_type(r, entity_type.clone()).into())
+                    }
+                }
+            }
             ExprKind::Set(items) => {
                 let vals = items
                     .iter()
@@ -549,8 +547,8 @@ impl<'q, 'e> Evaluator<'e> {
                     Either::Right(r) => Ok(Expr::set(r).into()),
                 }
             }
-            ExprKind::Record { pairs } => {
-                let map = pairs
+            ExprKind::Record(map) => {
+                let map = map
                     .iter()
                     .map(|(k, v)| Ok((k.clone(), self.partial_interpret(v, slots)?)))
                     .collect::<Result<Vec<_>>>()?;
@@ -559,7 +557,15 @@ impl<'q, 'e> Evaluator<'e> {
                     Either::Left(vals) => {
                         Ok(Value::Record(Arc::new(names.into_iter().zip(vals).collect())).into())
                     }
-                    Either::Right(rs) => Ok(Expr::record(names.into_iter().zip(rs)).into()),
+                    Either::Right(rs) => {
+                        // PANIC SAFETY: can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`
+                        #[allow(clippy::expect_used)]
+                        Ok(
+                            Expr::record(names.into_iter().zip(rs))
+                                .expect("can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`")
+                                .into()
+                        )
+                    }
                 }
             }
         }
@@ -636,33 +642,32 @@ impl<'q, 'e> Evaluator<'e> {
             // PE Cases
             PartialValue::Residual(e) => {
                 match e.expr_kind() {
-                    ExprKind::Record { pairs } => {
+                    ExprKind::Record(map) => {
                         // If we have a residual record, we evaluate as follows:
                         // 1) If it's safe to project, we can project. We can evaluate to see if this attribute can become a value
                         // 2) If it's not safe to project, we can check to see if the requested key exists in the record
-                        //    if it doens't, we can fail early
+                        //    if it doesn't, we can fail early
                         if e.is_projectable() {
-                            pairs
-                                .as_ref()
+                            map.as_ref()
                                 .iter()
                                 .filter_map(|(k, v)| if k == attr { Some(v) } else { None })
                                 .next()
                                 .ok_or_else(|| {
                                     EvaluationError::record_attr_does_not_exist(
                                         attr.clone(),
-                                        pairs.iter().map(|(f, _)| f.clone()).collect(),
+                                        map.keys().cloned().collect(),
                                     )
                                 })
                                 .and_then(|e| self.partial_interpret(e, slots))
-                        } else if pairs.iter().any(|(k, _v)| k == attr) {
+                        } else if map.keys().any(|k| k == attr) {
                             Ok(PartialValue::Residual(Expr::get_attr(
-                                Expr::record(pairs.as_ref().clone()), // We should try to avoid this copy
+                                Expr::record_arc(Arc::clone(map)),
                                 attr.clone(),
                             )))
                         } else {
                             Err(EvaluationError::record_attr_does_not_exist(
                                 attr.clone(),
-                                pairs.iter().map(|(f, _)| f.clone()).collect(),
+                                map.keys().cloned().collect(),
                             ))
                         }
                     }
@@ -681,19 +686,19 @@ impl<'q, 'e> Evaluator<'e> {
                 })
                 .map(|v| PartialValue::Value(v.clone())),
             PartialValue::Value(Value::Lit(Literal::EntityUID(uid))) => {
-                match self.entity_attr_values.get(uid.as_ref()) {
+                match self.entities.entity(uid.as_ref()) {
                     Dereference::NoSuchEntity => Err(match *uid.entity_type() {
                         EntityType::Unspecified => {
                             EvaluationError::unspecified_entity_access(attr.clone())
                         }
-                        EntityType::Concrete(_) => {
+                        EntityType::Specified(_) => {
                             EvaluationError::entity_does_not_exist(uid.clone())
                         }
                     }),
                     Dereference::Residual(r) => {
                         Ok(PartialValue::Residual(Expr::get_attr(r, attr.clone())))
                     }
-                    Dereference::Data(attrs) => attrs
+                    Dereference::Data(entity) => entity
                         .get(attr)
                         .ok_or_else(|| {
                             EvaluationError::entity_attr_does_not_exist(uid, attr.clone())
@@ -827,7 +832,7 @@ pub mod test {
     use super::*;
 
     use crate::{
-        entities::{EntityJsonParser, TCComputation},
+        entities::{EntityJsonParser, NoEntitiesSchema, TCComputation},
         parser::{self, parse_policyset},
         parser::{parse_expr, parse_policy_template},
     };
@@ -840,17 +845,25 @@ pub mod test {
             EntityUID::with_eid("test_principal"),
             EntityUID::with_eid("test_action"),
             EntityUID::with_eid("test_resource"),
-            Context::from_pairs([
-                ("cur_time".into(), RestrictedExpr::val("03:22:11")),
-                (
-                    "device_properties".into(),
-                    RestrictedExpr::record(vec![
-                        ("os_name".into(), RestrictedExpr::val("Windows")),
-                        ("manufacturer".into(), RestrictedExpr::val("ACME Corp")),
-                    ]),
-                ),
-            ]),
+            Context::from_pairs(
+                [
+                    ("cur_time".into(), RestrictedExpr::val("03:22:11")),
+                    (
+                        "device_properties".into(),
+                        RestrictedExpr::record(vec![
+                            ("os_name".into(), RestrictedExpr::val("Windows")),
+                            ("manufacturer".into(), RestrictedExpr::val("ACME Corp")),
+                        ])
+                        .unwrap(),
+                    ),
+                ],
+                Extensions::none(),
+            )
+            .unwrap(),
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
         )
+        .unwrap()
     }
 
     // Many of these tests use this basic `Entities`
@@ -862,7 +875,9 @@ pub mod test {
                 Entity::with_uid(EntityUID::with_eid("test_action")),
                 Entity::with_uid(EntityUID::with_eid("test_resource")),
             ],
+            None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
+            Extensions::none(),
         )
         .expect("failed to create basic entities")
     }
@@ -872,23 +887,36 @@ pub mod test {
         let entity_no_attrs_no_parents =
             Entity::with_uid(EntityUID::with_eid("entity_no_attrs_no_parents"));
         let mut entity_with_attrs = Entity::with_uid(EntityUID::with_eid("entity_with_attrs"));
-        entity_with_attrs.set_attr("spoon".into(), RestrictedExpr::val(787));
-        entity_with_attrs.set_attr(
-            "tags".into(),
-            RestrictedExpr::set(vec![
-                RestrictedExpr::val("fun"),
-                RestrictedExpr::val("good"),
-                RestrictedExpr::val("useful"),
-            ]),
-        );
-        entity_with_attrs.set_attr(
-            "address".into(),
-            RestrictedExpr::record(vec![
-                ("street".into(), RestrictedExpr::val("234 magnolia")),
-                ("town".into(), RestrictedExpr::val("barmstadt")),
-                ("country".into(), RestrictedExpr::val("amazonia")),
-            ]),
-        );
+        entity_with_attrs
+            .set_attr(
+                "spoon".into(),
+                RestrictedExpr::val(787),
+                &Extensions::none(),
+            )
+            .unwrap();
+        entity_with_attrs
+            .set_attr(
+                "tags".into(),
+                RestrictedExpr::set(vec![
+                    RestrictedExpr::val("fun"),
+                    RestrictedExpr::val("good"),
+                    RestrictedExpr::val("useful"),
+                ]),
+                &Extensions::none(),
+            )
+            .unwrap();
+        entity_with_attrs
+            .set_attr(
+                "address".into(),
+                RestrictedExpr::record(vec![
+                    ("street".into(), RestrictedExpr::val("234 magnolia")),
+                    ("town".into(), RestrictedExpr::val("barmstadt")),
+                    ("country".into(), RestrictedExpr::val("amazonia")),
+                ])
+                .unwrap(),
+                &Extensions::none(),
+            )
+            .unwrap();
         let mut child = Entity::with_uid(EntityUID::with_eid("child"));
         let mut parent = Entity::with_uid(EntityUID::with_eid("parent"));
         let grandparent = Entity::with_uid(EntityUID::with_eid("grandparent"));
@@ -914,7 +942,9 @@ pub mod test {
                 sibling,
                 unrelated,
             ],
+            None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
+            Extensions::all_available(),
         )
         .expect("Failed to create rich entities")
     }
@@ -929,7 +959,7 @@ pub mod test {
         let second = EntityUID::with_eid("joseph");
         let missing = EntityUID::with_eid("non-present");
         let parent = EntityUID::with_eid("parent");
-        let eval = Evaluator::new(&q, &entities, &exts).unwrap();
+        let eval = Evaluator::new(q, &entities, &exts);
 
         let e = Expr::binary_app(
             BinaryOp::In,
@@ -947,12 +977,22 @@ pub mod test {
         let r = eval.partial_eval_expr(&e).unwrap();
         let expected_residual = Expr::binary_app(
             BinaryOp::In,
-            Expr::unknown(format!("{missing}")),
+            Expr::unknown(Unknown::new_with_type(
+                format!("{missing}"),
+                Type::Entity {
+                    ty: EntityUID::test_entity_type(),
+                },
+            )),
             Expr::set([Expr::val(parent.clone()), Expr::val(second.clone())]),
         );
         let expected_residual2 = Expr::binary_app(
             BinaryOp::In,
-            Expr::unknown(format!("{missing}")),
+            Expr::unknown(Unknown::new_with_type(
+                format!("{missing}"),
+                Type::Entity {
+                    ty: EntityUID::test_entity_type(),
+                },
+            )),
             Expr::set([Expr::val(second), Expr::val(parent)]),
         );
 
@@ -969,7 +1009,7 @@ pub mod test {
         let child = EntityUID::with_eid("child");
         let missing = EntityUID::with_eid("non-present");
         let parent = EntityUID::with_eid("parent");
-        let eval = Evaluator::new(&q, &entities, &exts).unwrap();
+        let eval = Evaluator::new(q, &entities, &exts);
 
         let e = Expr::binary_app(BinaryOp::In, Expr::val(child), Expr::val(parent.clone()));
         let r = eval.partial_eval_expr(&e).unwrap();
@@ -983,7 +1023,12 @@ pub mod test {
         let r = eval.partial_eval_expr(&e).unwrap();
         let expected_residual = Expr::binary_app(
             BinaryOp::In,
-            Expr::unknown(format!("{missing}")),
+            Expr::unknown(Unknown::new_with_type(
+                format!("{missing}"),
+                Type::Entity {
+                    ty: EntityUID::test_entity_type(),
+                },
+            )),
             Expr::val(parent),
         );
         assert_eq!(r, Either::Right(expected_residual));
@@ -997,7 +1042,7 @@ pub mod test {
         let exts = Extensions::none();
         let has_attr = EntityUID::with_eid("entity_with_attrs");
         let missing = EntityUID::with_eid("missing");
-        let eval = Evaluator::new(&q, &entities, &exts).unwrap();
+        let eval = Evaluator::new(q, &entities, &exts);
 
         let e = Expr::has_attr(Expr::val(has_attr), "spoon".into());
         let r = eval.partial_eval_expr(&e).unwrap();
@@ -1005,7 +1050,15 @@ pub mod test {
 
         let e = Expr::has_attr(Expr::val(missing.clone()), "spoon".into());
         let r = eval.partial_eval_expr(&e).unwrap();
-        let expected_residual = Expr::has_attr(Expr::unknown(format!("{missing}")), "spoon".into());
+        let expected_residual = Expr::has_attr(
+            Expr::unknown(Unknown::new_with_type(
+                format!("{missing}"),
+                Type::Entity {
+                    ty: EntityUID::test_entity_type(),
+                },
+            )),
+            "spoon".into(),
+        );
         assert_eq!(r, Either::Right(expected_residual));
     }
 
@@ -1017,7 +1070,7 @@ pub mod test {
         let exts = Extensions::none();
         let has_attr = EntityUID::with_eid("entity_with_attrs");
         let missing = EntityUID::with_eid("missing");
-        let eval = Evaluator::new(&q, &entities, &exts).unwrap();
+        let eval = Evaluator::new(q, &entities, &exts);
 
         let e = Expr::get_attr(Expr::val(has_attr), "spoon".into());
         let r = eval.partial_eval_expr(&e).unwrap();
@@ -1025,7 +1078,15 @@ pub mod test {
 
         let e = Expr::get_attr(Expr::val(missing.clone()), "spoon".into());
         let r = eval.partial_eval_expr(&e).unwrap();
-        let expected_residual = Expr::get_attr(Expr::unknown(format!("{missing}")), "spoon".into());
+        let expected_residual = Expr::get_attr(
+            Expr::unknown(Unknown::new_with_type(
+                format!("{missing}"),
+                Type::Entity {
+                    ty: EntityUID::test_entity_type(),
+                },
+            )),
+            "spoon".into(),
+        );
         assert_eq!(r, Either::Right(expected_residual));
     }
 
@@ -1034,7 +1095,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val(false)),
             Ok(Value::Lit(Literal::Bool(false)))
@@ -1066,7 +1127,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val(EntityUID::with_eid("foo"))),
             Ok(Value::Lit(Literal::EntityUID(Arc::new(
@@ -1097,7 +1158,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         assert_eq!(
             eval.interpret_inline_policy(&Expr::var(Var::Principal)),
             Ok(Value::Lit(Literal::EntityUID(Arc::new(
@@ -1123,7 +1184,7 @@ pub mod test {
         let request = basic_request();
         let entities = rich_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // has_attr on an entity with no attrs
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(
@@ -1219,7 +1280,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // if true then 3 else 8
         assert_eq!(
             eval.interpret_inline_policy(&Expr::ite(Expr::val(true), Expr::val(3), Expr::val(8))),
@@ -1348,7 +1409,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::ite(
                 Expr::val(true),
                 Expr::val(3),
-                Expr::get_attr(Expr::record(vec![]), "foo".into()),
+                Expr::get_attr(Expr::record(vec![]).unwrap(), "foo".into()),
             )),
             Ok(Value::Lit(Literal::Long(3)))
         );
@@ -1357,7 +1418,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::ite(
                 Expr::val(false),
                 Expr::val(3),
-                Expr::get_attr(Expr::record(vec![]), "foo".into()),
+                Expr::get_attr(Expr::record(vec![]).unwrap(), "foo".into()),
             )),
             Err(EvaluationError::record_attr_does_not_exist(
                 "foo".into(),
@@ -1368,7 +1429,7 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::ite(
                 Expr::val(true),
-                Expr::get_attr(Expr::record(vec![]), "foo".into()),
+                Expr::get_attr(Expr::record(vec![]).unwrap(), "foo".into()),
                 Expr::val(3),
             )),
             Err(EvaluationError::record_attr_does_not_exist(
@@ -1380,7 +1441,7 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::ite(
                 Expr::val(false),
-                Expr::get_attr(Expr::record(vec![]), "foo".into()),
+                Expr::get_attr(Expr::record(vec![]).unwrap(), "foo".into()),
                 Expr::val(3),
             )),
             Ok(Value::Lit(Literal::Long(3)))
@@ -1392,7 +1453,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // set(8)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::set(vec![Expr::val(8)])),
@@ -1539,9 +1600,9 @@ pub mod test {
         let request = basic_request();
         let entities = rich_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // {"key": 3}["key"] or {"key": 3}.key
-        let string_key = Expr::record(vec![("key".into(), Expr::val(3))]);
+        let string_key = Expr::record(vec![("key".into(), Expr::val(3))]).unwrap();
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(string_key, "key".into())),
             Ok(Value::Lit(Literal::Long(3)))
@@ -1550,7 +1611,8 @@ pub mod test {
         let ham_and_eggs = Expr::record(vec![
             ("ham".into(), Expr::val(3)),
             ("eggs".into(), Expr::val(7)),
-        ]);
+        ])
+        .unwrap();
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(ham_and_eggs.clone(), "ham".into())),
             Ok(Value::Lit(Literal::Long(3)))
@@ -1573,7 +1635,8 @@ pub mod test {
         let ham_and_eggs_2 = Expr::record(vec![
             ("ham".into(), Expr::val(3)),
             ("eggs".into(), Expr::val("why")),
-        ]);
+        ])
+        .unwrap();
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(ham_and_eggs_2.clone(), "ham".into())),
             Ok(Value::Lit(Literal::Long(3)))
@@ -1588,7 +1651,8 @@ pub mod test {
             ("ham".into(), Expr::val(3)),
             ("eggs".into(), Expr::val("why")),
             ("else".into(), Expr::val(EntityUID::with_eid("foo"))),
-        ]);
+        ])
+        .unwrap();
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(ham_and_eggs_3, "else".into())),
             Ok(Value::from(EntityUID::with_eid("foo")))
@@ -1600,10 +1664,12 @@ pub mod test {
                 Expr::record(vec![
                     ("some".into(), Expr::val(1)),
                     ("more".into(), Expr::val(2)),
-                ]),
+                ])
+                .unwrap(),
             ),
             ("eggs".into(), Expr::val("why")),
-        ]);
+        ])
+        .unwrap();
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(
                 Expr::get_attr(hams_and_eggs, "hams".into()),
@@ -1615,7 +1681,8 @@ pub mod test {
         let weird_key = Expr::record(vec![(
             "this is a valid map key+.-_%() ".into(),
             Expr::val(7),
-        )]);
+        )])
+        .unwrap();
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(
                 weird_key,
@@ -1632,7 +1699,8 @@ pub mod test {
                         "bar".into(),
                         Expr::set(vec!(Expr::val(3), Expr::val(33), Expr::val(333)))
                     )
-                ]),
+                ])
+                .unwrap(),
                 "bar".into()
             )),
             Ok(Value::set(vec![
@@ -1653,8 +1721,10 @@ pub mod test {
                                 ("a+b".into(), Expr::val(5)),
                                 ("jkl;".into(), Expr::val(10)),
                             ])
+                            .unwrap()
                         ),
-                    ]),
+                    ])
+                    .unwrap(),
                     "bar".into()
                 ),
                 "a+b".into()
@@ -1673,13 +1743,25 @@ pub mod test {
                                 ("foo".into(), Expr::val(4)),
                                 ("cake".into(), Expr::val(77)),
                             ])
+                            .unwrap()
                         ),
-                    ]),
+                    ])
+                    .unwrap(),
                     "bar".into(),
                 ),
                 "foo".into(),
             )),
             Ok(Value::Lit(Literal::Long(4)))
+        );
+        // duplicate record key
+        // { foo: 2, bar: 4, foo: "hi" }.bar
+        assert_eq!(
+            Expr::record(vec![
+                ("foo".into(), Expr::val(2)),
+                ("bar".into(), Expr::val(4)),
+                ("foo".into(), Expr::val("hi")),
+            ]),
+            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() })
         );
         // entity_with_attrs.address.street
         assert_eq!(
@@ -1715,32 +1797,34 @@ pub mod test {
                 Expr::record(vec![
                     ("foo".into(), Expr::val(77)),
                     ("bar".into(), Expr::val("pancakes")),
-                ]),
+                ])
+                .unwrap(),
                 "foo".into()
             )),
             Ok(Value::Lit(Literal::Bool(true)))
         );
         // using has() to test for existence of a record field (which doesn't exist)
-        // has({"foo": 77, "bar" : "pancakes"}.pancakes)
+        // {"foo": 77, "bar" : "pancakes"} has pancakes
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(
                 Expr::record(vec![
                     ("foo".into(), Expr::val(77)),
                     ("bar".into(), Expr::val("pancakes")),
-                ]),
+                ])
+                .unwrap(),
                 "pancakes".into()
             )),
             Ok(Value::Lit(Literal::Bool(false)))
         );
-        // has({"2": "ham"}["2"])
+        // {"2": "ham"} has "2"
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(
-                Expr::record(vec![("2".into(), Expr::val("ham"))]),
+                Expr::record(vec![("2".into(), Expr::val("ham"))]).unwrap(),
                 "2".into()
             )),
             Ok(Value::Lit(Literal::Bool(true)))
         );
-        // has({"ham": 17, "eggs": if has(foo.spaghetti) then 3 else 7}.ham)
+        // {"ham": 17, "eggs": if foo has spaghetti then 3 else 7} has ham
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(
                 Expr::record(vec![
@@ -1756,7 +1840,8 @@ pub mod test {
                             Expr::val(7)
                         )
                     ),
-                ]),
+                ])
+                .unwrap(),
                 "ham".into()
             )),
             Ok(Value::Lit(Literal::Bool(true)))
@@ -1789,7 +1874,7 @@ pub mod test {
                 Type::String,
             ))
         );
-        // has_attr on something that's not a record, has(1010122.hello)
+        // has_attr on something that's not a record, 1010122 has hello
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(Expr::val(1010122), "hello".into())),
             Err(EvaluationError::type_error(
@@ -1803,7 +1888,7 @@ pub mod test {
                 Type::Long,
             ))
         );
-        // has_attr on something that's not a record, has("hello".eggs)
+        // has_attr on something that's not a record, "hello" has eggs
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(Expr::val("hello"), "eggs".into())),
             Err(EvaluationError::type_error(
@@ -1824,7 +1909,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // not(true)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::not(Expr::val(true))),
@@ -1880,7 +1965,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // neg(101)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::neg(Expr::val(101))),
@@ -1940,7 +2025,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // eq(33, 33)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_eq(Expr::val(33), Expr::val(33))),
@@ -2058,6 +2143,7 @@ pub mod test {
                     ("os_name".into(), Expr::val("Windows")),
                     ("manufacturer".into(), Expr::val("ACME Corp")),
                 ])
+                .unwrap()
             )),
             Ok(Value::Lit(Literal::Bool(true)))
         );
@@ -2065,7 +2151,7 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_eq(
                 Expr::get_attr(Expr::var(Var::Context), "device_properties".into()),
-                Expr::record(vec![("os_name".into(), Expr::val("Windows")),])
+                Expr::record(vec![("os_name".into(), Expr::val("Windows"))]).unwrap()
             )),
             Ok(Value::Lit(Literal::Bool(false)))
         );
@@ -2078,6 +2164,7 @@ pub mod test {
                     ("manufacturer".into(), Expr::val("ACME Corp")),
                     ("extrafield".into(), Expr::val(true)),
                 ])
+                .unwrap()
             )),
             Ok(Value::Lit(Literal::Bool(false)))
         );
@@ -2089,6 +2176,7 @@ pub mod test {
                     ("os_name".into(), Expr::val("Windows")),
                     ("manufacturer".into(), Expr::val("ACME Corp")),
                 ])
+                .unwrap()
             )),
             Ok(Value::Lit(Literal::Bool(true)))
         );
@@ -2168,7 +2256,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // 3 < 303
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(3), Expr::val(303))),
@@ -2378,11 +2466,54 @@ pub mod test {
     }
 
     #[test]
+    fn interpret_comparison_err_order() {
+        // Expressions are evaluated left to right, so the unexpected-string
+        // type error should be reported for all of the following. This tests a
+        // fix for incorrect evaluation order in `>` and `>=`.
+        let request = basic_request();
+        let entities = basic_entities();
+        let exts = Extensions::none();
+        let eval = Evaluator::new(request, &entities, &exts);
+
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::greatereq(
+                Expr::add(Expr::val("a"), Expr::val("b")),
+                Expr::add(Expr::val(false), Expr::val(true))
+            )),
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+        );
+
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::greater(
+                Expr::add(Expr::val("a"), Expr::val("b")),
+                Expr::add(Expr::val(false), Expr::val(true))
+            )),
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+        );
+
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::lesseq(
+                Expr::add(Expr::val("a"), Expr::val("b")),
+                Expr::add(Expr::val(false), Expr::val(true))
+            )),
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+        );
+
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::less(
+                Expr::add(Expr::val("a"), Expr::val("b")),
+                Expr::add(Expr::val(false), Expr::val(true))
+            )),
+            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+        );
+    }
+
+    #[test]
     fn interpret_arithmetic() {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // 11 + 22
         assert_eq!(
             eval.interpret_inline_policy(&Expr::add(Expr::val(11), Expr::val(22))),
@@ -2469,7 +2600,7 @@ pub mod test {
         let request = basic_request();
         let entities = rich_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
 
         // [2, 3, 4] contains 2
         assert_eq!(
@@ -2614,7 +2745,7 @@ pub mod test {
         // { ham: "eggs" } contains "ham"
         assert_eq!(
             eval.interpret_inline_policy(&Expr::contains(
-                Expr::record(vec![("ham".into(), Expr::val("eggs"))]),
+                Expr::record(vec![("ham".into(), Expr::val("eggs"))]).unwrap(),
                 Expr::val("ham")
             )),
             Err(EvaluationError::type_error(vec![Type::Set], Type::Record))
@@ -2634,7 +2765,7 @@ pub mod test {
         let request = basic_request();
         let entities = rich_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // A in B, where A and B are unrelated (but same type)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_in(
@@ -2906,7 +3037,7 @@ pub mod test {
                         .expect("should be a valid identifier")
                 )],
                 Type::Long,
-                "`in` is for checking the entity hierarchy, use `.contains()` to test set membership".into(),
+                "`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into(),
             ))
         );
         // "foo" in { "foo": 2, "bar": true }
@@ -2916,7 +3047,7 @@ pub mod test {
                 Expr::record(vec![
                     ("foo".into(), Expr::val(2)),
                     ("bar".into(), Expr::val(true)),
-                ])
+                ]).unwrap()
             )),
             Err(EvaluationError::type_error_with_advice(
                 vec![Type::entity_type(
@@ -2924,7 +3055,7 @@ pub mod test {
                         .expect("should be a valid identifier")
                 )],
                 Type::String,
-                "`in` is for checking the entity hierarchy, use `has` to test if a record has a key".into(),
+                "`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into(),
             ))
         );
         // A in { "foo": 2, "bar": true }
@@ -2935,6 +3066,7 @@ pub mod test {
                     ("foo".into(), Expr::val(2)),
                     ("bar".into(), Expr::val(true)),
                 ])
+                .unwrap()
             )),
             Err(EvaluationError::type_error(
                 vec![
@@ -2961,15 +3093,23 @@ pub mod test {
             EntityUID::with_eid("test_action"),
             EntityUID::with_eid("test_resource"),
             Context::empty(),
-        );
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
         //Alice has parent "Friends" but we don't add "Friends" to the slice
         let mut alice = Entity::with_uid(EntityUID::with_eid("Alice"));
         let parent = Entity::with_uid(EntityUID::with_eid("Friends"));
         alice.add_ancestor(parent.uid());
-        let entities = Entities::from_entities(vec![alice], TCComputation::AssumeAlreadyComputed)
-            .expect("failed to create basic entities");
+        let entities = Entities::from_entities(
+            vec![alice],
+            None::<&NoEntitiesSchema>,
+            TCComputation::AssumeAlreadyComputed,
+            Extensions::all_available(),
+        )
+        .expect("failed to create basic entities");
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_in(
                 Expr::val(EntityUID::with_eid("Alice")),
@@ -3011,7 +3151,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // "eggs" vs "ham"
         assert_eq!(
             eval.interpret_inline_policy(
@@ -3181,7 +3321,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // testing like wth escaped characters -- similar tests are also in parser/convert.rs
         assert_eq!(
             eval.interpret_inline_policy(
@@ -3217,11 +3357,77 @@ pub mod test {
     }
 
     #[test]
+    fn interpret_is() {
+        let request = basic_request();
+        let entities = basic_entities();
+        let exts = Extensions::none();
+        let eval = Evaluator::new(request, &entities, &exts);
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(&format!(
+                    r#"principal is {}"#,
+                    EntityUID::test_entity_type()
+                ))
+                .expect("parsing error")
+            ),
+            Ok(Value::Lit(Literal::Bool(true)))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(&format!(
+                    r#"principal is N::S::{}"#,
+                    EntityUID::test_entity_type()
+                ))
+                .expect("parsing error")
+            ),
+            Ok(Value::Lit(Literal::Bool(false)))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"User::"alice" is User"#).expect("parsing error")
+            ),
+            Ok(Value::Lit(Literal::Bool(true)))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"User::"alice" is Group"#).expect("parsing error")
+            ),
+            Ok(Value::Lit(Literal::Bool(false)))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"N::S::User::"alice" is N::S::User"#).expect("parsing error")
+            ),
+            Ok(Value::Lit(Literal::Bool(true)))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"N::S::User::"alice" is User"#).expect("parsing error")
+            ),
+            Ok(Value::Lit(Literal::Bool(false)))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::is_entity_type(
+                Expr::val(EntityUID::unspecified_from_eid(Eid::new("thing"))),
+                "User".parse().unwrap()
+            )),
+            Ok(Value::Lit(Literal::Bool(false)))
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&parse_expr(r#"1 is Group"#).expect("parsing error")),
+            Err(EvaluationError::type_error(
+                vec![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
+                Type::Long
+            ))
+        );
+    }
+
+    #[test]
     fn interpret_contains_all_and_contains_any() -> Result<()> {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         //  [1, -22, 34] containsall of [1, -22]?
         assert_eq!(
             eval.interpret_inline_policy(&Expr::contains_all(
@@ -3320,11 +3526,11 @@ pub mod test {
                     Expr::val(false),
                     Expr::val(3),
                     Expr::set(vec![Expr::val(47), Expr::val(0)]),
-                    Expr::record(vec![("2".into(), Expr::val("ham"))])
+                    Expr::record(vec![("2".into(), Expr::val("ham"))]).unwrap()
                 ]),
                 Expr::set(vec![
                     Expr::val(3),
-                    Expr::record(vec![("2".into(), Expr::val("ham"))])
+                    Expr::record(vec![("2".into(), Expr::val("ham"))]).unwrap()
                 ])
             )),
             Ok(Value::Lit(Literal::Bool(true)))
@@ -3340,11 +3546,12 @@ pub mod test {
         // {"2": "ham", "3": "eggs"} containsall {"2": "ham"} ?
         assert_eq!(
             eval.interpret_inline_policy(&Expr::contains_all(
-                Expr::record(vec![("2".into(), Expr::val("ham"))]),
+                Expr::record(vec![("2".into(), Expr::val("ham"))]).unwrap(),
                 Expr::record(vec![
                     ("2".into(), Expr::val("ham")),
                     ("3".into(), Expr::val("eggs"))
                 ])
+                .unwrap()
             )),
             Err(EvaluationError::type_error(vec![Type::Set], Type::Record))
         );
@@ -3427,6 +3634,7 @@ pub mod test {
                         ("2".into(), Expr::val("ham")),
                         ("1".into(), Expr::val("eggs"))
                     ])
+                    .unwrap()
                 ]),
                 Expr::set(vec![
                     Expr::val(7),
@@ -3436,6 +3644,7 @@ pub mod test {
                         ("1".into(), Expr::val("eggs")),
                         ("2".into(), Expr::val("ham"))
                     ])
+                    .unwrap()
                 ])
             )),
             Ok(Value::Lit(Literal::Bool(true)))
@@ -3451,11 +3660,12 @@ pub mod test {
         // test for {"2": "ham"} contains_any of {"2": "ham", "3": "eggs"}
         assert_eq!(
             eval.interpret_inline_policy(&Expr::contains_any(
-                Expr::record(vec![("2".into(), Expr::val("ham"))]),
+                Expr::record(vec![("2".into(), Expr::val("ham"))]).unwrap(),
                 Expr::record(vec![
                     ("2".into(), Expr::val("ham")),
                     ("3".into(), Expr::val("eggs"))
                 ])
+                .unwrap()
             )),
             Err(EvaluationError::type_error(vec![Type::Set], Type::Record))
         );
@@ -3466,11 +3676,11 @@ pub mod test {
     fn eval_and_or() -> Result<()> {
         use crate::parser;
         let request = basic_request();
-        let eparser: EntityJsonParser<'_> =
+        let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
         let exts = Extensions::none();
-        let evaluator = Evaluator::new(&request, &entities, &exts).expect("empty slice");
+        let evaluator = Evaluator::new(request, &entities, &exts);
 
         // short-circuit allows these to pass without error
         let raw_expr = "(false && 3)";
@@ -3579,11 +3789,11 @@ pub mod test {
     #[test]
     fn template_env_tests() {
         let request = basic_request();
-        let eparser: EntityJsonParser<'_> =
+        let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
         let exts = Extensions::none();
-        let evaluator = Evaluator::new(&request, &entities, &exts).expect("empty slice");
+        let evaluator = Evaluator::new(request, &entities, &exts);
         let e = Expr::slot(SlotId::principal());
 
         let slots = HashMap::new();
@@ -3635,12 +3845,15 @@ pub mod test {
             EntityUID::with_eid("a"),
             EntityUID::with_eid("r"),
             Context::empty(),
-        );
-        let eparser: EntityJsonParser<'_> =
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
+        let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
         let exts = Extensions::none();
-        let eval = Evaluator::new(&q, &entities, &exts).expect("Failed to start evaluator");
+        let eval = Evaluator::new(q, &entities, &exts);
 
         let ir = pset.policies().next().expect("No linked policies");
         assert!(
@@ -3652,14 +3865,11 @@ pub mod test {
         );
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_restricted_expression_error(v: Result<PartialValue>) {
-        match v {
-            Err(e) => assert_matches!(
-                e.error_kind(),
-                EvaluationErrorKind::InvalidRestrictedExpression { .. }
-            ),
-            Ok(v) => panic!("Got wrong response: {v}"),
-        }
+        assert_matches!(v, Err(e) => {
+            assert_matches!(e.error_kind(), EvaluationErrorKind::InvalidRestrictedExpression { .. });
+        });
     }
 
     #[test]
@@ -3794,10 +4004,13 @@ pub mod test {
             Ok(PartialValue::Value(Value::Set(_)))
         );
         assert_matches!(
-            BorrowedRestrictedExpr::new(&Expr::record([
-                ("hi".into(), Expr::val(1001)),
-                ("foo".into(), Expr::val("bar"))
-            ]),)
+            BorrowedRestrictedExpr::new(
+                &Expr::record([
+                    ("hi".into(), Expr::val(1001)),
+                    ("foo".into(), Expr::val("bar"))
+                ])
+                .unwrap()
+            )
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
             Ok(PartialValue::Value(Value::Record(_)))
@@ -3816,6 +4029,15 @@ pub mod test {
             BorrowedRestrictedExpr::new(&Expr::call_extension_fn(
                 "ip".parse().expect("should be a valid Name"),
                 vec![Expr::var(Var::Principal)],
+            ))
+            .map_err(Into::into)
+            .and_then(|e| evaluator.partial_interpret(e)),
+        );
+
+        assert_restricted_expression_error(
+            BorrowedRestrictedExpr::new(&Expr::is_entity_type(
+                Expr::val(EntityUID::with_eid("alice")),
+                "User".parse().unwrap(),
             ))
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
@@ -3840,10 +4062,13 @@ pub mod test {
             EntityUIDEntry::Unknown,
             EntityUIDEntry::Unknown,
             Some(Context::empty()),
-        );
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
         let es = Entities::new();
         let exts = Extensions::none();
-        let e = Evaluator::new(&q, &es, &exts).expect("failed to create evaluator");
+        let e = Evaluator::new(q, &es, &exts);
         match e.partial_evaluate(p).expect("eval error") {
             Either::Left(_) => panic!("Evalled to a value"),
             Either::Right(expr) => {
@@ -3866,18 +4091,27 @@ pub mod test {
         let euid: EntityUID = r#"Test::"test""#.parse().unwrap();
         let rexpr = RestrictedExpr::new(context_expr)
             .expect("Context Expression was not a restricted expression");
-        let context = Context::from_expr(rexpr).unwrap();
-        let q = Request::new(euid.clone(), euid.clone(), euid, context);
+        let context = Context::from_expr(rexpr.as_borrowed(), Extensions::none()).unwrap();
+        let q = Request::new(
+            euid.clone(),
+            euid.clone(),
+            euid,
+            context,
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&q, &es, &exts).expect("Failed to instantiate evaluator");
+        let eval = Evaluator::new(q, &es, &exts);
         eval.partial_eval_expr(&e).unwrap()
     }
 
     #[test]
     fn partial_contexts1() {
         // { "cell" : <unknown> }
-        let c_expr = Expr::record([("cell".into(), Expr::unknown("cell"))]);
+        let c_expr =
+            Expr::record([("cell".into(), Expr::unknown(Unknown::new_untyped("cell")))]).unwrap();
         let expr = Expr::binary_app(
             BinaryOp::Eq,
             Expr::get_attr(Expr::var(Var::Context), "cell".into()),
@@ -3885,7 +4119,7 @@ pub mod test {
         );
         let expected = Expr::binary_app(
             BinaryOp::Eq,
-            Expr::unknown("cell".to_string()),
+            Expr::unknown(Unknown::new_untyped("cell")),
             Expr::val(2),
         );
 
@@ -3899,8 +4133,9 @@ pub mod test {
         // { "loc" : "test", "cell" : <unknown> }
         let c_expr = Expr::record([
             ("loc".into(), Expr::val("test")),
-            ("cell".into(), Expr::unknown("cell")),
-        ]);
+            ("cell".into(), Expr::unknown(Unknown::new_untyped("cell"))),
+        ])
+        .unwrap();
         // context["cell"] == 2
         let expr = Expr::binary_app(
             BinaryOp::Eq,
@@ -3910,7 +4145,7 @@ pub mod test {
         let r = partial_context_test(c_expr.clone(), expr);
         let expected = Expr::binary_app(
             BinaryOp::Eq,
-            Expr::unknown("cell".to_string()),
+            Expr::unknown(Unknown::new_untyped("cell")),
             Expr::val(2),
         );
         assert_eq!(r, Either::Right(expected));
@@ -3928,9 +4163,11 @@ pub mod test {
     #[test]
     fn partial_contexts3() {
         // { "loc" : "test", "cell" : { "row" : <unknown> } }
-        let row = Expr::record([("row".into(), Expr::unknown("row"))]);
+        let row =
+            Expr::record([("row".into(), Expr::unknown(Unknown::new_untyped("row")))]).unwrap();
         //assert!(row.is_partially_projectable());
-        let c_expr = Expr::record([("loc".into(), Expr::val("test")), ("cell".into(), row)]);
+        let c_expr =
+            Expr::record([("loc".into(), Expr::val("test")), ("cell".into(), row)]).unwrap();
         //assert!(c_expr.is_partially_projectable());
         // context["cell"]["row"] == 2
         let expr = Expr::binary_app(
@@ -3942,8 +4179,11 @@ pub mod test {
             Expr::val(2),
         );
         let r = partial_context_test(c_expr, expr);
-        let expected =
-            Expr::binary_app(BinaryOp::Eq, Expr::unknown("row".to_string()), Expr::val(2));
+        let expected = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::unknown(Unknown::new_untyped("row")),
+            Expr::val(2),
+        );
         assert_eq!(r, Either::Right(expected));
     }
 
@@ -3951,11 +4191,13 @@ pub mod test {
     fn partial_contexts4() {
         // { "loc" : "test", "cell" : { "row" : <unknown>, "col" : <unknown> } }
         let row = Expr::record([
-            ("row".into(), Expr::unknown("row")),
-            ("col".into(), Expr::unknown("col")),
-        ]);
+            ("row".into(), Expr::unknown(Unknown::new_untyped("row"))),
+            ("col".into(), Expr::unknown(Unknown::new_untyped("col"))),
+        ])
+        .unwrap();
         //assert!(row.is_partially_projectable());
-        let c_expr = Expr::record([("loc".into(), Expr::val("test")), ("cell".into(), row)]);
+        let c_expr =
+            Expr::record([("loc".into(), Expr::val("test")), ("cell".into(), row)]).unwrap();
         //assert!(c_expr.is_partially_projectable());
         // context["cell"]["row"] == 2
         let expr = Expr::binary_app(
@@ -3967,7 +4209,11 @@ pub mod test {
             Expr::val(2),
         );
         let r = partial_context_test(c_expr.clone(), expr);
-        let expected = Expr::binary_app(BinaryOp::Eq, Expr::unknown("row"), Expr::val(2));
+        let expected = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::unknown(Unknown::new_untyped("row")),
+            Expr::val(2),
+        );
         assert_eq!(r, Either::Right(expected));
         // context["cell"]["col"] == 2
         let expr = Expr::binary_app(
@@ -3979,23 +4225,41 @@ pub mod test {
             Expr::val(2),
         );
         let r = partial_context_test(c_expr, expr);
-        let expected =
-            Expr::binary_app(BinaryOp::Eq, Expr::unknown("col".to_string()), Expr::val(2));
+        let expected = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::unknown(Unknown::new_untyped("col")),
+            Expr::val(2),
+        );
         assert_eq!(r, Either::Right(expected));
     }
 
     #[test]
     fn partial_context_fail() {
-        let context = Context::from_expr(RestrictedExpr::new_unchecked(Expr::record([
-            ("a".into(), Expr::val(3)),
-            ("b".into(), Expr::unknown("b".to_string())),
-        ])))
+        let context = Context::from_expr(
+            RestrictedExpr::new_unchecked(
+                Expr::record([
+                    ("a".into(), Expr::val(3)),
+                    ("b".into(), Expr::unknown(Unknown::new_untyped("b"))),
+                ])
+                .unwrap(),
+            )
+            .as_borrowed(),
+            Extensions::none(),
+        )
         .unwrap();
         let euid: EntityUID = r#"Test::"test""#.parse().unwrap();
-        let q = Request::new(euid.clone(), euid.clone(), euid, context);
+        let q = Request::new(
+            euid.clone(),
+            euid.clone(),
+            euid,
+            context,
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&q, &es, &exts).expect("Failed to instantiate evaluator");
+        let eval = Evaluator::new(q, &es, &exts);
         let e = Expr::get_attr(Expr::var(Var::Context), "foo".into());
         assert!(eval.partial_eval_expr(&e).is_err())
     }
@@ -4024,16 +4288,23 @@ pub mod test {
         let a: EntityUID = r#"Action::"a""#.parse().expect("Failed to parse");
         let r: EntityUID = r#"Table::"t""#.parse().expect("Failed to parse");
 
-        let c_expr = RestrictedExpr::new(Expr::record([(
-            "cell".into(),
-            Expr::unknown("cell".to_string()),
-        )]))
+        let c_expr = RestrictedExpr::new(
+            Expr::record([("cell".into(), Expr::unknown(Unknown::new_untyped("cell")))]).unwrap(),
+        )
         .expect("should qualify as restricted");
-        let context = Context::from_expr(c_expr).unwrap();
+        let context = Context::from_expr(c_expr.as_borrowed(), Extensions::none()).unwrap();
 
-        let q = Request::new(p, a, r, context);
+        let q = Request::new(
+            p,
+            a,
+            r,
+            context,
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&q, &es, &exts).expect("Could not create evaluator");
+        let eval = Evaluator::new(q, &es, &exts);
 
         let result = eval.partial_evaluate(policy).expect("Eval error");
         match result {
@@ -4049,12 +4320,12 @@ pub mod test {
         let a: EntityUID = r#"a::"Action""#.parse().unwrap();
         let r: EntityUID = r#"r::"Resource""#.parse().unwrap();
         let c = Context::empty();
-        Request::new(p, a, r, c)
+        Request::new(p, a, r, c, Some(&RequestSchemaAllPass), Extensions::none()).unwrap()
     }
 
     #[test]
     fn if_semantics_residual_guard() {
-        let a = Expr::unknown("guard".to_string());
+        let a = Expr::unknown(Unknown::new_untyped("guard"));
         let b = Expr::and(Expr::val(1), Expr::val(2));
         let c = Expr::val(true);
 
@@ -4063,14 +4334,14 @@ pub mod test {
         let es = Entities::new();
 
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
         assert_eq!(
             r,
             PartialValue::Residual(Expr::ite(
-                Expr::unknown("guard".to_string()),
+                Expr::unknown(Unknown::new_untyped("guard")),
                 Expr::call_extension_fn(
                     "error".parse().unwrap(),
                     vec![Expr::val("type error: expected bool, got long")]
@@ -4099,13 +4370,23 @@ pub mod test {
             EntityUID::with_eid("p"),
             EntityUID::with_eid("a"),
             EntityUID::with_eid("r"),
-            Context::from_expr(RestrictedExpr::new_unchecked(Expr::record([(
-                "condition".into(),
-                Expr::unknown("unknown_condition"),
-            )])))
+            Context::from_expr(
+                RestrictedExpr::new_unchecked(
+                    Expr::record([(
+                        "condition".into(),
+                        Expr::unknown(Unknown::new_untyped("unknown_condition")),
+                    )])
+                    .unwrap(),
+                )
+                .as_borrowed(),
+                Extensions::none(),
+            )
             .unwrap(),
-        );
-        let eval = Evaluator::new(&q, &es, &exts).unwrap();
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
+        let eval = Evaluator::new(q, &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4114,7 +4395,7 @@ pub mod test {
             PartialValue::Residual(Expr::ite(
                 Expr::binary_app(
                     BinaryOp::Eq,
-                    Expr::unknown("unknown_condition".to_string()),
+                    Expr::unknown(Unknown::new_untyped("unknown_condition")),
                     Expr::val("value"),
                 ),
                 b,
@@ -4125,7 +4406,7 @@ pub mod test {
 
     #[test]
     fn if_semantics_both_err() {
-        let a = Expr::unknown("guard".to_string());
+        let a = Expr::unknown(Unknown::new_untyped("guard"));
         let b = Expr::and(Expr::val(1), Expr::val(2));
         let c = Expr::or(Expr::val(1), Expr::val(3));
 
@@ -4134,7 +4415,7 @@ pub mod test {
         let es = Entities::new();
 
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
     }
@@ -4144,12 +4425,12 @@ pub mod test {
         // Left-hand-side evaluates to `false`, should short-circuit to value
         let e = Expr::and(
             Expr::binary_app(BinaryOp::Eq, Expr::val(1), Expr::val(2)),
-            Expr::and(Expr::unknown("a".to_string()), Expr::val(false)),
+            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
         );
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4161,12 +4442,12 @@ pub mod test {
         // Left hand sides evaluates to `true`, can't drop it due to dynamic types
         let e = Expr::and(
             Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(2)),
-            Expr::and(Expr::unknown("a".to_string()), Expr::val(false)),
+            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
         );
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4174,7 +4455,7 @@ pub mod test {
             r,
             PartialValue::Residual(Expr::and(
                 Expr::val(true),
-                Expr::and(Expr::unknown("a".to_string()), Expr::val(false))
+                Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false))
             ))
         );
     }
@@ -4184,12 +4465,12 @@ pub mod test {
         // Errors on left hand side should propagate
         let e = Expr::and(
             Expr::binary_app(BinaryOp::Add, Expr::val("hello"), Expr::val(2)),
-            Expr::and(Expr::unknown("a".to_string()), Expr::val(false)),
+            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
         );
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
     }
@@ -4198,13 +4479,17 @@ pub mod test {
     fn and_semantics4() {
         // Left hand is residual, errors on right hand side should _not_ propagate
         let e = Expr::and(
-            Expr::binary_app(BinaryOp::Eq, Expr::unknown("a".to_string()), Expr::val(2)),
+            Expr::binary_app(
+                BinaryOp::Eq,
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::val(2),
+            ),
             Expr::and(Expr::val("hello"), Expr::val("bye")),
         );
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_ok());
     }
@@ -4215,12 +4500,12 @@ pub mod test {
 
         let e = Expr::or(
             Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(2)),
-            Expr::and(Expr::unknown("a".to_string()), Expr::val(false)),
+            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
         );
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4232,12 +4517,12 @@ pub mod test {
         // Left hand sides evaluates to `false`, can't drop it due to dynamic types
         let e = Expr::or(
             Expr::binary_app(BinaryOp::Eq, Expr::val(1), Expr::val(2)),
-            Expr::and(Expr::unknown("a".to_string()), Expr::val(false)),
+            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
         );
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4245,7 +4530,7 @@ pub mod test {
             r,
             PartialValue::Residual(Expr::or(
                 Expr::val(false),
-                Expr::and(Expr::unknown("a".to_string()), Expr::val(false))
+                Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false))
             ))
         );
     }
@@ -4255,12 +4540,12 @@ pub mod test {
         // Errors on left hand side should propagate
         let e = Expr::or(
             Expr::binary_app(BinaryOp::Add, Expr::val("hello"), Expr::val(2)),
-            Expr::and(Expr::unknown("a".to_string()), Expr::val(false)),
+            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
         );
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
     }
@@ -4269,13 +4554,17 @@ pub mod test {
     fn or_semantics4() {
         // Left hand is residual, errors on right hand side should _not_ propagate
         let e = Expr::or(
-            Expr::binary_app(BinaryOp::Eq, Expr::unknown("a".to_string()), Expr::val(2)),
+            Expr::binary_app(
+                BinaryOp::Eq,
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::val(2),
+            ),
             Expr::and(Expr::val("hello"), Expr::val("bye")),
         );
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_ok());
     }
@@ -4283,13 +4572,13 @@ pub mod test {
     #[test]
     fn record_semantics_err() {
         let a = Expr::get_attr(
-            Expr::record([("value".into(), Expr::unknown("test".to_string()))]),
+            Expr::record([("value".into(), Expr::unknown(Unknown::new_untyped("test")))]).unwrap(),
             "notpresent".into(),
         );
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&a, &HashMap::new()).is_err());
     }
@@ -4297,17 +4586,17 @@ pub mod test {
     #[test]
     fn record_semantics_key_present() {
         let a = Expr::get_attr(
-            Expr::record([("value".into(), Expr::unknown("test".to_string()))]),
+            Expr::record([("value".into(), Expr::unknown(Unknown::new_untyped("test")))]).unwrap(),
             "value".into(),
         );
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&a, &HashMap::new()).unwrap();
 
-        let expected = PartialValue::Residual(Expr::unknown("test"));
+        let expected = PartialValue::unknown(Unknown::new_untyped("test"));
 
         assert_eq!(r, expected);
     }
@@ -4316,15 +4605,16 @@ pub mod test {
     fn record_semantics_missing_attr() {
         let a = Expr::get_attr(
             Expr::record([
-                ("a".into(), Expr::unknown("a")),
-                ("b".into(), Expr::unknown("c")),
-            ]),
+                ("a".into(), Expr::unknown(Unknown::new_untyped("a"))),
+                ("b".into(), Expr::unknown(Unknown::new_untyped("c"))),
+            ])
+            .unwrap(),
             "c".into(),
         );
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&a, &HashMap::new()).is_err());
     }
@@ -4333,33 +4623,34 @@ pub mod test {
     fn record_semantics_mult_unknowns() {
         let a = Expr::get_attr(
             Expr::record([
-                ("a".into(), Expr::unknown("a")),
-                ("b".into(), Expr::unknown("b")),
-            ]),
+                ("a".into(), Expr::unknown(Unknown::new_untyped("a"))),
+                ("b".into(), Expr::unknown(Unknown::new_untyped("b"))),
+            ])
+            .unwrap(),
             "b".into(),
         );
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&a, &HashMap::new()).unwrap();
 
-        let expected = PartialValue::Residual(Expr::unknown("b"));
+        let expected = PartialValue::unknown(Unknown::new_untyped("b"));
 
         assert_eq!(r, expected);
     }
 
     #[test]
     fn parital_if_noerrors() {
-        let guard = Expr::get_attr(Expr::unknown("a"), "field".into());
+        let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
         let cons = Expr::val(1);
         let alt = Expr::val(2);
         let e = Expr::ite(guard.clone(), cons, alt);
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4370,14 +4661,14 @@ pub mod test {
 
     #[test]
     fn parital_if_cons_error() {
-        let guard = Expr::get_attr(Expr::unknown("a"), "field".into());
+        let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
         let cons = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(true));
         let alt = Expr::val(2);
         let e = Expr::ite(guard.clone(), cons, alt);
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4395,14 +4686,14 @@ pub mod test {
 
     #[test]
     fn parital_if_alt_error() {
-        let guard = Expr::get_attr(Expr::unknown("a"), "field".into());
+        let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
         let cons = Expr::val(2);
         let alt = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(true));
         let e = Expr::ite(guard.clone(), cons, alt);
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4419,14 +4710,14 @@ pub mod test {
 
     #[test]
     fn parital_if_both_error() {
-        let guard = Expr::get_attr(Expr::unknown("a"), "field".into());
+        let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
         let cons = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(true));
         let alt = Expr::less(Expr::val("hello"), Expr::val("bye"));
         let e = Expr::ite(guard, cons, alt);
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
     }
@@ -4435,11 +4726,11 @@ pub mod test {
     #[test]
     fn partial_and_err_res() {
         let lhs = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("test"));
-        let rhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let e = Expr::and(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
     }
@@ -4448,11 +4739,11 @@ pub mod test {
     #[test]
     fn partial_or_err_res() {
         let lhs = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("test"));
-        let rhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let e = Expr::or(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
     }
@@ -4461,17 +4752,17 @@ pub mod test {
     #[test]
     fn partial_and_true_res() {
         let lhs = Expr::binary_app(BinaryOp::Eq, Expr::val(1), Expr::val(1));
-        let rhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let e = Expr::and(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
         let expected = Expr::and(
             Expr::val(true),
-            Expr::get_attr(Expr::unknown("test"), "field".into()),
+            Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into()),
         );
         assert_eq!(r, PartialValue::Residual(expected));
     }
@@ -4480,11 +4771,11 @@ pub mod test {
     #[test]
     fn partial_and_false_res() {
         let lhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(1));
-        let rhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let e = Expr::and(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(r, PartialValue::Value(Value::Lit(false.into())));
@@ -4493,12 +4784,12 @@ pub mod test {
     // res && true -> res && true
     #[test]
     fn partial_and_res_true() {
-        let lhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let rhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(2));
         let e = Expr::and(lhs.clone(), rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         let expected = Expr::and(lhs, Expr::val(true));
@@ -4507,12 +4798,12 @@ pub mod test {
 
     #[test]
     fn partial_and_res_false() {
-        let lhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let rhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(1));
         let e = Expr::and(lhs.clone(), rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         let expected = Expr::and(lhs, Expr::val(false));
@@ -4522,18 +4813,18 @@ pub mod test {
     // res && res -> res && res
     #[test]
     fn partial_and_res_res() {
-        let lhs = Expr::unknown("b");
-        let rhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let lhs = Expr::unknown(Unknown::new_untyped("b"));
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let e = Expr::and(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
         let expected = Expr::and(
-            Expr::unknown("b"),
-            Expr::get_attr(Expr::unknown("test"), "field".into()),
+            Expr::unknown(Unknown::new_untyped("b")),
+            Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into()),
         );
         assert_eq!(r, PartialValue::Residual(expected));
     }
@@ -4541,17 +4832,17 @@ pub mod test {
     // res && err -> res && err
     #[test]
     fn partial_and_res_err() {
-        let lhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let rhs = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("oops"));
         let e = Expr::and(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
         let expected = Expr::and(
-            Expr::get_attr(Expr::unknown("test"), "field".into()),
+            Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into()),
             Expr::call_extension_fn(
                 "error".parse().unwrap(),
                 vec![Expr::val("type error: expected long, got string")],
@@ -4564,11 +4855,11 @@ pub mod test {
     #[test]
     fn partial_or_true_res() {
         let lhs = Expr::binary_app(BinaryOp::Eq, Expr::val(1), Expr::val(1));
-        let rhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let e = Expr::or(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(r, PartialValue::Value(Value::Lit(true.into())));
@@ -4578,16 +4869,16 @@ pub mod test {
     #[test]
     fn partial_or_false_res() {
         let lhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(1));
-        let rhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let e = Expr::or(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         let expected = Expr::or(
             Expr::val(false),
-            Expr::get_attr(Expr::unknown("test"), "field".into()),
+            Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into()),
         );
         assert_eq!(r, PartialValue::Residual(expected));
     }
@@ -4595,12 +4886,12 @@ pub mod test {
     // res || true -> res || true
     #[test]
     fn partial_or_res_true() {
-        let lhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let rhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(2));
         let e = Expr::or(lhs.clone(), rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         let expected = Expr::or(lhs, Expr::val(true));
@@ -4609,12 +4900,12 @@ pub mod test {
 
     #[test]
     fn partial_or_res_false() {
-        let lhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let rhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(1));
         let e = Expr::or(lhs.clone(), rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         let expected = Expr::or(lhs, Expr::val(false));
@@ -4624,18 +4915,18 @@ pub mod test {
     // res || res -> res || res
     #[test]
     fn partial_or_res_res() {
-        let lhs = Expr::unknown("b");
-        let rhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let lhs = Expr::unknown(Unknown::new_untyped("b"));
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let e = Expr::or(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
         let expected = Expr::or(
-            Expr::unknown("b"),
-            Expr::get_attr(Expr::unknown("test"), "field".into()),
+            Expr::unknown(Unknown::new_untyped("b")),
+            Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into()),
         );
         assert_eq!(r, PartialValue::Residual(expected));
     }
@@ -4643,17 +4934,17 @@ pub mod test {
     // res || err -> res || err
     #[test]
     fn partial_or_res_err() {
-        let lhs = Expr::get_attr(Expr::unknown("test"), "field".into());
+        let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let rhs = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("oops"));
         let e = Expr::or(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
         let expected = Expr::or(
-            Expr::get_attr(Expr::unknown("test"), "field".into()),
+            Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into()),
             Expr::call_extension_fn(
                 "error".parse().unwrap(),
                 vec![Expr::val("type error: expected long, got string")],
@@ -4666,13 +4957,13 @@ pub mod test {
     fn partial_unop() {
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
-        let e = Expr::unary_app(UnaryOp::Neg, Expr::unknown("a"));
+        let e = Expr::unary_app(UnaryOp::Neg, Expr::unknown(Unknown::new_untyped("a")));
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(r, PartialValue::Residual(e));
 
-        let e = Expr::unary_app(UnaryOp::Not, Expr::unknown("a"));
+        let e = Expr::unary_app(UnaryOp::Not, Expr::unknown(Unknown::new_untyped("a")));
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(r, PartialValue::Residual(e));
     }
@@ -4681,7 +4972,7 @@ pub mod test {
     fn partial_binop() {
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let binops = [
             BinaryOp::Add,
@@ -4700,38 +4991,54 @@ pub mod test {
             let e = Expr::binary_app(
                 binop,
                 Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(2)),
-                Expr::unknown("a"),
+                Expr::unknown(Unknown::new_untyped("a")),
             );
             let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
-            let expected = Expr::binary_app(binop, Expr::val(3), Expr::unknown("a"));
+            let expected = Expr::binary_app(
+                binop,
+                Expr::val(3),
+                Expr::unknown(Unknown::new_untyped("a")),
+            );
             assert_eq!(r, PartialValue::Residual(expected));
             // ensure PE propagates left side errors
             let e = Expr::binary_app(
                 binop,
                 Expr::binary_app(BinaryOp::Add, Expr::val("hello"), Expr::val(2)),
-                Expr::unknown("a"),
+                Expr::unknown(Unknown::new_untyped("a")),
             );
             assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
             // ensure PE evaluates right side
             let e = Expr::binary_app(
                 binop,
-                Expr::unknown("a"),
+                Expr::unknown(Unknown::new_untyped("a")),
                 Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(2)),
             );
             let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
-            let expected = Expr::binary_app(binop, Expr::unknown("a"), Expr::val(3));
+            let expected = Expr::binary_app(
+                binop,
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::val(3),
+            );
             assert_eq!(r, PartialValue::Residual(expected));
             // ensure PE propagates right side errors
             let e = Expr::binary_app(
                 binop,
-                Expr::unknown("a"),
+                Expr::unknown(Unknown::new_untyped("a")),
                 Expr::binary_app(BinaryOp::Add, Expr::val("hello"), Expr::val(2)),
             );
             assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
             // Both left and right residuals
-            let e = Expr::binary_app(binop, Expr::unknown("a"), Expr::unknown("b"));
+            let e = Expr::binary_app(
+                binop,
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::unknown(Unknown::new_untyped("b")),
+            );
             let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
-            let expected = Expr::binary_app(binop, Expr::unknown("a"), Expr::unknown("b"));
+            let expected = Expr::binary_app(
+                binop,
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::unknown(Unknown::new_untyped("b")),
+            );
             assert_eq!(r, PartialValue::Residual(expected));
         }
     }
@@ -4740,9 +5047,9 @@ pub mod test {
     fn partial_mul() {
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
-        let e = Expr::mul(Expr::unknown("a"), 32);
+        let e = Expr::mul(Expr::unknown(Unknown::new_untyped("a")), 32);
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(r, PartialValue::Residual(e));
     }
@@ -4751,9 +5058,12 @@ pub mod test {
     fn partial_ext_constructors() {
         let es = Entities::new();
         let exts = Extensions::all_available();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
-        let e = Expr::call_extension_fn("ip".parse().unwrap(), vec![Expr::unknown("a")]);
+        let e = Expr::call_extension_fn(
+            "ip".parse().unwrap(),
+            vec![Expr::unknown(Unknown::new_untyped("a"))],
+        );
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4765,10 +5075,10 @@ pub mod test {
     fn partial_ext_unfold() {
         let es = Entities::new();
         let exts = Extensions::all_available();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let a = Expr::call_extension_fn("ip".parse().unwrap(), vec![Expr::val("127.0.0.1")]);
-        let b = Expr::unknown("a");
+        let b = Expr::unknown(Unknown::new_untyped("a"));
         let e = Expr::call_extension_fn("isInRange".parse().unwrap(), vec![a, b]);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
@@ -4776,7 +5086,7 @@ pub mod test {
         assert_eq!(r, PartialValue::Residual(e));
 
         let b = Expr::call_extension_fn("ip".parse().unwrap(), vec![Expr::val("127.0.0.1")]);
-        let a = Expr::unknown("a");
+        let a = Expr::unknown(Unknown::new_untyped("a"));
         let e = Expr::call_extension_fn("isInRange".parse().unwrap(), vec![a, b]);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
@@ -4784,7 +5094,7 @@ pub mod test {
         assert_eq!(r, PartialValue::Residual(e));
 
         let b = Expr::call_extension_fn("ip".parse().unwrap(), vec![Expr::val("invalid")]);
-        let a = Expr::unknown("a");
+        let a = Expr::unknown(Unknown::new_untyped("a"));
         let e = Expr::call_extension_fn("isInRange".parse().unwrap(), vec![a, b]);
 
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
@@ -4794,9 +5104,25 @@ pub mod test {
     fn partial_like() {
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
-        let e = Expr::like(Expr::unknown("a"), []);
+        let e = Expr::like(Expr::unknown(Unknown::new_untyped("a")), []);
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        assert_eq!(r, PartialValue::Residual(e));
+    }
+
+    #[test]
+    fn partial_is() {
+        let es = Entities::new();
+        let exts = Extensions::none();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
+
+        let e = Expr::is_entity_type(
+            Expr::unknown(Unknown::new_untyped("a")),
+            "User".parse().unwrap(),
+        );
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4807,9 +5133,9 @@ pub mod test {
     fn partial_hasattr() {
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
-        let e = Expr::has_attr(Expr::unknown("a"), "test".into());
+        let e = Expr::has_attr(Expr::unknown(Unknown::new_untyped("a")), "test".into());
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4820,26 +5146,34 @@ pub mod test {
     fn partial_set() {
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
-        let e = Expr::set([Expr::val(1), Expr::unknown("a"), Expr::val(2)]);
+        let e = Expr::set([
+            Expr::val(1),
+            Expr::unknown(Unknown::new_untyped("a")),
+            Expr::val(2),
+        ]);
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(r, PartialValue::Residual(e));
 
         let e = Expr::set([
             Expr::val(1),
-            Expr::unknown("a"),
+            Expr::unknown(Unknown::new_untyped("a")),
             Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(2)),
         ]);
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(
             r,
-            PartialValue::Residual(Expr::set([Expr::val(1), Expr::unknown("a"), Expr::val(3)]))
+            PartialValue::Residual(Expr::set([
+                Expr::val(1),
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::val(3)
+            ]))
         );
 
         let e = Expr::set([
             Expr::val(1),
-            Expr::unknown("a"),
+            Expr::unknown(Unknown::new_untyped("a")),
             Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("a")),
         ]);
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
@@ -4849,62 +5183,66 @@ pub mod test {
     fn partial_record() {
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let e = Expr::record([
             ("a".into(), Expr::val(1)),
-            ("b".into(), Expr::unknown("a")),
+            ("b".into(), Expr::unknown(Unknown::new_untyped("a"))),
             ("c".into(), Expr::val(2)),
-        ]);
+        ])
+        .unwrap();
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(r, PartialValue::Residual(e));
 
-        let e = Expr::record([("a".into(), Expr::val(1)), ("a".into(), Expr::unknown("a"))]);
-        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        let e = Expr::record([
+            ("a".into(), Expr::val(1)),
+            ("a".into(), Expr::unknown(Unknown::new_untyped("a"))),
+        ]);
         assert_eq!(
-            r,
-            PartialValue::Residual(Expr::record([
-                ("a".into(), Expr::val(1)),
-                ("a".into(), Expr::unknown("a"))
-            ]))
+            e,
+            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "a".into() })
         );
 
-        let e = Expr::record([("a".into(), Expr::unknown("a")), ("a".into(), Expr::val(1))]);
-        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        let e = Expr::record([
+            ("a".into(), Expr::unknown(Unknown::new_untyped("a"))),
+            ("a".into(), Expr::val(1)),
+        ]);
         assert_eq!(
-            r,
-            PartialValue::Residual(Expr::record([
-                ("a".into(), Expr::unknown("a")),
-                ("a".into(), Expr::val(1))
-            ]))
+            e,
+            Err(ExprConstructionError::DuplicateKeyInRecordLiteral { key: "a".into() })
         );
 
         let e = Expr::record([
             ("a".into(), Expr::val(1)),
-            ("b".into(), Expr::unknown("a")),
+            ("b".into(), Expr::unknown(Unknown::new_untyped("a"))),
             (
                 "c".into(),
                 Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(2)),
             ),
-        ]);
+        ])
+        .unwrap();
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(
             r,
-            PartialValue::Residual(Expr::record([
-                ("a".into(), Expr::val(1)),
-                ("b".into(), Expr::unknown("a")),
-                ("c".into(), Expr::val(3))
-            ]))
+            PartialValue::Residual(
+                Expr::record([
+                    ("a".into(), Expr::val(1)),
+                    ("b".into(), Expr::unknown(Unknown::new_untyped("a"))),
+                    ("c".into(), Expr::val(3))
+                ])
+                .unwrap()
+            )
         );
 
         let e = Expr::record([
             ("a".into(), Expr::val(1)),
-            ("b".into(), Expr::unknown("a")),
+            ("b".into(), Expr::unknown(Unknown::new_untyped("a"))),
             (
                 "c".into(),
                 Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("hello")),
             ),
-        ]);
+        ])
+        .unwrap();
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
     }
 
@@ -4927,16 +5265,21 @@ pub mod test {
         let q = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&q, &entities, &exts).unwrap();
+        let eval = Evaluator::new(q, &entities, &exts);
 
         let e = Expr::get_attr(
             Expr::record([
                 (
                     "a".into(),
-                    Expr::binary_app(BinaryOp::Add, Expr::unknown("a"), Expr::val(3)),
+                    Expr::binary_app(
+                        BinaryOp::Add,
+                        Expr::unknown(Unknown::new_untyped("a")),
+                        Expr::val(3),
+                    ),
                 ),
                 ("b".into(), Expr::val(83)),
-            ]),
+            ])
+            .unwrap(),
             "b".into(),
         );
         let r = eval.partial_eval_expr(&e).unwrap();
@@ -4945,8 +5288,13 @@ pub mod test {
         let e = Expr::get_attr(
             Expr::record([(
                 "a".into(),
-                Expr::binary_app(BinaryOp::Add, Expr::unknown("a"), Expr::val(3)),
-            )]),
+                Expr::binary_app(
+                    BinaryOp::Add,
+                    Expr::unknown(Unknown::new_untyped("a")),
+                    Expr::val(3),
+                ),
+            )])
+            .unwrap(),
             "b".into(),
         );
         assert!(eval.partial_eval_expr(&e).is_err());

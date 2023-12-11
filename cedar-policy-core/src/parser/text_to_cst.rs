@@ -52,12 +52,12 @@ fn parse_collect_errors<'a, P, T>(
 
     let mut errors: err::ParseErrors = errs
         .into_iter()
-        .map(|recovery| err::ToCSTError::from_raw_err_recovery(recovery).into())
+        .map(|recovery| err::ToCSTError::from_raw_err_recovery(recovery))
         .collect();
     let parsed = match result {
         Ok(parsed) => parsed,
         Err(e) => {
-            errors.push(err::ToCSTError::from_raw_parse_err(e).into());
+            errors.push(err::ToCSTError::from_raw_parse_err(e));
             return Err(errors);
         }
     };

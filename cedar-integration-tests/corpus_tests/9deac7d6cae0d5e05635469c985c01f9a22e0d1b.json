@@ -6,114 +6,186 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "a::\"\"",
-      "action": "Action::\"_q\"",
-      "resource": "a::\"\"",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "_q"
+      },
       "context": {
         "f": ""
       },
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: record does not have the attribute `f`. Available attributes: [\"\"]"
+        "while evaluating policy `policy0`: record does not have the attribute `f`"
       ]
     },
     {
       "desc": "Query 1",
-      "principal": "a::\"\"",
-      "action": "Action::\"_q\"",
-      "resource": "a::\"\"",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "_q"
+      },
       "context": {
         "f": ""
       },
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: record does not have the attribute `f`. Available attributes: [\"\"]"
+        "while evaluating policy `policy0`: record does not have the attribute `f`"
       ]
     },
     {
       "desc": "Query 2",
-      "principal": "a::\"\"",
-      "action": "Action::\"_q\"",
-      "resource": "a::\"\"",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "_q"
+      },
       "context": {
         "f": ""
       },
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: record does not have the attribute `f`. Available attributes: [\"\"]"
+        "while evaluating policy `policy0`: record does not have the attribute `f`"
       ]
     },
     {
       "desc": "Query 3",
-      "principal": "a::\"\"",
-      "action": "Action::\"_q\"",
-      "resource": "a::\"\"",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "_q"
+      },
       "context": {
         "f": ""
       },
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: record does not have the attribute `f`. Available attributes: [\"\"]"
+        "while evaluating policy `policy0`: record does not have the attribute `f`"
       ]
     },
     {
       "desc": "Query 4",
-      "principal": "a::\"\"",
-      "action": "Action::\"_q\"",
-      "resource": "a::\"\"",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "_q"
+      },
       "context": {
         "f": ""
       },
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: record does not have the attribute `f`. Available attributes: [\"\"]"
+        "while evaluating policy `policy0`: record does not have the attribute `f`"
       ]
     },
     {
       "desc": "Query 5",
-      "principal": "a::\"\"",
-      "action": "Action::\"_q\"",
-      "resource": "a::\"\"",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "_q"
+      },
       "context": {
         "f": ""
       },
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: record does not have the attribute `f`. Available attributes: [\"\"]"
+        "while evaluating policy `policy0`: record does not have the attribute `f`"
       ]
     },
     {
       "desc": "Query 6",
-      "principal": "a::\"\"",
-      "action": "Action::\"_q\"",
-      "resource": "a::\"\"",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "_q"
+      },
       "context": {
         "f": ""
       },
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: record does not have the attribute `f`. Available attributes: [\"\"]"
+        "while evaluating policy `policy0`: record does not have the attribute `f`"
       ]
     },
     {
       "desc": "Query 7",
-      "principal": "a::\"\"",
-      "action": "Action::\"_q\"",
-      "resource": "a::\"\"",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "_q"
+      },
       "context": {
         "f": ""
       },
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: record does not have the attribute `f`. Available attributes: [\"\"]"
+        "while evaluating policy `policy0`: record does not have the attribute `f`"
       ]
     }
   ]

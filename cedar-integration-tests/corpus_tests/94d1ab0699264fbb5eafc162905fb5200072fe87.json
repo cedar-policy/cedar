@@ -6,98 +6,170 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "a::\"z\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"z\"",
+      "principal": {
+        "type": "a",
+        "id": "z"
+      },
+      "resource": {
+        "type": "a",
+        "id": "z"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected set, got (entity of type `Ahhmm`)"
+        "while evaluating policy `policy0`: type error: expected set, got (entity of type `Ahhmm`)"
       ]
     },
     {
       "desc": "Query 1",
-      "principal": "a::\"z\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"z\"",
+      "principal": {
+        "type": "a",
+        "id": "z"
+      },
+      "resource": {
+        "type": "a",
+        "id": "z"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected set, got (entity of type `Ahhmm`)"
+        "while evaluating policy `policy0`: type error: expected set, got (entity of type `Ahhmm`)"
       ]
     },
     {
       "desc": "Query 2",
-      "principal": "a::\"z\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"z\"",
+      "principal": {
+        "type": "a",
+        "id": "z"
+      },
+      "resource": {
+        "type": "a",
+        "id": "z"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected set, got (entity of type `Ahhmm`)"
+        "while evaluating policy `policy0`: type error: expected set, got (entity of type `Ahhmm`)"
       ]
     },
     {
       "desc": "Query 3",
-      "principal": "a::\"z\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"z\"",
+      "principal": {
+        "type": "a",
+        "id": "z"
+      },
+      "resource": {
+        "type": "a",
+        "id": "z"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected set, got (entity of type `Ahhmm`)"
+        "while evaluating policy `policy0`: type error: expected set, got (entity of type `Ahhmm`)"
       ]
     },
     {
       "desc": "Query 4",
-      "principal": "a::\"z\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"z\"",
+      "principal": {
+        "type": "a",
+        "id": "z"
+      },
+      "resource": {
+        "type": "a",
+        "id": "z"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected set, got (entity of type `Ahhmm`)"
+        "while evaluating policy `policy0`: type error: expected set, got (entity of type `Ahhmm`)"
       ]
     },
     {
       "desc": "Query 5",
-      "principal": "a::\"z\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"z\"",
+      "principal": {
+        "type": "a",
+        "id": "z"
+      },
+      "resource": {
+        "type": "a",
+        "id": "z"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected set, got (entity of type `Ahhmm`)"
+        "while evaluating policy `policy0`: type error: expected set, got (entity of type `Ahhmm`)"
       ]
     },
     {
       "desc": "Query 6",
-      "principal": "a::\"z\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"z\"",
+      "principal": {
+        "type": "a",
+        "id": "z"
+      },
+      "resource": {
+        "type": "a",
+        "id": "z"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected set, got (entity of type `Ahhmm`)"
+        "while evaluating policy `policy0`: type error: expected set, got (entity of type `Ahhmm`)"
       ]
     },
     {
       "desc": "Query 7",
-      "principal": "a::\"z\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"z\"",
+      "principal": {
+        "type": "a",
+        "id": "z"
+      },
+      "resource": {
+        "type": "a",
+        "id": "z"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected set, got (entity of type `Ahhmm`)"
+        "while evaluating policy `policy0`: type error: expected set, got (entity of type `Ahhmm`)"
       ]
     }
   ]

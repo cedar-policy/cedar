@@ -19,8 +19,8 @@
 
 /// Representation of a Cedar value in JSON, and functionality for parsing it.
 /// Shared by both entity-attribute and context parsers.
-mod jsonvalue;
-pub use jsonvalue::*;
+mod value;
+pub use value::*;
 
 /// Parser for `Entities`, with related functionality.
 mod entities;

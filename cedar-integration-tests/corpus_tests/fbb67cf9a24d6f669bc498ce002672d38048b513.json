@@ -6,98 +6,170 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "OJJJ::\"RR\"",
-      "action": "Action::\"action\"",
-      "resource": "OJJJ::\"RR\"",
+      "principal": {
+        "type": "OJJJ",
+        "id": "RR"
+      },
+      "resource": {
+        "type": "OJJJ",
+        "id": "RR"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `OJJJ`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `OJJJ`)"
       ]
     },
     {
       "desc": "Query 1",
-      "principal": "OJJJ::\"RR\"",
-      "action": "Action::\"action\"",
-      "resource": "OJJJ::\"RR\"",
+      "principal": {
+        "type": "OJJJ",
+        "id": "RR"
+      },
+      "resource": {
+        "type": "OJJJ",
+        "id": "RR"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `OJJJ`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `OJJJ`)"
       ]
     },
     {
       "desc": "Query 2",
-      "principal": "OJJJ::\"RR\"",
-      "action": "Action::\"action\"",
-      "resource": "OJJJ::\"RR\"",
+      "principal": {
+        "type": "OJJJ",
+        "id": "RR"
+      },
+      "resource": {
+        "type": "OJJJ",
+        "id": "RR"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `OJJJ`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `OJJJ`)"
       ]
     },
     {
       "desc": "Query 3",
-      "principal": "OJJJ::\"RR\"",
-      "action": "Action::\"action\"",
-      "resource": "OJJJ::\"RR\"",
+      "principal": {
+        "type": "OJJJ",
+        "id": "RR"
+      },
+      "resource": {
+        "type": "OJJJ",
+        "id": "RR"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `OJJJ`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `OJJJ`)"
       ]
     },
     {
       "desc": "Query 4",
-      "principal": "OJJJ::\"RR\"",
-      "action": "Action::\"action\"",
-      "resource": "OJJJ::\"RR\"",
+      "principal": {
+        "type": "OJJJ",
+        "id": "RR"
+      },
+      "resource": {
+        "type": "OJJJ",
+        "id": "RR"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `OJJJ`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `OJJJ`)"
       ]
     },
     {
       "desc": "Query 5",
-      "principal": "OJJJ::\"RR\"",
-      "action": "Action::\"action\"",
-      "resource": "OJJJ::\"RR\"",
+      "principal": {
+        "type": "OJJJ",
+        "id": "RR"
+      },
+      "resource": {
+        "type": "OJJJ",
+        "id": "RR"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `OJJJ`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `OJJJ`)"
       ]
     },
     {
       "desc": "Query 6",
-      "principal": "OJJJ::\"RR\"",
-      "action": "Action::\"action\"",
-      "resource": "OJJJ::\"RR\"",
+      "principal": {
+        "type": "OJJJ",
+        "id": "RR"
+      },
+      "resource": {
+        "type": "OJJJ",
+        "id": "RR"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `OJJJ`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `OJJJ`)"
       ]
     },
     {
       "desc": "Query 7",
-      "principal": "OJJJ::\"RR\"",
-      "action": "Action::\"action\"",
-      "resource": "OJJJ::\"RR\"",
+      "principal": {
+        "type": "OJJJ",
+        "id": "RR"
+      },
+      "resource": {
+        "type": "OJJJ",
+        "id": "RR"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got (entity of type `OJJJ`)"
+        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `OJJJ`)"
       ]
     }
   ]

@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "Dlqsllvklb::a::\"\"",
-      "action": "Dlqsllvklb::Action::\"action\"",
-      "resource": "Dlqsllvklb::a::\"\"",
+      "principal": {
+        "type": "Dlqsllvklb::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "Dlqsllvklb::a",
+        "id": ""
+      },
+      "action": {
+        "type": "Dlqsllvklb::Action",
+        "id": "action"
+      },
       "context": {
         "C": {
           "\u0002": "",
@@ -24,9 +33,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "Dlqsllvklb::a::\"\"",
-      "action": "Dlqsllvklb::Action::\"action\"",
-      "resource": "Dlqsllvklb::a::\"\"",
+      "principal": {
+        "type": "Dlqsllvklb::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "Dlqsllvklb::a",
+        "id": ""
+      },
+      "action": {
+        "type": "Dlqsllvklb::Action",
+        "id": "action"
+      },
       "context": {
         "C": {
           "\u0002": "",
@@ -42,9 +60,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "Dlqsllvklb::a::\"\"",
-      "action": "Dlqsllvklb::Action::\"action\"",
-      "resource": "Dlqsllvklb::a::\"\"",
+      "principal": {
+        "type": "Dlqsllvklb::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "Dlqsllvklb::a",
+        "id": ""
+      },
+      "action": {
+        "type": "Dlqsllvklb::Action",
+        "id": "action"
+      },
       "context": {
         "C": {
           "\u0002": "",
@@ -60,9 +87,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "Dlqsllvklb::a::\"\"",
-      "action": "Dlqsllvklb::Action::\"action\"",
-      "resource": "Dlqsllvklb::a::\"\"",
+      "principal": {
+        "type": "Dlqsllvklb::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "Dlqsllvklb::a",
+        "id": ""
+      },
+      "action": {
+        "type": "Dlqsllvklb::Action",
+        "id": "action"
+      },
       "context": {
         "C": {
           "\u0002": "",
@@ -78,9 +114,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "Dlqsllvklb::a::\"\"",
-      "action": "Dlqsllvklb::Action::\"action\"",
-      "resource": "Dlqsllvklb::a::\"\"",
+      "principal": {
+        "type": "Dlqsllvklb::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "Dlqsllvklb::a",
+        "id": ""
+      },
+      "action": {
+        "type": "Dlqsllvklb::Action",
+        "id": "action"
+      },
       "context": {
         "C": {
           "\u0002": "",
@@ -96,9 +141,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "Dlqsllvklb::a::\"\"",
-      "action": "Dlqsllvklb::Action::\"action\"",
-      "resource": "Dlqsllvklb::a::\"\"",
+      "principal": {
+        "type": "Dlqsllvklb::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "Dlqsllvklb::a",
+        "id": ""
+      },
+      "action": {
+        "type": "Dlqsllvklb::Action",
+        "id": "action"
+      },
       "context": {
         "C": {
           "\u0002": "",
@@ -114,9 +168,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "Dlqsllvklb::a::\"\"",
-      "action": "Dlqsllvklb::Action::\"action\"",
-      "resource": "Dlqsllvklb::a::\"\"",
+      "principal": {
+        "type": "Dlqsllvklb::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "Dlqsllvklb::a",
+        "id": ""
+      },
+      "action": {
+        "type": "Dlqsllvklb::Action",
+        "id": "action"
+      },
       "context": {
         "C": {
           "\u0002": "",
@@ -132,9 +195,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "Dlqsllvklb::a::\"\"",
-      "action": "Dlqsllvklb::Action::\"action\"",
-      "resource": "Dlqsllvklb::a::\"\"",
+      "principal": {
+        "type": "Dlqsllvklb::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "Dlqsllvklb::a",
+        "id": ""
+      },
+      "action": {
+        "type": "Dlqsllvklb::Action",
+        "id": "action"
+      },
       "context": {
         "C": {
           "\u0002": "",

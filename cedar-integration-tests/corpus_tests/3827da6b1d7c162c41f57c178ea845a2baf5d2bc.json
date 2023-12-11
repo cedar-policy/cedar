@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "W::v::a::\"\"",
-      "action": "W::v::Action::\"action\"",
-      "resource": "W::v::a::\"\"",
+      "principal": {
+        "type": "W::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "W::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "W::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [
@@ -18,9 +27,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "W::v::a::\"o\"",
-      "action": "W::v::Action::\"action\"",
-      "resource": "W::v::a::\"\"",
+      "principal": {
+        "type": "W::v::a",
+        "id": "o"
+      },
+      "resource": {
+        "type": "W::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "W::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -28,9 +46,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "W::v::a::\"\"",
-      "action": "W::v::Action::\"action\"",
-      "resource": "W::v::a::\"\"",
+      "principal": {
+        "type": "W::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "W::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "W::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [
@@ -40,9 +67,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "W::v::a::\"\"",
-      "action": "W::v::Action::\"action\"",
-      "resource": "W::v::a::\"\"",
+      "principal": {
+        "type": "W::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "W::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "W::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [
@@ -52,9 +88,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "W::v::a::\"\"",
-      "action": "W::v::Action::\"action\"",
-      "resource": "W::v::a::\"\"",
+      "principal": {
+        "type": "W::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "W::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "W::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [
@@ -64,9 +109,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "W::v::a::\"\"",
-      "action": "W::v::Action::\"action\"",
-      "resource": "W::v::a::\"\"",
+      "principal": {
+        "type": "W::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "W::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "W::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [
@@ -76,9 +130,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "W::v::a::\"\"",
-      "action": "W::v::Action::\"action\"",
-      "resource": "W::v::a::\"\"",
+      "principal": {
+        "type": "W::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "W::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "W::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [
@@ -88,9 +151,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "W::v::a::\"\"",
-      "action": "W::v::Action::\"action\"",
-      "resource": "W::v::a::\"\"",
+      "principal": {
+        "type": "W::v::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "W::v::a",
+        "id": ""
+      },
+      "action": {
+        "type": "W::v::Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [

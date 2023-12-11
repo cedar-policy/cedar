@@ -6,9 +6,18 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "Ro1JJJJ::\"\\0\\0\\0R\"",
-      "action": "Action::\"action\"",
-      "resource": "Ro1JJJJ::\"\\0\\0\\0R\"",
+      "principal": {
+        "type": "Ro1JJJJ",
+        "id": "\u0000\u0000\u0000R"
+      },
+      "resource": {
+        "type": "Ro1JJJJ",
+        "id": "\u0000\u0000\u0000R"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -16,9 +25,18 @@
     },
     {
       "desc": "Query 1",
-      "principal": "Ro1JJJJ::\"\\0\\0\\0R\"",
-      "action": "Action::\"action\"",
-      "resource": "Ro1JJJJ::\"\\0\\0\\0R\"",
+      "principal": {
+        "type": "Ro1JJJJ",
+        "id": "\u0000\u0000\u0000R"
+      },
+      "resource": {
+        "type": "Ro1JJJJ",
+        "id": "\u0000\u0000\u0000R"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -26,9 +44,18 @@
     },
     {
       "desc": "Query 2",
-      "principal": "Ro1JJJJ::\"\\0\\0\\0R\"",
-      "action": "Action::\"action\"",
-      "resource": "Ro1JJJJ::\"\\0\\0\\0R\"",
+      "principal": {
+        "type": "Ro1JJJJ",
+        "id": "\u0000\u0000\u0000R"
+      },
+      "resource": {
+        "type": "Ro1JJJJ",
+        "id": "\u0000\u0000\u0000R"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -36,9 +63,18 @@
     },
     {
       "desc": "Query 3",
-      "principal": "Ro1JJJJ::\"\\0\\0\\0R\"",
-      "action": "Action::\"action\"",
-      "resource": "Ro1JJJJ::\"\\0\\0\\0R\"",
+      "principal": {
+        "type": "Ro1JJJJ",
+        "id": "\u0000\u0000\u0000R"
+      },
+      "resource": {
+        "type": "Ro1JJJJ",
+        "id": "\u0000\u0000\u0000R"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -46,9 +82,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "Ro1JJJJ::\"\\0\\0\\0R\"",
-      "action": "Action::\"action\"",
-      "resource": "Ro1JJJJ::\"\\0\\0\\0R\"",
+      "principal": {
+        "type": "Ro1JJJJ",
+        "id": "\u0000\u0000\u0000R"
+      },
+      "resource": {
+        "type": "Ro1JJJJ",
+        "id": "\u0000\u0000\u0000R"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -56,9 +101,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "Ro1JJJJ::\"\\0\\0\\0R\"",
-      "action": "Action::\"action\"",
-      "resource": "Ro1JJJJ::\"\\0\\0\\0R\"",
+      "principal": {
+        "type": "Ro1JJJJ",
+        "id": "\u0000\u0000\u0000R"
+      },
+      "resource": {
+        "type": "Ro1JJJJ",
+        "id": "\u0000\u0000\u0000R"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -66,9 +120,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "Ro1JJJJ::\"\\0\\0\\0R\"",
-      "action": "Action::\"action\"",
-      "resource": "Ro1JJJJ::\"\\0\\0\\0R\"",
+      "principal": {
+        "type": "Ro1JJJJ",
+        "id": "\u0000\u0000\u0000R"
+      },
+      "resource": {
+        "type": "Ro1JJJJ",
+        "id": "\u0000\u0000\u0000R"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -76,9 +139,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "Ro1JJJJ::\"\\0\\0\\0R\"",
-      "action": "Action::\"action\"",
-      "resource": "Ro1JJJJ::\"\\0\\0\\0R\"",
+      "principal": {
+        "type": "Ro1JJJJ",
+        "id": "\u0000\u0000\u0000R"
+      },
+      "resource": {
+        "type": "Ro1JJJJ",
+        "id": "\u0000\u0000\u0000R"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],

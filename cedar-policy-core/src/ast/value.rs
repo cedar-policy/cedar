@@ -19,7 +19,9 @@ use core::fmt;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
-use itertools::Either;
+use either::Either;
+use itertools::Itertools;
+use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -40,7 +42,7 @@ pub enum Value {
     ExtensionValue(Arc<ExtensionValueWithArgs>),
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 /// An error that can be thrown converting an expression to a value
 pub enum NotValue {
     /// General error for non-values
@@ -53,8 +55,8 @@ impl TryFrom<Expr> for Value {
 
     fn try_from(value: Expr) -> Result<Self, Self::Error> {
         match value.into_expr_kind() {
-            ExprKind::Lit(l) => Ok(Value::Lit(l)),
-            ExprKind::Unknown { .. } => Err(NotValue::NotValue),
+            ExprKind::Lit(lit) => Ok(Value::Lit(lit)),
+            ExprKind::Unknown(_) => Err(NotValue::NotValue),
             ExprKind::Var(_) => Err(NotValue::NotValue),
             ExprKind::Slot(_) => Err(NotValue::NotValue),
             ExprKind::If { .. } => Err(NotValue::NotValue),
@@ -67,12 +69,13 @@ impl TryFrom<Expr> for Value {
             ExprKind::GetAttr { .. } => Err(NotValue::NotValue),
             ExprKind::HasAttr { .. } => Err(NotValue::NotValue),
             ExprKind::Like { .. } => Err(NotValue::NotValue),
+            ExprKind::Is { .. } => Err(NotValue::NotValue),
             ExprKind::Set(members) => members
                 .iter()
                 .map(|e| e.clone().try_into())
                 .collect::<Result<Set, _>>()
                 .map(Value::Set),
-            ExprKind::Record { pairs } => pairs
+            ExprKind::Record(map) => map
                 .iter()
                 .map(|(k, v)| v.clone().try_into().map(|v: Value| (k.clone(), v)))
                 .collect::<Result<BTreeMap<SmolStr, Value>, _>>()
@@ -81,8 +84,8 @@ impl TryFrom<Expr> for Value {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 /// Intermediate results of partial evaluation
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PartialValue {
     /// Fully evaluated values
     Value(Value),
@@ -104,22 +107,26 @@ impl From<Expr> for PartialValue {
     }
 }
 
-impl From<PartialValue> for Expr {
-    fn from(val: PartialValue) -> Self {
-        match val {
-            PartialValue::Value(v) => v.into(),
-            PartialValue::Residual(e) => e,
-        }
-    }
+/// Errors encountered when converting `PartialValue` to `Value`
+#[derive(Debug, PartialEq, Diagnostic, Error)]
+pub enum PartialValueToValueError {
+    /// The `PartialValue` is a residual, i.e., contains an unknown
+    #[error("value contains a residual expression: `{residual}`")]
+    ContainsUnknown {
+        /// Residual expression which contains an unknown
+        residual: Expr,
+    },
 }
 
 impl TryFrom<PartialValue> for Value {
-    type Error = NotValue;
+    type Error = PartialValueToValueError;
 
     fn try_from(value: PartialValue) -> Result<Self, Self::Error> {
         match value {
             PartialValue::Value(v) => Ok(v),
-            PartialValue::Residual(e) => e.try_into(),
+            PartialValue::Residual(e) => {
+                Err(PartialValueToValueError::ContainsUnknown { residual: e })
+            }
         }
     }
 }
@@ -191,6 +198,7 @@ impl Set {
     pub fn len(&self) -> usize {
         self.authoritative.len()
     }
+
     /// Convenience method to check if a set is empty
     pub fn is_empty(&self) -> bool {
         self.len() == 0
@@ -216,7 +224,7 @@ impl FromIterator<Value> for Set {
                     literals
                         .into_iter()
                         .map(|v| match v {
-                            Value::Lit(l) => l,
+                            Value::Lit(lit) => lit,
                             // PANIC SAFETY: This is unreachable as every item in `literals` matches Value::Lit
                             #[allow(clippy::unreachable)]
                             _ => unreachable!(),
@@ -329,21 +337,28 @@ impl std::fmt::Display for Value {
                 fast,
                 authoritative,
             }) => {
-                let len = fast
-                    .as_ref()
-                    .map(|set| set.len())
-                    .unwrap_or_else(|| authoritative.len());
-                match len {
+                match authoritative.len() {
                     0 => write!(f, "[]"),
-                    1..=5 => {
+                    n @ 1..=5 => {
                         write!(f, "[")?;
                         if let Some(rc) = fast {
-                            for item in rc.as_ref() {
-                                write!(f, "{item}, ")?;
+                            // sort the elements, because we want the Display output to be
+                            // deterministic, particularly for tests which check equality
+                            // of error messages
+                            for (i, item) in rc.as_ref().iter().sorted_unstable().enumerate() {
+                                write!(f, "{item}")?;
+                                if i < n - 1 {
+                                    write!(f, ", ")?;
+                                }
                             }
                         } else {
-                            for item in authoritative.as_ref() {
-                                write!(f, "{item}, ")?;
+                            // don't need to sort the elements in this case because BTreeSet iterates
+                            // in a deterministic order already
+                            for (i, item) in authoritative.as_ref().iter().enumerate() {
+                                write!(f, "{item}")?;
+                                if i < n - 1 {
+                                    write!(f, ", ")?;
+                                }
                             }
                         }
                         write!(f, "]")?;
@@ -451,6 +466,13 @@ impl Value {
             authoritative: Arc::new(authoritative),
             fast: Some(Arc::new(fast)),
         })
+    }
+}
+
+impl PartialValue {
+    /// Create a new `PartialValue` consisting of just this single `Unknown`
+    pub fn unknown(u: Unknown) -> Self {
+        Self::Residual(Expr::unknown(u))
     }
 }
 

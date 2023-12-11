@@ -104,6 +104,9 @@ pub enum Token {
     #[token("like")]
     Like,
 
+    #[token("is")]
+    Is,
+
     #[token("then")]
     Then,
 
@@ -248,6 +251,7 @@ impl fmt::Display for Token {
             Self::LParen => write!(f, "("),
             Self::Le => write!(f, "<="),
             Self::Like => write!(f, "like"),
+            Self::Is => write!(f, "is"),
             Self::Lt => write!(f, "<"),
             Self::Modulo => write!(f, "%"),
             Self::Mul => write!(f, "*"),

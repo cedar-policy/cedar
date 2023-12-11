@@ -2,12 +2,34 @@
 
 ## Unreleased
 
+### Added
+
+- `--deny-warnings` option to `validate` command. This option turns non-fatal
+  warnings into errors.
+- Requests are now validated by default if a schema is provided. This can be
+  disabled with `--request-validation=false`.
+- The `-s` short form can now be used for `--schema` across all subcommands.
+
+### Changed
+
+- The `-p` flag now always refers to `--policies` (not `--principal`) across all
+  subcommands, while `-l` refers to `--principal`. Relatedly, the `--policies`
+  long form of the flag is also now accepted across all subcommands.
+- The short form of `--template-linked` was changed from `-t` to `-k`.
+- The `format` subcommand no longer takes a positional file argument.
+
+## 2.4.2
+
+## 2.4.1
+
 ## 2.4.0
 
 ### Changed
+
 - Input policies for `check-parse` command can be read from standard input.
 
 ### Fixed
+
 - Duplicate policy ids in `@id` annotations cause the CLI to exit gracefully
   instead of panicking.
 
@@ -22,19 +44,23 @@
 ## 2.2.0
 
 ### Changed
+
 - Update `cedar-policy` and `cedar-policy-core` dependencies.
 
 ## 2.1.0
 
 ### Changed
+
 - Update `cedar-policy` and `cedar-policy-formater` dependencies.
 
 ### Fixed
+
 - Resolve warning in `Cargo.toml` due to having both `license` and `license-file` metadata entries.
 
 ## 2.0.3
 
 ### Fixed
+
 - Update `Cargo.toml` metadata to correctly represent this crate as Apache-2.0 licensed.
 
 ## 2.0.2

@@ -6,45 +6,81 @@
   "queries": [
     {
       "desc": "Query 0",
-      "principal": "a::\"\\u{2}\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"\"",
+      "principal": {
+        "type": "a",
+        "id": "\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got string"
+        "while evaluating policy `policy0`: type error: expected bool, got string"
       ]
     },
     {
       "desc": "Query 1",
-      "principal": "a::\"\\u{2}\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"\"",
+      "principal": {
+        "type": "a",
+        "id": "\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got string"
+        "while evaluating policy `policy0`: type error: expected bool, got string"
       ]
     },
     {
       "desc": "Query 2",
-      "principal": "a::\"\\u{2}\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"\"",
+      "principal": {
+        "type": "a",
+        "id": "\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected bool, got string"
+        "while evaluating policy `policy0`: type error: expected bool, got string"
       ]
     },
     {
       "desc": "Query 3",
-      "principal": "a::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"\"",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -52,9 +88,18 @@
     },
     {
       "desc": "Query 4",
-      "principal": "a::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"\"",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -62,9 +107,18 @@
     },
     {
       "desc": "Query 5",
-      "principal": "a::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"\"",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -72,9 +126,18 @@
     },
     {
       "desc": "Query 6",
-      "principal": "a::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"\"",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],
@@ -82,9 +145,18 @@
     },
     {
       "desc": "Query 7",
-      "principal": "a::\"\"",
-      "action": "Action::\"action\"",
-      "resource": "a::\"\"",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
       "context": {},
       "decision": "Deny",
       "reasons": [],

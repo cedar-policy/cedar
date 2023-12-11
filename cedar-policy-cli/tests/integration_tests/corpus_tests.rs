@@ -32,7 +32,7 @@ fn folder() -> &'static Path {
 // for now we have a single #[test] that runs all the corpus tests.
 // The disadvantage of this is that only one error message will be displayed,
 // even if many of the corpus tests fail.
-// TODO for the future: figure out if we can procedurally generate one #[test]
+// TODO(#438): figure out if we can procedurally generate one #[test]
 // per corpus test.
 #[test]
 // Don't run the corpus tests by default because they can take a minute to
