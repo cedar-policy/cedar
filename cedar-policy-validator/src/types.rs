@@ -1650,10 +1650,10 @@ impl<'a> Effect<'a> {
 #[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
-    use crate::{ActionBehavior, SchemaType, ValidatorNamespaceDef};
     use super::*;
-    use std::collections::HashMap;
+    use crate::{ActionBehavior, SchemaType, ValidatorNamespaceDef};
     use cool_asserts::assert_matches;
+    use std::collections::HashMap;
 
     impl Type {
         pub(crate) fn entity_lub<'a>(es: impl IntoIterator<Item = &'a str>) -> Type {

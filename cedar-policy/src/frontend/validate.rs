@@ -145,8 +145,8 @@ enum ValidateAnswer {
 #[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
-    use crate::frontend::utils::assert_is_failure;
     use super::*;
+    use crate::frontend::utils::assert_is_failure;
     use cool_asserts::assert_matches;
     use std::collections::HashMap;
 

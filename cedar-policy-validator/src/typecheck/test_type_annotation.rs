@@ -26,8 +26,8 @@ use std::collections::HashSet;
 
 use cedar_policy_core::ast::{EntityUID, Expr, ExprBuilder};
 
-use crate::{types::Type, SchemaFragment};
 use super::test_utils::{empty_schema_file, with_typechecker_from_schema};
+use crate::{types::Type, SchemaFragment};
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_expr_has_annotated_ast(e: &Expr, annotated: &Expr<Option<Type>>) {

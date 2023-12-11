@@ -29,13 +29,13 @@ use std::{collections::HashSet, sync::Arc};
 
 use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprShapeOnly, StaticPolicy, Template};
 
+use super::{TypecheckAnswer, Typechecker};
 use crate::{
     schema::ACTION_ENTITY_TYPE,
     type_error::TypeError,
     types::{EffectSet, OpenTag, RequestEnv, Type},
     NamespaceDefinition, ValidationMode, ValidatorSchema,
 };
-use super::{TypecheckAnswer, Typechecker};
 
 impl TypeError {
     /// Testing utility for an unexpected type error when exactly one type was
@@ -238,7 +238,8 @@ pub(crate) fn assert_typechecks_for_mode(
             assert_types_eq(typechecker.schema, &expected, &expr_type.into_data().expect("Typechecked expression must have type"));
         });
         assert_eq!(
-            type_errors, HashSet::new(),
+            type_errors,
+            HashSet::new(),
             "Did not expect any errors, saw {:#?}.",
             type_errors
         );
