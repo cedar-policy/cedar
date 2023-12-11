@@ -96,7 +96,7 @@ pub Policy: Node<Option<cst::Policy>> = {
 
 // VariableDef := Variable [':' Name] [('in' | '==') Expr]
 VariableDef: Node<Option<cst::VariableDef>> = {
-    <l:@L> <variable: AnyIdent> <unused_type_name: (":" <Name>)?> <entity_type: (IS <Name>)?>
+    <l:@L> <variable: AnyIdent> <unused_type_name: (":" <Name>)?> <entity_type: (IS <Add>)?>
         <ineq: (RelOp Expr)?> <r:@R>
         => Node::new(Some(cst::VariableDef{ variable,unused_type_name,entity_type,ineq, }),l,r),
 }
@@ -198,7 +198,7 @@ Relation: Node<Option<cst::Relation>> = {
     },
     <l:@L> <t:Add> LIKE <p:Add> <r:@R>
         => Node::new(Some(cst::Relation::Like{target: t, pattern: p}),l,r),
-    <l:@L> <t:Add> IS <n:Name> <e: (IN <Add>)?> <r:@R>
+    <l:@L> <t:Add> IS <n:Add> <e: (IN <Add>)?> <r:@R>
         => Node::new(Some(cst::Relation::IsIn{target: t, entity_type: n, in_entity: e}),l,r),
 }
 // RelOp     := '<' | '<=' | '>=' | '>' | '!=' | '==' | 'in'

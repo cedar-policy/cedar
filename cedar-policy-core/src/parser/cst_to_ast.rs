@@ -561,7 +561,7 @@ impl ASTNode<Option<cst::VariableDef>> {
                 }
                 (cst::RelOp::In, None) => Some(PrincipalOrResourceConstraint::In(eref)),
                 (cst::RelOp::In, Some(entity_type)) => Some(PrincipalOrResourceConstraint::IsIn(
-                    entity_type.to_name(errs)?,
+                    entity_type.to_expr_or_special(errs)?.into_name(errs)?,
                     eref,
                 )),
                 (op, _) => {
@@ -571,7 +571,7 @@ impl ASTNode<Option<cst::VariableDef>> {
             }
         } else if let Some(entity_type) = &vardef.entity_type {
             Some(PrincipalOrResourceConstraint::Is(
-                entity_type.to_name(errs)?,
+                entity_type.to_expr_or_special(errs)?.into_name(errs)?,
             ))
         } else {
             Some(PrincipalOrResourceConstraint::Any)
@@ -887,6 +887,24 @@ impl ExprOrSpecial<'_> {
             }
             Self::Expr(e, _) => {
                 errs.push(self.to_ast_err(ToASTErrorKind::InvalidString(e.to_string())));
+                None
+            }
+        }
+    }
+
+    fn into_name(self, errs: &mut ParseErrors) -> Option<ast::Name> {
+        match self {
+            Self::StrLit(s, _) => {
+                errs.push(self.to_ast_err(ToASTErrorKind::IsInvalidName(s.to_string())));
+                None
+            }
+            Self::Var(var, _) => {
+                errs.push(self.to_ast_err(ToASTErrorKind::IsInvalidName(var.to_string())));
+                None
+            }
+            Self::Name(name, _) => Some(name),
+            Self::Expr(ref e, _) => {
+                errs.push(self.to_ast_err(ToASTErrorKind::IsInvalidName(e.to_string())));
                 None
             }
         }
@@ -1253,7 +1271,10 @@ impl ASTNode<Option<cst::Relation>> {
                 target,
                 entity_type,
                 in_entity,
-            } => match (target.to_expr(errs), entity_type.to_name(errs)) {
+            } => match (
+                target.to_expr(errs),
+                entity_type.to_expr_or_special(errs)?.into_name(errs),
+            ) {
                 (Some(t), Some(n)) => match in_entity {
                     Some(in_entity) => in_entity.to_expr(errs).map(|in_entity| {
                         ExprOrSpecial::Expr(
@@ -4055,11 +4076,17 @@ mod tests {
             ),
             (
                 r#"permit(principal is User::"alice", action, resource);"#,
-                ExpectedErrorMessage::error(r#"unexpected token `"alice"`"#),
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `User::"alice"`"#,
+                    "consider using `==` to test for equality"
+                ),
             ),
             (
                 r#"permit(principal, action, resource is File::"f");"#,
-                ExpectedErrorMessage::error(r#"unexpected token `"f"`"#),
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `File::"f"`"#,
+                    "consider using `==` to test for equality"
+                ),
             ),
             (
                 r#"permit(principal is User in 1, action, resource);"#,
@@ -4087,11 +4114,17 @@ mod tests {
             ),
             (
                 r#"permit(principal is 1, action, resource);"#,
-                ExpectedErrorMessage::error("unexpected token `1`"),
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
+                    "consider using `==` to test for equality"
+                ),
             ),
             (
                 r#"permit(principal, action, resource is 1);"#,
-                ExpectedErrorMessage::error("unexpected token `1`"),
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
+                    "consider using `==` to test for equality"
+                ),
             ),
             (
                 r#"permit(principal, action is Action, resource);"#,
@@ -4111,7 +4144,10 @@ mod tests {
             ),
             (
                 r#"permit(principal, action, resource) when { principal is 1 };"#,
-                ExpectedErrorMessage::error("unexpected token `1`"),
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
+                    "consider using `==` to test for equality"
+                ),
             ),
         ];
         for (p_src, expected) in invalid_is_policies {

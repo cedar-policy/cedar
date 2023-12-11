@@ -267,6 +267,10 @@ pub enum ToASTErrorKind {
     /// Returned when the right hand side of a `like` expression is not a constant pattern literal
     #[error("right hand side of a `like` expression must be a pattern literal, but got `{0}`")]
     InvalidPattern(String),
+    /// Returned when the right hand side of a `is` expression is not an entity type name
+    #[error("right hand side of an `is` expression must be an entity type name, but got `{0}`")]
+    #[diagnostic(help("consider using `==` to test for equality"))]
+    IsInvalidName(String),
     /// Returned when an unexpected node is in the policy scope clause
     #[error("expected {expected}, found {got}")]
     WrongNode {
