@@ -44,6 +44,7 @@ match {
     // Valid slots, hardcoded for now, may be generalized later
     "?principal" => PRINCIPAL_SLOT,
     "?resource" => RESOURCE_SLOT,
+    r"\?[_a-zA-Z][_a-zA-Z0-9]*" => OTHER_SLOT,
 
     // data input
     r"[_a-zA-Z][_a-zA-Z0-9]*" => IDENTIFIER,
@@ -345,6 +346,8 @@ Slot: Node<Option<cst::Slot>> = {
         => Node::new(Some(cst::Slot::Principal), l, r),
     <l:@L> RESOURCE_SLOT <r:@R>
         => Node::new(Some(cst::Slot::Resource), l, r),
+    <l:@L> <s: OTHER_SLOT> <r:@R>
+        => Node::new(Some(cst::Slot::Other(s.into())), l, r),
 }
 
 // LITERAL   := BOOL | INT | STR

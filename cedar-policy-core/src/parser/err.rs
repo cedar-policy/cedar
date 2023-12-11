@@ -383,6 +383,10 @@ pub enum ToASTErrorKind {
     #[error(transparent)]
     #[diagnostic(transparent)]
     InvalidIs(#[from] InvalidIsError),
+    /// Returned when a policy contains a template slot other than `?principal` or `?resource`
+    #[error("`{0}` is not a valid template slot")]
+    #[diagnostic(help("a template slot may only be `?principal` or `?resource`"))]
+    InvalidSlot(SmolStr),
 }
 
 impl ToASTErrorKind {
@@ -568,6 +572,7 @@ lazy_static! {
         ("CONTEXT", "`context`"),
         ("PRINCIPAL_SLOT", "`?principal`"),
         ("RESOURCE_SLOT", "`?resource`"),
+        ("OTHER_SLOT", "template slot"),
         ("IDENTIFIER", "identifier"),
         ("NUMBER", "number"),
         ("STRINGLIT", "string literal"),

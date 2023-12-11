@@ -774,8 +774,10 @@ mod parse_tests {
                 resource == ?blah
             };
             "#;
-        // TODO(#451): improve these errors
-        let error = ExpectedErrorMessage::error("invalid token");
+        let error = ExpectedErrorMessage::error_and_help(
+            "`?blah` is not a valid template slot",
+            "a template slot may only be `?principal` or `?resource`",
+        );
         assert_matches!(parse_policy(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &error);
         });
@@ -868,8 +870,10 @@ mod parse_tests {
                 resource == ?blah
             };
             "#;
-        // TODO(#451): improve these errors
-        let error = ExpectedErrorMessage::error("invalid token");
+        let error = ExpectedErrorMessage::error_and_help(
+            "`?blah` is not a valid template slot",
+            "a template slot may only be `?principal` or `?resource`",
+        );
         assert_matches!(parse_policy(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &error);
         });
