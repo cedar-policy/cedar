@@ -3571,6 +3571,7 @@ mod tests {
         test_invalid(r"\aaa\u{}", 2);
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn expect_action_error(test: &str, euid_strs: Vec<&str>) {
         let euids = euid_strs
             .iter()

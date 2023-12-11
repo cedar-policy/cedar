@@ -15,6 +15,7 @@ use crate::{AttributeAccess, NamespaceDefinition, TypeError, ValidationMode, Val
 
 use super::test_utils::empty_schema_file;
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_partial_typecheck(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
     policy: StaticPolicy,
@@ -30,6 +31,7 @@ pub(crate) fn assert_partial_typecheck(
     assert!(typechecked, "Expected that policy would typecheck.");
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_partial_typecheck_fail(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
     policy: StaticPolicy,
@@ -46,10 +48,12 @@ pub(crate) fn assert_partial_typecheck_fail(
     assert!(!typechecked, "Expected that policy would not typecheck.");
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typechecks_empty_schema(policy: StaticPolicy) {
     assert_partial_typecheck(empty_schema_file(), policy)
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typecheck_fails_empty_schema(
     policy: StaticPolicy,
     expected_type_errors: Vec<TypeError>,
@@ -483,10 +487,12 @@ fn partial_schema_file() -> NamespaceDefinition {
     .expect("Expected valid schema")
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typechecks_partial_schema(policy: StaticPolicy) {
     assert_partial_typecheck(partial_schema_file(), policy)
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typecheck_fails_partial_schema(
     policy: StaticPolicy,
     expected_type_errors: Vec<TypeError>,

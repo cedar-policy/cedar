@@ -301,37 +301,32 @@ mod tests {
     use crate::evaluator::Evaluator;
     use crate::extensions::Extensions;
     use crate::parser::parse_expr;
+    use cool_asserts::assert_matches;
 
     /// Asserts that a `Result` is an `Err::ExtensionErr` with our extension name
-    fn assert_decimal_err<T>(res: evaluator::Result<T>) {
-        match res {
-            Err(e) => match e.error_kind() {
-                evaluator::EvaluationErrorKind::FailedExtensionFunctionApplication {
-                    extension_name,
-                    msg,
-                } => {
-                    println!("{msg}");
-                    assert_eq!(
-                        *extension_name,
-                        Name::parse_unqualified_name("decimal")
-                            .expect("should be a valid identifier")
-                    )
-                }
-                _ => panic!("Expected a decimal ExtensionErr, got {:?}", e),
-            },
-            Ok(_) => panic!("Expected a decimal ExtensionErr, got Ok"),
-        }
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+    fn assert_decimal_err<T: std::fmt::Debug>(res: evaluator::Result<T>) {
+        assert_matches!(res, Err(e) => {
+            assert_matches!(e.error_kind(), evaluator::EvaluationErrorKind::FailedExtensionFunctionApplication {
+                extension_name,
+                msg,
+            } => {
+                println!("{msg}");
+                assert_eq!(
+                    *extension_name,
+                    Name::parse_unqualified_name("decimal")
+                        .expect("should be a valid identifier")
+                )
+            });
+        });
     }
 
     /// Asserts that a `Result` is a decimal value
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_decimal_valid(res: evaluator::Result<Value>) {
-        match res {
-            Ok(Value::ExtensionValue(ev)) => {
-                assert_eq!(ev.typename(), Decimal::typename())
-            }
-            Ok(v) => panic!("Expected decimal ExtensionValue, got {:?}", v),
-            Err(e) => panic!("Expected Ok, got Err: {:?}", e),
-        }
+        assert_matches!(res, Ok(Value::ExtensionValue(ev)) => {
+            assert_eq!(ev.typename(), Decimal::typename());
+        });
     }
 
     /// this test just ensures that the right functions are marked constructors

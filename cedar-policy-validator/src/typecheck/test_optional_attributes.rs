@@ -61,10 +61,12 @@ fn schema_with_optionals() -> NamespaceDefinition {
     .expect("Expected valid schema.")
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typechecks_optional_schema(p: StaticPolicy) {
     assert_policy_typechecks(schema_with_optionals(), p);
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typecheck_fails_optional_schema(
     p: StaticPolicy,
     expected_type_errors: Vec<TypeError>,
@@ -312,6 +314,7 @@ fn guarded_has_true_short_circuits() {
     assert_policy_typechecks_optional_schema(policy);
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_name_access_fails(policy: StaticPolicy) {
     let optional_attr: SmolStr = "name".into();
     assert_policy_typecheck_fails_optional_schema(

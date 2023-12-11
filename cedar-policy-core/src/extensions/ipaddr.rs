@@ -410,23 +410,17 @@ mod tests {
 
     /// This helper function asserts that a `Result` is actually an
     /// `Err::ExtensionErr` with our extension name
-    fn assert_ipaddr_err<T>(res: evaluator::Result<T>) {
-        match res {
-            Err(e) => match e.error_kind() {
-                evaluator::EvaluationErrorKind::FailedExtensionFunctionApplication {
-                    extension_name,
-                    ..
-                } => {
-                    assert_eq!(
-                        *extension_name,
-                        Name::parse_unqualified_name("ipaddr")
-                            .expect("should be a valid identifier")
-                    )
-                }
-                _ => panic!("Expected an ipaddr ExtensionErr, got {:?}", e),
-            },
-            Ok(_) => panic!("Expected an ipaddr ExtensionErr, got Ok"),
-        }
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+    fn assert_ipaddr_err<T: std::fmt::Debug>(res: evaluator::Result<T>) {
+        assert_matches!(res, Err(e) => assert_matches!(e.error_kind(),
+            evaluator::EvaluationErrorKind::FailedExtensionFunctionApplication { extension_name, .. } => {
+                assert_eq!(
+                    *extension_name,
+                    Name::parse_unqualified_name("ipaddr")
+                        .expect("should be a valid identifier")
+                );
+            }
+        ));
     }
 
     /// This helper function returns an `Expr` that calls `ip()` with the given single argument

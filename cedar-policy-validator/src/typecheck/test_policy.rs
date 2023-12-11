@@ -108,18 +108,22 @@ fn simple_schema_file() -> NamespaceDefinition {
     .expect("Expected valid schema")
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_typechecks_simple_schema(expr: Expr, expected: Type) {
     assert_typechecks(simple_schema_file(), expr, expected)
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typechecks_simple_schema(p: impl Into<Arc<Template>>) {
     assert_policy_typechecks(simple_schema_file(), p)
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typechecks_permissive_simple_schema(p: impl Into<Arc<Template>>) {
     assert_policy_typechecks_for_mode(simple_schema_file(), p, ValidationMode::Permissive)
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typecheck_fails_simple_schema(
     p: impl Into<Arc<Template>>,
     expected_type_errors: Vec<TypeError>,
@@ -127,6 +131,7 @@ fn assert_policy_typecheck_fails_simple_schema(
     assert_policy_typecheck_fails(simple_schema_file(), p, expected_type_errors)
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typecheck_permissive_fails_simple_schema(
     p: impl Into<Arc<Template>>,
     expected_type_errors: Vec<TypeError>,

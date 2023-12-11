@@ -1650,11 +1650,10 @@ impl<'a> Effect<'a> {
 #[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
-
-    use crate::{ActionBehavior, SchemaType, ValidatorNamespaceDef};
-
     use super::*;
+    use crate::{ActionBehavior, SchemaType, ValidatorNamespaceDef};
+    use cool_asserts::assert_matches;
+    use std::collections::HashMap;
 
     impl Type {
         pub(crate) fn entity_lub<'a>(es: impl IntoIterator<Item = &'a str>) -> Type {
@@ -1693,6 +1692,7 @@ mod test {
         }
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_least_upper_bound(schema: ValidatorSchema, lhs: Type, rhs: Type, lub: Option<Type>) {
         assert_eq!(
             Type::least_upper_bound(&schema, &lhs, &rhs, ValidationMode::Permissive),
@@ -1704,6 +1704,7 @@ mod test {
         );
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_entity_lub(
         schema: ValidatorSchema,
         lhs: Type,
@@ -1712,38 +1713,36 @@ mod test {
         lub_attrs: &[(&str, Type)],
     ) {
         let lub = Type::least_upper_bound(&schema, &lhs, &rhs, ValidationMode::Permissive);
-        match lub {
-            Some(Type::EntityOrRecord(EntityRecordKind::Entity(entity_lub))) => {
-                assert_eq!(
-                    lub_names
+        assert_matches!(lub, Some(Type::EntityOrRecord(EntityRecordKind::Entity(entity_lub))) => {
+            assert_eq!(
+                lub_names
+                    .iter()
+                    .map(|s| s.parse().expect("Expected valid entity type name."))
+                    .collect::<BTreeSet<_>>(),
+                entity_lub.lub_elements,
+                "Incorrect entity types composing LUB."
+            );
+            assert_eq!(
+                Attributes::with_attributes(
+                    lub_attrs
                         .iter()
-                        .map(|s| s.parse().expect("Expected valid entity type name."))
-                        .collect::<BTreeSet<_>>(),
-                    entity_lub.lub_elements,
-                    "Incorrect entity types composing LUB."
-                );
-                assert_eq!(
-                    Attributes::with_attributes(
-                        lub_attrs
-                            .iter()
-                            .map(|(s, t)| (
-                                AsRef::<str>::as_ref(s).into(),
-                                AttributeType::required_attribute(t.clone())
-                            ))
-                            .collect::<BTreeMap<_, _>>()
-                    ),
-                    entity_lub.get_attribute_types(&schema),
-                    "Incorrect computed record type for LUB."
-                );
-            }
-            _ => panic!("Expected entity least upper bound."),
-        }
+                        .map(|(s, t)| (
+                            AsRef::<str>::as_ref(s).into(),
+                            AttributeType::required_attribute(t.clone())
+                        ))
+                        .collect::<BTreeMap<_, _>>()
+                ),
+                entity_lub.get_attribute_types(&schema),
+                "Incorrect computed record type for LUB."
+            );
+        });
     }
 
     fn empty_schema() -> ValidatorSchema {
         ValidatorSchema::empty()
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_least_upper_bound_empty_schema(lhs: Type, rhs: Type, lub: Option<Type>) {
         assert_least_upper_bound(empty_schema(), lhs, rhs, lub);
     }
@@ -2025,10 +2024,12 @@ mod test {
         .expect("Expected valid schema")
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_least_upper_bound_simple_schema(lhs: Type, rhs: Type, lub: Option<Type>) {
         assert_least_upper_bound(simple_schema(), lhs, rhs, lub);
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_entity_lub_attrs_simple_schema(
         lhs: Type,
         rhs: Type,
@@ -2134,10 +2135,12 @@ mod test {
         .expect("Expected valid schema")
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_least_upper_bound_attr_schema(lhs: Type, rhs: Type, lub: Option<Type>) {
         assert_least_upper_bound(attr_schema(), lhs, rhs, lub);
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_entity_lub_attrs_attr_schema(
         lhs: Type,
         rhs: Type,
@@ -2300,6 +2303,7 @@ mod test {
         .expect("Expected valid schema")
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_entity_lub_attrs_rec_schema(
         lhs: Type,
         rhs: Type,
@@ -2333,9 +2337,10 @@ mod test {
         );
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_json_parses_to_schema_type(ty: Type) {
         let json_str = serde_json::value::Value::Object(ty.to_type_json()).to_string();
-        println!("{}", json_str);
+        println!("{json_str}");
         let parsed_schema_type: SchemaType = serde_json::from_str(&json_str)
             .expect("JSON representation should have parsed into a schema type");
         let type_from_schema_type =
@@ -2374,6 +2379,7 @@ mod test {
         ]));
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_displays_as(ty: Type, repr: &str) {
         assert_eq!(
             ty.to_string(),

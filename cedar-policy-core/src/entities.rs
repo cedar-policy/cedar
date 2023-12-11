@@ -371,6 +371,7 @@ where
     /// Panics if the self value is not `Data`.
     // PANIC SAFETY: This function is intended to panic, and says so in the documentation
     #[allow(clippy::panic)]
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     pub fn expect(self, msg: &str) -> &'a T {
         match self {
             Self::Data(e) => e,
