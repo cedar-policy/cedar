@@ -4279,6 +4279,12 @@ mod tests {
                 ),
             ),
             (
+                r#"permit(principal, action, resource) when { principal is User in User::"alice" in Group::"friends" };"#,
+                ExpectedErrorMessage::error(
+                    "unexpected token `in`"
+                ),
+            ),
+            (
                 r#"permit(principal, action, resource) when { principal is User == User::"alice" in Group::"friends" };"#,
                 ExpectedErrorMessage::error(
                     "unexpected token `==`"
