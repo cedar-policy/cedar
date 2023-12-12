@@ -269,7 +269,7 @@ pub enum ToASTErrorKind {
     InvalidPattern(String),
     /// Returned when the right hand side of a `is` expression is not an entity type name
     #[error("right hand side of an `is` expression must be an entity type name, but got `{0}`")]
-    #[diagnostic(help("consider using `==` to test for equality"))]
+    #[diagnostic(help("try using `==` to test for equality"))]
     IsInvalidName(String),
     /// Returned when an unexpected node is in the policy scope clause
     #[error("expected {expected}, found {got}")]
@@ -477,9 +477,11 @@ impl std::fmt::Display for Ref {
 pub enum InvalidIsError {
     /// The action scope may not contain an `is`
     #[error("`is` cannot appear in the action scope")]
+    #[diagnostic(help("try moving `action is ..` into a `when` condition"))]
     ActionScope,
     /// An `is` cannot appear with this operator in the policy scope
     #[error("`is` cannot appear in the scope at the same time as `{0}`")]
+    #[diagnostic(help("try moving `is` into a `when` condition"))]
     WrongOp(cst::RelOp),
 }
 

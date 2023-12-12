@@ -4101,28 +4101,30 @@ mod tests {
             ),
             (
                 r#"permit(principal is User == User::"Alice", action, resource);"#,
-                ExpectedErrorMessage::error(
+                ExpectedErrorMessage::error_and_help(
                     "`is` cannot appear in the scope at the same time as `==`",
+                    "try moving `is` into a `when` condition"
                 ),
             ),
             (
                 r#"permit(principal, action, resource is Doc == Doc::"a");"#,
-                ExpectedErrorMessage::error(
+                ExpectedErrorMessage::error_and_help(
                     "`is` cannot appear in the scope at the same time as `==`",
+                    "try moving `is` into a `when` condition"
                 ),
             ),
             (
                 r#"permit(principal is User::"alice", action, resource);"#,
                 ExpectedErrorMessage::error_and_help(
                     r#"right hand side of an `is` expression must be an entity type name, but got `User::"alice"`"#,
-                    "consider using `==` to test for equality"
+                    "try using `==` to test for equality"
                 ),
             ),
             (
                 r#"permit(principal, action, resource is File::"f");"#,
                 ExpectedErrorMessage::error_and_help(
                     r#"right hand side of an `is` expression must be an entity type name, but got `File::"f"`"#,
-                    "consider using `==` to test for equality"
+                    "try using `==` to test for equality"
                 ),
             ),
             (
@@ -4147,7 +4149,7 @@ mod tests {
                 r#"permit(principal is User::"Alice" in Group::"f", action, resource);"#,
                 ExpectedErrorMessage::error_and_help(
                     r#"right hand side of an `is` expression must be an entity type name, but got `User::"Alice"`"#,
-                    "consider using `==` to test for equality"
+                    "try using `==` to test for equality"
                 ),
             ),
             (
@@ -4160,50 +4162,71 @@ mod tests {
                 r#"permit(principal, action, resource is File::"file" in Folder::"folder");"#,
                 ExpectedErrorMessage::error_and_help(
                     r#"right hand side of an `is` expression must be an entity type name, but got `File::"file"`"#,
-                    "consider using `==` to test for equality"
+                    "try using `==` to test for equality"
                 ),
             ),
             (
                 r#"permit(principal is 1, action, resource);"#,
                 ExpectedErrorMessage::error_and_help(
                     r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
-                    "consider using `==` to test for equality"
+                    "try using `==` to test for equality"
                 ),
             ),
             (
                 r#"permit(principal, action, resource is 1);"#,
                 ExpectedErrorMessage::error_and_help(
                     r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
-                    "consider using `==` to test for equality"
+                    "try using `==` to test for equality"
                 ),
             ),
             (
                 r#"permit(principal, action is Action, resource);"#,
-                ExpectedErrorMessage::error("`is` cannot appear in the action scope"),
+                ExpectedErrorMessage::error_and_help(
+                    "`is` cannot appear in the action scope",
+                    "try moving `action is ..` into a `when` condition"
+                ),
             ),
             (
                 r#"permit(principal, action is Action::"a", resource);"#,
-                ExpectedErrorMessage::error("`is` cannot appear in the action scope"),
+                ExpectedErrorMessage::error_and_help(
+                    "`is` cannot appear in the action scope",
+                    "try moving `action is ..` into a `when` condition"
+                ),
             ),
             (
                 r#"permit(principal, action is Action in Action::"A", resource);"#,
-                ExpectedErrorMessage::error("`is` cannot appear in the action scope"),
+                ExpectedErrorMessage::error_and_help(
+                    "`is` cannot appear in the action scope",
+                    "try moving `action is ..` into a `when` condition"
+                ),
             ),
             (
                 r#"permit(principal, action is Action in Action, resource);"#,
-                ExpectedErrorMessage::error("`is` cannot appear in the action scope"),
+                ExpectedErrorMessage::error_and_help(
+                    "`is` cannot appear in the action scope",
+                    "try moving `action is ..` into a `when` condition"
+                ),
             ),
             (
                 r#"permit(principal, action is Action::"a" in Action::"b", resource);"#,
-                ExpectedErrorMessage::error("`is` cannot appear in the action scope"),
+                ExpectedErrorMessage::error_and_help(
+                    "`is` cannot appear in the action scope",
+                    "try moving `action is ..` into a `when` condition"
+                ),
             ),
             (
                 r#"permit(principal, action is Action in ?action, resource);"#,
-                ExpectedErrorMessage::error("`is` cannot appear in the action scope"),
+                ExpectedErrorMessage::error_and_help(
+                    "`is` cannot appear in the action scope",
+                    "try moving `action is ..` into a `when` condition"
+                ),
             ),
             (
                 r#"permit(principal, action is ?action, resource);"#,
-                ExpectedErrorMessage::error("`is` cannot appear in the action scope"),
+                ExpectedErrorMessage::error_and_help(
+                    "`is` cannot appear in the action scope",
+                    "try moving `action is ..` into a `when` condition"
+                ),
             ),
             (
                 r#"permit(principal is User in ?resource, action, resource);"#,
@@ -4217,42 +4240,42 @@ mod tests {
                 r#"permit(principal is ?principal, action, resource);"#,
                 ExpectedErrorMessage::error_and_help(
                     "right hand side of an `is` expression must be an entity type name, but got `?principal`",
-                    "consider using `==` to test for equality"
+                    "try using `==` to test for equality"
                 ),
             ),
             (
                 r#"permit(principal, action, resource is ?resource);"#,
                 ExpectedErrorMessage::error_and_help(
                     "right hand side of an `is` expression must be an entity type name, but got `?resource`",
-                    "consider using `==` to test for equality"
+                    "try using `==` to test for equality"
                 ),
             ),
             (
                 r#"permit(principal, action, resource) when { principal is 1 };"#,
                 ExpectedErrorMessage::error_and_help(
                     r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
-                    "consider using `==` to test for equality"
+                    "try using `==` to test for equality"
                 ),
             ),
             (
                 r#"permit(principal, action, resource) when { principal is User::"alice" in Group::"friends" };"#,
                 ExpectedErrorMessage::error_and_help(
                     r#"right hand side of an `is` expression must be an entity type name, but got `User::"alice"`"#,
-                    "consider using `==` to test for equality"
+                    "try using `==` to test for equality"
                 ),
             ),
             (
                 r#"permit(principal, action, resource) when { principal is ! User::"alice" in Group::"friends" };"#,
                 ExpectedErrorMessage::error_and_help(
                     r#"right hand side of an `is` expression must be an entity type name, but got `!User::"alice"`"#,
-                    "consider using `==` to test for equality"
+                    "try using `==` to test for equality"
                 ),
             ),
             (
                 r#"permit(principal, action, resource) when { principal is User::"alice" + User::"alice" in Group::"friends" };"#,
                 ExpectedErrorMessage::error_and_help(
                     r#"right hand side of an `is` expression must be an entity type name, but got `User::"alice" + User::"alice"`"#,
-                    "consider using `==` to test for equality"
+                    "try using `==` to test for equality"
                 ),
             ),
             (
