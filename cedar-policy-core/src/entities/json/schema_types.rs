@@ -384,7 +384,7 @@ pub fn schematype_of_value(value: &Value) -> Result<SchemaType, HeterogeneousSet
     match value {
         Value::Lit(lit) => Ok(schematype_of_lit(lit)),
         Value::Set(set) => {
-            let element_types = set.iter().map(|el| schematype_of_value(el));
+            let element_types = set.iter().map(schematype_of_value);
             schematype_of_set_elements(element_types)
         }
         Value::Record(map) => Ok(SchemaType::Record {

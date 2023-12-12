@@ -51,7 +51,7 @@ pub struct TypeError {
 impl Diagnostic for TypeError {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         self.source_span().as_ref().map(|info| {
-            let label = miette::LabeledSpan::underline(info.clone());
+            let label = miette::LabeledSpan::underline(*info);
             let ret: Box<dyn Iterator<Item = miette::LabeledSpan>> =
                 Box::new(std::iter::once(label));
             ret

@@ -2057,7 +2057,7 @@ impl<'a> Typechecker<'a> {
     fn type_of_non_action_in_entities<'b>(
         &self,
         lhs: &EntityUID,
-        rhs: &Vec<EntityUID>,
+        rhs: &[EntityUID],
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
