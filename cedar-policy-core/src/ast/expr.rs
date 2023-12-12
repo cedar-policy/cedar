@@ -269,13 +269,15 @@ impl<T> Expr<T> {
     /// An expression is projectable if it's guaranteed to never error on evaluation
     /// This is true if the expression is entirely composed of values or unknowns
     pub fn is_projectable(&self) -> bool {
-        self.subexpressions().all(|e| match e.expr_kind() {
-            ExprKind::Lit(_) => true,
-            ExprKind::Unknown(_) => true,
-            ExprKind::Set(_) => true,
-            ExprKind::Var(_) => true,
-            ExprKind::Record(_) => true,
-            _ => false,
+        self.subexpressions().all(|e| {
+            matches!(
+                e.expr_kind(),
+                ExprKind::Lit(_)
+                    | ExprKind::Unknown(_)
+                    | ExprKind::Set(_)
+                    | ExprKind::Var(_)
+                    | ExprKind::Record(_)
+            )
         })
     }
 }
@@ -1020,7 +1022,7 @@ impl<T: Clone> ExprBuilder<T> {
     pub fn and_nary(self, first: Expr<T>, others: impl IntoIterator<Item = Expr<T>>) -> Expr<T> {
         others.into_iter().fold(first, |acc, next| {
             Self::with_data(self.data.clone())
-                .with_maybe_source_span(self.source_span.clone())
+                .with_maybe_source_span(self.source_span)
                 .and(acc, next)
         })
     }
@@ -1035,7 +1037,7 @@ impl<T: Clone> ExprBuilder<T> {
     pub fn or_nary(self, first: Expr<T>, others: impl IntoIterator<Item = Expr<T>>) -> Expr<T> {
         others.into_iter().fold(first, |acc, next| {
             Self::with_data(self.data.clone())
-                .with_maybe_source_span(self.source_span.clone())
+                .with_maybe_source_span(self.source_span)
                 .or(acc, next)
         })
     }
@@ -1044,7 +1046,7 @@ impl<T: Clone> ExprBuilder<T> {
     pub fn greater(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         // e1 > e2 is defined as !(e1 <= e2)
         let leq = Self::with_data(self.data.clone())
-            .with_maybe_source_span(self.source_span.clone())
+            .with_maybe_source_span(self.source_span)
             .lesseq(e1, e2);
         self.not(leq)
     }
@@ -1053,7 +1055,7 @@ impl<T: Clone> ExprBuilder<T> {
     pub fn greatereq(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         // e1 >= e2 is defined as !(e1 < e2)
         let leq = Self::with_data(self.data.clone())
-            .with_maybe_source_span(self.source_span.clone())
+            .with_maybe_source_span(self.source_span)
             .less(e1, e2);
         self.not(leq)
     }

@@ -109,7 +109,7 @@ mod entity_uid_tests {
         // EntityId is passed through (no escape interpretation):
         //   the EntityId has all the same literal characters in it
         assert_eq!(euid.id().as_ref(), r#"b'ob"by\'s sis\"ter"#);
-        assert_eq!(euid.type_name().to_string(), r#"Test::User"#);
+        assert_eq!(euid.type_name().to_string(), r"Test::User");
     }
 
     /// building an `EntityUid` from components, including whitespace in various places
@@ -170,8 +170,8 @@ permit(principal ==  A :: B
     #[test]
     fn parse_euid() {
         let parsed_eid: EntityUid = r#"Test::User::"bobby""#.parse().expect("Failed to parse");
-        assert_eq!(parsed_eid.id().as_ref(), r#"bobby"#);
-        assert_eq!(parsed_eid.type_name().to_string(), r#"Test::User"#);
+        assert_eq!(parsed_eid.id().as_ref(), r"bobby");
+        assert_eq!(parsed_eid.type_name().to_string(), r"Test::User");
     }
 
     /// parsing an `EntityUid` from string, including escapes
@@ -182,7 +182,7 @@ permit(principal ==  A :: B
         // the escapes were interpreted:
         //   the EntityId has single-quote and double-quote characters (but no backslash characters)
         assert_eq!(parsed_eid.id().as_ref(), r#"b'ob"by"#);
-        assert_eq!(parsed_eid.type_name().to_string(), r#"Test::User"#);
+        assert_eq!(parsed_eid.type_name().to_string(), r"Test::User");
     }
 
     /// parsing an `EntityUid` from string, including both escaped and unescaped single-quotes
@@ -199,8 +199,8 @@ permit(principal ==  A :: B
         };
         // the escape was interpreted:
         //   the EntityId has both single-quote characters (but no backslash characters)
-        assert_eq!(parsed_euid.id().as_ref(), r#"b'obby's sister"#);
-        assert_eq!(parsed_euid.type_name().to_string(), r#"Test::User"#);
+        assert_eq!(parsed_euid.id().as_ref(), r"b'obby's sister");
+        assert_eq!(parsed_euid.type_name().to_string(), r"Test::User");
     }
 
     /// parsing an `EntityUid` from string, including whitespace
@@ -225,11 +225,11 @@ permit(principal ==  A :: B
     #[test]
     fn euid_roundtrip() {
         let parsed_euid: EntityUid = r#"Test::User::"b\'ob""#.parse().expect("Failed to parse");
-        assert_eq!(parsed_euid.id().as_ref(), r#"b'ob"#);
+        assert_eq!(parsed_euid.id().as_ref(), r"b'ob");
         let reparsed: EntityUid = format!("{parsed_euid}")
             .parse()
             .expect("failed to roundtrip");
-        assert_eq!(reparsed.id().as_ref(), r#"b'ob"#);
+        assert_eq!(reparsed.id().as_ref(), r"b'ob");
     }
 
     #[test]
@@ -391,7 +391,7 @@ mod head_constraints_tests {
         let p = link("permit(principal is T in ?principal,action,resource);", map);
         assert_eq!(
             p.principal_constraint(),
-            PrincipalConstraint::IsIn(EntityTypeName::from_str("T").unwrap(), euid.clone())
+            PrincipalConstraint::IsIn(EntityTypeName::from_str("T").unwrap(), euid)
         );
     }
 
@@ -1619,12 +1619,12 @@ mod entity_validate_tests {
         )
         .unwrap();
         match validate_entity(entity, &schema) {
-            Ok(_) => panic!("expected an error due to extraneous parent"),
+            Ok(()) => panic!("expected an error due to extraneous parent"),
             Err(e) => {
                 assert!(
                     e.to_string().contains(r#"`Employee::"123"` is not allowed to have an ancestor of type `Manager` according to the schema"#),
                     "actual error message was {e}",
-                )
+                );
             }
         }
 
@@ -1681,12 +1681,12 @@ mod entity_validate_tests {
         )
         .unwrap();
         match validate_entity(entity, &schema) {
-            Ok(_) => panic!("expected an error due to missing attribute `numDirectReports`"),
+            Ok(()) => panic!("expected an error due to missing attribute `numDirectReports`"),
             Err(e) => {
                 assert!(
                     e.to_string().contains(r#"expected entity `Employee::"123"` to have attribute `numDirectReports`, but it does not"#),
                     "actual error message was {e}",
-                )
+                );
             }
         }
 
@@ -1745,23 +1745,23 @@ mod entity_validate_tests {
         )
         .unwrap();
         match validate_entity(entity, &schema) {
-            Ok(_) => panic!("expected an error due to extraneous attribute"),
+            Ok(()) => panic!("expected an error due to extraneous attribute"),
             Err(e) => {
                 assert!(
                     e.to_string().contains(r#"attribute `extra` on `Employee::"123"` should not exist according to the schema"#),
                     "actual error message was {e}",
-                )
+                );
             }
         }
 
         let entity = Entity::new_no_attrs(EntityUid::from_strs("Manager", "jane"), HashSet::new());
         match validate_entity(entity, &schema) {
-            Ok(_) => panic!("expected an error due to unexpected entity type"),
+            Ok(()) => panic!("expected an error due to unexpected entity type"),
             Err(e) => {
                 assert!(
                     e.to_string().contains(r#"entity `Manager::"jane"` has type `Manager` which is not declared in the schema"#),
                     "actual error message was {e}",
-                )
+                );
             }
         }
     }
@@ -2415,15 +2415,15 @@ mod schema_based_parsing_tests {
 
     #[test]
     fn template_principal_constraints() {
-        let src = r#"
+        let src = r"
             permit(principal, action, resource);
-        "#;
+        ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(t.principal_constraint(), TemplatePrincipalConstraint::Any);
 
-        let src = r#"
+        let src = r"
             permit(principal == ?principal, action, resource);
-        "#;
+        ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.principal_constraint(),
@@ -2439,9 +2439,9 @@ mod schema_based_parsing_tests {
             TemplatePrincipalConstraint::Eq(Some(EntityUid::from_strs("A", "a")))
         );
 
-        let src = r#"
+        let src = r"
             permit(principal in ?principal, action, resource);
-        "#;
+        ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.principal_constraint(),
@@ -2457,17 +2457,17 @@ mod schema_based_parsing_tests {
             TemplatePrincipalConstraint::In(Some(EntityUid::from_strs("A", "a")))
         );
 
-        let src = r#"
+        let src = r"
             permit(principal is A, action, resource);
-        "#;
+        ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.principal_constraint(),
             TemplatePrincipalConstraint::Is(EntityTypeName::from_str("A").unwrap())
         );
-        let src = r#"
+        let src = r"
             permit(principal is A in ?principal, action, resource);
-        "#;
+        ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.principal_constraint(),
@@ -2488,9 +2488,9 @@ mod schema_based_parsing_tests {
 
     #[test]
     fn template_action_constraints() {
-        let src = r#"
+        let src = r"
             permit(principal, action, resource);
-        "#;
+        ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(t.action_constraint(), ActionConstraint::Any);
 
@@ -2518,15 +2518,15 @@ mod schema_based_parsing_tests {
 
     #[test]
     fn template_resource_constraints() {
-        let src = r#"
+        let src = r"
             permit(principal, action, resource);
-        "#;
+        ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(t.resource_constraint(), TemplateResourceConstraint::Any);
 
-        let src = r#"
+        let src = r"
             permit(principal, action, resource == ?resource);
-        "#;
+        ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.resource_constraint(),
@@ -2542,9 +2542,9 @@ mod schema_based_parsing_tests {
             TemplateResourceConstraint::Eq(Some(EntityUid::from_strs("A", "a")))
         );
 
-        let src = r#"
+        let src = r"
             permit(principal, action, resource in ?resource);
-        "#;
+        ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.resource_constraint(),
@@ -2560,17 +2560,17 @@ mod schema_based_parsing_tests {
             TemplateResourceConstraint::In(Some(EntityUid::from_strs("A", "a")))
         );
 
-        let src = r#"
+        let src = r"
             permit(principal, action, resource is A);
-        "#;
+        ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.resource_constraint(),
             TemplateResourceConstraint::Is(EntityTypeName::from_str("A").unwrap())
         );
-        let src = r#"
+        let src = r"
             permit(principal, action, resource is A in ?resource);
-        "#;
+        ";
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.resource_constraint(),
@@ -2812,7 +2812,7 @@ mod schema_based_parsing_tests {
             ]
         );
 
-        let parsed = Entities::from_json_value(entitiesjson.clone(), Some(&schema))
+        let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
         let parsed = parsed
             .get(&EntityUid::from_strs("Employee", "12UA45"))
@@ -2988,13 +2988,13 @@ mod issue_326 {
         use miette::Diagnostic;
         use std::str::FromStr;
 
-        let src = r#"
+        let src = r"
             permit (
                 principal
                 action
                 resource
             );
-        "#;
+        ";
         assert_matches!(PolicySet::from_str(src), Err(e) => {
             assert!(e.to_string().contains("unexpected token `action`"), "actual error message was {e}");
             assert!(!e.to_string().contains("unexpected token `resource`"), "actual error message was {e}");

@@ -108,10 +108,10 @@ fn text_in_expr(e: &'_ Expr) -> impl IntoIterator<Item = TextKind<'_>> {
     }
 }
 
-fn text_in_lit<'a>(
+fn text_in_lit(
     span: Option<miette::SourceSpan>,
-    lit: &'a Literal,
-) -> impl IntoIterator<Item = TextKind<'a>> {
+    lit: &Literal,
+) -> impl IntoIterator<Item = TextKind<'_>> {
     match lit {
         Literal::Bool(_) => vec![],
         Literal::Long(_) => vec![],
@@ -120,10 +120,10 @@ fn text_in_lit<'a>(
     }
 }
 
-fn text_in_euid<'a>(
+fn text_in_euid(
     span: Option<miette::SourceSpan>,
-    euid: &'a EntityUID,
-) -> impl Iterator<Item = TextKind<'a>> {
+    euid: &EntityUID,
+) -> impl Iterator<Item = TextKind<'_>> {
     text_in_entity_type(span, euid.entity_type())
         .into_iter()
         .chain(std::iter::once(TextKind::Identifier(
@@ -132,20 +132,20 @@ fn text_in_euid<'a>(
         )))
 }
 
-fn text_in_entity_type<'a>(
+fn text_in_entity_type(
     span: Option<miette::SourceSpan>,
-    ty: &'a EntityType,
-) -> impl IntoIterator<Item = TextKind<'a>> {
+    ty: &EntityType,
+) -> impl IntoIterator<Item = TextKind<'_>> {
     match ty {
         EntityType::Specified(ty) => text_in_name(span, ty).collect::<Vec<_>>(),
         EntityType::Unspecified => vec![],
     }
 }
 
-fn text_in_name<'a>(
+fn text_in_name(
     span: Option<miette::SourceSpan>,
-    name: &'a Name,
-) -> impl Iterator<Item = TextKind<'a>> {
+    name: &Name,
+) -> impl Iterator<Item = TextKind<'_>> {
     name.namespace_components()
         .map(move |id| TextKind::Identifier(span, id.as_ref()))
         .chain(std::iter::once(TextKind::Identifier(

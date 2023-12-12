@@ -247,7 +247,7 @@ impl ASTNode<Option<cst::Policy>> {
                 let (e, is_when) = c.to_expr(errs)?;
                 for slot in e.slots() {
                     errs.push(c.to_ast_err(ToASTErrorKind::SlotsInConditionClause {
-                        slot: slot.clone().into(),
+                        slot: (*slot).into(),
                         clausetype: if is_when { "when" } else { "unless" },
                     }));
                 }
@@ -775,13 +775,12 @@ impl ExprOrSpecial<'_> {
     fn to_ast_err(&self, kind: impl Into<ToASTErrorKind>) -> ToASTError {
         ToASTError::new(
             kind.into(),
-            match self {
+            *match self {
                 ExprOrSpecial::Expr(_, span) => span,
                 ExprOrSpecial::Var(_, span) => span,
                 ExprOrSpecial::Name(_, span) => span,
                 ExprOrSpecial::StrLit(_, span) => span,
-            }
-            .clone(),
+            },
         )
     }
 
@@ -1620,7 +1619,7 @@ impl ASTNode<Option<cst::Member>> {
                     // move the id out of the slice as well, to avoid cloning the internal string
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
                     head = id
-                        .to_meth(construct_expr_var(var, vl.clone()), args, errs, src)
+                        .to_meth(construct_expr_var(var, *vl), args, errs, src)
                         .map(|e| Expr(e, src));
                     tail = rest;
                 }
@@ -1639,7 +1638,7 @@ impl ASTNode<Option<cst::Member>> {
                     let args = std::mem::take(a);
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
                     let maybe_expr = match to_unescaped_string(s) {
-                        Ok(s) => Some(construct_expr_string(s, sl.clone())),
+                        Ok(s) => Some(construct_expr_string(s, *sl)),
                         Err(escape_errs) => {
                             errs.extend(
                                 escape_errs
@@ -1676,11 +1675,7 @@ impl ASTNode<Option<cst::Member>> {
                     let var = mem::replace(v, ast::Var::Principal);
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
                     head = Some(Expr(
-                        construct_expr_attr(
-                            construct_expr_var(var, vl.clone()),
-                            id.to_smolstr(),
-                            src,
-                        ),
+                        construct_expr_attr(construct_expr_var(var, *vl), id.to_smolstr(), src),
                         src,
                     ));
                     tail = rest;
@@ -1696,7 +1691,7 @@ impl ASTNode<Option<cst::Member>> {
                 (Some(StrLit(s, sl)), [Some(Field(i)), rest @ ..]) => {
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
                     let maybe_expr = match to_unescaped_string(s) {
-                        Ok(s) => Some(construct_expr_string(s, sl.clone())),
+                        Ok(s) => Some(construct_expr_string(s, *sl)),
                         Err(escape_errs) => {
                             errs.extend(
                                 escape_errs
@@ -1715,7 +1710,7 @@ impl ASTNode<Option<cst::Member>> {
                     let var = mem::replace(v, ast::Var::Principal);
                     let s = mem::take(i);
                     head = Some(Expr(
-                        construct_expr_attr(construct_expr_var(var, vl.clone()), s, src),
+                        construct_expr_attr(construct_expr_var(var, *vl), s, src),
                         src,
                     ));
                     tail = rest;
@@ -1731,7 +1726,7 @@ impl ASTNode<Option<cst::Member>> {
                 (Some(StrLit(s, sl)), [Some(Index(i)), rest @ ..]) => {
                     let id = mem::take(i);
                     let maybe_expr = match to_unescaped_string(s) {
-                        Ok(s) => Some(construct_expr_string(s, sl.clone())),
+                        Ok(s) => Some(construct_expr_string(s, *sl)),
                         Err(escape_errs) => {
                             errs.extend(
                                 escape_errs
@@ -2227,13 +2222,9 @@ fn construct_expr_or(
     chained: impl IntoIterator<Item = ast::Expr>,
     span: miette::SourceSpan,
 ) -> ast::Expr {
-    let first = ast::ExprBuilder::new()
-        .with_source_span(span.clone())
-        .or(f, s);
+    let first = ast::ExprBuilder::new().with_source_span(span).or(f, s);
     chained.into_iter().fold(first, |a, n| {
-        ast::ExprBuilder::new()
-            .with_source_span(span.clone())
-            .or(a, n)
+        ast::ExprBuilder::new().with_source_span(span).or(a, n)
     })
 }
 fn construct_expr_and(
@@ -2242,13 +2233,9 @@ fn construct_expr_and(
     chained: impl IntoIterator<Item = ast::Expr>,
     span: miette::SourceSpan,
 ) -> ast::Expr {
-    let first = ast::ExprBuilder::new()
-        .with_source_span(span.clone())
-        .and(f, s);
+    let first = ast::ExprBuilder::new().with_source_span(span).and(f, s);
     chained.into_iter().fold(first, |a, n| {
-        ast::ExprBuilder::new()
-            .with_source_span(span.clone())
-            .and(a, n)
+        ast::ExprBuilder::new().with_source_span(span).and(a, n)
     })
 }
 fn construct_expr_rel(
@@ -2276,7 +2263,7 @@ fn construct_expr_add(
 ) -> ast::Expr {
     let mut expr = f;
     for (op, next_expr) in chained {
-        let builder = ast::ExprBuilder::new().with_source_span(span.clone());
+        let builder = ast::ExprBuilder::new().with_source_span(span);
         expr = match op {
             cst::AddOp::Plus => builder.add(expr, next_expr),
             cst::AddOp::Minus => builder.sub(expr, next_expr),
@@ -2293,7 +2280,7 @@ fn construct_expr_mul(
     let mut expr = f;
     for next_expr in chained {
         expr = ast::ExprBuilder::new()
-            .with_source_span(span.clone())
+            .with_source_span(span)
             .mul(expr, next_expr)
     }
     expr
