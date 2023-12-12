@@ -94,7 +94,7 @@ pub Policy: Node<Option<cst::Policy>> = {
     <l:@L> <err:!> <r:@R> => { errors.push(err); Node::new(None,l,r) },
 }
 
-// VariableDef := Variable [':' Name] [('in' | '==') Expr]
+// VariableDef := Variable [':' Name] ['is' Add] [('in' | '==') Expr]
 VariableDef: Node<Option<cst::VariableDef>> = {
     <l:@L> <variable: AnyIdent> <unused_type_name: (":" <Name>)?> <entity_type: (IS <Add>)?>
         <ineq: (RelOp Expr)?> <r:@R>
