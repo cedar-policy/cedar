@@ -95,6 +95,9 @@ pub Policy: Node<Option<cst::Policy>> = {
 }
 
 // VariableDef := Variable [':' Name] ['is' Add] [('in' | '==') Expr]
+// The argument to `is`, if present, is parsed as an `Add` rather than a `Name`
+// to enable better error reporting. It is parsed as an `Add` rather than an
+// `Expr` to void ambiguity with a subsequent `in`.
 VariableDef: Node<Option<cst::VariableDef>> = {
     <l:@L> <variable: AnyIdent> <unused_type_name: (":" <Name>)?> <entity_type: (IS <Add>)?>
         <ineq: (RelOp Expr)?> <r:@R>
