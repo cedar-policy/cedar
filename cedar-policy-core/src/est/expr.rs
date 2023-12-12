@@ -1124,7 +1124,7 @@ fn interpret_primary(
                     let (l, r) = match (path.first(), path.last()) {
                         (Some(l), Some(r)) => (
                             l.loc.offset(),
-                            r.loc.offset() + r.loc.len() + ident_to_str_len(&id),
+                            r.loc.offset() + r.loc.len() + ident_to_str_len(id),
                         ),
                         (_, _) => (0, 0),
                     };
@@ -1146,13 +1146,13 @@ fn interpret_primary(
         ))),
         cst::Primary::Expr(e) => Ok(Either::Right(e.try_into()?)),
         cst::Primary::EList(nodes) => nodes
-            .into_iter()
+            .iter()
             .map(|node| node.try_into())
             .collect::<Result<Vec<Expr>, _>>()
             .map(Expr::set)
             .map(Either::Right),
         cst::Primary::RInits(nodes) => nodes
-            .into_iter()
+            .iter()
             .map(|node| {
                 let cst::RecInit(k, v) = node.ok_or_missing()?;
                 let mut errs = ParseErrors::new();
@@ -1210,15 +1210,16 @@ impl TryFrom<&ASTNode<Option<cst::Member>>> for Expr {
                     item = match item {
                         Either::Left(name) => Either::Right(Expr::ext_call(
                             name.to_string().into(),
-                            args.into_iter()
+                            args.iter()
                                 .map(|node| node.try_into())
                                 .collect::<Result<Vec<_>, _>>()?,
                         )),
                         Either::Right(Expr::ExprNoExt(ExprNoExt::GetAttr { left, attr })) => {
-                            let args = args
-                                .into_iter()
-                                .map(|node| node.try_into())
-                                .collect::<Result<Vec<Expr>, ParseErrors>>()?;
+                            let args = args.iter().map(|node| node.try_into()).collect::<Result<
+                                Vec<Expr>,
+                                ParseErrors,
+                            >>(
+                            )?;
                             let args = args.into_iter();
                             match attr.as_str() {
                                 "contains" => Either::Right(Expr::contains(
@@ -1324,7 +1325,7 @@ impl TryFrom<&ASTNode<Option<cst::Name>>> for Expr {
                 let (l, r) = match (path.first(), path.last()) {
                     (Some(l), Some(r)) => (
                         l.loc.offset(),
-                        r.loc.offset() + r.loc.len() + ident_to_str_len(&id),
+                        r.loc.offset() + r.loc.len() + ident_to_str_len(id),
                     ),
                     (_, _) => (0, 0),
                 };

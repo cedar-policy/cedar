@@ -721,7 +721,7 @@ impl Type {
         extensions: Extensions<'_>,
     ) -> Result<bool, GetSchemaTypeError> {
         match value {
-            PartialValue::Value(value) => self.typecheck_value(&value, extensions),
+            PartialValue::Value(value) => self.typecheck_value(value, extensions),
             PartialValue::Residual(expr) => match BorrowedRestrictedExpr::new(expr) {
                 Ok(rexpr) => self.typecheck_restricted_expr(rexpr, extensions),
                 Err(_) => Ok(false), // TODO(#437): instead of just reporting typecheck fails for all nontrivial residuals, we should do something more intelligent

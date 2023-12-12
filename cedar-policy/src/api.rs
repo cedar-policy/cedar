@@ -1985,16 +1985,16 @@ impl PolicySet {
         let Some(policy) = self.policies.remove(&policy_id) else {
             return Err(PolicySetError::PolicyNonexistentError(policy_id));
         };
-        match self
+        if self
             .ast
             .remove_static(&ast::PolicyID::from_string(policy_id.to_string()))
+            .is_ok()
         {
-            Ok(_) => Ok(policy),
-            Err(_) => {
-                //Restore self.policies
-                self.policies.insert(policy_id.clone(), policy);
-                Err(PolicySetError::PolicyNonexistentError(policy_id.clone()))
-            }
+            Ok(policy)
+        } else {
+            //Restore self.policies
+            self.policies.insert(policy_id.clone(), policy);
+            Err(PolicySetError::PolicyNonexistentError(policy_id.clone()))
         }
     }
 
@@ -2044,13 +2044,12 @@ impl PolicySet {
         &self,
         template_id: PolicyId,
     ) -> Result<impl Iterator<Item = &PolicyId>, PolicySetError> {
-        match self
-            .ast
+        self.ast
             .get_linked_policies(&ast::PolicyID::from_string(template_id.to_string()))
-        {
-            Ok(v) => Ok(v.map(PolicyId::ref_cast)),
-            Err(_) => Err(PolicySetError::TemplateNonexistentError(template_id)),
-        }
+            .map_or_else(
+                |_| Err(PolicySetError::TemplateNonexistentError(template_id)),
+                |v| Ok(v.map(PolicyId::ref_cast)),
+            )
     }
 
     /// Iterate over all the `Policy`s in the `PolicySet`.
