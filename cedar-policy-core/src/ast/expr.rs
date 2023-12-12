@@ -99,7 +99,7 @@ pub enum ExprKind<T = ()> {
         /// evaluate to Long type
         arg: Arc<Expr<T>>,
         /// second argument, which must be an integer constant
-        constant: i64,
+        constant: Integer,
     },
     /// Application of an extension function to n arguments
     /// INVARIANT (MethodStyleArgs):
@@ -287,7 +287,7 @@ impl<T> Expr<T> {
 impl Expr {
     /// Create an `Expr` that's just a single `Literal`.
     ///
-    /// Note that you can pass this a `Literal`, an `i64`, a `String`, etc.
+    /// Note that you can pass this a `Literal`, an `Integer`, a `String`, etc.
     pub fn val(v: impl Into<Literal>) -> Self {
         ExprBuilder::new().val(v)
     }
@@ -370,7 +370,7 @@ impl Expr {
     }
 
     /// Create a 'mul' expression. First argument must evaluate to Long type.
-    pub fn mul(e: Expr, c: i64) -> Self {
+    pub fn mul(e: Expr, c: Integer) -> Self {
         ExprBuilder::new().mul(e, c)
     }
 
@@ -736,7 +736,7 @@ impl<T> ExprBuilder<T> {
 
     /// Create an `Expr` that's just a single `Literal`.
     ///
-    /// Note that you can pass this a `Literal`, an `i64`, a `String`, etc.
+    /// Note that you can pass this a `Literal`, an `Integer`, a `String`, etc.
     pub fn val(self, v: impl Into<Literal>) -> Expr<T> {
         self.with_expr_kind(ExprKind::Lit(v.into()))
     }
@@ -848,7 +848,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create a 'mul' expression. First argument must evaluate to Long type.
-    pub fn mul(self, e: Expr<T>, c: i64) -> Expr<T> {
+    pub fn mul(self, e: Expr<T>, c: Integer) -> Expr<T> {
         self.with_expr_kind(ExprKind::MulByConst {
             arg: Arc::new(e),
             constant: c,
