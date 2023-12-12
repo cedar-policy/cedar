@@ -3913,6 +3913,26 @@ mod tests {
                 ),
             ),
             (
+                r#"principal is User && principal in Group::"friends""#,
+                Expr::and(
+                    Expr::is_entity_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
+                    Expr::is_in(
+                        Expr::var(ast::Var::Principal),
+                        Expr::val(r#"Group::"friends""#.parse::<EntityUID>().unwrap()),
+                    ),
+                ),
+            ),
+            (
+                r#"principal is User || principal in Group::"friends""#,
+                Expr::or(
+                    Expr::is_entity_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
+                    Expr::is_in(
+                        Expr::var(ast::Var::Principal),
+                        Expr::val(r#"Group::"friends""#.parse::<EntityUID>().unwrap()),
+                    ),
+                ),
+            ),
+            (
                 r#"true && principal is User in principal"#,
                 Expr::and(
                     Expr::val(true),
@@ -3962,6 +3982,31 @@ mod tests {
                         Expr::var(ast::Var::Principal),
                         Expr::val(r#"Group::"friends""#.parse::<EntityUID>().unwrap()),
                     ),
+                ),
+            ),
+            (
+                r#"if principal is User then 1 else 2"#,
+                Expr::ite(
+                    Expr::is_entity_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
+                    Expr::val(1),
+                    Expr::val(2),
+                ),
+            ),
+            (
+                r#"if principal is User in Group::"friends" then 1 else 2"#,
+                Expr::ite(
+                    Expr::and(
+                        Expr::is_entity_type(
+                            Expr::var(ast::Var::Principal),
+                            "User".parse().unwrap(),
+                        ),
+                        Expr::is_in(
+                            Expr::var(ast::Var::Principal),
+                            Expr::val(r#"Group::"friends""#.parse::<EntityUID>().unwrap()),
+                        ),
+                    ),
+                    Expr::val(1),
+                    Expr::val(2),
                 ),
             ),
         ] {
@@ -4047,14 +4092,6 @@ mod tests {
     fn is_err() {
         let invalid_is_policies = [
             (
-                r#"permit(principal == ?resource, action, resource);"#,
-                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?resource instead of ?principal"),
-            ),
-            (
-                r#"permit(principal, action, resource == ?principal);"#,
-                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?principal instead of ?resource"),
-            ),
-            (
                 r#"permit(principal in Group::"friends" is User, action, resource);"#,
                 ExpectedErrorMessage::error("expected an entity uid or matching template slot, found an `is` expression"),
             ),
@@ -4107,9 +4144,23 @@ mod tests {
                 ),
             ),
             (
+                r#"permit(principal is User::"Alice" in Group::"f", action, resource);"#,
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `User::"Alice"`"#,
+                    "consider using `==` to test for equality"
+                ),
+            ),
+            (
                 r#"permit(principal, action, resource is File in File);"#,
                 ExpectedErrorMessage::error(
                     "expected an entity uid or matching template slot, found name `File`",
+                ),
+            ),
+            (
+                r#"permit(principal, action, resource is File::"file" in Folder::"folder");"#,
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `File::"file"`"#,
+                    "consider using `==` to test for equality"
                 ),
             ),
             (
@@ -4131,7 +4182,27 @@ mod tests {
                 ExpectedErrorMessage::error("`is` cannot appear in the action scope"),
             ),
             (
+                r#"permit(principal, action is Action::"a", resource);"#,
+                ExpectedErrorMessage::error("`is` cannot appear in the action scope"),
+            ),
+            (
                 r#"permit(principal, action is Action in Action::"A", resource);"#,
+                ExpectedErrorMessage::error("`is` cannot appear in the action scope"),
+            ),
+            (
+                r#"permit(principal, action is Action in Action, resource);"#,
+                ExpectedErrorMessage::error("`is` cannot appear in the action scope"),
+            ),
+            (
+                r#"permit(principal, action is Action::"a" in Action::"b", resource);"#,
+                ExpectedErrorMessage::error("`is` cannot appear in the action scope"),
+            ),
+            (
+                r#"permit(principal, action is Action in ?action, resource);"#,
+                ExpectedErrorMessage::error("`is` cannot appear in the action scope"),
+            ),
+            (
+                r#"permit(principal, action is ?action, resource);"#,
                 ExpectedErrorMessage::error("`is` cannot appear in the action scope"),
             ),
             (
@@ -4143,10 +4214,51 @@ mod tests {
                 ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?principal instead of ?resource"),
             ),
             (
+                r#"permit(principal is ?principal, action, resource);"#,
+                ExpectedErrorMessage::error_and_help(
+                    "right hand side of an `is` expression must be an entity type name, but got `?principal`",
+                    "consider using `==` to test for equality"
+                ),
+            ),
+            (
+                r#"permit(principal, action, resource is ?resource);"#,
+                ExpectedErrorMessage::error_and_help(
+                    "right hand side of an `is` expression must be an entity type name, but got `?resource`",
+                    "consider using `==` to test for equality"
+                ),
+            ),
+            (
                 r#"permit(principal, action, resource) when { principal is 1 };"#,
                 ExpectedErrorMessage::error_and_help(
                     r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
                     "consider using `==` to test for equality"
+                ),
+            ),
+            (
+                r#"permit(principal, action, resource) when { principal is User::"alice" in Group::"friends" };"#,
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `User::"alice"`"#,
+                    "consider using `==` to test for equality"
+                ),
+            ),
+            (
+                r#"permit(principal, action, resource) when { principal is ! User::"alice" in Group::"friends" };"#,
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `!User::"alice"`"#,
+                    "consider using `==` to test for equality"
+                ),
+            ),
+            (
+                r#"permit(principal, action, resource) when { principal is User::"alice" + User::"alice" in Group::"friends" };"#,
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `User::"alice" + User::"alice"`"#,
+                    "consider using `==` to test for equality"
+                ),
+            ),
+            (
+                r#"permit(principal, action, resource) when { principal is User == User::"alice" in Group::"friends" };"#,
+                ExpectedErrorMessage::error(
+                    "unexpected token `==`"
                 ),
             ),
         ];
@@ -4248,6 +4360,14 @@ mod tests {
     #[test]
     fn invalid_slot() {
         let invalid_policies = [
+            (
+                r#"permit(principal == ?resource, action, resource);"#,
+                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?resource instead of ?principal"),
+            ),
+            (
+                r#"permit(principal, action, resource == ?principal);"#,
+                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?principal instead of ?resource"),
+            ),
             (
                 r#"permit(principal, action, resource) when { principal == ?foo};"#,
                 ExpectedErrorMessage::error_and_help(
