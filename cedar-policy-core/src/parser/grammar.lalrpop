@@ -94,9 +94,12 @@ pub Policy: Node<Option<cst::Policy>> = {
     <l:@L> <err:!> <r:@R> => { errors.push(err); Node::new(None,l,r) },
 }
 
-// VariableDef := Variable [':' Name] [('in' | '==') Expr]
+// VariableDef := Variable [':' Name] ['is' Add] [('in' | '==') Expr]
+// The argument to `is`, if present, is parsed as an `Add` rather than a `Name`
+// to enable better error reporting. It is parsed as an `Add` rather than an
+// `Expr` to void ambiguity with a subsequent `in`.
 VariableDef: Node<Option<cst::VariableDef>> = {
-    <l:@L> <variable: AnyIdent> <unused_type_name: (":" <Name>)?> <entity_type: (IS <Name>)?>
+    <l:@L> <variable: AnyIdent> <unused_type_name: (":" <Name>)?> <entity_type: (IS <Add>)?>
         <ineq: (RelOp Expr)?> <r:@R>
         => Node::new(Some(cst::VariableDef{ variable,unused_type_name,entity_type,ineq, }),l,r),
 }
@@ -178,7 +181,7 @@ And: Node<Option<cst::And>> = {
     <l:@L> <i:Relation> <e:("&&" <Relation>)*> <r:@R>
         => Node::new(Some(cst::And{initial: i, extended: e}),l,r),
 }
-// Relation := Add {RelOp Add} | Add HAS Add | Add LIKE Add | Add IS Name (IN Add)?
+// Relation := Add {RelOp Add} | Add HAS Add | Add LIKE Add | Add IS Add (IN Add)?
 Relation: Node<Option<cst::Relation>> = {
     <l:@L> <i:Add> <e:(RelOp Add)*> <r:@R>
         => Node::new(Some(cst::Relation::Common{initial: i, extended: e}),l,r),
@@ -198,7 +201,7 @@ Relation: Node<Option<cst::Relation>> = {
     },
     <l:@L> <t:Add> LIKE <p:Add> <r:@R>
         => Node::new(Some(cst::Relation::Like{target: t, pattern: p}),l,r),
-    <l:@L> <t:Add> IS <n:Name> <e: (IN <Add>)?> <r:@R>
+    <l:@L> <t:Add> IS <n:Add> <e: (IN <Add>)?> <r:@R>
         => Node::new(Some(cst::Relation::IsIn{target: t, entity_type: n, in_entity: e}),l,r),
 }
 // RelOp     := '<' | '<=' | '>=' | '>' | '!=' | '==' | 'in'

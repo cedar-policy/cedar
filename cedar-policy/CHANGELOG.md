@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Improve parse error around invalid `is` expressions.
 - Improve parser error message when a policy includes an invalid template slot.
   The error now identifies that the policy used an invalid slot and suggests using
   one of the valid slots.
