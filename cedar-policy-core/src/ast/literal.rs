@@ -85,13 +85,6 @@ impl From<bool> for Literal {
     }
 }
 
-// /// Create a Literal directly from an i64
-// impl From<i64> for Literal {
-//     fn from(i: i64) -> Self {
-//         Self::Long(i as Integer)
-//     }
-// }
-
 /// Create a Literal directly from an Integer
 impl From<Integer> for Literal {
     fn from(i: Integer) -> Self {
