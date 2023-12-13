@@ -9,6 +9,10 @@
 - Requests are now validated by default if a schema is provided. This can be
   disabled with `--request-validation=false`.
 - The `-s` short form can now be used for `--schema` across all subcommands.
+- The `-p`/`--policies` flag can now be omitted across all subcommands where it
+  is present. If the flag is omitted, policies will be read from `stdin`.
+- `--policy-format` flag to many subcommands, allowing you to pass policies in
+  JSON format. The default remains `human` format.
 
 ### Changed
 
