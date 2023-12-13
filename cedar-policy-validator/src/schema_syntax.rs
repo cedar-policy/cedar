@@ -1,9 +1,11 @@
 use std::{
     collections::{BTreeMap, HashMap},
+    fmt::Display,
     str::FromStr,
 };
 
 use cedar_policy_core::ast::{Id, Name};
+use cedar_policy_core::parser::unescape::to_unescaped_string;
 use combine::{
     between, choice, eof, error::StreamError, many, many1, optional, satisfy_map, sep_by1,
     stream::ResetStream, ParseError, Parser, Positioned, StreamOnce,
@@ -83,6 +85,62 @@ enum Token {
     Eq,
     #[token("?")]
     Question,
+}
+
+impl Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AppliesTo => write!(f, "appliesTo"),
+            Self::Colon => write!(f, ":"),
+            Self::Comma => write!(f, ","),
+            Self::Comment => write!(f, ""),
+            Self::DoubleColon => write!(f, "::"),
+            Self::Entity => write!(f, "entity"),
+            Self::Eq => write!(f, "="),
+            Self::Identifier(d) => write!(f, "{d}"),
+            Self::In => write!(f, "in"),
+            Self::LAngle => write!(f, "<"),
+            Self::LBrace => write!(f, "{{"),
+            Self::LBracket => write!(f, "["),
+            Self::Namespace => write!(f, "namespace"),
+            Self::Question => write!(f, "?"),
+            Self::Quote => write!(f, "\""),
+            Self::RAngle => write!(f, ">"),
+            Self::RBrace => write!(f, "}}"),
+            Self::RBracket => write!(f, "]"),
+            Self::SemiColon => write!(f, ";"),
+            Self::Set => write!(f, "Set"),
+            Self::Str(s) => write!(f, "{s}"),
+            Self::TyBool => write!(f, "Bool"),
+            Self::TyLong => write!(f, "Long"),
+            Self::TyString => write!(f, "String"),
+            Self::Type => write!(f, "type"),
+            Self::VarAction => write!(f, "action"),
+            Self::VarContext => write!(f, "context"),
+            Self::VarResource => write!(f, "resource"),
+            Self::VarPrincipal => write!(f, "principal"),
+            Self::Whitespace => write!(f, " "),
+        }
+    }
+}
+
+impl Token {
+    // Special Ids match the Ident regex pattern but also serve as keywords
+    pub fn is_special_id(&self) -> bool {
+        matches!(
+            self,
+            Self::AppliesTo
+                | Self::Entity
+                | Self::In
+                | Self::Namespace
+                | Self::Set
+                | Self::Type
+                | Self::VarAction
+                | Self::VarContext
+                | Self::VarPrincipal
+                | Self::VarResource
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]
@@ -227,9 +285,15 @@ impl<'a> Positioned for TokenStream<'a> {
     }
 }
 
+// IDENT := ['_''a'-'z''A'-'Z']['_''a'-'z''A'-'Z''0'-'9']* - PRIMTYPE
+// We need to add tokens that also match this pattern because
+// lexer chooses the most specific match for a token matching multiple regex.
+// For instance, "principal" also matches the `IDENT` pattern but `VarPrincipal`
+// wins because it's more specific.
 fn parse_id<'a>() -> impl Parser<TokenStream<'a>, Output = Id> {
-    satisfy_map(|ts| match ts {
-        (Token::Identifier(d), _) => Some(Id::from_str(&d).unwrap()),
+    satisfy_map(|(t, _)| match t {
+        Token::Identifier(d) => Some(Id::from_str(&d).unwrap()),
+        t if t.is_special_id() => Some(Id::from_str(&t.to_string()).unwrap()),
         _ => None,
     })
 }
@@ -238,10 +302,15 @@ fn parse_ids<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<Id>> {
     sep_by1(parse_id(), accept(Token::Comma))
 }
 
+// Accept a token and ignore it
 fn accept<'a>(t: Token) -> impl Parser<TokenStream<'a>, Output = ()> {
-    satisfy_map(move |tt: (Token, Span)| if tt.0 == t { Some(()) } else { None })
+    satisfy_map(move |ts: (Token, Span)| if ts.0 == t { Some(()) } else { None })
 }
 
+// There's a limitation for the parser combinator library:
+// If a product also shows up on the RHS, we need to implement the lazy parser
+// (i.e., `parse_lazy`) to avoid infinite recursion.
+// This struct is used to parse `AppDecls`
 struct AppParser();
 
 impl<'a> Parser<TokenStream<'a>> for AppParser {
@@ -260,7 +329,7 @@ impl<'a> Parser<TokenStream<'a>> for AppParser {
         }
     }
 
-    // AppDecls  := VAR ':' EntOrTyps [',' | ',' AppDecls]
+    // AppDecls := VAR ':' EntOrTyps [',' | ',' AppDecls]
     fn parse(
         &mut self,
         input: TokenStream<'a>,
@@ -287,7 +356,7 @@ impl<'a> Parser<TokenStream<'a>> for AppParser {
                         accept(Token::VarResource).map(|_| "resource"),
                     )),
                     accept(Token::Colon),
-                    choice((parse_path().map(|p| vec![p]), parse_ets())),
+                    choice((parse_path().map(|p| vec![p]), parse_et_or_ets())),
                 )
                     .map(|(id, _, ty)| match id {
                         "principal" => ApplySpec {
@@ -342,6 +411,11 @@ impl<'a> Parser<TokenStream<'a>> for AppParser {
     }
 }
 
+// There's a limitation for the parser combinator library:
+// If a product also shows up on the RHS, we need to implement the lazy parser
+// (i.e., `parse_lazy`) to avoid infinite recursion.
+// This struct is used to parse `AttrDecls`
+#[derive(Debug, Clone)]
 struct AttrParser();
 
 impl<'a> Parser<TokenStream<'a>> for AttrParser {
@@ -450,6 +524,7 @@ fn parse_type<'a>() -> impl Parser<TokenStream<'a>, Output = SchemaType> {
     TypeParser()
 }
 
+// Decl := Entity | Action | TypeDecl
 fn parse_decls<'a>() -> impl Parser<TokenStream<'a>, Output = NamespaceDefinition> {
     let merge_nds = |nds: Vec<NamespaceDefinition>| {
         let mut common_types = HashMap::new();
@@ -466,8 +541,7 @@ fn parse_decls<'a>() -> impl Parser<TokenStream<'a>, Output = NamespaceDefinitio
             actions,
         }
     };
-    // cannot be `many` otherwise there will be an infinite recursion
-    many1(choice((
+    many(choice((
         parse_et_decl().map(|et| NamespaceDefinition {
             common_types: HashMap::new(),
             entity_types: HashMap::from_iter(et.into_iter()),
@@ -487,12 +561,19 @@ fn parse_decls<'a>() -> impl Parser<TokenStream<'a>, Output = NamespaceDefinitio
     .map(move |nds: Vec<NamespaceDefinition>| merge_nds(nds))
 }
 
-fn parse_name<'a>() -> impl Parser<TokenStream<'a>, Output = SmolStr> {
+fn parse_str<'a>() -> impl Parser<TokenStream<'a>, Output = SmolStr> {
     satisfy_map(|v| match v {
         (Token::Str(s), _) => Some(s),
-        (Token::Identifier(id), _) => Some(id),
         _ => None,
     })
+    .and_then(|s| {
+        to_unescaped_string(&s).map_err(|errs| ParseErrors::Message(errs[0].to_string().into()))
+    })
+}
+
+// Name := IDENT | STR
+fn parse_name<'a>() -> impl Parser<TokenStream<'a>, Output = SmolStr> {
+    choice((parse_str(), parse_id().map(|id| id.to_smolstr())))
 }
 
 fn parse_names<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<SmolStr>> {
@@ -503,6 +584,7 @@ fn parse_names<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<SmolStr>> {
     )
 }
 
+// Namespace := ('namespace' Path '{' {Decl} '}') | {Decl}
 fn parse_namespace<'a>() -> impl Parser<TokenStream<'a>, Output = (SmolStr, NamespaceDefinition)> {
     choice((
         (
@@ -561,7 +643,7 @@ fn parse_action_decl<'a>() -> impl Parser<TokenStream<'a>, Output = HashMap<Smol
         })
 }
 
-// RecType   := '{' [AttrDecls] '}'
+// RecType := '{' [AttrDecls] '}'
 fn parse_rec_type<'a>() -> impl Parser<TokenStream<'a>, Output = BTreeMap<SmolStr, TypeOfAttribute>>
 {
     between(
@@ -572,16 +654,30 @@ fn parse_rec_type<'a>() -> impl Parser<TokenStream<'a>, Output = BTreeMap<SmolSt
     .map(|o| o.unwrap_or(BTreeMap::new()))
 }
 
-// Entity    := 'entity' Idents ['in' EntOrTyps] [['='] RecType] ';'
+// EntTypes  := Path {',' Path}
+fn parse_ets<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<Name>> {
+    sep_by1(parse_path(), accept(Token::Comma))
+}
+
+// EntOrTyps := EntType | '[' [EntTypes] ']'
+fn parse_et_or_ets<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<Name>> {
+    choice((
+        parse_path().map(|p| vec![p]),
+        between(
+            accept(Token::LBracket),
+            accept(Token::RBracket),
+            optional(parse_ets()),
+        )
+        .map(|o| o.unwrap_or_default()),
+    ))
+}
+
+// Entity := 'entity' Idents ['in' EntOrTyps] [['='] RecType] ';'
 fn parse_et_decl<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<(SmolStr, EntityType)>> {
     (
         accept(Token::Entity),
         parse_ids(),
-        optional((
-            accept(Token::In),
-            choice((parse_path().map(|p| vec![p]), parse_ets())),
-        ))
-        .map(|opt| {
+        optional((accept(Token::In), parse_et_or_ets())).map(|opt| {
             if let Some((_, vs)) = opt {
                 vs
             } else {
@@ -621,15 +717,6 @@ fn parse_et_decl<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<(SmolStr, En
         })
 }
 
-// '[' [EntTypes] ']'
-fn parse_ets<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<Name>> {
-    between(
-        accept(Token::LBracket),
-        accept(Token::RBracket),
-        optional(sep_by1(parse_path(), accept(Token::Comma))).map(|o| o.unwrap_or(Vec::new())),
-    )
-}
-
 // TypeDecl  := 'type' IDENT '=' Type ';'
 fn parse_common_type_decl<'a>() -> impl Parser<TokenStream<'a>, Output = (SmolStr, SchemaType)> {
     (
@@ -652,11 +739,13 @@ fn get_tokens(input: &str) -> Result<Vec<(Token, Span)>, ParseErrors> {
         .collect()
 }
 
+// Schema := {Namespace}
 fn parse_namespaces<'a>(
 ) -> impl Parser<TokenStream<'a>, Output = Vec<(SmolStr, NamespaceDefinition)>> {
     (many(parse_namespace()), eof::<TokenStream<'a>>()).0
 }
 
+/// Main entry: Parse a schema fragment
 pub fn parse_schema_fragment_from_str(input: &str) -> Result<SchemaFragment, ParseErrors> {
     let tokens = get_tokens(input)?;
     let (namespaces, _) = parse_namespaces().parse(TokenStream {
