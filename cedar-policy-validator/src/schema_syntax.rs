@@ -503,16 +503,7 @@ impl<'a> Parser<TokenStream<'a>> for TypeParser {
             accept(Token::TyBool).map(|_| SchemaType::Type(SchemaTypeVariant::Boolean)),
             accept(Token::TyLong).map(|_| SchemaType::Type(SchemaTypeVariant::Long)),
             accept(Token::TyString).map(|_| SchemaType::Type(SchemaTypeVariant::String)),
-            // SetType := 'Set' '<' Type '>'
-            (
-                accept(Token::Set),
-                between(accept(Token::LAngle), accept(Token::RAngle), parse_type()),
-            )
-                .map(|(_, elem_ty)| {
-                    SchemaType::Type(SchemaTypeVariant::Set {
-                        element: (Box::new(elem_ty)),
-                    })
-                }),
+            parse_set_type(),
             parse_rec_type().map(|attrs| {
                 SchemaType::Type(SchemaTypeVariant::Record {
                     attributes: attrs,
@@ -533,6 +524,19 @@ fn parse_type<'a>() -> impl Parser<TokenStream<'a>, Output = SchemaType> {
     TypeParser()
 }
 
+// SetType := 'Set' '<' Type '>'
+fn parse_set_type<'a>() -> impl Parser<TokenStream<'a>, Output = SchemaType> {
+    (
+        accept(Token::Set),
+        between(accept(Token::LAngle), accept(Token::RAngle), parse_type()),
+    )
+        .map(|(_, elem_ty)| {
+            SchemaType::Type(SchemaTypeVariant::Set {
+                element: (Box::new(elem_ty)),
+            })
+        })
+}
+
 // Decl := Entity | Action | TypeDecl
 fn parse_decls<'a>() -> impl Parser<TokenStream<'a>, Output = NamespaceDefinition> {
     let merge_nds = |nds: Vec<NamespaceDefinition>| {
@@ -550,7 +554,7 @@ fn parse_decls<'a>() -> impl Parser<TokenStream<'a>, Output = NamespaceDefinitio
             actions,
         }
     };
-    many(choice((
+    many1(choice((
         parse_et_decl().map(|et| NamespaceDefinition {
             common_types: HashMap::new(),
             entity_types: HashMap::from_iter(et.into_iter()),
@@ -572,11 +576,12 @@ fn parse_decls<'a>() -> impl Parser<TokenStream<'a>, Output = NamespaceDefinitio
 
 fn parse_str<'a>() -> impl Parser<TokenStream<'a>, Output = SmolStr> {
     satisfy_map(|v| match v {
-        (Token::Str(s), _) => Some(s),
+        (Token::Str(s), span) => Some((s[1..s.len() - 1].to_owned(), span)),
         _ => None,
     })
-    .and_then(|s| {
-        to_unescaped_string(&s).map_err(|errs| ParseErrors::Message(errs[0].to_string().into()))
+    .and_then(|(s, span)| {
+        to_unescaped_string(&s)
+            .map_err(|errs| ParseErrors::Message(format!("{} at {span:?}", errs[0]).into()))
     })
 }
 
@@ -730,7 +735,7 @@ fn parse_et_decl<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<(SmolStr, En
         })
 }
 
-// TypeDecl  := 'type' IDENT '=' Type ';'
+// TypeDecl := 'type' IDENT '=' Type ';'
 fn parse_common_type_decl<'a>() -> impl Parser<TokenStream<'a>, Output = (SmolStr, SchemaType)> {
     (
         accept(Token::Type),
