@@ -311,6 +311,7 @@ fn accept<'a>(t: Token) -> impl Parser<TokenStream<'a>, Output = ()> {
 // If a product also shows up on the RHS, we need to implement the lazy parser
 // (i.e., `parse_lazy`) to avoid infinite recursion.
 // This struct is used to parse `AppDecls`
+#[derive(Debug, Clone)]
 struct AppParser();
 
 impl<'a> Parser<TokenStream<'a>> for AppParser {
@@ -329,7 +330,8 @@ impl<'a> Parser<TokenStream<'a>> for AppParser {
         }
     }
 
-    // AppDecls := VAR ':' EntOrTyps [',' | ',' AppDecls]
+    // AppDecls := ('principal' | 'resource') ':' EntOrTyps [',' | ',' AppDecls]
+    //             | 'context' ':' RecType [',' | ',' AppDecls]
     fn parse(
         &mut self,
         input: TokenStream<'a>,
@@ -356,7 +358,7 @@ impl<'a> Parser<TokenStream<'a>> for AppParser {
                         accept(Token::VarResource).map(|_| "resource"),
                     )),
                     accept(Token::Colon),
-                    choice((parse_path().map(|p| vec![p]), parse_et_or_ets())),
+                    parse_et_or_ets(),
                 )
                     .map(|(id, _, ty)| match id {
                         "principal" => ApplySpec {
@@ -467,6 +469,11 @@ impl<'a> Parser<TokenStream<'a>> for AttrParser {
     }
 }
 
+// There's a limitation for the parser combinator library:
+// If a product also shows up on the RHS, we need to implement the lazy parser
+// (i.e., `parse_lazy`) to avoid infinite recursion.
+// This struct is used to parse `Type`
+#[derive(Debug, Clone)]
 struct TypeParser();
 
 impl<'a> Parser<TokenStream<'a>> for TypeParser {
@@ -486,6 +493,7 @@ impl<'a> Parser<TokenStream<'a>> for TypeParser {
         }
     }
 
+    // Type = PRIMTYPE | IDENT | SetType | RecType
     fn parse(
         &mut self,
         input: TokenStream<'a>,
@@ -495,6 +503,7 @@ impl<'a> Parser<TokenStream<'a>> for TypeParser {
             accept(Token::TyBool).map(|_| SchemaType::Type(SchemaTypeVariant::Boolean)),
             accept(Token::TyLong).map(|_| SchemaType::Type(SchemaTypeVariant::Long)),
             accept(Token::TyString).map(|_| SchemaType::Type(SchemaTypeVariant::String)),
+            // SetType := 'Set' '<' Type '>'
             (
                 accept(Token::Set),
                 between(accept(Token::LAngle), accept(Token::RAngle), parse_type()),
@@ -576,12 +585,9 @@ fn parse_name<'a>() -> impl Parser<TokenStream<'a>, Output = SmolStr> {
     choice((parse_str(), parse_id().map(|id| id.to_smolstr())))
 }
 
+// Names := Name {',' Name}
 fn parse_names<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<SmolStr>> {
-    between(
-        accept(Token::LBracket),
-        accept(Token::RBracket),
-        sep_by1(parse_name(), accept(Token::Comma)),
-    )
+    sep_by1(parse_name(), accept(Token::Comma))
 }
 
 // Namespace := ('namespace' Path '{' {Decl} '}') | {Decl}
@@ -604,15 +610,22 @@ fn parse_path<'a>() -> impl Parser<TokenStream<'a>, Output = Name> {
 
 // ActAttrs  := 'attributes' '{' AttrDecls '}'
 // AppliesTo := 'appliesTo' '{' AppDecls '}'
-// 'action' Names ['in' (Name | '[' [Names] ']')] [AppliesTo] [ActAttrs]';'
+// Action := 'action' Names ['in' (Name | '[' [Names] ']')] [AppliesTo] [ActAttrs]';'
 fn parse_action_decl<'a>() -> impl Parser<TokenStream<'a>, Output = HashMap<SmolStr, ActionType>> {
     (
         accept(Token::VarAction),
-        sep_by1(parse_name(), accept(Token::Comma)).map(|vs: Vec<SmolStr>| vs),
+        parse_names().map(|vs: Vec<SmolStr>| vs),
         optional(
             (
                 accept(Token::In),
-                choice((parse_name().map(|p| vec![p]), parse_names())),
+                choice((
+                    between(
+                        accept(Token::LBracket),
+                        accept(Token::RBracket),
+                        parse_names(),
+                    ),
+                    parse_name().map(|p| vec![p]),
+                )),
             )
                 .map(|(_, ns)| ns),
         ),

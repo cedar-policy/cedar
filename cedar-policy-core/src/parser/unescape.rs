@@ -21,6 +21,7 @@ use smol_str::SmolStr;
 use std::ops::Range;
 use thiserror::Error;
 
+/// Unescape a string following Cedar's string escape rules
 pub fn to_unescaped_string(s: &str) -> Result<SmolStr, Vec<UnescapeError>> {
     let mut unescaped_str = String::new();
     let mut errs = Vec::new();
