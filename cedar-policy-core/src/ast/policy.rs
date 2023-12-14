@@ -1513,6 +1513,12 @@ impl std::fmt::Display for PolicyID {
     }
 }
 
+impl AsRef<str> for PolicyID {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 #[cfg(feature = "arbitrary")]
 impl<'u> arbitrary::Arbitrary<'u> for PolicyID {
     fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<PolicyID> {

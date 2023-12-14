@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+Now uses Cedar language version 3.0.0.
+
 ### Added
 
 - `--deny-warnings` option to `validate` command. This option turns non-fatal
@@ -9,6 +11,10 @@
 - Requests are now validated by default if a schema is provided. This can be
   disabled with `--request-validation=false`.
 - The `-s` short form can now be used for `--schema` across all subcommands.
+- The `-p`/`--policies` flag can now be omitted across all subcommands where it
+  is present. If the flag is omitted, policies will be read from `stdin`.
+- `--policy-format` flag to many subcommands, allowing you to pass policies in
+  JSON format. The default remains `human` format.
 
 ### Changed
 
@@ -20,9 +26,13 @@
 
 ## 2.4.2
 
+Now uses Cedar language version 2.1.2.
+
 ## 2.4.1
 
 ## 2.4.0
+
+Now uses Cedar language version 2.1.1.
 
 ### Changed
 
@@ -40,6 +50,8 @@
 ## 2.3.1
 
 ## 2.3.0
+
+Now uses Cedar language version 2.1.0.
 
 ## 2.2.0
 
@@ -70,3 +82,5 @@
 ## 2.0.0
 
 Initial release of `cedar-policy-cli`.
+
+Uses Cedar language version 2.0.0.

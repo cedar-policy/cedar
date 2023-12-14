@@ -41,7 +41,7 @@ use super::unescape::{to_pattern, to_unescaped_string};
 use super::{cst, err};
 use crate::ast::{
     self, ActionConstraint, CallStyle, EntityReference, EntityType, EntityUID,
-    ExprConstructionError, PatternElem, PolicySetError, PrincipalConstraint,
+    ExprConstructionError, Integer, PatternElem, PolicySetError, PrincipalConstraint,
     PrincipalOrResourceConstraint, ResourceConstraint,
 };
 use crate::est::extract_single_argument;
@@ -561,7 +561,7 @@ impl ASTNode<Option<cst::VariableDef>> {
                 }
                 (cst::RelOp::In, None) => Some(PrincipalOrResourceConstraint::In(eref)),
                 (cst::RelOp::In, Some(entity_type)) => Some(PrincipalOrResourceConstraint::IsIn(
-                    entity_type.to_name(errs)?,
+                    entity_type.to_expr_or_special(errs)?.into_name(errs)?,
                     eref,
                 )),
                 (op, _) => {
@@ -571,7 +571,7 @@ impl ASTNode<Option<cst::VariableDef>> {
             }
         } else if let Some(entity_type) = &vardef.entity_type {
             Some(PrincipalOrResourceConstraint::Is(
-                entity_type.to_name(errs)?,
+                entity_type.to_expr_or_special(errs)?.into_name(errs)?,
             ))
         } else {
             Some(PrincipalOrResourceConstraint::Any)
@@ -886,6 +886,24 @@ impl ExprOrSpecial<'_> {
             }
             Self::Expr(e, _) => {
                 errs.push(self.to_ast_err(ToASTErrorKind::InvalidString(e.to_string())));
+                None
+            }
+        }
+    }
+
+    fn into_name(self, errs: &mut ParseErrors) -> Option<ast::Name> {
+        match self {
+            Self::StrLit(s, _) => {
+                errs.push(self.to_ast_err(ToASTErrorKind::IsInvalidName(s.to_string())));
+                None
+            }
+            Self::Var(var, _) => {
+                errs.push(self.to_ast_err(ToASTErrorKind::IsInvalidName(var.to_string())));
+                None
+            }
+            Self::Name(name, _) => Some(name),
+            Self::Expr(ref e, _) => {
+                errs.push(self.to_ast_err(ToASTErrorKind::IsInvalidName(e.to_string())));
                 None
             }
         }
@@ -1252,7 +1270,10 @@ impl ASTNode<Option<cst::Relation>> {
                 target,
                 entity_type,
                 in_entity,
-            } => match (target.to_expr(errs), entity_type.to_name(errs)) {
+            } => match (
+                target.to_expr(errs),
+                entity_type.to_expr_or_special(errs)?.into_name(errs),
+            ) {
                 (Some(t), Some(n)) => match in_entity {
                     Some(in_entity) => in_entity.to_expr(errs).map(|in_entity| {
                         ExprOrSpecial::Expr(
@@ -1380,7 +1401,7 @@ impl ASTNode<Option<cst::Mult>> {
                         "checked it matched ast::ExprKind::Lit(ast::Literal::Long(_)) above"
                     ),
                 })
-                .collect::<Vec<i64>>();
+                .collect::<Vec<Integer>>();
             if nonconstantints.len() > 1 {
                 // at most one of the operands in `a * b * c * d * ...` can be a nonconstantint
                 errs.push(self.to_ast_err(ToASTErrorKind::NonConstantMultiplication));
@@ -1904,7 +1925,7 @@ impl ASTNode<Option<cst::Primary>> {
 }
 
 impl ASTNode<Option<cst::Slot>> {
-    fn into_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
+    fn into_expr(self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         match self.as_inner()?.try_into() {
             Ok(slot_id) => Some(
                 ast::ExprBuilder::new()
@@ -2098,7 +2119,7 @@ impl ASTNode<Option<cst::Literal>> {
         match lit {
             cst::Literal::True => Some(ExprOrSpecial::Expr(construct_expr_bool(true, src), src)),
             cst::Literal::False => Some(ExprOrSpecial::Expr(construct_expr_bool(false, src), src)),
-            cst::Literal::Num(n) => match i64::try_from(*n) {
+            cst::Literal::Num(n) => match Integer::try_from(*n) {
                 Ok(i) => Some(ExprOrSpecial::Expr(construct_expr_num(i, src), src)),
                 Err(_) => {
                     errs.push(self.to_ast_err(ToASTErrorKind::IntegerLiteralTooLarge(*n)));
@@ -2190,7 +2211,7 @@ fn construct_refr(p: ast::Name, n: SmolStr) -> ast::EntityUID {
 fn construct_expr_ref(r: ast::EntityUID, span: miette::SourceSpan) -> ast::Expr {
     ast::ExprBuilder::new().with_source_span(span).val(r)
 }
-fn construct_expr_num(n: i64, span: miette::SourceSpan) -> ast::Expr {
+fn construct_expr_num(n: Integer, span: miette::SourceSpan) -> ast::Expr {
     ast::ExprBuilder::new().with_source_span(span).val(n)
 }
 fn construct_expr_string(s: SmolStr, span: miette::SourceSpan) -> ast::Expr {
@@ -2274,14 +2295,14 @@ fn construct_expr_add(
 /// used for a chain of multiplication only (no division or mod)
 fn construct_expr_mul(
     f: ast::Expr,
-    chained: impl IntoIterator<Item = i64>,
+    chained: impl IntoIterator<Item = Integer>,
     span: miette::SourceSpan,
 ) -> ast::Expr {
     let mut expr = f;
     for next_expr in chained {
         expr = ast::ExprBuilder::new()
             .with_source_span(span)
-            .mul(expr, next_expr)
+            .mul(expr, next_expr as Integer)
     }
     expr
 }
@@ -3585,23 +3606,21 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert_matches!(parse_policyset(test), Err(es) => {
-            if es.len() != euids.len() {
-                panic!(
-                    "Parse should have produced exactly {} parse errors, produced: {}",
-                    euids.len(),
-                    es.pretty_with_helps()
+            assert_eq!(es.len(), euids.len(),
+                "should have produced exactly {} parse errors, produced {}:\n{:?}",
+                euids.len(),
+                es.len(),
+                miette::Report::new(es)
+            );
+            for euid in euids {
+                expect_some_error_matches(
+                    test,
+                    &es,
+                    &ExpectedErrorMessage::error_and_help(
+                        &format!("expected an entity uid with the type `Action` but got `{euid}`"),
+                        "action entities must have type `Action`, optionally in a namespace",
+                    ),
                 );
-            } else {
-                for euid in euids {
-                    expect_some_error_matches(
-                        test,
-                        &es,
-                        &ExpectedErrorMessage::error_and_help(
-                            &format!("expected an entity uid with the type `Action` but got `{euid}`"),
-                            "action entities must have type `Action`, optionally in a namespace",
-                        ),
-                    );
-                }
             }
         });
     }
@@ -3819,27 +3838,29 @@ mod tests {
         for (es, em) in [
             (
                 "-9223372036854775809",
-                ToASTErrorKind::IntegerLiteralTooLarge(9223372036854775809),
+                ExpectedErrorMessage::error_and_help(
+                    "integer literal `9223372036854775809` is too large",
+                    "maximum allowed integer literal is `9223372036854775807`",
+                ),
             ),
+            // This test doesn't fail with an internal representation of i128:
             // Contrary to Rust, this expression is not valid because the
             // parser treats it as a negation operation whereas the operand
             // (9223372036854775808) is too large.
             (
                 "-(9223372036854775808)",
-                ToASTErrorKind::IntegerLiteralTooLarge(9223372036854775808),
+                ExpectedErrorMessage::error_and_help(
+                    "integer literal `9223372036854775808` is too large",
+                    "maximum allowed integer literal is `9223372036854775807`",
+                ),
             ),
         ] {
             let mut errs = ParseErrors::new();
             let e = text_to_cst::parse_expr(es)
                 .expect("should construct a CST")
                 .to_expr(&mut errs);
-            assert!(e.is_none());
-            assert!(
-                errs.iter()
-                    .any(|err| { matches!(err, ParseError::ToAST(err) if err.kind() == &em) }),
-                "Expected to find error `{em:?}`, but saw `{}`",
-                errs.pretty_with_helps(),
-            );
+            assert_matches!(e, None);
+            expect_err(es, &errs, &em);
         }
     }
 
@@ -3871,6 +3892,26 @@ mod tests {
             (
                 r#"principal is User in Group::"friends""#,
                 Expr::and(
+                    Expr::is_entity_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
+                    Expr::is_in(
+                        Expr::var(ast::Var::Principal),
+                        Expr::val(r#"Group::"friends""#.parse::<EntityUID>().unwrap()),
+                    ),
+                ),
+            ),
+            (
+                r#"principal is User && principal in Group::"friends""#,
+                Expr::and(
+                    Expr::is_entity_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
+                    Expr::is_in(
+                        Expr::var(ast::Var::Principal),
+                        Expr::val(r#"Group::"friends""#.parse::<EntityUID>().unwrap()),
+                    ),
+                ),
+            ),
+            (
+                r#"principal is User || principal in Group::"friends""#,
+                Expr::or(
                     Expr::is_entity_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
                     Expr::is_in(
                         Expr::var(ast::Var::Principal),
@@ -3928,6 +3969,31 @@ mod tests {
                         Expr::var(ast::Var::Principal),
                         Expr::val(r#"Group::"friends""#.parse::<EntityUID>().unwrap()),
                     ),
+                ),
+            ),
+            (
+                r#"if principal is User then 1 else 2"#,
+                Expr::ite(
+                    Expr::is_entity_type(Expr::var(ast::Var::Principal), "User".parse().unwrap()),
+                    Expr::val(1),
+                    Expr::val(2),
+                ),
+            ),
+            (
+                r#"if principal is User in Group::"friends" then 1 else 2"#,
+                Expr::ite(
+                    Expr::and(
+                        Expr::is_entity_type(
+                            Expr::var(ast::Var::Principal),
+                            "User".parse().unwrap(),
+                        ),
+                        Expr::is_in(
+                            Expr::var(ast::Var::Principal),
+                            Expr::val(r#"Group::"friends""#.parse::<EntityUID>().unwrap()),
+                        ),
+                    ),
+                    Expr::val(1),
+                    Expr::val(2),
                 ),
             ),
         ] {
@@ -4013,14 +4079,6 @@ mod tests {
     fn is_err() {
         let invalid_is_policies = [
             (
-                r#"permit(principal == ?resource, action, resource);"#,
-                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?resource instead of ?principal"),
-            ),
-            (
-                r#"permit(principal, action, resource == ?principal);"#,
-                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?principal instead of ?resource"),
-            ),
-            (
                 r#"permit(principal in Group::"friends" is User, action, resource);"#,
                 ExpectedErrorMessage::error("expected an entity uid or matching template slot, found an `is` expression"),
             ),
@@ -4030,23 +4088,31 @@ mod tests {
             ),
             (
                 r#"permit(principal is User == User::"Alice", action, resource);"#,
-                ExpectedErrorMessage::error(
+                ExpectedErrorMessage::error_and_help(
                     "`is` cannot appear in the scope at the same time as `==`",
+                    "try moving `is` into a `when` condition"
                 ),
             ),
             (
                 r#"permit(principal, action, resource is Doc == Doc::"a");"#,
-                ExpectedErrorMessage::error(
+                ExpectedErrorMessage::error_and_help(
                     "`is` cannot appear in the scope at the same time as `==`",
+                    "try moving `is` into a `when` condition"
                 ),
             ),
             (
                 r#"permit(principal is User::"alice", action, resource);"#,
-                ExpectedErrorMessage::error(r#"unexpected token `"alice"`"#),
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `User::"alice"`"#,
+                    "try using `==` to test for equality"
+                ),
             ),
             (
                 r#"permit(principal, action, resource is File::"f");"#,
-                ExpectedErrorMessage::error(r#"unexpected token `"f"`"#),
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `File::"f"`"#,
+                    "try using `==` to test for equality"
+                ),
             ),
             (
                 r#"permit(principal is User in 1, action, resource);"#,
@@ -4067,26 +4133,87 @@ mod tests {
                 ),
             ),
             (
+                r#"permit(principal is User::"Alice" in Group::"f", action, resource);"#,
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `User::"Alice"`"#,
+                    "try using `==` to test for equality"
+                ),
+            ),
+            (
                 r#"permit(principal, action, resource is File in File);"#,
                 ExpectedErrorMessage::error(
                     "expected an entity uid or matching template slot, found name `File`",
                 ),
             ),
             (
+                r#"permit(principal, action, resource is File::"file" in Folder::"folder");"#,
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `File::"file"`"#,
+                    "try using `==` to test for equality"
+                ),
+            ),
+            (
                 r#"permit(principal is 1, action, resource);"#,
-                ExpectedErrorMessage::error("unexpected token `1`"),
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
+                    "try using `==` to test for equality"
+                ),
             ),
             (
                 r#"permit(principal, action, resource is 1);"#,
-                ExpectedErrorMessage::error("unexpected token `1`"),
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
+                    "try using `==` to test for equality"
+                ),
             ),
             (
                 r#"permit(principal, action is Action, resource);"#,
-                ExpectedErrorMessage::error("`is` cannot appear in the action scope"),
+                ExpectedErrorMessage::error_and_help(
+                    "`is` cannot appear in the action scope",
+                    "try moving `action is ..` into a `when` condition"
+                ),
+            ),
+            (
+                r#"permit(principal, action is Action::"a", resource);"#,
+                ExpectedErrorMessage::error_and_help(
+                    "`is` cannot appear in the action scope",
+                    "try moving `action is ..` into a `when` condition"
+                ),
             ),
             (
                 r#"permit(principal, action is Action in Action::"A", resource);"#,
-                ExpectedErrorMessage::error("`is` cannot appear in the action scope"),
+                ExpectedErrorMessage::error_and_help(
+                    "`is` cannot appear in the action scope",
+                    "try moving `action is ..` into a `when` condition"
+                ),
+            ),
+            (
+                r#"permit(principal, action is Action in Action, resource);"#,
+                ExpectedErrorMessage::error_and_help(
+                    "`is` cannot appear in the action scope",
+                    "try moving `action is ..` into a `when` condition"
+                ),
+            ),
+            (
+                r#"permit(principal, action is Action::"a" in Action::"b", resource);"#,
+                ExpectedErrorMessage::error_and_help(
+                    "`is` cannot appear in the action scope",
+                    "try moving `action is ..` into a `when` condition"
+                ),
+            ),
+            (
+                r#"permit(principal, action is Action in ?action, resource);"#,
+                ExpectedErrorMessage::error_and_help(
+                    "`is` cannot appear in the action scope",
+                    "try moving `action is ..` into a `when` condition"
+                ),
+            ),
+            (
+                r#"permit(principal, action is ?action, resource);"#,
+                ExpectedErrorMessage::error_and_help(
+                    "`is` cannot appear in the action scope",
+                    "try moving `action is ..` into a `when` condition"
+                ),
             ),
             (
                 r#"permit(principal is User in ?resource, action, resource);"#,
@@ -4097,8 +4224,58 @@ mod tests {
                 ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?principal instead of ?resource"),
             ),
             (
+                r#"permit(principal is ?principal, action, resource);"#,
+                ExpectedErrorMessage::error_and_help(
+                    "right hand side of an `is` expression must be an entity type name, but got `?principal`",
+                    "try using `==` to test for equality"
+                ),
+            ),
+            (
+                r#"permit(principal, action, resource is ?resource);"#,
+                ExpectedErrorMessage::error_and_help(
+                    "right hand side of an `is` expression must be an entity type name, but got `?resource`",
+                    "try using `==` to test for equality"
+                ),
+            ),
+            (
                 r#"permit(principal, action, resource) when { principal is 1 };"#,
-                ExpectedErrorMessage::error("unexpected token `1`"),
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
+                    "try using `==` to test for equality"
+                ),
+            ),
+            (
+                r#"permit(principal, action, resource) when { principal is User::"alice" in Group::"friends" };"#,
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `User::"alice"`"#,
+                    "try using `==` to test for equality"
+                ),
+            ),
+            (
+                r#"permit(principal, action, resource) when { principal is ! User::"alice" in Group::"friends" };"#,
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `!User::"alice"`"#,
+                    "try using `==` to test for equality"
+                ),
+            ),
+            (
+                r#"permit(principal, action, resource) when { principal is User::"alice" + User::"alice" in Group::"friends" };"#,
+                ExpectedErrorMessage::error_and_help(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `User::"alice" + User::"alice"`"#,
+                    "try using `==` to test for equality"
+                ),
+            ),
+            (
+                r#"permit(principal, action, resource) when { principal is User in User::"alice" in Group::"friends" };"#,
+                ExpectedErrorMessage::error(
+                    "unexpected token `in`"
+                ),
+            ),
+            (
+                r#"permit(principal, action, resource) when { principal is User == User::"alice" in Group::"friends" };"#,
+                ExpectedErrorMessage::error(
+                    "unexpected token `==`"
+                ),
             ),
         ];
         for (p_src, expected) in invalid_is_policies {
@@ -4199,6 +4376,14 @@ mod tests {
     #[test]
     fn invalid_slot() {
         let invalid_policies = [
+            (
+                r#"permit(principal == ?resource, action, resource);"#,
+                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?resource instead of ?principal"),
+            ),
+            (
+                r#"permit(principal, action, resource == ?principal);"#,
+                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?principal instead of ?resource"),
+            ),
             (
                 r#"permit(principal, action, resource) when { principal == ?foo};"#,
                 ExpectedErrorMessage::error_and_help(

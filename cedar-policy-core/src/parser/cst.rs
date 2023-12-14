@@ -70,7 +70,7 @@ pub struct VariableDef {
     /// not used for anything other than error reporting.
     pub unused_type_name: Option<Node<Name>>,
     /// type of entity using current `var is type` syntax
-    pub entity_type: Option<Node<Name>>,
+    pub entity_type: Option<Node<Add>>,
     /// hierarchy of entity
     pub ineq: Option<(RelOp, Node<Expr>)>,
 }
@@ -197,7 +197,7 @@ pub enum Relation {
         /// element that may be an entity type and `in` an entity
         target: Node<Add>,
         /// entity type to check for
-        entity_type: Node<Name>,
+        entity_type: Node<Add>,
         /// entity that the target may be `in`
         in_entity: Option<Node<Add>>,
     },

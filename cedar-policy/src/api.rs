@@ -24,7 +24,7 @@ pub use ast::Effect;
 pub use authorizer::Decision;
 use cedar_policy_core::ast;
 use cedar_policy_core::ast::{
-    ContextCreationError, ExprConstructionError, RestrictedExprParseError,
+    ContextCreationError, ExprConstructionError, Integer, RestrictedExprParseError,
 }; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
 use cedar_policy_core::authorizer;
 pub use cedar_policy_core::authorizer::AuthorizationError;
@@ -1777,6 +1777,7 @@ impl EntityUid {
     /// let euid = EntityUid::from_json(json_data).unwrap();
     /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
     /// ```
+    #[allow(clippy::result_large_err)]
     pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
         let parsed: entities::EntityUidJson = serde_json::from_value(json)?;
         // INVARIANT: There is no way to write down the unspecified entityuid
@@ -2570,6 +2571,12 @@ impl std::fmt::Display for PolicyId {
     }
 }
 
+impl AsRef<str> for PolicyId {
+    fn as_ref(&self) -> &str {
+        self.0.as_ref()
+    }
+}
+
 /// Structure for a `Policy`. Includes both static policies and template-linked policies.
 #[derive(Debug, Clone)]
 pub struct Policy {
@@ -3001,7 +3008,7 @@ impl Expression {
     }
 
     /// Create an expression representing a literal long.
-    pub fn new_long(value: i64) -> Self {
+    pub fn new_long(value: Integer) -> Self {
         Self(ast::Expr::val(value))
     }
 
@@ -3062,7 +3069,7 @@ impl RestrictedExpression {
     }
 
     /// Create an expression representing a literal long.
-    pub fn new_long(value: i64) -> Self {
+    pub fn new_long(value: Integer) -> Self {
         Self(ast::RestrictedExpr::val(value))
     }
 
@@ -3137,6 +3144,7 @@ impl<'a> RequestBuilder<'a> {
     /// not contribute to authorization decisions (e.g., because it is not
     /// used in your policies).
     /// This is different than Unknown for partial-evaluation purposes.
+    #[must_use]
     pub fn principal(self, principal: Option<EntityUid>) -> Self {
         Self {
             principal: match principal {
@@ -3158,6 +3166,7 @@ impl<'a> RequestBuilder<'a> {
     /// not contribute to authorization decisions (e.g., because it is not
     /// used in your policies).
     /// This is different than Unknown for partial-evaluation purposes.
+    #[must_use]
     pub fn action(self, action: Option<EntityUid>) -> Self {
         Self {
             action: match action {
@@ -3179,6 +3188,7 @@ impl<'a> RequestBuilder<'a> {
     /// not contribute to authorization decisions (e.g., because it is not
     /// used in your policies).
     /// This is different than Unknown for partial-evaluation purposes.
+    #[must_use]
     pub fn resource(self, resource: Option<EntityUid>) -> Self {
         Self {
             resource: match resource {
@@ -3192,6 +3202,7 @@ impl<'a> RequestBuilder<'a> {
     }
 
     /// Set the context.
+    #[must_use]
     pub fn context(self, context: Context) -> Self {
         Self {
             context: Some(context.0),
@@ -3200,6 +3211,7 @@ impl<'a> RequestBuilder<'a> {
     }
 
     /// Set the schema. If present, this will be used for request validation.
+    #[must_use]
     pub fn schema(self, schema: &'a Schema) -> Self {
         Self {
             schema: Some(schema),
@@ -3578,7 +3590,7 @@ pub enum EvalResult {
     /// Boolean value
     Bool(bool),
     /// Signed integer value
-    Long(i64),
+    Long(Integer),
     /// String value
     String(String),
     /// Entity Uid

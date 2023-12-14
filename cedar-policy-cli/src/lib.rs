@@ -113,9 +113,9 @@ pub struct ValidateArgs {
     /// File containing the schema
     #[arg(short, long = "schema", value_name = "FILE")]
     pub schema_file: String,
-    /// File containing the policy set
-    #[arg(short, long = "policies", value_name = "FILE")]
-    pub policies_file: String,
+    /// Policies args (incorporated by reference)
+    #[command(flatten)]
+    pub policies: PoliciesArgs,
     /// Report a validation failure for non-fatal warnings
     #[arg(long)]
     pub deny_warnings: bool,
@@ -128,9 +128,9 @@ pub struct ValidateArgs {
 
 #[derive(Args, Debug)]
 pub struct CheckParseArgs {
-    /// Optional policy file name. If none is provided, read input from stdin.
-    #[arg(short, long = "policies", value_name = "FILE")]
-    pub policies_file: Option<String>,
+    /// Policies args (incorporated by reference)
+    #[command(flatten)]
+    pub policies: PoliciesArgs,
 }
 
 /// This struct contains the arguments that together specify a request.
@@ -275,18 +275,40 @@ impl RequestArgs {
     }
 }
 
+/// This struct contains the arguments that together specify an input policy or policy set.
+#[derive(Args, Debug)]
+pub struct PoliciesArgs {
+    /// File containing the static Cedar policies and/or templates. If not provided, read policies from stdin.
+    #[arg(short, long = "policies", value_name = "FILE")]
+    pub policies_file: Option<String>,
+    /// Format of policies in the `--policies` file
+    #[arg(long = "policy-format", default_value_t, value_enum)]
+    pub policy_format: PolicyFormat,
+}
+
+impl PoliciesArgs {
+    /// Turn this `PoliciesArgs` into the appropriate `PolicySet` object
+    fn get_policy_set(&self) -> Result<PolicySet> {
+        match self.policy_format {
+            PolicyFormat::Human => read_policy_set(self.policies_file.as_ref()),
+            PolicyFormat::Json => read_json_policy(self.policies_file.as_ref()),
+        }
+    }
+}
+
 #[derive(Args, Debug)]
 pub struct AuthorizeArgs {
     /// Request args (incorporated by reference)
     #[command(flatten)]
     pub request: RequestArgs,
-    /// File containing the static Cedar policies and templates to evaluate against
-    #[arg(short, long = "policies", value_name = "FILE")]
-    pub policies_file: String,
+    /// Policies args (incorporated by reference)
+    #[command(flatten)]
+    pub policies: PoliciesArgs,
     /// File containing template linked policies
     #[arg(short = 'k', long = "template-linked", value_name = "FILE")]
     pub template_linked_file: Option<String>,
     /// File containing schema information
+    ///
     /// Used to populate the store with action entities and for schema-based
     /// parsing of entity hierarchy, if present
     #[arg(short, long = "schema", value_name = "FILE")]
@@ -302,11 +324,20 @@ pub struct AuthorizeArgs {
     pub timing: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+pub enum PolicyFormat {
+    /// The standard human-readable Cedar policy format, documented at https://docs.cedarpolicy.com/policies/syntax-policy.html
+    #[default]
+    Human,
+    /// Cedar's JSON policy format, documented at https://docs.cedarpolicy.com/policies/json-format.html
+    Json,
+}
+
 #[derive(Args, Debug)]
 pub struct LinkArgs {
-    /// File containing static policies and templates.
-    #[arg(short, long = "policies", value_name = "FILE")]
-    pub policies_file: String,
+    /// Policies args (incorporated by reference)
+    #[command(flatten)]
+    pub policies: PoliciesArgs,
     /// File containing template-linked policies
     #[arg(short = 'k', long = "template-linked", value_name = "FILE")]
     pub template_linked_file: String,
@@ -323,9 +354,9 @@ pub struct LinkArgs {
 
 #[derive(Args, Debug)]
 pub struct FormatArgs {
-    /// Optional policy file name. If none is provided, read input from stdin.
+    /// File containing the static Cedar policies and/or templates. If not provided, read policies from stdin.
     #[arg(short, long = "policies", value_name = "FILE")]
-    pub policy_file: Option<String>,
+    pub policies_file: Option<String>,
 
     /// Custom line width (default: 80).
     #[arg(short, long, value_name = "UINT", default_value_t = 80)]
@@ -433,7 +464,7 @@ impl Termination for CedarExitCode {
 }
 
 pub fn check_parse(args: &CheckParseArgs) -> CedarExitCode {
-    match read_policy_set(args.policies_file.as_ref()) {
+    match args.policies.get_policy_set() {
         Ok(_) => CedarExitCode::Success,
         Err(e) => {
             println!("{e:?}");
@@ -455,7 +486,7 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
         ValidationMode::default()
     };
 
-    let pset = match read_policy_set(Some(&args.policies_file)) {
+    let pset = match args.policies.get_policy_set() {
         Ok(pset) => pset,
         Err(e) => {
             println!("{e:?}");
@@ -524,7 +555,7 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
         match Expression::from_str(&args.expression).wrap_err("failed to parse the expression") {
             Ok(expr) => expr,
             Err(e) => {
-                println!("{e:?}");
+                println!("{:?}", e.with_source_code(args.expression.clone()));
                 return (CedarExitCode::Failure, EvalResult::Bool(false));
             }
         };
@@ -561,7 +592,7 @@ pub fn link(args: &LinkArgs) -> CedarExitCode {
 }
 
 fn format_policies_inner(args: &FormatArgs) -> Result<()> {
-    let policies_str = read_from_file_or_stdin(args.policy_file.as_ref(), "policy set")?;
+    let policies_str = read_from_file_or_stdin(args.policies_file.as_ref(), "policy set")?;
     let config = Config {
         line_width: args.line_width,
         indent_width: args.indent_width,
@@ -712,7 +743,7 @@ fn create_slot_env(data: &HashMap<SlotId, String>) -> Result<HashMap<SlotId, Ent
 }
 
 fn link_inner(args: &LinkArgs) -> Result<()> {
-    let mut policies = read_policy_set(Some(&args.policies_file))?;
+    let mut policies = args.policies.get_policy_set()?;
     let slotenv = create_slot_env(&args.arguments.data)?;
     policies.link(
         PolicyId::from_str(&args.template_id)?,
@@ -849,7 +880,7 @@ pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {
     println!();
     let ans = execute_request(
         &args.request,
-        &args.policies_file,
+        &args.policies,
         args.template_linked_file.as_ref(),
         &args.entities_file,
         args.schema_file.as_ref(),
@@ -948,18 +979,7 @@ fn rename_from_id_annotation(ps: PolicySet) -> Result<PolicySet> {
     Ok(new_ps)
 }
 
-fn read_policy_and_links(
-    policies_filename: impl AsRef<Path>,
-    links_filename: Option<impl AsRef<Path>>,
-) -> Result<PolicySet> {
-    let mut pset = read_policy_set(Some(policies_filename.as_ref()))?;
-    if let Some(links_filename) = links_filename {
-        add_template_links_to_set(links_filename.as_ref(), &mut pset)?;
-    }
-    Ok(pset)
-}
-
-// Read from a file (when `filename` is a `Some`) or stdin (when `filename` is `None`)
+// Read from a file (when `filename` is a `Some`) or stdin (when `filename` is `None`) to a `String`
 fn read_from_file_or_stdin(filename: Option<impl AsRef<Path>>, context: &str) -> Result<String> {
     let mut src_str = String::new();
     match filename.as_ref() {
@@ -967,11 +987,7 @@ fn read_from_file_or_stdin(filename: Option<impl AsRef<Path>>, context: &str) ->
             src_str = std::fs::read_to_string(path)
                 .into_diagnostic()
                 .wrap_err_with(|| {
-                    format!(
-                        "failed to open {} file {}",
-                        context,
-                        path.as_ref().display()
-                    )
+                    format!("failed to open {context} file {}", path.as_ref().display())
                 })?;
         }
         None => {
@@ -988,6 +1004,8 @@ fn read_from_file(filename: impl AsRef<Path>, context: &str) -> Result<String> {
     read_from_file_or_stdin(Some(filename), context)
 }
 
+/// Read a policy set, in Cedar human syntax, from the file given in `filename`,
+/// or from stdin if `filename` is `None`.
 fn read_policy_set(
     filename: Option<impl AsRef<Path> + std::marker::Copy>,
 ) -> miette::Result<PolicySet> {
@@ -1005,6 +1023,47 @@ fn read_policy_set(
     rename_from_id_annotation(ps)
 }
 
+/// Read a policy, in Cedar JSON (EST) syntax, from the file given in `filename`,
+/// or from stdin if `filename` is `None`.
+fn read_json_policy(
+    filename: Option<impl AsRef<Path> + std::marker::Copy>,
+) -> miette::Result<PolicySet> {
+    let context = "JSON policy";
+    let json = match filename.as_ref() {
+        Some(path) => {
+            let f = OpenOptions::new()
+                .read(true)
+                .open(path)
+                .into_diagnostic()
+                .wrap_err_with(|| {
+                    format!("failed to open {context} file {}", path.as_ref().display())
+                })?;
+            serde_json::from_reader(f)
+                .into_diagnostic()
+                .wrap_err_with(|| {
+                    format!("failed to read {context} file {}", path.as_ref().display())
+                })?
+        }
+        None => serde_json::from_reader(std::io::stdin())
+            .into_diagnostic()
+            .wrap_err_with(|| format!("failed to read {context} from stdin"))?,
+    };
+    let policy = Policy::from_json(None, json)
+        // TODO: for pretty source annotations:
+        /*
+        .map_err(|err| {
+            let name = filename.map_or_else(
+                || "<stdin>".to_owned(),
+                |n| n.as_ref().display().to_string(),
+            );
+            Report::new(err).with_source_code(NamedSource::new(name, source))
+        })
+        */
+        .wrap_err_with(|| format!("failed to parse {context}"))?;
+    PolicySet::from_policies([policy])
+        .wrap_err_with(|| format!("failed to create policy set from {context}"))
+}
+
 fn read_schema_file(filename: impl AsRef<Path> + std::marker::Copy) -> Result<Schema> {
     let schema_src = read_from_file(filename, "schema")?;
     Schema::from_str(&schema_src).wrap_err_with(|| {
@@ -1018,14 +1077,19 @@ fn read_schema_file(filename: impl AsRef<Path> + std::marker::Copy) -> Result<Sc
 /// This uses the Cedar API to call the authorization engine.
 fn execute_request(
     request: &RequestArgs,
-    policies_filename: impl AsRef<Path> + std::marker::Copy,
+    policies: &PoliciesArgs,
     links_filename: Option<impl AsRef<Path>>,
     entities_filename: impl AsRef<Path>,
     schema_filename: Option<impl AsRef<Path> + std::marker::Copy>,
     compute_duration: bool,
 ) -> Result<Response, Vec<Report>> {
     let mut errs = vec![];
-    let policies = match read_policy_and_links(policies_filename.as_ref(), links_filename) {
+    let policies = match policies.get_policy_set().and_then(|mut pset| {
+        if let Some(links_filename) = links_filename {
+            add_template_links_to_set(links_filename.as_ref(), &mut pset)?;
+        }
+        Ok(pset)
+    }) {
         Ok(pset) => pset,
         Err(e) => {
             errs.push(e);

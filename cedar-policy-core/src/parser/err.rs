@@ -20,15 +20,13 @@ use std::iter;
 use std::ops::{Deref, DerefMut};
 
 use either::Either;
-use itertools::Itertools;
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
 use miette::{Diagnostic, LabeledSpan, SourceSpan};
 use smol_str::SmolStr;
 use thiserror::Error;
 
-use crate::ast::{self, RestrictedExprError};
-use crate::ast::{PolicyID, Var};
+use crate::ast::{self, InputInteger, PolicyID, RestrictedExprError, Var};
 use crate::parser::unescape::UnescapeError;
 
 use crate::parser::fmt::join_with_conjunction;
@@ -267,6 +265,10 @@ pub enum ToASTErrorKind {
     /// Returned when the right hand side of a `like` expression is not a constant pattern literal
     #[error("right hand side of a `like` expression must be a pattern literal, but got `{0}`")]
     InvalidPattern(String),
+    /// Returned when the right hand side of a `is` expression is not an entity type name
+    #[error("right hand side of an `is` expression must be an entity type name, but got `{0}`")]
+    #[diagnostic(help("try using `==` to test for equality"))]
+    IsInvalidName(String),
     /// Returned when an unexpected node is in the policy scope clause
     #[error("expected {expected}, found {got}")]
     WrongNode {
@@ -293,7 +295,7 @@ pub enum ToASTErrorKind {
     NonConstantMultiplication,
     /// Returned when a policy contains an integer literal that is out of range
     #[error("integer literal `{0}` is too large")]
-    #[diagnostic(help("maximum allowed integer literal is `{}`", i64::MAX))]
+    #[diagnostic(help("maximum allowed integer literal is `{}`", InputInteger::MAX))]
     IntegerLiteralTooLarge(u64),
     /// Returned when a unary operator is chained more than 4 times in a row
     #[error("too many occurrences of `{0}`")]
@@ -473,9 +475,11 @@ impl std::fmt::Display for Ref {
 pub enum InvalidIsError {
     /// The action scope may not contain an `is`
     #[error("`is` cannot appear in the action scope")]
+    #[diagnostic(help("try moving `action is ..` into a `when` condition"))]
     ActionScope,
     /// An `is` cannot appear with this operator in the policy scope
     #[error("`is` cannot appear in the scope at the same time as `{0}`")]
+    #[diagnostic(help("try moving `is` into a `when` condition"))]
     WrongOp(cst::RelOp),
 }
 
@@ -623,16 +627,6 @@ impl ParseErrors {
     /// returns a Vec with stringified versions of the ParseErrors
     pub fn errors_as_strings(&self) -> Vec<String> {
         self.0.iter().map(ToString::to_string).collect()
-    }
-
-    /// Display the `ParseErrors`, newline-separated, with `help()`s if present
-    pub fn pretty_with_helps(&self) -> String {
-        self.iter()
-            .map(|e| match e.help() {
-                Some(help) => format!("{e}\n  help: {help}"),
-                None => format!("{e}"),
-            })
-            .join("\n")
     }
 }
 
