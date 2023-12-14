@@ -1925,7 +1925,7 @@ impl ASTNode<Option<cst::Primary>> {
 }
 
 impl ASTNode<Option<cst::Slot>> {
-    fn into_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
+    fn into_expr(self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         match self.as_inner()?.try_into() {
             Ok(slot_id) => Some(
                 ast::ExprBuilder::new()
