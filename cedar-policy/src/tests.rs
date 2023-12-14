@@ -3012,10 +3012,8 @@ mod policy_id_tests {
     use super::*;
     #[test]
     fn test_default_policy_id() {
-        let policy = crate::Policy::from_str(
-            r#"permit(principal == A ::   B::C :: " hi there are spaces ", action, resource);"#,
-        )
-        .expect("should succeed, see RFC 9");
+        let policy = crate::Policy::from_str(r#"permit(principal, action, resource);"#)
+            .expect("should succeed");
         let policy_id: &str = policy.id().as_ref();
         assert_eq!(policy_id, "policy0");
     }
