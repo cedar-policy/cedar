@@ -382,8 +382,8 @@ mod test_utils {
 mod test {
     use super::*;
     use crate::ast::{test_generators::*, Template};
-    use std::collections::HashSet;
     use cool_asserts::assert_matches;
+    use std::collections::HashSet;
 
     #[test]
     fn test_template_parsing() {
