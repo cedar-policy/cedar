@@ -545,7 +545,7 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
         match Expression::from_str(&args.expression).wrap_err("failed to parse the expression") {
             Ok(expr) => expr,
             Err(e) => {
-                println!("{e:?}");
+                println!("{:?}", e.with_source_code(args.expression.clone()));
                 return (CedarExitCode::Failure, EvalResult::Bool(false));
             }
         };
