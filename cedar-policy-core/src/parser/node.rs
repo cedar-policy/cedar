@@ -24,54 +24,54 @@ use super::err::{ToASTError, ToASTErrorKind};
 
 /// Metadata for our syntax trees
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ASTNode<N> {
+pub struct Node<T> {
     /// Main data represented
-    pub node: N,
+    pub node: T,
 
     /// Source location
     pub loc: miette::SourceSpan,
 }
 
-impl<N> ASTNode<N> {
+impl<T> Node<T> {
     /// Create a new Node with the source location [left, right)
-    pub fn new(node: N, left: usize, right: usize) -> Self {
-        ASTNode::with_source_loc(node, left..right)
+    pub fn new(node: T, left: usize, right: usize) -> Self {
+        Node::with_source_loc(node, left..right)
     }
 
     /// Create a new Node with the given source location
-    pub fn with_source_loc(node: N, loc: impl Into<miette::SourceSpan>) -> Self {
-        ASTNode {
+    pub fn with_source_loc(node: T, loc: impl Into<miette::SourceSpan>) -> Self {
+        Node {
             node,
             loc: loc.into(),
         }
     }
 
     /// Transform the inner value while retaining the attached source info.
-    pub fn map<M>(self, f: impl FnOnce(N) -> M) -> ASTNode<M> {
-        ASTNode {
+    pub fn map<R>(self, f: impl FnOnce(T) -> R) -> Node<R> {
+        Node {
             node: f(self.node),
             loc: self.loc,
         }
     }
 
-    /// Converts from `&ASTNode<N>` to `ASTNode<&N>`.
-    pub fn as_ref(&self) -> ASTNode<&N> {
-        ASTNode {
+    /// Converts from `&Node<T>` to `Node<&T>`.
+    pub fn as_ref(&self) -> Node<&T> {
+        Node {
             node: &self.node,
             loc: self.loc,
         }
     }
 
-    /// Converts from `&mut ASTNode<N>` to `ASTNode<&mut N>`.
-    pub fn as_mut(&mut self) -> ASTNode<&mut N> {
-        ASTNode {
+    /// Converts from `&mut Node<T>` to `Node<&mut T>`.
+    pub fn as_mut(&mut self) -> Node<&mut T> {
+        Node {
             node: &mut self.node,
             loc: self.loc,
         }
     }
 
-    /// Consume the `ASTNode`, yielding the node and attached source info.
-    pub fn into_inner(self) -> (N, miette::SourceSpan) {
+    /// Consume the `Node`, yielding the node and attached source info.
+    pub fn into_inner(self) -> (T, miette::SourceSpan) {
         (self.node, self.loc)
     }
 
@@ -81,27 +81,27 @@ impl<N> ASTNode<N> {
     }
 }
 
-impl<N: Clone> ASTNode<&N> {
-    /// Converts a `ASTNode<&N>` to a `ASTNode<N>` by cloning the inner value.
-    pub fn cloned(self) -> ASTNode<N> {
+impl<T: Clone> Node<&T> {
+    /// Converts a `Node<&T>` to a `Node<T>` by cloning the inner value.
+    pub fn cloned(self) -> Node<T> {
         self.map(|value| value.clone())
     }
 }
 
-impl<N: Copy> ASTNode<&N> {
-    /// Converts a `ASTNode<&N>` to a `ASTNode<N>` by copying the inner value.
-    pub fn copied(self) -> ASTNode<N> {
+impl<T: Copy> Node<&T> {
+    /// Converts a `Node<&T>` to a `Node<T>` by copying the inner value.
+    pub fn copied(self) -> Node<T> {
         self.map(|value| *value)
     }
 }
 
-impl<N: Display> Display for ASTNode<N> {
+impl<T: Display> Display for Node<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         Display::fmt(&self.node, f)
     }
 }
 
-impl<N: std::error::Error> std::error::Error for ASTNode<N> {
+impl<T: std::error::Error> std::error::Error for Node<T> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         self.node.source()
     }
@@ -118,7 +118,7 @@ impl<N: std::error::Error> std::error::Error for ASTNode<N> {
 }
 
 // impl Diagnostic by taking `labels()` from .loc and everything else from .node
-impl<N: Diagnostic> Diagnostic for ASTNode<N> {
+impl<T: Diagnostic> Diagnostic for Node<T> {
     fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         self.node.code()
     }
@@ -155,35 +155,35 @@ impl<N: Diagnostic> Diagnostic for ASTNode<N> {
 }
 
 // Ignore the metadata this node contains
-impl<N: PartialEq> PartialEq for ASTNode<N> {
+impl<T: PartialEq> PartialEq for Node<T> {
     /// ignores metadata
     fn eq(&self, other: &Self) -> bool {
         self.node == other.node
     }
 }
-impl<N: Eq> Eq for ASTNode<N> {}
-impl<N: Hash> Hash for ASTNode<N> {
+impl<T: Eq> Eq for Node<T> {}
+impl<T: Hash> Hash for Node<T> {
     /// ignores metadata
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.node.hash(state);
     }
 }
 
-/// Convenience methods on `ASTNode<Option<N>>`
-impl<N> ASTNode<Option<N>> {
+/// Convenience methods on `Node<Option<T>>`
+impl<T> Node<Option<T>> {
     /// Similar to `.as_inner()`, but also gives access to the `SourceSpan`
-    pub fn as_inner_pair(&self) -> (Option<&N>, miette::SourceSpan) {
+    pub fn as_inner_pair(&self) -> (Option<&T>, miette::SourceSpan) {
         (self.node.as_ref(), self.loc)
     }
 
-    /// Get the inner data as `&N`, if it exists
-    pub fn as_inner(&self) -> Option<&N> {
+    /// Get the inner data as `&T`, if it exists
+    pub fn as_inner(&self) -> Option<&T> {
         self.node.as_ref()
     }
 
     /// `None` if the node is empty, otherwise a node without the `Option`
-    pub fn collapse(&self) -> Option<ASTNode<&N>> {
-        self.node.as_ref().map(|node| ASTNode {
+    pub fn collapse(&self) -> Option<Node<&T>> {
+        self.node.as_ref().map(|node| Node {
             node,
             loc: self.loc,
         })
@@ -193,7 +193,7 @@ impl<N> ASTNode<Option<N>> {
     /// if no main data or if `f` returns `None`.
     pub fn apply<F, R>(&self, f: F) -> Option<R>
     where
-        F: FnOnce(&N, miette::SourceSpan) -> Option<R>,
+        F: FnOnce(&T, miette::SourceSpan) -> Option<R>,
     {
         f(self.node.as_ref()?, self.loc)
     }
@@ -202,14 +202,14 @@ impl<N> ASTNode<Option<N>> {
     /// Returns `None` if no main data or if `f` returns `None`.
     pub fn into_apply<F, R>(self, f: F) -> Option<R>
     where
-        F: FnOnce(N, miette::SourceSpan) -> Option<R>,
+        F: FnOnce(T, miette::SourceSpan) -> Option<R>,
     {
         f(self.node?, self.loc)
     }
 
     /// Get node data if present, or return an error result for `MissingNodeData`
     /// if it is `None`.
-    pub fn ok_or_missing(&self) -> Result<&N, ToASTError> {
+    pub fn ok_or_missing(&self) -> Result<&T, ToASTError> {
         self.node
             .as_ref()
             .ok_or_else(|| self.to_ast_err(ToASTErrorKind::MissingNodeData))

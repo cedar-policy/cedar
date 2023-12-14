@@ -24,7 +24,7 @@ use crate::entities::{
 use crate::extensions::Extensions;
 use crate::parser::cst::{self, Ident};
 use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
-use crate::parser::{unescape, ASTNode};
+use crate::parser::{unescape, Node};
 use crate::{ast, FromNormalizedStr};
 use either::Either;
 use itertools::Itertools;
@@ -783,9 +783,9 @@ impl From<ast::SlotId> for Expr {
     }
 }
 
-impl TryFrom<&ASTNode<Option<cst::Expr>>> for Expr {
+impl TryFrom<&Node<Option<cst::Expr>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(e: &ASTNode<Option<cst::Expr>>) -> Result<Expr, ParseErrors> {
+    fn try_from(e: &Node<Option<cst::Expr>>) -> Result<Expr, ParseErrors> {
         match &*e.ok_or_missing()?.expr {
             cst::ExprData::Or(node) => node.try_into(),
             cst::ExprData::If(if_node, then_node, else_node) => {
@@ -798,9 +798,9 @@ impl TryFrom<&ASTNode<Option<cst::Expr>>> for Expr {
     }
 }
 
-impl TryFrom<&ASTNode<Option<cst::Or>>> for Expr {
+impl TryFrom<&Node<Option<cst::Or>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(o: &ASTNode<Option<cst::Or>>) -> Result<Expr, ParseErrors> {
+    fn try_from(o: &Node<Option<cst::Or>>) -> Result<Expr, ParseErrors> {
         let o_node = o.ok_or_missing()?;
         let mut expr = (&o_node.initial).try_into()?;
         for node in &o_node.extended {
@@ -811,9 +811,9 @@ impl TryFrom<&ASTNode<Option<cst::Or>>> for Expr {
     }
 }
 
-impl TryFrom<&ASTNode<Option<cst::And>>> for Expr {
+impl TryFrom<&Node<Option<cst::And>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(a: &ASTNode<Option<cst::And>>) -> Result<Expr, ParseErrors> {
+    fn try_from(a: &Node<Option<cst::And>>) -> Result<Expr, ParseErrors> {
         let a_node = a.ok_or_missing()?;
         let mut expr = (&a_node.initial).try_into()?;
         for node in &a_node.extended {
@@ -824,9 +824,9 @@ impl TryFrom<&ASTNode<Option<cst::And>>> for Expr {
     }
 }
 
-impl TryFrom<&ASTNode<Option<cst::Relation>>> for Expr {
+impl TryFrom<&Node<Option<cst::Relation>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(r: &ASTNode<Option<cst::Relation>>) -> Result<Expr, ParseErrors> {
+    fn try_from(r: &Node<Option<cst::Relation>>) -> Result<Expr, ParseErrors> {
         match r.ok_or_missing()? {
             cst::Relation::Common { initial, extended } => {
                 let mut expr = initial.try_into()?;
@@ -903,9 +903,9 @@ impl TryFrom<&ASTNode<Option<cst::Relation>>> for Expr {
     }
 }
 
-impl TryFrom<&ASTNode<Option<cst::Add>>> for Expr {
+impl TryFrom<&Node<Option<cst::Add>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(a: &ASTNode<Option<cst::Add>>) -> Result<Expr, ParseErrors> {
+    fn try_from(a: &Node<Option<cst::Add>>) -> Result<Expr, ParseErrors> {
         let a_node = a.ok_or_missing()?;
         let mut expr = (&a_node.initial).try_into()?;
         for (op, node) in &a_node.extended {
@@ -984,9 +984,9 @@ fn is_primary_name(primary: &cst::Primary) -> Option<&cst::Name> {
     }
 }
 
-impl TryFrom<&ASTNode<Option<cst::Mult>>> for Expr {
+impl TryFrom<&Node<Option<cst::Mult>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(m: &ASTNode<Option<cst::Mult>>) -> Result<Expr, ParseErrors> {
+    fn try_from(m: &Node<Option<cst::Mult>>) -> Result<Expr, ParseErrors> {
         let m_node = m.ok_or_missing()?;
         let mut expr = (&m_node.initial).try_into()?;
         for (op, node) in &m_node.extended {
@@ -1007,9 +1007,9 @@ impl TryFrom<&ASTNode<Option<cst::Mult>>> for Expr {
     }
 }
 
-impl TryFrom<&ASTNode<Option<cst::Unary>>> for Expr {
+impl TryFrom<&Node<Option<cst::Unary>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(u: &ASTNode<Option<cst::Unary>>) -> Result<Expr, ParseErrors> {
+    fn try_from(u: &Node<Option<cst::Unary>>) -> Result<Expr, ParseErrors> {
         let u_node = u.ok_or_missing()?;
         let inner = (&u_node.item).try_into()?;
         match u_node.op {
@@ -1077,7 +1077,7 @@ impl TryFrom<&ASTNode<Option<cst::Unary>>> for Expr {
 /// handling, because in that case it is not a valid expression. In all other
 /// cases a `Primary` can be converted into an `Expr`.)
 fn interpret_primary(
-    p: &ASTNode<Option<cst::Primary>>,
+    p: &Node<Option<cst::Primary>>,
 ) -> Result<Either<ast::Name, Expr>, ParseErrors> {
     match p.ok_or_missing()? {
         cst::Primary::Literal(lit) => Ok(Either::Right(lit.try_into()?)),
@@ -1132,7 +1132,7 @@ fn interpret_primary(
                     Err(ToASTError::new(
                         ToASTErrorKind::InvalidExpression(cst::Name {
                             path: path.to_vec(),
-                            name: ASTNode::new(Some(id.clone()), l, r),
+                            name: Node::new(Some(id.clone()), l, r),
                         }),
                         miette::SourceSpan::from(l..r),
                     )
@@ -1175,9 +1175,9 @@ fn interpret_primary(
     }
 }
 
-impl TryFrom<&ASTNode<Option<cst::Member>>> for Expr {
+impl TryFrom<&Node<Option<cst::Member>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(m: &ASTNode<Option<cst::Member>>) -> Result<Expr, ParseErrors> {
+    fn try_from(m: &Node<Option<cst::Member>>) -> Result<Expr, ParseErrors> {
         let m_node = m.ok_or_missing()?;
         let mut item: Either<ast::Name, Expr> = interpret_primary(&m_node.item)?;
         for access in &m_node.access {
@@ -1292,9 +1292,9 @@ pub fn extract_single_argument<T>(
     }
 }
 
-impl TryFrom<&ASTNode<Option<cst::Literal>>> for Expr {
+impl TryFrom<&Node<Option<cst::Literal>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(lit: &ASTNode<Option<cst::Literal>>) -> Result<Expr, ParseErrors> {
+    fn try_from(lit: &Node<Option<cst::Literal>>) -> Result<Expr, ParseErrors> {
         match lit.ok_or_missing()? {
             cst::Literal::True => Ok(Expr::lit(CedarValueJson::Bool(true))),
             cst::Literal::False => Ok(Expr::lit(CedarValueJson::Bool(false))),
@@ -1312,9 +1312,9 @@ impl TryFrom<&ASTNode<Option<cst::Literal>>> for Expr {
     }
 }
 
-impl TryFrom<&ASTNode<Option<cst::Name>>> for Expr {
+impl TryFrom<&Node<Option<cst::Name>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(name: &ASTNode<Option<cst::Name>>) -> Result<Expr, ParseErrors> {
+    fn try_from(name: &Node<Option<cst::Name>>) -> Result<Expr, ParseErrors> {
         let name_node = name.ok_or_missing()?;
         let base_name = name_node.name.ok_or_missing()?;
         match (&name_node.path[..], base_name) {
@@ -1333,7 +1333,7 @@ impl TryFrom<&ASTNode<Option<cst::Name>>> for Expr {
                 Err(name
                     .to_ast_err(ToASTErrorKind::InvalidExpression(cst::Name {
                         path: path.to_vec(),
-                        name: ASTNode::new(Some(id.clone()), l, r),
+                        name: Node::new(Some(id.clone()), l, r),
                     }))
                     .into())
             }
@@ -1379,13 +1379,13 @@ mod test {
 
     #[test]
     fn test_invalid_expr_from_cst_name() {
-        let path = vec![ASTNode::new(
+        let path = vec![Node::new(
             Some(cst::Ident::Ident("some_long_str".into())),
             0,
             12,
         )];
-        let name = ASTNode::new(Some(cst::Ident::Else), 13, 16);
-        let cst_name = ASTNode::new(Some(cst::Name { path, name }), 0, 16);
+        let name = Node::new(Some(cst::Ident::Else), 13, 16);
+        let cst_name = Node::new(Some(cst::Name { path, name }), 0, 16);
 
         assert_matches!(Expr::try_from(&cst_name), Err(e) => {
             assert!(e.len() == 1);

@@ -80,39 +80,37 @@ lazy_static! {
 }
 
 /// Create CST for multiple policies from text
-pub fn parse_policies(
-    text: &str,
-) -> Result<node::ASTNode<Option<cst::Policies>>, err::ParseErrors> {
+pub fn parse_policies(text: &str) -> Result<node::Node<Option<cst::Policies>>, err::ParseErrors> {
     parse_collect_errors(&*POLICIES_PARSER, grammar::PoliciesParser::parse, text)
 }
 
 /// Create CST for one policy statement from text
-pub fn parse_policy(text: &str) -> Result<node::ASTNode<Option<cst::Policy>>, err::ParseErrors> {
+pub fn parse_policy(text: &str) -> Result<node::Node<Option<cst::Policy>>, err::ParseErrors> {
     parse_collect_errors(&*POLICY_PARSER, grammar::PolicyParser::parse, text)
 }
 
 /// Create CST for one Expression from text
-pub fn parse_expr(text: &str) -> Result<node::ASTNode<Option<cst::Expr>>, err::ParseErrors> {
+pub fn parse_expr(text: &str) -> Result<node::Node<Option<cst::Expr>>, err::ParseErrors> {
     parse_collect_errors(&*EXPR_PARSER, grammar::ExprParser::parse, text)
 }
 
 /// Create CST for one Entity Ref (i.e., UID) from text
-pub fn parse_ref(text: &str) -> Result<node::ASTNode<Option<cst::Ref>>, err::ParseErrors> {
+pub fn parse_ref(text: &str) -> Result<node::Node<Option<cst::Ref>>, err::ParseErrors> {
     parse_collect_errors(&*REF_PARSER, grammar::RefParser::parse, text)
 }
 
 /// Create CST for one Primary value from text
-pub fn parse_primary(text: &str) -> Result<node::ASTNode<Option<cst::Primary>>, err::ParseErrors> {
+pub fn parse_primary(text: &str) -> Result<node::Node<Option<cst::Primary>>, err::ParseErrors> {
     parse_collect_errors(&*PRIMARY_PARSER, grammar::PrimaryParser::parse, text)
 }
 
 /// Parse text as a Name, or fail if it does not parse as a Name
-pub fn parse_name(text: &str) -> Result<node::ASTNode<Option<cst::Name>>, err::ParseErrors> {
+pub fn parse_name(text: &str) -> Result<node::Node<Option<cst::Name>>, err::ParseErrors> {
     parse_collect_errors(&*NAME_PARSER, grammar::NameParser::parse, text)
 }
 
 /// Parse text as an identifier, or fail if it does not parse as an identifier
-pub fn parse_ident(text: &str) -> Result<node::ASTNode<Option<cst::Ident>>, err::ParseErrors> {
+pub fn parse_ident(text: &str) -> Result<node::Node<Option<cst::Ident>>, err::ParseErrors> {
     parse_collect_errors(&*IDENT_PARSER, grammar::IdentParser::parse, text)
 }
 
