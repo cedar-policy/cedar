@@ -1,252 +1,29 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    fmt::Display,
     str::FromStr,
 };
 
 use cedar_policy_core::ast::{Id, Name};
 use cedar_policy_core::parser::unescape::to_unescaped_string;
 use combine::{
-    between, choice, eof, error::StreamError, many, many1, optional, satisfy_map, sep_by1,
-    stream::ResetStream, ParseError, Parser, Positioned, StreamOnce,
+    between, choice, eof, many, many1, optional, satisfy_map, sep_by1, stream::ResetStream, Parser,
+    Positioned, StreamOnce,
 };
 use itertools::Itertools;
-use logos::{Logos, Span};
+use logos::Span;
 use smol_str::SmolStr;
-use thiserror::Error;
 
 use crate::{
     ActionEntityUID, ActionType, ApplySpec, AttributesOrContext, EntityType, NamespaceDefinition,
-    SchemaFragment, SchemaType, SchemaTypeVariant, TypeOfAttribute,
+    SchemaType, SchemaTypeVariant, TypeOfAttribute,
 };
 
-// Cedar tokens
-#[derive(Logos, Clone, Debug, PartialEq)]
-enum Token {
-    #[regex(r"\s*", logos::skip)]
-    Whitespace,
-    #[regex(r"//[^\n\r]*[\n\r]*", logos::skip)]
-    Comment,
-    #[regex(r"[_a-zA-Z][_a-zA-Z0-9]*", |lex| SmolStr::new(lex.slice()))]
-    Identifier(SmolStr),
-    #[regex(r#""(\\.|[^"\\])*""#, |lex| SmolStr::new(lex.slice()))]
-    Str(SmolStr),
-    // PRIMTYPE  := 'Long' | 'String' | 'Bool'
-    #[token("Long")]
-    TyLong,
-    #[token("String")]
-    TyString,
-    #[token("Bool")]
-    TyBool,
-    // VAR := 'principal' | 'action' | 'resource' | 'context'
-    #[token("principal")]
-    VarPrincipal,
-    #[token("action")]
-    VarAction,
-    #[token("resource")]
-    VarResource,
-    #[token("context")]
-    VarContext,
-    #[token("entity")]
-    Entity,
-    #[token("in")]
-    In,
-    #[token("type")]
-    Type,
-    #[token("Set")]
-    Set,
-    #[token("appliesTo")]
-    AppliesTo,
-    #[token("namespace")]
-    Namespace,
-    #[token(",")]
-    Comma,
-    #[token(";")]
-    SemiColon,
-    #[token(":")]
-    Colon,
-    #[token("::")]
-    DoubleColon,
-    #[token("{")]
-    LBrace,
-    #[token("}")]
-    RBrace,
-    #[token("[")]
-    LBracket,
-    #[token("]")]
-    RBracket,
-    #[token("<")]
-    LAngle,
-    #[token(">")]
-    RAngle,
-    #[token("\"")]
-    Quote,
-    #[token("=")]
-    Eq,
-    #[token("?")]
-    Question,
-}
+use super::{err::ParseErrors, lexer::Token};
 
-impl Display for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::AppliesTo => write!(f, "appliesTo"),
-            Self::Colon => write!(f, ":"),
-            Self::Comma => write!(f, ","),
-            Self::Comment => write!(f, ""),
-            Self::DoubleColon => write!(f, "::"),
-            Self::Entity => write!(f, "entity"),
-            Self::Eq => write!(f, "="),
-            Self::Identifier(d) => write!(f, "{d}"),
-            Self::In => write!(f, "in"),
-            Self::LAngle => write!(f, "<"),
-            Self::LBrace => write!(f, "{{"),
-            Self::LBracket => write!(f, "["),
-            Self::Namespace => write!(f, "namespace"),
-            Self::Question => write!(f, "?"),
-            Self::Quote => write!(f, "\""),
-            Self::RAngle => write!(f, ">"),
-            Self::RBrace => write!(f, "}}"),
-            Self::RBracket => write!(f, "]"),
-            Self::SemiColon => write!(f, ";"),
-            Self::Set => write!(f, "Set"),
-            Self::Str(s) => write!(f, "{s}"),
-            Self::TyBool => write!(f, "Bool"),
-            Self::TyLong => write!(f, "Long"),
-            Self::TyString => write!(f, "String"),
-            Self::Type => write!(f, "type"),
-            Self::VarAction => write!(f, "action"),
-            Self::VarContext => write!(f, "context"),
-            Self::VarResource => write!(f, "resource"),
-            Self::VarPrincipal => write!(f, "principal"),
-            Self::Whitespace => write!(f, " "),
-        }
-    }
-}
-
-impl Token {
-    // Special Ids match the Ident regex pattern but also serve as keywords
-    pub fn is_special_id(&self) -> bool {
-        matches!(
-            self,
-            Self::AppliesTo
-                | Self::Entity
-                | Self::In
-                | Self::Namespace
-                | Self::Set
-                | Self::Type
-                | Self::VarAction
-                | Self::VarContext
-                | Self::VarPrincipal
-                | Self::VarResource
-        )
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Error)]
-pub enum ParseErrors {
-    #[error("Lexer error: {0}")]
-    Lexing(SmolStr),
-    #[error("Expecting: {0}")]
-    Expected(SmolStr),
-    #[error("Unexpected: {0}")]
-    Unexpected(SmolStr),
-    #[error("Parser error: {0}")]
-    Message(SmolStr),
-    #[error("End of input")]
-    Eoi,
-    #[error("Other error: {0}")]
-    Other(SmolStr),
-}
-
-impl<'a> StreamError<(Token, Span), &'a [(Token, Span)]> for ParseErrors {
-    fn unexpected_token(token: (Token, Span)) -> Self {
-        Self::Unexpected(SmolStr::new(format!("{token:?}")))
-    }
-    fn unexpected_range(tokens: &'a [(Token, Span)]) -> Self {
-        Self::Unexpected(SmolStr::new(format!("{tokens:?}")))
-    }
-    fn unexpected_format<T>(msg: T) -> Self
-    where
-        T: std::fmt::Display,
-    {
-        Self::Unexpected(SmolStr::new(msg.to_string()))
-    }
-    fn expected_token(token: (Token, Span)) -> Self {
-        Self::Expected(SmolStr::new(format!("{token:?}")))
-    }
-    fn expected_range(tokens: &'a [(Token, Span)]) -> Self {
-        Self::Expected(SmolStr::new(format!("{tokens:?}")))
-    }
-    fn expected_format<T>(msg: T) -> Self
-    where
-        T: std::fmt::Display,
-    {
-        Self::Expected(SmolStr::new(msg.to_string()))
-    }
-    fn message_token(token: (Token, Span)) -> Self {
-        Self::Message(SmolStr::new(format!("{token:?}")))
-    }
-    fn message_range(tokens: &'a [(Token, Span)]) -> Self {
-        Self::Message(SmolStr::new(format!("{tokens:?}")))
-    }
-    fn message_format<T>(msg: T) -> Self
-    where
-        T: std::fmt::Display,
-    {
-        Self::Message(SmolStr::new(msg.to_string()))
-    }
-    fn is_unexpected_end_of_input(&self) -> bool {
-        match self {
-            Self::Eoi => true,
-            _ => false,
-        }
-    }
-    fn into_other<T>(self) -> T
-    where
-        T: StreamError<(Token, Span), &'a [(Token, Span)]>,
-    {
-        match self {
-            Self::Lexing(s) => T::message_format(s),
-            Self::Eoi => T::end_of_input(),
-            Self::Expected(s) => T::expected_format(s),
-            Self::Message(s) => T::message_format(s),
-            Self::Unexpected(s) => T::unexpected_format(s),
-            Self::Other(s) => T::message_format(s),
-        }
-    }
-}
-
-impl<'a> ParseError<(Token, Span), &'a [(Token, Span)], ()> for ParseErrors {
-    type StreamError = Self;
-    fn empty(_position: ()) -> Self {
-        Self::Eoi
-    }
-    fn set_position(&mut self, _position: ()) {
-        unimplemented!("set_position")
-    }
-    fn add(&mut self, err: Self::StreamError) {
-        *self = err;
-    }
-    fn set_expected<F>(_self_: &mut combine::error::Tracked<Self>, _info: Self::StreamError, _f: F)
-    where
-        F: FnOnce(&mut combine::error::Tracked<Self>),
-    {
-        unimplemented!("set_expected")
-    }
-    fn is_unexpected_end_of_input(&self) -> bool {
-        StreamError::is_unexpected_end_of_input(self)
-    }
-    fn into_other<T>(self) -> T
-    where
-        T: ParseError<(Token, Span), &'a [(Token, Span)], ()>,
-    {
-        unimplemented!("into_other")
-    }
-}
-
+/// The token stream
 #[derive(Debug, Clone)]
-struct TokenStream<'a> {
+pub struct TokenStream<'a> {
+    // Internally, a token stream is a slice of token, span pairs
     pub token_spans: &'a [(Token, Span)],
 }
 
@@ -776,43 +553,17 @@ fn parse_common_type_decl<'a>() -> impl Parser<TokenStream<'a>, Output = (SmolSt
         .map(|(_, id, _, ty, _)| (id, ty))
 }
 
-fn get_tokens(input: &str) -> Result<Vec<(Token, Span)>, ParseErrors> {
-    Token::lexer(input)
-        .spanned()
-        .map(|(token, span)| match token {
-            Ok(t) => Ok((t, span)),
-            Err(_) => Err(ParseErrors::Lexing(SmolStr::new(format!("{span:?}")))),
-        })
-        .collect()
-}
-
 // Schema := {Namespace}
-fn parse_namespaces<'a>(
+/// Parser entry point
+pub fn parse_namespaces<'a>(
 ) -> impl Parser<TokenStream<'a>, Output = Vec<(SmolStr, NamespaceDefinition)>> {
     (many(parse_namespace()), eof::<TokenStream<'a>>()).0
 }
 
-/// Main entry: Parse a schema fragment
-pub fn parse_schema_fragment_from_str(input: &str) -> Result<SchemaFragment, ParseErrors> {
-    let tokens = get_tokens(input)?;
-    let (namespaces, _) = parse_namespaces().parse(TokenStream {
-        token_spans: &tokens,
-    })?;
-    let mut map = HashMap::new();
-    for (id, ns) in namespaces {
-        if map.contains_key(&id) {
-            return Err(ParseErrors::Other(SmolStr::new(format!(
-                "duplicate namespace id: {}",
-                id
-            ))));
-        }
-        map.insert(id, ns);
-    }
-    Ok(SchemaFragment(map))
-}
-
 #[cfg(test)]
 mod test_parser {
+    use crate::custom_schema::lexer::get_tokens;
+
     use super::*;
     use combine::Parser;
     #[test]
@@ -901,37 +652,5 @@ mod test_parser {
             token_spans: &tokens,
         });
         assert!(ns.is_ok(), "{:?}", ns.unwrap_err());
-    }
-}
-
-#[cfg(test)]
-mod test_lexer {
-    use super::Token;
-    use logos::Logos;
-    #[test]
-    fn example() {
-        let tokens: Vec<_> = Token::lexer(
-            r#"namespace "" {
-            entity Application;
-            entity User in [Team,Application] { name: String };
-            entity Team in [Team,Application];
-            entity List in [Application] {
-                owner: User,
-                name: String,
-                readers: Team,
-                editors: Team,
-                tasks: Set<{name: String, id: Long, state: String}>
-            };
-
-            action CreateList, GetLists
-                appliesTo { principal: [User], resource: [Application] };
-
-            action GetList, UpdateList, DeleteList, CreateTask, UpdateTask, DeleteTask, EditShares
-                appliesTo { principal: [User], resource:[List] };
-        }"#,
-        )
-        .spanned()
-        .collect();
-        assert!(tokens.into_iter().all(|(t, _)| t.is_ok()));
     }
 }

@@ -40,7 +40,7 @@ mod str_checks;
 pub use str_checks::{confusable_string_checks, ValidationWarning, ValidationWarningKind};
 mod type_error;
 pub use type_error::*;
-pub mod schema_syntax;
+pub mod custom_schema;
 pub mod typecheck;
 use typecheck::Typechecker;
 pub mod types;

@@ -619,7 +619,7 @@ fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
         cedar_policy_formatter::schema_fragment_to_pretty(&schema_fragment)
     } else {
         let new_schema =
-            cedar_policy_validator::schema_syntax::parse_schema_fragment_from_str(&input_str)
+            cedar_policy_validator::custom_schema::parse_schema_fragment_from_str(&input_str)
                 .map_err(|err| miette!("fail to parse custom schema: {err}"))?;
         serde_json::to_string(&new_schema)
             .map_err(|err| miette!("fail to serialize schema fragment: {err}"))
