@@ -3138,6 +3138,7 @@ impl<'a> RequestBuilder<'a> {
     /// not contribute to authorization decisions (e.g., because it is not
     /// used in your policies).
     /// This is different than Unknown for partial-evaluation purposes.
+    #[must_use]
     pub fn principal(self, principal: Option<EntityUid>) -> Self {
         Self {
             principal: match principal {
@@ -3159,6 +3160,7 @@ impl<'a> RequestBuilder<'a> {
     /// not contribute to authorization decisions (e.g., because it is not
     /// used in your policies).
     /// This is different than Unknown for partial-evaluation purposes.
+    #[must_use]
     pub fn action(self, action: Option<EntityUid>) -> Self {
         Self {
             action: match action {
@@ -3180,6 +3182,7 @@ impl<'a> RequestBuilder<'a> {
     /// not contribute to authorization decisions (e.g., because it is not
     /// used in your policies).
     /// This is different than Unknown for partial-evaluation purposes.
+    #[must_use]
     pub fn resource(self, resource: Option<EntityUid>) -> Self {
         Self {
             resource: match resource {
@@ -3193,6 +3196,7 @@ impl<'a> RequestBuilder<'a> {
     }
 
     /// Set the context.
+    #[must_use]
     pub fn context(self, context: Context) -> Self {
         Self {
             context: Some(context.0),
@@ -3201,6 +3205,7 @@ impl<'a> RequestBuilder<'a> {
     }
 
     /// Set the schema. If present, this will be used for request validation.
+    #[must_use]
     pub fn schema(self, schema: &'a Schema) -> Self {
         Self {
             schema: Some(schema),
