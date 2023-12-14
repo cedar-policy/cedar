@@ -19,6 +19,7 @@ jobs:
       - run: RUSTFLAGS="-D warnings -F unsafe-code" cargo build --verbose
       - run: cargo doc --all-features --no-deps
       - run: cargo clippy --all-features
+      - run: cargo clippy -- -D warnings
       - run: cargo test --verbose --features "experimental"
       - run: cargo test --verbose
       - run: cargo test --verbose --no-default-features
