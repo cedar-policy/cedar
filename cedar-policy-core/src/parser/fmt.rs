@@ -17,10 +17,10 @@
 use std::fmt::{self, Write};
 
 use super::cst::*;
-use super::node::ASTNode;
+use super::node::Node;
 
 /// Helper struct to handle non-existent nodes
-struct View<'a, T>(&'a ASTNode<Option<T>>);
+struct View<'a, T>(&'a Node<Option<T>>);
 impl<'a, T: fmt::Display> fmt::Display for View<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(n) = &self.0.as_inner() {

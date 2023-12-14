@@ -16,7 +16,7 @@
 
 //! Conversions from CST to AST
 //!
-//! This module contains functions to convert ASTNodes containing CST items into
+//! This module contains functions to convert Nodes containing CST items into
 //! AST items. It works with the parser CST output, where all nodes are optional.
 //!
 //! An important aspect of the transformation is to provide as many errors as
@@ -36,7 +36,7 @@
 // cloning.
 
 use super::err::{ParseError, ParseErrors, Ref, RefCreationError, ToASTError, ToASTErrorKind};
-use super::node::ASTNode;
+use super::node::Node;
 use super::unescape::{to_pattern, to_unescaped_string};
 use super::{cst, err};
 use crate::ast::{
@@ -74,12 +74,12 @@ fn load_styles() -> ExtStyles<'static> {
     ExtStyles { functions, methods }
 }
 
-impl ASTNode<Option<cst::Policies>> {
+impl Node<Option<cst::Policies>> {
     /// Iterate over the `Policy` nodes in this `cst::Policies`, with
     /// corresponding generated `PolicyID`s
     pub fn with_generated_policyids(
         &self,
-    ) -> Option<impl Iterator<Item = (ast::PolicyID, &ASTNode<Option<cst::Policy>>)>> {
+    ) -> Option<impl Iterator<Item = (ast::PolicyID, &Node<Option<cst::Policy>>)>> {
         let maybe_policies = self.as_inner();
         // return right away if there's no data, parse provided error
         let policies = maybe_policies?;
@@ -138,7 +138,7 @@ impl ASTNode<Option<cst::Policies>> {
     }
 }
 
-impl ASTNode<Option<cst::Policy>> {
+impl Node<Option<cst::Policy>> {
     /// Convert `cst::Policy` to an AST `InlinePolicy` or `Template`
     pub fn to_policy_or_template(
         &self,
@@ -340,7 +340,7 @@ impl cst::Policy {
     }
 }
 
-impl ASTNode<Option<cst::Annotation>> {
+impl Node<Option<cst::Annotation>> {
     /// Get the (k, v) pair for the annotation. Critically, this checks validity
     /// for the strings and does unescaping
     pub fn to_kv_pair(&self, errs: &mut ParseErrors) -> Option<(ast::Id, SmolStr)> {
@@ -365,7 +365,7 @@ impl ASTNode<Option<cst::Annotation>> {
     }
 }
 
-impl ASTNode<Option<cst::Ident>> {
+impl Node<Option<cst::Ident>> {
     /// Convert `cst::Ident` to `ast::Id`. Fails for reserved or invalid identifiers
     pub fn to_valid_ident(&self, errs: &mut ParseErrors) -> Option<ast::Id> {
         let maybe_ident = self.as_inner();
@@ -496,7 +496,7 @@ enum PrincipalOrResource {
     Resource(ResourceConstraint),
 }
 
-impl ASTNode<Option<cst::VariableDef>> {
+impl Node<Option<cst::VariableDef>> {
     fn to_principal_constraint(&self, errs: &mut ParseErrors) -> Option<PrincipalConstraint> {
         match self.to_principal_or_resource_constraint(ast::Var::Principal, errs)? {
             PrincipalOrResource::Principal(p) => Some(p),
@@ -697,7 +697,7 @@ fn euid_has_action_type(euid: &EntityUID) -> bool {
     }
 }
 
-impl ASTNode<Option<cst::Cond>> {
+impl Node<Option<cst::Cond>> {
     /// to expr. Also returns, for informational purposes, a `bool` which is
     /// `true` if the cond is a `when` clause, `false` if it is an `unless`
     /// clause. (The returned `expr` is already adjusted for this, the `bool` is
@@ -737,7 +737,7 @@ impl ASTNode<Option<cst::Cond>> {
     }
 }
 
-impl ASTNode<Option<cst::Str>> {
+impl Node<Option<cst::Str>> {
     pub(crate) fn as_valid_string(&self, errs: &mut ParseErrors) -> Option<&SmolStr> {
         let id = self.as_inner();
         // return right away if there's no data, parse provided error
@@ -910,7 +910,7 @@ impl ExprOrSpecial<'_> {
     }
 }
 
-impl ASTNode<Option<cst::Expr>> {
+impl Node<Option<cst::Expr>> {
     /// to ref
     fn to_ref(&self, var: ast::Var, errs: &mut ParseErrors) -> Option<EntityUID> {
         self.to_ref_or_refs::<SingleEntity>(errs, var).map(|x| x.0)
@@ -1088,7 +1088,7 @@ impl RefKind for OneOrMultipleRefs {
     }
 }
 
-impl ASTNode<Option<cst::Or>> {
+impl Node<Option<cst::Or>> {
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (maybe_or, src) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
@@ -1127,7 +1127,7 @@ impl ASTNode<Option<cst::Or>> {
     }
 }
 
-impl ASTNode<Option<cst::And>> {
+impl Node<Option<cst::And>> {
     fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
         let maybe_and = self.as_inner();
         let and = maybe_and?;
@@ -1169,7 +1169,7 @@ impl ASTNode<Option<cst::And>> {
     }
 }
 
-impl ASTNode<Option<cst::Relation>> {
+impl Node<Option<cst::Relation>> {
     fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
         let maybe_rel = self.as_inner();
         match maybe_rel? {
@@ -1294,7 +1294,7 @@ impl ASTNode<Option<cst::Relation>> {
     }
 }
 
-impl ASTNode<Option<cst::Add>> {
+impl Node<Option<cst::Add>> {
     fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
         let maybe_add = self.as_inner();
         let add = maybe_add?;
@@ -1333,7 +1333,7 @@ impl ASTNode<Option<cst::Add>> {
     }
 }
 
-impl ASTNode<Option<cst::Mult>> {
+impl Node<Option<cst::Mult>> {
     fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
         let maybe_mult = self.as_inner();
         let mult = maybe_mult?;
@@ -1435,7 +1435,7 @@ impl ASTNode<Option<cst::Mult>> {
     }
 }
 
-impl ASTNode<Option<cst::Unary>> {
+impl Node<Option<cst::Unary>> {
     fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
         let maybe_unary = self.as_inner();
         let unary = maybe_unary?;
@@ -1530,7 +1530,7 @@ enum AstAccessor {
     Index(SmolStr),
 }
 
-impl ASTNode<Option<cst::Member>> {
+impl Node<Option<cst::Member>> {
     // Try to convert `cst::Member` into a `cst::Literal`, i.e.
     // match `Member(Primary(Literal(_), []))`.
     // It does not match the `Expr` arm of `Primary`, which means expressions
@@ -1765,7 +1765,7 @@ impl ASTNode<Option<cst::Member>> {
     }
 }
 
-impl ASTNode<Option<cst::MemAccess>> {
+impl Node<Option<cst::MemAccess>> {
     fn to_access(&self, errs: &mut ParseErrors) -> Option<AstAccessor> {
         let maybe_acc = self.as_inner();
         // return right away if there's no data, parse provided error
@@ -1792,7 +1792,7 @@ impl ASTNode<Option<cst::MemAccess>> {
     }
 }
 
-impl ASTNode<Option<cst::Primary>> {
+impl Node<Option<cst::Primary>> {
     fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
         let maybe_prim = self.as_inner();
         let prim = maybe_prim?;
@@ -1924,7 +1924,7 @@ impl ASTNode<Option<cst::Primary>> {
     }
 }
 
-impl ASTNode<Option<cst::Slot>> {
+impl Node<Option<cst::Slot>> {
     fn into_expr(self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         match self.as_inner()?.try_into() {
             Ok(slot_id) => Some(
@@ -1961,7 +1961,7 @@ impl From<ast::SlotId> for cst::Slot {
     }
 }
 
-impl ASTNode<Option<cst::Name>> {
+impl Node<Option<cst::Name>> {
     /// Build type constraints
     fn to_type_constraint(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         let (maybe_name, src) = self.as_inner_pair();
@@ -2067,7 +2067,7 @@ impl ast::Name {
     }
 }
 
-impl ASTNode<Option<cst::Ref>> {
+impl Node<Option<cst::Ref>> {
     /// convert `cst::Ref` to `ast::EntityUID`
     pub fn to_ref(&self, errs: &mut ParseErrors) -> Option<ast::EntityUID> {
         let maybe_ref = self.as_inner();
@@ -2110,7 +2110,7 @@ impl ASTNode<Option<cst::Ref>> {
     }
 }
 
-impl ASTNode<Option<cst::Literal>> {
+impl Node<Option<cst::Literal>> {
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         let (maybe_lit, src) = self.as_inner_pair();
         // return right away if there's no data, parse provided error
@@ -2134,7 +2134,7 @@ impl ASTNode<Option<cst::Literal>> {
     }
 }
 
-impl ASTNode<Option<cst::RecInit>> {
+impl Node<Option<cst::RecInit>> {
     fn to_init(&self, errs: &mut ParseErrors) -> Option<(SmolStr, ast::Expr)> {
         let (maybe_lit, _src) = self.as_inner_pair();
         // return right away if there's no data, parse provided error

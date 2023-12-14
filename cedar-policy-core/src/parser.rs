@@ -26,7 +26,7 @@ pub mod err;
 mod fmt;
 /// Metadata wrapper for CST Nodes
 mod node;
-pub use node::ASTNode;
+pub use node::Node;
 /// Step one: Convert text to CST
 pub mod text_to_cst;
 /// Utility functions to unescape string literals

@@ -30,13 +30,13 @@ use crate::ast::{self, InputInteger, PolicyID, RestrictedExprError, Var};
 use crate::parser::unescape::UnescapeError;
 
 use crate::parser::fmt::join_with_conjunction;
-use crate::parser::node::ASTNode;
+use crate::parser::node::Node;
 
 use super::cst;
 
 pub(crate) type RawLocation = usize;
 pub(crate) type RawToken<'a> = lalr::lexer::Token<'a>;
-pub(crate) type RawUserError = ASTNode<String>;
+pub(crate) type RawUserError = Node<String>;
 
 pub(crate) type RawParseError<'a> = lalr::ParseError<RawLocation, RawToken<'a>, RawUserError>;
 pub(crate) type RawErrorRecovery<'a> = lalr::ErrorRecovery<RawLocation, RawToken<'a>, RawUserError>;

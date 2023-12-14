@@ -16,7 +16,7 @@
 
 use super::utils::*;
 use super::Context;
-use cedar_policy_core::parser::{cst::*, ASTNode};
+use cedar_policy_core::parser::{cst::*, Node};
 use pretty::RcDoc;
 
 use super::token::Comment;
@@ -34,7 +34,7 @@ impl Doc for Ident {
     }
 }
 
-impl Doc for ASTNode<Option<VariableDef>> {
+impl Doc for Node<Option<VariableDef>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let vd = self.as_inner()?;
         let start_comment = get_comment_at_start(self.loc, &mut context.tokens)?;
@@ -102,7 +102,7 @@ impl Doc for ASTNode<Option<VariableDef>> {
     }
 }
 
-impl Doc for ASTNode<Option<Cond>> {
+impl Doc for Node<Option<Cond>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let cond = self.as_inner()?;
         let lb_comment = get_comment_after_end(cond.cond.loc, &mut context.tokens)?;
@@ -164,14 +164,14 @@ impl Doc for ASTNode<Option<Cond>> {
     }
 }
 
-impl Doc for ASTNode<Option<Expr>> {
+impl Doc for Node<Option<Expr>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         match self.as_inner()?.expr.as_ref() {
             ExprData::If(c, t, e) => {
                 fn pp_group<'n>(
                     s: &str,
                     c: Comment,
-                    e: &'n ASTNode<Option<Expr>>,
+                    e: &'n Node<Option<Expr>>,
                     context: &mut Context<'_>,
                 ) -> RcDoc<'n> {
                     add_comment(RcDoc::as_string(s), c, RcDoc::nil()).append(
@@ -197,7 +197,7 @@ impl Doc for ASTNode<Option<Expr>> {
     }
 }
 
-impl Doc for ASTNode<Option<Or>> {
+impl Doc for Node<Option<Or>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let e = self.as_inner()?;
         let initial = &e.initial;
@@ -217,7 +217,7 @@ impl Doc for ASTNode<Option<Or>> {
     }
 }
 
-impl Doc for ASTNode<Option<And>> {
+impl Doc for Node<Option<And>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let e = self.as_inner()?;
         let initial = &e.initial;
@@ -237,7 +237,7 @@ impl Doc for ASTNode<Option<And>> {
     }
 }
 
-impl Doc for ASTNode<Option<Relation>> {
+impl Doc for Node<Option<Relation>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let e = self.as_inner()?;
         match e {
@@ -334,7 +334,7 @@ impl Doc for AddOp {
     }
 }
 
-impl Doc for ASTNode<Option<Add>> {
+impl Doc for Node<Option<Add>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let e = self.as_inner()?;
         let initial = &e.initial;
@@ -370,7 +370,7 @@ impl Doc for MultOp {
     }
 }
 
-impl Doc for ASTNode<Option<Mult>> {
+impl Doc for Node<Option<Mult>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let e = self.as_inner()?;
         let initial = &e.initial;
@@ -400,7 +400,7 @@ impl Doc for ASTNode<Option<Mult>> {
     }
 }
 
-impl Doc for ASTNode<Option<Unary>> {
+impl Doc for Node<Option<Unary>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let e = self.as_inner()?;
         if let Some(op) = e.op {
@@ -458,7 +458,7 @@ impl Doc for Member {
     }
 }
 
-impl Doc for ASTNode<Option<RecInit>> {
+impl Doc for Node<Option<RecInit>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let e = self.as_inner()?;
         let key_doc = e.0.to_doc(context)?;
@@ -476,7 +476,7 @@ impl Doc for ASTNode<Option<RecInit>> {
     }
 }
 
-impl Doc for ASTNode<Option<Name>> {
+impl Doc for Node<Option<Name>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let e = self.as_inner()?;
         let path = &e.path;
@@ -511,7 +511,7 @@ impl Doc for ASTNode<Option<Name>> {
     }
 }
 
-impl Doc for ASTNode<Option<Str>> {
+impl Doc for Node<Option<Str>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let e = self.as_inner()?;
         Some(add_comment(
@@ -522,7 +522,7 @@ impl Doc for ASTNode<Option<Str>> {
     }
 }
 
-impl Doc for ASTNode<Option<Ref>> {
+impl Doc for Node<Option<Ref>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         match self.as_inner()? {
             Ref::Uid { path, eid } => Some(
@@ -539,7 +539,7 @@ impl Doc for ASTNode<Option<Ref>> {
     }
 }
 
-impl Doc for ASTNode<Option<Literal>> {
+impl Doc for Node<Option<Literal>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         Some(add_comment(
             RcDoc::as_string(self.as_inner()?),
@@ -549,7 +549,7 @@ impl Doc for ASTNode<Option<Literal>> {
     }
 }
 
-impl Doc for ASTNode<Option<Slot>> {
+impl Doc for Node<Option<Slot>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         Some(add_comment(
             RcDoc::as_string(self.as_inner()?),
@@ -559,7 +559,7 @@ impl Doc for ASTNode<Option<Slot>> {
     }
 }
 
-impl Doc for ASTNode<Option<Primary>> {
+impl Doc for Node<Option<Primary>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let e = self.as_inner()?;
         match e {
@@ -651,7 +651,7 @@ impl Doc for ASTNode<Option<Primary>> {
     }
 }
 
-impl Doc for ASTNode<Option<MemAccess>> {
+impl Doc for Node<Option<MemAccess>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let e = self.as_inner()?;
         match e {
@@ -720,7 +720,7 @@ impl Doc for ASTNode<Option<MemAccess>> {
     }
 }
 
-impl Doc for ASTNode<Option<Annotation>> {
+impl Doc for Node<Option<Annotation>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let annotation = self.as_inner()?;
         let id_doc = annotation.key.to_doc(context);
@@ -750,7 +750,7 @@ impl Doc for ASTNode<Option<Annotation>> {
     }
 }
 
-impl Doc for ASTNode<Option<Ident>> {
+impl Doc for Node<Option<Ident>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         Some(add_comment(
             self.as_inner()?.to_doc(context)?,
@@ -760,7 +760,7 @@ impl Doc for ASTNode<Option<Ident>> {
     }
 }
 
-impl Doc for ASTNode<Option<Policy>> {
+impl Doc for Node<Option<Policy>> {
     fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
         let policy = self.as_inner()?;
 

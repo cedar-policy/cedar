@@ -4,7 +4,7 @@ use lalrpop_util::{ParseError, ErrorRecovery};
 
 use crate::parser::*;
 use crate::parser::err::{RawErrorRecovery, RawUserError};
-use crate::parser::node::ASTNode as Node;
+use crate::parser::node::Node;
 
 grammar<'err>(errors: &'err mut Vec<RawErrorRecovery<'input>>);
 
@@ -362,7 +362,7 @@ Literal: Node<Option<cst::Literal>> = {
     <l:@L> <n:NUMBER> <r:@R> =>? match u64::from_str(n) {
         Ok(n) => Ok(Node::new(Some(cst::Literal::Num(n)),l,r)),
         Err(e) => Err(ParseError::User {
-            error: ASTNode::new(format!("integer parse error: {e}"),l,r),
+            error: Node::new(format!("integer parse error: {e}"),l,r),
         }),
     },
     <l:@L> <s:Str> <r:@R>
