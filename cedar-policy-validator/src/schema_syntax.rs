@@ -537,23 +537,48 @@ fn parse_set_type<'a>() -> impl Parser<TokenStream<'a>, Output = SchemaType> {
         })
 }
 
+fn merge_nds(nds: Vec<NamespaceDefinition>) -> NamespaceDefinition {
+    let mut common_types = HashMap::new();
+    let mut entity_types = HashMap::new();
+    let mut actions = HashMap::new();
+    for nd in nds.into_iter() {
+        common_types.extend(nd.common_types);
+        entity_types.extend(nd.entity_types);
+        actions.extend(nd.actions);
+    }
+    NamespaceDefinition {
+        common_types,
+        entity_types,
+        actions,
+    }
+}
+
 // Decl := Entity | Action | TypeDecl
-fn parse_decls<'a>() -> impl Parser<TokenStream<'a>, Output = NamespaceDefinition> {
-    let merge_nds = |nds: Vec<NamespaceDefinition>| {
-        let mut common_types = HashMap::new();
-        let mut entity_types = HashMap::new();
-        let mut actions = HashMap::new();
-        for nd in nds.into_iter() {
-            common_types.extend(nd.common_types);
-            entity_types.extend(nd.entity_types);
-            actions.extend(nd.actions);
-        }
-        NamespaceDefinition {
-            common_types,
-            entity_types,
-            actions,
-        }
-    };
+fn parse_decls_many<'a>() -> impl Parser<TokenStream<'a>, Output = NamespaceDefinition> {
+    many(choice((
+        parse_et_decl().map(|et| NamespaceDefinition {
+            common_types: HashMap::new(),
+            entity_types: HashMap::from_iter(et.into_iter()),
+            actions: HashMap::new(),
+        }),
+        parse_action_decl().map(|action| NamespaceDefinition {
+            common_types: HashMap::new(),
+            entity_types: HashMap::new(),
+            actions: action,
+        }),
+        parse_common_type_decl().map(|ct| NamespaceDefinition {
+            common_types: HashMap::from_iter(std::iter::once(ct)),
+            entity_types: HashMap::new(),
+            actions: HashMap::new(),
+        }),
+    )))
+    .map(move |nds: Vec<NamespaceDefinition>| merge_nds(nds))
+}
+
+// We need this function because {Decl} in the `Namespace` rule causes infinite
+// recursion. Making it {Decl}+ avoids it.
+// Decl := Entity | Action | TypeDecl
+fn parse_decls_many1<'a>() -> impl Parser<TokenStream<'a>, Output = NamespaceDefinition> {
     many1(choice((
         parse_et_decl().map(|et| NamespaceDefinition {
             common_types: HashMap::new(),
@@ -601,10 +626,14 @@ fn parse_namespace<'a>() -> impl Parser<TokenStream<'a>, Output = (SmolStr, Name
         (
             accept(Token::Namespace),
             parse_path(),
-            between(accept(Token::LBrace), accept(Token::RBrace), parse_decls()),
+            between(
+                accept(Token::LBrace),
+                accept(Token::RBrace),
+                parse_decls_many(),
+            ),
         )
             .map(|(_, ns_str, ns_def)| (SmolStr::new(ns_str.to_string()), ns_def)),
-        parse_decls().map(|ns_def| (SmolStr::new(""), ns_def)),
+        parse_decls_many1().map(|ns_def| (SmolStr::new(""), ns_def)),
     ))
 }
 
