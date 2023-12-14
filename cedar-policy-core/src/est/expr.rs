@@ -1132,7 +1132,7 @@ fn interpret_primary(
                     Err(ToASTError::new(
                         ToASTErrorKind::InvalidExpression(cst::Name {
                             path: path.to_vec(),
-                            name: Node::new(Some(id.clone()), l, r),
+                            name: Node::with_source_loc(Some(id.clone()), l..r),
                         }),
                         miette::SourceSpan::from(l..r),
                     )
@@ -1333,7 +1333,7 @@ impl TryFrom<&Node<Option<cst::Name>>> for Expr {
                 Err(name
                     .to_ast_err(ToASTErrorKind::InvalidExpression(cst::Name {
                         path: path.to_vec(),
-                        name: Node::new(Some(id.clone()), l, r),
+                        name: Node::with_source_loc(Some(id.clone()), l..r),
                     }))
                     .into())
             }
@@ -1379,13 +1379,12 @@ mod test {
 
     #[test]
     fn test_invalid_expr_from_cst_name() {
-        let path = vec![Node::new(
+        let path = vec![Node::with_source_loc(
             Some(cst::Ident::Ident("some_long_str".into())),
-            0,
-            12,
+            0..12,
         )];
-        let name = Node::new(Some(cst::Ident::Else), 13, 16);
-        let cst_name = Node::new(Some(cst::Name { path, name }), 0, 16);
+        let name = Node::with_source_loc(Some(cst::Ident::Else), 13..16);
+        let cst_name = Node::with_source_loc(Some(cst::Name { path, name }), 0..16);
 
         assert_matches!(Expr::try_from(&cst_name), Err(e) => {
             assert!(e.len() == 1);

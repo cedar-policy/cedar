@@ -33,11 +33,6 @@ pub struct Node<T> {
 }
 
 impl<T> Node<T> {
-    /// Create a new Node with the source location [left, right)
-    pub fn new(node: T, left: usize, right: usize) -> Self {
-        Node::with_source_loc(node, left..right)
-    }
-
     /// Create a new Node with the given source location
     pub fn with_source_loc(node: T, loc: impl Into<miette::SourceSpan>) -> Self {
         Node {
