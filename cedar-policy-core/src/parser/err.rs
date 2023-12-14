@@ -20,7 +20,6 @@ use std::iter;
 use std::ops::{Deref, DerefMut};
 
 use either::Either;
-use itertools::Itertools;
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
 use miette::{Diagnostic, LabeledSpan, SourceSpan};
@@ -628,16 +627,6 @@ impl ParseErrors {
     /// returns a Vec with stringified versions of the ParseErrors
     pub fn errors_as_strings(&self) -> Vec<String> {
         self.0.iter().map(ToString::to_string).collect()
-    }
-
-    /// Display the `ParseErrors`, newline-separated, with `help()`s if present
-    pub fn pretty_with_helps(&self) -> String {
-        self.iter()
-            .map(|e| match e.help() {
-                Some(help) => format!("{e}\n  help: {help}"),
-                None => format!("{e}"),
-            })
-            .join("\n")
     }
 }
 

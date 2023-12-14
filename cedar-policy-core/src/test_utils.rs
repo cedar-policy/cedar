@@ -67,6 +67,25 @@ impl<'a> ExpectedErrorMessage<'a> {
     }
 }
 
+impl<'a> std::fmt::Display for ExpectedErrorMessage<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.prefix {
+            writeln!(f, "expected error to start with: {}", self.error)?;
+            match self.help.as_deref() {
+                Some(help) => writeln!(f, "expected help to start with: {help}")?,
+                None => writeln!(f, "  with no help message")?,
+            }
+        } else {
+            writeln!(f, "expected error: {}", self.error)?;
+            match self.help.as_deref() {
+                Some(help) => writeln!(f, "expected help: {help}")?,
+                None => writeln!(f, "  with no help message")?,
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Forms in which [`expect_err()`] accepts the original input text.
 /// See notes on [`expect_err()`].
 pub enum OriginalInput<'a> {
@@ -124,12 +143,12 @@ pub fn expect_err<'a>(
                 )
             }
             (None, None) => (),
-            (Some(_), None) => panic!(
-                "for the following input:\n{}\nfound a help message but none was expected",
+            (Some(actual), None) => panic!(
+                "for the following input:\n{}\ndid not expect a help message, but found one: {actual}",
                 src.into()
             ),
-            (None, Some(_)) => panic!(
-                "for the following input:\n{}\ndid not find a help message, but one was expected",
+            (None, Some(expected)) => panic!(
+                "for the following input:\n{}\ndid not find a help message, but expected one: {expected}",
                 src.into()
             ),
         }
