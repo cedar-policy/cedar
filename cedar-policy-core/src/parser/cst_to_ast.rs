@@ -3606,23 +3606,21 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert_matches!(parse_policyset(test), Err(es) => {
-            if es.len() != euids.len() {
-                panic!(
-                    "Parse should have produced exactly {} parse errors, produced: {}",
-                    euids.len(),
-                    es.pretty_with_helps()
+            assert_eq!(es.len(), euids.len(),
+                "should have produced exactly {} parse errors, produced {}:\n{:?}",
+                euids.len(),
+                es.len(),
+                miette::Report::new(es)
+            );
+            for euid in euids {
+                expect_some_error_matches(
+                    test,
+                    &es,
+                    &ExpectedErrorMessage::error_and_help(
+                        &format!("expected an entity uid with the type `Action` but got `{euid}`"),
+                        "action entities must have type `Action`, optionally in a namespace",
+                    ),
                 );
-            } else {
-                for euid in euids {
-                    expect_some_error_matches(
-                        test,
-                        &es,
-                        &ExpectedErrorMessage::error_and_help(
-                            &format!("expected an entity uid with the type `Action` but got `{euid}`"),
-                            "action entities must have type `Action`, optionally in a namespace",
-                        ),
-                    );
-                }
             }
         });
     }
@@ -3840,7 +3838,10 @@ mod tests {
         for (es, em) in [
             (
                 "-9223372036854775809",
-                ToASTErrorKind::IntegerLiteralTooLarge(9223372036854775809),
+                ExpectedErrorMessage::error_and_help(
+                    "integer literal `9223372036854775809` is too large",
+                    "maximum allowed integer literal is `9223372036854775807`",
+                ),
             ),
             // This test doesn't fail with an internal representation of i128:
             // Contrary to Rust, this expression is not valid because the
@@ -3848,20 +3849,18 @@ mod tests {
             // (9223372036854775808) is too large.
             (
                 "-(9223372036854775808)",
-                ToASTErrorKind::IntegerLiteralTooLarge(9223372036854775808),
+                ExpectedErrorMessage::error_and_help(
+                    "integer literal `9223372036854775808` is too large",
+                    "maximum allowed integer literal is `9223372036854775807`",
+                ),
             ),
         ] {
             let mut errs = ParseErrors::new();
             let e = text_to_cst::parse_expr(es)
                 .expect("should construct a CST")
                 .to_expr(&mut errs);
-            assert!(e.is_none());
-            assert!(
-                errs.iter()
-                    .any(|err| { matches!(err, ParseError::ToAST(err) if err.kind() == &em) }),
-                "Expected to find error `{em:?}`, but saw `{}`",
-                errs.pretty_with_helps(),
-            );
+            assert_matches!(e, None);
+            expect_err(es, &errs, &em);
         }
     }
 
