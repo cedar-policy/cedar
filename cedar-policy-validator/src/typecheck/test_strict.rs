@@ -47,7 +47,10 @@ fn assert_typechecks_strict(
     with_typechecker_from_schema(schema, |mut typechecker| {
         typechecker.mode = ValidationMode::Strict;
         let mut errs = Vec::new();
-        let answer = typechecker.expect_type(env, &EffectSet::new(), &e, expected_type, &mut errs);
+        let answer =
+            typechecker.expect_type(env, &EffectSet::new(), &e, expected_type, &mut errs, |_| {
+                None
+            });
 
         assert_eq!(errs, vec![], "Expression should not contain any errors.");
         assert_matches!(answer, crate::typecheck::TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
@@ -68,7 +71,10 @@ fn assert_strict_type_error(
     with_typechecker_from_schema(schema, |mut typechecker| {
         typechecker.mode = ValidationMode::Strict;
         let mut errs = Vec::new();
-        let answer = typechecker.expect_type(env, &EffectSet::new(), &e, expected_type, &mut errs);
+        let answer =
+            typechecker.expect_type(env, &EffectSet::new(), &e, expected_type, &mut errs, |_| {
+                None
+            });
 
         assert_eq!(
             errs.into_iter().map(|e| e.kind).collect::<Vec<_>>(),
@@ -157,6 +163,7 @@ fn strict_typecheck_catches_regular_type_error() {
                 &Expr::from_str("1 + false").unwrap(),
                 Type::primitive_long(),
                 &mut errs,
+                |_| None,
             );
 
             assert!(errs.len() == 1);

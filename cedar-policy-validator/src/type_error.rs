@@ -112,6 +112,7 @@ impl TypeError {
         on_expr: Expr,
         expected: impl IntoIterator<Item = Type>,
         actual: Type,
+        help: Option<UnexpectedTypeHelp>,
     ) -> Self {
         Self {
             on_expr: Some(on_expr),
@@ -119,6 +120,7 @@ impl TypeError {
             kind: TypeErrorKind::UnexpectedType(UnexpectedType {
                 expected: expected.into_iter().collect::<BTreeSet<_>>(),
                 actual,
+                help,
             }),
         }
     }
@@ -243,13 +245,8 @@ impl TypeError {
 pub enum TypeErrorKind {
     /// The typechecker expected to see a subtype of one of the types in
     /// `expected`, but saw `actual`.
-    #[error("unexpected type: expected {} but saw {}",
-        match .0.expected.iter().next() {
-            Some(single) if .0.expected.len() == 1 => format!("{}", single),
-            _ => .0.expected.iter().join(", or ")
-        },
-        .0.actual
-    )]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     UnexpectedType(UnexpectedType),
     /// The typechecker could not compute a least upper bound for `types`.
     #[error("unable to find upper bound for types: [{}]", .0.types.iter().join(","))]
@@ -262,6 +259,7 @@ pub enum TypeErrorKind {
     /// The typechecker could not conclude that an access to an optional
     /// attribute was safe.
     #[error("unable to guarantee safety of access to optional attribute {}", .0.attribute_access)]
+    #[diagnostic(help("try testing for the attribute with `e has a && ..`"))]
     UnsafeOptionalAttributeAccess(UnsafeOptionalAttributeAccess),
     /// The typechecker found that a policy condition will always evaluate to false.
     #[error(
@@ -297,10 +295,41 @@ pub enum TypeErrorKind {
 }
 
 /// Structure containing details about an unexpected type error.
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Diagnostic, Error, Debug, Hash, Eq, PartialEq)]
+#[error("unexpected type: expected {} but saw {}",
+    match .expected.iter().next() {
+        Some(single) if .expected.len() == 1 => format!("{}", single),
+        _ => .expected.iter().join(", or ")
+    },
+    .actual
+)]
 pub struct UnexpectedType {
     expected: BTreeSet<Type>,
     actual: Type,
+    #[help]
+    help: Option<UnexpectedTypeHelp>,
+}
+
+#[derive(Error, Debug, Hash, Eq, PartialEq)]
+pub(crate) enum UnexpectedTypeHelp {
+    #[error("try using `like` to examine the contents of a string")]
+    TryUsingLike,
+    #[error(
+        "try using `contains`, `containsAny`, or `containsAll` to examine the contents of a set"
+    )]
+    TryUsingContains,
+    #[error("try using `contains` to test if a single element is in a set")]
+    TryUsingSingleContains,
+    #[error("try using `has` to test for an attribute")]
+    TryUsingHas,
+    #[error("try using `is` to test for an entity type")]
+    TryUsingIs,
+    #[error("try using `in` for entity hierarchy membership")]
+    TryUsingIn,
+    #[error("Cedar only supports run time type tests for entities")]
+    TypeTestNotSupported,
+    #[error("Cedar does not support string concatenation")]
+    ConcatenationNotSupported,
 }
 
 /// Structure containing details about an incompatible type error.
