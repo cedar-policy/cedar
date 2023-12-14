@@ -2571,6 +2571,12 @@ impl std::fmt::Display for PolicyId {
     }
 }
 
+impl AsRef<str> for PolicyId {
+    fn as_ref(&self) -> &str {
+        self.0.as_ref()
+    }
+}
+
 /// Structure for a `Policy`. Includes both static policies and template-linked policies.
 #[derive(Debug, Clone)]
 pub struct Policy {
