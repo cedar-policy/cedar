@@ -505,19 +505,21 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
         CedarExitCode::Success
     };
 
-    let mut errors = result.validation_errors().peekable();
+    let (errors, warnings) = result.into_errors_and_warnings();
+    let mut errors = errors.peekable();
+    let mut warnings = warnings.peekable();
+
     if errors.peek().is_some() {
         println!("Validation Errors:");
         for note in errors {
-            println!("{}", note);
+            println!("{:?}", Report::new(note.into_owned()));
         }
     }
 
-    let mut warnings = result.validation_warnings().peekable();
     if warnings.peek().is_some() {
         println!("Validation Warnings:");
         for note in warnings {
-            println!("{}", note);
+            println!("{:?}", Report::new(note.into_owned()));
         }
     }
 

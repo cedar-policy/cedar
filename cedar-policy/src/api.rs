@@ -49,6 +49,7 @@ use miette::Diagnostic;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::Infallible;
 use std::str::FromStr;
@@ -1393,6 +1394,19 @@ impl<'a> ValidationResult<'a> {
     pub fn validation_warnings(&self) -> impl Iterator<Item = &ValidationWarning<'a>> {
         self.validation_warnings.iter()
     }
+
+    /// todo
+    pub fn into_errors_and_warnings(
+        self,
+    ) -> (
+        impl Iterator<Item = ValidationError<'a>>,
+        impl Iterator<Item = ValidationWarning<'a>>,
+    ) {
+        (
+            self.validation_errors.into_iter(),
+            self.validation_warnings.into_iter(),
+        )
+    }
 }
 
 impl<'a> From<cedar_policy_validator::ValidationResult<'a>> for ValidationResult<'a> {
@@ -1410,13 +1424,21 @@ impl<'a> From<cedar_policy_validator::ValidationResult<'a>> for ValidationResult
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
 #[derive(Debug, Error)]
-#[error("validation error on `{}`: {}", self.location, self.error_kind())]
+#[error("validation error on {}: {}", self.location, self.error_kind())]
 pub struct ValidationError<'a> {
     location: SourceLocation<'a>,
     error_kind: ValidationErrorKind,
 }
 
 impl<'a> ValidationError<'a> {
+    /// todo
+    pub fn into_owned(self) -> ValidationError<'static> {
+        ValidationError {
+            location: self.location.into_owned(),
+            error_kind: self.error_kind,
+        }
+    }
+
     /// Extract details about the exact issue detected by the validator.
     pub fn error_kind(&self) -> &ValidationErrorKind {
         &self.error_kind
@@ -1479,14 +1501,22 @@ impl<'a> Diagnostic for ValidationError<'a> {
 /// Represents a location in Cedar policy source.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SourceLocation<'a> {
-    policy_id: &'a PolicyId,
+    policy_id: Cow<'a, PolicyId>,
     source_range: Option<miette::SourceSpan>,
 }
 
 impl<'a> SourceLocation<'a> {
+    /// todo
+    pub fn into_owned(self) -> SourceLocation<'static> {
+        SourceLocation {
+            policy_id: Cow::Owned(self.policy_id.into_owned()),
+            source_range: self.source_range,
+        }
+    }
+
     /// Get the `PolicyId` for the policy at this source location.
-    pub fn policy_id(&self) -> &'a PolicyId {
-        self.policy_id
+    pub fn policy_id(&self) -> &PolicyId {
+        &self.policy_id
     }
 
     /// Get the start of the location. Returns `None` if this location does not
@@ -1524,7 +1554,7 @@ impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation<'a>
         let policy_id: &'a PolicyId = PolicyId::ref_cast(loc.policy_id());
         let source_range = loc.source_span();
         Self {
-            policy_id,
+            policy_id: Cow::Borrowed(policy_id),
             source_range,
         }
     }
@@ -1542,7 +1572,7 @@ pub fn confusable_string_checker<'a>(
 }
 
 #[derive(Debug, Error)]
-#[error("validation warning on `{}`: {}", .location, .kind)]
+#[error("validation warning on {}: {}", .location, .kind)]
 /// Warnings found in Cedar policies
 pub struct ValidationWarning<'a> {
     location: SourceLocation<'a>,
@@ -1550,6 +1580,14 @@ pub struct ValidationWarning<'a> {
 }
 
 impl<'a> ValidationWarning<'a> {
+    /// todo
+    pub fn into_owned(self) -> ValidationWarning<'static> {
+        ValidationWarning {
+            location: self.location.into_owned(),
+            kind: self.kind,
+        }
+    }
+
     /// Extract details about the exact issue detected by the validator.
     pub fn warning_kind(&self) -> &ValidationWarningKind {
         &self.kind
