@@ -109,8 +109,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hierarchy to includes an action which is part of the cycle (#436, resolving
   #416).
 - For the `partial-eval` experimental feature: make the return values of
-  `RequestBuilder`'s `principal`, `action`, `resource`, `context` and 
+  `RequestBuilder`'s `principal`, `action`, `resource`, `context` and
   `schema` functions `#[must_use]`.
+- Add PolicyId `AsRef<str>` implementation.
 
 ### Fixed
 
