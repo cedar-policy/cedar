@@ -2291,7 +2291,7 @@ impl<'a> Typechecker<'a> {
     /// Check that an expression has a type that is a subtype of one of the
     /// given types. If not, generate a type error and return TypecheckFail.
     /// Return the TypecheckSuccess with the type otherwise.
-    fn expect_one_of_types<'b, 'c, F>(
+    fn expect_one_of_types<'b, F>(
         &self,
         request_env: &RequestEnv,
         prior_eff: &EffectSet<'b>,

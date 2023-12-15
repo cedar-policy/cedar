@@ -258,8 +258,8 @@ pub enum TypeErrorKind {
     UnsafeAttributeAccess(UnsafeAttributeAccess),
     /// The typechecker could not conclude that an access to an optional
     /// attribute was safe.
-    #[error("unable to guarantee safety of access to optional attribute {}", .0.attribute_access)]
-    #[diagnostic(help("try testing for the attribute with `e has a && ..`"))]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     UnsafeOptionalAttributeAccess(UnsafeOptionalAttributeAccess),
     /// The typechecker found that a policy condition will always evaluate to false.
     #[error(
@@ -361,7 +361,9 @@ impl Diagnostic for UnsafeAttributeAccess {
 }
 
 /// Structure containing details about an unsafe optional attribute error.
-#[derive(Debug, Hash, Eq, PartialEq)]
+#[derive(Error, Diagnostic, Debug, Hash, Eq, PartialEq)]
+#[error("unable to guarantee safety of access to optional attribute {attribute_access}")]
+#[diagnostic(help("try testing for the attribute with `{} && ..`", attribute_access.suggested_has_guard()))]
 pub struct UnsafeOptionalAttributeAccess {
     attribute_access: AttributeAccess,
 }
@@ -465,27 +467,56 @@ impl AttributeAccess {
             }
         }
     }
+
+    pub(crate) fn attrs(&self) -> &Vec<SmolStr> {
+        match self {
+            AttributeAccess::EntityLUB(_, attrs) => attrs,
+            AttributeAccess::Context(_, attrs) => attrs,
+            AttributeAccess::Other(attrs) => attrs,
+        }
+    }
+
+    /// Construct a `has` expression that we can use to suggest a fix after an
+    /// unsafe optional attribute access.
+    pub(crate) fn suggested_has_guard(&self) -> String {
+        // We know if this is an access directly on `context`, so we can suggest
+        // specifically `context has ..`. Otherwise, we just use a generic `e`.
+        let base_expr = match self {
+            AttributeAccess::Context(_, _) => "context".into(),
+            _ => "e".into(),
+        };
+
+        let (safe_attrs, err_attr) = match self.attrs().split_first() {
+            Some((first, rest)) => (rest, first.clone()),
+            // We should always have a least one attribute stored, so this
+            // shouldn't be possible. If it does happen, just use a placeholder
+            // attribute name `f` since we'd rather avoid panicking.
+            None => (&[] as &[SmolStr], "f".into()),
+        };
+
+        let full_expr = std::iter::once(&base_expr)
+            .chain(safe_attrs.iter().rev())
+            .join(".");
+        format!("{full_expr} has {err_attr}")
+    }
 }
 
 impl Display for AttributeAccess {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let attrs_str = self.attrs().iter().rev().join(".");
         match self {
-            AttributeAccess::EntityLUB(lub, attrs) => write!(
+            AttributeAccess::EntityLUB(lub, _) => write!(
                 f,
-                "`{}` for entity type{}",
-                attrs.iter().rev().join("."),
+                "`{attrs_str}` for entity type{}",
                 match lub.get_single_entity() {
                     Some(single) => format!(" {}", single),
                     _ => format!("s {}", lub.iter().join(", ")),
                 },
             ),
-            AttributeAccess::Context(action, attrs) => write!(
-                f,
-                "`{}` in context for {}",
-                attrs.iter().rev().join("."),
-                action
-            ),
-            AttributeAccess::Other(attrs) => write!(f, "`{}`", attrs.iter().rev().join(".")),
+            AttributeAccess::Context(action, _) => {
+                write!(f, "`{attrs_str}` in context for {action}",)
+            }
+            AttributeAccess::Other(_) => write!(f, "`{attrs_str}`"),
         }
     }
 }
