@@ -35,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The `ValidationResult` returned from `Validator::validate` now has a static
+  lifetime, allowing it to be used in more contexts. The lifetime parameter
+  will be removed in a future major version. 
 - Improve parse error around invalid `is` expressions.
 - Improve parser error message when a policy includes an invalid template slot.
   The error now identifies that the policy used an invalid slot and suggests using
