@@ -9,7 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Marked the `Template::from_json` and `Template::to_json` apis as public
+- `AsRef<str>` implementation for `PolicyId`.
+
+### Changed
+
+- Improve parse error around invalid `is` expressions.
+- Improve parser error message when a policy includes an invalid template slot.
+  The error now identifies that the policy used an invalid slot and suggests using
+  one of the valid slots.
+- Improve parser error messages to more reliably notice that a function or
+  method does exists when it is called with an incorrect number of arguments or
+  using the wrong call style.
+- Include source spans on more parser error messages.
+- Better integration with `miette` for various error types. If you have
+  previously been just using the `Display` trait to get the error message from a
+  Cedar error type, you may want to consider also examining other data provided
+  by the `miette::Diagnostic` trait, for instance `.help()`.
+  Alternately, you can use `miette` and its `fancy` feature to format the error
+  and all associated information in a pretty human-readable format or as JSON.
+  For more details, see `miette`'s
+  [documentation](https://docs.rs/miette/latest/miette/index.html).
+- For the `partial-eval` experimental feature: make the return values of
+  `RequestBuilder`'s `principal`, `action`, `resource`, `context` and
+  `schema` functions `#[must_use]`.
+
+## [3.0.0] - 2023-12-15
+Cedar Language Version: 3.0.0
+
+### Added
+
+- Marked the `Template::from_json` and `Template::to_json` apis as public (#458)
 - New APIs to `Entities` to make it easy to add a collection of entities to an
   existing `Entities` structure. (#276)
 - Export the `cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind}` and
@@ -35,22 +64,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Improve parse error around invalid `is` expressions.
-- Improve parser error message when a policy includes an invalid template slot.
-  The error now identifies that the policy used an invalid slot and suggests using
-  one of the valid slots.
-- Improve parser error messages to more reliably notice that a function or
-  method does exists when it is called with an incorrect number of arguments or
-  using the wrong call style.
-- Include source spans on more parser error messages.
-- Better integration with `miette` for various error types. If you have
-  previously been just using the `Display` trait to get the error message from a
-  Cedar error type, you may want to consider also examining other data provided
-  by the `miette::Diagnostic` trait, for instance `.help()`.
-  Alternately, you can use `miette` and its `fancy` feature to format the error
-  and all associated information in a pretty human-readable format or as JSON.
-  For more details, see `miette`'s
-  [documentation](https://docs.rs/miette/latest/miette/index.html).
 - Rename `cedar_policy_core::est::EstToAstError` to
   `cedar_policy_core::est::FromJsonError`. (#197)
 - Rename `cedar_policy_core::entities::JsonDeserializationError::ExtensionsError`
@@ -108,10 +121,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improve schema parsing error messages when a cycle exists in the action
   hierarchy to includes an action which is part of the cycle (#436, resolving
   #416).
-- For the `partial-eval` experimental feature: make the return values of
-  `RequestBuilder`'s `principal`, `action`, `resource`, `context` and
-  `schema` functions `#[must_use]`.
-- Add PolicyId `AsRef<str>` implementation.
 
 ### Fixed
 
@@ -302,7 +311,8 @@ Cedar Language Version: 2.0.0
 Cedar Language Version: 2.0.0
 - Initial release of `cedar-policy`.
 
-[unreleased]: https://github.com/cedar-policy/cedar/compare/v2.4.2...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.0.0...main
+[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.2...v3.0.0
 [2.4.2]: https://github.com/cedar-policy/cedar/compare/v2.4.1...v2.4.2
 [2.4.1]: https://github.com/cedar-policy/cedar/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/cedar-policy/cedar/compare/v2.3.3...v2.4.0
