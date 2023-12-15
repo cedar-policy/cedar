@@ -330,6 +330,8 @@ pub(crate) enum UnexpectedTypeHelp {
     TypeTestNotSupported,
     #[error("Cedar does not support string concatenation")]
     ConcatenationNotSupported,
+    #[error("Cedar does not support computing the union, intersection, or difference of sets")]
+    SetOperationsNotSupported,
 }
 
 /// Structure containing details about an incompatible type error.

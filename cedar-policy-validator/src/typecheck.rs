@@ -969,13 +969,7 @@ impl<'a> Typechecker<'a> {
                     expr,
                     &[Type::any_entity_reference(), Type::any_record()],
                     type_errors,
-                    |actual| match actual {
-                        Type::Set { .. } => Some(UnexpectedTypeHelp::TryUsingContains),
-                        Type::Primitive {
-                            primitive_type: Primitive::String,
-                        } => Some(UnexpectedTypeHelp::TryUsingLike),
-                        _ => None,
-                    },
+                    |_| None,
                 );
 
                 actual.then_typecheck(|typ_expr_actual, _| match typ_expr_actual.data() {
@@ -1429,6 +1423,7 @@ impl<'a> Typechecker<'a> {
                             primitive_type: Primitive::String,
                         },
                     ) => Some(UnexpectedTypeHelp::ConcatenationNotSupported),
+                    (_, Type::Set { .. }) => Some(UnexpectedTypeHelp::SetOperationsNotSupported),
                     _ => None,
                 };
                 let ans_arg1 = self.expect_type(
