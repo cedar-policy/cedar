@@ -761,14 +761,26 @@ impl Node<Option<cst::Str>> {
 /// terms to a general Expr expression and then immediately unwrapping them.
 pub(crate) enum ExprOrSpecial<'a> {
     /// Any expression except a variable, name, or string literal
-    Expr(ast::Expr, miette::SourceSpan),
+    Expr {
+        expr: ast::Expr,
+        loc: miette::SourceSpan,
+    },
     /// Variables, which act as expressions or names
-    Var(ast::Var, miette::SourceSpan),
+    Var {
+        var: ast::Var,
+        loc: miette::SourceSpan,
+    },
     /// Name that isn't an expr and couldn't be converted to var
-    Name(ast::Name, miette::SourceSpan),
+    Name {
+        name: ast::Name,
+        loc: miette::SourceSpan,
+    },
     /// String literal, not yet unescaped
     /// Must be processed with to_unescaped_string or to_pattern before inclusion in the AST
-    StrLit(&'a SmolStr, miette::SourceSpan),
+    StrLit {
+        lit: &'a SmolStr,
+        loc: miette::SourceSpan,
+    },
 }
 
 impl ExprOrSpecial<'_> {
@@ -776,32 +788,32 @@ impl ExprOrSpecial<'_> {
         ToASTError::new(
             kind.into(),
             *match self {
-                ExprOrSpecial::Expr(_, span) => span,
-                ExprOrSpecial::Var(_, span) => span,
-                ExprOrSpecial::Name(_, span) => span,
-                ExprOrSpecial::StrLit(_, span) => span,
+                ExprOrSpecial::Expr { loc, .. } => loc,
+                ExprOrSpecial::Var { loc, .. } => loc,
+                ExprOrSpecial::Name { loc, .. } => loc,
+                ExprOrSpecial::StrLit { loc, .. } => loc,
             },
         )
     }
 
     fn into_expr(self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         match self {
-            Self::Expr(e, _) => Some(e),
-            Self::Var(v, span) => Some(construct_expr_var(v, span)),
-            Self::Name(n, span) => {
+            Self::Expr { expr, .. } => Some(expr),
+            Self::Var { var, loc } => Some(construct_expr_var(var, loc)),
+            Self::Name { name, loc } => {
                 errs.push(ToASTError::new(
-                    ToASTErrorKind::ArbitraryVariable(n.to_string().into()),
-                    span,
+                    ToASTErrorKind::ArbitraryVariable(name.to_string().into()),
+                    loc,
                 ));
                 None
             }
-            Self::StrLit(s, span) => match to_unescaped_string(s) {
-                Ok(s) => Some(construct_expr_string(s, span)),
+            Self::StrLit { lit, loc } => match to_unescaped_string(lit) {
+                Ok(s) => Some(construct_expr_string(s, loc)),
                 Err(escape_errs) => {
                     errs.extend(
                         escape_errs
                             .into_iter()
-                            .map(|e| ToASTError::new(ToASTErrorKind::Unescape(e), span)),
+                            .map(|e| ToASTError::new(ToASTErrorKind::Unescape(e), loc)),
                     );
                     None
                 }
@@ -812,23 +824,23 @@ impl ExprOrSpecial<'_> {
     /// Variables, names (with no prefixes), and string literals can all be used as record attributes
     pub(crate) fn into_valid_attr(self, errs: &mut ParseErrors) -> Option<SmolStr> {
         match self {
-            Self::Var(var, _) => Some(construct_string_from_var(var)),
-            Self::Name(name, span) => name.into_valid_attr(errs, span),
-            Self::StrLit(s, span) => match to_unescaped_string(s) {
+            Self::Var { var, .. } => Some(construct_string_from_var(var)),
+            Self::Name { name, loc } => name.into_valid_attr(errs, loc),
+            Self::StrLit { lit, loc } => match to_unescaped_string(lit) {
                 Ok(s) => Some(s),
                 Err(escape_errs) => {
                     errs.extend(
                         escape_errs
                             .into_iter()
-                            .map(|e| ToASTError::new(ToASTErrorKind::Unescape(e), span)),
+                            .map(|e| ToASTError::new(ToASTErrorKind::Unescape(e), loc)),
                     );
                     None
                 }
             },
-            Self::Expr(e, span) => {
+            Self::Expr { expr, loc } => {
                 errs.push(ToASTError::new(
-                    ToASTErrorKind::InvalidAttribute(e.to_string().into()),
-                    span,
+                    ToASTErrorKind::InvalidAttribute(expr.to_string().into()),
+                    loc,
                 ));
                 None
             }
@@ -837,7 +849,7 @@ impl ExprOrSpecial<'_> {
 
     fn into_pattern(self, errs: &mut ParseErrors) -> Option<Vec<PatternElem>> {
         match &self {
-            Self::StrLit(s, _) => match to_pattern(s) {
+            Self::StrLit { lit, .. } => match to_pattern(lit) {
                 Ok(pat) => Some(pat),
                 Err(escape_errs) => {
                     errs.extend(
@@ -848,16 +860,16 @@ impl ExprOrSpecial<'_> {
                     None
                 }
             },
-            Self::Var(var, _) => {
+            Self::Var { var, .. } => {
                 errs.push(self.to_ast_err(ToASTErrorKind::InvalidPattern(var.to_string())));
                 None
             }
-            Self::Name(name, _) => {
+            Self::Name { name, .. } => {
                 errs.push(self.to_ast_err(ToASTErrorKind::InvalidPattern(name.to_string())));
                 None
             }
-            Self::Expr(e, _) => {
-                errs.push(self.to_ast_err(ToASTErrorKind::InvalidPattern(e.to_string())));
+            Self::Expr { expr, .. } => {
+                errs.push(self.to_ast_err(ToASTErrorKind::InvalidPattern(expr.to_string())));
                 None
             }
         }
@@ -865,7 +877,7 @@ impl ExprOrSpecial<'_> {
     /// to string literal
     fn into_string_literal(self, errs: &mut ParseErrors) -> Option<SmolStr> {
         match &self {
-            Self::StrLit(s, _) => match to_unescaped_string(s) {
+            Self::StrLit { lit, .. } => match to_unescaped_string(lit) {
                 Ok(s) => Some(s),
                 Err(escape_errs) => {
                     errs.extend(
@@ -876,16 +888,16 @@ impl ExprOrSpecial<'_> {
                     None
                 }
             },
-            Self::Var(var, _) => {
+            Self::Var { var, .. } => {
                 errs.push(self.to_ast_err(ToASTErrorKind::InvalidString(var.to_string())));
                 None
             }
-            Self::Name(name, _) => {
+            Self::Name { name, .. } => {
                 errs.push(self.to_ast_err(ToASTErrorKind::InvalidString(name.to_string())));
                 None
             }
-            Self::Expr(e, _) => {
-                errs.push(self.to_ast_err(ToASTErrorKind::InvalidString(e.to_string())));
+            Self::Expr { expr, .. } => {
+                errs.push(self.to_ast_err(ToASTErrorKind::InvalidString(expr.to_string())));
                 None
             }
         }
@@ -893,17 +905,17 @@ impl ExprOrSpecial<'_> {
 
     fn into_name(self, errs: &mut ParseErrors) -> Option<ast::Name> {
         match self {
-            Self::StrLit(s, _) => {
-                errs.push(self.to_ast_err(ToASTErrorKind::IsInvalidName(s.to_string())));
+            Self::StrLit { lit, .. } => {
+                errs.push(self.to_ast_err(ToASTErrorKind::IsInvalidName(lit.to_string())));
                 None
             }
-            Self::Var(var, _) => {
+            Self::Var { var, .. } => {
                 errs.push(self.to_ast_err(ToASTErrorKind::IsInvalidName(var.to_string())));
                 None
             }
-            Self::Name(name, _) => Some(name),
-            Self::Expr(ref e, _) => {
-                errs.push(self.to_ast_err(ToASTErrorKind::IsInvalidName(e.to_string())));
+            Self::Name { name, .. } => Some(name),
+            Self::Expr { ref expr, .. } => {
+                errs.push(self.to_ast_err(ToASTErrorKind::IsInvalidName(expr.to_string())));
                 None
             }
         }
@@ -957,10 +969,10 @@ impl Node<Option<cst::Expr>> {
                 let maybe_else = e.to_expr(errs);
 
                 match (maybe_guard, maybe_then, maybe_else) {
-                    (Some(i), Some(t), Some(e)) => Some(ExprOrSpecial::Expr(
-                        construct_expr_if(i, t, e, self.loc),
-                        self.loc,
-                    )),
+                    (Some(i), Some(t), Some(e)) => Some(ExprOrSpecial::Expr {
+                        expr: construct_expr_if(i, t, e, self.loc),
+                        loc: self.loc,
+                    }),
                     _ => None,
                 }
             }
@@ -1104,9 +1116,12 @@ impl Node<Option<cst::Or>> {
 
         match (maybe_first, maybe_second, rest.len(), or.extended.len()) {
             (f, None, _, 0) => f,
-            (Some(f), Some(s), r, e) if 1 + r == e => f
-                .into_expr(errs)
-                .map(|e| ExprOrSpecial::Expr(construct_expr_or(e, s, rest, self.loc), self.loc)),
+            (Some(f), Some(s), r, e) if 1 + r == e => {
+                f.into_expr(errs).map(|e| ExprOrSpecial::Expr {
+                    expr: construct_expr_or(e, s, rest, self.loc),
+                    loc: self.loc,
+                })
+            }
             _ => None,
         }
     }
@@ -1162,9 +1177,12 @@ impl Node<Option<cst::And>> {
 
         match (maybe_first, maybe_second, rest.len(), and.extended.len()) {
             (f, None, _, 0) => f,
-            (Some(f), Some(s), r, e) if 1 + r == e => f
-                .into_expr(errs)
-                .map(|e| ExprOrSpecial::Expr(construct_expr_and(e, s, rest, self.loc), self.loc)),
+            (Some(f), Some(s), r, e) if 1 + r == e => {
+                f.into_expr(errs).map(|e| ExprOrSpecial::Expr {
+                    expr: construct_expr_and(e, s, rest, self.loc),
+                    loc: self.loc,
+                })
+            }
             _ => None,
         }
     }
@@ -1239,8 +1257,9 @@ impl Node<Option<cst::Relation>> {
                     // error reported and result filtered out
                     (_, None, 1) => None,
                     (f, None, 0) => f,
-                    (Some(f), Some((op, s)), _) => f.into_expr(errs).map(|e| {
-                        ExprOrSpecial::Expr(construct_expr_rel(e, *op, s, self.loc), self.loc)
+                    (Some(f), Some((op, s)), _) => f.into_expr(errs).map(|e| ExprOrSpecial::Expr {
+                        expr: construct_expr_rel(e, *op, s, self.loc),
+                        loc: self.loc,
                     }),
                     _ => None,
                 }
@@ -1250,10 +1269,10 @@ impl Node<Option<cst::Relation>> {
                     target.to_expr(errs),
                     field.to_expr_or_special(errs)?.into_valid_attr(errs),
                 ) {
-                    (Some(t), Some(s)) => Some(ExprOrSpecial::Expr(
-                        construct_expr_has(t, s, self.loc),
-                        self.loc,
-                    )),
+                    (Some(t), Some(s)) => Some(ExprOrSpecial::Expr {
+                        expr: construct_expr_has(t, s, self.loc),
+                        loc: self.loc,
+                    }),
                     _ => None,
                 }
             }
@@ -1262,10 +1281,10 @@ impl Node<Option<cst::Relation>> {
                     target.to_expr(errs),
                     pattern.to_expr_or_special(errs)?.into_pattern(errs),
                 ) {
-                    (Some(t), Some(s)) => Some(ExprOrSpecial::Expr(
-                        construct_expr_like(t, s, self.loc),
-                        self.loc,
-                    )),
+                    (Some(t), Some(s)) => Some(ExprOrSpecial::Expr {
+                        expr: construct_expr_like(t, s, self.loc),
+                        loc: self.loc,
+                    }),
                     _ => None,
                 }
             }
@@ -1278,21 +1297,23 @@ impl Node<Option<cst::Relation>> {
                 entity_type.to_expr_or_special(errs)?.into_name(errs),
             ) {
                 (Some(t), Some(n)) => match in_entity {
-                    Some(in_entity) => in_entity.to_expr(errs).map(|in_entity| {
-                        ExprOrSpecial::Expr(
-                            construct_expr_and(
-                                construct_expr_is(t.clone(), n, self.loc),
-                                construct_expr_rel(t, cst::RelOp::In, in_entity, self.loc),
-                                std::iter::empty(),
-                                self.loc,
-                            ),
-                            self.loc,
-                        )
+                    Some(in_entity) => {
+                        in_entity
+                            .to_expr(errs)
+                            .map(|in_entity| ExprOrSpecial::Expr {
+                                expr: construct_expr_and(
+                                    construct_expr_is(t.clone(), n, self.loc),
+                                    construct_expr_rel(t, cst::RelOp::In, in_entity, self.loc),
+                                    std::iter::empty(),
+                                    self.loc,
+                                ),
+                                loc: self.loc,
+                            })
+                    }
+                    None => Some(ExprOrSpecial::Expr {
+                        expr: construct_expr_is(t, n, self.loc),
+                        loc: self.loc,
                     }),
-                    None => Some(ExprOrSpecial::Expr(
-                        construct_expr_is(t, n, self.loc),
-                        self.loc,
-                    )),
                 },
                 _ => None,
             },
@@ -1329,10 +1350,10 @@ impl Node<Option<cst::Add>> {
             .filter_map(|&(op, ref i)| i.to_expr(errs).map(|e| (op, e)))
             .collect();
         if !more.is_empty() {
-            Some(ExprOrSpecial::Expr(
-                construct_expr_add(maybe_first?.into_expr(errs)?, more, self.loc),
-                self.loc,
-            ))
+            Some(ExprOrSpecial::Expr {
+                expr: construct_expr_add(maybe_first?.into_expr(errs)?, more, self.loc),
+                loc: self.loc,
+            })
         } else {
             maybe_first
         }
@@ -1415,14 +1436,14 @@ impl Node<Option<cst::Mult>> {
             } else if nonconstantints.is_empty() {
                 // PANIC SAFETY If nonconstantints is empty then constantints must have at least one value
                 #[allow(clippy::indexing_slicing)]
-                Some(ExprOrSpecial::Expr(
-                    construct_expr_mul(
+                Some(ExprOrSpecial::Expr {
+                    expr: construct_expr_mul(
                         construct_expr_num(constantints[0], self.loc),
                         constantints[1..].iter().copied(),
                         self.loc,
                     ),
-                    self.loc,
-                ))
+                    loc: self.loc,
+                })
             } else {
                 // PANIC SAFETY Checked above that `nonconstantints` has at least one element
                 #[allow(clippy::expect_used)]
@@ -1430,10 +1451,10 @@ impl Node<Option<cst::Mult>> {
                     .into_iter()
                     .next()
                     .expect("already checked that it's not empty");
-                Some(ExprOrSpecial::Expr(
-                    construct_expr_mul(nonconstantint, constantints, self.loc),
-                    self.loc,
-                ))
+                Some(ExprOrSpecial::Expr {
+                    expr: construct_expr_mul(nonconstantint, constantints, self.loc),
+                    loc: self.loc,
+                })
             }
         } else {
             maybe_first
@@ -1476,15 +1497,16 @@ impl Node<Option<cst::Unary>> {
             Some(cst::NegOp::Bang(n)) => {
                 let item = maybe_item().and_then(|i| i.into_expr(errs));
                 if n % 2 == 0 {
-                    item.map(|i| {
-                        ExprOrSpecial::Expr(
-                            construct_expr_not(construct_expr_not(i, self.loc), self.loc),
-                            self.loc,
-                        )
+                    item.map(|i| ExprOrSpecial::Expr {
+                        expr: construct_expr_not(construct_expr_not(i, self.loc), self.loc),
+                        loc: self.loc,
                     })
                 } else {
                     // safe to collapse to !
-                    item.map(|i| ExprOrSpecial::Expr(construct_expr_not(i, self.loc), self.loc))
+                    item.map(|i| ExprOrSpecial::Expr {
+                        expr: construct_expr_not(i, self.loc),
+                        loc: self.loc,
+                    })
                 }
             }
             Some(cst::NegOp::Dash(c)) => {
@@ -1515,7 +1537,10 @@ impl Node<Option<cst::Unary>> {
                 // Fold the expression into a series of negation operations.
                 (0..rc)
                     .fold(last, |r, _| r.map(|e| (construct_expr_neg(e, self.loc))))
-                    .map(|e| ExprOrSpecial::Expr(e, self.loc))
+                    .map(|expr| ExprOrSpecial::Expr {
+                        expr,
+                        loc: self.loc,
+                    })
             }
             Some(cst::NegOp::OverBang) => {
                 errs.push(self.to_ast_err(ToASTErrorKind::UnaryOpLimit(ast::UnaryOp::Not)));
@@ -1607,20 +1632,23 @@ impl Node<Option<cst::Member>> {
                     tail = rest;
                 }
                 // function call
-                (Some(Name(n, _)), [Some(Call(a)), rest @ ..]) => {
+                (Some(Name { name, .. }), [Some(Call(a)), rest @ ..]) => {
                     // move the vec out of the slice, we won't use the slice after
                     let args = std::mem::take(a);
-                    // replace the object `n` refers to with a default value since it won't be used afterwards
-                    let nn =
-                        mem::replace(n, ast::Name::unqualified_name(ast::Id::new_unchecked("")));
-                    head = nn
-                        .into_func(args, errs, self.loc)
-                        .map(|e| Expr(e, self.loc));
+                    // replace the object `name` refers to with a default value since it won't be used afterwards
+                    let nn = mem::replace(
+                        name,
+                        ast::Name::unqualified_name(ast::Id::new_unchecked("")),
+                    );
+                    head = nn.into_func(args, errs, self.loc).map(|expr| Expr {
+                        expr,
+                        loc: self.loc,
+                    });
                     tail = rest;
                 }
                 // variable call - error
-                (Some(Var(v, _)), [Some(Call(_)), rest @ ..]) => {
-                    errs.push(self.to_ast_err(ToASTErrorKind::VariableCall(*v)));
+                (Some(Var { var, .. }), [Some(Call(_)), rest @ ..]) => {
+                    errs.push(self.to_ast_err(ToASTErrorKind::VariableCall(*var)));
                     head = None;
                     tail = rest;
                 }
@@ -1635,41 +1663,48 @@ impl Node<Option<cst::Member>> {
                     tail = rest;
                 }
                 // method call on name - error
-                (Some(Name(n, _)), [Some(Field(f)), Some(Call(_)), rest @ ..]) => {
-                    errs.push(self.to_ast_err(ToASTErrorKind::NoMethods(n.clone(), f.clone())));
+                (Some(Name { name, .. }), [Some(Field(f)), Some(Call(_)), rest @ ..]) => {
+                    errs.push(self.to_ast_err(ToASTErrorKind::NoMethods(name.clone(), f.clone())));
                     head = None;
                     tail = rest;
                 }
                 // method call on variable
-                (Some(Var(v, vl)), [Some(Field(i)), Some(Call(a)), rest @ ..]) => {
+                (Some(Var { var, loc: var_loc }), [Some(Field(i)), Some(Call(a)), rest @ ..]) => {
                     // move var and args out of the slice
-                    let var = mem::replace(v, ast::Var::Principal);
+                    let var = mem::replace(var, ast::Var::Principal);
                     let args = std::mem::take(a);
                     // move the id out of the slice as well, to avoid cloning the internal string
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
                     head = id
-                        .to_meth(construct_expr_var(var, *vl), args, errs, self.loc)
-                        .map(|e| Expr(e, self.loc));
+                        .to_meth(construct_expr_var(var, *var_loc), args, errs, self.loc)
+                        .map(|expr| Expr {
+                            expr,
+                            loc: self.loc,
+                        });
                     tail = rest;
                 }
                 // method call on arbitrary expression
-                (Some(Expr(e, _)), [Some(Field(i)), Some(Call(a)), rest @ ..]) => {
+                (Some(Expr { expr, .. }), [Some(Field(i)), Some(Call(a)), rest @ ..]) => {
                     // move the expr and args out of the slice
                     let args = std::mem::take(a);
-                    let expr = mem::replace(e, ast::Expr::val(false));
+                    let expr = mem::replace(expr, ast::Expr::val(false));
                     // move the id out of the slice as well, to avoid cloning the internal string
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
-                    head = id
-                        .to_meth(expr, args, errs, self.loc)
-                        .map(|e| Expr(e, self.loc));
+                    head = id.to_meth(expr, args, errs, self.loc).map(|expr| Expr {
+                        expr,
+                        loc: self.loc,
+                    });
                     tail = rest;
                 }
                 // method call on string literal (same as Expr case)
-                (Some(StrLit(s, sl)), [Some(Field(i)), Some(Call(a)), rest @ ..]) => {
+                (
+                    Some(StrLit { lit, loc: lit_loc }),
+                    [Some(Field(i)), Some(Call(a)), rest @ ..],
+                ) => {
                     let args = std::mem::take(a);
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
-                    let maybe_expr = match to_unescaped_string(s) {
-                        Ok(s) => Some(construct_expr_string(s, *sl)),
+                    let maybe_expr = match to_unescaped_string(lit) {
+                        Ok(s) => Some(construct_expr_string(s, *lit_loc)),
                         Err(escape_errs) => {
                             errs.extend(
                                 escape_errs
@@ -1680,8 +1715,10 @@ impl Node<Option<cst::Member>> {
                         }
                     };
                     head = maybe_expr.and_then(|e| {
-                        id.to_meth(e, args, errs, self.loc)
-                            .map(|e| Expr(e, self.loc))
+                        id.to_meth(e, args, errs, self.loc).map(|expr| Expr {
+                            expr,
+                            loc: self.loc,
+                        })
                     });
                     tail = rest;
                 }
@@ -1690,48 +1727,50 @@ impl Node<Option<cst::Member>> {
                     tail = rest;
                 }
                 // access on arbitrary name - error
-                (Some(Name(n, _)), [Some(Field(f)), rest @ ..]) => {
+                (Some(Name { name, .. }), [Some(Field(f)), rest @ ..]) => {
                     errs.push(self.to_ast_err(ToASTErrorKind::InvalidAccess(
-                        n.clone(),
+                        name.clone(),
                         f.to_string().into(),
                     )));
                     head = None;
                     tail = rest;
                 }
-                (Some(Name(n, _)), [Some(Index(i)), rest @ ..]) => {
-                    errs.push(self.to_ast_err(ToASTErrorKind::InvalidIndex(n.clone(), i.clone())));
+                (Some(Name { name, .. }), [Some(Index(i)), rest @ ..]) => {
+                    errs.push(
+                        self.to_ast_err(ToASTErrorKind::InvalidIndex(name.clone(), i.clone())),
+                    );
                     head = None;
                     tail = rest;
                 }
                 // attribute of variable
-                (Some(Var(v, vl)), [Some(Field(i)), rest @ ..]) => {
-                    let var = mem::replace(v, ast::Var::Principal);
+                (Some(Var { var, loc: var_loc }), [Some(Field(i)), rest @ ..]) => {
+                    let var = mem::replace(var, ast::Var::Principal);
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
-                    head = Some(Expr(
-                        construct_expr_attr(
-                            construct_expr_var(var, *vl),
+                    head = Some(Expr {
+                        expr: construct_expr_attr(
+                            construct_expr_var(var, *var_loc),
                             id.to_smolstr(),
                             self.loc,
                         ),
-                        self.loc,
-                    ));
+                        loc: self.loc,
+                    });
                     tail = rest;
                 }
                 // field of arbitrary expr
-                (Some(Expr(e, _)), [Some(Field(i)), rest @ ..]) => {
-                    let expr = mem::replace(e, ast::Expr::val(false));
+                (Some(Expr { expr, .. }), [Some(Field(i)), rest @ ..]) => {
+                    let expr = mem::replace(expr, ast::Expr::val(false));
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
-                    head = Some(Expr(
-                        construct_expr_attr(expr, id.to_smolstr(), self.loc),
-                        self.loc,
-                    ));
+                    head = Some(Expr {
+                        expr: construct_expr_attr(expr, id.to_smolstr(), self.loc),
+                        loc: self.loc,
+                    });
                     tail = rest;
                 }
                 // field of string literal (same as Expr case)
-                (Some(StrLit(s, sl)), [Some(Field(i)), rest @ ..]) => {
+                (Some(StrLit { lit, loc: lit_loc }), [Some(Field(i)), rest @ ..]) => {
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
-                    let maybe_expr = match to_unescaped_string(s) {
-                        Ok(s) => Some(construct_expr_string(s, *sl)),
+                    let maybe_expr = match to_unescaped_string(lit) {
+                        Ok(s) => Some(construct_expr_string(s, *lit_loc)),
                         Err(escape_errs) => {
                             errs.extend(
                                 escape_errs
@@ -1741,32 +1780,37 @@ impl Node<Option<cst::Member>> {
                             None
                         }
                     };
-                    head = maybe_expr
-                        .map(|e| Expr(construct_expr_attr(e, id.to_smolstr(), self.loc), self.loc));
+                    head = maybe_expr.map(|e| Expr {
+                        expr: construct_expr_attr(e, id.to_smolstr(), self.loc),
+                        loc: self.loc,
+                    });
                     tail = rest;
                 }
                 // index into var
-                (Some(Var(v, vl)), [Some(Index(i)), rest @ ..]) => {
-                    let var = mem::replace(v, ast::Var::Principal);
+                (Some(Var { var, loc: var_loc }), [Some(Index(i)), rest @ ..]) => {
+                    let var = mem::replace(var, ast::Var::Principal);
                     let s = mem::take(i);
-                    head = Some(Expr(
-                        construct_expr_attr(construct_expr_var(var, *vl), s, self.loc),
-                        self.loc,
-                    ));
+                    head = Some(Expr {
+                        expr: construct_expr_attr(construct_expr_var(var, *var_loc), s, self.loc),
+                        loc: self.loc,
+                    });
                     tail = rest;
                 }
                 // index into arbitrary expr
-                (Some(Expr(e, _)), [Some(Index(i)), rest @ ..]) => {
-                    let expr = mem::replace(e, ast::Expr::val(false));
+                (Some(Expr { expr, .. }), [Some(Index(i)), rest @ ..]) => {
+                    let expr = mem::replace(expr, ast::Expr::val(false));
                     let s = mem::take(i);
-                    head = Some(Expr(construct_expr_attr(expr, s, self.loc), self.loc));
+                    head = Some(Expr {
+                        expr: construct_expr_attr(expr, s, self.loc),
+                        loc: self.loc,
+                    });
                     tail = rest;
                 }
                 // index into string literal (same as Expr case)
-                (Some(StrLit(s, sl)), [Some(Index(i)), rest @ ..]) => {
+                (Some(StrLit { lit, loc: lit_loc }), [Some(Index(i)), rest @ ..]) => {
                     let id = mem::take(i);
-                    let maybe_expr = match to_unescaped_string(s) {
-                        Ok(s) => Some(construct_expr_string(s, *sl)),
+                    let maybe_expr = match to_unescaped_string(lit) {
+                        Ok(s) => Some(construct_expr_string(s, *lit_loc)),
                         Err(escape_errs) => {
                             errs.extend(
                                 escape_errs
@@ -1776,7 +1820,10 @@ impl Node<Option<cst::Member>> {
                             None
                         }
                     };
-                    head = maybe_expr.map(|e| Expr(construct_expr_attr(e, id, self.loc), self.loc));
+                    head = maybe_expr.map(|e| Expr {
+                        expr: construct_expr_attr(e, id, self.loc),
+                        loc: self.loc,
+                    });
                     tail = rest;
                 }
             }
@@ -1887,30 +1934,37 @@ impl Node<Option<cst::Primary>> {
 
         match prim {
             cst::Primary::Literal(lit) => lit.to_expr_or_special(errs),
-            cst::Primary::Ref(r) => r.to_expr(errs).map(|e| ExprOrSpecial::Expr(e, r.loc)),
+            cst::Primary::Ref(r) => r
+                .to_expr(errs)
+                .map(|expr| ExprOrSpecial::Expr { expr, loc: r.loc }),
             cst::Primary::Slot(s) => s
                 .clone()
                 .into_expr(errs)
-                .map(|e| ExprOrSpecial::Expr(e, s.loc)),
+                .map(|expr| ExprOrSpecial::Expr { expr, loc: s.loc }),
             #[allow(clippy::manual_map)]
             cst::Primary::Name(n) => {
                 // if `n` isn't a var we don't want errors, we'll get them later
-                if let Some(v) = n.to_var(&mut ParseErrors::new()) {
-                    Some(ExprOrSpecial::Var(v, self.loc))
-                } else if let Some(n) = n.to_name(errs) {
-                    Some(ExprOrSpecial::Name(n, self.loc))
+                if let Some(var) = n.to_var(&mut ParseErrors::new()) {
+                    Some(ExprOrSpecial::Var { var, loc: self.loc })
+                } else if let Some(name) = n.to_name(errs) {
+                    Some(ExprOrSpecial::Name {
+                        name,
+                        loc: self.loc,
+                    })
                 } else {
                     None
                 }
             }
-            cst::Primary::Expr(e) => e.to_expr(errs).map(|expr| ExprOrSpecial::Expr(expr, e.loc)),
+            cst::Primary::Expr(e) => e
+                .to_expr(errs)
+                .map(|expr| ExprOrSpecial::Expr { expr, loc: e.loc }),
             cst::Primary::EList(es) => {
                 let list: Vec<_> = es.iter().filter_map(|e| e.to_expr(errs)).collect();
                 if list.len() == es.len() {
-                    Some(ExprOrSpecial::Expr(
-                        construct_expr_set(list, self.loc),
-                        self.loc,
-                    ))
+                    Some(ExprOrSpecial::Expr {
+                        expr: construct_expr_set(list, self.loc),
+                        loc: self.loc,
+                    })
                 } else {
                     None
                 }
@@ -1919,7 +1973,10 @@ impl Node<Option<cst::Primary>> {
                 let rec: Vec<_> = is.iter().filter_map(|i| i.to_init(errs)).collect();
                 if rec.len() == is.len() {
                     match construct_expr_record(rec, self.loc) {
-                        Ok(rec) => Some(ExprOrSpecial::Expr(rec, self.loc)),
+                        Ok(expr) => Some(ExprOrSpecial::Expr {
+                            expr,
+                            loc: self.loc,
+                        }),
                         Err(e) => {
                             errs.push(e);
                             None
@@ -2139,19 +2196,19 @@ impl Node<Option<cst::Literal>> {
         let lit = maybe_lit?;
 
         match lit {
-            cst::Literal::True => Some(ExprOrSpecial::Expr(
-                construct_expr_bool(true, self.loc),
-                self.loc,
-            )),
-            cst::Literal::False => Some(ExprOrSpecial::Expr(
-                construct_expr_bool(false, self.loc),
-                self.loc,
-            )),
+            cst::Literal::True => Some(ExprOrSpecial::Expr {
+                expr: construct_expr_bool(true, self.loc),
+                loc: self.loc,
+            }),
+            cst::Literal::False => Some(ExprOrSpecial::Expr {
+                expr: construct_expr_bool(false, self.loc),
+                loc: self.loc,
+            }),
             cst::Literal::Num(n) => match Integer::try_from(*n) {
-                Ok(i) => Some(ExprOrSpecial::Expr(
-                    construct_expr_num(i, self.loc),
-                    self.loc,
-                )),
+                Ok(i) => Some(ExprOrSpecial::Expr {
+                    expr: construct_expr_num(i, self.loc),
+                    loc: self.loc,
+                }),
                 Err(_) => {
                     errs.push(self.to_ast_err(ToASTErrorKind::IntegerLiteralTooLarge(*n)));
                     None
@@ -2159,7 +2216,7 @@ impl Node<Option<cst::Literal>> {
             },
             cst::Literal::Str(s) => {
                 let maybe_str = s.as_valid_string(errs);
-                maybe_str.map(|s| ExprOrSpecial::StrLit(s, self.loc))
+                maybe_str.map(|lit| ExprOrSpecial::StrLit { lit, loc: self.loc })
             }
         }
     }
