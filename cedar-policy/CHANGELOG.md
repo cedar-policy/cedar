@@ -5,12 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.0] - Coming soon
+## [3.0.0] - 2023-12-15
 Cedar Language Version: 3.0.0
 
 ### Added
 
-- Marked the `Template::from_json` and `Template::to_json` apis as public
+- Marked the `Template::from_json` and `Template::to_json` apis as public (#458)
 - New APIs to `Entities` to make it easy to add a collection of entities to an
   existing `Entities` structure. (#276)
 - Export the `cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind}` and
