@@ -1022,7 +1022,7 @@ impl Validator {
 
     /// Validate all policies in a policy set, collecting all validation errors
     /// found into the returned `ValidationResult`. Each error is returned together with the
-    /// policy id of the policy where the error was found. If a policy i
+    /// policy id of the policy where the error was found. If a policy id
     /// included in the input policy set does not appear in the output iterator, then
     /// that policy passed the validator. If the function `validation_passed`
     /// returns true, then there were no validation errors found, so all
@@ -1631,8 +1631,8 @@ impl<'a> std::fmt::Display for SourceLocation<'a> {
     }
 }
 
-impl<'a, 'b> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation<'b> {
-    fn from(loc: cedar_policy_validator::SourceLocation<'a>) -> SourceLocation<'b> {
+impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation<'static> {
+    fn from(loc: cedar_policy_validator::SourceLocation<'a>) -> SourceLocation<'static> {
         let policy_id: PolicyId = PolicyId(loc.policy_id().clone());
         let source_range = loc.source_span();
         Self {
