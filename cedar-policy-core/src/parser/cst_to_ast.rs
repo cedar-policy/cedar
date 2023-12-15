@@ -216,7 +216,7 @@ impl Node<Option<cst::Policy>> {
         id: ast::PolicyID,
         errs: &mut ParseErrors,
     ) -> Option<ast::Template> {
-        let (maybe_policy, src) = self.as_inner_pair();
+        let maybe_policy = self.as_inner();
         // return right away if there's no data, parse provided error
         let policy = maybe_policy?;
 
@@ -276,7 +276,7 @@ impl Node<Option<cst::Policy>> {
             action,
             resource,
             conds,
-            src,
+            self.loc,
         ))
     }
 }
@@ -703,7 +703,7 @@ impl Node<Option<cst::Cond>> {
     /// clause. (The returned `expr` is already adjusted for this, the `bool` is
     /// for information only.)
     fn to_expr(&self, errs: &mut ParseErrors) -> Option<(ast::Expr, bool)> {
-        let (maybe_cond, src) = self.as_inner_pair();
+        let maybe_cond = self.as_inner();
         // return right away if there's no data, parse provided error
         let cond = maybe_cond?;
 
@@ -731,7 +731,7 @@ impl Node<Option<cst::Cond>> {
             if maybe_is_when {
                 (e, true)
             } else {
-                (construct_expr_not(e, src), false)
+                (construct_expr_not(e, self.loc), false)
             }
         })
     }
@@ -945,7 +945,7 @@ impl Node<Option<cst::Expr>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     pub(crate) fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (maybe_expr, src) = self.as_inner_pair();
+        let maybe_expr = self.as_inner();
         // return right away if there's no data, parse provided error
         let expr = &*maybe_expr?.expr;
 
@@ -957,9 +957,10 @@ impl Node<Option<cst::Expr>> {
                 let maybe_else = e.to_expr(errs);
 
                 match (maybe_guard, maybe_then, maybe_else) {
-                    (Some(i), Some(t), Some(e)) => {
-                        Some(ExprOrSpecial::Expr(construct_expr_if(i, t, e, src), src))
-                    }
+                    (Some(i), Some(t), Some(e)) => Some(ExprOrSpecial::Expr(
+                        construct_expr_if(i, t, e, self.loc),
+                        self.loc,
+                    )),
                     _ => None,
                 }
             }
@@ -1090,7 +1091,7 @@ impl RefKind for OneOrMultipleRefs {
 
 impl Node<Option<cst::Or>> {
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (maybe_or, src) = self.as_inner_pair();
+        let maybe_or = self.as_inner();
         // return right away if there's no data, parse provided error
         let or = maybe_or?;
 
@@ -1105,7 +1106,7 @@ impl Node<Option<cst::Or>> {
             (f, None, _, 0) => f,
             (Some(f), Some(s), r, e) if 1 + r == e => f
                 .into_expr(errs)
-                .map(|e| ExprOrSpecial::Expr(construct_expr_or(e, s, rest, src), src)),
+                .map(|e| ExprOrSpecial::Expr(construct_expr_or(e, s, rest, self.loc), self.loc)),
             _ => None,
         }
     }
@@ -1148,7 +1149,7 @@ impl Node<Option<cst::And>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (maybe_and, src) = self.as_inner_pair();
+        let maybe_and = self.as_inner();
         // return right away if there's no data, parse provided error
         let and = maybe_and?;
 
@@ -1163,7 +1164,7 @@ impl Node<Option<cst::And>> {
             (f, None, _, 0) => f,
             (Some(f), Some(s), r, e) if 1 + r == e => f
                 .into_expr(errs)
-                .map(|e| ExprOrSpecial::Expr(construct_expr_and(e, s, rest, src), src)),
+                .map(|e| ExprOrSpecial::Expr(construct_expr_and(e, s, rest, self.loc), self.loc)),
             _ => None,
         }
     }
@@ -1215,7 +1216,7 @@ impl Node<Option<cst::Relation>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (maybe_rel, src) = self.as_inner_pair();
+        let maybe_rel = self.as_inner();
         // return right away if there's no data, parse provided error
         let rel = maybe_rel?;
 
@@ -1238,9 +1239,9 @@ impl Node<Option<cst::Relation>> {
                     // error reported and result filtered out
                     (_, None, 1) => None,
                     (f, None, 0) => f,
-                    (Some(f), Some((op, s)), _) => f
-                        .into_expr(errs)
-                        .map(|e| ExprOrSpecial::Expr(construct_expr_rel(e, *op, s, src), src)),
+                    (Some(f), Some((op, s)), _) => f.into_expr(errs).map(|e| {
+                        ExprOrSpecial::Expr(construct_expr_rel(e, *op, s, self.loc), self.loc)
+                    }),
                     _ => None,
                 }
             }
@@ -1249,9 +1250,10 @@ impl Node<Option<cst::Relation>> {
                     target.to_expr(errs),
                     field.to_expr_or_special(errs)?.into_valid_attr(errs),
                 ) {
-                    (Some(t), Some(s)) => {
-                        Some(ExprOrSpecial::Expr(construct_expr_has(t, s, src), src))
-                    }
+                    (Some(t), Some(s)) => Some(ExprOrSpecial::Expr(
+                        construct_expr_has(t, s, self.loc),
+                        self.loc,
+                    )),
                     _ => None,
                 }
             }
@@ -1260,9 +1262,10 @@ impl Node<Option<cst::Relation>> {
                     target.to_expr(errs),
                     pattern.to_expr_or_special(errs)?.into_pattern(errs),
                 ) {
-                    (Some(t), Some(s)) => {
-                        Some(ExprOrSpecial::Expr(construct_expr_like(t, s, src), src))
-                    }
+                    (Some(t), Some(s)) => Some(ExprOrSpecial::Expr(
+                        construct_expr_like(t, s, self.loc),
+                        self.loc,
+                    )),
                     _ => None,
                 }
             }
@@ -1278,15 +1281,18 @@ impl Node<Option<cst::Relation>> {
                     Some(in_entity) => in_entity.to_expr(errs).map(|in_entity| {
                         ExprOrSpecial::Expr(
                             construct_expr_and(
-                                construct_expr_is(t.clone(), n, src),
-                                construct_expr_rel(t, cst::RelOp::In, in_entity, src),
+                                construct_expr_is(t.clone(), n, self.loc),
+                                construct_expr_rel(t, cst::RelOp::In, in_entity, self.loc),
                                 std::iter::empty(),
-                                src,
+                                self.loc,
                             ),
-                            src,
+                            self.loc,
                         )
                     }),
-                    None => Some(ExprOrSpecial::Expr(construct_expr_is(t, n, src), src)),
+                    None => Some(ExprOrSpecial::Expr(
+                        construct_expr_is(t, n, self.loc),
+                        self.loc,
+                    )),
                 },
                 _ => None,
             },
@@ -1311,7 +1317,7 @@ impl Node<Option<cst::Add>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (maybe_add, src) = self.as_inner_pair();
+        let maybe_add = self.as_inner();
         // return right away if there's no data, parse provided error
         let add = maybe_add?;
 
@@ -1324,8 +1330,8 @@ impl Node<Option<cst::Add>> {
             .collect();
         if !more.is_empty() {
             Some(ExprOrSpecial::Expr(
-                construct_expr_add(maybe_first?.into_expr(errs)?, more, src),
-                src,
+                construct_expr_add(maybe_first?.into_expr(errs)?, more, self.loc),
+                self.loc,
             ))
         } else {
             maybe_first
@@ -1354,7 +1360,7 @@ impl Node<Option<cst::Mult>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (maybe_mult, src) = self.as_inner_pair();
+        let maybe_mult = self.as_inner();
         // return right away if there's no data, parse provided error
         let mult = maybe_mult?;
 
@@ -1411,11 +1417,11 @@ impl Node<Option<cst::Mult>> {
                 #[allow(clippy::indexing_slicing)]
                 Some(ExprOrSpecial::Expr(
                     construct_expr_mul(
-                        construct_expr_num(constantints[0], src),
+                        construct_expr_num(constantints[0], self.loc),
                         constantints[1..].iter().copied(),
-                        src,
+                        self.loc,
                     ),
-                    src,
+                    self.loc,
                 ))
             } else {
                 // PANIC SAFETY Checked above that `nonconstantints` has at least one element
@@ -1425,8 +1431,8 @@ impl Node<Option<cst::Mult>> {
                     .next()
                     .expect("already checked that it's not empty");
                 Some(ExprOrSpecial::Expr(
-                    construct_expr_mul(nonconstantint, constantints, src),
-                    src,
+                    construct_expr_mul(nonconstantint, constantints, self.loc),
+                    self.loc,
                 ))
             }
         } else {
@@ -1456,7 +1462,7 @@ impl Node<Option<cst::Unary>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (maybe_unary, src) = self.as_inner_pair();
+        let maybe_unary = self.as_inner();
         // return right away if there's no data, parse provided error
         let unary = maybe_unary?;
 
@@ -1472,13 +1478,13 @@ impl Node<Option<cst::Unary>> {
                 if n % 2 == 0 {
                     item.map(|i| {
                         ExprOrSpecial::Expr(
-                            construct_expr_not(construct_expr_not(i, src), src),
-                            src,
+                            construct_expr_not(construct_expr_not(i, self.loc), self.loc),
+                            self.loc,
                         )
                     })
                 } else {
                     // safe to collapse to !
-                    item.map(|i| ExprOrSpecial::Expr(construct_expr_not(i, src), src))
+                    item.map(|i| ExprOrSpecial::Expr(construct_expr_not(i, self.loc), self.loc))
                 }
             }
             Some(cst::NegOp::Dash(c)) => {
@@ -1508,8 +1514,8 @@ impl Node<Option<cst::Unary>> {
                 };
                 // Fold the expression into a series of negation operations.
                 (0..rc)
-                    .fold(last, |r, _| r.map(|e| (construct_expr_neg(e, src))))
-                    .map(|e| ExprOrSpecial::Expr(e, src))
+                    .fold(last, |r, _| r.map(|e| (construct_expr_neg(e, self.loc))))
+                    .map(|e| ExprOrSpecial::Expr(e, self.loc))
             }
             Some(cst::NegOp::OverBang) => {
                 errs.push(self.to_ast_err(ToASTErrorKind::UnaryOpLimit(ast::UnaryOp::Not)));
@@ -1559,7 +1565,7 @@ impl Node<Option<cst::Member>> {
     }
 
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (maybe_mem, src) = self.as_inner_pair();
+        let maybe_mem = self.as_inner();
         // return right away if there's no data, parse provided error
         let mem = maybe_mem?;
 
@@ -1607,7 +1613,9 @@ impl Node<Option<cst::Member>> {
                     // replace the object `n` refers to with a default value since it won't be used afterwards
                     let nn =
                         mem::replace(n, ast::Name::unqualified_name(ast::Id::new_unchecked("")));
-                    head = nn.into_func(args, errs, src).map(|e| Expr(e, src));
+                    head = nn
+                        .into_func(args, errs, self.loc)
+                        .map(|e| Expr(e, self.loc));
                     tail = rest;
                 }
                 // variable call - error
@@ -1640,8 +1648,8 @@ impl Node<Option<cst::Member>> {
                     // move the id out of the slice as well, to avoid cloning the internal string
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
                     head = id
-                        .to_meth(construct_expr_var(var, *vl), args, errs, src)
-                        .map(|e| Expr(e, src));
+                        .to_meth(construct_expr_var(var, *vl), args, errs, self.loc)
+                        .map(|e| Expr(e, self.loc));
                     tail = rest;
                 }
                 // method call on arbitrary expression
@@ -1651,7 +1659,9 @@ impl Node<Option<cst::Member>> {
                     let expr = mem::replace(e, ast::Expr::val(false));
                     // move the id out of the slice as well, to avoid cloning the internal string
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
-                    head = id.to_meth(expr, args, errs, src).map(|e| Expr(e, src));
+                    head = id
+                        .to_meth(expr, args, errs, self.loc)
+                        .map(|e| Expr(e, self.loc));
                     tail = rest;
                 }
                 // method call on string literal (same as Expr case)
@@ -1669,8 +1679,10 @@ impl Node<Option<cst::Member>> {
                             None
                         }
                     };
-                    head = maybe_expr
-                        .and_then(|e| id.to_meth(e, args, errs, src).map(|e| Expr(e, src)));
+                    head = maybe_expr.and_then(|e| {
+                        id.to_meth(e, args, errs, self.loc)
+                            .map(|e| Expr(e, self.loc))
+                    });
                     tail = rest;
                 }
                 // access of failure - ignore
@@ -1696,8 +1708,12 @@ impl Node<Option<cst::Member>> {
                     let var = mem::replace(v, ast::Var::Principal);
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
                     head = Some(Expr(
-                        construct_expr_attr(construct_expr_var(var, *vl), id.to_smolstr(), src),
-                        src,
+                        construct_expr_attr(
+                            construct_expr_var(var, *vl),
+                            id.to_smolstr(),
+                            self.loc,
+                        ),
+                        self.loc,
                     ));
                     tail = rest;
                 }
@@ -1705,7 +1721,10 @@ impl Node<Option<cst::Member>> {
                 (Some(Expr(e, _)), [Some(Field(i)), rest @ ..]) => {
                     let expr = mem::replace(e, ast::Expr::val(false));
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
-                    head = Some(Expr(construct_expr_attr(expr, id.to_smolstr(), src), src));
+                    head = Some(Expr(
+                        construct_expr_attr(expr, id.to_smolstr(), self.loc),
+                        self.loc,
+                    ));
                     tail = rest;
                 }
                 // field of string literal (same as Expr case)
@@ -1722,8 +1741,8 @@ impl Node<Option<cst::Member>> {
                             None
                         }
                     };
-                    head =
-                        maybe_expr.map(|e| Expr(construct_expr_attr(e, id.to_smolstr(), src), src));
+                    head = maybe_expr
+                        .map(|e| Expr(construct_expr_attr(e, id.to_smolstr(), self.loc), self.loc));
                     tail = rest;
                 }
                 // index into var
@@ -1731,8 +1750,8 @@ impl Node<Option<cst::Member>> {
                     let var = mem::replace(v, ast::Var::Principal);
                     let s = mem::take(i);
                     head = Some(Expr(
-                        construct_expr_attr(construct_expr_var(var, *vl), s, src),
-                        src,
+                        construct_expr_attr(construct_expr_var(var, *vl), s, self.loc),
+                        self.loc,
                     ));
                     tail = rest;
                 }
@@ -1740,7 +1759,7 @@ impl Node<Option<cst::Member>> {
                 (Some(Expr(e, _)), [Some(Index(i)), rest @ ..]) => {
                     let expr = mem::replace(e, ast::Expr::val(false));
                     let s = mem::take(i);
-                    head = Some(Expr(construct_expr_attr(expr, s, src), src));
+                    head = Some(Expr(construct_expr_attr(expr, s, self.loc), self.loc));
                     tail = rest;
                 }
                 // index into string literal (same as Expr case)
@@ -1757,7 +1776,7 @@ impl Node<Option<cst::Member>> {
                             None
                         }
                     };
-                    head = maybe_expr.map(|e| Expr(construct_expr_attr(e, id, src), src));
+                    head = maybe_expr.map(|e| Expr(construct_expr_attr(e, id, self.loc), self.loc));
                     tail = rest;
                 }
             }
@@ -1862,7 +1881,7 @@ impl Node<Option<cst::Primary>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (maybe_prim, src) = self.as_inner_pair();
+        let maybe_prim = self.as_inner();
         // return right away if there's no data, parse provided error
         let prim = maybe_prim?;
 
@@ -1877,9 +1896,9 @@ impl Node<Option<cst::Primary>> {
             cst::Primary::Name(n) => {
                 // if `n` isn't a var we don't want errors, we'll get them later
                 if let Some(v) = n.to_var(&mut ParseErrors::new()) {
-                    Some(ExprOrSpecial::Var(v, src))
+                    Some(ExprOrSpecial::Var(v, self.loc))
                 } else if let Some(n) = n.to_name(errs) {
-                    Some(ExprOrSpecial::Name(n, src))
+                    Some(ExprOrSpecial::Name(n, self.loc))
                 } else {
                     None
                 }
@@ -1888,7 +1907,10 @@ impl Node<Option<cst::Primary>> {
             cst::Primary::EList(es) => {
                 let list: Vec<_> = es.iter().filter_map(|e| e.to_expr(errs)).collect();
                 if list.len() == es.len() {
-                    Some(ExprOrSpecial::Expr(construct_expr_set(list, src), src))
+                    Some(ExprOrSpecial::Expr(
+                        construct_expr_set(list, self.loc),
+                        self.loc,
+                    ))
                 } else {
                     None
                 }
@@ -1896,8 +1918,8 @@ impl Node<Option<cst::Primary>> {
             cst::Primary::RInits(is) => {
                 let rec: Vec<_> = is.iter().filter_map(|i| i.to_init(errs)).collect();
                 if rec.len() == is.len() {
-                    match construct_expr_record(rec, src) {
-                        Ok(rec) => Some(ExprOrSpecial::Expr(rec, src)),
+                    match construct_expr_record(rec, self.loc) {
+                        Ok(rec) => Some(ExprOrSpecial::Expr(rec, self.loc)),
                         Err(e) => {
                             errs.push(e);
                             None
@@ -1964,13 +1986,13 @@ impl From<ast::SlotId> for cst::Slot {
 impl Node<Option<cst::Name>> {
     /// Build type constraints
     fn to_type_constraint(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
-        let (maybe_name, src) = self.as_inner_pair();
+        let maybe_name = self.as_inner();
         match maybe_name {
             Some(_) => {
                 errs.push(self.to_ast_err(ToASTErrorKind::TypeConstraints));
                 None
             }
-            None => Some(construct_expr_bool(true, src)),
+            None => Some(construct_expr_bool(true, self.loc)),
         }
     }
 
@@ -2112,15 +2134,24 @@ impl Node<Option<cst::Ref>> {
 
 impl Node<Option<cst::Literal>> {
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (maybe_lit, src) = self.as_inner_pair();
+        let maybe_lit = self.as_inner();
         // return right away if there's no data, parse provided error
         let lit = maybe_lit?;
 
         match lit {
-            cst::Literal::True => Some(ExprOrSpecial::Expr(construct_expr_bool(true, src), src)),
-            cst::Literal::False => Some(ExprOrSpecial::Expr(construct_expr_bool(false, src), src)),
+            cst::Literal::True => Some(ExprOrSpecial::Expr(
+                construct_expr_bool(true, self.loc),
+                self.loc,
+            )),
+            cst::Literal::False => Some(ExprOrSpecial::Expr(
+                construct_expr_bool(false, self.loc),
+                self.loc,
+            )),
             cst::Literal::Num(n) => match Integer::try_from(*n) {
-                Ok(i) => Some(ExprOrSpecial::Expr(construct_expr_num(i, src), src)),
+                Ok(i) => Some(ExprOrSpecial::Expr(
+                    construct_expr_num(i, self.loc),
+                    self.loc,
+                )),
                 Err(_) => {
                     errs.push(self.to_ast_err(ToASTErrorKind::IntegerLiteralTooLarge(*n)));
                     None
@@ -2128,7 +2159,7 @@ impl Node<Option<cst::Literal>> {
             },
             cst::Literal::Str(s) => {
                 let maybe_str = s.as_valid_string(errs);
-                maybe_str.map(|s| ExprOrSpecial::StrLit(s, src))
+                maybe_str.map(|s| ExprOrSpecial::StrLit(s, self.loc))
             }
         }
     }
@@ -2136,7 +2167,7 @@ impl Node<Option<cst::Literal>> {
 
 impl Node<Option<cst::RecInit>> {
     fn to_init(&self, errs: &mut ParseErrors) -> Option<(SmolStr, ast::Expr)> {
-        let (maybe_lit, _src) = self.as_inner_pair();
+        let maybe_lit = self.as_inner();
         // return right away if there's no data, parse provided error
         let lit = maybe_lit?;
 
