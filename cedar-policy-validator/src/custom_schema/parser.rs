@@ -382,8 +382,9 @@ fn parse_str<'a>() -> impl Parser<TokenStream<'a>, Output = SmolStr> {
         _ => None,
     })
     .and_then(|(s, span)| {
-        to_unescaped_string(&s)
-            .map_err(|errs| ParseErrors::Message(format!("{} at {span:?}", errs[0]).into()))
+        to_unescaped_string(&s).map_err(|errs| {
+            ParseErrors::Message(format!("{} at {span:?}", errs[0]).into(), Some(span))
+        })
     })
 }
 

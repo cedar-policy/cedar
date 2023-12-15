@@ -8,14 +8,14 @@ use super::lexer::Token;
 /// Parse errors
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum ParseErrors {
-    #[error("Lexer error: {0}")]
-    Lexing(SmolStr),
-    #[error("Expecting: {0}")]
-    Expected(SmolStr),
-    #[error("Unexpected: {0}")]
-    Unexpected(SmolStr),
+    #[error("Lexer error: invalid token at {0:?}")]
+    Lexing(Span),
+    #[error("Expecting: {0} at {1:?}")]
+    Expected(SmolStr, Option<Span>),
+    #[error("Unexpected: {0} at {1:?}")]
+    Unexpected(SmolStr, Option<Span>),
     #[error("Parser error: {0}")]
-    Message(SmolStr),
+    Message(SmolStr, Option<Span>),
     #[error("End of input")]
     Eoi,
     #[error("Other error: {0}")]
@@ -24,40 +24,40 @@ pub enum ParseErrors {
 
 impl<'a> StreamError<(Token, Span), &'a [(Token, Span)]> for ParseErrors {
     fn unexpected_token(token: (Token, Span)) -> Self {
-        Self::Unexpected(SmolStr::new(format!("{token:?}")))
+        Self::Unexpected(token.0.to_string().into(), Some(token.1))
     }
     fn unexpected_range(tokens: &'a [(Token, Span)]) -> Self {
-        Self::Unexpected(SmolStr::new(format!("{tokens:?}")))
+        Self::Unexpected(tokens[0].0.to_string().into(), Some(tokens[0].clone().1))
     }
     fn unexpected_format<T>(msg: T) -> Self
     where
         T: std::fmt::Display,
     {
-        Self::Unexpected(SmolStr::new(msg.to_string()))
+        Self::Unexpected(msg.to_string().into(), None)
     }
     fn expected_token(token: (Token, Span)) -> Self {
-        Self::Expected(SmolStr::new(format!("{token:?}")))
+        Self::Expected(token.0.to_string().into(), Some(token.1))
     }
     fn expected_range(tokens: &'a [(Token, Span)]) -> Self {
-        Self::Expected(SmolStr::new(format!("{tokens:?}")))
+        Self::Expected(tokens[0].0.to_string().into(), Some(tokens[0].clone().1))
     }
     fn expected_format<T>(msg: T) -> Self
     where
         T: std::fmt::Display,
     {
-        Self::Expected(SmolStr::new(msg.to_string()))
+        Self::Expected(msg.to_string().into(), None)
     }
     fn message_token(token: (Token, Span)) -> Self {
-        Self::Message(SmolStr::new(format!("{token:?}")))
+        Self::Message(token.0.to_string().into(), Some(token.1))
     }
     fn message_range(tokens: &'a [(Token, Span)]) -> Self {
-        Self::Message(SmolStr::new(format!("{tokens:?}")))
+        Self::Message(tokens[0].0.to_string().into(), Some(tokens[0].clone().1))
     }
     fn message_format<T>(msg: T) -> Self
     where
         T: std::fmt::Display,
     {
-        Self::Message(SmolStr::new(msg.to_string()))
+        Self::Message(msg.to_string().into(), None)
     }
     fn is_unexpected_end_of_input(&self) -> bool {
         match self {
@@ -70,11 +70,11 @@ impl<'a> StreamError<(Token, Span), &'a [(Token, Span)]> for ParseErrors {
         T: StreamError<(Token, Span), &'a [(Token, Span)]>,
     {
         match self {
-            Self::Lexing(s) => T::message_format(s),
+            Self::Lexing(_) => T::message_format(self),
             Self::Eoi => T::end_of_input(),
-            Self::Expected(s) => T::expected_format(s),
-            Self::Message(s) => T::message_format(s),
-            Self::Unexpected(s) => T::unexpected_format(s),
+            Self::Expected(msg, _) => T::expected_format(msg),
+            Self::Message(msg, _) => T::message_format(msg),
+            Self::Unexpected(msg, _) => T::unexpected_format(msg),
             Self::Other(s) => T::message_format(s),
         }
     }

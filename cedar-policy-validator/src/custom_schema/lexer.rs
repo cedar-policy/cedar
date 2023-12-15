@@ -63,8 +63,6 @@ pub enum Token {
     LAngle,
     #[token(">")]
     RAngle,
-    #[token("\"")]
-    Quote,
     #[token("=")]
     Eq,
     #[token("?")]
@@ -88,7 +86,6 @@ impl Display for Token {
             Self::LBracket => write!(f, "["),
             Self::Namespace => write!(f, "namespace"),
             Self::Question => write!(f, "?"),
-            Self::Quote => write!(f, "\""),
             Self::RAngle => write!(f, ">"),
             Self::RBrace => write!(f, "}}"),
             Self::RBracket => write!(f, "]"),
@@ -132,7 +129,7 @@ pub fn get_tokens(input: &str) -> Result<Vec<(Token, Span)>, ParseErrors> {
         .spanned()
         .map(|(token, span)| match token {
             Ok(t) => Ok((t, span)),
-            Err(_) => Err(ParseErrors::Lexing(SmolStr::new(format!("{span:?}")))),
+            Err(_) => Err(ParseErrors::Lexing(span)),
         })
         .collect()
 }
@@ -141,6 +138,11 @@ pub fn get_tokens(input: &str) -> Result<Vec<(Token, Span)>, ParseErrors> {
 mod test_lexer {
     use super::Token;
     use logos::Logos;
+    #[test]
+    fn errs() {
+        let tokens: Vec<_> = Token::lexer(r#"🤪""#).spanned().collect();
+        assert!(tokens.into_iter().all(|(t, _)| t.is_err()));
+    }
     #[test]
     fn example() {
         let tokens: Vec<_> = Token::lexer(
