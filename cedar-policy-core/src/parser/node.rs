@@ -166,11 +166,6 @@ impl<T: Hash> Hash for Node<T> {
 
 /// Convenience methods on `Node<Option<T>>`
 impl<T> Node<Option<T>> {
-    /// Similar to `.as_inner()`, but also gives access to the `SourceSpan`
-    pub fn as_inner_pair(&self) -> (Option<&T>, miette::SourceSpan) {
-        (self.node.as_ref(), self.loc)
-    }
-
     /// Get the inner data as `&T`, if it exists
     pub fn as_inner(&self) -> Option<&T> {
         self.node.as_ref()
