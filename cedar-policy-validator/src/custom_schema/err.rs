@@ -1,18 +1,19 @@
+use super::lexer::Token;
 use combine::{error::StreamError, ParseError};
+use core::iter::once;
 use logos::Span;
+use miette::{Diagnostic, LabeledSpan, SourceSpan};
 use smol_str::SmolStr;
 use thiserror::Error;
-
-use super::lexer::Token;
 
 /// Parse errors
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum ParseErrors {
-    #[error("Lexer error: invalid token at {0:?}")]
+    #[error("Invalid token")]
     Lexing(Span),
-    #[error("Expecting: {0} at {1:?}")]
+    #[error("Expecting: {0}")]
     Expected(SmolStr, Option<Span>),
-    #[error("Unexpected: {0} at {1:?}")]
+    #[error("Unexpected: {0}")]
     Unexpected(SmolStr, Option<Span>),
     #[error("Parser error: {0}")]
     Message(SmolStr, Option<Span>),
@@ -20,6 +21,28 @@ pub enum ParseErrors {
     Eoi,
     #[error("Other error: {0}")]
     Other(SmolStr),
+}
+
+impl ParseErrors {
+    fn span_to_source_span(span: &Span) -> SourceSpan {
+        SourceSpan::from(span.to_owned())
+    }
+    fn get_source_span(&self) -> Option<SourceSpan> {
+        match self {
+            ParseErrors::Eoi | ParseErrors::Other(_) => None,
+            ParseErrors::Expected(_, span)
+            | ParseErrors::Message(_, span)
+            | ParseErrors::Unexpected(_, span) => span.as_ref().map(Self::span_to_source_span),
+            ParseErrors::Lexing(span) => Some(Self::span_to_source_span(span)),
+        }
+    }
+}
+
+impl Diagnostic for ParseErrors {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        let span = LabeledSpan::underline(self.get_source_span()?);
+        Some(Box::new(once(span)))
+    }
 }
 
 impl<'a> StreamError<(Token, Span), &'a [(Token, Span)]> for ParseErrors {

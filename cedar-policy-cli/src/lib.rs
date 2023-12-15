@@ -620,7 +620,14 @@ fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
     } else {
         let new_schema =
             cedar_policy_validator::custom_schema::parse_schema_fragment_from_str(&input_str)
-                .map_err(|err| miette!("fail to parse custom schema: {err}"))?;
+                .map_err(|err| {
+                    let name = args
+                        .input_file
+                        .as_ref()
+                        .map_or_else(|| "<stdin>".to_owned(), |n| n.to_owned());
+                    Report::new(err).with_source_code(NamedSource::new(name, input_str))
+                })
+                .wrap_err_with(|| format!("failed to parse custom schema"))?;
         serde_json::to_string(&new_schema)
             .map_err(|err| miette!("fail to serialize schema fragment: {err}"))
     }
