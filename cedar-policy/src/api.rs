@@ -1519,7 +1519,7 @@ impl<'a> Diagnostic for ValidationResult<'a> {
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
 #[derive(Debug, Error)]
-#[error("validation error on {}: {}", self.location, self.error_kind())]
+#[error("validation error on {location}: {}", self.error_kind())]
 pub struct ValidationError<'a> {
     location: SourceLocation<'static>,
     error_kind: ValidationErrorKind,
@@ -1633,7 +1633,7 @@ impl<'a> std::fmt::Display for SourceLocation<'a> {
 
 impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation<'static> {
     fn from(loc: cedar_policy_validator::SourceLocation<'a>) -> SourceLocation<'static> {
-        let policy_id: PolicyId = PolicyId(loc.policy_id().clone());
+        let policy_id = PolicyId(loc.policy_id().clone());
         let source_range = loc.source_span();
         Self {
             policy_id,
@@ -1655,7 +1655,7 @@ pub fn confusable_string_checker<'a>(
 }
 
 #[derive(Debug, Error)]
-#[error("validation warning on {}: {}", .location, .kind)]
+#[error("validation warning on {location}: {kind}")]
 /// Warnings found in Cedar policies
 pub struct ValidationWarning<'a> {
     location: SourceLocation<'static>,
