@@ -44,7 +44,7 @@ use cedar_policy_validator::RequestValidationError; // this type is unsuitable f
 pub use cedar_policy_validator::{
     TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
 };
-use itertools::{Either, Itertools};
+use itertools::Itertools;
 use miette::Diagnostic;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
@@ -1396,16 +1396,15 @@ impl<'a> ValidationResult<'a> {
         self.validation_warnings.iter()
     }
 
-    fn first_error_or_warning(
-        &self,
-    ) -> Option<Either<&ValidationError<'a>, &ValidationWarning<'a>>> {
-        match self.validation_errors.first() {
-            Some(first_err) => Some(Either::Left(first_err)),
-            None => match self.validation_warnings.first() {
-                Some(first_warn) => Some(Either::Right(first_warn)),
-                None => None,
-            },
-        }
+    fn first_error_or_warning(&self) -> Option<&dyn Diagnostic> {
+        self.validation_errors
+            .first()
+            .map(|e| e as &dyn Diagnostic)
+            .or_else(|| {
+                self.validation_warnings
+                    .first()
+                    .map(|w| w as &dyn Diagnostic)
+            })
     }
 }
 
@@ -1423,8 +1422,7 @@ impl<'a> From<cedar_policy_validator::ValidationResult<'a>> for ValidationResult
 impl<'a> std::fmt::Display for ValidationResult<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.first_error_or_warning() {
-            Some(Either::Left(err)) => write!(f, "{err}"),
-            Some(Either::Right(warn)) => write!(f, "{warn}"),
+            Some(diagnostic) => write!(f, "{diagnostic}"),
             None => write!(f, "no errors or warnings"),
         }
     }
@@ -1433,31 +1431,25 @@ impl<'a> std::fmt::Display for ValidationResult<'a> {
 impl<'a> std::error::Error for ValidationResult<'a> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         self.first_error_or_warning()
-            .and_then(|first| first.either(std::error::Error::source, std::error::Error::source))
+            .and_then(std::error::Error::source)
     }
 
     #[allow(deprecated)]
     fn description(&self) -> &str {
         self.first_error_or_warning()
-            .map(|first| {
-                first.either(
-                    std::error::Error::description,
-                    std::error::Error::description,
-                )
-            })
-            .unwrap_or("no errors or warnings")
+            .map_or("no errors or warnings", std::error::Error::description)
     }
 
     #[allow(deprecated)]
     fn cause(&self) -> Option<&dyn std::error::Error> {
         self.first_error_or_warning()
-            .and_then(|first| first.either(std::error::Error::cause, std::error::Error::cause))
+            .and_then(std::error::Error::cause)
     }
 }
 
 // Except for `.related()`, and `.severity` everything is forwarded to the first
-// error, if it is present. This is done for the same reason as policy parse
-// errors.
+// error, or to the first warning if there are no errors. This is done for the
+// same reason as policy parse errors.
 impl<'a> Diagnostic for ValidationResult<'a> {
     fn related<'s>(&'s self) -> Option<Box<dyn Iterator<Item = &'s dyn Diagnostic> + 's>> {
         let mut related = self
@@ -1476,41 +1468,34 @@ impl<'a> Diagnostic for ValidationResult<'a> {
     }
 
     fn severity(&self) -> Option<miette::Severity> {
-        match self.first_error_or_warning() {
-            Some(first) => first.either(Diagnostic::severity, Diagnostic::severity),
-            None => Some(miette::Severity::Advice),
-        }
+        self.first_error_or_warning()
+            .map_or(Some(miette::Severity::Advice), Diagnostic::severity)
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        self.first_error_or_warning()
-            .and_then(|first| first.either(Diagnostic::labels, Diagnostic::labels))
+        self.first_error_or_warning().and_then(Diagnostic::labels)
     }
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
         self.first_error_or_warning()
-            .and_then(|first| first.either(Diagnostic::source_code, Diagnostic::source_code))
+            .and_then(Diagnostic::source_code)
     }
 
     fn code<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
-        self.first_error_or_warning()
-            .and_then(|first| first.either(Diagnostic::code, Diagnostic::code))
+        self.first_error_or_warning().and_then(Diagnostic::code)
     }
 
     fn url<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
-        self.first_error_or_warning()
-            .and_then(|first| first.either(Diagnostic::url, Diagnostic::url))
+        self.first_error_or_warning().and_then(Diagnostic::url)
     }
 
     fn help<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
-        self.first_error_or_warning()
-            .and_then(|first| first.either(Diagnostic::help, Diagnostic::help))
+        self.first_error_or_warning().and_then(Diagnostic::help)
     }
 
     fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
-        self.first_error_or_warning().and_then(|first| {
-            first.either(Diagnostic::diagnostic_source, Diagnostic::diagnostic_source)
-        })
+        self.first_error_or_warning()
+            .and_then(Diagnostic::diagnostic_source)
     }
 }
 
