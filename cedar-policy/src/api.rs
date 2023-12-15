@@ -1387,8 +1387,7 @@ impl<'a> ValidationResult<'a> {
     }
 
     /// Get an iterator over the errors found by the validator.
-    pub fn validation_errors<'b>(&self) -> impl Iterator<Item = &ValidationError<'b>>
-    {
+    pub fn validation_errors<'b>(&self) -> impl Iterator<Item = &ValidationError<'b>> {
         self.validation_errors.iter()
     }
 
