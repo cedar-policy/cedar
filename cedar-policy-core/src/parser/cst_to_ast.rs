@@ -80,9 +80,10 @@ impl Node<Option<cst::Policies>> {
     pub fn with_generated_policyids(
         &self,
     ) -> Option<impl Iterator<Item = (ast::PolicyID, &Node<Option<cst::Policy>>)>> {
-        let maybe_policies = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let policies = maybe_policies?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let policies = self.as_inner()?;
 
         Some(
             policies
@@ -216,9 +217,10 @@ impl Node<Option<cst::Policy>> {
         id: ast::PolicyID,
         errs: &mut ParseErrors,
     ) -> Option<ast::Template> {
-        let maybe_policy = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let policy = maybe_policy?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let policy = self.as_inner()?;
 
         let mut failure = false;
 
@@ -344,9 +346,10 @@ impl Node<Option<cst::Annotation>> {
     /// Get the (k, v) pair for the annotation. Critically, this checks validity
     /// for the strings and does unescaping
     pub fn to_kv_pair(&self, errs: &mut ParseErrors) -> Option<(ast::Id, SmolStr)> {
-        let maybe_anno = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let anno = maybe_anno?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let anno = self.as_inner()?;
 
         let maybe_key = anno.key.to_valid_ident(errs);
         let maybe_value = anno.value.as_valid_string(errs);
@@ -368,9 +371,10 @@ impl Node<Option<cst::Annotation>> {
 impl Node<Option<cst::Ident>> {
     /// Convert `cst::Ident` to `ast::Id`. Fails for reserved or invalid identifiers
     pub fn to_valid_ident(&self, errs: &mut ParseErrors) -> Option<ast::Id> {
-        let maybe_ident = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let ident = maybe_ident?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let ident = self.as_inner()?;
 
         match ident {
             cst::Ident::If
@@ -395,9 +399,10 @@ impl Node<Option<cst::Ident>> {
 
     /// effect
     pub(crate) fn to_effect(&self, errs: &mut ParseErrors) -> Option<ast::Effect> {
-        let maybe_effect = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let effect = maybe_effect?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let effect = self.as_inner()?;
 
         match effect {
             cst::Ident::Permit => Some(ast::Effect::Permit),
@@ -409,9 +414,10 @@ impl Node<Option<cst::Ident>> {
         }
     }
     pub(crate) fn to_cond_is_when(&self, errs: &mut ParseErrors) -> Option<bool> {
-        let maybe_cond = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let cond = maybe_cond?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let cond = self.as_inner()?;
 
         match cond {
             cst::Ident::When => Some(true),
@@ -424,11 +430,12 @@ impl Node<Option<cst::Ident>> {
     }
 
     fn to_var(&self, errs: &mut ParseErrors) -> Option<ast::Var> {
-        let maybe_ident = self.as_inner();
-        if maybe_ident.is_none() && errs.is_empty() {
-            errs.push(self.to_ast_err(ToASTErrorKind::MissingNodeData));
-        }
-        match maybe_ident? {
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let ident = self.as_inner()?;
+
+        match ident {
             cst::Ident::Principal => Some(ast::Var::Principal),
             cst::Ident::Action => Some(ast::Var::Action),
             cst::Ident::Resource => Some(ast::Var::Resource),
@@ -528,9 +535,10 @@ impl Node<Option<cst::VariableDef>> {
         expected: ast::Var,
         errs: &mut ParseErrors,
     ) -> Option<PrincipalOrResource> {
-        let maybe_vardef = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let vardef = maybe_vardef?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let vardef = self.as_inner()?;
 
         let var = vardef.variable.to_var(errs)?;
 
@@ -589,8 +597,10 @@ impl Node<Option<cst::VariableDef>> {
     }
 
     fn to_action_constraint(&self, errs: &mut ParseErrors) -> Option<ast::ActionConstraint> {
-        let maybe_vardef = self.as_inner();
-        let vardef = maybe_vardef?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let vardef = self.as_inner()?;
 
         match vardef.variable.to_var(errs) {
             Some(ast::Var::Action) => Some(()),
@@ -703,9 +713,10 @@ impl Node<Option<cst::Cond>> {
     /// clause. (The returned `expr` is already adjusted for this, the `bool` is
     /// for information only.)
     fn to_expr(&self, errs: &mut ParseErrors) -> Option<(ast::Expr, bool)> {
-        let maybe_cond = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let cond = maybe_cond?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let cond = self.as_inner()?;
 
         let maybe_is_when = cond.cond.to_cond_is_when(errs)?;
 
@@ -739,9 +750,10 @@ impl Node<Option<cst::Cond>> {
 
 impl Node<Option<cst::Str>> {
     pub(crate) fn as_valid_string(&self, errs: &mut ParseErrors) -> Option<&SmolStr> {
-        let id = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let id = id?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let id = self.as_inner()?;
 
         match id {
             cst::Str::String(s) => Some(s),
@@ -937,9 +949,12 @@ impl Node<Option<cst::Expr>> {
     }
 
     fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
-        let maybe_expr = self.as_inner();
-        let expr = &*maybe_expr?.expr;
-        match expr {
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let expr = self.as_inner()?;
+
+        match &*expr.expr {
             cst::ExprData::Or(o) => o.to_ref_or_refs::<T>(errs, var),
             cst::ExprData::If(_, _, _) => {
                 errs.push(self.to_ast_err(ToASTErrorKind::wrong_node(
@@ -957,11 +972,12 @@ impl Node<Option<cst::Expr>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     pub(crate) fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let maybe_expr = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let expr = &*maybe_expr?.expr;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let expr = self.as_inner()?;
 
-        match expr {
+        match &*expr.expr {
             cst::ExprData::Or(or) => or.to_expr_or_special(errs),
             cst::ExprData::If(i, t, e) => {
                 let maybe_guard = i.to_expr(errs);
@@ -1103,9 +1119,10 @@ impl RefKind for OneOrMultipleRefs {
 
 impl Node<Option<cst::Or>> {
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let maybe_or = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let or = maybe_or?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let or = self.as_inner()?;
 
         let maybe_first = or.initial.to_expr_or_special(errs);
         let mut more = or.extended.iter().filter_map(|i| i.to_expr(errs));
@@ -1127,8 +1144,11 @@ impl Node<Option<cst::Or>> {
     }
 
     fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
-        let maybe_or = self.as_inner();
-        let or = maybe_or?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let or = self.as_inner()?;
+
         match or.extended.len() {
             0 => or.initial.to_ref_or_refs::<T>(errs, var),
             _n => {
@@ -1145,8 +1165,11 @@ impl Node<Option<cst::Or>> {
 
 impl Node<Option<cst::And>> {
     fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
-        let maybe_and = self.as_inner();
-        let and = maybe_and?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let and = self.as_inner()?;
+
         match and.extended.len() {
             0 => and.initial.to_ref_or_refs::<T>(errs, var),
             _n => {
@@ -1164,9 +1187,10 @@ impl Node<Option<cst::And>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let maybe_and = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let and = maybe_and?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let and = self.as_inner()?;
 
         let maybe_first = and.initial.to_expr_or_special(errs);
         let mut more = and.extended.iter().filter_map(|i| i.to_expr(errs));
@@ -1190,8 +1214,12 @@ impl Node<Option<cst::And>> {
 
 impl Node<Option<cst::Relation>> {
     fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
-        let maybe_rel = self.as_inner();
-        match maybe_rel? {
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let rel = self.as_inner()?;
+
+        match rel {
             cst::Relation::Common { initial, extended } => match extended.len() {
                 0 => initial.to_ref_or_refs::<T>(errs, var),
                 _n => {
@@ -1234,9 +1262,10 @@ impl Node<Option<cst::Relation>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let maybe_rel = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let rel = maybe_rel?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let rel = self.as_inner()?;
 
         match rel {
             cst::Relation::Common { initial, extended } => {
@@ -1323,8 +1352,11 @@ impl Node<Option<cst::Relation>> {
 
 impl Node<Option<cst::Add>> {
     fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
-        let maybe_add = self.as_inner();
-        let add = maybe_add?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let add = self.as_inner()?;
+
         match add.extended.len() {
             0 => add.initial.to_ref_or_refs::<T>(errs, var),
             _n => {
@@ -1338,9 +1370,10 @@ impl Node<Option<cst::Add>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let maybe_add = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let add = maybe_add?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let add = self.as_inner()?;
 
         let maybe_first = add.initial.to_expr_or_special(errs);
         // collect() performs all the conversions, generating any errors
@@ -1362,8 +1395,11 @@ impl Node<Option<cst::Add>> {
 
 impl Node<Option<cst::Mult>> {
     fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
-        let maybe_mult = self.as_inner();
-        let mult = maybe_mult?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let mult = self.as_inner()?;
+
         match mult.extended.len() {
             0 => mult.initial.to_ref_or_refs::<T>(errs, var),
             _n => {
@@ -1381,9 +1417,10 @@ impl Node<Option<cst::Mult>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let maybe_mult = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let mult = maybe_mult?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let mult = self.as_inner()?;
 
         let maybe_first = mult.initial.to_expr_or_special(errs);
         // collect() preforms all the conversions, generating any errors
@@ -1464,8 +1501,11 @@ impl Node<Option<cst::Mult>> {
 
 impl Node<Option<cst::Unary>> {
     fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
-        let maybe_unary = self.as_inner();
-        let unary = maybe_unary?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let unary = self.as_inner()?;
+
         match &unary.op {
             Some(op) => {
                 errs.push(self.to_ast_err(ToASTErrorKind::wrong_node(
@@ -1483,9 +1523,10 @@ impl Node<Option<cst::Unary>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let maybe_unary = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let unary = maybe_unary?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let unary = self.as_inner()?;
 
         // A thunk to delay the evaluation of `item`
         let mut maybe_item = || unary.item.to_expr_or_special(errs);
@@ -1578,8 +1619,11 @@ impl Node<Option<cst::Member>> {
     }
 
     fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
-        let maybe_mem = self.as_inner();
-        let mem = maybe_mem?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let mem = self.as_inner()?;
+
         match mem.access.len() {
             0 => mem.item.to_ref_or_refs::<T>(errs, var),
             _n => {
@@ -1590,9 +1634,10 @@ impl Node<Option<cst::Member>> {
     }
 
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let maybe_mem = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let mem = maybe_mem?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let mem = self.as_inner()?;
 
         let maybe_prim = mem.item.to_expr_or_special(errs);
 
@@ -1833,9 +1878,10 @@ impl Node<Option<cst::Member>> {
 
 impl Node<Option<cst::MemAccess>> {
     fn to_access(&self, errs: &mut ParseErrors) -> Option<AstAccessor> {
-        let maybe_acc = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let acc = maybe_acc?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let acc = self.as_inner()?;
 
         match acc {
             cst::MemAccess::Field(i) => {
@@ -1860,8 +1906,11 @@ impl Node<Option<cst::MemAccess>> {
 
 impl Node<Option<cst::Primary>> {
     fn to_ref_or_refs<T: RefKind>(&self, errs: &mut ParseErrors, var: ast::Var) -> Option<T> {
-        let maybe_prim = self.as_inner();
-        let prim = maybe_prim?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let prim = self.as_inner()?;
+
         match prim {
             cst::Primary::Slot(s) => {
                 // Call `create_slot` first so that we fail immediately if the
@@ -1928,9 +1977,10 @@ impl Node<Option<cst::Primary>> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let maybe_prim = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let prim = maybe_prim?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let prim = self.as_inner()?;
 
         match prim {
             cst::Primary::Literal(lit) => lit.to_expr_or_special(errs),
@@ -1992,9 +2042,10 @@ impl Node<Option<cst::Primary>> {
 
     /// convert `cst::Primary` representing a string literal to a `SmolStr`.
     pub fn to_string_literal(&self, errs: &mut ParseErrors) -> Option<SmolStr> {
-        let maybe_prim = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let prim = maybe_prim?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let prim = self.as_inner()?;
 
         match prim {
             cst::Primary::Literal(lit) => lit.to_expr_or_special(errs)?.into_string_literal(errs),
@@ -2043,8 +2094,7 @@ impl From<ast::SlotId> for cst::Slot {
 impl Node<Option<cst::Name>> {
     /// Build type constraints
     fn to_type_constraint(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
-        let maybe_name = self.as_inner();
-        match maybe_name {
+        match self.as_inner() {
             Some(_) => {
                 errs.push(self.to_ast_err(ToASTErrorKind::TypeConstraints));
                 None
@@ -2054,9 +2104,10 @@ impl Node<Option<cst::Name>> {
     }
 
     pub(crate) fn to_name(&self, errs: &mut ParseErrors) -> Option<ast::Name> {
-        let maybe_name = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let name = maybe_name?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let name = self.as_inner()?;
 
         let path: Vec<_> = name
             .path
@@ -2072,9 +2123,10 @@ impl Node<Option<cst::Name>> {
         }
     }
     fn to_ident(&self, errs: &mut ParseErrors) -> Option<&cst::Ident> {
-        let maybe_name = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let name = maybe_name?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let name = self.as_inner()?;
 
         let path: Vec<_> = name
             .path
@@ -2149,9 +2201,10 @@ impl ast::Name {
 impl Node<Option<cst::Ref>> {
     /// convert `cst::Ref` to `ast::EntityUID`
     pub fn to_ref(&self, errs: &mut ParseErrors) -> Option<ast::EntityUID> {
-        let maybe_ref = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let refr = maybe_ref?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let refr = self.as_inner()?;
 
         match refr {
             cst::Ref::Uid { path, eid } => {
@@ -2191,9 +2244,10 @@ impl Node<Option<cst::Ref>> {
 
 impl Node<Option<cst::Literal>> {
     fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let maybe_lit = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let lit = maybe_lit?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let lit = self.as_inner()?;
 
         match lit {
             cst::Literal::True => Some(ExprOrSpecial::Expr {
@@ -2224,9 +2278,10 @@ impl Node<Option<cst::Literal>> {
 
 impl Node<Option<cst::RecInit>> {
     fn to_init(&self, errs: &mut ParseErrors) -> Option<(SmolStr, ast::Expr)> {
-        let maybe_lit = self.as_inner();
-        // return right away if there's no data, parse provided error
-        let lit = maybe_lit?;
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let lit = self.as_inner()?;
 
         let maybe_attr = lit.0.to_expr_or_special(errs)?.into_valid_attr(errs);
         let maybe_value = lit.1.to_expr(errs);
