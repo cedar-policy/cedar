@@ -2612,6 +2612,22 @@ impl Policy {
         }
     }
 
+    /// Get the values this `Template` is linked to, expressed as a map from `SlotId` to `EntityUid`.
+    /// If this is a static policy, this will return `None`.
+    pub fn template_links(&self) -> Option<HashMap<SlotId, EntityUid>> {
+        if self.is_static() {
+            None
+        } else {
+            let wrapped_vals: HashMap<SlotId, EntityUid> = self
+                .ast
+                .env()
+                .into_iter()
+                .map(|(key, value)| (SlotId(*key), EntityUid(value.clone())))
+                .collect();
+            Some(wrapped_vals)
+        }
+    }
+
     /// Get the `Effect` (`Permit` or `Forbid`) for this instance
     pub fn effect(&self) -> Effect {
         self.ast.effect()

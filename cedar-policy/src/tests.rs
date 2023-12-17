@@ -495,6 +495,41 @@ mod policy_set_tests {
     use cool_asserts::assert_matches;
 
     #[test]
+    fn template_link_lookup() {
+        let mut pset = PolicySet::new();
+        let p = Policy::parse(Some("p".into()), "permit(principal,action,resource);")
+            .expect("Failed to parse");
+        pset.add(p).expect("Failed to add");
+        let template = Template::parse(
+            Some("t".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Failed to parse");
+        pset.add_template(template).expect("Add failed");
+
+        let env: HashMap<SlotId, EntityUid> =
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
+        pset.link(
+            PolicyId::from_str("t").unwrap(),
+            PolicyId::from_str("id").unwrap(),
+            env.clone(),
+        )
+        .expect("Failed to link");
+
+        let p0 = pset.policy(&PolicyId::from_str("p").unwrap()).unwrap();
+        let tp = pset.policy(&PolicyId::from_str("id").unwrap()).unwrap();
+
+        let env0 = p0.template_links();
+        assert_eq!(env0, None, "A normal policy should not have template links");
+        let env1 = tp.template_links();
+        assert_eq!(
+            env1,
+            Some(env),
+            "A template-linked policy's links should be stored properly"
+        );
+    }
+
+    #[test]
     fn link_conflicts() {
         let mut pset = PolicySet::new();
         let p1 = Policy::parse(Some("id".into()), "permit(principal,action,resource);")
