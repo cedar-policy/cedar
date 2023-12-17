@@ -519,7 +519,11 @@ mod policy_set_tests {
         let p0 = pset.policy(&PolicyId::from_str("p").unwrap()).unwrap();
         let tp = pset.policy(&PolicyId::from_str("id").unwrap()).unwrap();
 
-        assert_eq!(p0.template_links(), None, "A normal policy should not have template links");
+        assert_eq!(
+            p0.template_links(),
+            None,
+            "A normal policy should not have template links"
+        );
         assert_eq!(
             tp.template_links(),
             Some(env),
