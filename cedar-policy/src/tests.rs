@@ -519,11 +519,9 @@ mod policy_set_tests {
         let p0 = pset.policy(&PolicyId::from_str("p").unwrap()).unwrap();
         let tp = pset.policy(&PolicyId::from_str("id").unwrap()).unwrap();
 
-        let env0 = p0.template_links();
-        assert_eq!(env0, None, "A normal policy should not have template links");
-        let env1 = tp.template_links();
+        assert_eq!(p0.template_links(), None, "A normal policy should not have template links");
         assert_eq!(
-            env1,
+            tp.template_links(),
             Some(env),
             "A template-linked policy's links should be stored properly"
         );
