@@ -26,7 +26,6 @@ jobs:
         toolchain:
           - stable
     steps:
-      - uses: actions/checkout@v3
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - name: Install Lean
         shell: bash
@@ -39,8 +38,10 @@ jobs:
           repository: cedar-policy/cedar-spec
           ref: ${{ needs.get-branch-name.outputs.branch_name }}
           path: ./cedar-spec
-      - name: move cedar
-        run: mv cedar cedar-spec/cedar
+      - name: checkout cedar
+        uses: actions/checkout@v3
+        with:
+          path: cedar-spec/cedar
       - name: build cedar-lean
         working-directory: cedar-spec/cedar-lean
         shell: bash
@@ -61,7 +62,6 @@ jobs:
         toolchain:
           - stable
     steps:
-      - uses: actions/checkout@v3
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - name: Checkout cedar-java
         uses: actions/checkout@v3
@@ -69,8 +69,10 @@ jobs:
           repository: cedar-policy/cedar-java
           ref: ${{ needs.get-branch-name.outputs.branch_name }}
           path: ./cedar-java
-      - name: move cedar
-        run: mv cedar cedar-java/cedar
+      - name: checkout cedar
+        uses: actions/checkout@v3
+        with:
+          path: cedar-java/cedar
       - name: configure cedar-java
         working-directory: cedar-java/CedarJava
         shell: bash
@@ -92,7 +94,6 @@ jobs:
         toolchain:
           - stable
     steps:
-      - uses: actions/checkout@v3
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - name: Checkout cedar-examples
         uses: actions/checkout@v3
@@ -100,8 +101,10 @@ jobs:
           repository: cedar-policy/cedar-examples
           ref: ${{ needs.get-branch-name.outputs.branch_name }}
           path: ./cedar-examples
-      - name: move cedar
-        run: mv cedar cedar-examples/cedar
+      - name: checkout cedar
+        uses: actions/checkout@v3
+        with:
+          path: cedar-examples/cedar
       - name: build rust-hello-world
         working-directory: cedar-examples/cedar-rust-hello-world
         run: |
