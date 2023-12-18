@@ -522,3 +522,105 @@ impl Display for AttributeAccess {
         }
     }
 }
+
+// These tests all assume that the typecheck found an error while checking the
+// outermost `GetAttr` in the expressions. If the attribute didn't exist at all,
+// only the message included in the final error. If it was an optional attribute
+// without a guard, then the help is also printed. See
+#[cfg(test)]
+mod test_attr_access {
+    use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprBuilder, Var};
+
+    use crate::{
+        types::{OpenTag, RequestEnv, Type},
+        AttributeAccess,
+    };
+
+    #[track_caller]
+    fn assert_message_and_help(
+        attr_access: &Expr<Option<Type>>,
+        msg: impl AsRef<str>,
+        help: impl AsRef<str>,
+    ) {
+        let env = RequestEnv::DeclaredAction {
+            principal: &EntityType::Specified("Principal".parse().unwrap()),
+            action: &EntityUID::with_eid_and_type(crate::schema::ACTION_ENTITY_TYPE, "action")
+                .unwrap(),
+            resource: &EntityType::Specified("Resource".parse().unwrap()),
+            context: &Type::record_with_attributes(None, OpenTag::ClosedAttributes),
+            principal_slot: None,
+            resource_slot: None,
+        };
+
+        let access = AttributeAccess::from_expr(&env, attr_access);
+        assert_eq!(
+            access.to_string().as_str(),
+            msg.as_ref(),
+            "Error message did not match expected"
+        );
+        assert_eq!(
+            access.suggested_has_guard().as_str(),
+            help.as_ref(),
+            "Suggested has guard did not match expected"
+        );
+    }
+
+    #[test]
+    fn context_access() {
+        // We have to build the Expr manually because the `EntityLUB` case
+        // requires type annotations, even though the other cases ignore them.
+        let e = ExprBuilder::new().get_attr(ExprBuilder::new().var(Var::Context), "foo".into());
+        assert_message_and_help(
+            &e,
+            "`foo` in context for Action::\"action\"",
+            "context has foo",
+        );
+        let e = ExprBuilder::new().get_attr(e, "bar".into());
+        assert_message_and_help(
+            &e,
+            "`foo.bar` in context for Action::\"action\"",
+            "context.foo has bar",
+        );
+        let e = ExprBuilder::new().get_attr(e, "baz".into());
+        assert_message_and_help(
+            &e,
+            "`foo.bar.baz` in context for Action::\"action\"",
+            "context.foo.bar has baz",
+        );
+    }
+
+    #[test]
+    fn entity_access() {
+        let e = ExprBuilder::new().get_attr(
+            ExprBuilder::with_data(Some(Type::named_entity_reference_from_str("User")))
+                .val("User::\"alice\"".parse::<EntityUID>().unwrap()),
+            "foo".into(),
+        );
+        assert_message_and_help(&e, "`foo` for entity type User", "e has foo");
+        let e = ExprBuilder::new().get_attr(e, "bar".into());
+        assert_message_and_help(&e, "`foo.bar` for entity type User", "e.foo has bar");
+        let e = ExprBuilder::new().get_attr(e, "baz".into());
+        assert_message_and_help(
+            &e,
+            "`foo.bar.baz` for entity type User",
+            "e.foo.bar has baz",
+        );
+    }
+
+    #[test]
+    fn other_access() {
+        let e = ExprBuilder::new().get_attr(
+            ExprBuilder::new().ite(
+                ExprBuilder::new().val(true),
+                ExprBuilder::new().record([]).unwrap(),
+                ExprBuilder::new().record([]).unwrap(),
+            ),
+            "foo".into(),
+        );
+        assert_message_and_help(&e, "`foo`", "e has foo");
+        let e = ExprBuilder::new().get_attr(e, "bar".into());
+        assert_message_and_help(&e, "`foo.bar`", "e.foo has bar");
+        let e = ExprBuilder::new().get_attr(e, "baz".into());
+        assert_message_and_help(&e, "`foo.bar.baz`", "e.foo.bar has baz");
+    }
+}
