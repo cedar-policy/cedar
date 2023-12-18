@@ -1387,12 +1387,12 @@ impl<'a> ValidationResult<'a> {
     }
 
     /// Get an iterator over the errors found by the validator.
-    pub fn validation_errors<'b>(&self) -> impl Iterator<Item = &ValidationError<'b>> {
+    pub fn validation_errors(&self) -> impl Iterator<Item = &ValidationError<'static>> {
         self.validation_errors.iter()
     }
 
     /// Get an iterator over the warnings found by the validator.
-    pub fn validation_warnings<'b>(&self) -> impl Iterator<Item = &ValidationWarning<'b>> {
+    pub fn validation_warnings(&self) -> impl Iterator<Item = &ValidationWarning<'static>> {
         self.validation_warnings.iter()
     }
 
@@ -1632,12 +1632,9 @@ impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation<'st
 /// checks are also provided through [`Validator::validate`] which provides more
 /// comprehensive error detection, but this function can be used to check for
 /// confusable strings without defining a schema.
-pub fn confusable_string_checker<'a, 'b>(
+pub fn confusable_string_checker<'a>(
     templates: impl Iterator<Item = &'a Template> + 'a,
-) -> impl Iterator<Item = ValidationWarning<'b>> + 'a
-where
-    'b: 'a,
-{
+) -> impl Iterator<Item = ValidationWarning<'static>> + 'a {
     cedar_policy_validator::confusable_string_checks(templates.map(|t| &t.ast))
         .map(std::convert::Into::into)
 }
