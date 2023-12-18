@@ -523,10 +523,10 @@ impl Display for AttributeAccess {
     }
 }
 
-// These tests all assume that the typecheck found an error while checking the
+// These tests all assume that the typechecker found an error while checking the
 // outermost `GetAttr` in the expressions. If the attribute didn't exist at all,
-// only the message included in the final error. If it was an optional attribute
-// without a guard, then the help is also printed. See
+// only the primary message would included in the final error. If it was an
+// optional attribute without a guard, then the help message is also printed.
 #[cfg(test)]
 mod test_attr_access {
     use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprBuilder, Var};
