@@ -11,6 +11,7 @@ use cedar_policy_core::{ast::StaticPolicy, parser::parse_policy};
 use crate::typecheck::test_utils::assert_expected_type_errors;
 use crate::typecheck::Typechecker;
 use crate::types::{EntityLUB, Type};
+use crate::UnexpectedTypeHelp;
 use crate::{AttributeAccess, NamespaceDefinition, TypeError, ValidationMode, ValidatorSchema};
 
 use super::test_utils::empty_schema_file;
@@ -362,6 +363,7 @@ mod fails_empty_schema {
                 Expr::val("a"),
                 Type::primitive_long(),
                 Type::primitive_string(),
+                None,
             )],
         );
         assert_typecheck_fails_empty_schema(
@@ -374,6 +376,7 @@ mod fails_empty_schema {
                 Expr::val(1),
                 Type::any_set(),
                 Type::primitive_long(),
+                None,
             )],
         );
         assert_typecheck_fails_empty_schema(
@@ -386,6 +389,7 @@ mod fails_empty_schema {
                 Expr::val(1),
                 Type::any_set(),
                 Type::primitive_long(),
+                Some(UnexpectedTypeHelp::TryUsingSingleContains),
             )],
         );
     }
@@ -402,6 +406,7 @@ mod fails_empty_schema {
                 Expr::from_str("principal.foo + 1").unwrap(),
                 Type::primitive_boolean(),
                 Type::primitive_long(),
+                None,
             )],
         )
     }
@@ -610,6 +615,7 @@ mod fail_partial_schema {
                 Expr::get_attr(Expr::var(Var::Principal), "name".into()),
                 Type::primitive_long(),
                 Type::primitive_string(),
+                None,
             )],
         );
     }

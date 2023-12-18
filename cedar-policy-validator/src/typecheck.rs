@@ -40,8 +40,10 @@ use crate::{
     extensions::all_available_extension_schemas,
     fuzzy_match::fuzzy_search,
     schema::{is_action_entity_type, ValidatorSchema},
-    types::{AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, RequestEnv, Type},
-    AttributeAccess, ValidationMode,
+    types::{
+        AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, Primitive, RequestEnv, Type,
+    },
+    AttributeAccess, UnexpectedTypeHelp, ValidationMode,
 };
 
 use super::type_error::TypeError;
@@ -312,6 +314,7 @@ impl<'a> Typechecker<'a> {
                 expr,
                 Type::primitive_boolean(),
                 &mut type_errors,
+                |_| None,
             );
 
             let is_false = ty.contains_type(&Type::singleton_boolean(false));
@@ -374,6 +377,7 @@ impl<'a> Typechecker<'a> {
                         &condition_expr,
                         Type::primitive_boolean(),
                         &mut type_errors,
+                        |_| None,
                     );
 
                     let is_false = ty.contains_type(&Type::singleton_boolean(false));
@@ -664,6 +668,7 @@ impl<'a> Typechecker<'a> {
                     test_expr,
                     Type::primitive_boolean(),
                     type_errors,
+                    |_| None,
                 );
                 ans_test.then_typecheck(|typ_test, eff_test| {
                     // If the guard has type `true` or `false`, we short circuit,
@@ -759,6 +764,7 @@ impl<'a> Typechecker<'a> {
                     left,
                     Type::primitive_boolean(),
                     type_errors,
+                    |_| None,
                 );
                 ans_left.then_typecheck(|typ_left, eff_left| {
                     match typ_left.data() {
@@ -787,6 +793,7 @@ impl<'a> Typechecker<'a> {
                                 right,
                                 Type::primitive_boolean(),
                                 type_errors,
+                                |_| None,
                             );
                             ans_right.then_typecheck(|typ_right, eff_right| {
                                 match (typ_left.data(), typ_right.data()) {
@@ -855,6 +862,7 @@ impl<'a> Typechecker<'a> {
                     left,
                     Type::primitive_boolean(),
                     type_errors,
+                    |_| None,
                 );
                 ans_left.then_typecheck(|ty_expr_left, eff_left| match ty_expr_left.data() {
                     // Contrary to `&&` where short circuiting did not permit
@@ -876,6 +884,7 @@ impl<'a> Typechecker<'a> {
                             right,
                             Type::primitive_boolean(),
                             type_errors,
+                            |_| None,
                         );
                         ans_right.then_typecheck(|ty_expr_right, eff_right| {
                             match (ty_expr_left.data(), ty_expr_right.data()) {
@@ -960,6 +969,7 @@ impl<'a> Typechecker<'a> {
                     expr,
                     &[Type::any_entity_reference(), Type::any_record()],
                     type_errors,
+                    |_| None,
                 );
 
                 actual.then_typecheck(|typ_expr_actual, _| match typ_expr_actual.data() {
@@ -1033,6 +1043,13 @@ impl<'a> Typechecker<'a> {
                     expr,
                     &[Type::any_entity_reference(), Type::any_record()],
                     type_errors,
+                    |actual| match actual {
+                        Type::Set { .. } => Some(UnexpectedTypeHelp::TryUsingContains),
+                        Type::Primitive {
+                            primitive_type: Primitive::String,
+                        } => Some(UnexpectedTypeHelp::TryUsingLike),
+                        _ => None,
+                    },
                 );
                 actual.then_typecheck(|typ_expr_actual, _| match typ_expr_actual.data() {
                     Some(typ_actual) => {
@@ -1129,6 +1146,14 @@ impl<'a> Typechecker<'a> {
                     expr,
                     Type::primitive_string(),
                     type_errors,
+                    |actual| match actual {
+                        Type::EntityOrRecord(
+                            EntityRecordKind::AnyEntity
+                            | EntityRecordKind::Entity(_)
+                            | EntityRecordKind::ActionEntity { .. },
+                        ) => Some(UnexpectedTypeHelp::TryUsingIs),
+                        _ => None,
+                    },
                 );
                 actual.then_typecheck(|actual_expr_ty, _| {
                     TypecheckAnswer::success(
@@ -1149,6 +1174,7 @@ impl<'a> Typechecker<'a> {
                     expr,
                     Type::any_entity_reference(),
                     type_errors,
+                    |_| Some(UnexpectedTypeHelp::TypeTestNotSupported),
                 )
                 .then_typecheck(|expr_ty, _| {
                     match expr_ty.data() {
@@ -1368,6 +1394,7 @@ impl<'a> Typechecker<'a> {
                     arg1,
                     Type::primitive_long(),
                     type_errors,
+                    |_| None,
                 );
                 ans_arg1.then_typecheck(|expr_ty_arg1, _| {
                     let ans_arg2 = self.expect_type(
@@ -1376,6 +1403,7 @@ impl<'a> Typechecker<'a> {
                         arg2,
                         Type::primitive_long(),
                         type_errors,
+                        |_| None,
                     );
                     ans_arg2.then_typecheck(|expr_ty_arg2, _| {
                         TypecheckAnswer::success(
@@ -1388,12 +1416,23 @@ impl<'a> Typechecker<'a> {
             }
 
             BinaryOp::Add | BinaryOp::Sub => {
+                let help_builder = |actual: &Type| match (op, actual) {
+                    (
+                        BinaryOp::Add,
+                        Type::Primitive {
+                            primitive_type: Primitive::String,
+                        },
+                    ) => Some(UnexpectedTypeHelp::ConcatenationNotSupported),
+                    (_, Type::Set { .. }) => Some(UnexpectedTypeHelp::SetOperationsNotSupported),
+                    _ => None,
+                };
                 let ans_arg1 = self.expect_type(
                     request_env,
                     prior_eff,
                     arg1,
                     Type::primitive_long(),
                     type_errors,
+                    help_builder,
                 );
                 ans_arg1.then_typecheck(|expr_ty_arg1, _| {
                     let ans_arg2 = self.expect_type(
@@ -1402,6 +1441,7 @@ impl<'a> Typechecker<'a> {
                         arg2,
                         Type::primitive_long(),
                         type_errors,
+                        help_builder,
                     );
                     ans_arg2.then_typecheck(|expr_ty_arg2, _| {
                         TypecheckAnswer::success(
@@ -1419,74 +1459,117 @@ impl<'a> Typechecker<'a> {
 
             BinaryOp::Contains => {
                 // The first argument must be a set.
-                self.expect_type(request_env, prior_eff, arg1, Type::any_set(), type_errors)
-                    .then_typecheck(|expr_ty_arg1, _| {
-                        // The second argument may be any type. We do not care if the element type cannot be in the set.
-                        self.typecheck(request_env, prior_eff, arg2, type_errors)
-                            .then_typecheck(|expr_ty_arg2, _| {
-                                if self.mode.is_strict() {
-                                    let annotated_expr =
-                                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                            .with_same_source_span(bin_expr)
-                                            .binary_app(
-                                                *op,
-                                                expr_ty_arg1.clone(),
-                                                expr_ty_arg2.clone(),
-                                            );
-                                    self.enforce_strict_equality(
-                                        bin_expr,
-                                        annotated_expr,
-                                        &match expr_ty_arg1.data() {
-                                            Some(Type::Set {
-                                                element_type: Some(ty),
-                                            }) => Some(*ty.clone()),
-                                            _ => None,
-                                        },
-                                        expr_ty_arg2.data(),
-                                        type_errors,
-                                    )
-                                } else {
-                                    TypecheckAnswer::success(
-                                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                            .with_same_source_span(bin_expr)
-                                            .binary_app(*op, expr_ty_arg1, expr_ty_arg2),
-                                    )
-                                }
-                            })
-                    })
+                self.expect_type(
+                    request_env,
+                    prior_eff,
+                    arg1,
+                    Type::any_set(),
+                    type_errors,
+                    |actual| match actual {
+                        Type::EntityOrRecord(
+                            EntityRecordKind::AnyEntity
+                            | EntityRecordKind::Entity(_)
+                            | EntityRecordKind::ActionEntity { .. },
+                        ) => Some(UnexpectedTypeHelp::TryUsingIn),
+                        Type::EntityOrRecord(EntityRecordKind::Record { .. }) => {
+                            Some(UnexpectedTypeHelp::TryUsingHas)
+                        }
+                        Type::Primitive {
+                            primitive_type: Primitive::String,
+                        } => Some(UnexpectedTypeHelp::TryUsingLike),
+                        _ => None,
+                    },
+                )
+                .then_typecheck(|expr_ty_arg1, _| {
+                    // The second argument may be any type. We do not care if the element type cannot be in the set.
+                    self.typecheck(request_env, prior_eff, arg2, type_errors)
+                        .then_typecheck(|expr_ty_arg2, _| {
+                            if self.mode.is_strict() {
+                                let annotated_expr =
+                                    ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                        .with_same_source_span(bin_expr)
+                                        .binary_app(
+                                            *op,
+                                            expr_ty_arg1.clone(),
+                                            expr_ty_arg2.clone(),
+                                        );
+                                self.enforce_strict_equality(
+                                    bin_expr,
+                                    annotated_expr,
+                                    &match expr_ty_arg1.data() {
+                                        Some(Type::Set {
+                                            element_type: Some(ty),
+                                        }) => Some(*ty.clone()),
+                                        _ => None,
+                                    },
+                                    expr_ty_arg2.data(),
+                                    type_errors,
+                                )
+                            } else {
+                                TypecheckAnswer::success(
+                                    ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                        .with_same_source_span(bin_expr)
+                                        .binary_app(*op, expr_ty_arg1, expr_ty_arg2),
+                                )
+                            }
+                        })
+                })
             }
 
             BinaryOp::ContainsAll | BinaryOp::ContainsAny => {
                 // Both arguments to a `containsAll` or `containsAny` must be sets.
-                self.expect_type(request_env, prior_eff, arg1, Type::any_set(), type_errors)
-                    .then_typecheck(|expr_ty_arg1, _| {
-                        self.expect_type(request_env, prior_eff, arg2, Type::any_set(), type_errors)
-                            .then_typecheck(|expr_ty_arg2, _| {
-                                if self.mode.is_strict() {
-                                    let annotated_expr =
-                                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                            .with_same_source_span(bin_expr)
-                                            .binary_app(
-                                                *op,
-                                                expr_ty_arg1.clone(),
-                                                expr_ty_arg2.clone(),
-                                            );
-                                    self.enforce_strict_equality(
-                                        bin_expr,
-                                        annotated_expr,
-                                        expr_ty_arg1.data(),
-                                        expr_ty_arg2.data(),
-                                        type_errors,
-                                    )
-                                } else {
-                                    TypecheckAnswer::success(
-                                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                            .with_same_source_span(bin_expr)
-                                            .binary_app(*op, expr_ty_arg1, expr_ty_arg2),
-                                    )
-                                }
-                            })
+                self.expect_type(
+                    request_env,
+                    prior_eff,
+                    arg1,
+                    Type::any_set(),
+                    type_errors,
+                    |actual| match actual {
+                        Type::EntityOrRecord(
+                            EntityRecordKind::AnyEntity
+                            | EntityRecordKind::Entity(_)
+                            | EntityRecordKind::ActionEntity { .. },
+                        ) => Some(UnexpectedTypeHelp::TryUsingIn),
+                        Type::EntityOrRecord(EntityRecordKind::Record { .. }) => {
+                            Some(UnexpectedTypeHelp::TryUsingHas)
+                        }
+                        Type::Primitive {
+                            primitive_type: Primitive::String,
+                        } => Some(UnexpectedTypeHelp::TryUsingLike),
+                        _ => None,
+                    },
+                )
+                .then_typecheck(|expr_ty_arg1, _| {
+                    self.expect_type(
+                        request_env,
+                        prior_eff,
+                        arg2,
+                        Type::any_set(),
+                        type_errors,
+                        |_| Some(UnexpectedTypeHelp::TryUsingSingleContains),
+                    )
+                    .then_typecheck(|expr_ty_arg2, _| {
+                        if self.mode.is_strict() {
+                            let annotated_expr =
+                                ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                    .with_same_source_span(bin_expr)
+                                    .binary_app(*op, expr_ty_arg1.clone(), expr_ty_arg2.clone());
+                            self.enforce_strict_equality(
+                                bin_expr,
+                                annotated_expr,
+                                expr_ty_arg1.data(),
+                                expr_ty_arg2.data(),
+                                type_errors,
+                            )
+                        } else {
+                            TypecheckAnswer::success(
+                                ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                    .with_same_source_span(bin_expr)
+                                    .binary_app(*op, expr_ty_arg1, expr_ty_arg2),
+                            )
+                        }
                     })
+                })
             }
         }
     }
@@ -1548,6 +1631,7 @@ impl<'a> Typechecker<'a> {
             arg,
             Type::primitive_long(),
             type_errors,
+            |_| None,
         );
         ans_arg.then_typecheck(|arg_expr_ty, _| {
             TypecheckAnswer::success({
@@ -1636,6 +1720,7 @@ impl<'a> Typechecker<'a> {
             lhs,
             Type::any_entity_reference(),
             type_errors,
+            |_| Some(UnexpectedTypeHelp::TryUsingContains),
         );
         let ty_rhs = self.expect_one_of_types(
             request_env,
@@ -1646,6 +1731,13 @@ impl<'a> Typechecker<'a> {
                 Type::any_entity_reference(),
             ],
             type_errors,
+            |actual| match actual {
+                Type::Set { .. } => Some(UnexpectedTypeHelp::TryUsingContains),
+                Type::Primitive {
+                    primitive_type: Primitive::String,
+                } => Some(UnexpectedTypeHelp::TryUsingLike),
+                _ => None,
+            },
         );
 
         let lhs_typechecked = ty_lhs.typechecked();
@@ -2146,6 +2238,7 @@ impl<'a> Typechecker<'a> {
                     arg,
                     Type::primitive_boolean(),
                     type_errors,
+                    |_| None,
                 );
                 ans_arg.then_typecheck(|typ_expr_arg, _| match typ_expr_arg.data() {
                     Some(typ_arg) => {
@@ -2177,6 +2270,7 @@ impl<'a> Typechecker<'a> {
                     arg,
                     Type::primitive_long(),
                     type_errors,
+                    |_| None,
                 );
                 ans_arg.then_typecheck(|typ_expr_arg, _| {
                     TypecheckAnswer::success(
@@ -2192,14 +2286,18 @@ impl<'a> Typechecker<'a> {
     /// Check that an expression has a type that is a subtype of one of the
     /// given types. If not, generate a type error and return TypecheckFail.
     /// Return the TypecheckSuccess with the type otherwise.
-    fn expect_one_of_types<'b>(
+    fn expect_one_of_types<'b, F>(
         &self,
         request_env: &RequestEnv,
         prior_eff: &EffectSet<'b>,
         expr: &'b Expr,
         expected: &[Type],
         type_errors: &mut Vec<TypeError>,
-    ) -> TypecheckAnswer<'b> {
+        type_error_help: F,
+    ) -> TypecheckAnswer<'b>
+    where
+        F: FnOnce(&Type) -> Option<UnexpectedTypeHelp>,
+    {
         let actual = self.typecheck(request_env, prior_eff, expr, type_errors);
         actual.then_typecheck(|mut typ_actual, eff_actual| match typ_actual.data() {
             Some(actual_ty) => {
@@ -2223,6 +2321,7 @@ impl<'a> Typechecker<'a> {
                         expr.clone(),
                         expected.to_vec(),
                         actual_ty.clone(),
+                        type_error_help(actual_ty),
                     ));
                     // Some code (e.g., typechecking And) depends on
                     // `expect_type` not returning an expression with a type
@@ -2246,15 +2345,26 @@ impl<'a> Typechecker<'a> {
     /// Check that an expression has a type that is a subtype of a given type.
     /// If not, generate a type error and return None. Otherwise, return the
     /// type.
-    fn expect_type<'b>(
+    fn expect_type<'b, F>(
         &self,
         request_env: &RequestEnv,
         prior_eff: &EffectSet<'b>,
         expr: &'b Expr,
         expected: Type,
         type_errors: &mut Vec<TypeError>,
-    ) -> TypecheckAnswer<'b> {
-        self.expect_one_of_types(request_env, prior_eff, expr, &[expected], type_errors)
+        type_error_help: F,
+    ) -> TypecheckAnswer<'b>
+    where
+        F: FnOnce(&Type) -> Option<UnexpectedTypeHelp>,
+    {
+        self.expect_one_of_types(
+            request_env,
+            prior_eff,
+            expr,
+            &[expected],
+            type_errors,
+            type_error_help,
+        )
     }
 
     /// Return the least upper bound of all types is the `types` vector. If
@@ -2399,7 +2509,14 @@ impl<'a> Typechecker<'a> {
                     }
                 } else {
                     let typechecked_args = zip(args.as_ref(), arg_tys).map(|(arg, ty)| {
-                        self.expect_type(request_env, prior_eff, arg, ty.clone(), type_errors)
+                        self.expect_type(
+                            request_env,
+                            prior_eff,
+                            arg,
+                            ty.clone(),
+                            type_errors,
+                            |_| None,
+                        )
                     });
                     TypecheckAnswer::sequence_all_then_typecheck(
                         typechecked_args,

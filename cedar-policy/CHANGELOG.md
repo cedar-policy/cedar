@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Add hints suggesting how to fix some type errors.
 - The `ValidationResult` returned from `Validator::validate` now has a static
   lifetime, allowing it to be used in more contexts. The lifetime parameter
   will be removed in a future major version.
