@@ -139,6 +139,7 @@ fn namespaced_entity_can_type_error() {
             Expr::from_str(r#"N::S::Foo::"alice""#).expect("Expr should parse."),
             Type::primitive_long(),
             Type::named_entity_reference_from_str("N::S::Foo"),
+            None,
         )],
     );
 }
@@ -498,6 +499,7 @@ fn namespaced_entity_is_wrong_type_and() {
             Expr::val(r#"N::S::Foo::"alice""#.parse::<EntityUID>().expect("EUID should parse.")),
             Type::primitive_boolean(),
             Type::named_entity_reference_from_str("N::S::Foo"),
+            None,
         )],
     );
 }
@@ -520,6 +522,7 @@ fn namespaced_entity_is_wrong_type_when() {
             Expr::val(r#"N::S::Foo::"alice""#.parse::<EntityUID>().expect("EUID should parse.")),
             Type::primitive_boolean(),
             Type::named_entity_reference_from_str("N::S::Foo"),
+            None,
         )],
     );
 }

@@ -112,6 +112,7 @@ impl TypeError {
         on_expr: Expr,
         expected: impl IntoIterator<Item = Type>,
         actual: Type,
+        help: Option<UnexpectedTypeHelp>,
     ) -> Self {
         Self {
             on_expr: Some(on_expr),
@@ -119,6 +120,7 @@ impl TypeError {
             kind: TypeErrorKind::UnexpectedType(UnexpectedType {
                 expected: expected.into_iter().collect::<BTreeSet<_>>(),
                 actual,
+                help,
             }),
         }
     }
@@ -243,13 +245,8 @@ impl TypeError {
 pub enum TypeErrorKind {
     /// The typechecker expected to see a subtype of one of the types in
     /// `expected`, but saw `actual`.
-    #[error("unexpected type: expected {} but saw {}",
-        match .0.expected.iter().next() {
-            Some(single) if .0.expected.len() == 1 => format!("{}", single),
-            _ => .0.expected.iter().join(", or ")
-        },
-        .0.actual
-    )]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     UnexpectedType(UnexpectedType),
     /// The typechecker could not compute a least upper bound for `types`.
     #[error("unable to find upper bound for types: [{}]", .0.types.iter().join(","))]
@@ -261,7 +258,8 @@ pub enum TypeErrorKind {
     UnsafeAttributeAccess(UnsafeAttributeAccess),
     /// The typechecker could not conclude that an access to an optional
     /// attribute was safe.
-    #[error("unable to guarantee safety of access to optional attribute {}", .0.attribute_access)]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     UnsafeOptionalAttributeAccess(UnsafeOptionalAttributeAccess),
     /// The typechecker found that a policy condition will always evaluate to false.
     #[error(
@@ -297,10 +295,43 @@ pub enum TypeErrorKind {
 }
 
 /// Structure containing details about an unexpected type error.
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Diagnostic, Error, Debug, Clone, Hash, Eq, PartialEq)]
+#[error("unexpected type: expected {} but saw {}",
+    match .expected.iter().next() {
+        Some(single) if .expected.len() == 1 => format!("{}", single),
+        _ => .expected.iter().join(", or ")
+    },
+    .actual
+)]
 pub struct UnexpectedType {
     expected: BTreeSet<Type>,
     actual: Type,
+    #[help]
+    help: Option<UnexpectedTypeHelp>,
+}
+
+#[derive(Error, Debug, Clone, Hash, Eq, PartialEq)]
+pub(crate) enum UnexpectedTypeHelp {
+    #[error("try using `like` to examine the contents of a string")]
+    TryUsingLike,
+    #[error(
+        "try using `contains`, `containsAny`, or `containsAll` to examine the contents of a set"
+    )]
+    TryUsingContains,
+    #[error("try using `contains` to test if a single element is in a set")]
+    TryUsingSingleContains,
+    #[error("try using `has` to test for an attribute")]
+    TryUsingHas,
+    #[error("try using `is` to test for an entity type")]
+    TryUsingIs,
+    #[error("try using `in` for entity hierarchy membership")]
+    TryUsingIn,
+    #[error("Cedar only supports run time type tests for entities")]
+    TypeTestNotSupported,
+    #[error("Cedar does not support string concatenation")]
+    ConcatenationNotSupported,
+    #[error("Cedar does not support computing the union, intersection, or difference of sets")]
+    SetOperationsNotSupported,
 }
 
 /// Structure containing details about an incompatible type error.
@@ -332,7 +363,9 @@ impl Diagnostic for UnsafeAttributeAccess {
 }
 
 /// Structure containing details about an unsafe optional attribute error.
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Error, Diagnostic, Debug, Clone, Hash, Eq, PartialEq)]
+#[error("unable to guarantee safety of access to optional attribute {attribute_access}")]
+#[diagnostic(help("try testing for the attribute with `{} && ..`", attribute_access.suggested_has_guard()))]
 pub struct UnsafeOptionalAttributeAccess {
     attribute_access: AttributeAccess,
 }
@@ -436,27 +469,158 @@ impl AttributeAccess {
             }
         }
     }
+
+    pub(crate) fn attrs(&self) -> &Vec<SmolStr> {
+        match self {
+            AttributeAccess::EntityLUB(_, attrs) => attrs,
+            AttributeAccess::Context(_, attrs) => attrs,
+            AttributeAccess::Other(attrs) => attrs,
+        }
+    }
+
+    /// Construct a `has` expression that we can use to suggest a fix after an
+    /// unsafe optional attribute access.
+    pub(crate) fn suggested_has_guard(&self) -> String {
+        // We know if this is an access directly on `context`, so we can suggest
+        // specifically `context has ..`. Otherwise, we just use a generic `e`.
+        let base_expr = match self {
+            AttributeAccess::Context(_, _) => "context".into(),
+            _ => "e".into(),
+        };
+
+        let (safe_attrs, err_attr) = match self.attrs().split_first() {
+            Some((first, rest)) => (rest, first.clone()),
+            // We should always have a least one attribute stored, so this
+            // shouldn't be possible. If it does happen, just use a placeholder
+            // attribute name `f` since we'd rather avoid panicking.
+            None => (&[] as &[SmolStr], "f".into()),
+        };
+
+        let full_expr = std::iter::once(&base_expr)
+            .chain(safe_attrs.iter().rev())
+            .join(".");
+        format!("{full_expr} has {err_attr}")
+    }
 }
 
 impl Display for AttributeAccess {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let attrs_str = self.attrs().iter().rev().join(".");
         match self {
-            AttributeAccess::EntityLUB(lub, attrs) => write!(
+            AttributeAccess::EntityLUB(lub, _) => write!(
                 f,
-                "`{}` for entity type{}",
-                attrs.iter().rev().join("."),
+                "`{attrs_str}` for entity type{}",
                 match lub.get_single_entity() {
                     Some(single) => format!(" {}", single),
                     _ => format!("s {}", lub.iter().join(", ")),
                 },
             ),
-            AttributeAccess::Context(action, attrs) => write!(
-                f,
-                "`{}` in context for {}",
-                attrs.iter().rev().join("."),
-                action
-            ),
-            AttributeAccess::Other(attrs) => write!(f, "`{}`", attrs.iter().rev().join(".")),
+            AttributeAccess::Context(action, _) => {
+                write!(f, "`{attrs_str}` in context for {action}",)
+            }
+            AttributeAccess::Other(_) => write!(f, "`{attrs_str}`"),
         }
+    }
+}
+
+// These tests all assume that the typechecker found an error while checking the
+// outermost `GetAttr` in the expressions. If the attribute didn't exist at all,
+// only the primary message would included in the final error. If it was an
+// optional attribute without a guard, then the help message is also printed.
+#[cfg(test)]
+mod test_attr_access {
+    use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprBuilder, Var};
+
+    use crate::{
+        types::{OpenTag, RequestEnv, Type},
+        AttributeAccess,
+    };
+
+    #[track_caller]
+    fn assert_message_and_help(
+        attr_access: &Expr<Option<Type>>,
+        msg: impl AsRef<str>,
+        help: impl AsRef<str>,
+    ) {
+        let env = RequestEnv::DeclaredAction {
+            principal: &EntityType::Specified("Principal".parse().unwrap()),
+            action: &EntityUID::with_eid_and_type(crate::schema::ACTION_ENTITY_TYPE, "action")
+                .unwrap(),
+            resource: &EntityType::Specified("Resource".parse().unwrap()),
+            context: &Type::record_with_attributes(None, OpenTag::ClosedAttributes),
+            principal_slot: None,
+            resource_slot: None,
+        };
+
+        let access = AttributeAccess::from_expr(&env, attr_access);
+        assert_eq!(
+            access.to_string().as_str(),
+            msg.as_ref(),
+            "Error message did not match expected"
+        );
+        assert_eq!(
+            access.suggested_has_guard().as_str(),
+            help.as_ref(),
+            "Suggested has guard did not match expected"
+        );
+    }
+
+    #[test]
+    fn context_access() {
+        // We have to build the Expr manually because the `EntityLUB` case
+        // requires type annotations, even though the other cases ignore them.
+        let e = ExprBuilder::new().get_attr(ExprBuilder::new().var(Var::Context), "foo".into());
+        assert_message_and_help(
+            &e,
+            "`foo` in context for Action::\"action\"",
+            "context has foo",
+        );
+        let e = ExprBuilder::new().get_attr(e, "bar".into());
+        assert_message_and_help(
+            &e,
+            "`foo.bar` in context for Action::\"action\"",
+            "context.foo has bar",
+        );
+        let e = ExprBuilder::new().get_attr(e, "baz".into());
+        assert_message_and_help(
+            &e,
+            "`foo.bar.baz` in context for Action::\"action\"",
+            "context.foo.bar has baz",
+        );
+    }
+
+    #[test]
+    fn entity_access() {
+        let e = ExprBuilder::new().get_attr(
+            ExprBuilder::with_data(Some(Type::named_entity_reference_from_str("User")))
+                .val("User::\"alice\"".parse::<EntityUID>().unwrap()),
+            "foo".into(),
+        );
+        assert_message_and_help(&e, "`foo` for entity type User", "e has foo");
+        let e = ExprBuilder::new().get_attr(e, "bar".into());
+        assert_message_and_help(&e, "`foo.bar` for entity type User", "e.foo has bar");
+        let e = ExprBuilder::new().get_attr(e, "baz".into());
+        assert_message_and_help(
+            &e,
+            "`foo.bar.baz` for entity type User",
+            "e.foo.bar has baz",
+        );
+    }
+
+    #[test]
+    fn other_access() {
+        let e = ExprBuilder::new().get_attr(
+            ExprBuilder::new().ite(
+                ExprBuilder::new().val(true),
+                ExprBuilder::new().record([]).unwrap(),
+                ExprBuilder::new().record([]).unwrap(),
+            ),
+            "foo".into(),
+        );
+        assert_message_and_help(&e, "`foo`", "e has foo");
+        let e = ExprBuilder::new().get_attr(e, "bar".into());
+        assert_message_and_help(&e, "`foo.bar`", "e.foo has bar");
+        let e = ExprBuilder::new().get_attr(e, "baz".into());
+        assert_message_and_help(&e, "`foo.bar.baz`", "e.foo.bar has baz");
     }
 }
