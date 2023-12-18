@@ -2721,7 +2721,7 @@ mod test {
         }))
         .unwrap();
         match TryInto::<ValidatorSchema>::try_into(fragment) {
-            Err(SchemaError::ContextOrShapeNotRecord(ContextOrShape::EntityTypeShape(_))) => (),
+            Err(SchemaError::ContextOrShapeNotRecord(_)) => (),
             s => panic!(
                 "Expected Err(SchemaError::ContextOrShapeNotRecord), got {:?}",
                 s

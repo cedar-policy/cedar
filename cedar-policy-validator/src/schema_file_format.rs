@@ -203,7 +203,6 @@ impl From<SchemaTypeVariant> for SchemaType {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "type")]
-#[serde(deny_unknown_fields)]
 pub enum SchemaTypeVariant {
     String,
     Long,
@@ -212,7 +211,6 @@ pub enum SchemaTypeVariant {
         element: Box<SchemaType>,
     },
     Record {
-        #[serde(with = "serde_with::rust::maps_duplicate_key_is_error")]
         attributes: BTreeMap<SmolStr, TypeOfAttribute>,
         #[serde(rename = "additionalAttributes")]
         #[serde(default = "additional_attributes_default")]
@@ -388,30 +386,6 @@ mod test {
     }
 
     #[test]
-    fn test_entity_type_parser3() {
-        let src = r#"
-        {
-            "memberOf" : ["UserGroup"],
-            "shape": {
-                "type": "Record",
-                "attributes": {
-                    "name": { "type": "String", "required": false},
-                    "name": { "type": "String", "required": true},
-                    "age": { "type": "Long", "required": false}
-                }
-            }
-        }
-        "#;
-        let et = serde_json::from_str::<EntityType>(src);
-        match et {
-            Ok(_) => panic!("serde_json parsing should have failed"),
-            Err(e) => {
-                assert_eq!(e.classify(), serde_json::error::Category::Data);
-            }
-        }
-    }
-
-    #[test]
     fn test_action_type_parser1() {
         let src = r#"
               {
@@ -522,83 +496,130 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
-    fn test_schema_file_with_misspelled_required() {
-        let src = r#"
+    fn test_schema_file_with_field_from_other_type() {
+        let src = serde_json::json!(
         {
             "entityTypes": {
                 "User": {
-                    "memberOf": [ "Group" ],
                     "shape": {
                         "type": "Record",
-                        "additionalAttributess": false,
                         "attributes": {
-                            "name": { "type": "String", "required": true},
-                            "age": { "type": "Long", "required": true},
-                            "favorite": { "type": "Entity", "name": "Photo", "requiredddddd": false}
-                        },
-                        "required": false
+                            "favorite": {
+                                "type": "String",
+                                // These fields shouldn't exist for a String,
+                                // and we could detect this error, but we allow
+                                // it to maintain backwards compatibility.
+                                "name": "Photo",
+                                "attributes": {},
+                                "element": "",
+                            }
+                        }
                     }
                 }
             },
-            "actions": []
-        }
-        "#;
-        let schema: NamespaceDefinition = serde_json::from_str(src).expect("Expected valid schema");
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
         println!("{:#?}", schema);
     }
 
     #[test]
-    #[should_panic]
-    fn test_schema_file_with_misspelled_attribute() {
-        let src = r#"
+    fn schema_file_unexpected_malformed_attribute() {
+        let src = serde_json::json!(
         {
-            "entityTypes": [
+            "entityTypes": {
                 "User": {
-                    "memberOf": [ "Group" ],
                     "shape": {
                         "type": "Record",
-                        "additionalAttributess": false,
                         "attributes": {
-                            "name": { "type": "String", "required": true},
-                            "age": { "type": "Long", "required": true},
-                            "favorite": { "type": "Entity", "nameeeeee": "Photo", "required": false}
-                        },
-                        "required": false
+                            "a": {
+                                "type": "Long",
+                                // Similar to above, `attributes` shouldn't
+                                // exist, and `"foo": "bar"` is an invalid
+                                // attribute when it should exist. We allow this
+                                // for backwards compatibility.
+                                "attributes": {
+                                    "b": {"foo": "bar"}
+                                }
+                            }
+                        }
                     }
                 }
-            ],
-            "actions": []
-        }
-        "#;
-        let schema: NamespaceDefinition = serde_json::from_str(src).expect("Expected valid schema");
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
         println!("{:#?}", schema);
+    }
+}
+
+/// Tests in this module check the behavior of schema parsing given duplicate
+/// map keys. The `json!` macro silently drops duplicate keys before they reach
+/// our parser, so these tests must be written with `serde_json::from_str`
+/// instead.
+#[cfg(test)]
+mod test_duplicates_error {
+    use super::*;
+
+    #[test]
+    #[should_panic(expected = "invalid entry: found duplicate key")]
+    fn namespace() {
+        let src = r#"{
+            "Foo": {
+              "entityTypes" : {},
+              "actions": {}
+            },
+            "Foo": {
+              "entityTypes" : {},
+              "actions": {}
+            }
+        }"#;
+        serde_json::from_str::<SchemaFragment>(src).unwrap();
     }
 
     #[test]
-    #[should_panic]
-    fn test_schema_file_with_extra_attribute() {
-        let src = r#"
-        {
-            "entityTypes": [
-                "User": {
-                    "memberOf": [ "Group" ],
-                    "shape": {
-                        "type": "Record",
-                        "additionalAttributess": false,
-                        "attributes": {
-                            "name": { "type": "String", "required": true},
-                            "age": { "type": "Long", "required": true},
-                            "favorite": { "type": "Entity", "name": "Photo", "required": false, "extra": "Should not exist"}
-                        },
-                        "required": false
-                    }
-                }
-            ],
-            "actions": []
-        }
-        "#;
-        let schema: NamespaceDefinition = serde_json::from_str(src).expect("Expected valid schema");
-        println!("{:#?}", schema);
+    #[should_panic(expected = "invalid entry: found duplicate key")]
+    fn entity_type() {
+        let src = r#"{
+            "Foo": {
+              "entityTypes" : {
+                "Bar": {},
+                "Bar": {},
+              },
+              "actions": {}
+            }
+        }"#;
+        serde_json::from_str::<SchemaFragment>(src).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid entry: found duplicate key")]
+    fn action() {
+        let src = r#"{
+            "Foo": {
+              "entityTypes" : {},
+              "actions": {
+                "Bar": {},
+                "Bar": {}
+              }
+            }
+        }"#;
+        serde_json::from_str::<SchemaFragment>(src).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid entry: found duplicate key")]
+    fn common_types() {
+        let src = r#"{
+            "Foo": {
+              "entityTypes" : {},
+              "actions": { },
+              "commonTypes": {
+                "Bar": {"type": "Long"},
+                "Bar": {"type": "String"}
+              }
+            }
+        }"#;
+        serde_json::from_str::<SchemaFragment>(src).unwrap();
     }
 }
