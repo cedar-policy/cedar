@@ -251,16 +251,6 @@ impl TypeFields {
     }
 }
 
-/// Used during deserialization to deserialize the attributes type map while
-/// reporting an error if there are any duplicate keys in the map. I could not
-/// find a way to do the `serde_with` conversion inline without introducing this
-/// struct.
-#[derive(Deserialize)]
-struct AttributesTypeMap(
-    #[serde(with = "serde_with::rust::maps_duplicate_key_is_error")]
-    BTreeMap<SmolStr, TypeOfAttribute>,
-);
-
 struct SchemaTypeVisitor;
 
 impl<'de> Visitor<'de> for SchemaTypeVisitor {
@@ -283,7 +273,9 @@ impl<'de> Visitor<'de> for SchemaTypeVisitor {
         // field without wasting time fixing errors in the value.
         let mut type_name: Option<std::result::Result<SmolStr, M::Error>> = None;
         let mut element: Option<std::result::Result<SchemaType, M::Error>> = None;
-        let mut attributes: Option<std::result::Result<AttributesTypeMap, M::Error>> = None;
+        let mut attributes: Option<
+            std::result::Result<BTreeMap<SmolStr, TypeOfAttribute>, M::Error>,
+        > = None;
         let mut additional_attributes: Option<std::result::Result<bool, M::Error>> = None;
         let mut name: Option<std::result::Result<SmolStr, M::Error>> = None;
 
@@ -339,7 +331,7 @@ impl SchemaTypeVisitor {
     fn build_schema_type<'de, M>(
         type_name: Option<std::result::Result<SmolStr, M::Error>>,
         element: Option<std::result::Result<SchemaType, M::Error>>,
-        attributes: Option<std::result::Result<AttributesTypeMap, M::Error>>,
+        attributes: Option<std::result::Result<BTreeMap<SmolStr, TypeOfAttribute>, M::Error>>,
         additional_attributes: Option<std::result::Result<bool, M::Error>>,
         name: Option<std::result::Result<SmolStr, M::Error>>,
     ) -> std::result::Result<SchemaType, M::Error>
@@ -414,7 +406,7 @@ impl SchemaTypeVisitor {
                     let additional_attributes =
                         additional_attributes.unwrap_or(Ok(additional_attributes_default()));
                     Ok(SchemaType::Type(SchemaTypeVariant::Record {
-                        attributes: attributes?.0,
+                        attributes: attributes?,
                         additional_attributes: additional_attributes?,
                     }))
                 } else {
@@ -474,8 +466,10 @@ pub enum SchemaTypeVariant {
         element: Box<SchemaType>,
     },
     Record {
+        #[serde(with = "serde_with::rust::maps_duplicate_key_is_error")]
         attributes: BTreeMap<SmolStr, TypeOfAttribute>,
         #[serde(rename = "additionalAttributes")]
+        #[serde(default = "additional_attributes_default")]
         additional_attributes: bool,
     },
     Entity {
@@ -645,6 +639,30 @@ mod test {
                 additional_attributes: false
             })
         );
+    }
+
+    #[test]
+    fn test_entity_type_parser3() {
+        let src = r#"
+        {
+            "memberOf" : ["UserGroup"],
+            "shape": {
+                "type": "Record",
+                "attributes": {
+                    "name": { "type": "String", "required": false},
+                    "name": { "type": "String", "required": true},
+                    "age": { "type": "Long", "required": false}
+                }
+            }
+        }
+        "#;
+        let et = serde_json::from_str::<EntityType>(src);
+        match et {
+            Ok(_) => panic!("serde_json parsing should have failed"),
+            Err(e) => {
+                assert_eq!(e.classify(), serde_json::error::Category::Data);
+            }
+        }
     }
 
     #[test]
@@ -919,98 +937,5 @@ mod test {
         });
         let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
         println!("{:#?}", schema);
-    }
-}
-
-/// Tests in this module check the behavior of schema parsing given duplicate
-/// map keys. The `json!` macro silently drops duplicate keys before they reach
-/// our parser, so these tests must be written with `serde_json::from_str`
-/// instead.
-#[cfg(test)]
-mod test_duplicates_error {
-    use super::*;
-
-    #[test]
-    #[should_panic(expected = "invalid entry: found duplicate key")]
-    fn namespace() {
-        let src = r#"{
-            "Foo": {
-              "entityTypes" : {},
-              "actions": {}
-            },
-            "Foo": {
-              "entityTypes" : {},
-              "actions": {}
-            }
-        }"#;
-        serde_json::from_str::<SchemaFragment>(src).unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected = "invalid entry: found duplicate key")]
-    fn entity_type() {
-        let src = r#"{
-            "Foo": {
-              "entityTypes" : {
-                "Bar": {},
-                "Bar": {},
-              },
-              "actions": {}
-            }
-        }"#;
-        serde_json::from_str::<SchemaFragment>(src).unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected = "invalid entry: found duplicate key")]
-    fn action() {
-        let src = r#"{
-            "Foo": {
-              "entityTypes" : {},
-              "actions": {
-                "Bar": {},
-                "Bar": {}
-              }
-            }
-        }"#;
-        serde_json::from_str::<SchemaFragment>(src).unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected = "invalid entry: found duplicate key")]
-    fn common_types() {
-        let src = r#"{
-            "Foo": {
-              "entityTypes" : {},
-              "actions": { },
-              "commonTypes": {
-                "Bar": {"type": "Long"},
-                "Bar": {"type": "String"}
-              }
-            }
-        }"#;
-        serde_json::from_str::<SchemaFragment>(src).unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected = "invalid entry: found duplicate key")]
-    fn record_type() {
-        let src = r#"{
-            "Foo": {
-              "entityTypes" : {
-                "Bar": {
-                    "shape": {
-                        "type": "Record",
-                        "attributes": {
-                            "Baz": {"type": "Long"},
-                            "Baz": {"type": "String"}
-                        }
-                    }
-                }
-              },
-              "actions": { }
-            }
-        }"#;
-        serde_json::from_str::<SchemaFragment>(src).unwrap();
     }
 }
