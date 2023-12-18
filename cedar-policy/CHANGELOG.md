@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `AsRef<str>` implementation for `PolicyId`.
+- New API `template_links` for `Policy` to retrieve the linked values for a 
+  template-linked policy. (resolving #489)
 
 ### Changed
 
