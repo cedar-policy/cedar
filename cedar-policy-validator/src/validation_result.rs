@@ -15,6 +15,7 @@
  */
 
 use cedar_policy_core::ast::PolicyID;
+use cedar_policy_core::parser::Loc;
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -85,12 +86,12 @@ pub struct ValidationError<'a> {
 impl<'a> ValidationError<'a> {
     pub(crate) fn with_policy_id(
         id: &'a PolicyID,
-        source_span: Option<miette::SourceSpan>,
+        source_loc: Option<Loc>,
         error_kind: ValidationErrorKind,
     ) -> Self {
         Self {
             error_kind,
-            location: SourceLocation::new(id, source_span),
+            location: SourceLocation::new(id, source_loc),
         }
     }
 
@@ -114,14 +115,14 @@ impl<'a> ValidationError<'a> {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SourceLocation<'a> {
     policy_id: &'a PolicyID,
-    source_span: Option<miette::SourceSpan>,
+    source_loc: Option<Loc>,
 }
 
 impl<'a> SourceLocation<'a> {
-    pub(crate) fn new(policy_id: &'a PolicyID, source_span: Option<miette::SourceSpan>) -> Self {
+    pub(crate) fn new(policy_id: &'a PolicyID, source_loc: Option<Loc>) -> Self {
         Self {
             policy_id,
-            source_span,
+            source_loc,
         }
     }
 
@@ -130,14 +131,14 @@ impl<'a> SourceLocation<'a> {
         self.policy_id
     }
 
-    pub fn source_span(&self) -> Option<miette::SourceSpan> {
-        self.source_span
+    pub fn source_loc(&self) -> Option<&Loc> {
+        self.source_loc.as_ref()
     }
 }
 
 /// Enumeration of the possible diagnostic error that could be found by the
 /// verification steps.
-#[derive(Debug, Diagnostic, Error)]
+#[derive(Debug, Clone, Diagnostic, Error)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[non_exhaustive]
 pub enum ValidationErrorKind {
@@ -210,7 +211,7 @@ impl ValidationErrorKind {
 }
 
 /// Structure containing details about an unrecognized entity type error.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[error("unrecognized entity type `{actual_entity_type}`")]
 pub struct UnrecognizedEntityType {
@@ -231,7 +232,7 @@ impl Diagnostic for UnrecognizedEntityType {
 }
 
 /// Structure containing details about an unrecognized action id error.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[error("unrecognized action `{actual_action_id}`")]
 pub struct UnrecognizedActionId {
@@ -252,7 +253,7 @@ impl Diagnostic for UnrecognizedActionId {
 }
 
 /// Structure containing details about an invalid action application error.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[error("unable to find an applicable action given the policy head constraints")]
 pub struct InvalidActionApplication {
@@ -278,7 +279,7 @@ impl Diagnostic for InvalidActionApplication {
 }
 
 /// Structure containing details about an unspecified entity error.
-#[derive(Debug, Diagnostic, Error)]
+#[derive(Debug, Clone, Diagnostic, Error)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[error("unspecified entity with id `{entity_id}`")]
 #[diagnostic(help("unspecified entities cannot be used in policies"))]

@@ -623,7 +623,9 @@ pub enum RestrictedExprParseError {
 mod test {
     use super::*;
     use crate::parser::err::{ParseError, ToASTError, ToASTErrorKind};
+    use crate::parser::Loc;
     use std::str::FromStr;
+    use std::sync::Arc;
 
     #[test]
     fn duplicate_key() {
@@ -667,12 +669,13 @@ mod test {
         );
 
         // duplicate key is also an error when parsing from string
+        let str = r#"{ foo: 37, bar: "hi", foo: 101 }"#;
         assert_eq!(
-            RestrictedExpr::from_str(r#"{ foo: 37, bar: "hi", foo: 101 }"#),
+            RestrictedExpr::from_str(str),
             Err(RestrictedExprParseError::Parse(ParseErrors(vec![
                 ParseError::ToAST(ToASTError::new(
                     ToASTErrorKind::DuplicateKeyInRecordLiteral { key: "foo".into() },
-                    miette::SourceSpan::from(0..32)
+                    Loc::new(0..32, Arc::from(str))
                 ))
             ]))),
         )

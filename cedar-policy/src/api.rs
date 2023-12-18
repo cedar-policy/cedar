@@ -1503,7 +1503,7 @@ impl<'a> Diagnostic for ValidationResult<'a> {
 /// policy. The error contains a enumeration that specifies the kind of problem,
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 #[error("validation error on {location}: {}", self.error_kind())]
 pub struct ValidationError<'a> {
     location: SourceLocation<'static>,
@@ -1535,16 +1535,16 @@ impl<'a> From<cedar_policy_validator::ValidationError<'a>> for ValidationError<'
     }
 }
 
-// custom impl of `Diagnostic`: source location is from .location, everything else
-// forwarded to .error_kind
+// custom impl of `Diagnostic`: source location and source code are from
+// .location, everything else forwarded to .error_kind
 impl<'a> Diagnostic for ValidationError<'a> {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        let label = miette::LabeledSpan::underline(self.location.source_range?);
+        let label = miette::LabeledSpan::underline(self.location.source_loc.as_ref()?.span);
         Some(Box::new(std::iter::once(label)))
     }
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        self.error_kind.source_code()
+        Some(&self.location.source_loc.as_ref()?.src)
     }
 
     fn code<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
@@ -1576,7 +1576,7 @@ impl<'a> Diagnostic for ValidationError<'a> {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SourceLocation<'a> {
     policy_id: PolicyId,
-    source_range: Option<miette::SourceSpan>,
+    source_loc: Option<parser::Loc>,
     phantom: PhantomData<&'a ()>,
 }
 
@@ -1589,28 +1589,21 @@ impl<'a> SourceLocation<'a> {
     /// Get the start of the location. Returns `None` if this location does not
     /// have a range.
     pub fn range_start(&self) -> Option<usize> {
-        self.source_range.as_ref().map(miette::SourceSpan::offset)
+        self.source_loc.as_ref().map(parser::Loc::start)
     }
 
     /// Get the end of the location. Returns `None` if this location does not
     /// have a range.
     pub fn range_end(&self) -> Option<usize> {
-        self.source_range
-            .as_ref()
-            .map(|span| span.offset() + span.len())
+        self.source_loc.as_ref().map(parser::Loc::end)
     }
 }
 
 impl<'a> std::fmt::Display for SourceLocation<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "policy `{}`", self.policy_id)?;
-        if let Some(source_range) = &self.source_range {
-            write!(
-                f,
-                " at offset {}-{}",
-                source_range.offset(),
-                source_range.offset() + source_range.len()
-            )?;
+        if let Some(loc) = &self.source_loc {
+            write!(f, " at offset {}-{}", loc.start(), loc.end())?;
         }
         Ok(())
     }
@@ -1619,10 +1612,10 @@ impl<'a> std::fmt::Display for SourceLocation<'a> {
 impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation<'static> {
     fn from(loc: cedar_policy_validator::SourceLocation<'a>) -> SourceLocation<'static> {
         let policy_id = PolicyId(loc.policy_id().clone());
-        let source_range = loc.source_span();
+        let source_loc = loc.source_loc().cloned();
         Self {
             policy_id,
-            source_range,
+            source_loc,
             phantom: PhantomData,
         }
     }
@@ -1642,7 +1635,7 @@ where
         .map(std::convert::Into::into)
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 #[error("validation warning on {location}: {kind}")]
 /// Warnings found in Cedar policies
 pub struct ValidationWarning<'a> {
@@ -1675,16 +1668,16 @@ impl<'a> From<cedar_policy_validator::ValidationWarning<'a>> for ValidationWarni
     }
 }
 
-// custom impl of `Diagnostic`: source location is from .location, everything else
-// forwarded to .kind
+// custom impl of `Diagnostic`: source location and source code are from
+// .location, everything else forwarded to .kind
 impl<'a> Diagnostic for ValidationWarning<'a> {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        let label = miette::LabeledSpan::underline(self.location.source_range?);
+        let label = miette::LabeledSpan::underline(self.location.source_loc.as_ref()?.span);
         Some(Box::new(std::iter::once(label)))
     }
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        self.kind.source_code()
+        Some(&self.location.source_loc.as_ref()?.src)
     }
 
     fn code<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {

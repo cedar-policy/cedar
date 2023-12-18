@@ -21,6 +21,7 @@ use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 
 use super::err::{ToASTError, ToASTErrorKind};
+use super::loc::Loc;
 
 /// Metadata for our syntax trees
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -29,23 +30,20 @@ pub struct Node<T> {
     pub node: T,
 
     /// Source location
-    pub loc: miette::SourceSpan,
+    pub loc: Loc,
 }
 
 impl<T> Node<T> {
     /// Create a new Node with the given source location
-    pub fn with_source_loc(node: T, loc: impl Into<miette::SourceSpan>) -> Self {
-        Node {
-            node,
-            loc: loc.into(),
-        }
+    pub fn with_source_loc(node: T, loc: Loc) -> Self {
+        Node { node, loc }
     }
 
     /// Transform the inner value while retaining the attached source info.
     pub fn map<R>(self, f: impl FnOnce(T) -> R) -> Node<R> {
         Node {
             node: f(self.node),
-            loc: self.loc,
+            loc: self.loc.clone(),
         }
     }
 
@@ -53,7 +51,7 @@ impl<T> Node<T> {
     pub fn as_ref(&self) -> Node<&T> {
         Node {
             node: &self.node,
-            loc: self.loc,
+            loc: self.loc.clone(),
         }
     }
 
@@ -61,18 +59,18 @@ impl<T> Node<T> {
     pub fn as_mut(&mut self) -> Node<&mut T> {
         Node {
             node: &mut self.node,
-            loc: self.loc,
+            loc: self.loc.clone(),
         }
     }
 
     /// Consume the `Node`, yielding the node and attached source info.
-    pub fn into_inner(self) -> (T, miette::SourceSpan) {
+    pub fn into_inner(self) -> (T, Loc) {
         (self.node, self.loc)
     }
 
     /// Utility to construct a `ToAstError` with the source location taken from this node.
     pub fn to_ast_err(&self, error_kind: impl Into<ToASTErrorKind>) -> ToASTError {
-        ToASTError::new(error_kind.into(), self.loc)
+        ToASTError::new(error_kind.into(), self.loc.clone())
     }
 }
 
@@ -136,7 +134,7 @@ impl<T: Diagnostic> Diagnostic for Node<T> {
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         Some(Box::new(std::iter::once(miette::LabeledSpan::underline(
-            self.loc,
+            self.loc.span,
         ))))
     }
 
@@ -175,7 +173,7 @@ impl<T> Node<Option<T>> {
     pub fn collapse(&self) -> Option<Node<&T>> {
         self.node.as_ref().map(|node| Node {
             node,
-            loc: self.loc,
+            loc: self.loc.clone(),
         })
     }
 
@@ -183,16 +181,16 @@ impl<T> Node<Option<T>> {
     /// if no main data or if `f` returns `None`.
     pub fn apply<F, R>(&self, f: F) -> Option<R>
     where
-        F: FnOnce(&T, miette::SourceSpan) -> Option<R>,
+        F: FnOnce(&T, &Loc) -> Option<R>,
     {
-        f(self.node.as_ref()?, self.loc)
+        f(self.node.as_ref()?, &self.loc)
     }
 
-    /// Apply the function `f` to the main data and source info, consuming them.
+    /// Apply the function `f` to the main data and `Loc`, consuming them.
     /// Returns `None` if no main data or if `f` returns `None`.
     pub fn into_apply<F, R>(self, f: F) -> Option<R>
     where
-        F: FnOnce(T, miette::SourceSpan) -> Option<R>,
+        F: FnOnce(T, Loc) -> Option<R>,
     {
         f(self.node?, self.loc)
     }

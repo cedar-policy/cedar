@@ -24,7 +24,7 @@ use crate::entities::{
 use crate::extensions::Extensions;
 use crate::parser::cst::{self, Ident};
 use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
-use crate::parser::{unescape, Node};
+use crate::parser::{unescape, Loc, Node};
 use crate::{ast, FromNormalizedStr};
 use either::Either;
 use itertools::Itertools;
@@ -1122,19 +1122,20 @@ fn interpret_primary(
                         .collect::<Result<Vec<ast::Id>, ParseErrors>>()?,
                 ))),
                 (path, id) => {
-                    let (l, r) = match (path.first(), path.last()) {
+                    let (l, r, src) = match (path.first(), path.last()) {
                         (Some(l), Some(r)) => (
-                            l.loc.offset(),
-                            r.loc.offset() + r.loc.len() + ident_to_str_len(id),
+                            l.loc.start(),
+                            r.loc.end() + ident_to_str_len(id),
+                            Arc::clone(&l.loc.src),
                         ),
-                        (_, _) => (0, 0),
+                        (_, _) => (0, 0, Arc::from("")),
                     };
                     Err(ToASTError::new(
                         ToASTErrorKind::InvalidExpression(cst::Name {
                             path: path.to_vec(),
-                            name: Node::with_source_loc(Some(id.clone()), l..r),
+                            name: Node::with_source_loc(Some(id.clone()), node.loc.span(l..r)),
                         }),
-                        miette::SourceSpan::from(l..r),
+                        Loc::new(l..r, src),
                     )
                     .into())
                 }
@@ -1225,15 +1226,15 @@ impl TryFrom<&Node<Option<cst::Member>>> for Expr {
                             match attr.as_str() {
                                 "contains" => Either::Right(Expr::contains(
                                     left,
-                                    extract_single_argument(args, "contains()", access.loc)?,
+                                    extract_single_argument(args, "contains()", &access.loc)?,
                                 )),
                                 "containsAll" => Either::Right(Expr::contains_all(
                                     left,
-                                    extract_single_argument(args, "containsAll()", access.loc)?,
+                                    extract_single_argument(args, "containsAll()", &access.loc)?,
                                 )),
                                 "containsAny" => Either::Right(Expr::contains_any(
                                     left,
-                                    extract_single_argument(args, "containsAny()", access.loc)?,
+                                    extract_single_argument(args, "containsAny()", &access.loc)?,
                                 )),
                                 _ => {
                                     // have to add the "receiver" argument as
@@ -1274,7 +1275,7 @@ impl TryFrom<&Node<Option<cst::Member>>> for Expr {
 pub fn extract_single_argument<T>(
     args: impl ExactSizeIterator<Item = T>,
     fn_name: &'static str,
-    span: miette::SourceSpan,
+    loc: &Loc,
 ) -> Result<T, ToASTError> {
     let mut iter = args.fuse().peekable();
     let first = iter.next();
@@ -1282,11 +1283,11 @@ pub fn extract_single_argument<T>(
     match (first, second) {
         (None, _) => Err(ToASTError::new(
             ToASTErrorKind::wrong_arity(fn_name, 1, 0),
-            span,
+            loc.clone(),
         )),
         (Some(_), Some(_)) => Err(ToASTError::new(
             ToASTErrorKind::wrong_arity(fn_name, 1, iter.len() + 1),
-            span,
+            loc.clone(),
         )),
         (Some(first), None) => Ok(first),
     }
@@ -1323,17 +1324,18 @@ impl TryFrom<&Node<Option<cst::Name>>> for Expr {
             (&[], cst::Ident::Resource) => Ok(Expr::var(ast::Var::Resource)),
             (&[], cst::Ident::Context) => Ok(Expr::var(ast::Var::Context)),
             (path, id) => {
-                let (l, r) = match (path.first(), path.last()) {
-                    (Some(l), Some(r)) => (
-                        l.loc.offset(),
-                        r.loc.offset() + r.loc.len() + ident_to_str_len(id),
-                    ),
-                    (_, _) => (0, 0),
+                let loc = match (path.first(), path.last()) {
+                    (Some(lnode), Some(rnode)) => {
+                        let l = lnode.loc.start();
+                        let r = rnode.loc.end() + ident_to_str_len(id);
+                        Loc::new(l..r, Arc::clone(&lnode.loc.src))
+                    }
+                    (_, _) => Loc::new(0, Arc::from("")),
                 };
                 Err(name
                     .to_ast_err(ToASTErrorKind::InvalidExpression(cst::Name {
                         path: path.to_vec(),
-                        name: Node::with_source_loc(Some(id.clone()), l..r),
+                        name: Node::with_source_loc(Some(id.clone()), loc),
                     }))
                     .into())
             }
@@ -1379,12 +1381,16 @@ mod test {
 
     #[test]
     fn test_invalid_expr_from_cst_name() {
+        let src = "some_long_str";
         let path = vec![Node::with_source_loc(
-            Some(cst::Ident::Ident("some_long_str".into())),
-            0..12,
+            Some(cst::Ident::Ident(src.into())),
+            Loc::new(0..12, Arc::from(src)),
         )];
-        let name = Node::with_source_loc(Some(cst::Ident::Else), 13..16);
-        let cst_name = Node::with_source_loc(Some(cst::Name { path, name }), 0..16);
+        let name = Node::with_source_loc(Some(cst::Ident::Else), Loc::new(13..16, Arc::from(src)));
+        let cst_name = Node::with_source_loc(
+            Some(cst::Name { path, name }),
+            Loc::new(0..16, Arc::from(src)),
+        );
 
         assert_matches!(Expr::try_from(&cst_name), Err(e) => {
             assert!(e.len() == 1);
@@ -1392,7 +1398,7 @@ mod test {
                 ParseError::ToAST(to_ast_error) => {
                     assert_matches!(to_ast_error.kind(), ToASTErrorKind::InvalidExpression(e) => {
                         println!("{e:?}");
-                        assert_eq!(e.name.loc.offset() + e.name.loc.len(), 16);
+                        assert_eq!(e.name.loc.end(), 16);
                     });
                 }
             );
