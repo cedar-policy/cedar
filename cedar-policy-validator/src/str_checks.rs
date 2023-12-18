@@ -96,10 +96,10 @@ pub fn confusable_string_checks<'a>(
                 }
             };
 
-            if let Some(w) = warning {
+            if let Some(kind) = warning {
                 warnings.push(ValidationWarning {
-                    location: SourceLocation::new(policy.id(), loc),
-                    kind: w,
+                    location: SourceLocation::new(policy.id(), loc.cloned()),
+                    kind,
                 })
             }
         }
@@ -149,12 +149,12 @@ const BIDI_CHARS: [char; 9] = [
 #[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
-
     use super::*;
     use cedar_policy_core::{
         ast::{PolicyID, PolicySet},
-        parser::parse_policy,
+        parser::{parse_policy, Loc},
     };
+    use std::sync::Arc;
 
     #[test]
     fn strs() {
@@ -252,7 +252,7 @@ mod test {
             location,
             &SourceLocation::new(
                 &PolicyID::from_string("test"),
-                Some(miette::SourceSpan::from(64..94))
+                Some(Loc::new(64..94, Arc::from(src)))
             ),
         );
     }
@@ -283,7 +283,7 @@ mod test {
             location,
             &SourceLocation::new(
                 &PolicyID::from_string("test"),
-                Some(miette::SourceSpan::from(90..131))
+                Some(Loc::new(90..131, Arc::from(src)))
             )
         );
     }

@@ -17,6 +17,7 @@
 use cedar_policy_core::ast::{
     EntityType, EntityUID, Expr, ExprKind, Literal, Name, PatternElem, Template,
 };
+use cedar_policy_core::parser::Loc;
 
 /// Returns an iterator over all literal entity uids in the expression.
 pub(super) fn expr_entity_uids(expr: &Expr) -> impl Iterator<Item = &EntityUID> {
@@ -76,11 +77,11 @@ pub(super) fn policy_entity_type_names(template: &Template) -> impl Iterator<Ite
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum TextKind<'a> {
     /// String Literals
-    String(Option<miette::SourceSpan>, &'a str),
+    String(Option<&'a Loc>, &'a str),
     /// Identifiers
-    Identifier(Option<miette::SourceSpan>, &'a str),
+    Identifier(Option<&'a Loc>, &'a str),
     /// Pattern Strings
-    Pattern(Option<miette::SourceSpan>, &'a [PatternElem]),
+    Pattern(Option<&'a Loc>, &'a [PatternElem]),
 }
 
 /// Returns an iterator over all text (strings and identifiers) in the expression.
@@ -89,67 +90,64 @@ pub(super) fn expr_text(e: &'_ Expr) -> impl Iterator<Item = TextKind<'_>> {
 }
 
 // Returns a vector containing the text in the top level expression
-fn text_in_expr(e: &'_ Expr) -> impl IntoIterator<Item = TextKind<'_>> {
+fn text_in_expr<'a>(e: &'a Expr) -> impl IntoIterator<Item = TextKind<'a>> {
     match e.expr_kind() {
-        ExprKind::Lit(lit) => text_in_lit(e.source_span(), lit).into_iter().collect(),
+        ExprKind::Lit(lit) => text_in_lit(e.source_loc(), lit).into_iter().collect(),
         ExprKind::ExtensionFunctionApp { fn_name, .. } => {
-            text_in_name(e.source_span(), fn_name).collect()
+            text_in_name(e.source_loc(), fn_name).collect()
         }
-        ExprKind::GetAttr { attr, .. } => vec![TextKind::Identifier(e.source_span(), attr)],
-        ExprKind::HasAttr { attr, .. } => vec![TextKind::Identifier(e.source_span(), attr)],
+        ExprKind::GetAttr { attr, .. } => vec![TextKind::Identifier(e.source_loc(), attr)],
+        ExprKind::HasAttr { attr, .. } => vec![TextKind::Identifier(e.source_loc(), attr)],
         ExprKind::Like { pattern, .. } => {
-            vec![TextKind::Pattern(e.source_span(), pattern.get_elems())]
+            vec![TextKind::Pattern(e.source_loc(), pattern.get_elems())]
         }
         ExprKind::Record(map) => map
             .keys()
-            .map(|attr| TextKind::Identifier(e.source_span(), attr))
+            .map(|attr| TextKind::Identifier(e.source_loc(), attr))
             .collect(),
         _ => vec![],
     }
 }
 
-fn text_in_lit(
-    span: Option<miette::SourceSpan>,
-    lit: &Literal,
-) -> impl IntoIterator<Item = TextKind<'_>> {
+fn text_in_lit<'a>(
+    loc: Option<&'a Loc>,
+    lit: &'a Literal,
+) -> impl IntoIterator<Item = TextKind<'a>> {
     match lit {
         Literal::Bool(_) => vec![],
         Literal::Long(_) => vec![],
-        Literal::String(s) => vec![TextKind::String(span, s)],
-        Literal::EntityUID(euid) => text_in_euid(span, euid).collect(),
+        Literal::String(s) => vec![TextKind::String(loc, s)],
+        Literal::EntityUID(euid) => text_in_euid(loc, euid).collect(),
     }
 }
 
-fn text_in_euid(
-    span: Option<miette::SourceSpan>,
-    euid: &EntityUID,
-) -> impl Iterator<Item = TextKind<'_>> {
-    text_in_entity_type(span, euid.entity_type())
+fn text_in_euid<'a>(
+    loc: Option<&'a Loc>,
+    euid: &'a EntityUID,
+) -> impl Iterator<Item = TextKind<'a>> {
+    text_in_entity_type(loc, euid.entity_type())
         .into_iter()
         .chain(std::iter::once(TextKind::Identifier(
-            span,
+            loc,
             euid.eid().as_ref(),
         )))
 }
 
-fn text_in_entity_type(
-    span: Option<miette::SourceSpan>,
-    ty: &EntityType,
-) -> impl IntoIterator<Item = TextKind<'_>> {
+fn text_in_entity_type<'a>(
+    loc: Option<&'a Loc>,
+    ty: &'a EntityType,
+) -> impl IntoIterator<Item = TextKind<'a>> {
     match ty {
-        EntityType::Specified(ty) => text_in_name(span, ty).collect::<Vec<_>>(),
+        EntityType::Specified(ty) => text_in_name(loc, ty).collect::<Vec<_>>(),
         EntityType::Unspecified => vec![],
     }
 }
 
-fn text_in_name(
-    span: Option<miette::SourceSpan>,
-    name: &Name,
-) -> impl Iterator<Item = TextKind<'_>> {
+fn text_in_name<'a>(loc: Option<&'a Loc>, name: &'a Name) -> impl Iterator<Item = TextKind<'a>> {
     name.namespace_components()
-        .map(move |id| TextKind::Identifier(span, id.as_ref()))
+        .map(move |id| TextKind::Identifier(loc, id.as_ref()))
         .chain(std::iter::once(TextKind::Identifier(
-            span,
+            loc,
             name.basename().as_ref(),
         )))
 }
