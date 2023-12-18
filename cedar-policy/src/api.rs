@@ -1010,8 +1010,8 @@ pub enum SchemaError {
     ActionEntityAttributes(Vec<String>),
     /// An action context or entity type shape was declared to have a type other
     /// than `Record`.
-    #[error("{0} is not a record")]
-    ContextOrShapeNotRecord(ContextOrShape),
+    #[error("Action context or entity type shape is not a record")]
+    ContextOrShapeNotRecord,
     /// An Action Entity (transitively) has an attribute that is an empty set
     #[error("Action attribute is an empty set")]
     ActionEntityAttributeEmptySet,
@@ -1020,42 +1020,6 @@ pub enum SchemaError {
         "Action has an attribute of unsupported type (escaped expression, entity or extension)"
     )]
     ActionEntityAttributeUnsupportedType,
-}
-
-/// Describes in what action context or entity type shape a schema parsing error
-/// occurred.
-#[derive(Debug)]
-pub enum ContextOrShape {
-    /// An error occurred when parsing the context for the action with this
-    /// `EntityUid`.
-    ActionContext(EntityUid),
-    /// An error occurred when parsing the shape for the entity type with this
-    /// `EntityTypeName`.
-    EntityTypeShape(EntityTypeName),
-}
-
-impl std::fmt::Display for ContextOrShape {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ActionContext(action) => write!(f, "Context for action {action}"),
-            Self::EntityTypeShape(entity_type) => {
-                write!(f, "Shape for entity type {entity_type}")
-            }
-        }
-    }
-}
-
-impl From<cedar_policy_validator::ContextOrShape> for ContextOrShape {
-    fn from(value: cedar_policy_validator::ContextOrShape) -> Self {
-        match value {
-            cedar_policy_validator::ContextOrShape::ActionContext(euid) => {
-                Self::ActionContext(EntityUid(euid))
-            }
-            cedar_policy_validator::ContextOrShape::EntityTypeShape(name) => {
-                Self::EntityTypeShape(EntityTypeName(name))
-            }
-        }
-    }
 }
 
 #[doc(hidden)]
@@ -1105,8 +1069,8 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             cedar_policy_validator::SchemaError::ActionHasAttributes(e) => {
                 Self::ActionEntityAttributes(e)
             }
-            cedar_policy_validator::SchemaError::ContextOrShapeNotRecord(context_or_shape) => {
-                Self::ContextOrShapeNotRecord(context_or_shape.into())
+            cedar_policy_validator::SchemaError::ContextOrShapeNotRecord(_) => {
+                Self::ContextOrShapeNotRecord
             }
             cedar_policy_validator::SchemaError::ActionAttributesContainEmptySet(_) => {
                 Self::ActionEntityAttributeEmptySet

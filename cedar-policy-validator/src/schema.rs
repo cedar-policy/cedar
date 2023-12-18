@@ -909,8 +909,7 @@ impl ValidatorSchema {
                         descendants,
                         attributes: Self::record_attributes_or_none(
                             entity_type.attributes.resolve_type_defs(&type_defs)?,
-                        )
-                        .ok_or(SchemaError::ContextOrShapeNotRecord(
+                        ).ok_or(SchemaError::ContextOrShapeNotRecord(
                             ContextOrShape::EntityTypeShape(name),
                         ))?,
                     },
@@ -2721,7 +2720,7 @@ mod test {
         }))
         .unwrap();
         match TryInto::<ValidatorSchema>::try_into(fragment) {
-            Err(SchemaError::ContextOrShapeNotRecord(_)) => (),
+            Err(SchemaError::ContextOrShapeNotRecord(ContextOrShape::EntityTypeShape(_))) => (),
             s => panic!(
                 "Expected Err(SchemaError::ContextOrShapeNotRecord), got {:?}",
                 s
