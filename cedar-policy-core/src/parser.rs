@@ -24,9 +24,12 @@ mod cst_to_ast;
 pub mod err;
 /// implementations for formatting, like `Display`
 mod fmt;
+/// Source location struct
+mod loc;
+pub use loc::Loc;
 /// Metadata wrapper for CST Nodes
 mod node;
-pub use node::ASTNode;
+pub use node::Node;
 /// Step one: Convert text to CST
 pub mod text_to_cst;
 /// Utility functions to unescape string literals
@@ -80,12 +83,7 @@ pub fn parse_policyset_and_also_return_policy_text(
         let texts = cst
             .with_generated_policyids()
             .expect("shouldn't be None since parse_policies() and to_policyset() didn't return Err")
-            .map(|(id, policy)| {
-                (
-                    id,
-                    &text[policy.loc.offset()..(policy.loc.offset() + policy.loc.len())],
-                )
-            })
+            .map(|(id, policy)| (id, &text[policy.loc.start()..policy.loc.end()]))
             .collect::<HashMap<ast::PolicyID, &str>>();
         Ok((texts, pset))
     } else {

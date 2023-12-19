@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::{ast::*, parser::err::ParseErrors};
+use crate::{ast::*, parser::err::ParseErrors, parser::Loc};
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -35,7 +35,7 @@ use thiserror::Error;
 #[derive(Serialize, Deserialize, Hash, Debug, Clone, PartialEq, Eq)]
 pub struct Expr<T = ()> {
     expr_kind: ExprKind<T>,
-    source_span: Option<miette::SourceSpan>,
+    source_loc: Option<Loc>,
     data: T,
 }
 
@@ -183,10 +183,10 @@ impl From<PartialValue> for Expr {
 }
 
 impl<T> Expr<T> {
-    fn new(expr_kind: ExprKind<T>, source_span: Option<miette::SourceSpan>, data: T) -> Self {
+    fn new(expr_kind: ExprKind<T>, source_loc: Option<Loc>, data: T) -> Self {
         Self {
             expr_kind,
-            source_span,
+            source_loc,
             data,
         }
     }
@@ -198,7 +198,7 @@ impl<T> Expr<T> {
         &self.expr_kind
     }
 
-    /// Access the inner `ExprKind`, taking ownership.
+    /// Access the inner `ExprKind`, taking ownership and consuming the `Expr`.
     pub fn into_expr_kind(self) -> ExprKind<T> {
         self.expr_kind
     }
@@ -208,14 +208,15 @@ impl<T> Expr<T> {
         &self.data
     }
 
-    /// Access the data stored on the `Expr`, taking ownership.
+    /// Access the data stored on the `Expr`, taking ownership and consuming the
+    /// `Expr`.
     pub fn into_data(self) -> T {
         self.data
     }
 
-    /// Access the `SourceSpan` stored on the `Expr`.
-    pub fn source_span(&self) -> Option<miette::SourceSpan> {
-        self.source_span
+    /// Access the `Loc` stored on the `Expr`.
+    pub fn source_loc(&self) -> Option<&Loc> {
+        self.source_loc.as_ref()
     }
 
     /// Update the data for this `Expr`. A convenient function used by the
@@ -654,10 +655,10 @@ impl std::fmt::Display for Unknown {
 }
 
 /// Builder for constructing `Expr` objects annotated with some `data`
-/// (possibly taking default value) and optionally a `source_span`.
+/// (possibly taking default value) and optionally a `source_loc`.
 #[derive(Debug)]
 pub struct ExprBuilder<T> {
-    source_span: Option<miette::SourceSpan>,
+    source_loc: Option<Loc>,
     data: T,
 }
 
@@ -669,7 +670,7 @@ where
     /// takes a default value.
     pub fn new() -> Self {
         Self {
-            source_span: None,
+            source_loc: None,
             data: T::default(),
         }
     }
@@ -678,8 +679,8 @@ where
     /// Defined only for `T: Default` because the caller would otherwise need to
     /// provide a `data` for the intermediate `not` Expr node.
     pub fn noteq(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
-        match self.source_span {
-            Some(source_span) => ExprBuilder::new().with_source_span(source_span),
+        match &self.source_loc {
+            Some(source_loc) => ExprBuilder::new().with_source_loc(source_loc.clone()),
             None => ExprBuilder::new(),
         }
         .not(self.with_expr_kind(ExprKind::BinaryApp {
@@ -698,40 +699,40 @@ impl<T: Default> Default for ExprBuilder<T> {
 
 impl<T> ExprBuilder<T> {
     /// Construct a new `ExprBuild` where the specified data will be stored on
-    /// the `Expr`. This constructor does not populate the `source_span` field,
-    /// so `with_source_span` should be called if constructing an `Expr` where
+    /// the `Expr`. This constructor does not populate the `source_loc` field,
+    /// so `with_source_loc` should be called if constructing an `Expr` where
     /// the source location is known.
     pub fn with_data(data: T) -> Self {
         Self {
-            source_span: None,
+            source_loc: None,
             data,
         }
     }
 
     /// Update the `ExprBuilder` to build an expression with some known location
     /// in policy source code.
-    pub fn with_source_span(self, source_span: miette::SourceSpan) -> Self {
-        self.with_maybe_source_span(Some(source_span))
+    pub fn with_source_loc(self, source_loc: Loc) -> Self {
+        self.with_maybe_source_loc(Some(source_loc))
     }
 
     /// Utility used the validator to get an expression with the same source
     /// location as an existing expression. This is done when reconstructing the
     /// `Expr` with type information.
-    pub fn with_same_source_span<U>(self, expr: &Expr<U>) -> Self {
-        self.with_maybe_source_span(expr.source_span)
+    pub fn with_same_source_loc<U>(self, expr: &Expr<U>) -> Self {
+        self.with_maybe_source_loc(expr.source_loc.clone())
     }
 
-    /// internally used to update SourceSpan to the given `Some` or `None`
-    fn with_maybe_source_span(mut self, maybe_source_span: Option<miette::SourceSpan>) -> Self {
-        self.source_span = maybe_source_span;
+    /// internally used to update `.source_loc` to the given `Some` or `None`
+    fn with_maybe_source_loc(mut self, maybe_source_loc: Option<Loc>) -> Self {
+        self.source_loc = maybe_source_loc;
         self
     }
 
     /// Internally used by the following methods to construct an `Expr`
-    /// containing the `data` and `source_span` in this `ExprBuilder` with some
+    /// containing the `data` and `source_loc` in this `ExprBuilder` with some
     /// inner `ExprKind`.
     fn with_expr_kind(self, expr_kind: ExprKind<T>) -> Expr<T> {
-        Expr::new(expr_kind, self.source_span, self.data)
+        Expr::new(expr_kind, self.source_loc, self.data)
     }
 
     /// Create an `Expr` that's just a single `Literal`.
@@ -1018,11 +1019,11 @@ impl<T: Clone> ExprBuilder<T> {
     ///
     /// This may create multiple AST `&&` nodes. If it does, all the nodes will have the same
     /// source location and the same `T` data (taken from this builder) unless overridden, e.g.,
-    /// with another call to `with_source_span()`.
+    /// with another call to `with_source_loc()`.
     pub fn and_nary(self, first: Expr<T>, others: impl IntoIterator<Item = Expr<T>>) -> Expr<T> {
         others.into_iter().fold(first, |acc, next| {
             Self::with_data(self.data.clone())
-                .with_maybe_source_span(self.source_span)
+                .with_maybe_source_loc(self.source_loc.clone())
                 .and(acc, next)
         })
     }
@@ -1033,11 +1034,11 @@ impl<T: Clone> ExprBuilder<T> {
     ///
     /// This may create multiple AST `||` nodes. If it does, all the nodes will have the same
     /// source location and the same `T` data (taken from this builder) unless overridden, e.g.,
-    /// with another call to `with_source_span()`.
+    /// with another call to `with_source_loc()`.
     pub fn or_nary(self, first: Expr<T>, others: impl IntoIterator<Item = Expr<T>>) -> Expr<T> {
         others.into_iter().fold(first, |acc, next| {
             Self::with_data(self.data.clone())
-                .with_maybe_source_span(self.source_span)
+                .with_maybe_source_loc(self.source_loc.clone())
                 .or(acc, next)
         })
     }
@@ -1046,7 +1047,7 @@ impl<T: Clone> ExprBuilder<T> {
     pub fn greater(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         // e1 > e2 is defined as !(e1 <= e2)
         let leq = Self::with_data(self.data.clone())
-            .with_maybe_source_span(self.source_span)
+            .with_maybe_source_loc(self.source_loc.clone())
             .lesseq(e1, e2);
         self.not(leq)
     }
@@ -1055,7 +1056,7 @@ impl<T: Clone> ExprBuilder<T> {
     pub fn greatereq(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         // e1 >= e2 is defined as !(e1 < e2)
         let leq = Self::with_data(self.data.clone())
-            .with_maybe_source_span(self.source_span)
+            .with_maybe_source_loc(self.source_loc.clone())
             .less(e1, e2);
         self.not(leq)
     }

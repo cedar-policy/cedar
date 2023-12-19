@@ -49,6 +49,7 @@ fn ip_extension_typecheck_fails() {
             Expr::val(3),
             Type::primitive_string(),
             Type::primitive_long(),
+            None,
         )],
     );
     let expr = Expr::from_str("ip(\"foo\")").expect("parsing should succeed");
@@ -74,6 +75,7 @@ fn ip_extension_typecheck_fails() {
             Expr::val(3),
             Type::extension(ipaddr_name),
             Type::primitive_long(),
+            None,
         )],
     );
 }
@@ -112,6 +114,7 @@ fn decimal_extension_typecheck_fails() {
             Expr::val(3),
             Type::primitive_string(),
             Type::primitive_long(),
+            None,
         )],
     );
     let expr = Expr::from_str("decimal(\"foo\")").expect("parsing should succeed");
@@ -137,6 +140,7 @@ fn decimal_extension_typecheck_fails() {
             Expr::val(3),
             Type::extension(decimal_name),
             Type::primitive_long(),
+            None,
         )],
     );
 }

@@ -27,7 +27,7 @@ use smol_str::SmolStr;
 
 use crate::{
     type_error::TypeError, types::Type, AttributeAccess, AttributesOrContext, EntityType,
-    NamespaceDefinition, SchemaFragment, ValidationMode,
+    NamespaceDefinition, SchemaFragment, UnexpectedTypeHelp, ValidationMode,
 };
 
 use super::test_utils::{
@@ -173,6 +173,7 @@ fn and_typecheck_fails() {
             Expr::val(1),
             Type::primitive_boolean(),
             Type::primitive_long(),
+            None,
         )],
     );
     assert_typecheck_fails_empty_schema(
@@ -182,6 +183,7 @@ fn and_typecheck_fails() {
             Expr::val(1),
             Type::primitive_boolean(),
             Type::primitive_long(),
+            None,
         )],
     );
     assert_typecheck_fails_empty_schema(
@@ -194,6 +196,7 @@ fn and_typecheck_fails() {
             Expr::val(true),
             Type::primitive_long(),
             Type::singleton_boolean(true),
+            None,
         )],
     );
     assert_typecheck_fails_empty_schema(
@@ -206,6 +209,7 @@ fn and_typecheck_fails() {
             Expr::val(true),
             Type::primitive_long(),
             Type::singleton_boolean(true),
+            None,
         )],
     );
 }
@@ -243,6 +247,7 @@ fn or_right_true_fails_left() {
             Expr::val(1),
             Type::primitive_boolean(),
             Type::primitive_long(),
+            None,
         )],
     );
 }
@@ -291,6 +296,7 @@ fn or_typecheck_fails() {
             Expr::val(1),
             Type::primitive_boolean(),
             Type::primitive_long(),
+            None,
         )],
     );
     assert_typecheck_fails_empty_schema(
@@ -300,6 +306,7 @@ fn or_typecheck_fails() {
             Expr::val(1),
             Type::primitive_boolean(),
             Type::primitive_long(),
+            None,
         )],
     );
     assert_typecheck_fails_empty_schema(
@@ -312,6 +319,7 @@ fn or_typecheck_fails() {
             Expr::val(true),
             Type::primitive_long(),
             Type::singleton_boolean(true),
+            None,
         )],
     );
     assert_typecheck_fails_empty_schema(
@@ -324,6 +332,7 @@ fn or_typecheck_fails() {
             Expr::val(true),
             Type::primitive_long(),
             Type::singleton_boolean(true),
+            None,
         )],
     );
     assert_typecheck_fails_empty_schema(
@@ -336,6 +345,7 @@ fn or_typecheck_fails() {
             Expr::val(true),
             Type::primitive_long(),
             Type::singleton_boolean(true),
+            None,
         )],
     );
 }
@@ -592,6 +602,7 @@ fn has_typecheck_fails() {
             Expr::val(true),
             vec![Type::any_entity_reference(), Type::any_record()],
             Type::singleton_boolean(true),
+            None,
         )],
     );
 }
@@ -636,6 +647,7 @@ fn record_get_attr_typecheck_fails() {
             Expr::val(2),
             vec![Type::any_entity_reference(), Type::any_record()],
             Type::primitive_long(),
+            None,
         )],
     );
 }
@@ -744,6 +756,7 @@ fn in_typecheck_fails() {
                 Expr::val(0),
                 Type::any_entity_reference(),
                 Type::primitive_long(),
+                Some(UnexpectedTypeHelp::TryUsingContains),
             ),
             TypeError::expected_one_of_types(
                 Expr::val(true),
@@ -752,6 +765,7 @@ fn in_typecheck_fails() {
                     Type::any_entity_reference(),
                 ],
                 Type::singleton_boolean(true),
+                None,
             ),
         ],
     );
@@ -775,6 +789,7 @@ fn contains_typecheck_fails() {
             Expr::val("foo"),
             Type::any_set(),
             Type::primitive_string(),
+            Some(UnexpectedTypeHelp::TryUsingLike),
         )],
     );
     assert_typecheck_fails_empty_schema(
@@ -784,6 +799,7 @@ fn contains_typecheck_fails() {
             Expr::val(1),
             Type::any_set(),
             Type::primitive_long(),
+            None,
         )],
     );
     assert_typecheck_fails_empty_schema(
@@ -799,6 +815,7 @@ fn contains_typecheck_fails() {
                 "foo".into(),
                 AttributeType::new(Type::primitive_long(), true),
             )]),
+            Some(UnexpectedTypeHelp::TryUsingHas),
         )],
     );
 }
@@ -846,11 +863,12 @@ fn contains_all_typecheck_fails() {
         Expr::contains_all(Expr::val(1), Expr::val(true)),
         Type::primitive_boolean(),
         vec![
-            TypeError::expected_type(Expr::val(1), Type::any_set(), Type::primitive_long()),
+            TypeError::expected_type(Expr::val(1), Type::any_set(), Type::primitive_long(), None),
             TypeError::expected_type(
                 Expr::val(true),
                 Type::any_set(),
                 Type::singleton_boolean(true),
+                Some(UnexpectedTypeHelp::TryUsingSingleContains),
             ),
         ],
     );
@@ -916,6 +934,7 @@ fn like_typecheck_fails() {
             Expr::val(1),
             Type::primitive_string(),
             Type::primitive_long(),
+            None,
         )],
     );
 }
@@ -938,11 +957,13 @@ fn less_than_typecheck_fails() {
                 Expr::val(true),
                 Type::primitive_long(),
                 Type::singleton_boolean(true),
+                None,
             ),
             TypeError::expected_type(
                 Expr::val(false),
                 Type::primitive_long(),
                 Type::singleton_boolean(false),
+                None,
             ),
         ],
     )
@@ -963,6 +984,7 @@ fn not_typecheck_fails() {
             Expr::val(1),
             Type::primitive_boolean(),
             Type::primitive_long(),
+            None,
         )],
     );
 }
@@ -1021,6 +1043,7 @@ fn if_typecheck_fails() {
                 Expr::val("fail"),
                 Type::primitive_boolean(),
                 Type::primitive_string(),
+                None,
             ),
         ],
     );
@@ -1042,6 +1065,7 @@ fn neg_typecheck_fails() {
             Expr::val("foo"),
             Type::primitive_long(),
             Type::primitive_string(),
+            None,
         )],
     )
 }
@@ -1062,6 +1086,7 @@ fn mul_typecheck_fails() {
             Expr::val("foo"),
             Type::primitive_long(),
             Type::primitive_string(),
+            None,
         )],
     )
 }
@@ -1084,6 +1109,7 @@ fn add_sub_typecheck_fails() {
             Expr::val("foo"),
             Type::primitive_long(),
             Type::primitive_string(),
+            Some(UnexpectedTypeHelp::ConcatenationNotSupported),
         )],
     );
 
@@ -1095,6 +1121,7 @@ fn add_sub_typecheck_fails() {
             Expr::val("bar"),
             Type::primitive_long(),
             Type::primitive_string(),
+            None,
         )],
     );
 }
@@ -1111,6 +1138,7 @@ fn is_typecheck_fails() {
             Expr::val(1),
             Type::any_entity_reference(),
             Type::primitive_long(),
+            Some(UnexpectedTypeHelp::TypeTestNotSupported),
         )],
     );
 }

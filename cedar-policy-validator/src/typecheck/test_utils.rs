@@ -34,15 +34,20 @@ use crate::{
     schema::ACTION_ENTITY_TYPE,
     type_error::TypeError,
     types::{EffectSet, OpenTag, RequestEnv, Type},
-    NamespaceDefinition, ValidationMode, ValidatorSchema,
+    NamespaceDefinition, UnexpectedTypeHelp, ValidationMode, ValidatorSchema,
 };
 
 impl TypeError {
     /// Testing utility for an unexpected type error when exactly one type was
     /// expected.
     #[cfg(test)]
-    pub(crate) fn expected_type(on_expr: Expr, expected: Type, actual: Type) -> Self {
-        TypeError::expected_one_of_types(on_expr, vec![expected], actual)
+    pub(crate) fn expected_type(
+        on_expr: Expr,
+        expected: Type,
+        actual: Type,
+        help: Option<UnexpectedTypeHelp>,
+    ) -> Self {
+        TypeError::expected_one_of_types(on_expr, vec![expected], actual, help)
     }
 }
 
