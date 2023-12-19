@@ -158,17 +158,22 @@ pub enum ExprKind<T = ()> {
 impl From<Value> for Expr {
     fn from(v: Value) -> Self {
         match v {
-            Value::Lit(lit) => Expr::val(lit),
-            Value::Set(s) => Expr::set(s.iter().map(|v| Expr::from(v.clone()))),
+            Value::Lit { lit, loc } => Expr::val(lit).with_maybe_source_loc(loc),
+            Value::Set { set, loc } => {
+                Expr::set(set.iter().map(|v| Expr::from(v.clone()))).with_maybe_source_loc(loc)
+            }
             // PANIC SAFETY: cannot have duplicate key because the input was already a BTreeMap
             #[allow(clippy::expect_used)]
-            Value::Record(fields) => Expr::record(
-                unwrap_or_clone(fields)
+            Value::Record { record, loc } => Expr::record(
+                unwrap_or_clone(record)
                     .into_iter()
                     .map(|(k, v)| (k, Expr::from(v))),
             )
-            .expect("cannot have duplicate key because the input was already a BTreeMap"),
-            Value::ExtensionValue(ev) => ev.as_ref().clone().into(),
+            .expect("cannot have duplicate key because the input was already a BTreeMap")
+            .with_maybe_source_loc(loc),
+            Value::ExtensionValue { ev, loc } => {
+                Expr::from(ev.as_ref().clone()).with_maybe_source_loc(loc)
+            }
         }
     }
 }
@@ -217,6 +222,11 @@ impl<T> Expr<T> {
     /// Access the `Loc` stored on the `Expr`.
     pub fn source_loc(&self) -> Option<&Loc> {
         self.source_loc.as_ref()
+    }
+
+    /// Return the `Expr`, but with the new `source_loc` (or `None`).
+    pub fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+        Self { source_loc, ..self }
     }
 
     /// Update the data for this `Expr`. A convenient function used by the

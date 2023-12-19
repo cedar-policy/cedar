@@ -314,25 +314,26 @@ impl CedarValueJson {
     ///     argument is a nontrivial residual.)
     pub fn from_value(value: Value) -> Result<Self, JsonSerializationError> {
         match value {
-            Value::Lit(lit) => Ok(Self::from_lit(lit)),
-            Value::Set(set) => Ok(Self::Set(
+            Value::Lit { lit, .. } => Ok(Self::from_lit(lit)),
+            Value::Set { set, .. } => Ok(Self::Set(
                 set.iter()
                     .cloned()
                     .map(Self::from_value)
                     .collect::<Result<_, _>>()?,
             )),
-            Value::Record(map) => {
+            Value::Record { record, .. } => {
                 // if `map` contains a key which collides with one of our JSON
                 // escapes, then we have a problem because it would be interpreted
                 // as an escape when being read back in.
-                check_for_reserved_keys(map.keys())?;
+                check_for_reserved_keys(record.keys())?;
                 Ok(Self::Record(
-                    map.iter()
+                    record
+                        .iter()
                         .map(|(k, v)| Ok((k.clone(), Self::from_value(v.clone())?)))
                         .collect::<Result<JsonRecord, JsonSerializationError>>()?,
                 ))
             }
-            Value::ExtensionValue(ev) => {
+            Value::ExtensionValue { ev, .. } => {
                 let ext_fn: &Name = &ev.constructor;
                 Ok(Self::ExtnEscape {
                     __extn: FnAndArg {

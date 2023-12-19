@@ -1820,14 +1820,20 @@ mod schema_based_parsing_tests {
         let home_ip = parsed.get("home_ip").expect("home_ip attr should exist");
         assert_matches!(
             home_ip,
-            &PartialValue::Value(Value::Lit(Literal::String(_))),
+            &PartialValue::Value(Value::Lit {
+                lit: Literal::String(_),
+                ..
+            }),
         );
         let trust_score = parsed
             .get("trust_score")
             .expect("trust_score attr should exist");
         assert_matches!(
             trust_score,
-            &PartialValue::Value(Value::Lit(Literal::String(_))),
+            &PartialValue::Value(Value::Lit {
+                lit: Literal::String(_),
+                ..
+            }),
         );
         let manager = parsed.get("manager").expect("manager attr should exist");
         assert_matches!(manager, &PartialValue::Value(Value::Record { .. }));
@@ -1836,39 +1842,31 @@ mod schema_based_parsing_tests {
         let hr_contacts = parsed
             .get("hr_contacts")
             .expect("hr_contacts attr should exist");
-        assert_matches!(hr_contacts, &PartialValue::Value(Value::Set(_)));
-        let contact = {
-            let PartialValue::Value(Value::Set(set)) = hr_contacts else {
-                panic!("already checked it was Set")
-            };
-            set.iter().next().expect("should be at least one contact")
-        };
-        assert_matches!(contact, &Value::Record(_));
+        assert_matches!(hr_contacts, PartialValue::Value(Value::Set { set, .. }) => {
+            let contact = set.iter().next().expect("should be at least one contact");
+            assert_matches!(contact, &Value::Record { .. });
+        });
         let json_blob = parsed
             .get("json_blob")
             .expect("json_blob attr should exist");
-        let PartialValue::Value(Value::Record(map)) = json_blob else {
-            panic!("expected json_blob to be a Record")
-        };
-        let (_, inner1) = map
-            .iter()
-            .find(|(k, _)| *k == "inner1")
-            .expect("inner1 attr should exist");
-        assert_matches!(inner1, &Value::Lit(Literal::Bool(_)));
-        let (_, inner3) = map
-            .iter()
-            .find(|(k, _)| *k == "inner3")
-            .expect("inner3 attr should exist");
-        assert_matches!(inner3, &Value::Record(_));
-        let Value::Record(innermap) = inner3 else {
-            panic!("already checked it was Record")
-        };
-        let (_, innerinner) = innermap
-            .iter()
-            .find(|(k, _)| *k == "innerinner")
-            .expect("innerinner attr should exist");
-        assert_matches!(innerinner, &Value::Record(_));
-
+        assert_matches!(json_blob, PartialValue::Value(Value::Record { record, .. }) => {
+            let (_, inner1) = record
+                .iter()
+                .find(|(k, _)| *k == "inner1")
+                .expect("inner1 attr should exist");
+            assert_matches!(inner1, Value::Lit { lit: Literal::Bool(_), .. });
+            let (_, inner3) = record
+                .iter()
+                .find(|(k, _)| *k == "inner3")
+                .expect("inner3 attr should exist");
+            assert_matches!(inner3, Value::Record { record: innerrecord, .. } => {
+                let (_, innerinner) = innerrecord
+                    .iter()
+                    .find(|(k, _)| *k == "innerinner")
+                    .expect("innerinner attr should exist");
+                assert_matches!(innerinner, Value::Record { .. });
+            });
+        });
         // but with schema-based parsing, we get these other types
         let eparser = EntityJsonParser::new(
             Some(&MockSchema),
@@ -1904,38 +1902,31 @@ mod schema_based_parsing_tests {
         let hr_contacts = parsed
             .get("hr_contacts")
             .expect("hr_contacts attr should exist");
-        assert_matches!(hr_contacts, &PartialValue::Value(Value::Set(_)));
-        let contact = {
-            let PartialValue::Value(Value::Set(set)) = hr_contacts else {
-                panic!("already checked it was Set")
-            };
-            set.iter().next().expect("should be at least one contact")
-        };
-        assert_matches!(contact, &Value::Lit(Literal::EntityUID(_)));
+        assert_matches!(hr_contacts, PartialValue::Value(Value::Set { set, .. }) => {
+            let contact = set.iter().next().expect("should be at least one contact");
+            assert_matches!(contact, &Value::Lit { lit: Literal::EntityUID(_), .. });
+        });
         let json_blob = parsed
             .get("json_blob")
             .expect("json_blob attr should exist");
-        let PartialValue::Value(Value::Record(map)) = json_blob else {
-            panic!("expected json_blob to be a Record")
-        };
-        let (_, inner1) = map
-            .iter()
-            .find(|(k, _)| *k == "inner1")
-            .expect("inner1 attr should exist");
-        assert_matches!(inner1, &Value::Lit(Literal::Bool(_)));
-        let (_, inner3) = map
-            .iter()
-            .find(|(k, _)| *k == "inner3")
-            .expect("inner3 attr should exist");
-        assert_matches!(inner3, &Value::Record(_));
-        let Value::Record(innermap) = inner3 else {
-            panic!("already checked it was Record")
-        };
-        let (_, innerinner) = innermap
-            .iter()
-            .find(|(k, _)| *k == "innerinner")
-            .expect("innerinner attr should exist");
-        assert_matches!(innerinner, &Value::Lit(Literal::EntityUID(_)));
+        assert_matches!(json_blob, PartialValue::Value(Value::Record { record, .. }) => {
+            let (_, inner1) = record
+                .iter()
+                .find(|(k, _)| *k == "inner1")
+                .expect("inner1 attr should exist");
+            assert_matches!(inner1, Value::Lit { lit: Literal::Bool(_), .. });
+            let (_, inner3) = record
+                .iter()
+                .find(|(k, _)| *k == "inner3")
+                .expect("inner3 attr should exist");
+            assert_matches!(inner3, Value::Record { record: innerrecord, .. } => {
+                let (_, innerinner) = innerrecord
+                    .iter()
+                    .find(|(k, _)| *k == "innerinner")
+                    .expect("innerinner attr should exist");
+                assert_matches!(innerinner, Value::Lit { lit: Literal::EntityUID(_), .. });
+            });
+        });
         assert_eq!(
             parsed.get("home_ip").cloned().map(RestrictedExpr::try_from),
             Some(Ok(RestrictedExpr::call_extension_fn(

@@ -382,19 +382,19 @@ pub fn schematype_of_restricted_expr(
 /// other optional attributes are possible.
 pub fn schematype_of_value(value: &Value) -> Result<SchemaType, HeterogeneousSetError> {
     match value {
-        Value::Lit(lit) => Ok(schematype_of_lit(lit)),
-        Value::Set(set) => {
+        Value::Lit { lit, .. } => Ok(schematype_of_lit(lit)),
+        Value::Set { set, .. } => {
             let element_types = set.iter().map(schematype_of_value);
             schematype_of_set_elements(element_types)
         }
-        Value::Record(map) => Ok(SchemaType::Record {
-            attrs: map
+        Value::Record { record, .. } => Ok(SchemaType::Record {
+            attrs: record
                 .iter()
                 .map(|(k, v)| Ok((k.clone(), AttributeType::required(schematype_of_value(v)?))))
                 .collect::<Result<_, HeterogeneousSetError>>()?,
             open_attrs: false,
         }),
-        Value::ExtensionValue(ev) => Ok(SchemaType::Extension {
+        Value::ExtensionValue { ev, .. } => Ok(SchemaType::Extension {
             name: ev.typename(),
         }),
     }

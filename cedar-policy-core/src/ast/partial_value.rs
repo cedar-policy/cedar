@@ -103,46 +103,49 @@ mod test {
     #[test]
     fn split_values() {
         let vs = [
-            PartialValue::Value(Value::Lit(1.into())),
-            PartialValue::Value(Value::Lit(2.into())),
+            PartialValue::Value(Value::from(1)),
+            PartialValue::Value(Value::from(2)),
         ];
         match split(vs) {
-            Either::Left(vs) => assert_eq!(
-                vs.collect::<Vec<_>>(),
-                vec![Value::Lit(1.into()), Value::Lit(2.into())]
-            ),
-            Either::Right(_) => panic!("Got residuals"),
-        }
+            Either::Right(_) => panic!("expected values, got residuals"),
+            Either::Left(vs) => {
+                assert_eq!(vs.collect::<Vec<_>>(), vec![Value::from(1), Value::from(2)])
+            }
+        };
     }
 
     #[test]
     fn split_residuals() {
         let rs = [
-            PartialValue::Value(Value::Lit(1.into())),
+            PartialValue::Value(Value::from(1)),
             PartialValue::Residual(Expr::val(2)),
-            PartialValue::Value(Value::Lit(3.into())),
+            PartialValue::Value(Value::from(3)),
             PartialValue::Residual(Expr::val(4)),
         ];
         let expected = vec![Expr::val(1), Expr::val(2), Expr::val(3), Expr::val(4)];
         match split(rs) {
-            Either::Left(_) => panic!("Got values"),
-            Either::Right(rs) => assert_eq!(rs.collect::<Vec<_>>(), expected),
-        }
+            Either::Left(_) => panic!("expected residuals, got values"),
+            Either::Right(rs) => {
+                assert_eq!(rs.collect::<Vec<_>>(), expected);
+            }
+        };
     }
 
     #[test]
     fn split_residuals2() {
         let rs = [
-            PartialValue::Value(Value::Lit(1.into())),
-            PartialValue::Value(Value::Lit(2.into())),
+            PartialValue::Value(Value::from(1)),
+            PartialValue::Value(Value::from(2)),
             PartialValue::Residual(Expr::val(3)),
             PartialValue::Residual(Expr::val(4)),
         ];
         let expected = vec![Expr::val(1), Expr::val(2), Expr::val(3), Expr::val(4)];
         match split(rs) {
-            Either::Left(_) => panic!("Got values"),
-            Either::Right(rs) => assert_eq!(rs.collect::<Vec<_>>(), expected),
-        }
+            Either::Left(_) => panic!("expected residuals, got values"),
+            Either::Right(rs) => {
+                assert_eq!(rs.collect::<Vec<_>>(), expected);
+            }
+        };
     }
 
     #[test]
@@ -150,13 +153,15 @@ mod test {
         let rs = [
             PartialValue::Residual(Expr::val(1)),
             PartialValue::Residual(Expr::val(2)),
-            PartialValue::Value(Value::Lit(3.into())),
-            PartialValue::Value(Value::Lit(4.into())),
+            PartialValue::Value(Value::from(3)),
+            PartialValue::Value(Value::from(4)),
         ];
         let expected = vec![Expr::val(1), Expr::val(2), Expr::val(3), Expr::val(4)];
         match split(rs) {
-            Either::Left(_) => panic!("Got values"),
-            Either::Right(rs) => assert_eq!(rs.collect::<Vec<_>>(), expected),
-        }
+            Either::Left(_) => panic!("expected residuals, got values"),
+            Either::Right(rs) => {
+                assert_eq!(rs.collect::<Vec<_>>(), expected);
+            }
+        };
     }
 }

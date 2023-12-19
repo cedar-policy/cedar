@@ -19,8 +19,8 @@ use super::{
     Unknown, Value,
 };
 use crate::entities::JsonSerializationError;
-use crate::parser;
 use crate::parser::err::ParseErrors;
+use crate::parser::{self, Loc};
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -84,6 +84,11 @@ impl RestrictedExpr {
         } else {
             Self(expr)
         }
+    }
+
+    /// Return the `RestrictedExpr`, but with the new `source_loc` (or `None`).
+    pub fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+        Self(self.0.with_maybe_source_loc(source_loc))
     }
 
     /// Create a `RestrictedExpr` that's just a single `Literal`.
@@ -236,21 +241,24 @@ impl RestrictedExpr {
 impl From<Value> for RestrictedExpr {
     fn from(value: Value) -> RestrictedExpr {
         match value {
-            Value::Lit(lit) => RestrictedExpr::val(lit),
-            Value::Set(set) => {
+            Value::Lit { lit, loc } => RestrictedExpr::val(lit).with_maybe_source_loc(loc),
+            Value::Set { set, loc } => {
                 RestrictedExpr::set(set.iter().map(|val| RestrictedExpr::from(val.clone())))
+                    .with_maybe_source_loc(loc)
             }
             // PANIC SAFETY: cannot have duplicate key because the input was already a BTreeMap
             #[allow(clippy::expect_used)]
-            Value::Record(map) => RestrictedExpr::record(
-                unwrap_or_clone(map)
+            Value::Record { record, loc } => RestrictedExpr::record(
+                unwrap_or_clone(record)
                     .into_iter()
                     .map(|(k, v)| (k, RestrictedExpr::from(v))),
             )
-            .expect("can't have duplicate keys, because the input `map` was already a BTreeMap"),
-            Value::ExtensionValue(ev) => {
+            .expect("can't have duplicate keys, because the input `map` was already a BTreeMap")
+            .with_maybe_source_loc(loc),
+            Value::ExtensionValue { ev, loc } => {
                 let ev = unwrap_or_clone(ev);
                 RestrictedExpr::call_extension_fn(ev.constructor, ev.args)
+                    .with_maybe_source_loc(loc)
             }
         }
     }

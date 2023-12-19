@@ -400,9 +400,9 @@ mod test {
     fn authorizer_sanity_check_empty() {
         let a = Authorizer::new();
         let q = Request::new(
-            EntityUID::with_eid("p"),
-            EntityUID::with_eid("a"),
-            EntityUID::with_eid("r"),
+            (EntityUID::with_eid("p"), None),
+            (EntityUID::with_eid("a"), None),
+            (EntityUID::with_eid("r"), None),
             Context::empty(),
             None::<&RequestSchemaAllPass>,
             Extensions::none(),
@@ -419,9 +419,9 @@ mod test {
     fn skip_on_error_tests() {
         let a = Authorizer::new();
         let q = Request::new(
-            EntityUID::with_eid("p"),
-            EntityUID::with_eid("a"),
-            EntityUID::with_eid("r"),
+            (EntityUID::with_eid("p"), None),
+            (EntityUID::with_eid("a"), None),
+            (EntityUID::with_eid("r"), None),
             Context::empty(),
             None::<&RequestSchemaAllPass>,
             Extensions::none(),
@@ -502,9 +502,9 @@ mod test {
     fn authorizer_sanity_check_allow() {
         let a = Authorizer::new();
         let q = Request::new(
-            EntityUID::with_eid("p"),
-            EntityUID::with_eid("a"),
-            EntityUID::with_eid("r"),
+            (EntityUID::with_eid("p"), None),
+            (EntityUID::with_eid("a"), None),
+            (EntityUID::with_eid("r"), None),
             Context::empty(),
             None::<&RequestSchemaAllPass>,
             Extensions::none(),
@@ -532,9 +532,9 @@ mod test {
         .unwrap();
         let a = Authorizer::new();
         let q = Request::new(
-            EntityUID::with_eid("p"),
-            EntityUID::with_eid("a"),
-            EntityUID::with_eid("r"),
+            (EntityUID::with_eid("p"), None),
+            (EntityUID::with_eid("a"), None),
+            (EntityUID::with_eid("r"), None),
             context,
             None::<&RequestSchemaAllPass>,
             Extensions::none(),
@@ -570,9 +570,9 @@ mod test {
     fn authorizer_sanity_check_deny() {
         let a = Authorizer::new();
         let q = Request::new(
-            EntityUID::with_eid("p"),
-            EntityUID::with_eid("a"),
-            EntityUID::with_eid("r"),
+            (EntityUID::with_eid("p"), None),
+            (EntityUID::with_eid("a"), None),
+            (EntityUID::with_eid("r"), None),
             Context::empty(),
             None::<&RequestSchemaAllPass>,
             Extensions::none(),
@@ -591,9 +591,9 @@ mod test {
     #[test]
     fn satisfied_permit_no_forbids() {
         let q = Request::new(
-            EntityUID::with_eid("p"),
-            EntityUID::with_eid("a"),
-            EntityUID::with_eid("r"),
+            (EntityUID::with_eid("p"), None),
+            (EntityUID::with_eid("a"), None),
+            (EntityUID::with_eid("r"), None),
             Context::empty(),
             None::<&RequestSchemaAllPass>,
             Extensions::none(),
@@ -635,9 +635,9 @@ mod test {
     #[test]
     fn satisfied_permit_residual_forbid() {
         let q = Request::new(
-            EntityUID::with_eid("p"),
-            EntityUID::with_eid("a"),
-            EntityUID::with_eid("r"),
+            (EntityUID::with_eid("p"), None),
+            (EntityUID::with_eid("a"), None),
+            (EntityUID::with_eid("r"), None),
             Context::empty(),
             None::<&RequestSchemaAllPass>,
             Extensions::none(),
@@ -666,9 +666,7 @@ mod test {
                 panic!("Reached response, should have gotten residual.")
             }
             ResponseKind::Partial(p) => {
-                let map = [("test".into(), Value::Lit(false.into()))]
-                    .into_iter()
-                    .collect();
+                let map = [("test".into(), Value::from(false))].into_iter().collect();
                 let new = p.residuals.policies().map(|p| {
                     Policy::from_when_clause(
                         p.effect(),
@@ -680,9 +678,7 @@ mod test {
                 let r = a.is_authorized(q.clone(), &pset, &es);
                 assert_eq!(r.decision, Decision::Allow);
 
-                let map = [("test".into(), Value::Lit(true.into()))]
-                    .into_iter()
-                    .collect();
+                let map = [("test".into(), Value::from(true))].into_iter().collect();
                 let new = p.residuals.policies().map(|p| {
                     Policy::from_when_clause(
                         p.effect(),
@@ -700,9 +696,9 @@ mod test {
     #[test]
     fn no_permits() {
         let q = Request::new(
-            EntityUID::with_eid("p"),
-            EntityUID::with_eid("a"),
-            EntityUID::with_eid("r"),
+            (EntityUID::with_eid("p"), None),
+            (EntityUID::with_eid("a"), None),
+            (EntityUID::with_eid("r"), None),
             Context::empty(),
             None::<&RequestSchemaAllPass>,
             Extensions::none(),
@@ -751,9 +747,9 @@ mod test {
     #[test]
     fn residual_permits() {
         let q = Request::new(
-            EntityUID::with_eid("p"),
-            EntityUID::with_eid("a"),
-            EntityUID::with_eid("r"),
+            (EntityUID::with_eid("p"), None),
+            (EntityUID::with_eid("a"), None),
+            (EntityUID::with_eid("r"), None),
             Context::empty(),
             None::<&RequestSchemaAllPass>,
             Extensions::none(),
@@ -784,9 +780,7 @@ mod test {
                 panic!("Reached response, should have gotten residual.")
             }
             ResponseKind::Partial(p) => {
-                let map = [("a".into(), Value::Lit(false.into()))]
-                    .into_iter()
-                    .collect();
+                let map = [("a".into(), Value::from(false))].into_iter().collect();
                 let new = p.residuals.policies().map(|p| {
                     Policy::from_when_clause(
                         p.effect(),
@@ -798,9 +792,7 @@ mod test {
                 let r = a.is_authorized(q.clone(), &pset, &es);
                 assert_eq!(r.decision, Decision::Deny);
 
-                let map = [("a".into(), Value::Lit(true.into()))]
-                    .into_iter()
-                    .collect();
+                let map = [("a".into(), Value::from(true))].into_iter().collect();
                 let new = p.residuals.policies().map(|p| {
                     Policy::from_when_clause(
                         p.effect(),

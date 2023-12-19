@@ -17,6 +17,7 @@
 use crate::entities::{ContextJsonDeserializationError, ContextJsonParser, NullContextSchema};
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
+use crate::parser::Loc;
 use miette::Diagnostic;
 use serde::Serialize;
 use smol_str::SmolStr;
@@ -51,9 +52,17 @@ pub struct Request {
 #[derive(Debug, Clone, Serialize)]
 pub enum EntityUIDEntry {
     /// A concrete (but perhaps unspecified) EntityUID
-    Known(Arc<EntityUID>),
+    Known {
+        /// The concrete `EntityUID`
+        euid: Arc<EntityUID>,
+        /// Source location associated with the `EntityUIDEntry`, if any
+        loc: Option<Loc>,
+    },
     /// An EntityUID left as unknown for partial evaluation
-    Unknown,
+    Unknown {
+        /// Source location associated with the `EntityUIDEntry`, if any
+        loc: Option<Loc>,
+    },
 }
 
 impl EntityUIDEntry {
@@ -62,21 +71,30 @@ impl EntityUIDEntry {
     /// An unknown corresponding to the passed `var`
     pub fn evaluate(&self, var: Var) -> PartialValue {
         match self {
-            EntityUIDEntry::Known(euid) => Value::Lit(Literal::EntityUID(euid.clone())).into(),
-            EntityUIDEntry::Unknown => Expr::unknown(Unknown::new_untyped(var.to_string())).into(),
+            EntityUIDEntry::Known { euid, loc } => Value::Lit {
+                lit: Literal::EntityUID(euid.clone()),
+                loc: loc.clone(),
+            }
+            .into(),
+            EntityUIDEntry::Unknown { loc } => Expr::unknown(Unknown::new_untyped(var.to_string()))
+                .with_maybe_source_loc(loc.clone())
+                .into(),
         }
     }
 
-    /// Create an entry with a concrete EntityUID
-    pub fn concrete(euid: EntityUID) -> Self {
-        Self::Known(Arc::new(euid))
+    /// Create an entry with a concrete EntityUID and the given source location
+    pub fn concrete(euid: EntityUID, loc: Option<Loc>) -> Self {
+        Self::Known {
+            euid: Arc::new(euid),
+            loc,
+        }
     }
 
     /// Get the UID of the entry, or `None` if it is unknown (partial evaluation)
     pub fn uid(&self) -> Option<&EntityUID> {
         match self {
-            Self::Known(euid) => Some(euid),
-            Self::Unknown => None,
+            Self::Known { euid, .. } => Some(euid),
+            Self::Unknown { .. } => None,
         }
     }
 }
@@ -87,17 +105,17 @@ impl Request {
     /// If `schema` is provided, this constructor validates that this `Request`
     /// complies with the given `schema`.
     pub fn new<S: RequestSchema>(
-        principal: EntityUID,
-        action: EntityUID,
-        resource: EntityUID,
+        principal: (EntityUID, Option<Loc>),
+        action: (EntityUID, Option<Loc>),
+        resource: (EntityUID, Option<Loc>),
         context: Context,
         schema: Option<&S>,
         extensions: Extensions<'_>,
     ) -> Result<Self, S::Error> {
         let req = Self {
-            principal: EntityUIDEntry::concrete(principal),
-            action: EntityUIDEntry::concrete(action),
-            resource: EntityUIDEntry::concrete(resource),
+            principal: EntityUIDEntry::concrete(principal.0, principal.1),
+            action: EntityUIDEntry::concrete(action.0, action.1),
+            resource: EntityUIDEntry::concrete(resource.0, resource.1),
             context: Some(context),
         };
         if let Some(schema) = schema {
@@ -156,8 +174,8 @@ impl Request {
 impl std::fmt::Display for Request {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let display_euid = |maybe_euid: &EntityUIDEntry| match maybe_euid {
-            EntityUIDEntry::Known(euid) => format!("{euid}"),
-            EntityUIDEntry::Unknown => "unknown".to_string(),
+            EntityUIDEntry::Known { euid, .. } => format!("{euid}"),
+            EntityUIDEntry::Unknown { .. } => "unknown".to_string(),
         };
         write!(
             f,
@@ -287,8 +305,10 @@ impl Context {
         // PANIC SAFETY invariant on `self.context` ensures that it is a record
         #[allow(clippy::panic)]
         match self.context.as_ref() {
-            PartialValue::Value(Value::Record(map)) => Some(Box::new(
-                map.iter().map(|(k, v)| (k, PartialValue::Value(v.clone()))),
+            PartialValue::Value(Value::Record { record, .. }) => Some(Box::new(
+                record
+                    .iter()
+                    .map(|(k, v)| (k, PartialValue::Value(v.clone()))),
             )),
             PartialValue::Residual(expr) => match expr.expr_kind() {
                 ExprKind::Record(map) => Some(Box::new(
