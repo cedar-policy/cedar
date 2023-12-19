@@ -203,6 +203,7 @@ impl From<SchemaTypeVariant> for SchemaType {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "type")]
+#[serde(deny_unknown_fields)]
 pub enum SchemaTypeVariant {
     String,
     Long,
@@ -211,6 +212,7 @@ pub enum SchemaTypeVariant {
         element: Box<SchemaType>,
     },
     Record {
+        #[serde(with = "serde_with::rust::maps_duplicate_key_is_error")]
         attributes: BTreeMap<SmolStr, TypeOfAttribute>,
         #[serde(rename = "additionalAttributes")]
         #[serde(default = "additional_attributes_default")]
@@ -349,6 +351,8 @@ fn record_attribute_required_default() -> bool {
 
 #[cfg(test)]
 mod test {
+    use crate::ValidatorSchema;
+
     use super::*;
 
     #[test]
@@ -496,6 +500,147 @@ mod test {
     }
 
     #[test]
+    fn test_schema_file_with_misspelled_required() {
+        let src = serde_json::json!(
+        {
+            "entityTypes": {
+                "User": {
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "favorite": {
+                                "type": "Entity",
+                                "name": "Photo",
+                                "requiredddddd": false
+                            }
+                        }
+                    }
+                }
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
+        println!("{:#?}", schema);
+    }
+
+    #[test]
+    fn test_schema_file_with_misspelled_field() {
+        let src = serde_json::json!(
+        {
+            "entityTypes": {
+                "User": {
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "favorite": {
+                                "type": "Entity",
+                                "nameeeeee": "Photo",
+                            }
+                        }
+                    }
+                }
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
+        println!("{:#?}", schema);
+    }
+
+    #[test]
+    fn test_schema_file_with_extra_field() {
+        let src = serde_json::json!(
+        {
+            "entityTypes": {
+                "User": {
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "favorite": {
+                                "type": "Entity",
+                                "name": "Photo",
+                                "extra": "Should not exist"
+                            }
+                        }
+                    }
+                }
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
+        println!("{:#?}", schema);
+    }
+
+    #[test]
+    fn test_schema_file_with_misplaced_field() {
+        let src = serde_json::json!(
+        {
+            "entityTypes": {
+                "User": {
+                    "shape": {
+                        "memberOfTypes": [],
+                        "type": "Record",
+                        "attributes": {
+                            "favorite": {
+                                "type": "Entity",
+                                "name": "Photo",
+                            }
+                        }
+                    }
+                }
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
+        println!("{:#?}", schema);
+    }
+
+    #[test]
+    // This schema was rejected prior to the reverted schema parsing changes.
+    // The error message was improved by the changes, so the current message is
+    // not very helpful.
+    #[should_panic(expected = "UndeclaredCommonTypes({\"Entity\"})")]
+    fn schema_file_with_missing_field() {
+        let src = serde_json::json!(
+        {
+            "entityTypes": {
+                "User": {
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "favorite": {
+                                "type": "Entity",
+                            }
+                        }
+                    }
+                }
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
+        println!("{:#?}", schema);
+        TryInto::<ValidatorSchema>::try_into(schema).unwrap();
+    }
+
+    #[test]
+    // This schema was rejected prior to the reverted schema parsing changes.
+    // The error message was improved by the changes, so the current message is
+    // not very helpful.
+    #[should_panic(expected = "data did not match any variant of untagged enum SchemaType")]
+    fn schema_file_with_missing_type() {
+        let src = serde_json::json!(
+        {
+            "entityTypes": {
+                "User": {
+                    "shape": { }
+                }
+            },
+            "actions": {}
+        });
+        let schema: NamespaceDefinition = serde_json::from_value(src).unwrap();
+        println!("{:#?}", schema);
+    }
+
+    #[test]
     fn test_schema_file_with_field_from_other_type() {
         let src = serde_json::json!(
         {
@@ -618,6 +763,27 @@ mod test_duplicates_error {
                 "Bar": {"type": "Long"},
                 "Bar": {"type": "String"}
               }
+            }
+        }"#;
+        serde_json::from_str::<SchemaFragment>(src).unwrap();
+    }
+
+    #[test]
+    fn record_type() {
+        let src = r#"{
+            "Foo": {
+              "entityTypes" : {
+                "Bar": {
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "Baz": {"type": "Long"},
+                            "Baz": {"type": "String"}
+                        }
+                    }
+                }
+              },
+              "actions": { }
             }
         }"#;
         serde_json::from_str::<SchemaFragment>(src).unwrap();
