@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.4.3
+
+### Fixed
+
+- Reverted breaking change to schema format introduced in the 2.3.2 release.
+  Attribute types in schema files may now contain unexpected keys. As a side
+  effect, schema parsing error messages are less useful when an attribute type
+  is missing a required key.
+
 ## 2.4.2
 
 ### Changed
