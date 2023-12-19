@@ -32,6 +32,8 @@ mod ops;
 pub use ops::*;
 mod pattern;
 pub use pattern::*;
+mod partial_value;
+pub use partial_value::*;
 mod policy;
 pub use policy::*;
 mod policy_set;
