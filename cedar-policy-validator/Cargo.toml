@@ -12,9 +12,9 @@ repository = "https://github.com/cedar-policy/cedar"
 
 [dependencies]
 cedar-policy-core = { version = "=2.4.2", path = "../cedar-policy-core" }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0", features = ["preserve_order"] }
-serde_with = "3.0"
+serde = { version = "=1.0.193", features = ["derive"] }
+serde_json = { version = "=1.0.108", features = ["preserve_order"] }
+serde_with = "=3.4.0"
 thiserror = "1.0"
 itertools = "0.10"
 unicode-security = "0.1.0"
