@@ -221,21 +221,14 @@ impl Policy {
         id: Option<ast::PolicyID>,
     ) -> Result<ast::Template, FromJsonError> {
         let id = id.unwrap_or(ast::PolicyID::from_string("JSON policy"));
-        let conditions = match self.conditions.len() {
-            0 => ast::Expr::val(true),
-            _ => {
-                let mut conditions = self
-                    .conditions
-                    .into_iter()
-                    .map(|cond| cond.try_into_ast(id.clone()));
-                // PANIC SAFETY checked above that `conditions` has at least 1 element
-                #[allow(clippy::expect_used)]
-                let first = conditions
-                    .next()
-                    .expect("already checked there is at least 1")?;
-                ast::ExprBuilder::with_data(())
-                    .and_nary(first, conditions.collect::<Result<Vec<_>, _>>()?)
-            }
+        let mut conditions_iter = self
+            .conditions
+            .into_iter()
+            .map(|cond| cond.try_into_ast(id.clone()));
+        let conditions = match conditions_iter.next() {
+            None => ast::Expr::val(true),
+            Some(first) => ast::ExprBuilder::with_data(())
+                .and_nary(first?, conditions_iter.collect::<Result<Vec<_>, _>>()?),
         };
         Ok(ast::Template::new(
             id,
