@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `AsRef<str>` implementation for `PolicyId`.
-- New API `template_links` for `Policy` to retrieve the linked values for a 
+- New API `template_links` for `Policy` to retrieve the linked values for a
   template-linked policy. (resolving #489)
 
 ### Changed
@@ -38,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - For the `partial-eval` experimental feature: make the return values of
   `RequestBuilder`'s `principal`, `action`, `resource`, `context` and
   `schema` functions `#[must_use]`.
+
+### Fixed
+
+- Possible panic (when stack size limit reached) in `Context::empty()` (#524,
+  fixed by #526)
 
 ## [3.0.0] - 2023-12-15
 Cedar Language Version: 3.0.0

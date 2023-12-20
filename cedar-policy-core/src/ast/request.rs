@@ -193,10 +193,9 @@ impl Context {
     //
     // INVARIANT(ContextRecord): via invariant on `Self::from_pairs`
     pub fn empty() -> Self {
-        // PANIC SAFETY: empty set of keys cannot contain a duplicate key
-        #[allow(clippy::expect_used)]
-        Self::from_pairs([], Extensions::none())
-            .expect("empty set of keys cannot contain a duplicate key")
+        Self {
+            context: PartialValue::Value(Value::empty_record()).into(),
+        }
     }
 
     /// Create a `Context` from a `RestrictedExpr`, which must be a `Record`.
