@@ -41,7 +41,6 @@ thread_local!(
 );
 
 /// Construct and ask the authorizer the request.
-#[cfg(not(feature = "partial-eval"))]
 fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
     match call.get_components() {
         Ok((request, policies, entities)) => {
@@ -54,20 +53,6 @@ fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
         Err(errors) => AuthorizationAnswer::ParseFailed { errors },
     }
 }
-#[cfg(feature = "partial-eval")]
-fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
-    match call.get_components() {
-        Ok((request, policies, entities)) => {
-            AUTHORIZER.with(|authorizer| AuthorizationAnswer::Success {
-                response: authorizer
-                    .is_authorized_partial(&request, &policies, &entities)
-                    .into(),
-            })
-        }
-        Err(errors) => AuthorizationAnswer::ParseFailed { errors },
-    }
-}
-
 
 /// public string-based JSON interfaced to be invoked by FFIs. In the policies portion of
 /// the `RecvdSlice`, you can either pass a `Map<String, String>` where the values are all single policies,
@@ -77,6 +62,37 @@ pub fn json_is_authorized(input: &str) -> InterfaceResult {
     serde_json::from_str::<AuthorizationCall>(input).map_or_else(
         |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
         |call| match is_authorized(call) {
+            answer @ AuthorizationAnswer::Success { .. } => InterfaceResult::succeed(answer),
+            AuthorizationAnswer::ParseFailed { errors } => {
+                InterfaceResult::fail_bad_request(errors)
+            }
+        },
+    )
+}
+
+#[cfg(feature = "partial-eval")]
+fn is_authorized_partial(call: AuthorizationCall) -> AuthorizationAnswer {
+    match call.get_components_partial() {
+        Ok((request, policies, entities)) => {
+            AUTHORIZER.with(|authorizer| AuthorizationAnswer::Success {
+                response: authorizer
+                    .is_authorized_partial(&request, &policies, &entities)
+                    .into()
+            })
+        }
+        Err(errors) => AuthorizationAnswer::ParseFailed { errors },
+    }
+}
+
+/// public string-based JSON interfaced to be invoked by FFIs. In the policies portion of
+/// the `RecvdSlice`, you can either pass a `Map<String, String>` where the values are all single policies,
+/// or a single String which is a concatenation of multiple policies. If you choose the latter,
+/// policy id's will be auto-generated for you in the format `policyX` where X is a Whole Number (zero or a positive int)
+#[cfg(feature = "partial-eval")]
+pub fn json_is_authorized_partial(input: &str) -> InterfaceResult {
+    serde_json::from_str::<AuthorizationCall>(input).map_or_else(
+        |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
+        |call| match is_authorized_partial(call) {
             answer @ AuthorizationAnswer::Success { .. } => InterfaceResult::succeed(answer),
             AuthorizationAnswer::ParseFailed { errors } => {
                 InterfaceResult::fail_bad_request(errors)
@@ -128,6 +144,7 @@ impl InterfaceResponse {
             diagnostics: InterfaceDiagnostics { reason, errors },
         }
     }
+
     /// Construct a residual `InterfaceResponse`
     #[cfg(feature = "partial-eval")]
     pub fn for_payload(payload: InterfacePayload, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
@@ -258,7 +275,6 @@ fn constant_true() -> bool {
 }
 
 impl AuthorizationCall {
-    #[cfg(not(feature = "partial-eval"))]
     fn get_components(self) -> Result<(Request, PolicySet, Entities), Vec<String>> {
         let schema = self
             .schema
@@ -301,8 +317,9 @@ impl AuthorizationCall {
         let (policies, entities) = self.slice.try_into(schema.as_ref())?;
         Ok((q, policies, entities))
     }
+
     #[cfg(feature = "partial-eval")]
-    fn get_components(self) -> Result<(Request, PolicySet, Entities), Vec<String>> {
+    fn get_components_partial(self) -> Result<(Request, PolicySet, Entities), Vec<String>> {
         let schema = self
             .schema
             .map(Schema::from_json_value)
@@ -675,6 +692,32 @@ mod test {
             "context": {},
             "slice": {
              "policies": {},
+             "entities": []
+            }
+           }
+        "#;
+
+        assert_is_not_authorized(json_is_authorized(call));
+    }
+
+    #[test]
+    fn test_not_authorized_on_unspecified() {
+        let call = r#"
+        {
+            "principal": null,
+            "action": {
+             "type": "Photo",
+             "id": "view"
+            },
+            "resource": {
+             "type": "Photo",
+             "id": "door"
+            },
+            "context": {},
+            "slice": {
+             "policies": {
+              "ID1": "permit(principal == User::\"alice\", action, resource);"
+             },
              "entities": []
             }
            }
@@ -1562,10 +1605,11 @@ mod test {
               "ID1": "permit(principal == User::\"alice\", action, resource);"
              },
              "entities": []
-            }
+            },
+            "partial_evaluation": true
            }
         "#;
-        assert_is_authorized(json_is_authorized(call));
+        assert_is_authorized(json_is_authorized_partial(call));
     }
 
     #[cfg(feature = "partial-eval")]
@@ -1587,10 +1631,11 @@ mod test {
               "ID1": "permit(principal == User::\"alice\", action, resource);"
              },
              "entities": []
-            }
+            },
+            "partial_evaluation": true
            }
         "#;
-        assert_is_not_authorized(json_is_authorized(call));
+        assert_is_not_authorized(json_is_authorized_partial(call));
     }
 
     #[cfg(feature = "partial-eval")]
@@ -1612,10 +1657,11 @@ mod test {
               "ID1": "permit(principal == User::\"alice\", action, resource);"
              },
              "entities": []
-            }
+            },
+            "partial_evaluation": true
            }
         "#;
-        assert_is_residual(json_is_authorized(call), HashSet::from(["ID1"]));
+        assert_is_residual(json_is_authorized_partial(call), HashSet::from(["ID1"]));
     }
 
     #[cfg(feature = "partial-eval")]
@@ -1637,10 +1683,11 @@ mod test {
               "ID1": "permit(principal, action, resource) when { principal == User::\"alice\" };"
              },
              "entities": []
-            }
+            },
+            "partial_evaluation": true
            }
         "#;
-        assert_is_residual(json_is_authorized(call), HashSet::from(["ID1"]));
+        assert_is_residual(json_is_authorized_partial(call), HashSet::from(["ID1"]));
     }
 
     #[cfg(feature = "partial-eval")]
@@ -1663,11 +1710,14 @@ mod test {
               "ID2": "forbid(principal, action, resource) unless { resource == Photo::\"door\" };"
              },
              "entities": []
-            }
+            },
+            "partial_evaluation": true
            }
         "#;
-        assert_is_residual(json_is_authorized(call), HashSet::from(["ID1"]));
+        assert_is_residual(json_is_authorized_partial(call), HashSet::from(["ID1"]));
     }
+
+    #[cfg(feature = "partial-eval")]
     fn assert_is_residual(result: InterfaceResult, residual_ids: HashSet<&str>) {
         match result {
             InterfaceResult::Success { result } => {
