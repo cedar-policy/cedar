@@ -113,6 +113,7 @@ jobs:
              cargo test
       - name: build tinytodo
         working-directory: cedar-examples/tinytodo
+        run: echo "'${{ needs.get-branch-name.outputs.branch_name }}'"
         run: |
              printf "\npath = \"../cedar/cedar-policy\"" >> Cargo.toml
              cargo build
