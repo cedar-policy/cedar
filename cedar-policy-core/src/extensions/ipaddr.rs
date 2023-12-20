@@ -41,7 +41,7 @@ mod names {
 
 /// Help message to display when a String was provided where an IP value was expected.
 /// This error is likely due to confusion between "127.0.0.1" and ip("127.0.0.1").
-const ADVICE_MSG: &str = "Maybe you forgot to apply the `ip` constructor?";
+const ADVICE_MSG: &str = "maybe you forgot to apply the `ip` constructor?";
 
 /// Maximum prefix size for IpV4 addresses
 const PREFIX_MAX_LEN_V4: u8 = 32;
@@ -271,8 +271,8 @@ fn ip_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let function_name = names::IP_FROM_STR_NAME.clone();
     let ipaddr = ExtensionValueWithArgs::new(
         Arc::new(IPAddr::from_str(str.as_str()).map_err(extension_err)?),
-        vec![arg.into()],
         function_name,
+        vec![arg.into()],
     );
     Ok(Value::ExtensionValue(Arc::new(ipaddr)).into())
 }
@@ -410,23 +410,17 @@ mod tests {
 
     /// This helper function asserts that a `Result` is actually an
     /// `Err::ExtensionErr` with our extension name
-    fn assert_ipaddr_err<T>(res: evaluator::Result<T>) {
-        match res {
-            Err(e) => match e.error_kind() {
-                evaluator::EvaluationErrorKind::FailedExtensionFunctionApplication {
-                    extension_name,
-                    ..
-                } => {
-                    assert_eq!(
-                        *extension_name,
-                        Name::parse_unqualified_name("ipaddr")
-                            .expect("should be a valid identifier")
-                    )
-                }
-                _ => panic!("Expected an ipaddr ExtensionErr, got {:?}", e),
-            },
-            Ok(_) => panic!("Expected an ipaddr ExtensionErr, got Ok"),
-        }
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+    fn assert_ipaddr_err<T: std::fmt::Debug>(res: evaluator::Result<T>) {
+        assert_matches!(res, Err(e) => assert_matches!(e.error_kind(),
+            evaluator::EvaluationErrorKind::FailedExtensionFunctionApplication { extension_name, .. } => {
+                assert_eq!(
+                    *extension_name,
+                    Name::parse_unqualified_name("ipaddr")
+                        .expect("should be a valid identifier")
+                );
+            }
+        ));
     }
 
     /// This helper function returns an `Expr` that calls `ip()` with the given single argument
@@ -483,7 +477,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         // test that normal stuff still works with ipaddr extension enabled
         assert_eq!(
@@ -613,7 +607,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         // test that an ipv4 range parses from string and isIpv4 but not isIpv6
         assert_eq!(
@@ -695,7 +689,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         // basic equality tests
         assert_eq!(
@@ -739,7 +733,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
@@ -833,7 +827,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         assert_eq!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
@@ -953,7 +947,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_eq(ip("10.0.0.0"), ip("10.0.0.0"))),

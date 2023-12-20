@@ -130,7 +130,7 @@ impl FromNormalizedStr for Name {
 // want to generalize later
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct SlotId(ValidSlotId);
+pub struct SlotId(pub(crate) ValidSlotId);
 
 impl SlotId {
     /// Get the slot for `principal`
@@ -171,7 +171,7 @@ impl std::fmt::Display for SlotId {
 
 /// Two possible variants for Slots
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-enum ValidSlotId {
+pub(crate) enum ValidSlotId {
     #[serde(rename = "?principal")]
     Principal,
     #[serde(rename = "?resource")]

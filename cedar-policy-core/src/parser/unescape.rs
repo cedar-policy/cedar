@@ -15,6 +15,7 @@
  */
 
 use crate::ast::PatternElem;
+use miette::Diagnostic;
 use rustc_lexer::unescape::{unescape_str, EscapeError};
 use smol_str::SmolStr;
 use std::ops::Range;
@@ -66,14 +67,16 @@ pub(crate) fn to_pattern(s: &str) -> Result<Vec<PatternElem>, Vec<UnescapeError>
 }
 
 /// Errors generated when processing escapes
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Diagnostic, Error, PartialEq, Eq)]
 pub struct UnescapeError {
     /// underlying EscapeError
     err: EscapeError,
     /// copy of the input string which had the error
+    #[source_code]
     input: String,
     /// Range of the input string where the error occurred
     /// This range must be within the length of `input`
+    #[label]
     range: Range<usize>,
 }
 
@@ -118,7 +121,12 @@ impl std::fmt::Display for UnescapeError {
     // PANIC SAFETY By invariant, the range will always be within the bounds of `input`
     #[allow(clippy::indexing_slicing)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}: `{}`", self.err, &self.input[self.range.clone()])
+        write!(
+            f,
+            "the input `{}` is not a valid escape: {:?}",
+            &self.input[self.range.clone()],
+            &self.err
+        )
     }
 }
 

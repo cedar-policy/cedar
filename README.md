@@ -29,11 +29,10 @@ Cedar is designed for analysis using Automated Reasoning. This enables analyzer 
 
 Cedar can be used in your application by depending on the [`cedar-policy` crate](https://crates.io/crates/cedar-policy).
 
-Just add `cedar-policy` as a dependency in your `Cargo.toml`. For example:
+Just add `cedar-policy` as a dependency by running
 
-```toml
-[dependencies]
-cedar-policy = "2.4"
+```sh
+cargo add cedar-policy
 ```
 
 ## Crates in This Workspace
@@ -110,6 +109,8 @@ General documentation for Cedar is available at [docs.cedarpolicy.com](https://d
 
 Generated documentation for the latest version of the Rust crates can be accessed
 [on docs.rs](https://docs.rs/cedar-policy).
+
+If you're looking to integrate Cedar into a production system, please be sure the read the [security best practices](https://docs.cedarpolicy.com/other/security.html)
 
 ## Building
 

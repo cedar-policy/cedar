@@ -69,7 +69,7 @@ fn scenario_4a() {
 
 /// currently failing, as the validator does not support action attributes
 #[should_panic(
-    expected = "error occurred while evaluating policy `policy0`: `Action::\\\"view\\\"` does not have the attribute `readOnly`"
+    expected = "while evaluating policy `policy0`: `Action::\\\"view\\\"` does not have the attribute `readOnly`"
 )]
 #[test]
 fn scenario_4c() {

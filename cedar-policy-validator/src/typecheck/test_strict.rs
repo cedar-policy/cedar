@@ -22,18 +22,21 @@
 #![allow(clippy::panic)]
 // PANIC SAFETY unit tests
 #![allow(clippy::indexing_slicing)]
+
+use cool_asserts::assert_matches;
 use serde_json::json;
 use std::str::FromStr;
 
 use cedar_policy_core::ast::{EntityType, EntityUID, Expr};
 
 use crate::{
-    types::{Attributes, EffectSet, RequestEnv, Type},
+    types::{EffectSet, OpenTag, RequestEnv, Type},
     IncompatibleTypes, SchemaFragment, TypeErrorKind, ValidationMode,
 };
 
 use super::test_utils::with_typechecker_from_schema;
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_typechecks_strict(
     schema: SchemaFragment,
     env: &RequestEnv,
@@ -44,23 +47,19 @@ fn assert_typechecks_strict(
     with_typechecker_from_schema(schema, |mut typechecker| {
         typechecker.mode = ValidationMode::Strict;
         let mut errs = Vec::new();
-        let answer = typechecker.expect_type(env, &EffectSet::new(), &e, expected_type, &mut errs);
+        let answer =
+            typechecker.expect_type(env, &EffectSet::new(), &e, expected_type, &mut errs, |_| {
+                None
+            });
 
         assert_eq!(errs, vec![], "Expression should not contain any errors.");
-        match answer {
-            crate::typecheck::TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
-                assert!(expr_type.eq_shape(&e_strict), "Transformed expression does not have the expected shape. expected: {:?}, actual: {:?}", e_strict, expr_type)
-            }
-            crate::typecheck::TypecheckAnswer::TypecheckFail { .. } => {
-                panic!("Typechecking should have succeeded for expression {:?}", e)
-            }
-            crate::typecheck::TypecheckAnswer::RecursionLimit => {
-                panic!("Should not have hit recursion liimt for: {:?}", e)
-            }
-        }
+        assert_matches!(answer, crate::typecheck::TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
+            assert!(expr_type.eq_shape(&e_strict), "Transformed expression does not have the expected shape. expected: {:?}, actual: {:?}", e_strict, expr_type)
+        });
     });
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_strict_type_error(
     schema: SchemaFragment,
     env: &RequestEnv,
@@ -72,27 +71,23 @@ fn assert_strict_type_error(
     with_typechecker_from_schema(schema, |mut typechecker| {
         typechecker.mode = ValidationMode::Strict;
         let mut errs = Vec::new();
-        let answer = typechecker.expect_type(env, &EffectSet::new(), &e, expected_type, &mut errs);
+        let answer =
+            typechecker.expect_type(env, &EffectSet::new(), &e, expected_type, &mut errs, |_| {
+                None
+            });
 
         assert_eq!(
             errs.into_iter().map(|e| e.kind).collect::<Vec<_>>(),
             vec![expected_error]
         );
 
-        match answer {
-            crate::typecheck::TypecheckAnswer::TypecheckFail { expr_recovery_type } => {
-                assert!(expr_recovery_type.eq_shape(&e_strict), "Transformed expression does not have the expected shape. expected: {:?}, actual: {:?}", e_strict, expr_recovery_type)
-            }
-            crate::typecheck::TypecheckAnswer::TypecheckSuccess { .. } => {
-                panic!("Typechecking should have failed for expression {:?}", e)
-            }
-            crate::typecheck::TypecheckAnswer::RecursionLimit => {
-                panic!("Should not have hit recursion limit for {:?}", e)
-            }
-        }
+        assert_matches!(answer, crate::typecheck::TypecheckAnswer::TypecheckFail { expr_recovery_type } => {
+            assert!(expr_recovery_type.eq_shape(&e_strict), "Transformed expression does not have the expected shape. expected: {:?}, actual: {:?}", e_strict, expr_recovery_type)
+        });
     });
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_types_must_match(
     schema: SchemaFragment,
     env: &RequestEnv,
@@ -145,11 +140,11 @@ where
 {
     f(
         simple_schema_file(),
-        RequestEnv {
-            principal: &EntityType::Concrete("User".parse().unwrap()),
+        RequestEnv::DeclaredAction {
+            principal: &EntityType::Specified("User".parse().unwrap()),
             action: &EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
-            resource: &EntityType::Concrete("Photo".parse().unwrap()),
-            context: &Attributes::with_attributes(None),
+            resource: &EntityType::Specified("Photo".parse().unwrap()),
+            context: &Type::record_with_attributes(None, OpenTag::ClosedAttributes),
             principal_slot: None,
             resource_slot: None,
         },
@@ -168,6 +163,7 @@ fn strict_typecheck_catches_regular_type_error() {
                 &Expr::from_str("1 + false").unwrap(),
                 Type::primitive_long(),
                 &mut errs,
+                |_| None,
             );
 
             assert!(errs.len() == 1);

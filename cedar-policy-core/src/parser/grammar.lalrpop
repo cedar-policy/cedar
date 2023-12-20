@@ -1,12 +1,16 @@
 use std::str::FromStr;
+use std::sync::Arc;
 
 use lalrpop_util::{ParseError, ErrorRecovery};
 
 use crate::parser::*;
 use crate::parser::err::{RawErrorRecovery, RawUserError};
-use crate::parser::node::ASTNode as Node;
+use crate::parser::node::Node;
 
-grammar<'err>(errors: &'err mut Vec<RawErrorRecovery<'input>>);
+/// `errors` collects generated errors.
+///
+/// `src` is the (full) original source being parsed, which the source locations l,r index into.
+grammar<'err, 's>(errors: &'err mut Vec<RawErrorRecovery<'input>>, src: &'s Arc<str>);
 
 extern {
     type Error = RawUserError;
@@ -44,6 +48,7 @@ match {
     // Valid slots, hardcoded for now, may be generalized later
     "?principal" => PRINCIPAL_SLOT,
     "?resource" => RESOURCE_SLOT,
+    r"\?[_a-zA-Z][_a-zA-Z0-9]*" => OTHER_SLOT,
 
     // data input
     r"[_a-zA-Z][_a-zA-Z0-9]*" => IDENTIFIER,
@@ -72,12 +77,12 @@ Comma<E>: Vec<E> = {
 
 // Policies := {Policy}
 pub Policies: Node<Option<cst::Policies>> = {
-    <l:@L> <ps:Policy*> <r:@R> => Node::new(Some(cst::Policies(ps)),l,r),
+    <l:@L> <ps:Policy*> <r:@R> => Node::with_source_loc(Some(cst::Policies(ps)), Loc::new(l..r, Arc::clone(src))),
 }
 
 // Annotations := {'@' Ident '(' String ')'}
 Annotation: Node<Option<cst::Annotation>> = {
-    <l:@L> "@" <key:AnyIdent> "(" <value:Str> ")" <r:@R> => Node::new(Some(cst::Annotation{key,value}),l,r)
+    <l:@L> "@" <key:AnyIdent> "(" <value:Str> ")" <r:@R> => Node::with_source_loc(Some(cst::Annotation{key,value}), Loc::new(l..r, Arc::clone(src)))
 }
 
 // Policy := "label" ('permit' | 'forbid') '(' {VariableDef} ')' {Cond} ;
@@ -89,58 +94,61 @@ pub Policy: Node<Option<cst::Policy>> = {
     <conds:Cond*>
     ";"
     <r:@R>
-    => Node::new(Some(cst::Policy{ annotations,effect,variables,conds }),l,r),
-    <l:@L> <err:!> <r:@R> => { errors.push(err); Node::new(None,l,r) },
+    => Node::with_source_loc(Some(cst::Policy{ annotations,effect,variables,conds }), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> <err:!> <r:@R> => { errors.push(err); Node::with_source_loc(None, Loc::new(l..r, Arc::clone(src))) },
 }
 
-// VariableDef := Variable [':' Name] [('in' | '==') Expr]
+// VariableDef := Variable [':' Name] ['is' Add] [('in' | '==') Expr]
+// The argument to `is`, if present, is parsed as an `Add` rather than a `Name`
+// to enable better error reporting. It is parsed as an `Add` rather than an
+// `Expr` to void ambiguity with a subsequent `in`.
 VariableDef: Node<Option<cst::VariableDef>> = {
-    <l:@L> <variable: AnyIdent> <unused_type_name: (":" <Name>)?> <entity_type: (IS <Name>)?>
+    <l:@L> <variable: AnyIdent> <unused_type_name: (":" <Name>)?> <entity_type: (IS <Add>)?>
         <ineq: (RelOp Expr)?> <r:@R>
-        => Node::new(Some(cst::VariableDef{ variable,unused_type_name,entity_type,ineq, }),l,r),
+        => Node::with_source_loc(Some(cst::VariableDef{ variable,unused_type_name,entity_type,ineq, }), Loc::new(l..r, Arc::clone(src))),
 }
 
 // Identifier, but not the special ones
 CommonIdent: Node<Option<cst::Ident>> = {
     <l:@L> PRINCIPAL <r:@R>
-        => Node::new(Some(cst::Ident::Principal),l,r),
+        => Node::with_source_loc(Some(cst::Ident::Principal), Loc::new(l..r, Arc::clone(src))),
     <l:@L> ACTION <r:@R>
-        => Node::new(Some(cst::Ident::Action),l,r),
+        => Node::with_source_loc(Some(cst::Ident::Action), Loc::new(l..r, Arc::clone(src))),
     <l:@L> RESOURCE <r:@R>
-        => Node::new(Some(cst::Ident::Resource),l,r),
+        => Node::with_source_loc(Some(cst::Ident::Resource), Loc::new(l..r, Arc::clone(src))),
     <l:@L> CONTEXT <r:@R>
-        => Node::new(Some(cst::Ident::Context),l,r),
+        => Node::with_source_loc(Some(cst::Ident::Context), Loc::new(l..r, Arc::clone(src))),
     <l:@L> PERMIT <r:@R>
-        => Node::new(Some(cst::Ident::Permit),l,r),
+        => Node::with_source_loc(Some(cst::Ident::Permit), Loc::new(l..r, Arc::clone(src))),
     <l:@L> FORBID <r:@R>
-        => Node::new(Some(cst::Ident::Forbid),l,r),
+        => Node::with_source_loc(Some(cst::Ident::Forbid), Loc::new(l..r, Arc::clone(src))),
     <l:@L> WHEN <r:@R>
-        => Node::new(Some(cst::Ident::When),l,r),
+        => Node::with_source_loc(Some(cst::Ident::When), Loc::new(l..r, Arc::clone(src))),
     <l:@L> UNLESS <r:@R>
-        => Node::new(Some(cst::Ident::Unless),l,r),
+        => Node::with_source_loc(Some(cst::Ident::Unless), Loc::new(l..r, Arc::clone(src))),
     <l:@L> IN <r:@R>
-        => Node::new(Some(cst::Ident::In),l,r),
+        => Node::with_source_loc(Some(cst::Ident::In), Loc::new(l..r, Arc::clone(src))),
     <l:@L> HAS <r:@R>
-        => Node::new(Some(cst::Ident::Has),l,r),
+        => Node::with_source_loc(Some(cst::Ident::Has), Loc::new(l..r, Arc::clone(src))),
     <l:@L> LIKE <r:@R>
-        => Node::new(Some(cst::Ident::Like),l,r),
+        => Node::with_source_loc(Some(cst::Ident::Like), Loc::new(l..r, Arc::clone(src))),
     <l:@L> IS <r:@R>
-        => Node::new(Some(cst::Ident::Is),l,r),
+        => Node::with_source_loc(Some(cst::Ident::Is), Loc::new(l..r, Arc::clone(src))),
     <l:@L> THEN <r:@R>
-        => Node::new(Some(cst::Ident::Then),l,r),
+        => Node::with_source_loc(Some(cst::Ident::Then), Loc::new(l..r, Arc::clone(src))),
     <l:@L> ELSE <r:@R>
-        => Node::new(Some(cst::Ident::Else),l,r),
+        => Node::with_source_loc(Some(cst::Ident::Else), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <i:IDENTIFIER> <r:@R>
-        => Node::new(Some(cst::Ident::Ident( i.into() )),l,r),
+        => Node::with_source_loc(Some(cst::Ident::Ident( i.into() )), Loc::new(l..r, Arc::clone(src))),
 }
 // The special ones, play multiple roles
 SpecialIdent: Node<Option<cst::Ident>> = {
     <l:@L> IF <r:@R>
-        => Node::new(Some(cst::Ident::If),l,r),
+        => Node::with_source_loc(Some(cst::Ident::If), Loc::new(l..r, Arc::clone(src))),
     <l:@L> TRUE <r:@R>
-        => Node::new(Some(cst::Ident::True),l,r),
+        => Node::with_source_loc(Some(cst::Ident::True), Loc::new(l..r, Arc::clone(src))),
     <l:@L> FALSE <r:@R>
-        => Node::new(Some(cst::Ident::False),l,r),
+        => Node::with_source_loc(Some(cst::Ident::False), Loc::new(l..r, Arc::clone(src))),
 }
 #[inline]
 AnyIdent: Node<Option<cst::Ident>> = {
@@ -151,54 +159,54 @@ pub Ident: Node<Option<cst::Ident>> = AnyIdent;
 // Cond := ('when' | 'unless') '{' Expr '}'
 Cond: Node<Option<cst::Cond>> = {
     <l:@L> <i:AnyIdent> "{" <e:Expr> "}" <r:@R>
-        => Node::new(Some(cst::Cond{cond: i, expr: Some(e)}),l,r),
+        => Node::with_source_loc(Some(cst::Cond{cond: i, expr: Some(e)}), Loc::new(l..r, Arc::clone(src))),
     // specifically catch the error case for empty-body, so we can report a good
     // error message
     <l:@L> <i:AnyIdent> "{" "}" <r:@R>
-        => Node::new(Some(cst::Cond{cond: i, expr: None}),l,r),
+        => Node::with_source_loc(Some(cst::Cond{cond: i, expr: None}), Loc::new(l..r, Arc::clone(src))),
 }
 
 // Expr := Or | 'if' Expr 'then' Expr 'else' Expr
 pub Expr: Node<Option<cst::Expr>> = {
     <l:@L> <o:Or> <r:@R>
-        => Node::new(Some(cst::Expr{ expr: Box::new(cst::ExprData::Or(o)) }),l,r),
+        => Node::with_source_loc(Some(cst::Expr{ expr: Box::new(cst::ExprData::Or(o)) }), Loc::new(l..r, Arc::clone(src))),
     <l:@L> IF <i:Expr> THEN <t:Expr> ELSE <e:Expr> <r:@R>
-        => Node::new(Some(cst::Expr{ expr: Box::new(cst::ExprData::If(i,t,e)) }),l,r),
-    <l:@L> <err:!> <r:@R> => { errors.push(err); Node::new(None,l,r) },
+        => Node::with_source_loc(Some(cst::Expr{ expr: Box::new(cst::ExprData::If(i,t,e)) }), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> <err:!> <r:@R> => { errors.push(err); Node::with_source_loc(None, Loc::new(l..r, Arc::clone(src))) },
 }
 
 // Or := And {'||' And}
 Or: Node<Option<cst::Or>> = {
     <l:@L> <i:And> <e:("||" <And>)*> <r:@R>
-        => Node::new(Some(cst::Or{initial: i, extended: e}),l,r),
+        => Node::with_source_loc(Some(cst::Or{initial: i, extended: e}), Loc::new(l..r, Arc::clone(src))),
 }
 // And := Relation {'&&' Relation}
 And: Node<Option<cst::And>> = {
     <l:@L> <i:Relation> <e:("&&" <Relation>)*> <r:@R>
-        => Node::new(Some(cst::And{initial: i, extended: e}),l,r),
+        => Node::with_source_loc(Some(cst::And{initial: i, extended: e}), Loc::new(l..r, Arc::clone(src))),
 }
-// Relation := Add {RelOp Add} | Add HAS Add | Add LIKE Add | Add IS Name (IN Add)?
+// Relation := Add {RelOp Add} | Add HAS Add | Add LIKE Add | Add IS Add (IN Add)?
 Relation: Node<Option<cst::Relation>> = {
     <l:@L> <i:Add> <e:(RelOp Add)*> <r:@R>
-        => Node::new(Some(cst::Relation::Common{initial: i, extended: e}),l,r),
+        => Node::with_source_loc(Some(cst::Relation::Common{initial: i, extended: e}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <t:Add> HAS <f:Add> <r:@R>
-        => Node::new(Some(cst::Relation::Has{target: t, field: f}),l,r),
+        => Node::with_source_loc(Some(cst::Relation::Has{target: t, field: f}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <t:Add> HAS IF <r:@R> => {
         // Create an add expression from this identifier
-        let id0 = Node::new(Some(cst::Ident::If),l,r);
-        let id1 = Node::new(Some(cst::Name{path: vec![], name: id0}),l,r);
-        let id2 = Node::new(Some(cst::Primary::Name(id1)),l,r);
-        let id3 = Node::new(Some(cst::Member{ item: id2, access: vec![] }),l,r);
-        let id4 = Node::new(Some(cst::Unary{op: None, item:id3}),l,r);
-        let id5 = Node::new(Some(cst::Mult{initial: id4, extended: vec![]}),l,r);
-        let id6 = Node::new(Some(cst::Add{initial:id5, extended: vec![]}),l,r);
+        let id0 = Node::with_source_loc(Some(cst::Ident::If), Loc::new(l..r, Arc::clone(src)));
+        let id1 = Node::with_source_loc(Some(cst::Name{path: vec![], name: id0}), Loc::new(l..r, Arc::clone(src)));
+        let id2 = Node::with_source_loc(Some(cst::Primary::Name(id1)), Loc::new(l..r, Arc::clone(src)));
+        let id3 = Node::with_source_loc(Some(cst::Member{ item: id2, access: vec![] }), Loc::new(l..r, Arc::clone(src)));
+        let id4 = Node::with_source_loc(Some(cst::Unary{op: None, item:id3}), Loc::new(l..r, Arc::clone(src)));
+        let id5 = Node::with_source_loc(Some(cst::Mult{initial: id4, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
+        let id6 = Node::with_source_loc(Some(cst::Add{initial:id5, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
 
-        Node::new(Some(cst::Relation::Has{target: t, field: id6}),l,r)
+        Node::with_source_loc(Some(cst::Relation::Has{target: t, field: id6}), Loc::new(l..r, Arc::clone(src)))
     },
     <l:@L> <t:Add> LIKE <p:Add> <r:@R>
-        => Node::new(Some(cst::Relation::Like{target: t, pattern: p}),l,r),
-    <l:@L> <t:Add> IS <n:Name> <e: (IN <Add>)?> <r:@R>
-        => Node::new(Some(cst::Relation::IsIn{target: t, entity_type: n, in_entity: e}),l,r),
+        => Node::with_source_loc(Some(cst::Relation::Like{target: t, pattern: p}), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> <t:Add> IS <n:Add> <e: (IN <Add>)?> <r:@R>
+        => Node::with_source_loc(Some(cst::Relation::IsIn{target: t, entity_type: n, in_entity: e}), Loc::new(l..r, Arc::clone(src))),
 }
 // RelOp     := '<' | '<=' | '>=' | '>' | '!=' | '==' | 'in'
 RelOp: cst::RelOp = {
@@ -223,51 +231,51 @@ MultOp: cst::MultOp = {
 // Add := Mult {('+' | '-') Mult}
 Add: Node<Option<cst::Add>> = {
     <l:@L> <i:Mult> <e:(AddOp Mult)*> <r:@R>
-        => Node::new(Some(cst::Add{initial:i, extended: e}),l,r),
+        => Node::with_source_loc(Some(cst::Add{initial:i, extended: e}), Loc::new(l..r, Arc::clone(src))),
 }
 // Mult := Unary {('*' | '/' | '%') Unary}
 Mult: Node<Option<cst::Mult>> = {
     <l:@L> <i:Unary>  <e:(MultOp Unary)*> <r:@R>
-        => Node::new(Some(cst::Mult{initial: i, extended: e}),l,r),
+        => Node::with_source_loc(Some(cst::Mult{initial: i, extended: e}), Loc::new(l..r, Arc::clone(src))),
 }
 // Unary := ['!' {'!'} | '-' {'-'}] Member
 Unary: Node<Option<cst::Unary>> = {
     <l:@L> <m:Member> <r:@R>
-        => Node::new(Some(cst::Unary{op: None, item:m}),l,r),
+        => Node::with_source_loc(Some(cst::Unary{op: None, item:m}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "!" <m:Member> <r:@R>
-        => Node::new(Some(cst::Unary{op: Some(cst::NegOp::Bang(1)), item:m}),l,r),
+        => Node::with_source_loc(Some(cst::Unary{op: Some(cst::NegOp::Bang(1)), item:m}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "!" "!" <m:Member> <r:@R>
-        => Node::new(Some(cst::Unary{op: Some(cst::NegOp::Bang(2)), item:m}),l,r),
+        => Node::with_source_loc(Some(cst::Unary{op: Some(cst::NegOp::Bang(2)), item:m}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "!" "!" "!" <m:Member> <r:@R>
-        => Node::new(Some(cst::Unary{op: Some(cst::NegOp::Bang(3)), item:m}),l,r),
+        => Node::with_source_loc(Some(cst::Unary{op: Some(cst::NegOp::Bang(3)), item:m}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "!" "!" "!" "!" <m:Member> <r:@R>
-        => Node::new(Some(cst::Unary{op: Some(cst::NegOp::Bang(4)), item:m}),l,r),
+        => Node::with_source_loc(Some(cst::Unary{op: Some(cst::NegOp::Bang(4)), item:m}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "!" "!" "!" "!" "!"+ <m:Member> <r:@R>
-        => Node::new(Some(cst::Unary{op: Some(cst::NegOp::OverBang), item:m}),l,r),
+        => Node::with_source_loc(Some(cst::Unary{op: Some(cst::NegOp::OverBang), item:m}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "-" <m:Member> <r:@R>
-        => Node::new(Some(cst::Unary{op: Some(cst::NegOp::Dash(1)), item:m}),l,r),
+        => Node::with_source_loc(Some(cst::Unary{op: Some(cst::NegOp::Dash(1)), item:m}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "-" "-" <m:Member> <r:@R>
-        => Node::new(Some(cst::Unary{op: Some(cst::NegOp::Dash(2)), item:m}),l,r),
+        => Node::with_source_loc(Some(cst::Unary{op: Some(cst::NegOp::Dash(2)), item:m}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "-" "-" "-" <m:Member> <r:@R>
-        => Node::new(Some(cst::Unary{op: Some(cst::NegOp::Dash(3)), item:m}),l,r),
+        => Node::with_source_loc(Some(cst::Unary{op: Some(cst::NegOp::Dash(3)), item:m}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "-" "-" "-" "-" <m:Member> <r:@R>
-        => Node::new(Some(cst::Unary{op: Some(cst::NegOp::Dash(4)), item:m}),l,r),
+        => Node::with_source_loc(Some(cst::Unary{op: Some(cst::NegOp::Dash(4)), item:m}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "-" "-" "-" "-" "-"+ <m:Member> <r:@R>
-        => Node::new(Some(cst::Unary{op: Some(cst::NegOp::OverDash), item:m}),l,r),
+        => Node::with_source_loc(Some(cst::Unary{op: Some(cst::NegOp::OverDash), item:m}), Loc::new(l..r, Arc::clone(src))),
 }
 // Member := Primary { MemAccess }
 Member: Node<Option<cst::Member>> = {
     <l:@L> <p:Primary> <a:MemAccess*> <r:@R>
-        => Node::new(Some(cst::Member{ item: p, access: a }),l,r),
+        => Node::with_source_loc(Some(cst::Member{ item: p, access: a }), Loc::new(l..r, Arc::clone(src))),
 }
 // MemAccess := '.' IDENT | '(' [ExprList] ')' | '[' Expr ']'
 MemAccess: Node<Option<cst::MemAccess>> = {
     <l:@L> "." <i:AnyIdent> <r:@R>
-        => Node::new(Some(cst::MemAccess::Field(i)),l,r),
+        => Node::with_source_loc(Some(cst::MemAccess::Field(i)), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "(" <es:Comma<Expr>> ")" <r:@R>
-        => Node::new(Some(cst::MemAccess::Call(es)),l,r),
+        => Node::with_source_loc(Some(cst::MemAccess::Call(es)), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "[" <e:Expr> "]" <r:@R>
-        => Node::new(Some(cst::MemAccess::Index(e)),l,r),
+        => Node::with_source_loc(Some(cst::MemAccess::Index(e)), Loc::new(l..r, Arc::clone(src))),
 }
 // Primary   := LITERAL |
 //              Ref |
@@ -278,19 +286,19 @@ MemAccess: Node<Option<cst::MemAccess>> = {
 //              '{' [MapOrFieldInits] '}'
 pub Primary: Node<Option<cst::Primary>> = {
     <l:@L> <lit:Literal> <r:@R>
-        => Node::new(Some(cst::Primary::Literal(lit)),l,r),
+        => Node::with_source_loc(Some(cst::Primary::Literal(lit)), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <refr:Ref> <r:@R>
-        => Node::new(Some(cst::Primary::Ref(refr)),l,r),
+        => Node::with_source_loc(Some(cst::Primary::Ref(refr)), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <n:Name> <r:@R>
-        => Node::new(Some(cst::Primary::Name(n)),l,r),
+        => Node::with_source_loc(Some(cst::Primary::Name(n)), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <s:Slot> <r:@R>
-        => Node::new(Some(cst::Primary::Slot(s)),l,r),
+        => Node::with_source_loc(Some(cst::Primary::Slot(s)), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "(" <e:Expr> ")" <r:@R>
-        => Node::new(Some(cst::Primary::Expr(e)),l,r),
+        => Node::with_source_loc(Some(cst::Primary::Expr(e)), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "[" <es:Comma<Expr>> "]" <r:@R>
-        => Node::new(Some(cst::Primary::EList(es)),l,r),
+        => Node::with_source_loc(Some(cst::Primary::EList(es)), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "{" <is:Comma<RecInit>> "}" <r:@R>
-        => Node::new(Some(cst::Primary::RInits(is)),l,r),
+        => Node::with_source_loc(Some(cst::Primary::RInits(is)), Loc::new(l..r, Arc::clone(src))),
 }
 
 // Name := IDENT {'::' IDENT}
@@ -300,69 +308,71 @@ pub Name: Node<Option<cst::Name>> = NameInline;
 #[inline]
 NameInline: Node<Option<cst::Name>> = {
     <l:@L> <n:CommonIdent> <r:@R>
-        => Node::new(Some(cst::Name{path: vec![], name: n}),l,r),
+        => Node::with_source_loc(Some(cst::Name{path: vec![], name: n}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <p:(<AnyIdent> "::")+> <n:AnyIdent> <r:@R>
-        => Node::new(Some(cst::Name{path: p, name: n}),l,r)
+        => Node::with_source_loc(Some(cst::Name{path: p, name: n}), Loc::new(l..r, Arc::clone(src)))
 }
 // Ref := Name '::' (STR | '{' [RefInits] '}')
 pub Ref: Node<Option<cst::Ref>> = {
     <l:@L> <n:NameInline> "::" <s:Str> <r:@R>
-        => Node::new(Some(cst::Ref::Uid{path:n,eid:s}),l,r),
+        => Node::with_source_loc(Some(cst::Ref::Uid{path:n,eid:s}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <n:NameInline> "::" "{" <is:Comma<RefInit>> "}" <r:@R>
-        => Node::new(Some(cst::Ref::Ref{path:n,rinits:is}),l,r),
+        => Node::with_source_loc(Some(cst::Ref::Ref{path:n,rinits:is}), Loc::new(l..r, Arc::clone(src))),
 }
 
 // RefInit := IDENT ':' LITERAL
 RefInit: Node<Option<cst::RefInit>> = {
     <l:@L> <i:AnyIdent> ":" <lit:Literal> <r:@R>
-        => Node::new(Some(cst::RefInit(i,lit)),l,r),
+        => Node::with_source_loc(Some(cst::RefInit(i,lit)), Loc::new(l..r, Arc::clone(src))),
 }
 // RecInit  := Expr ':' Expr   -or-   IDENT : Expr
 RecInit: Node<Option<cst::RecInit>> = {
     <l:@L> IF ":" <e2:Expr> <r:@R>
         => {
             // Create an expression from this identifier
-            let id0 = Node::new(Some(cst::Ident::If),l,r);
-            let id1 = Node::new(Some(cst::Name{path: vec![], name: id0}),l,r);
-            let id2 = Node::new(Some(cst::Primary::Name(id1)),l,r);
-            let id3 = Node::new(Some(cst::Member{ item: id2, access: vec![] }),l,r);
-            let id4 = Node::new(Some(cst::Unary{op: None, item:id3}),l,r);
-            let id5 = Node::new(Some(cst::Mult{initial: id4, extended: vec![]}),l,r);
-            let id6 = Node::new(Some(cst::Add{initial:id5, extended: vec![]}),l,r);
-            let id7 = Node::new(Some(cst::Relation::Common{initial: id6, extended: vec![]}),l,r);
-            let id8 = Node::new(Some(cst::And{initial: id7, extended: vec![]}),l,r);
-            let id9 = Node::new(Some(cst::Or{initial: id8, extended: vec![]}),l,r);
-            let e1 = Node::new(Some(cst::Expr{ expr: Box::new(cst::ExprData::Or(id9)) }),l,r);
+            let id0 = Node::with_source_loc(Some(cst::Ident::If), Loc::new(l..r, Arc::clone(src)));
+            let id1 = Node::with_source_loc(Some(cst::Name{path: vec![], name: id0}), Loc::new(l..r, Arc::clone(src)));
+            let id2 = Node::with_source_loc(Some(cst::Primary::Name(id1)), Loc::new(l..r, Arc::clone(src)));
+            let id3 = Node::with_source_loc(Some(cst::Member{ item: id2, access: vec![] }), Loc::new(l..r, Arc::clone(src)));
+            let id4 = Node::with_source_loc(Some(cst::Unary{op: None, item:id3}), Loc::new(l..r, Arc::clone(src)));
+            let id5 = Node::with_source_loc(Some(cst::Mult{initial: id4, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
+            let id6 = Node::with_source_loc(Some(cst::Add{initial:id5, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
+            let id7 = Node::with_source_loc(Some(cst::Relation::Common{initial: id6, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
+            let id8 = Node::with_source_loc(Some(cst::And{initial: id7, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
+            let id9 = Node::with_source_loc(Some(cst::Or{initial: id8, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
+            let e1 = Node::with_source_loc(Some(cst::Expr{ expr: Box::new(cst::ExprData::Or(id9)) }), Loc::new(l..r, Arc::clone(src)));
 
-            Node::new(Some(cst::RecInit(e1,e2)),l,r)
+            Node::with_source_loc(Some(cst::RecInit(e1,e2)), Loc::new(l..r, Arc::clone(src)))
         },
     <l:@L> <e1:Expr> ":" <e2:Expr> <r:@R>
-        => Node::new(Some(cst::RecInit(e1,e2)),l,r),
+        => Node::with_source_loc(Some(cst::RecInit(e1,e2)), Loc::new(l..r, Arc::clone(src))),
 }
 
 Slot: Node<Option<cst::Slot>> = {
     <l:@L> PRINCIPAL_SLOT <r:@R>
-        => Node::new(Some(cst::Slot::Principal), l, r),
+        => Node::with_source_loc(Some(cst::Slot::Principal), Loc::new(l..r, Arc::clone(src))),
     <l:@L> RESOURCE_SLOT <r:@R>
-        => Node::new(Some(cst::Slot::Resource), l, r),
+        => Node::with_source_loc(Some(cst::Slot::Resource), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> <s: OTHER_SLOT> <r:@R>
+        => Node::with_source_loc(Some(cst::Slot::Other(s.into())), Loc::new(l..r, Arc::clone(src))),
 }
 
 // LITERAL   := BOOL | INT | STR
 Literal: Node<Option<cst::Literal>> = {
     <l:@L> TRUE <r:@R>
-        => Node::new(Some(cst::Literal::True),l,r),
+        => Node::with_source_loc(Some(cst::Literal::True), Loc::new(l..r, Arc::clone(src))),
     <l:@L> FALSE <r:@R>
-        => Node::new(Some(cst::Literal::False),l,r),
+        => Node::with_source_loc(Some(cst::Literal::False), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <n:NUMBER> <r:@R> =>? match u64::from_str(n) {
-        Ok(n) => Ok(Node::new(Some(cst::Literal::Num(n)),l,r)),
+        Ok(n) => Ok(Node::with_source_loc(Some(cst::Literal::Num(n)), Loc::new(l..r, Arc::clone(src)))),
         Err(e) => Err(ParseError::User {
-            error: ASTNode::new(format!("integer parse error: {e}"),l,r),
+            error: Node::with_source_loc(format!("integer parse error: {e}"), Loc::new(l..r, Arc::clone(src))),
         }),
     },
     <l:@L> <s:Str> <r:@R>
-        => Node::new(Some(cst::Literal::Str(s)),l,r),
+        => Node::with_source_loc(Some(cst::Literal::Str(s)), Loc::new(l..r, Arc::clone(src))),
 }
 Str: Node<Option<cst::Str>> = {
     <l:@L> <s:STRINGLIT> <r:@R>
-        => Node::new(Some(cst::Str::String(s[1..(s.len() - 1)].into())),l,r),
+        => Node::with_source_loc(Some(cst::Str::String(s[1..(s.len() - 1)].into())), Loc::new(l..r, Arc::clone(src))),
 }

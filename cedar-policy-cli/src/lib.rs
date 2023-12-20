@@ -19,8 +19,6 @@
 // omitted.
 #![allow(clippy::needless_return)]
 
-mod err;
-
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use serde::{Deserialize, Serialize};
@@ -105,19 +103,24 @@ pub struct ValidateArgs {
     /// File containing the schema
     #[arg(short, long = "schema", value_name = "FILE")]
     pub schema_file: String,
-    /// File containing the policy set
-    #[arg(short, long = "policies", value_name = "FILE")]
-    pub policies_file: String,
+    /// Policies args (incorporated by reference)
+    #[command(flatten)]
+    pub policies: PoliciesArgs,
     /// Report a validation failure for non-fatal warnings
     #[arg(long)]
     pub deny_warnings: bool,
+    /// Validate the policy using partial schema validation. This option is
+    /// experimental and will cause the CLI to exit if it was not built with the
+    /// experimental `partial-validate` feature enabled.
+    #[arg(long = "partial-validate")]
+    pub partial_validate: bool,
 }
 
 #[derive(Args, Debug)]
 pub struct CheckParseArgs {
-    /// Optional policy file name. If none is provided, read input from stdin.
-    #[arg(short, long = "policies", value_name = "FILE")]
-    pub policies_file: Option<String>,
+    /// Policies args (incorporated by reference)
+    #[command(flatten)]
+    pub policies: PoliciesArgs,
 }
 
 /// This struct contains the arguments that together specify a request.
@@ -192,7 +195,6 @@ impl RequestArgs {
                     qjson.context,
                     schema.and_then(|s| Some((s, action.as_ref()?))),
                 )
-                .into_diagnostic()
                 .wrap_err_with(|| format!("failed to create a context from {jsonfile}"))?;
                 Request::new(
                     principal,
@@ -240,7 +242,6 @@ impl RequestArgs {
                             f,
                             schema.and_then(|s| Some((s, action.as_ref()?))),
                         )
-                        .into_diagnostic()
                         .wrap_err_with(|| format!("failed to create a context from {jsonfile}"))?,
                         Err(e) => Err(e).into_diagnostic().wrap_err_with(|| {
                             format!("error while loading context from {jsonfile}")
@@ -264,18 +265,40 @@ impl RequestArgs {
     }
 }
 
+/// This struct contains the arguments that together specify an input policy or policy set.
+#[derive(Args, Debug)]
+pub struct PoliciesArgs {
+    /// File containing the static Cedar policies and/or templates. If not provided, read policies from stdin.
+    #[arg(short, long = "policies", value_name = "FILE")]
+    pub policies_file: Option<String>,
+    /// Format of policies in the `--policies` file
+    #[arg(long = "policy-format", default_value_t, value_enum)]
+    pub policy_format: PolicyFormat,
+}
+
+impl PoliciesArgs {
+    /// Turn this `PoliciesArgs` into the appropriate `PolicySet` object
+    fn get_policy_set(&self) -> Result<PolicySet> {
+        match self.policy_format {
+            PolicyFormat::Human => read_policy_set(self.policies_file.as_ref()),
+            PolicyFormat::Json => read_json_policy(self.policies_file.as_ref()),
+        }
+    }
+}
+
 #[derive(Args, Debug)]
 pub struct AuthorizeArgs {
     /// Request args (incorporated by reference)
     #[command(flatten)]
     pub request: RequestArgs,
-    /// File containing the static Cedar policies and templates to evaluate against
-    #[arg(short, long = "policies", value_name = "FILE")]
-    pub policies_file: String,
+    /// Policies args (incorporated by reference)
+    #[command(flatten)]
+    pub policies: PoliciesArgs,
     /// File containing template linked policies
     #[arg(short = 'k', long = "template-linked", value_name = "FILE")]
     pub template_linked_file: Option<String>,
     /// File containing schema information
+    ///
     /// Used to populate the store with action entities and for schema-based
     /// parsing of entity hierarchy, if present
     #[arg(short, long = "schema", value_name = "FILE")]
@@ -291,11 +314,20 @@ pub struct AuthorizeArgs {
     pub timing: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+pub enum PolicyFormat {
+    /// The standard human-readable Cedar policy format, documented at https://docs.cedarpolicy.com/policies/syntax-policy.html
+    #[default]
+    Human,
+    /// Cedar's JSON policy format, documented at https://docs.cedarpolicy.com/policies/json-format.html
+    Json,
+}
+
 #[derive(Args, Debug)]
 pub struct LinkArgs {
-    /// File containing static policies and templates.
-    #[arg(short, long = "policies", value_name = "FILE")]
-    pub policies_file: String,
+    /// Policies args (incorporated by reference)
+    #[command(flatten)]
+    pub policies: PoliciesArgs,
     /// File containing template-linked policies
     #[arg(short = 'k', long = "template-linked", value_name = "FILE")]
     pub template_linked_file: String,
@@ -312,9 +344,9 @@ pub struct LinkArgs {
 
 #[derive(Args, Debug)]
 pub struct FormatArgs {
-    /// Optional policy file name. If none is provided, read input from stdin.
+    /// File containing the static Cedar policies and/or templates. If not provided, read policies from stdin.
     #[arg(short, long = "policies", value_name = "FILE")]
-    pub policy_file: Option<String>,
+    pub policies_file: Option<String>,
 
     /// Custom line width (default: 80).
     #[arg(short, long, value_name = "UINT", default_value_t = 80)]
@@ -422,20 +454,32 @@ impl Termination for CedarExitCode {
 }
 
 pub fn check_parse(args: &CheckParseArgs) -> CedarExitCode {
-    match read_policy_set(args.policies_file.as_ref()) {
+    match args.policies.get_policy_set() {
         Ok(_) => CedarExitCode::Success,
         Err(e) => {
-            println!("Error: {e:?}");
+            println!("{e:?}");
             CedarExitCode::Failure
         }
     }
 }
 
 pub fn validate(args: &ValidateArgs) -> CedarExitCode {
-    let pset = match read_policy_set(Some(&args.policies_file)) {
+    let mode = if args.partial_validate {
+        #[cfg(not(feature = "partial-validate"))]
+        {
+            println!("Error: arguments include the experimental option `--partial-validate`, but this executable was not built with `partial-validate` experimental feature enabled");
+            return CedarExitCode::Failure;
+        }
+        #[cfg(feature = "partial-validate")]
+        ValidationMode::Partial
+    } else {
+        ValidationMode::default()
+    };
+
+    let pset = match args.policies.get_policy_set() {
         Ok(pset) => pset,
         Err(e) => {
-            println!("Error: {e:?}");
+            println!("{e:?}");
             return CedarExitCode::Failure;
         }
     };
@@ -443,41 +487,29 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
     let schema = match read_schema_file(&args.schema_file) {
         Ok(schema) => schema,
         Err(e) => {
-            println!("Error: {e:?}");
+            println!("{e:?}");
             return CedarExitCode::Failure;
         }
     };
 
     let validator = Validator::new(schema);
-    let result = validator.validate(&pset, ValidationMode::default());
+    let result = validator.validate(&pset, mode);
 
-    let exit_code = if !result.validation_passed()
+    if !result.validation_passed()
         || (args.deny_warnings && !result.validation_passed_without_warnings())
     {
-        println!("Validation Failed");
+        println!(
+            "{:?}",
+            Report::new(result).wrap_err("policy set validation failed")
+        );
         CedarExitCode::ValidationFailure
     } else {
-        println!("Validation Passed");
+        println!(
+            "{:?}",
+            Report::new(result).wrap_err("policy set validation passed")
+        );
         CedarExitCode::Success
-    };
-
-    let mut errors = result.validation_errors().peekable();
-    if errors.peek().is_some() {
-        println!("Validation Errors:");
-        for note in errors {
-            println!("{}", note);
-        }
     }
-
-    let mut warnings = result.validation_warnings().peekable();
-    if warnings.peek().is_some() {
-        println!("Validation Warnings:");
-        for note in warnings {
-            println!("{}", note);
-        }
-    }
-
-    exit_code
 }
 
 pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
@@ -486,14 +518,14 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
         None => None,
         Some(Ok(schema)) => Some(schema),
         Some(Err(e)) => {
-            println!("Error: {e:?}");
+            println!("{e:?}");
             return (CedarExitCode::Failure, EvalResult::Bool(false));
         }
     };
     let request = match args.request.get_request(schema.as_ref()) {
         Ok(q) => q,
         Err(e) => {
-            println!("Error: {e:?}");
+            println!("{e:?}");
             return (CedarExitCode::Failure, EvalResult::Bool(false));
         }
     };
@@ -501,7 +533,7 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
         match Expression::from_str(&args.expression).wrap_err("failed to parse the expression") {
             Ok(expr) => expr,
             Err(e) => {
-                println!("Error: {e:?}");
+                println!("{:?}", e.with_source_code(args.expression.clone()));
                 return (CedarExitCode::Failure, EvalResult::Bool(false));
             }
         };
@@ -510,17 +542,15 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
         Some(file) => match load_entities(file, schema.as_ref()) {
             Ok(entities) => entities,
             Err(e) => {
-                println!("Error: {e:?}");
+                println!("{e:?}");
                 return (CedarExitCode::Failure, EvalResult::Bool(false));
             }
         },
     };
-    match eval_expression(&request, &entities, &expr)
-        .into_diagnostic()
-        .wrap_err("failed to evaluate the expression")
+    match eval_expression(&request, &entities, &expr).wrap_err("failed to evaluate the expression")
     {
         Err(e) => {
-            println!("Error: {e:?}");
+            println!("{e:?}");
             return (CedarExitCode::Failure, EvalResult::Bool(false));
         }
         Ok(result) => {
@@ -532,7 +562,7 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
 
 pub fn link(args: &LinkArgs) -> CedarExitCode {
     if let Err(err) = link_inner(args) {
-        println!("Error: {err:?}");
+        println!("{err:?}");
         CedarExitCode::Failure
     } else {
         CedarExitCode::Success
@@ -540,7 +570,7 @@ pub fn link(args: &LinkArgs) -> CedarExitCode {
 }
 
 fn format_policies_inner(args: &FormatArgs) -> Result<()> {
-    let policies_str = read_from_file_or_stdin(args.policy_file.as_ref(), "policy set")?;
+    let policies_str = read_from_file_or_stdin(args.policies_file.as_ref(), "policy set")?;
     let config = Config {
         line_width: args.line_width,
         indent_width: args.indent_width,
@@ -551,7 +581,7 @@ fn format_policies_inner(args: &FormatArgs) -> Result<()> {
 
 pub fn format_policies(args: &FormatArgs) -> CedarExitCode {
     if let Err(err) = format_policies_inner(args) {
-        println!("Error: {err:?}");
+        println!("{err:?}");
         CedarExitCode::Failure
     } else {
         CedarExitCode::Success
@@ -649,7 +679,7 @@ fn new_inner(args: &NewArgs) -> Result<()> {
 
 pub fn new(args: &NewArgs) -> CedarExitCode {
     if let Err(err) = new_inner(args) {
-        println!("Error: {err:?}");
+        println!("{err:?}");
         CedarExitCode::Failure
     } else {
         CedarExitCode::Success
@@ -663,15 +693,13 @@ fn create_slot_env(data: &HashMap<SlotId, String>) -> Result<HashMap<SlotId, Ent
 }
 
 fn link_inner(args: &LinkArgs) -> Result<()> {
-    let mut policies = read_policy_set(Some(&args.policies_file))?;
+    let mut policies = args.policies.get_policy_set()?;
     let slotenv = create_slot_env(&args.arguments.data)?;
-    policies
-        .link(
-            PolicyId::from_str(&args.template_id)?,
-            PolicyId::from_str(&args.new_id)?,
-            slotenv,
-        )
-        .into_diagnostic()?;
+    policies.link(
+        PolicyId::from_str(&args.template_id)?,
+        PolicyId::from_str(&args.new_id)?,
+        slotenv,
+    )?;
     let linked = policies
         .policy(&PolicyId::from_str(&args.new_id)?)
         .ok_or_else(|| miette!("Failed to add template-linked policy"))?;
@@ -746,13 +774,11 @@ impl From<TemplateLinked> for LiteralTemplateLinked {
 fn add_template_links_to_set(path: impl AsRef<Path>, policy_set: &mut PolicySet) -> Result<()> {
     for template_linked in load_liked_file(path)? {
         let slot_env = create_slot_env(&template_linked.args)?;
-        policy_set
-            .link(
-                PolicyId::from_str(&template_linked.template_id)?,
-                PolicyId::from_str(&template_linked.link_id)?,
-                slot_env,
-            )
-            .into_diagnostic()?;
+        policy_set.link(
+            PolicyId::from_str(&template_linked.template_id)?,
+            PolicyId::from_str(&template_linked.link_id)?,
+            slot_env,
+        )?;
     }
     Ok(())
 }
@@ -804,7 +830,7 @@ pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {
     println!();
     let ans = execute_request(
         &args.request,
-        &args.policies_file,
+        &args.policies,
         args.template_linked_file.as_ref(),
         &args.entities_file,
         args.schema_file.as_ref(),
@@ -857,14 +883,12 @@ fn load_entities(entities_filename: impl AsRef<Path>, schema: Option<&Schema>) -
         .read(true)
         .open(entities_filename.as_ref())
     {
-        Ok(f) => Entities::from_json_file(f, schema)
-            .into_diagnostic()
-            .wrap_err_with(|| {
-                format!(
-                    "failed to parse entities from file {}",
-                    entities_filename.as_ref().display()
-                )
-            }),
+        Ok(f) => Entities::from_json_file(f, schema).wrap_err_with(|| {
+            format!(
+                "failed to parse entities from file {}",
+                entities_filename.as_ref().display()
+            )
+        }),
         Err(e) => Err(e).into_diagnostic().wrap_err_with(|| {
             format!(
                 "failed to open entities file {}",
@@ -887,12 +911,9 @@ fn rename_from_id_annotation(ps: PolicySet) -> Result<PolicySet> {
         Some(anno) => anno.parse().map(|a| t.new_id(a)),
     });
     for t in t_iter {
-        let template = t
-            .into_diagnostic()
-            .wrap_err("failed to parse policy id annotation")?;
+        let template = t.wrap_err("failed to parse policy id annotation")?;
         new_ps
             .add_template(template)
-            .into_diagnostic()
             .wrap_err("failed to add template to policy set")?;
     }
     let p_iter = ps.policies().map(|p| match p.annotation("id") {
@@ -900,29 +921,15 @@ fn rename_from_id_annotation(ps: PolicySet) -> Result<PolicySet> {
         Some(anno) => anno.parse().map(|a| p.new_id(a)),
     });
     for p in p_iter {
-        let policy = p
-            .into_diagnostic()
-            .wrap_err("failed to parse policy id annotation")?;
+        let policy = p.wrap_err("failed to parse policy id annotation")?;
         new_ps
             .add(policy)
-            .into_diagnostic()
             .wrap_err("failed to add template to policy set")?;
     }
     Ok(new_ps)
 }
 
-fn read_policy_and_links(
-    policies_filename: impl AsRef<Path>,
-    links_filename: Option<impl AsRef<Path>>,
-) -> Result<PolicySet> {
-    let mut pset = read_policy_set(Some(policies_filename.as_ref()))?;
-    if let Some(links_filename) = links_filename {
-        add_template_links_to_set(links_filename.as_ref(), &mut pset)?;
-    }
-    Ok(pset)
-}
-
-// Read from a file (when `filename` is a `Some`) or stdin (when `filename` is `None`)
+// Read from a file (when `filename` is a `Some`) or stdin (when `filename` is `None`) to a `String`
 fn read_from_file_or_stdin(filename: Option<impl AsRef<Path>>, context: &str) -> Result<String> {
     let mut src_str = String::new();
     match filename.as_ref() {
@@ -930,11 +937,7 @@ fn read_from_file_or_stdin(filename: Option<impl AsRef<Path>>, context: &str) ->
             src_str = std::fs::read_to_string(path)
                 .into_diagnostic()
                 .wrap_err_with(|| {
-                    format!(
-                        "failed to open {} file {}",
-                        context,
-                        path.as_ref().display()
-                    )
+                    format!("failed to open {context} file {}", path.as_ref().display())
                 })?;
         }
         None => {
@@ -951,9 +954,9 @@ fn read_from_file(filename: impl AsRef<Path>, context: &str) -> Result<String> {
     read_from_file_or_stdin(Some(filename), context)
 }
 
-fn read_policy_set(
-    filename: Option<impl AsRef<Path> + std::marker::Copy>,
-) -> miette::Result<PolicySet> {
+/// Read a policy set, in Cedar human syntax, from the file given in `filename`,
+/// or from stdin if `filename` is `None`.
+fn read_policy_set(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Result<PolicySet> {
     let context = "policy set";
     let ps_str = read_from_file_or_stdin(filename, context)?;
     let ps = PolicySet::from_str(&ps_str)
@@ -968,29 +971,71 @@ fn read_policy_set(
     rename_from_id_annotation(ps)
 }
 
+/// Read a policy, in Cedar JSON (EST) syntax, from the file given in `filename`,
+/// or from stdin if `filename` is `None`.
+fn read_json_policy(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Result<PolicySet> {
+    let context = "JSON policy";
+    let json = match filename.as_ref() {
+        Some(path) => {
+            let f = OpenOptions::new()
+                .read(true)
+                .open(path)
+                .into_diagnostic()
+                .wrap_err_with(|| {
+                    format!("failed to open {context} file {}", path.as_ref().display())
+                })?;
+            serde_json::from_reader(f)
+                .into_diagnostic()
+                .wrap_err_with(|| {
+                    format!("failed to read {context} file {}", path.as_ref().display())
+                })?
+        }
+        None => serde_json::from_reader(std::io::stdin())
+            .into_diagnostic()
+            .wrap_err_with(|| format!("failed to read {context} from stdin"))?,
+    };
+    let policy = Policy::from_json(None, json)
+        // TODO: for pretty source annotations:
+        /*
+        .map_err(|err| {
+            let name = filename.map_or_else(
+                || "<stdin>".to_owned(),
+                |n| n.as_ref().display().to_string(),
+            );
+            Report::new(err).with_source_code(NamedSource::new(name, source))
+        })
+        */
+        .wrap_err_with(|| format!("failed to parse {context}"))?;
+    PolicySet::from_policies([policy])
+        .wrap_err_with(|| format!("failed to create policy set from {context}"))
+}
+
 fn read_schema_file(filename: impl AsRef<Path> + std::marker::Copy) -> Result<Schema> {
     let schema_src = read_from_file(filename, "schema")?;
-    Schema::from_str(&schema_src)
-        .into_diagnostic()
-        .wrap_err_with(|| {
-            format!(
-                "failed to parse schema from file {}",
-                filename.as_ref().display()
-            )
-        })
+    Schema::from_str(&schema_src).wrap_err_with(|| {
+        format!(
+            "failed to parse schema from file {}",
+            filename.as_ref().display()
+        )
+    })
 }
 
 /// This uses the Cedar API to call the authorization engine.
 fn execute_request(
     request: &RequestArgs,
-    policies_filename: impl AsRef<Path> + std::marker::Copy,
+    policies: &PoliciesArgs,
     links_filename: Option<impl AsRef<Path>>,
     entities_filename: impl AsRef<Path>,
     schema_filename: Option<impl AsRef<Path> + std::marker::Copy>,
     compute_duration: bool,
 ) -> Result<Response, Vec<Report>> {
     let mut errs = vec![];
-    let policies = match read_policy_and_links(policies_filename.as_ref(), links_filename) {
+    let policies = match policies.get_policy_set().and_then(|mut pset| {
+        if let Some(links_filename) = links_filename {
+            add_template_links_to_set(links_filename.as_ref(), &mut pset)?;
+        }
+        Ok(pset)
+    }) {
         Ok(pset) => pset,
         Err(e) => {
             errs.push(e);

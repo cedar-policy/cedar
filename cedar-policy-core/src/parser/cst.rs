@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-use super::node::ASTNode;
 use smol_str::SmolStr;
+
 // shortcut because we need CST nodes to potentially be empty,
 // for example, if part of it failed the parse, we can
 // still recover other parts
-type Node<N> = ASTNode<Option<N>>;
+type Node<N> = super::node::Node<Option<N>>;
 
-/// The set of policy statements that forms an authorization policy
+/// The set of policy statements that forms a policy set
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Policies(pub Vec<Node<Policy>>);
 
@@ -70,7 +70,7 @@ pub struct VariableDef {
     /// not used for anything other than error reporting.
     pub unused_type_name: Option<Node<Name>>,
     /// type of entity using current `var is type` syntax
-    pub entity_type: Option<Node<Name>>,
+    pub entity_type: Option<Node<Add>>,
     /// hierarchy of entity
     pub ineq: Option<(RelOp, Node<Expr>)>,
 }
@@ -197,7 +197,7 @@ pub enum Relation {
         /// element that may be an entity type and `in` an entity
         target: Node<Add>,
         /// entity type to check for
-        entity_type: Node<Name>,
+        entity_type: Node<Add>,
         /// entity that the target may be `in`
         in_entity: Option<Node<Add>>,
     },
@@ -369,6 +369,8 @@ pub enum Slot {
     Principal,
     /// Slot for Resource Constraints
     Resource,
+    /// Slot other than one of the valid slots
+    Other(SmolStr),
 }
 
 impl Slot {

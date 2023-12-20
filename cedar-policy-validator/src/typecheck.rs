@@ -22,6 +22,7 @@ mod test_expr;
 mod test_extensions;
 mod test_namespace;
 mod test_optional_attributes;
+mod test_partial;
 mod test_policy;
 mod test_strict;
 mod test_type_annotation;
@@ -38,11 +39,11 @@ use crate::{
     extension_schema::{ExtensionFunctionType, ExtensionSchema},
     extensions::all_available_extension_schemas,
     fuzzy_match::fuzzy_search,
-    schema::{
-        is_action_entity_type, ActionHeadVar, HeadVar, PrincipalOrResourceHeadVar, ValidatorSchema,
+    schema::{is_action_entity_type, ValidatorSchema},
+    types::{
+        AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, Primitive, RequestEnv, Type,
     },
-    types::{AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, RequestEnv, Type},
-    AttributeAccess, ValidationMode,
+    AttributeAccess, UnexpectedTypeHelp, ValidationMode,
 };
 
 use super::type_error::TypeError;
@@ -313,6 +314,7 @@ impl<'a> Typechecker<'a> {
                 expr,
                 Type::primitive_boolean(),
                 &mut type_errors,
+                |_| None,
             );
 
             let is_false = ty.contains_type(&Type::singleton_boolean(false));
@@ -375,6 +377,7 @@ impl<'a> Typechecker<'a> {
                         &condition_expr,
                         Type::primitive_boolean(),
                         &mut type_errors,
+                        |_| None,
                     );
 
                     let is_false = ty.contains_type(&Type::singleton_boolean(false));
@@ -400,24 +403,34 @@ impl<'a> Typechecker<'a> {
 
         // For every action compute the cross product of the principal and
         // resource applies_to sets.
-        all_actions.flat_map(move |action| {
-            action
-                .applies_to
-                .applicable_principal_types()
-                .flat_map(move |principal| {
-                    action
-                        .applies_to
-                        .applicable_resource_types()
-                        .map(move |resource| RequestEnv {
-                            principal,
-                            action: &action.name,
-                            resource,
-                            context: &action.context,
-                            principal_slot: None,
-                            resource_slot: None,
-                        })
-                })
-        })
+        all_actions
+            .flat_map(|action| {
+                action
+                    .applies_to
+                    .applicable_principal_types()
+                    .flat_map(|principal| {
+                        action
+                            .applies_to
+                            .applicable_resource_types()
+                            .map(|resource| RequestEnv::DeclaredAction {
+                                principal,
+                                action: &action.name,
+                                resource,
+                                context: &action.context,
+                                principal_slot: None,
+                                resource_slot: None,
+                            })
+                    })
+            })
+            .chain(if self.mode.is_partial() {
+                // A partial schema might not list all actions, and may not
+                // include all principal and resource types for the listed ones.
+                // So we typecheck with a fully unknown request to handle these
+                // missing cases.
+                Some(RequestEnv::UndeclaredAction)
+            } else {
+                None
+            })
     }
 
     /// Given a request environment and a template, return new environments
@@ -426,29 +439,40 @@ impl<'a> Typechecker<'a> {
         &'b self,
         env: RequestEnv<'b>,
         t: &'b Template,
-    ) -> impl Iterator<Item = RequestEnv> + 'b {
-        self.possible_slot_instantiations(
-            t,
-            SlotId::principal(),
-            env.principal,
-            t.principal_constraint().as_inner(),
-        )
-        .flat_map(move |p_slot| {
-            self.possible_slot_instantiations(
-                t,
-                SlotId::resource(),
-                env.resource,
-                t.resource_constraint().as_inner(),
-            )
-            .map(move |r_slot| RequestEnv {
-                principal: env.principal,
-                action: env.action,
-                resource: env.resource,
-                context: env.context,
-                principal_slot: p_slot.clone(),
-                resource_slot: r_slot.clone(),
-            })
-        })
+    ) -> Box<dyn Iterator<Item = RequestEnv> + 'b> {
+        match env {
+            RequestEnv::UndeclaredAction => Box::new(std::iter::once(RequestEnv::UndeclaredAction)),
+            RequestEnv::DeclaredAction {
+                principal,
+                action,
+                resource,
+                context,
+                ..
+            } => Box::new(
+                self.possible_slot_instantiations(
+                    t,
+                    SlotId::principal(),
+                    principal,
+                    t.principal_constraint().as_inner(),
+                )
+                .flat_map(move |p_slot| {
+                    self.possible_slot_instantiations(
+                        t,
+                        SlotId::resource(),
+                        resource,
+                        t.resource_constraint().as_inner(),
+                    )
+                    .map(move |r_slot| RequestEnv::DeclaredAction {
+                        principal,
+                        action,
+                        resource,
+                        context,
+                        principal_slot: p_slot.clone(),
+                        resource_slot: r_slot.clone(),
+                    })
+                }),
+            ),
+        }
     }
 
     /// Get the entity types which could instantiate the slot given in this
@@ -478,17 +502,17 @@ impl<'a> Typechecker<'a> {
                 | PrincipalOrResourceConstraint::In(_) => Box::new(
                     all_entity_types
                         .filter(|(_, ety)| ety.has_descendant_entity_type(var))
-                        .map(|(name, _)| Some(EntityType::Concrete(name.clone())))
+                        .map(|(name, _)| Some(EntityType::Specified(name.clone())))
                         .chain(std::iter::once(Some(var.clone()))),
                 ),
                 // The template uses the slot, but without a scope constraint.
                 // This can't happen for the moment because slots may only
-                // appear in head constraints, but if we ever see this, then the
+                // appear in scope constraints, but if we ever see this, then the
                 // only correct way to proceed is by returning all entity types
                 // as possible instantiations.
                 PrincipalOrResourceConstraint::Is(_) | PrincipalOrResourceConstraint::Any => {
                     Box::new(
-                        all_entity_types.map(|(name, _)| Some(EntityType::Concrete(name.clone()))),
+                        all_entity_types.map(|(name, _)| Some(EntityType::Specified(name.clone()))),
                     )
                 }
             }
@@ -522,53 +546,41 @@ impl<'a> Typechecker<'a> {
             // Principal, resource, and context have types defined by
             // the request type.
             ExprKind::Var(Var::Principal) => TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(Type::possibly_unspecified_entity_reference(
-                    request_env.principal.clone(),
-                )))
-                .with_same_source_info(e)
-                .var(Var::Principal),
+                ExprBuilder::with_data(Some(request_env.principal_type()))
+                    .with_same_source_loc(e)
+                    .var(Var::Principal),
             ),
             // While the EntityUID for Action is held in the request context,
             // entity types do not consider the id of the entity (only the
             // entity type), so the type of Action is only the entity type name
             // taken from the euid.
             ExprKind::Var(Var::Action) => {
-                let ty = if matches!(request_env.action.entity_type(), EntityType::Unspecified) {
-                    // The action entity may be unspecified. In this case it has
-                    // type AnyEntity
-                    Some(Type::any_entity_reference())
-                } else {
-                    // This returns `None` if the action entity is not defined
-                    // in the schema which will cause a typecheck fail in the
-                    // match below.
-                    Type::euid_literal(request_env.action.clone(), self.schema)
-                };
-
-                match ty {
+                match request_env.action_type(self.schema) {
                     Some(ty) => TypecheckAnswer::success(
                         ExprBuilder::with_data(Some(ty))
-                            .with_same_source_info(e)
+                            .with_same_source_loc(e)
                             .var(Var::Action),
                     ),
+                    // `None` if the action entity is not defined in the schema.
+                    // This will only show up if we're typechecking with a
+                    // request environment that was not constructed from the
+                    // schema cross product, which will not happen through our
+                    // public entry points, but it can occur if calling
+                    // `typecheck` directly which happens in our tests.
                     None => TypecheckAnswer::fail(
-                        ExprBuilder::new().with_same_source_info(e).var(Var::Action),
+                        ExprBuilder::new().with_same_source_loc(e).var(Var::Action),
                     ),
                 }
             }
             ExprKind::Var(Var::Resource) => TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(Type::possibly_unspecified_entity_reference(
-                    request_env.resource.clone(),
-                )))
-                .with_same_source_info(e)
-                .var(Var::Resource),
+                ExprBuilder::with_data(Some(request_env.resource_type()))
+                    .with_same_source_loc(e)
+                    .var(Var::Resource),
             ),
             ExprKind::Var(Var::Context) => TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(Type::record_with_attributes(
-                    request_env.context.clone(),
-                    OpenTag::ClosedAttributes,
-                )))
-                .with_same_source_info(e)
-                .var(Var::Context),
+                ExprBuilder::with_data(Some(request_env.context_type()))
+                    .with_same_source_loc(e)
+                    .var(Var::Context),
             ),
             ExprKind::Unknown(u) => {
                 TypecheckAnswer::fail(ExprBuilder::with_data(None).unknown(u.clone()))
@@ -577,38 +589,38 @@ impl<'a> Typechecker<'a> {
             ExprKind::Slot(slotid) => TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(if slotid.is_principal() {
                     request_env
-                        .principal_slot
+                        .principal_slot()
                         .clone()
                         .map(Type::possibly_unspecified_entity_reference)
                         .unwrap_or(Type::any_entity_reference())
                 } else if slotid.is_resource() {
                     request_env
-                        .resource_slot
+                        .resource_slot()
                         .clone()
                         .map(Type::possibly_unspecified_entity_reference)
                         .unwrap_or(Type::any_entity_reference())
                 } else {
                     Type::any_entity_reference()
                 }))
-                .with_same_source_info(e)
+                .with_same_source_loc(e)
                 .slot(*slotid),
             ),
 
             // Literal booleans get singleton type according to their value.
             ExprKind::Lit(Literal::Bool(val)) => TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(Type::singleton_boolean(*val)))
-                    .with_same_source_info(e)
+                    .with_same_source_loc(e)
                     .val(*val),
             ),
             // Other literal primitive values have the type of that primitive value.
             ExprKind::Lit(Literal::Long(val)) => TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(Type::primitive_long()))
-                    .with_same_source_info(e)
+                    .with_same_source_loc(e)
                     .val(*val),
             ),
             ExprKind::Lit(Literal::String(val)) => TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(Type::primitive_string()))
-                    .with_same_source_info(e)
+                    .with_same_source_loc(e)
                     .val(val.clone()),
             ),
 
@@ -620,15 +632,24 @@ impl<'a> Typechecker<'a> {
                 // not generated here. We still return `TypecheckFail` so that
                 // typechecking is not considered successful.
                 match Type::euid_literal((**euid).clone(), self.schema) {
+                    // The entity type is undeclared, but that's OK for a
+                    // partial schema. The attributes record will be empty if we
+                    // try to access it later, so all attributes will have the
+                    // bottom type.
+                    None if self.mode.is_partial() => TypecheckAnswer::success(
+                        ExprBuilder::with_data(Some(Type::possibly_unspecified_entity_reference(
+                            euid.entity_type().clone(),
+                        )))
+                        .with_same_source_loc(e)
+                        .val(euid.clone()),
+                    ),
                     Some(ty) => TypecheckAnswer::success(
                         ExprBuilder::with_data(Some(ty))
-                            .with_same_source_info(e)
+                            .with_same_source_loc(e)
                             .val(euid.clone()),
                     ),
                     None => TypecheckAnswer::fail(
-                        ExprBuilder::new()
-                            .with_same_source_info(e)
-                            .val(euid.clone()),
+                        ExprBuilder::new().with_same_source_loc(e).val(euid.clone()),
                     ),
                 }
             }
@@ -645,6 +666,7 @@ impl<'a> Typechecker<'a> {
                     test_expr,
                     Type::primitive_boolean(),
                     type_errors,
+                    |_| None,
                 );
                 ans_test.then_typecheck(|typ_test, eff_test| {
                     // If the guard has type `true` or `false`, we short circuit,
@@ -710,7 +732,7 @@ impl<'a> Typechecker<'a> {
                                 );
                                 let has_lub = lub_ty.is_some();
                                 let annot_expr = ExprBuilder::with_data(lub_ty)
-                                    .with_same_source_info(e)
+                                    .with_same_source_loc(e)
                                     .ite(typ_test, typ_then, typ_else);
                                 if has_lub {
                                     // Effect is not handled in the LUB computation,
@@ -740,6 +762,7 @@ impl<'a> Typechecker<'a> {
                     left,
                     Type::primitive_boolean(),
                     type_errors,
+                    |_| None,
                 );
                 ans_left.then_typecheck(|typ_left, eff_left| {
                     match typ_left.data() {
@@ -768,6 +791,7 @@ impl<'a> Typechecker<'a> {
                                 right,
                                 Type::primitive_boolean(),
                                 type_errors,
+                                |_| None,
                             );
                             ans_right.then_typecheck(|typ_right, eff_right| {
                                 match (typ_left.data(), typ_right.data()) {
@@ -777,7 +801,7 @@ impl<'a> Typechecker<'a> {
                                     // was false.
                                     (Some(_), Some(Type::False)) => TypecheckAnswer::success(
                                         ExprBuilder::with_data(Some(Type::False))
-                                            .with_same_source_info(e)
+                                            .with_same_source_loc(e)
                                             .and(typ_left, typ_right),
                                     ),
 
@@ -790,7 +814,7 @@ impl<'a> Typechecker<'a> {
                                     (Some(_), Some(Type::True)) => {
                                         TypecheckAnswer::success_with_effect(
                                             ExprBuilder::with_data(typ_left.data().clone())
-                                                .with_same_source_info(e)
+                                                .with_same_source_loc(e)
                                                 .and(typ_left, typ_right),
                                             eff_left.union(&eff_right),
                                         )
@@ -798,7 +822,7 @@ impl<'a> Typechecker<'a> {
                                     (Some(Type::True), Some(_)) => {
                                         TypecheckAnswer::success_with_effect(
                                             ExprBuilder::with_data(typ_right.data().clone())
-                                                .with_same_source_info(e)
+                                                .with_same_source_loc(e)
                                                 .and(typ_left, typ_right),
                                             eff_right.union(&eff_right),
                                         )
@@ -808,7 +832,7 @@ impl<'a> Typechecker<'a> {
                                     // know the result type is boolean.
                                     (Some(_), Some(_)) => TypecheckAnswer::success_with_effect(
                                         ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                            .with_same_source_info(e)
+                                            .with_same_source_loc(e)
                                             .and(typ_left, typ_right),
                                         eff_left.union(&eff_right),
                                     ),
@@ -817,7 +841,7 @@ impl<'a> Typechecker<'a> {
                                     // typecheck, so the `&&` expression also fails.
                                     _ => TypecheckAnswer::fail(
                                         ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                            .with_same_source_info(e)
+                                            .with_same_source_loc(e)
                                             .and(typ_left, typ_right),
                                     ),
                                 }
@@ -836,6 +860,7 @@ impl<'a> Typechecker<'a> {
                     left,
                     Type::primitive_boolean(),
                     type_errors,
+                    |_| None,
                 );
                 ans_left.then_typecheck(|ty_expr_left, eff_left| match ty_expr_left.data() {
                     // Contrary to `&&` where short circuiting did not permit
@@ -857,6 +882,7 @@ impl<'a> Typechecker<'a> {
                             right,
                             Type::primitive_boolean(),
                             type_errors,
+                            |_| None,
                         );
                         ans_right.then_typecheck(|ty_expr_right, eff_right| {
                             match (ty_expr_left.data(), ty_expr_right.data()) {
@@ -868,7 +894,7 @@ impl<'a> Typechecker<'a> {
                                 (Some(_), Some(Type::True)) => {
                                     TypecheckAnswer::success_with_effect(
                                         ExprBuilder::with_data(Some(Type::True))
-                                            .with_same_source_info(e)
+                                            .with_same_source_loc(e)
                                             .or(ty_expr_left, ty_expr_right),
                                         eff_right,
                                     )
@@ -881,7 +907,7 @@ impl<'a> Typechecker<'a> {
                                 (Some(typ_left), Some(Type::False)) => {
                                     TypecheckAnswer::success_with_effect(
                                         ExprBuilder::with_data(Some(typ_left.clone()))
-                                            .with_same_source_info(e)
+                                            .with_same_source_loc(e)
                                             .or(ty_expr_left, ty_expr_right),
                                         eff_left,
                                     )
@@ -889,7 +915,7 @@ impl<'a> Typechecker<'a> {
                                 (Some(Type::False), Some(typ_right)) => {
                                     TypecheckAnswer::success_with_effect(
                                         ExprBuilder::with_data(Some(typ_right.clone()))
-                                            .with_same_source_info(e)
+                                            .with_same_source_loc(e)
                                             .or(ty_expr_left, ty_expr_right),
                                         eff_right,
                                     )
@@ -900,13 +926,13 @@ impl<'a> Typechecker<'a> {
                                 // intersection of their effect sets.
                                 (Some(_), Some(_)) => TypecheckAnswer::success_with_effect(
                                     ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                        .with_same_source_info(e)
+                                        .with_same_source_loc(e)
                                         .or(ty_expr_left, ty_expr_right),
                                     eff_right.intersect(&eff_left),
                                 ),
                                 _ => TypecheckAnswer::fail(
                                     ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                        .with_same_source_info(e)
+                                        .with_same_source_loc(e)
                                         .or(ty_expr_left, ty_expr_right),
                                 ),
                             }
@@ -941,6 +967,7 @@ impl<'a> Typechecker<'a> {
                     expr,
                     &[Type::any_entity_reference(), Type::any_record()],
                     type_errors,
+                    |_| None,
                 );
 
                 actual.then_typecheck(|typ_expr_actual, _| match typ_expr_actual.data() {
@@ -950,7 +977,7 @@ impl<'a> Typechecker<'a> {
                         let annot_expr = ExprBuilder::with_data(
                             attr_ty.clone().map(|attr_ty| attr_ty.attr_type),
                         )
-                        .with_same_source_info(e)
+                        .with_same_source_loc(e)
                         .get_attr(typ_expr_actual.clone(), attr.clone());
                         match attr_ty {
                             Some(ty) => {
@@ -971,6 +998,19 @@ impl<'a> Typechecker<'a> {
                                     TypecheckAnswer::fail(annot_expr)
                                 }
                             }
+                            // In partial schema validation, if we can't find
+                            // the attribute but there may be additional
+                            // attributes, we do not fail and instead return the
+                            // bottom type (`Never`).
+                            None if self.mode.is_partial()
+                                && Type::may_have_attr(self.schema, typ_actual, attr) =>
+                            {
+                                TypecheckAnswer::success(
+                                    ExprBuilder::with_data(Some(Type::Never))
+                                        .with_same_source_loc(e)
+                                        .get_attr(typ_expr_actual, attr.clone()),
+                                )
+                            }
                             None => {
                                 let borrowed =
                                     all_attrs.iter().map(|s| s.as_str()).collect::<Vec<_>>();
@@ -987,7 +1027,7 @@ impl<'a> Typechecker<'a> {
                     }
                     None => TypecheckAnswer::fail(
                         ExprBuilder::new()
-                            .with_same_source_info(e)
+                            .with_same_source_loc(e)
                             .get_attr(typ_expr_actual, attr.clone()),
                     ),
                 })
@@ -1001,6 +1041,13 @@ impl<'a> Typechecker<'a> {
                     expr,
                     &[Type::any_entity_reference(), Type::any_record()],
                     type_errors,
+                    |actual| match actual {
+                        Type::Set { .. } => Some(UnexpectedTypeHelp::TryUsingContains),
+                        Type::Primitive {
+                            primitive_type: Primitive::String,
+                        } => Some(UnexpectedTypeHelp::TryUsingLike),
+                        _ => None,
+                    },
                 );
                 actual.then_typecheck(|typ_expr_actual, _| match typ_expr_actual.data() {
                     Some(typ_actual) => {
@@ -1029,7 +1076,7 @@ impl<'a> Typechecker<'a> {
                                 };
                                 TypecheckAnswer::success_with_effect(
                                     ExprBuilder::with_data(Some(type_of_has))
-                                        .with_same_source_info(e)
+                                        .with_same_source_loc(e)
                                         .has_attr(typ_expr_actual, attr.clone()),
                                     EffectSet::singleton(Effect::new(expr, attr)),
                                 )
@@ -1054,7 +1101,7 @@ impl<'a> Typechecker<'a> {
                                         Type::primitive_boolean()
                                     },
                                 ))
-                                .with_same_source_info(e)
+                                .with_same_source_loc(e)
                                 .has_attr(typ_expr_actual, attr.clone()),
                                 EffectSet::singleton(Effect::new(expr, attr)),
                             ),
@@ -1076,14 +1123,14 @@ impl<'a> Typechecker<'a> {
                                         Type::singleton_boolean(false)
                                     },
                                 ))
-                                .with_same_source_info(e)
+                                .with_same_source_loc(e)
                                 .has_attr(typ_expr_actual, attr.clone()),
                             ),
                         }
                     }
                     None => TypecheckAnswer::fail(
                         ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                            .with_same_source_info(e)
+                            .with_same_source_loc(e)
                             .has_attr(typ_expr_actual, attr.clone()),
                     ),
                 })
@@ -1097,11 +1144,19 @@ impl<'a> Typechecker<'a> {
                     expr,
                     Type::primitive_string(),
                     type_errors,
+                    |actual| match actual {
+                        Type::EntityOrRecord(
+                            EntityRecordKind::AnyEntity
+                            | EntityRecordKind::Entity(_)
+                            | EntityRecordKind::ActionEntity { .. },
+                        ) => Some(UnexpectedTypeHelp::TryUsingIs),
+                        _ => None,
+                    },
                 );
                 actual.then_typecheck(|actual_expr_ty, _| {
                     TypecheckAnswer::success(
                         ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                            .with_same_source_info(e)
+                            .with_same_source_loc(e)
                             // FIXME: `pattern` contains an `Arc<Vec<...>>` that
                             // could be cloned cheap, but this reallocated the
                             // pattern vec. Need a different constructor.
@@ -1117,6 +1172,7 @@ impl<'a> Typechecker<'a> {
                     expr,
                     Type::any_entity_reference(),
                     type_errors,
+                    |_| Some(UnexpectedTypeHelp::TypeTestNotSupported),
                 )
                 .then_typecheck(|expr_ty, _| {
                     match expr_ty.data() {
@@ -1137,7 +1193,7 @@ impl<'a> Typechecker<'a> {
 
                             TypecheckAnswer::success(
                                 ExprBuilder::with_data(Some(type_of_is))
-                                    .with_same_source_info(e)
+                                    .with_same_source_loc(e)
                                     .is_entity_type(expr_ty, entity_type.clone()),
                             )
                         }
@@ -1156,7 +1212,7 @@ impl<'a> Typechecker<'a> {
 
                             TypecheckAnswer::success(
                                 ExprBuilder::with_data(Some(type_of_is))
-                                    .with_same_source_info(e)
+                                    .with_same_source_loc(e)
                                     .is_entity_type(expr_ty, entity_type.clone()),
                             )
                         }
@@ -1165,7 +1221,7 @@ impl<'a> Typechecker<'a> {
                         Some(Type::EntityOrRecord(EntityRecordKind::AnyEntity { .. })) => {
                             TypecheckAnswer::success(
                                 ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                    .with_same_source_info(e)
+                                    .with_same_source_loc(e)
                                     .is_entity_type(expr_ty, entity_type.clone()),
                             )
                         }
@@ -1173,7 +1229,7 @@ impl<'a> Typechecker<'a> {
                         // In either case a type error was already reported.
                         _ => TypecheckAnswer::fail(
                             ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                .with_same_source_info(e)
+                                .with_same_source_loc(e)
                                 .is_entity_type(expr_ty, entity_type.clone()),
                         ),
                     }
@@ -1206,18 +1262,18 @@ impl<'a> Typechecker<'a> {
                             type_errors.push(TypeError::empty_set_forbidden(e.clone()));
                             TypecheckAnswer::fail(
                                 ExprBuilder::new()
-                                    .with_same_source_info(e)
+                                    .with_same_source_loc(e)
                                     .set(elem_expr_types),
                             )
                         }
                         Some(elem_lub) => TypecheckAnswer::success(
                             ExprBuilder::with_data(Some(Type::set(elem_lub)))
-                                .with_same_source_info(e)
+                                .with_same_source_loc(e)
                                 .set(elem_expr_types),
                         ),
                         None => TypecheckAnswer::fail(
                             ExprBuilder::new()
-                                .with_same_source_info(e)
+                                .with_same_source_loc(e)
                                 .set(elem_expr_types),
                         ),
                     }
@@ -1261,7 +1317,7 @@ impl<'a> Typechecker<'a> {
                         // PANIC SAFETY: can't have duplicate keys because the keys are the same as those in `map` which was already a BTreeMap
                         #[allow(clippy::expect_used)]
                         let expr = ExprBuilder::with_data(ty)
-                            .with_same_source_info(e)
+                            .with_same_source_loc(e)
                             .record(map.keys().cloned().zip(record_attr_expr_tys))
                             .expect("this can't have duplicate keys because the keys are the same as those in `map` which was already a BTreeMap");
                         if is_success {
@@ -1302,14 +1358,14 @@ impl<'a> Typechecker<'a> {
                         let type_of_eq = self.type_of_equality(
                             request_env,
                             arg1,
-                            lhs_ty.data().clone(),
+                            lhs_ty.data(),
                             arg2,
-                            rhs_ty.data().clone(),
+                            rhs_ty.data(),
                         );
 
                         if self.mode.is_strict() {
                             let annotated_eq = ExprBuilder::with_data(Some(type_of_eq))
-                                .with_same_source_info(bin_expr)
+                                .with_same_source_loc(bin_expr)
                                 .binary_app(*op, lhs_ty.clone(), rhs_ty.clone());
                             self.enforce_strict_equality(
                                 bin_expr,
@@ -1321,7 +1377,7 @@ impl<'a> Typechecker<'a> {
                         } else {
                             TypecheckAnswer::success(
                                 ExprBuilder::with_data(Some(type_of_eq))
-                                    .with_same_source_info(bin_expr)
+                                    .with_same_source_loc(bin_expr)
                                     .binary_app(*op, lhs_ty, rhs_ty),
                             )
                         }
@@ -1336,6 +1392,7 @@ impl<'a> Typechecker<'a> {
                     arg1,
                     Type::primitive_long(),
                     type_errors,
+                    |_| None,
                 );
                 ans_arg1.then_typecheck(|expr_ty_arg1, _| {
                     let ans_arg2 = self.expect_type(
@@ -1344,11 +1401,12 @@ impl<'a> Typechecker<'a> {
                         arg2,
                         Type::primitive_long(),
                         type_errors,
+                        |_| None,
                     );
                     ans_arg2.then_typecheck(|expr_ty_arg2, _| {
                         TypecheckAnswer::success(
                             ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                .with_same_source_info(bin_expr)
+                                .with_same_source_loc(bin_expr)
                                 .binary_app(*op, expr_ty_arg1, expr_ty_arg2),
                         )
                     })
@@ -1356,12 +1414,23 @@ impl<'a> Typechecker<'a> {
             }
 
             BinaryOp::Add | BinaryOp::Sub => {
+                let help_builder = |actual: &Type| match (op, actual) {
+                    (
+                        BinaryOp::Add,
+                        Type::Primitive {
+                            primitive_type: Primitive::String,
+                        },
+                    ) => Some(UnexpectedTypeHelp::ConcatenationNotSupported),
+                    (_, Type::Set { .. }) => Some(UnexpectedTypeHelp::SetOperationsNotSupported),
+                    _ => None,
+                };
                 let ans_arg1 = self.expect_type(
                     request_env,
                     prior_eff,
                     arg1,
                     Type::primitive_long(),
                     type_errors,
+                    help_builder,
                 );
                 ans_arg1.then_typecheck(|expr_ty_arg1, _| {
                     let ans_arg2 = self.expect_type(
@@ -1370,11 +1439,12 @@ impl<'a> Typechecker<'a> {
                         arg2,
                         Type::primitive_long(),
                         type_errors,
+                        help_builder,
                     );
                     ans_arg2.then_typecheck(|expr_ty_arg2, _| {
                         TypecheckAnswer::success(
                             ExprBuilder::with_data(Some(Type::primitive_long()))
-                                .with_same_source_info(bin_expr)
+                                .with_same_source_loc(bin_expr)
                                 .binary_app(*op, expr_ty_arg1, expr_ty_arg2),
                         )
                     })
@@ -1387,74 +1457,117 @@ impl<'a> Typechecker<'a> {
 
             BinaryOp::Contains => {
                 // The first argument must be a set.
-                self.expect_type(request_env, prior_eff, arg1, Type::any_set(), type_errors)
-                    .then_typecheck(|expr_ty_arg1, _| {
-                        // The second argument may be any type. We do not care if the element type cannot be in the set.
-                        self.typecheck(request_env, prior_eff, arg2, type_errors)
-                            .then_typecheck(|expr_ty_arg2, _| {
-                                if self.mode.is_strict() {
-                                    let annotated_expr =
-                                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                            .with_same_source_info(bin_expr)
-                                            .binary_app(
-                                                *op,
-                                                expr_ty_arg1.clone(),
-                                                expr_ty_arg2.clone(),
-                                            );
-                                    self.enforce_strict_equality(
-                                        bin_expr,
-                                        annotated_expr,
-                                        &match expr_ty_arg1.data() {
-                                            Some(Type::Set {
-                                                element_type: Some(ty),
-                                            }) => Some(*ty.clone()),
-                                            _ => None,
-                                        },
-                                        expr_ty_arg2.data(),
-                                        type_errors,
-                                    )
-                                } else {
-                                    TypecheckAnswer::success(
-                                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                            .with_same_source_info(bin_expr)
-                                            .binary_app(*op, expr_ty_arg1, expr_ty_arg2),
-                                    )
-                                }
-                            })
-                    })
+                self.expect_type(
+                    request_env,
+                    prior_eff,
+                    arg1,
+                    Type::any_set(),
+                    type_errors,
+                    |actual| match actual {
+                        Type::EntityOrRecord(
+                            EntityRecordKind::AnyEntity
+                            | EntityRecordKind::Entity(_)
+                            | EntityRecordKind::ActionEntity { .. },
+                        ) => Some(UnexpectedTypeHelp::TryUsingIn),
+                        Type::EntityOrRecord(EntityRecordKind::Record { .. }) => {
+                            Some(UnexpectedTypeHelp::TryUsingHas)
+                        }
+                        Type::Primitive {
+                            primitive_type: Primitive::String,
+                        } => Some(UnexpectedTypeHelp::TryUsingLike),
+                        _ => None,
+                    },
+                )
+                .then_typecheck(|expr_ty_arg1, _| {
+                    // The second argument may be any type. We do not care if the element type cannot be in the set.
+                    self.typecheck(request_env, prior_eff, arg2, type_errors)
+                        .then_typecheck(|expr_ty_arg2, _| {
+                            if self.mode.is_strict() {
+                                let annotated_expr =
+                                    ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                        .with_same_source_loc(bin_expr)
+                                        .binary_app(
+                                            *op,
+                                            expr_ty_arg1.clone(),
+                                            expr_ty_arg2.clone(),
+                                        );
+                                self.enforce_strict_equality(
+                                    bin_expr,
+                                    annotated_expr,
+                                    &match expr_ty_arg1.data() {
+                                        Some(Type::Set {
+                                            element_type: Some(ty),
+                                        }) => Some(*ty.clone()),
+                                        _ => None,
+                                    },
+                                    expr_ty_arg2.data(),
+                                    type_errors,
+                                )
+                            } else {
+                                TypecheckAnswer::success(
+                                    ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                        .with_same_source_loc(bin_expr)
+                                        .binary_app(*op, expr_ty_arg1, expr_ty_arg2),
+                                )
+                            }
+                        })
+                })
             }
 
             BinaryOp::ContainsAll | BinaryOp::ContainsAny => {
                 // Both arguments to a `containsAll` or `containsAny` must be sets.
-                self.expect_type(request_env, prior_eff, arg1, Type::any_set(), type_errors)
-                    .then_typecheck(|expr_ty_arg1, _| {
-                        self.expect_type(request_env, prior_eff, arg2, Type::any_set(), type_errors)
-                            .then_typecheck(|expr_ty_arg2, _| {
-                                if self.mode.is_strict() {
-                                    let annotated_expr =
-                                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                            .with_same_source_info(bin_expr)
-                                            .binary_app(
-                                                *op,
-                                                expr_ty_arg1.clone(),
-                                                expr_ty_arg2.clone(),
-                                            );
-                                    self.enforce_strict_equality(
-                                        bin_expr,
-                                        annotated_expr,
-                                        expr_ty_arg1.data(),
-                                        expr_ty_arg2.data(),
-                                        type_errors,
-                                    )
-                                } else {
-                                    TypecheckAnswer::success(
-                                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                            .with_same_source_info(bin_expr)
-                                            .binary_app(*op, expr_ty_arg1, expr_ty_arg2),
-                                    )
-                                }
-                            })
+                self.expect_type(
+                    request_env,
+                    prior_eff,
+                    arg1,
+                    Type::any_set(),
+                    type_errors,
+                    |actual| match actual {
+                        Type::EntityOrRecord(
+                            EntityRecordKind::AnyEntity
+                            | EntityRecordKind::Entity(_)
+                            | EntityRecordKind::ActionEntity { .. },
+                        ) => Some(UnexpectedTypeHelp::TryUsingIn),
+                        Type::EntityOrRecord(EntityRecordKind::Record { .. }) => {
+                            Some(UnexpectedTypeHelp::TryUsingHas)
+                        }
+                        Type::Primitive {
+                            primitive_type: Primitive::String,
+                        } => Some(UnexpectedTypeHelp::TryUsingLike),
+                        _ => None,
+                    },
+                )
+                .then_typecheck(|expr_ty_arg1, _| {
+                    self.expect_type(
+                        request_env,
+                        prior_eff,
+                        arg2,
+                        Type::any_set(),
+                        type_errors,
+                        |_| Some(UnexpectedTypeHelp::TryUsingSingleContains),
+                    )
+                    .then_typecheck(|expr_ty_arg2, _| {
+                        if self.mode.is_strict() {
+                            let annotated_expr =
+                                ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                    .with_same_source_loc(bin_expr)
+                                    .binary_app(*op, expr_ty_arg1.clone(), expr_ty_arg2.clone());
+                            self.enforce_strict_equality(
+                                bin_expr,
+                                annotated_expr,
+                                expr_ty_arg1.data(),
+                                expr_ty_arg2.data(),
+                                type_errors,
+                            )
+                        } else {
+                            TypecheckAnswer::success(
+                                ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                    .with_same_source_loc(bin_expr)
+                                    .binary_app(*op, expr_ty_arg1, expr_ty_arg2),
+                            )
+                        }
                     })
+                })
             }
         }
     }
@@ -1516,11 +1629,12 @@ impl<'a> Typechecker<'a> {
             arg,
             Type::primitive_long(),
             type_errors,
+            |_| None,
         );
         ans_arg.then_typecheck(|arg_expr_ty, _| {
             TypecheckAnswer::success({
                 ExprBuilder::with_data(Some(Type::primitive_long()))
-                    .with_same_source_info(mul_expr)
+                    .with_same_source_loc(mul_expr)
                     .mul(arg_expr_ty, *constant)
             })
         })
@@ -1531,14 +1645,14 @@ impl<'a> Typechecker<'a> {
         &self,
         request_env: &RequestEnv,
         lhs_expr: &'b Expr,
-        lhs_ty: Option<Type>,
+        lhs_ty: &Option<Type>,
         rhs_expr: &'b Expr,
-        rhs_ty: Option<Type>,
+        rhs_ty: &Option<Type>,
     ) -> Type {
         // If we know the types are disjoint, then we can return give the
         // expression type False. See `are_types_disjoint` definition for
         // explanation of why fewer types are disjoint than may be expected.
-        let disjoint_types = match (&lhs_ty, &rhs_ty) {
+        let disjoint_types = match (lhs_ty, rhs_ty) {
             (Some(lhs_ty), Some(rhs_ty)) => Type::are_types_disjoint(lhs_ty, rhs_ty),
             _ => false,
         };
@@ -1564,7 +1678,8 @@ impl<'a> Typechecker<'a> {
             } else {
                 let left_is_unspecified = Typechecker::is_unspecified_entity(request_env, lhs_expr);
                 let right_is_specified = rhs_ty
-                    .map(|ty| Type::must_be_specified_entity(&ty))
+                    .as_ref()
+                    .map(Type::must_be_specified_entity)
                     .unwrap_or(false);
 
                 if left_is_unspecified && right_is_specified {
@@ -1603,6 +1718,7 @@ impl<'a> Typechecker<'a> {
             lhs,
             Type::any_entity_reference(),
             type_errors,
+            |_| Some(UnexpectedTypeHelp::TryUsingContains),
         );
         let ty_rhs = self.expect_one_of_types(
             request_env,
@@ -1613,6 +1729,13 @@ impl<'a> Typechecker<'a> {
                 Type::any_entity_reference(),
             ],
             type_errors,
+            |actual| match actual {
+                Type::Set { .. } => Some(UnexpectedTypeHelp::TryUsingContains),
+                Type::Primitive {
+                    primitive_type: Primitive::String,
+                } => Some(UnexpectedTypeHelp::TryUsingLike),
+                _ => None,
+            },
         );
 
         let lhs_typechecked = ty_lhs.typechecked();
@@ -1634,13 +1757,13 @@ impl<'a> Typechecker<'a> {
                 if !lhs_typechecked || !rhs_typechecked {
                     TypecheckAnswer::fail(
                         ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                            .with_same_source_info(in_expr)
+                            .with_same_source_loc(in_expr)
                             .is_in(lhs_expr, rhs_expr),
                     )
                 } else if left_is_unspecified && right_is_specified {
                     TypecheckAnswer::success(
                         ExprBuilder::with_data(Some(Type::singleton_boolean(false)))
-                            .with_same_source_info(in_expr)
+                            .with_same_source_loc(in_expr)
                             .is_in(lhs_expr, rhs_expr),
                     )
                 } else {
@@ -1691,7 +1814,7 @@ impl<'a> Typechecker<'a> {
                             ExprKind::Lit(Literal::EntityUID(_)),
                         ) => self.type_of_entity_literal_in_entity_literals(
                             request_env,
-                            (**euid0).clone(),
+                            euid0,
                             [rhs_as_euid_lit.as_ref()],
                             in_expr,
                             lhs_expr,
@@ -1702,7 +1825,7 @@ impl<'a> Typechecker<'a> {
                         (ExprKind::Lit(Literal::EntityUID(euid)), ExprKind::Set(elems)) => self
                             .type_of_entity_literal_in_entity_literals(
                                 request_env,
-                                (**euid).clone(),
+                                euid,
                                 elems.as_ref(),
                                 in_expr,
                                 lhs_expr,
@@ -1710,10 +1833,14 @@ impl<'a> Typechecker<'a> {
                             ),
 
                         // If none of the cases apply, then all we know is that `in` has
-                        // type boolean.
+                        // type boolean. Importantly for partial schema
+                        // validation, this case captures an `in` between entity
+                        // literals where the LHS is not an action defined in
+                        // the schema and does not have an entity type defined
+                        // in the schema.
                         _ => TypecheckAnswer::success(
                             ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                .with_same_source_info(in_expr)
+                                .with_same_source_loc(in_expr)
                                 .is_in(lhs_expr, rhs_expr),
                         ),
                     }
@@ -1787,7 +1914,7 @@ impl<'a> Typechecker<'a> {
         }
     }
 
-    // Given an expression, if that expression is a literal or the `action` head
+    // Given an expression, if that expression is a literal or the `action`
     // variable, return it as an EntityUID. Return `None` otherwise.
     fn euid_from_euid_literal_or_action(request_env: &RequestEnv, e: &Expr) -> Option<EntityUID> {
         match Typechecker::replace_action_var_with_euid(request_env, e)
@@ -1814,10 +1941,19 @@ impl<'a> Typechecker<'a> {
 
     fn is_unspecified_entity(query_env: &RequestEnv, expr: &Expr) -> bool {
         match expr.expr_kind() {
-            ExprKind::Var(Var::Principal) => matches!(query_env.principal, EntityType::Unspecified),
-            ExprKind::Var(Var::Resource) => matches!(query_env.resource, EntityType::Unspecified),
+            ExprKind::Var(Var::Principal) => matches!(
+                query_env.principal_entity_type(),
+                Some(EntityType::Unspecified)
+            ),
+            ExprKind::Var(Var::Resource) => matches!(
+                query_env.resource_entity_type(),
+                Some(EntityType::Unspecified)
+            ),
             ExprKind::Var(Var::Action) => {
-                matches!(query_env.action.entity_type(), EntityType::Unspecified)
+                matches!(
+                    query_env.action_entity_uid().map(EntityUID::entity_type),
+                    Some(EntityType::Unspecified)
+                )
             }
             _ => false,
         }
@@ -1836,26 +1972,60 @@ impl<'a> Typechecker<'a> {
     ) -> TypecheckAnswer<'c> {
         if let Some(rhs) = Typechecker::euids_from_euid_literals_or_action(request_env, rhs_elems) {
             let var_euid = if matches!(lhs_var, Var::Principal) {
-                request_env.principal
+                request_env.principal_entity_type()
             } else {
-                request_env.resource
+                request_env.resource_entity_type()
             };
-            let descendants = self
-                .schema
-                .get_entities_in_set(PrincipalOrResourceHeadVar::PrincipalOrResource, rhs);
             match var_euid {
-                EntityType::Concrete(var_name) => Typechecker::entity_in_descendants(
-                    var_name,
-                    descendants,
-                    in_expr,
-                    lhs_expr,
-                    rhs_expr,
-                ),
+                // We failed to get the principal/resource entity type because
+                // we are typechecking a request for some action which isn't
+                // declared in the schema.  We don't know if the euid would be
+                // in the descendants or not, so give it type boolean.
+                None => {
+                    let in_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                        .with_same_source_loc(in_expr)
+                        .is_in(lhs_expr, rhs_expr);
+                    if self.mode.is_partial() {
+                        TypecheckAnswer::success(in_expr)
+                    } else {
+                        // This should only happen when doing partial validation
+                        // since we never construct the undeclared action
+                        // request environment otherwise.
+                        TypecheckAnswer::fail(in_expr)
+                    }
+                }
+                Some(EntityType::Specified(var_name)) => {
+                    let all_rhs_known = rhs
+                        .iter()
+                        .all(|e| self.schema.euid_has_known_entity_type(e));
+                    if self.schema.is_known_entity_type(var_name) && all_rhs_known {
+                        let descendants = self.schema.get_entity_types_in_set(rhs.iter());
+                        Typechecker::entity_in_descendants(
+                            var_name,
+                            descendants,
+                            in_expr,
+                            lhs_expr,
+                            rhs_expr,
+                        )
+                    } else {
+                        let annotated_expr =
+                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                .with_same_source_loc(in_expr)
+                                .is_in(lhs_expr, rhs_expr);
+                        if self.mode.is_partial() {
+                            // In partial schema mode, undeclared entity types are
+                            // expected.
+                            TypecheckAnswer::success(annotated_expr)
+                        } else {
+                            TypecheckAnswer::fail(annotated_expr)
+                        }
+                    }
+                }
                 // Unspecified entities will be detected by a different part of the validator.
                 // Still return `TypecheckFail` so that typechecking is not considered successful.
-                EntityType::Unspecified => TypecheckAnswer::fail(
+                Some(EntityType::Unspecified) => TypecheckAnswer::fail(
                     ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                        .with_same_source_info(in_expr)
+                        .with_same_source_loc(in_expr)
                         .is_in(lhs_expr, rhs_expr),
                 ),
             }
@@ -1865,7 +2035,7 @@ impl<'a> Typechecker<'a> {
             // typechecking succeeds with type Boolean.
             TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                    .with_same_source_info(in_expr)
+                    .with_same_source_loc(in_expr)
                     .is_in(lhs_expr, rhs_expr),
             )
         }
@@ -1874,7 +2044,7 @@ impl<'a> Typechecker<'a> {
     fn type_of_entity_literal_in_entity_literals<'b, 'c>(
         &self,
         request_env: &RequestEnv,
-        lhs_euid: EntityUID,
+        lhs_euid: &EntityUID,
         rhs_elems: impl IntoIterator<Item = &'b Expr>,
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
@@ -1882,32 +2052,30 @@ impl<'a> Typechecker<'a> {
     ) -> TypecheckAnswer<'c> {
         if let Some(rhs) = Typechecker::euids_from_euid_literals_or_action(request_env, rhs_elems) {
             match lhs_euid.entity_type() {
-                EntityType::Concrete(name) => {
+                EntityType::Specified(name) => {
                     // We don't want to apply the action hierarchy check to
-                    // non-action entities.  We have a set of entities, so We
-                    // can apply the check as long as any are actions. The
+                    // non-action entities, but now we have a set of entities.
+                    // We can apply the check as long as any are actions. The
                     // non-actions are omitted from the check, but they can
                     // never be an ancestor of `Action`.
                     let lhs_is_action = is_action_entity_type(name);
                     let (actions, non_actions): (Vec<_>, Vec<_>) =
                         rhs.into_iter().partition(|e| match e.entity_type() {
-                            EntityType::Concrete(e_name) => is_action_entity_type(e_name),
+                            EntityType::Specified(e_name) => is_action_entity_type(e_name),
                             EntityType::Unspecified => false,
                         });
                     if lhs_is_action && !actions.is_empty() {
-                        self.type_of_euid_in_euids(
+                        self.type_of_action_in_actions(
                             lhs_euid,
-                            actions,
-                            ActionHeadVar::Action,
+                            actions.iter(),
                             in_expr,
                             lhs_expr,
                             rhs_expr,
                         )
                     } else if !lhs_is_action && !non_actions.is_empty() {
-                        self.type_of_euid_in_euids(
+                        self.type_of_non_action_in_entities(
                             lhs_euid,
-                            non_actions,
-                            PrincipalOrResourceHeadVar::PrincipalOrResource,
+                            &non_actions,
                             in_expr,
                             lhs_expr,
                             rhs_expr,
@@ -1919,7 +2087,7 @@ impl<'a> Typechecker<'a> {
                         // and by extension any particular action entity.
                         TypecheckAnswer::success(
                             ExprBuilder::with_data(Some(Type::False))
-                                .with_same_source_info(in_expr)
+                                .with_same_source_loc(in_expr)
                                 .is_in(lhs_expr, rhs_expr),
                         )
                     }
@@ -1928,7 +2096,7 @@ impl<'a> Typechecker<'a> {
                 // Still return `TypecheckFail` so that typechecking is not considered successful.
                 EntityType::Unspecified => TypecheckAnswer::fail(
                     ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                        .with_same_source_info(in_expr)
+                        .with_same_source_loc(in_expr)
                         .is_in(lhs_expr, rhs_expr),
                 ),
             }
@@ -1938,44 +2106,86 @@ impl<'a> Typechecker<'a> {
             // typechecking succeeds with type Boolean.
             TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                    .with_same_source_info(in_expr)
+                    .with_same_source_loc(in_expr)
                     .is_in(lhs_expr, rhs_expr),
             )
         }
     }
 
-    // Get the type for `in` when it is applied to an EUID literal and a set of
-    // EUID literals. The type depends on if we know the LHS entity literal
-    // cannot be in the RHS set.
-    fn type_of_euid_in_euids<'b, K>(
+    // Get the type for `in` when it is applied to an action EUID literal and a
+    // set of EUID literals. We can look up all ancestors of the action in the
+    // schema, so the type will be `False` if the none of the rhs actions are an
+    // ancestor of the lhs.
+    fn type_of_action_in_actions<'b>(
         &self,
-        lhs: EntityUID,
-        rhs: impl IntoIterator<Item = EntityUID>,
-        var: impl HeadVar<K>,
+        lhs: &EntityUID,
+        rhs: impl IntoIterator<Item = &'a EntityUID> + 'a,
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
-    ) -> TypecheckAnswer<'b>
-    where
-        K: Clone + PartialEq,
-    {
-        if let Some(lhs_entity) = self.schema.get_entity_eq(var, lhs) {
-            let rhs_descendants = self.schema.get_entities_in_set(var, rhs);
-            Typechecker::entity_in_descendants(
-                &lhs_entity,
-                rhs_descendants,
-                in_expr,
-                lhs_expr,
-                rhs_expr,
-            )
+    ) -> TypecheckAnswer<'b> {
+        let rhs_descendants = self.schema.get_actions_in_set(rhs);
+        if let Some(rhs_descendants) = rhs_descendants {
+            Typechecker::entity_in_descendants(lhs, rhs_descendants, in_expr, lhs_expr, rhs_expr)
         } else {
-            // Unspecified entities will be detected by a different part of the validator.
-            // Still return `TypecheckFail` so that typechecking is not considered successful.
-            TypecheckAnswer::fail(
-                ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                    .with_same_source_info(in_expr)
-                    .is_in(lhs_expr, rhs_expr),
-            )
+            let annotated_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                .with_same_source_loc(in_expr)
+                .is_in(lhs_expr, rhs_expr);
+            if self.mode.is_partial() {
+                TypecheckAnswer::success(annotated_expr)
+            } else {
+                TypecheckAnswer::fail(annotated_expr)
+            }
+        }
+    }
+
+    // Get the type for `in` when it is applied to an non-action EUID literal
+    // and a set of EUID literals. We can't conclude anything about membership
+    // based on the precise EUIDs when they're not actions, so we only look at
+    // entity types. The type will be `False` is none of the entities on the rhs
+    // have a type which may be an ancestor of the rhs entity type.
+    fn type_of_non_action_in_entities<'b>(
+        &self,
+        lhs: &EntityUID,
+        rhs: &[EntityUID],
+        in_expr: &Expr,
+        lhs_expr: Expr<Option<Type>>,
+        rhs_expr: Expr<Option<Type>>,
+    ) -> TypecheckAnswer<'b> {
+        match lhs.entity_type() {
+            EntityType::Specified(lhs_ety) => {
+                let all_rhs_known = rhs
+                    .iter()
+                    .all(|e| self.schema.euid_has_known_entity_type(e));
+                if self.schema.is_known_entity_type(lhs_ety) && all_rhs_known {
+                    let rhs_descendants = self.schema.get_entity_types_in_set(rhs.iter());
+                    Typechecker::entity_in_descendants(
+                        lhs_ety,
+                        rhs_descendants,
+                        in_expr,
+                        lhs_expr,
+                        rhs_expr,
+                    )
+                } else {
+                    let annotated_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                        .with_same_source_loc(in_expr)
+                        .is_in(lhs_expr, rhs_expr);
+                    if self.mode.is_partial() {
+                        TypecheckAnswer::success(annotated_expr)
+                    } else {
+                        TypecheckAnswer::fail(annotated_expr)
+                    }
+                }
+            }
+            EntityType::Unspecified => {
+                // Unspecified entities will be detected by a different part of the validator.
+                // Still return `TypecheckFail` so that typechecking is not considered successful.
+                TypecheckAnswer::fail(
+                    ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                        .with_same_source_loc(in_expr)
+                        .is_in(lhs_expr, rhs_expr),
+                )
+            }
         }
     }
 
@@ -1983,22 +2193,22 @@ impl<'a> Typechecker<'a> {
     /// type false if it is not, and boolean otherwise.
     fn entity_in_descendants<'b, K>(
         lhs_entity: &K,
-        rhs_descendants: impl IntoIterator<Item = K>,
+        rhs_descendants: impl IntoIterator<Item = &'a K>,
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
     ) -> TypecheckAnswer<'b>
     where
-        K: PartialEq,
+        K: PartialEq + 'a,
     {
-        let is_var_in_descendants = rhs_descendants.into_iter().any(|e| &e == lhs_entity);
+        let is_var_in_descendants = rhs_descendants.into_iter().any(|e| e == lhs_entity);
         TypecheckAnswer::success(
             ExprBuilder::with_data(Some(if is_var_in_descendants {
                 Type::primitive_boolean()
             } else {
                 Type::singleton_boolean(false)
             }))
-            .with_same_source_info(in_expr)
+            .with_same_source_loc(in_expr)
             .is_in(lhs_expr, rhs_expr),
         )
     }
@@ -2026,26 +2236,27 @@ impl<'a> Typechecker<'a> {
                     arg,
                     Type::primitive_boolean(),
                     type_errors,
+                    |_| None,
                 );
                 ans_arg.then_typecheck(|typ_expr_arg, _| match typ_expr_arg.data() {
                     Some(typ_arg) => {
                         TypecheckAnswer::success(if typ_arg == &Type::singleton_boolean(true) {
                             ExprBuilder::with_data(Some(Type::singleton_boolean(false)))
-                                .with_same_source_info(unary_expr)
+                                .with_same_source_loc(unary_expr)
                                 .not(typ_expr_arg)
                         } else if typ_arg == &Type::singleton_boolean(false) {
                             ExprBuilder::with_data(Some(Type::singleton_boolean(true)))
-                                .with_same_source_info(unary_expr)
+                                .with_same_source_loc(unary_expr)
                                 .not(typ_expr_arg)
                         } else {
                             ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                .with_same_source_info(unary_expr)
+                                .with_same_source_loc(unary_expr)
                                 .not(typ_expr_arg)
                         })
                     }
                     None => TypecheckAnswer::fail(
                         ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                            .with_same_source_info(unary_expr)
+                            .with_same_source_loc(unary_expr)
                             .not(typ_expr_arg),
                     ),
                 })
@@ -2057,11 +2268,12 @@ impl<'a> Typechecker<'a> {
                     arg,
                     Type::primitive_long(),
                     type_errors,
+                    |_| None,
                 );
                 ans_arg.then_typecheck(|typ_expr_arg, _| {
                     TypecheckAnswer::success(
                         ExprBuilder::with_data(Some(Type::primitive_long()))
-                            .with_same_source_info(unary_expr)
+                            .with_same_source_loc(unary_expr)
                             .neg(typ_expr_arg),
                     )
                 })
@@ -2072,14 +2284,18 @@ impl<'a> Typechecker<'a> {
     /// Check that an expression has a type that is a subtype of one of the
     /// given types. If not, generate a type error and return TypecheckFail.
     /// Return the TypecheckSuccess with the type otherwise.
-    fn expect_one_of_types<'b>(
+    fn expect_one_of_types<'b, F>(
         &self,
         request_env: &RequestEnv,
         prior_eff: &EffectSet<'b>,
         expr: &'b Expr,
         expected: &[Type],
         type_errors: &mut Vec<TypeError>,
-    ) -> TypecheckAnswer<'b> {
+        type_error_help: F,
+    ) -> TypecheckAnswer<'b>
+    where
+        F: FnOnce(&Type) -> Option<UnexpectedTypeHelp>,
+    {
         let actual = self.typecheck(request_env, prior_eff, expr, type_errors);
         actual.then_typecheck(|mut typ_actual, eff_actual| match typ_actual.data() {
             Some(actual_ty) => {
@@ -2103,6 +2319,7 @@ impl<'a> Typechecker<'a> {
                         expr.clone(),
                         expected.to_vec(),
                         actual_ty.clone(),
+                        type_error_help(actual_ty),
                     ));
                     // Some code (e.g., typechecking And) depends on
                     // `expect_type` not returning an expression with a type
@@ -2126,15 +2343,26 @@ impl<'a> Typechecker<'a> {
     /// Check that an expression has a type that is a subtype of a given type.
     /// If not, generate a type error and return None. Otherwise, return the
     /// type.
-    fn expect_type<'b>(
+    fn expect_type<'b, F>(
         &self,
         request_env: &RequestEnv,
         prior_eff: &EffectSet<'b>,
         expr: &'b Expr,
         expected: Type,
         type_errors: &mut Vec<TypeError>,
-    ) -> TypecheckAnswer<'b> {
-        self.expect_one_of_types(request_env, prior_eff, expr, &[expected], type_errors)
+        type_error_help: F,
+    ) -> TypecheckAnswer<'b>
+    where
+        F: FnOnce(&Type) -> Option<UnexpectedTypeHelp>,
+    {
+        self.expect_one_of_types(
+            request_env,
+            prior_eff,
+            expr,
+            &[expected],
+            type_errors,
+            type_error_help,
+        )
     }
 
     /// Return the least upper bound of all types is the `types` vector. If
@@ -2178,7 +2406,10 @@ impl<'a> Typechecker<'a> {
         maybe_action_var: &'a Expr,
     ) -> Cow<'a, Expr> {
         match maybe_action_var.expr_kind() {
-            ExprKind::Var(Var::Action) => Cow::Owned(Expr::val(request_env.action.clone())),
+            ExprKind::Var(Var::Action) => match request_env.action_entity_uid() {
+                Some(action) => Cow::Owned(Expr::val(action.clone())),
+                None => Cow::Borrowed(maybe_action_var),
+            },
             _ => Cow::Borrowed(maybe_action_var),
         }
     }
@@ -2269,14 +2500,21 @@ impl<'a> Typechecker<'a> {
                     match typed_arg_exprs(type_errors) {
                         Some(exprs) => TypecheckAnswer::fail(
                             ExprBuilder::with_data(Some(ret_ty.clone()))
-                                .with_same_source_info(ext_expr)
+                                .with_same_source_loc(ext_expr)
                                 .call_extension_fn(fn_name.clone(), exprs),
                         ),
                         None => TypecheckAnswer::RecursionLimit,
                     }
                 } else {
                     let typechecked_args = zip(args.as_ref(), arg_tys).map(|(arg, ty)| {
-                        self.expect_type(request_env, prior_eff, arg, ty.clone(), type_errors)
+                        self.expect_type(
+                            request_env,
+                            prior_eff,
+                            arg,
+                            ty.clone(),
+                            type_errors,
+                            |_| None,
+                        )
                     });
                     TypecheckAnswer::sequence_all_then_typecheck(
                         typechecked_args,
@@ -2285,7 +2523,7 @@ impl<'a> Typechecker<'a> {
                                 arg_exprs_effects.into_iter().unzip();
                             TypecheckAnswer::success(
                                 ExprBuilder::with_data(Some(ret_ty.clone()))
-                                    .with_same_source_info(ext_expr)
+                                    .with_same_source_loc(ext_expr)
                                     .call_extension_fn(fn_name.clone(), typed_arg_exprs),
                             )
                         },
@@ -2297,7 +2535,7 @@ impl<'a> Typechecker<'a> {
                 match typed_arg_exprs(type_errors) {
                     Some(typed_args) => TypecheckAnswer::fail(
                         ExprBuilder::with_data(None)
-                            .with_same_source_info(ext_expr)
+                            .with_same_source_loc(ext_expr)
                             .call_extension_fn(fn_name.clone(), typed_args),
                     ),
                     None => TypecheckAnswer::RecursionLimit,

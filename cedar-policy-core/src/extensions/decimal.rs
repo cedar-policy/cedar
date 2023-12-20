@@ -24,6 +24,7 @@ use crate::ast::{
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
+use miette::Diagnostic;
 use std::str::FromStr;
 use std::sync::Arc;
 use thiserror::Error;
@@ -54,19 +55,20 @@ mod names {
 
 /// Help message to display when a String was provided where a decimal value was expected.
 /// This error is likely due to confusion between "1.23" and decimal("1.23").
-const ADVICE_MSG: &str = "Maybe you forgot to apply the `decimal` constructor?";
+const ADVICE_MSG: &str = "maybe you forgot to apply the `decimal` constructor?";
 
 /// Potential errors when working with decimal values. Note that these are
 /// converted to evaluator::Err::ExtensionErr (which takes a string argument)
 /// before being reported to users.
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 enum Error {
     /// Error parsing the input string as a decimal value
     #[error("`{0}` is not a well-formed decimal value")]
     FailedParse(String),
 
     /// Too many digits after the decimal point
-    #[error("too many digits after the decimal in `{0}`. We support at most {NUM_DIGITS} digits")]
+    #[error("too many digits after the decimal in `{0}`")]
+    #[diagnostic(help("at most {NUM_DIGITS} digits are supported"))]
     TooManyDigits(String),
 
     /// Overflow occurred when converting to a decimal value
@@ -177,7 +179,7 @@ fn decimal_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
     let decimal = Decimal::from_str(str.as_str()).map_err(|e| extension_err(e.to_string()))?;
     let function_name = names::DECIMAL_FROM_STR_NAME.clone();
-    let e = ExtensionValueWithArgs::new(Arc::new(decimal), vec![arg.into()], function_name);
+    let e = ExtensionValueWithArgs::new(Arc::new(decimal), function_name, vec![arg.into()]);
     Ok(Value::ExtensionValue(Arc::new(e)).into())
 }
 
@@ -299,37 +301,32 @@ mod tests {
     use crate::evaluator::Evaluator;
     use crate::extensions::Extensions;
     use crate::parser::parse_expr;
+    use cool_asserts::assert_matches;
 
     /// Asserts that a `Result` is an `Err::ExtensionErr` with our extension name
-    fn assert_decimal_err<T>(res: evaluator::Result<T>) {
-        match res {
-            Err(e) => match e.error_kind() {
-                evaluator::EvaluationErrorKind::FailedExtensionFunctionApplication {
-                    extension_name,
-                    msg,
-                } => {
-                    println!("{msg}");
-                    assert_eq!(
-                        *extension_name,
-                        Name::parse_unqualified_name("decimal")
-                            .expect("should be a valid identifier")
-                    )
-                }
-                _ => panic!("Expected a decimal ExtensionErr, got {:?}", e),
-            },
-            Ok(_) => panic!("Expected a decimal ExtensionErr, got Ok"),
-        }
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+    fn assert_decimal_err<T: std::fmt::Debug>(res: evaluator::Result<T>) {
+        assert_matches!(res, Err(e) => {
+            assert_matches!(e.error_kind(), evaluator::EvaluationErrorKind::FailedExtensionFunctionApplication {
+                extension_name,
+                msg,
+            } => {
+                println!("{msg}");
+                assert_eq!(
+                    *extension_name,
+                    Name::parse_unqualified_name("decimal")
+                        .expect("should be a valid identifier")
+                )
+            });
+        });
     }
 
     /// Asserts that a `Result` is a decimal value
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_decimal_valid(res: evaluator::Result<Value>) {
-        match res {
-            Ok(Value::ExtensionValue(ev)) => {
-                assert_eq!(ev.typename(), Decimal::typename())
-            }
-            Ok(v) => panic!("Expected decimal ExtensionValue, got {:?}", v),
-            Err(e) => panic!("Expected Ok, got Err: {:?}", e),
-        }
+        assert_matches!(res, Ok(Value::ExtensionValue(ev)) => {
+            assert_eq!(ev.typename(), Decimal::typename());
+        });
     }
 
     /// this test just ensures that the right functions are marked constructors
@@ -376,7 +373,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         // valid decimal strings
         assert_decimal_valid(
@@ -472,7 +469,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         let a = parse_expr(r#"decimal("123.0")"#).expect("parsing error");
         let b = parse_expr(r#"decimal("123.0000")"#).expect("parsing error");
@@ -536,7 +533,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         for ((l, r), res) in tests {
             assert_eq!(
@@ -603,7 +600,7 @@ mod tests {
         let exts = Extensions::specific_extensions(&ext_array);
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(&request, &entities, &exts).unwrap();
+        let eval = Evaluator::new(request, &entities, &exts);
 
         assert_eq!(
             eval.interpret_inline_policy(

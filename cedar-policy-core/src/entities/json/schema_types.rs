@@ -20,6 +20,7 @@ use crate::ast::{
 };
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use itertools::Itertools;
+use miette::Diagnostic;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use thiserror::Error;
@@ -44,6 +45,8 @@ pub enum SchemaType {
     Record {
         /// Attributes and their types
         attrs: HashMap<SmolStr, AttributeType>,
+        /// Can a record with this type have attributes other than those specified in `attrs`
+        open_attrs: bool,
     },
     /// Entity
     Entity {
@@ -119,7 +122,16 @@ impl SchemaType {
                 (Set { element_ty: elty1 }, Set { element_ty: elty2 }) => {
                     elty1.is_consistent_with(elty2)
                 }
-                (Record { attrs: attrs1 }, Record { attrs: attrs2 }) => {
+                (
+                    Record {
+                        attrs: attrs1,
+                        open_attrs: open1,
+                    },
+                    Record {
+                        attrs: attrs2,
+                        open_attrs: open2,
+                    },
+                ) => {
                     attrs1.iter().all(|(k, v)| {
                         match attrs2.get(k) {
                             Some(ty) => {
@@ -129,9 +141,9 @@ impl SchemaType {
                             }
                             None => {
                                 // attrs1 has the attribute, attrs2 does not.
-                                // if required in attrs1, incompatible.
-                                // otherwise fine
-                                !v.required
+                                // if required in attrs1 and attrs2 is
+                                // closed, incompatible.  otherwise fine
+                                !v.required || *open2
                             }
                         }
                     }) && attrs2.iter().all(|(k, v)| {
@@ -143,9 +155,9 @@ impl SchemaType {
                             }
                             None => {
                                 // attrs2 has the attribute, attrs1 does not.
-                                // if required in attrs2, incompatible.
-                                // otherwise fine
-                                !v.required
+                                // if required in attrs2 and attrs1 is closed,
+                                // incompatible.  otherwise fine
+                                !v.required || *open1
                             }
                         }
                     })
@@ -192,11 +204,17 @@ impl std::fmt::Display for SchemaType {
             Self::String => write!(f, "string"),
             Self::Set { element_ty } => write!(f, "(set of {})", &element_ty),
             Self::EmptySet => write!(f, "empty-set"),
-            Self::Record { attrs } => {
-                if attrs.is_empty() {
+            Self::Record { attrs, open_attrs } => {
+                if attrs.is_empty() && *open_attrs {
+                    write!(f, "any record")
+                } else if attrs.is_empty() {
                     write!(f, "empty record")
                 } else {
-                    write!(f, "record with attributes: {{")?;
+                    if *open_attrs {
+                        write!(f, "record with at least attributes: {{")?;
+                    } else {
+                        write!(f, "record with attributes: {{")?;
+                    }
                     // sorting attributes ensures that there is a single, deterministic
                     // Display output for each `SchemaType`, which is important for
                     // tests that check equality of error messages
@@ -216,7 +234,7 @@ impl std::fmt::Display for SchemaType {
             }
             Self::Entity { ty } => match ty {
                 EntityType::Unspecified => write!(f, "(entity of unspecified type)"),
-                EntityType::Concrete(name) => write!(f, "`{}`", name),
+                EntityType::Specified(name) => write!(f, "`{}`", name),
             },
             Self::Extension { name } => write!(f, "{}", name),
         }
@@ -239,17 +257,19 @@ impl std::fmt::Display for AttributeType {
 }
 
 /// Errors encountered when trying to compute the [`SchemaType`] of something
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum GetSchemaTypeError {
     /// Encountered a heterogeneous set. Heterogeneous sets do not have a valid
     /// [`SchemaType`].
     #[error(transparent)]
+    #[diagnostic(transparent)]
     HeterogeneousSet(#[from] HeterogeneousSetError),
     /// Error looking up an extension function, which may be necessary to
     /// compute the [`SchemaType`] of expressions that contain extension
     /// function calls -- not to actually call the extension function, but to
     /// get metadata about it
     #[error(transparent)]
+    #[diagnostic(transparent)]
     ExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
     /// Trying to compute the [`SchemaType`], but the value or expression
     /// contains an [`Unknown`] that has insufficient type information
@@ -273,8 +293,9 @@ pub enum GetSchemaTypeError {
 
 /// Found a set whose elements don't all have the same type.  This doesn't match
 /// any possible schema.
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 #[error("set elements have different types: {ty1} and {ty2}")]
+#[diagnostic(help("for sets declared in a schema, set elements must all have the same type"))]
 pub struct HeterogeneousSetError {
     /// First element type which was found
     ty1: Box<SchemaType>,
@@ -324,7 +345,8 @@ pub fn schematype_of_restricted_expr(
                     // but marking it optional is more flexible -- allows the
                     // attribute type to `is_consistent_with()` more types
                     Ok((k.clone(), AttributeType::optional(attr_type)))
-                }).collect::<Result<HashMap<_,_>, GetSchemaTypeError>>()?
+                }).collect::<Result<HashMap<_,_>, GetSchemaTypeError>>()?,
+                open_attrs: false,
             })
         }
         ExprKind::ExtensionFunctionApp { fn_name, .. } => {
@@ -362,7 +384,7 @@ pub fn schematype_of_value(value: &Value) -> Result<SchemaType, HeterogeneousSet
     match value {
         Value::Lit(lit) => Ok(schematype_of_lit(lit)),
         Value::Set(set) => {
-            let element_types = set.iter().map(|el| schematype_of_value(el));
+            let element_types = set.iter().map(schematype_of_value);
             schematype_of_set_elements(element_types)
         }
         Value::Record(map) => Ok(SchemaType::Record {
@@ -370,6 +392,7 @@ pub fn schematype_of_value(value: &Value) -> Result<SchemaType, HeterogeneousSet
                 .iter()
                 .map(|(k, v)| Ok((k.clone(), AttributeType::required(schematype_of_value(v)?))))
                 .collect::<Result<_, HeterogeneousSetError>>()?,
+            open_attrs: false,
         }),
         Value::ExtensionValue(ev) => Ok(SchemaType::Extension {
             name: ev.typename(),

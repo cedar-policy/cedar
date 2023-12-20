@@ -17,14 +17,12 @@
 //! This module contains the `Entities` type and related functionality.
 
 use crate::ast::*;
-use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::transitive_closure::{compute_tc, enforce_tc_and_dag};
-use std::borrow::Cow;
 use std::collections::{hash_map, HashMap};
 use std::fmt::Write;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_with::serde_as;
 
 mod conformance;
@@ -33,16 +31,15 @@ mod err;
 pub use err::*;
 mod json;
 pub use json::*;
-use smol_str::SmolStr;
 
 /// Represents an entity hierarchy, and allows looking up `Entity` objects by
 /// UID.
 //
-/// Note that `Entities` is `Serialize` and `Deserialize`, but currently this is
-/// only used for the Dafny-FFI layer in DRT. All others use (and should use) the
-/// `from_json_*()` and `write_to_json()` methods as necessary.
+/// Note that `Entities` is `Serialize`, but currently this is only used for the
+/// FFI layer in DRT. All others use (and should use) the `from_json_*()` and
+/// `write_to_json()` methods as necessary.
 #[serde_as]
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct Entities {
     /// Serde cannot serialize a HashMap to JSON when the key to the map cannot
     /// be serialized to a JSON string. This is a limitation of the JSON format.
@@ -53,9 +50,6 @@ pub struct Entities {
     /// the `ancestor` relation is transitively closed.
     #[serde_as(as = "Vec<(_, _)>")]
     entities: HashMap<EntityUID, Entity>,
-
-    #[serde(skip)]
-    evaluated_entities: Option<EvaluatedEntities>,
 
     /// The mode flag determines whether this store functions as a partial store or
     /// as a fully concrete store.
@@ -73,7 +67,6 @@ impl Entities {
         Self {
             entities: HashMap::new(),
             mode: Mode::default(),
-            evaluated_entities: None,
         }
     }
 
@@ -85,7 +78,6 @@ impl Entities {
         Self {
             entities: self.entities,
             mode: Mode::Partial,
-            evaluated_entities: self.evaluated_entities,
         }
     }
 
@@ -148,7 +140,6 @@ impl Entities {
             }
             TCComputation::ComputeNow => compute_tc(&mut self.entities, true).map_err(Box::new)?,
         };
-        self.evaluated_entities = None;
         Ok(self)
     }
 
@@ -197,7 +188,6 @@ impl Entities {
         Ok(Self {
             entities: entity_map,
             mode: Mode::default(),
-            evaluated_entities: None,
         })
     }
 
@@ -298,37 +288,6 @@ impl Entities {
         dot_str.write_str("}\n")?;
         Ok(dot_str)
     }
-
-    /// Attempt to eagerly compute the values of attributes for all entities in the slice.
-    /// This can fail if evaluation of the [`RestrictedExpr`] fails.
-    /// In a future major version, we will likely make this function automatically called via the constructor.
-    pub fn evaluate(self) -> std::result::Result<Self, EvaluationError> {
-        if self.evaluated_entities.is_some() {
-            Ok(self)
-        } else {
-            let r = self.compute_entities_values()?;
-            Ok(Self {
-                entities: self.entities,
-                evaluated_entities: Some(r),
-                mode: self.mode,
-            })
-        }
-    }
-
-    fn compute_entities_values(&self) -> std::result::Result<EvaluatedEntities, EvaluationError> {
-        build_evaluated_entities(self, &Extensions::all_available())
-    }
-
-    /// Extracts the [`EntityAttrValues`] for this entity slice.
-    /// If the entity values have already been computed via [`Self::evaluate`], then that will be re-used.
-    /// Otherwise, the attributes will be evaluated.
-    pub fn get_attr_values(&self) -> std::result::Result<EntityAttrValues<'_>, EvaluationError> {
-        let map = match &self.evaluated_entities {
-            Some(cached) => Cow::Borrowed(cached),
-            None => Cow::Owned(self.compute_entities_values()?),
-        };
-        Ok(EntityAttrValues::new(map, self))
-    }
 }
 
 /// Create a map from EntityUids to Entities, erroring if there are any duplicates
@@ -343,73 +302,6 @@ fn create_entity_map(es: impl Iterator<Item = Entity>) -> Result<HashMap<EntityU
         };
     }
     Ok(map)
-}
-
-type EvaluatedEntities = HashMap<EntityUID, HashMap<SmolStr, PartialValue>>;
-
-/// Structure of borrowed entity information that is used in the evaluator
-#[derive(Debug)]
-pub struct EntityAttrValues<'a> {
-    /// The evaluated entity attributes. The attributes may either be owner or borrowed.
-    attrs: Cow<'a, EvaluatedEntities>,
-    /// The original entity slice, which contains hierarchy information.
-    entities: &'a Entities,
-}
-
-fn build_evaluated_entities(
-    entities: &Entities,
-    extensions: &'_ Extensions<'_>,
-) -> std::result::Result<EvaluatedEntities, EvaluationError> {
-    let restricted_eval = RestrictedEvaluator::new(extensions);
-    // Eagerly evaluate each attribute expression in the entities.
-    let attrs =
-        entities
-            .iter()
-            .map(|entity| {
-                Ok(
-                        (
-                            entity.uid(),
-                            entity
-                                .attrs_map()
-                                .iter()
-                                .map(|(attr, v)| {
-                                    Ok((
-                                        attr.to_owned(),
-                                        restricted_eval.partial_interpret(v.as_borrowed())?,
-                                    ))
-                                })
-                                .collect::<std::result::Result<
-                                    HashMap<SmolStr, PartialValue>,
-                                    EvaluationError,
-                                >>()?,
-                        ),
-                    )
-            })
-            .collect::<std::result::Result<
-                HashMap<EntityUID, HashMap<SmolStr, PartialValue>>,
-                EvaluationError,
-            >>()?;
-    Ok(attrs)
-}
-
-impl<'a> EntityAttrValues<'a> {
-    /// Construct an [`EntityAttrValues`] with either an owned or borrowed set of evaluated attributes.
-    pub fn new(attrs: Cow<'a, EvaluatedEntities>, entities: &'a Entities) -> Self {
-        Self { attrs, entities }
-    }
-
-    /// Get an entity's attribute map by its EntityUID.
-    pub fn get(&self, uid: &EntityUID) -> Dereference<'_, HashMap<SmolStr, PartialValue>> {
-        match self.entities.entity(uid) {
-            Dereference::NoSuchEntity => Dereference::NoSuchEntity,
-            Dereference::Residual(r) => Dereference::Residual(r),
-            Dereference::Data(_) => self
-                .attrs
-                .get(uid)
-                .map(Dereference::Data)
-                .unwrap_or_else(|| Dereference::NoSuchEntity),
-        }
-    }
 }
 
 impl IntoIterator for Entities {
@@ -479,6 +371,7 @@ where
     /// Panics if the self value is not `Data`.
     // PANIC SAFETY: This function is intended to panic, and says so in the documentation
     #[allow(clippy::panic)]
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     pub fn expect(self, msg: &str) -> &'a T {
         match self {
             Self::Data(e) => e,
@@ -526,7 +419,7 @@ pub enum TCComputation {
 mod json_parsing_tests {
 
     use super::*;
-    use crate::{extensions::Extensions, transitive_closure::TcError};
+    use crate::{extensions::Extensions, test_utils::*, transitive_closure::TcError};
     use cool_asserts::assert_matches;
 
     #[test]
@@ -582,11 +475,9 @@ mod json_parsing_tests {
             parent: r#"Test::"george""#.parse().unwrap(),
             grandparent: r#"Test::"janet""#.parse().unwrap(),
         };
-        match err {
-            Err(EntitiesError::TransitiveClosureError(e)) => assert_eq!(&expected, e.as_ref()),
-            Err(e) => panic!("Wrong error: {e}"),
-            Ok(_) => panic!("expected an error here due to TC not computed properly"),
-        }
+        assert_matches!(err, Err(EntitiesError::TransitiveClosureError(e)) => {
+            assert_eq!(&expected, e.as_ref());
+        });
     }
 
     #[test]
@@ -621,11 +512,9 @@ mod json_parsing_tests {
             parent: r#"Test::"george""#.parse().unwrap(),
             grandparent: r#"Test::"henry""#.parse().unwrap(),
         };
-        match err {
-            Err(EntitiesError::TransitiveClosureError(e)) => assert_eq!(&expected, e.as_ref()),
-            Err(e) => panic!("Wrong error: {e}"),
-            Ok(_) => panic!("expected an error here due to TC not computed properly"),
-        }
+        assert_matches!(err, Err(EntitiesError::TransitiveClosureError(e)) => {
+            assert_eq!(&expected, e.as_ref());
+        });
     }
 
     #[test]
@@ -660,11 +549,9 @@ mod json_parsing_tests {
             parent: r#"Test::"alice""#.parse().unwrap(),
             grandparent: r#"Test::"bob""#.parse().unwrap(),
         };
-        match err {
-            Err(EntitiesError::TransitiveClosureError(e)) => assert_eq!(&expected, e.as_ref()),
-            Err(e) => panic!("Wrong error: {e}"),
-            Ok(_) => panic!("expected an error here due to TC not computed properly"),
-        }
+        assert_matches!(err, Err(EntitiesError::TransitiveClosureError(e)) => {
+            assert_eq!(&expected, e.as_ref());
+        });
     }
 
     #[test]
@@ -816,8 +703,8 @@ mod json_parsing_tests {
             .unwrap();
         let euid = r#"Test::"jeff""#.parse().unwrap();
         let jeff = es.entity(&euid).unwrap();
-        let rexpr = jeff.get("foo").unwrap();
-        assert_eq!(rexpr, &RestrictedExpr::val(3));
+        let value = jeff.get("foo").unwrap();
+        assert_eq!(value, &PartialValue::from(3));
         assert!(jeff.is_descendant_of(&r#"Test::"susan""#.parse().unwrap()));
         simple_entities_still_sane(&es);
     }
@@ -841,10 +728,7 @@ mod json_parsing_tests {
             .err()
             .unwrap();
         let expected = r#"Test::"jeff""#.parse().unwrap();
-        match err {
-            EntitiesError::Duplicate(e) => assert_eq!(e, expected),
-            e => panic!("Wrong error: {e}"),
-        }
+        assert_matches!(err, EntitiesError::Duplicate(e) => assert_eq!(e, expected));
     }
 
     #[test]
@@ -860,11 +744,7 @@ mod json_parsing_tests {
             Extensions::all_available(),
         );
         let expected = r#"Test::"alice""#.parse().unwrap();
-        match err {
-            Err(EntitiesError::Duplicate(e)) => assert_eq!(e, expected),
-            Err(e) => panic!("Wrong error: {e}"),
-            Ok(_) => panic!("expected an error here due to TC not computed properly"),
-        }
+        assert_matches!(err, Err(EntitiesError::Duplicate(e)) => assert_eq!(e, expected));
     }
 
     #[test]
@@ -917,7 +797,7 @@ mod json_parsing_tests {
         let bob = r#"Test::"bob""#.parse().unwrap();
         let alice = e.entity(&r#"Test::"alice""#.parse().unwrap()).unwrap();
         let bar = alice.get("bar").unwrap();
-        assert_eq!(bar, &RestrictedExpr::val(2));
+        assert_eq!(bar, &PartialValue::from(2));
         assert!(alice.is_descendant_of(&bob));
         let bob = e.entity(&bob).unwrap();
         assert!(bob.ancestors().collect::<Vec<_>>().is_empty());
@@ -979,7 +859,7 @@ mod json_parsing_tests {
 
         let janice = es.entity(&EntityUID::with_eid("janice"));
 
-        assert!(matches!(janice, Dereference::Residual(_)));
+        assert_matches!(janice, Dereference::Residual(_));
     }
 
     #[test]
@@ -1032,17 +912,6 @@ mod json_parsing_tests {
         assert!(alice.is_descendant_of(&EntityUID::with_eid("bob")));
     }
 
-    /// helper function which tests whether attribute values are shape-equal
-    fn assert_attr_vals_are_shape_equal(
-        actual: Option<&RestrictedExpr>,
-        expected: &RestrictedExpr,
-    ) {
-        assert_eq!(
-            actual.map(|re| RestrictedExprShapeOnly::new(re.as_borrowed())),
-            Some(RestrictedExprShapeOnly::new(expected.as_borrowed()))
-        )
-    }
-
     #[test]
     fn no_expr_escapes1() {
         let json = serde_json::json!(
@@ -1065,12 +934,12 @@ mod json_parsing_tests {
         ]);
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        let error = eparser.from_json_value(json).err().unwrap().to_string();
-        assert!(
-            error.contains("in uid field of <unknown entity>, expected a literal entity reference"),
-            "{}",
-            error
-        );
+        assert_matches!(eparser.from_json_value(json.clone()), Err(e) => {
+            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+                r#"error during entity deserialization: in uid field of <unknown entity>, expected a literal entity reference, but got `"test_entity_type::\"Alice\""`"#,
+                r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
+            ));
+        });
     }
 
     #[test]
@@ -1098,12 +967,12 @@ mod json_parsing_tests {
         ]);
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        let error = eparser.from_json_value(json).err().unwrap().to_string();
-        assert!(
-            error.contains("in uid field of <unknown entity>, invalid escape. The `__expr` escape is no longer supported"),
-            "{}",
-            error
-        );
+        assert_matches!(eparser.from_json_value(json.clone()), Err(e) => {
+            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+                "error during entity deserialization: in uid field of <unknown entity>, the `__expr` escape is no longer supported",
+                "to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly",
+            ));
+        });
     }
 
     #[test]
@@ -1131,12 +1000,12 @@ mod json_parsing_tests {
         ]);
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        let error = eparser.from_json_value(json).err().unwrap().to_string();
-        assert!(
-            error.contains("`__expr` escape is no longer supported"),
-            "Actual error message was: {}",
-            error
-        );
+        assert_matches!(eparser.from_json_value(json.clone()), Err(e) => {
+            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+                r#"error during entity deserialization: in attribute `pancakes` on `test_entity_type::"Alice"`, the `__expr` escape is no longer supported"#,
+                "to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly",
+            ));
+        });
     }
 
     #[test]
@@ -1162,12 +1031,12 @@ mod json_parsing_tests {
         ]);
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        let error = eparser.from_json_value(json).err().unwrap().to_string();
-        assert!(
-            error.contains(r#"in parents field of `test_entity_type::"Alice"`, invalid escape. The `__expr` escape is no longer supported"#),
-            "Actual error message was: {}",
-            error
-        );
+        assert_matches!(eparser.from_json_value(json.clone()), Err(e) => {
+            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+                r#"error during entity deserialization: in parents field of `test_entity_type::"Alice"`, the `__expr` escape is no longer supported"#,
+                "to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly",
+            ));
+        });
     }
 
     #[test]
@@ -1193,12 +1062,12 @@ mod json_parsing_tests {
         ]);
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        let error = eparser.from_json_value(json).err().unwrap().to_string();
-        assert!(
-            error.contains(r#"in parents field of `test_entity_type::"Alice"`, expected a literal entity reference"#),
-            "Actual error message was: {}",
-            error
-        );
+        assert_matches!(eparser.from_json_value(json.clone()), Err(e) => {
+            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+                r#"error during entity deserialization: in parents field of `test_entity_type::"Alice"`, expected a literal entity reference, but got `"test_entity_type::\"bob\""`"#,
+                r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
+            ));
+        });
     }
 
     #[cfg(feature = "ipaddr")]
@@ -1249,36 +1118,39 @@ mod json_parsing_tests {
         let es = eparser.from_json_value(json).expect("JSON is correct");
 
         let alice = es.entity(&EntityUID::with_eid("alice")).unwrap();
-        assert_attr_vals_are_shape_equal(alice.get("bacon"), &RestrictedExpr::val("eggs"));
-        assert_attr_vals_are_shape_equal(
+        assert_eq!(alice.get("bacon"), Some(&PartialValue::from("eggs")));
+        assert_eq!(
             alice.get("pancakes"),
-            &RestrictedExpr::set([
-                RestrictedExpr::val(1),
-                RestrictedExpr::val(2),
-                RestrictedExpr::val(3),
-            ]),
+            Some(&PartialValue::from(vec![
+                Value::from(1),
+                Value::from(2),
+                Value::from(3),
+            ])),
         );
-        assert_attr_vals_are_shape_equal(
+        assert_eq!(
             alice.get("waffles"),
-            &RestrictedExpr::record([("key".into(), RestrictedExpr::val("value"))]).unwrap(),
+            Some(&PartialValue::from(vec![(
+                "key".into(),
+                Value::from("value")
+            )])),
         );
-        assert_attr_vals_are_shape_equal(
-            alice.get("toast"),
-            &RestrictedExpr::call_extension_fn(
+        assert_eq!(
+            alice.get("toast").cloned().map(RestrictedExpr::try_from),
+            Some(Ok(RestrictedExpr::call_extension_fn(
                 "decimal".parse().expect("should be a valid Name"),
                 vec![RestrictedExpr::val("33.47")],
-            ),
+            ))),
         );
-        assert_attr_vals_are_shape_equal(
+        assert_eq!(
             alice.get("12345"),
-            &RestrictedExpr::val(EntityUID::with_eid("bob")),
+            Some(&PartialValue::from(EntityUID::with_eid("bob"))),
         );
-        assert_attr_vals_are_shape_equal(
-            alice.get("a b c"),
-            &RestrictedExpr::call_extension_fn(
+        assert_eq!(
+            alice.get("a b c").cloned().map(RestrictedExpr::try_from),
+            Some(Ok(RestrictedExpr::call_extension_fn(
                 "ip".parse().expect("should be a valid Name"),
                 vec![RestrictedExpr::val("222.222.222.0/24")],
-            ),
+            ))),
         );
         assert!(alice.is_descendant_of(&EntityUID::with_eid("bob")));
         assert!(alice.is_descendant_of(&EntityUID::with_eid("catherine")));
@@ -1368,21 +1240,12 @@ mod json_parsing_tests {
             }
             ]
         );
-        let err = eparser
-            .from_json_value(json)
-            .expect_err("should be an invalid uid field");
-
-        match err {
-            EntitiesError::Deserialization(err) => {
-                assert!(
-                    err.to_string().contains(
-                        r#"in uid field of <unknown entity>, expected a literal entity reference, but got `"hello"`"#
-                    ),
-                    "actual error message was {err}"
-                )
-            }
-            _ => panic!("expected deserialization error, got a different error: {err}"),
-        }
+        assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
+            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+                r#"in uid field of <unknown entity>, expected a literal entity reference, but got `"hello"`"#,
+                r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
+            ));
+        });
 
         let json = serde_json::json!(
             [
@@ -1393,17 +1256,12 @@ mod json_parsing_tests {
             }
             ]
         );
-        let err = eparser
-            .from_json_value(json)
-            .expect_err("should be an invalid uid field");
-        match err {
-            EntitiesError::Deserialization(err) => assert!(
-                err.to_string()
-                    .contains(r#"expected a literal entity reference, but got `"\"hello\""`"#),
-                "actual error message was {err}"
-            ),
-            _ => panic!("expected deserialization error, got a different error: {err}"),
-        }
+        assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
+            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+                r#"in uid field of <unknown entity>, expected a literal entity reference, but got `"\"hello\""`"#,
+                r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
+            ));
+        });
 
         let json = serde_json::json!(
             [
@@ -1414,19 +1272,12 @@ mod json_parsing_tests {
             }
             ]
         );
-        let err = eparser
-            .from_json_value(json)
-            .expect_err("should be an invalid uid field");
-        match err {
-            EntitiesError::Deserialization(err) => assert!(
-                err.to_string().contains(
-                    r#"expected a literal entity reference, but got `{"spam":"eggs","type":"foo"}`"#
-                ),
-                "Actual error message was: {}",
-                err
-            ),
-            _ => panic!("expected deserialization error, got a different error: {err}"),
-        }
+        assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
+            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+                r#"in uid field of <unknown entity>, expected a literal entity reference, but got `{"spam":"eggs","type":"foo"}`"#,
+                r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
+            ));
+        });
 
         let json = serde_json::json!(
             [
@@ -1437,15 +1288,11 @@ mod json_parsing_tests {
             }
             ]
         );
-        let err = eparser
-            .from_json_value(json)
-            .expect_err("should be an invalid parents field");
-        match err {
-            EntitiesError::Deserialization(err) => {
-                assert!(err.to_string().contains("invalid type: string"))
-            }
-            _ => panic!("expected deserialization error, got a different error: {err}"),
-        }
+        assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
+            expect_err(&json, &e, &ExpectedErrorMessage::error(
+                r#"invalid type: string "foo::\"help\"", expected a sequence"#
+            ));
+        });
 
         let json = serde_json::json!(
             [
@@ -1459,18 +1306,12 @@ mod json_parsing_tests {
             }
             ]
         );
-        let err = eparser
-            .from_json_value(json)
-            .expect_err("should be an invalid parents field");
-        match err {
-            EntitiesError::Deserialization(err) => assert!(
-                err.to_string()
-                    .contains(r#"in parents field of `foo::"bar"`, expected a literal entity reference, but got `"foo::\"help\""`"#),
-                "actual error was: {}",
-                err
-            ),
-            _ => panic!("expected deserialization error, got a different error: {err}"),
-        }
+        assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
+            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+                r#"in parents field of `foo::"bar"`, expected a literal entity reference, but got `"foo::\"help\""`"#,
+                r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
+            ));
+        });
     }
 
     /// helper function to round-trip an Entities (with no schema-based parsing)
@@ -1560,7 +1401,9 @@ mod json_parsing_tests {
             ]
             .into_iter()
             .collect(),
-        );
+            &Extensions::all_available(),
+        )
+        .unwrap();
         let entities = Entities::from_entities(
             [
                 complicated_entity,
@@ -1592,7 +1435,9 @@ mod json_parsing_tests {
             ]
             .into_iter()
             .collect(),
-        );
+            &Extensions::all_available(),
+        )
+        .unwrap();
         let entities = Entities::from_entities(
             [
                 oops_entity,
@@ -1604,10 +1449,10 @@ mod json_parsing_tests {
             Extensions::all_available(),
         )
         .expect("Failed to construct entities");
-        assert!(matches!(
+        assert_matches!(
             roundtrip(&entities),
             Err(EntitiesError::Serialization(JsonSerializationError::ReservedKey { key })) if key.as_str() == "__entity"
-        ));
+        );
     }
 
     /// test that an Action having a non-Action parent is an error
@@ -1626,15 +1471,12 @@ mod json_parsing_tests {
         );
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        let err = eparser
-            .from_json_value(json)
-            .expect_err("should fail due to invalid action parent");
-        assert!(
-            err.to_string().contains(
-                r#"action `XYZ::Action::"view"` has a non-action parent `User::"alice"`"#
-            ),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(json.clone()), Err(e) => {
+            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+                r#"error during entity deserialization: action `XYZ::Action::"view"` has a non-action parent `User::"alice"`"#,
+                "parents of actions need to have type `Action` themselves, perhaps namespaced",
+            ));
+        });
     }
 
     /// test that non-Action having an Action parent is not an error
@@ -1681,14 +1523,11 @@ mod json_parsing_tests {
         "#;
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        let err = eparser
-            .from_json_str(json)
-            .expect_err("should fail due to duplicate key in record");
-        assert!(
-            err.to_string()
-                .contains(r#"the key `bar` occurs two or more times in the same JSON object"#),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_str(json), Err(e) => {
+            expect_err(json, &e, &ExpectedErrorMessage::error(
+                r#"error during entity deserialization: the key `bar` occurs two or more times in the same JSON object at line 11 column 25"# // TODO: put the line-column information in `Diagnostic::labels()` instead of printing it in the error message
+            ));
+        });
     }
 }
 
@@ -1786,11 +1625,11 @@ mod entities_tests {
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 #[cfg(test)]
-// PANIC SAFETY unit tests
-#[allow(clippy::panic)]
 mod schema_based_parsing_tests {
     use super::*;
     use crate::extensions::Extensions;
+    use crate::test_utils::*;
+    use cool_asserts::assert_matches;
     use serde_json::json;
     use smol_str::SmolStr;
     use std::collections::HashSet;
@@ -1809,9 +1648,9 @@ mod schema_based_parsing_tests {
         }
         fn action(&self, action: &EntityUID) -> Option<Arc<Entity>> {
             match action.to_string().as_str() {
-                r#"Action::"view""# => Some(Arc::new(Entity::new(
+                r#"Action::"view""# => Some(Arc::new(Entity::new_with_attr_partial_value(
                     action.clone(),
-                    [(SmolStr::from("foo"), RestrictedExpr::val(34))]
+                    [(SmolStr::from("foo"), PartialValue::from(34))]
                         .into_iter()
                         .collect(),
                     [r#"Action::"readOnly""#.parse().expect("valid uid")]
@@ -1829,10 +1668,10 @@ mod schema_based_parsing_tests {
             basename: &'a Id,
         ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
             match basename.as_ref() {
-                "Employee" => Box::new(std::iter::once(EntityType::Concrete(
+                "Employee" => Box::new(std::iter::once(EntityType::Specified(
                     Name::unqualified_name(basename.clone()),
                 ))),
-                "Action" => Box::new(std::iter::once(EntityType::Concrete(
+                "Action" => Box::new(std::iter::once(EntityType::Specified(
                     Name::unqualified_name(basename.clone()),
                 ))),
                 _ => Box::new(std::iter::empty()),
@@ -1847,7 +1686,7 @@ mod schema_based_parsing_tests {
     struct MockEmployeeDescription;
     impl EntityTypeDescription for MockEmployeeDescription {
         fn entity_type(&self) -> EntityType {
-            EntityType::Concrete(Name::parse_unqualified_name("Employee").expect("valid"))
+            EntityType::Specified(Name::parse_unqualified_name("Employee").expect("valid"))
         }
 
         fn attr_type(&self, attr: &str) -> Option<SchemaType> {
@@ -1855,7 +1694,7 @@ mod schema_based_parsing_tests {
                 ty: self.entity_type(),
             };
             let hr_ty = || SchemaType::Entity {
-                ty: EntityType::Concrete(Name::parse_unqualified_name("HR").expect("valid")),
+                ty: EntityType::Specified(Name::parse_unqualified_name("HR").expect("valid")),
             };
             match attr {
                 "isFullTime" => Some(SchemaType::Bool),
@@ -1878,11 +1717,13 @@ mod schema_based_parsing_tests {
                                 )]
                                 .into_iter()
                                 .collect(),
+                                open_attrs: false,
                             }),
                         ),
                     ]
                     .into_iter()
                     .collect(),
+                    open_attrs: false,
                 }),
                 "home_ip" => Some(SchemaType::Extension {
                     name: Name::parse_unqualified_name("ipaddr").expect("valid"),
@@ -1900,6 +1741,7 @@ mod schema_based_parsing_tests {
                     ]
                     .into_iter()
                     .collect(),
+                    open_attrs: false,
                 }),
                 _ => None,
             }
@@ -1925,6 +1767,10 @@ mod schema_based_parsing_tests {
 
         fn allowed_parent_types(&self) -> Arc<HashSet<EntityType>> {
             Arc::new(HashSet::new())
+        }
+
+        fn open_attributes(&self) -> bool {
+            false
         }
     }
 
@@ -1972,59 +1818,56 @@ mod schema_based_parsing_tests {
             .entity(&r#"Employee::"12UA45""#.parse().unwrap())
             .expect("that should be the employee id");
         let home_ip = parsed.get("home_ip").expect("home_ip attr should exist");
-        assert!(matches!(
-            home_ip.expr_kind(),
-            &ExprKind::Lit(Literal::String(_)),
-        ));
+        assert_matches!(
+            home_ip,
+            &PartialValue::Value(Value::Lit(Literal::String(_))),
+        );
         let trust_score = parsed
             .get("trust_score")
             .expect("trust_score attr should exist");
-        assert!(matches!(
-            trust_score.expr_kind(),
-            &ExprKind::Lit(Literal::String(_)),
-        ));
+        assert_matches!(
+            trust_score,
+            &PartialValue::Value(Value::Lit(Literal::String(_))),
+        );
         let manager = parsed.get("manager").expect("manager attr should exist");
-        assert!(matches!(manager.expr_kind(), &ExprKind::Record { .. }));
+        assert_matches!(manager, &PartialValue::Value(Value::Record { .. }));
         let work_ip = parsed.get("work_ip").expect("work_ip attr should exist");
-        assert!(matches!(work_ip.expr_kind(), &ExprKind::Record { .. }));
+        assert_matches!(work_ip, &PartialValue::Value(Value::Record { .. }));
         let hr_contacts = parsed
             .get("hr_contacts")
             .expect("hr_contacts attr should exist");
-        assert!(matches!(hr_contacts.expr_kind(), &ExprKind::Set(_)));
+        assert_matches!(hr_contacts, &PartialValue::Value(Value::Set(_)));
         let contact = {
-            let ExprKind::Set(set) = hr_contacts.expr_kind() else {
+            let PartialValue::Value(Value::Set(set)) = hr_contacts else {
                 panic!("already checked it was Set")
             };
             set.iter().next().expect("should be at least one contact")
         };
-        assert!(matches!(contact.expr_kind(), &ExprKind::Record { .. }));
+        assert_matches!(contact, &Value::Record(_));
         let json_blob = parsed
             .get("json_blob")
             .expect("json_blob attr should exist");
-        let ExprKind::Record(map) = json_blob.expr_kind() else {
+        let PartialValue::Value(Value::Record(map)) = json_blob else {
             panic!("expected json_blob to be a Record")
         };
         let (_, inner1) = map
             .iter()
             .find(|(k, _)| *k == "inner1")
             .expect("inner1 attr should exist");
-        assert!(matches!(
-            inner1.expr_kind(),
-            &ExprKind::Lit(Literal::Bool(_))
-        ));
+        assert_matches!(inner1, &Value::Lit(Literal::Bool(_)));
         let (_, inner3) = map
             .iter()
             .find(|(k, _)| *k == "inner3")
             .expect("inner3 attr should exist");
-        assert!(matches!(inner3.expr_kind(), &ExprKind::Record { .. }));
-        let ExprKind::Record(innermap) = inner3.expr_kind() else {
+        assert_matches!(inner3, &Value::Record(_));
+        let Value::Record(innermap) = inner3 else {
             panic!("already checked it was Record")
         };
         let (_, innerinner) = innermap
             .iter()
             .find(|(k, _)| *k == "innerinner")
             .expect("innerinner attr should exist");
-        assert!(matches!(innerinner.expr_kind(), &ExprKind::Record { .. }));
+        assert_matches!(innerinner, &Value::Record(_));
 
         // but with schema-based parsing, we get these other types
         let eparser = EntityJsonParser::new(
@@ -2042,96 +1885,80 @@ mod schema_based_parsing_tests {
         let is_full_time = parsed
             .get("isFullTime")
             .expect("isFullTime attr should exist");
-        assert_eq!(
-            RestrictedExprShapeOnly::new(is_full_time.as_borrowed()),
-            RestrictedExprShapeOnly::new(RestrictedExpr::val(true).as_borrowed())
-        );
+        assert_eq!(is_full_time, &PartialValue::Value(Value::from(true)),);
         let num_direct_reports = parsed
             .get("numDirectReports")
             .expect("numDirectReports attr should exist");
-        assert_eq!(
-            RestrictedExprShapeOnly::new(num_direct_reports.as_borrowed()),
-            RestrictedExprShapeOnly::new(RestrictedExpr::val(3).as_borrowed())
-        );
+        assert_eq!(num_direct_reports, &PartialValue::Value(Value::from(3)),);
         let department = parsed
             .get("department")
             .expect("department attr should exist");
-        assert_eq!(
-            RestrictedExprShapeOnly::new(department.as_borrowed()),
-            RestrictedExprShapeOnly::new(RestrictedExpr::val("Sales").as_borrowed())
-        );
+        assert_eq!(department, &PartialValue::Value(Value::from("Sales")),);
         let manager = parsed.get("manager").expect("manager attr should exist");
         assert_eq!(
-            RestrictedExprShapeOnly::new(manager.as_borrowed()),
-            RestrictedExprShapeOnly::new(
-                RestrictedExpr::val("Employee::\"34FB87\"".parse::<EntityUID>().expect("valid"))
-                    .as_borrowed()
-            )
+            manager,
+            &PartialValue::Value(Value::from(
+                "Employee::\"34FB87\"".parse::<EntityUID>().expect("valid")
+            )),
         );
         let hr_contacts = parsed
             .get("hr_contacts")
             .expect("hr_contacts attr should exist");
-        assert!(matches!(hr_contacts.expr_kind(), &ExprKind::Set(_)));
+        assert_matches!(hr_contacts, &PartialValue::Value(Value::Set(_)));
         let contact = {
-            let ExprKind::Set(set) = hr_contacts.expr_kind() else {
+            let PartialValue::Value(Value::Set(set)) = hr_contacts else {
                 panic!("already checked it was Set")
             };
             set.iter().next().expect("should be at least one contact")
         };
-        assert!(matches!(
-            contact.expr_kind(),
-            &ExprKind::Lit(Literal::EntityUID(_))
-        ));
+        assert_matches!(contact, &Value::Lit(Literal::EntityUID(_)));
         let json_blob = parsed
             .get("json_blob")
             .expect("json_blob attr should exist");
-        let ExprKind::Record(map) = json_blob.expr_kind() else {
+        let PartialValue::Value(Value::Record(map)) = json_blob else {
             panic!("expected json_blob to be a Record")
         };
         let (_, inner1) = map
             .iter()
             .find(|(k, _)| *k == "inner1")
             .expect("inner1 attr should exist");
-        assert!(matches!(
-            inner1.expr_kind(),
-            &ExprKind::Lit(Literal::Bool(_))
-        ));
+        assert_matches!(inner1, &Value::Lit(Literal::Bool(_)));
         let (_, inner3) = map
             .iter()
             .find(|(k, _)| *k == "inner3")
             .expect("inner3 attr should exist");
-        assert!(matches!(inner3.expr_kind(), &ExprKind::Record { .. }));
-        let ExprKind::Record(innermap) = inner3.expr_kind() else {
+        assert_matches!(inner3, &Value::Record(_));
+        let Value::Record(innermap) = inner3 else {
             panic!("already checked it was Record")
         };
         let (_, innerinner) = innermap
             .iter()
             .find(|(k, _)| *k == "innerinner")
             .expect("innerinner attr should exist");
-        assert!(matches!(
-            innerinner.expr_kind(),
-            &ExprKind::Lit(Literal::EntityUID(_))
-        ));
+        assert_matches!(innerinner, &Value::Lit(Literal::EntityUID(_)));
         assert_eq!(
-            parsed.get("home_ip"),
-            Some(&RestrictedExpr::call_extension_fn(
+            parsed.get("home_ip").cloned().map(RestrictedExpr::try_from),
+            Some(Ok(RestrictedExpr::call_extension_fn(
                 Name::parse_unqualified_name("ip").expect("valid"),
                 vec![RestrictedExpr::val("222.222.222.101")]
-            )),
+            ))),
         );
         assert_eq!(
-            parsed.get("work_ip"),
-            Some(&RestrictedExpr::call_extension_fn(
+            parsed.get("work_ip").cloned().map(RestrictedExpr::try_from),
+            Some(Ok(RestrictedExpr::call_extension_fn(
                 Name::parse_unqualified_name("ip").expect("valid"),
                 vec![RestrictedExpr::val("2.2.2.0/24")]
-            )),
+            ))),
         );
         assert_eq!(
-            parsed.get("trust_score"),
-            Some(&RestrictedExpr::call_extension_fn(
+            parsed
+                .get("trust_score")
+                .cloned()
+                .map(RestrictedExpr::try_from),
+            Some(Ok(RestrictedExpr::call_extension_fn(
                 Name::parse_unqualified_name("decimal").expect("valid"),
                 vec![RestrictedExpr::val("5.7")]
-            )),
+            ))),
         );
     }
 
@@ -2171,13 +1998,11 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to type mismatch on numDirectReports");
-        assert!(
-            err.to_string().contains(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+                r#"entity does not conform to the schema: in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#
+            ));
+        });
     }
 
     #[cfg(all(feature = "decimal", feature = "ipaddr"))]
@@ -2216,14 +2041,12 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to type mismatch on manager");
-        assert!(
-            err.to_string()
-                .contains(r#"in attribute `manager` on `Employee::"12UA45"`, expected a literal entity reference, but got `"34FB87"`"#),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+                r#"error during entity deserialization: in attribute `manager` on `Employee::"12UA45"`, expected a literal entity reference, but got `"34FB87"`"#,
+                r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
+            ));
+        });
     }
 
     #[cfg(all(feature = "decimal", feature = "ipaddr"))]
@@ -2259,13 +2082,11 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to type mismatch on hr_contacts");
-        assert!(
-            err.to_string().contains(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+                r#"error during entity deserialization: in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#
+            ));
+        });
     }
 
     #[cfg(all(feature = "decimal", feature = "ipaddr"))]
@@ -2304,13 +2125,11 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to type mismatch on manager");
-        assert!(
-            err.to_string().contains(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+                r#"entity does not conform to the schema: in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#
+            ));
+        });
     }
 
     #[cfg(all(feature = "decimal", feature = "ipaddr"))]
@@ -2350,13 +2169,11 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to type mismatch on home_ip");
-        assert!(
-            err.to_string().contains(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+                r#"entity does not conform to the schema: in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#
+            ));
+        });
     }
 
     #[cfg(all(feature = "decimal", feature = "ipaddr"))]
@@ -2394,13 +2211,11 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to missing attribute \"inner2\"");
-        assert!(
-            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, expected the record to have an attribute `inner2`, but it does not"#),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+                r#"error during entity deserialization: in attribute `json_blob` on `Employee::"12UA45"`, expected the record to have an attribute `inner2`, but it does not"#
+            ));
+        });
     }
 
     #[cfg(all(feature = "decimal", feature = "ipaddr"))]
@@ -2439,13 +2254,11 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to type mismatch on attribute \"inner1\"");
-        assert!(
-            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_starts_with(
+                r#"entity does not conform to the schema: in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#
+            ));
+        });
 
         let entitiesjson = json!(
             [
@@ -2516,13 +2329,11 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to unexpected attribute \"inner4\"");
-        assert!(
-            err.to_string().contains(r#"in attribute `json_blob` on `Employee::"12UA45"`, record attribute `inner4` should not exist"#),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+                r#"error during entity deserialization: in attribute `json_blob` on `Employee::"12UA45"`, record attribute `inner4` should not exist according to the schema"#
+            ));
+        });
     }
 
     #[cfg(all(feature = "decimal", feature = "ipaddr"))]
@@ -2560,13 +2371,11 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to missing attribute \"numDirectReports\"");
-        assert!(
-            err.to_string().contains(r#"expected entity `Employee::"12UA45"` to have attribute `numDirectReports`, but it does not"#),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+                r#"entity does not conform to the schema: expected entity `Employee::"12UA45"` to have attribute `numDirectReports`, but it does not"#
+            ));
+        });
     }
 
     #[cfg(all(feature = "decimal", feature = "ipaddr"))]
@@ -2606,15 +2415,11 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to unexpected attribute \"wat\"");
-        assert!(
-            err.to_string().contains(
-                r#"attribute `wat` on `Employee::"12UA45"` should not exist according to the schema"#
-            ),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+                r#"error during entity deserialization: attribute `wat` on `Employee::"12UA45"` should not exist according to the schema"#
+            ));
+        });
     }
 
     #[cfg(all(feature = "decimal", feature = "ipaddr"))]
@@ -2655,15 +2460,11 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to incorrect parent type");
-        assert!(
-            err.to_string().contains(
-                r#"`Employee::"12UA45"` is not allowed to have an ancestor of type `Employee` according to the schema"#
-            ),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+                r#"entity does not conform to the schema: `Employee::"12UA45"` is not allowed to have an ancestor of type `Employee` according to the schema"#
+            ));
+        });
     }
 
     /// Test that involves an entity type not declared in the schema
@@ -2683,15 +2484,11 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to undeclared entity type");
-        assert!(
-            err.to_string().contains(
-                r#"entity `CEO::"abcdef"` has type `CEO` which is not declared in the schema"#
-            ),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+                r#"error during entity deserialization: entity `CEO::"abcdef"` has type `CEO` which is not declared in the schema"#
+            ));
+        });
     }
 
     /// Test that involves an action not declared in the schema
@@ -2711,15 +2508,11 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to undeclared action");
-        assert!(
-            err.to_string().contains(
-                r#"found action entity `Action::"update"`, but it was not declared as an action in the schema"#
-            ),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+                r#"error during entity deserialization: found action entity `Action::"update"`, but it was not declared as an action in the schema"#
+            ));
+        });
     }
 
     /// Test that involves an action also declared (identically) in the schema
@@ -2776,15 +2569,12 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser.from_json_value(entitiesjson).expect_err(
-            "should fail due to action attribute having a different value in schema and json",
-        );
-        assert!(
-            err.to_string().contains(
-                r#"definition of action `Action::"view"` does not match its schema declaration"#
-            ),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+                r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#,
+                r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#,
+            ));
+        });
     }
 
     /// Test that involves an action also declared in the schema, but an attribute has a different type
@@ -2808,15 +2598,12 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser.from_json_value(entitiesjson).expect_err(
-            "should fail due to action attribute having a different type in schema and json",
-        );
-        assert!(
-            err.to_string().contains(
-                r#"definition of action `Action::"view"` does not match its schema declaration"#
-            ),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+                r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#,
+                r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#,
+            ));
+        });
     }
 
     /// Test that involves an action also declared in the schema, but the schema has an attribute that the JSON does not
@@ -2838,15 +2625,12 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to action attribute missing in json");
-        assert!(
-            err.to_string().contains(
-                r#"definition of action `Action::"view"` does not match its schema declaration"#
-            ),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+                r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#,
+                r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#,
+            ));
+        });
     }
 
     /// Test that involves an action also declared in the schema, but the JSON has an attribute that the schema does not
@@ -2871,15 +2655,12 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to action attribute missing in schema");
-        assert!(
-            err.to_string().contains(
-                r#"definition of action `Action::"view"` does not match its schema declaration"#
-            ),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+                r#"error during entity deserialization: definition of action `Action::"view"` does not match its schema declaration"#,
+                r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#,
+            ));
+        });
     }
 
     /// Test that involves an action also declared in the schema, but the schema has a parent that the JSON does not
@@ -2901,15 +2682,12 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to action parent missing in json");
-        assert!(
-            err.to_string().contains(
-                r#"definition of action `Action::"view"` does not match its schema declaration"#
-            ),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+                r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#,
+                r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#,
+            ));
+        });
     }
 
     /// Test that involves an action also declared in the schema, but the JSON has a parent that the schema does not
@@ -2934,15 +2712,12 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to action parent missing in schema");
-        assert!(
-            err.to_string().contains(
-                r#"definition of action `Action::"view"` does not match its schema declaration"#
-            ),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+                r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#,
+                r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#,
+            ));
+        });
     }
 
     /// Test that involves namespaced entity types
@@ -2969,7 +2744,7 @@ mod schema_based_parsing_tests {
                 basename: &'a Id,
             ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
                 match basename.as_ref() {
-                    "Employee" => Box::new(std::iter::once(EntityType::Concrete(
+                    "Employee" => Box::new(std::iter::once(EntityType::Specified(
                         Name::from_str("XYZCorp::Employee").expect("valid name"),
                     ))),
                     _ => Box::new(std::iter::empty()),
@@ -2983,7 +2758,7 @@ mod schema_based_parsing_tests {
         struct MockEmployeeDescription;
         impl EntityTypeDescription for MockEmployeeDescription {
             fn entity_type(&self) -> EntityType {
-                EntityType::Concrete("XYZCorp::Employee".parse().expect("valid"))
+                EntityType::Specified("XYZCorp::Employee".parse().expect("valid"))
             }
 
             fn attr_type(&self, attr: &str) -> Option<SchemaType> {
@@ -3007,6 +2782,10 @@ mod schema_based_parsing_tests {
 
             fn allowed_parent_types(&self) -> Arc<HashSet<EntityType>> {
                 Arc::new(HashSet::new())
+            }
+
+            fn open_attributes(&self) -> bool {
+                false
             }
         }
 
@@ -3038,28 +2817,19 @@ mod schema_based_parsing_tests {
         let is_full_time = parsed
             .get("isFullTime")
             .expect("isFullTime attr should exist");
-        assert_eq!(
-            RestrictedExprShapeOnly::new(is_full_time.as_borrowed()),
-            RestrictedExprShapeOnly::new(RestrictedExpr::val(true).as_borrowed())
-        );
+        assert_eq!(is_full_time, &PartialValue::from(true));
         let department = parsed
             .get("department")
             .expect("department attr should exist");
-        assert_eq!(
-            RestrictedExprShapeOnly::new(department.as_borrowed()),
-            RestrictedExprShapeOnly::new(RestrictedExpr::val("Sales").as_borrowed())
-        );
+        assert_eq!(department, &PartialValue::from("Sales"),);
         let manager = parsed.get("manager").expect("manager attr should exist");
         assert_eq!(
-            RestrictedExprShapeOnly::new(manager.as_borrowed()),
-            RestrictedExprShapeOnly::new(
-                RestrictedExpr::val(
-                    "XYZCorp::Employee::\"34FB87\""
-                        .parse::<EntityUID>()
-                        .expect("valid")
-                )
-                .as_borrowed()
-            )
+            manager,
+            &PartialValue::from(
+                "XYZCorp::Employee::\"34FB87\""
+                    .parse::<EntityUID>()
+                    .expect("valid")
+            ),
         );
 
         let entitiesjson = json!(
@@ -3076,13 +2846,11 @@ mod schema_based_parsing_tests {
             ]
         );
 
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to manager being wrong entity type (missing namespace)");
-        assert!(
-            err.to_string().contains(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but actually has type `Employee`: `Employee::"34FB87"`"#),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+                r#"entity does not conform to the schema: in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but actually has type `Employee`: `Employee::"34FB87"`"#
+            ));
+        });
 
         let entitiesjson = json!(
             [
@@ -3098,12 +2866,11 @@ mod schema_based_parsing_tests {
             ]
         );
 
-        let err = eparser
-            .from_json_value(entitiesjson)
-            .expect_err("should fail due to employee being wrong entity type (missing namespace)");
-        assert!(
-            err.to_string().contains(r#"`Employee::"12UA45"` has type `Employee` which is not declared in the schema. Did you mean `XYZCorp::Employee`?"#),
-            "actual error message was {err}"
-        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+                r#"error during entity deserialization: entity `Employee::"12UA45"` has type `Employee` which is not declared in the schema"#,
+                "did you mean `XYZCorp::Employee`?",
+            ));
+        });
     }
 }

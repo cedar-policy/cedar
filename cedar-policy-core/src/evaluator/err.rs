@@ -15,12 +15,14 @@
  */
 
 use crate::ast::*;
+use miette::Diagnostic;
 use smol_str::SmolStr;
-use std::{fmt::Display, sync::Arc};
+use std::sync::Arc;
 use thiserror::Error;
 
 /// An error generated while evaluating an expression
 #[derive(Debug, PartialEq, Eq, Clone, Error)]
+#[error("{error_kind}")]
 pub struct EvaluationError {
     /// The kind of error that occurred
     error_kind: EvaluationErrorKind,
@@ -28,13 +30,44 @@ pub struct EvaluationError {
     advice: Option<String>,
 }
 
-impl Display for EvaluationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(help_msg) = &self.advice {
-            write!(f, "{}. {}", self.error_kind, help_msg)
-        } else {
-            self.error_kind.fmt(f)
+// custom impl of `Diagnostic`: non-trivial implementation of `help()`,
+// everything else forwarded to `.error_kind`
+impl Diagnostic for EvaluationError {
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        match (self.error_kind.help(), self.advice.as_ref()) {
+            (Some(help), None) => Some(help),
+            (None, Some(advice)) => Some(Box::new(advice)),
+            (Some(help), Some(advice)) => Some(Box::new(format!("{help}; {advice}"))),
+            (None, None) => None,
         }
+    }
+
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.error_kind.code()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.error_kind.severity()
+    }
+
+    fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.error_kind.url()
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.error_kind.source_code()
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        self.error_kind.labels()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.error_kind.diagnostic_source()
+    }
+
+    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
+        self.error_kind.related()
     }
 }
 
@@ -136,7 +169,7 @@ impl EvaluationError {
     pub(crate) fn non_value(e: Expr) -> Self {
         Self {
             error_kind: EvaluationErrorKind::NonValue(e),
-            advice: Some("Consider using the partial evaluation APIs".into()),
+            advice: Some("consider using the partial evaluation APIs".into()),
         }
     }
 
@@ -177,7 +210,7 @@ impl From<RestrictedExprError> for EvaluationError {
 }
 
 /// Enumeration of the possible errors that can occur during evaluation
-#[derive(Debug, PartialEq, Eq, Clone, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
 pub enum EvaluationErrorKind {
     /// Tried to lookup this entity UID, but it didn't exist in the provided
     /// entities
@@ -200,11 +233,13 @@ pub enum EvaluationErrorKind {
 
     /// Tried to get an attribute of a (non-entity) record, but that record
     /// didn't have that attribute
-    #[error("record does not have the attribute `{0}`. Available attributes: {1:?}")]
+    #[error("record does not have the attribute `{0}`")]
+    #[diagnostic(help("available attributes: {1:?}"))]
     RecordAttrDoesNotExist(SmolStr, Vec<SmolStr>),
 
     /// An error occurred when looking up an extension function
     #[error(transparent)]
+    #[diagnostic(transparent)]
     FailedExtensionFunctionLookup(#[from] crate::extensions::ExtensionFunctionLookupError),
 
     /// Tried to evaluate an operation on values with incorrect types for that
@@ -231,10 +266,12 @@ pub enum EvaluationErrorKind {
 
     /// Overflow during an integer operation
     #[error(transparent)]
+    #[diagnostic(transparent)]
     IntegerOverflow(#[from] IntegerOverflowError),
 
     /// Error with the use of "restricted" expressions
     #[error(transparent)]
+    #[diagnostic(transparent)]
     InvalidRestrictedExpression(#[from] RestrictedExprError),
 
     /// Thrown when a policy is evaluated with a slot that is not linked to an
@@ -282,7 +319,7 @@ fn pretty_type_error(expected: &[Type], actual: &Type) -> String {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
 pub enum IntegerOverflowError {
     /// Overflow during a binary operation
     #[error("integer overflow while attempting to {} the values `{arg1}` and `{arg2}`", match .op { BinaryOp::Add => "add", BinaryOp::Sub => "subtract", _ => "perform an operation on" })]
@@ -301,7 +338,7 @@ pub enum IntegerOverflowError {
         /// first argument, which wasn't necessarily a constant in the policy
         arg: Value,
         /// second argument, which was a constant in the policy
-        constant: i64,
+        constant: Integer,
     },
 
     /// Overflow during a unary operation

@@ -50,14 +50,28 @@ pub enum ValidationMode {
     #[default]
     Strict,
     Permissive,
+    #[cfg(feature = "partial-validate")]
+    Partial,
 }
 
 impl ValidationMode {
+    /// Does this mode use partial validation. We could conceivably have a
+    /// strict/partial validation mode.
+    fn is_partial(self) -> bool {
+        match self {
+            ValidationMode::Strict | ValidationMode::Permissive => false,
+            #[cfg(feature = "partial-validate")]
+            ValidationMode::Partial => true,
+        }
+    }
+
     /// Does this mode apply strict validation rules.
     fn is_strict(self) -> bool {
         match self {
             ValidationMode::Strict => true,
             ValidationMode::Permissive => false,
+            #[cfg(feature = "partial-validate")]
+            ValidationMode::Partial => false,
         }
     }
 }
@@ -87,7 +101,7 @@ impl Validator {
             .flat_map(|p| self.validate_policy(p, mode));
         let link_errs = policies
             .policies()
-            .filter_map(|p| self.validate_slots(p))
+            .filter_map(|p| self.validate_slots(p, mode))
             .flatten();
         ValidationResult::new(
             template_and_static_policy_errs.chain(link_errs),
@@ -103,15 +117,31 @@ impl Validator {
         p: &'a Template,
         mode: ValidationMode,
     ) -> impl Iterator<Item = ValidationError> + 'a {
-        self.validate_entity_types(p)
-            .chain(self.validate_action_ids(p))
-            .chain(self.validate_action_application(
-                p.principal_constraint(),
-                p.action_constraint(),
-                p.resource_constraint(),
-            ))
-            .map(move |note| ValidationError::with_policy_id(p.id(), None, note))
-            .chain(self.typecheck_policy(p, mode))
+        if mode.is_partial() {
+            // We skip `validate_entity_types`, `validate_action_ids`, and
+            // `validate_action_application` passes for partial schema
+            // validation because there may be arbitrary extra entity types and
+            // actions, so we can never claim that one doesn't exist.
+            None
+        } else {
+            Some(
+                self.validate_entity_types(p)
+                    .chain(self.validate_action_ids(p))
+                    // We could usefully update this pass to apply to partial
+                    // schema if it only failed when there is a known action
+                    // applied to known principal/resource entity types that are
+                    // not in its `appliesTo`.
+                    .chain(self.validate_action_application(
+                        p.principal_constraint(),
+                        p.action_constraint(),
+                        p.resource_constraint(),
+                    ))
+                    .map(move |note| ValidationError::with_policy_id(p.id(), None, note)),
+            )
+        }
+        .into_iter()
+        .flatten()
+        .chain(self.typecheck_policy(p, mode))
     }
 
     /// Run relevant validations against a single template-linked policy,
@@ -119,9 +149,16 @@ impl Validator {
     fn validate_slots<'a>(
         &'a self,
         p: &'a Policy,
+        mode: ValidationMode,
     ) -> Option<impl Iterator<Item = ValidationError> + 'a> {
         // Ignore static policies since they are already handled by `validate_policy`
         if p.is_static() {
+            return None;
+        }
+        // In partial validation, there may be arbitrary extra entity types and
+        // actions, so we can never claim that one doesn't exist or that the
+        // action application is invalid.
+        if mode.is_partial() {
             return None;
         }
         // For template-linked policies `Policy::principal_constraint()` and
@@ -444,7 +481,8 @@ mod test {
                 TypeError::expected_type(
                     Expr::val(1),
                     Type::primitive_long(),
-                    Type::singleton_boolean(true)
+                    Type::singleton_boolean(true),
+                    None,
                 )
                 .kind
             )]

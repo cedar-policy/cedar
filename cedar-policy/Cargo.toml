@@ -17,7 +17,8 @@ ref-cast = "1.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 lalrpop-util = { version = "0.20.0", features = ["lexer"] }
-itertools = "0.10"
+itertools = "0.12"
+miette = "5.9.0"
 thiserror = "1.0"
 smol_str = { version = "0.2", features = ["serde"] }
 dhat = { version = "0.3.2", optional = true}
@@ -40,8 +41,10 @@ integration_testing = []
 
 # Experimental features.
 # Enable all experimental features with `cargo build --features "experimental"`
-experimental = ["partial-eval"]
+experimental = ["partial-eval", "permissive-validate", "partial-validate"]
 partial-eval = ["cedar-policy-core/partial-eval"]
+permissive-validate = []
+partial-validate = ["cedar-policy-validator/partial-validate"]
 
 [lib]
 crate_type = ["rlib"]
@@ -59,6 +62,8 @@ cedar-policy = { path = ".", default-features = false, features = ["integration_
 cool_asserts = "2.0"
 criterion = "0.5"
 globset = "0.4"
+
+proptest = "1.0.0"
 
 [[bench]]
 name = "cedar_benchmarks"

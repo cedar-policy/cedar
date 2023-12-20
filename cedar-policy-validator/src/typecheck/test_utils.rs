@@ -23,25 +23,31 @@
 #![allow(clippy::panic)]
 // PANIC SAFETY unit tests
 #![allow(clippy::indexing_slicing)]
+
+use cool_asserts::assert_matches;
 use std::{collections::HashSet, sync::Arc};
 
 use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprShapeOnly, StaticPolicy, Template};
 
+use super::{TypecheckAnswer, Typechecker};
 use crate::{
     schema::ACTION_ENTITY_TYPE,
     type_error::TypeError,
-    types::{Attributes, EffectSet, RequestEnv, Type},
-    NamespaceDefinition, ValidationMode, ValidatorSchema,
+    types::{EffectSet, OpenTag, RequestEnv, Type},
+    NamespaceDefinition, UnexpectedTypeHelp, ValidationMode, ValidatorSchema,
 };
-
-use super::{TypecheckAnswer, Typechecker};
 
 impl TypeError {
     /// Testing utility for an unexpected type error when exactly one type was
     /// expected.
     #[cfg(test)]
-    pub(crate) fn expected_type(on_expr: Expr, expected: Type, actual: Type) -> Self {
-        TypeError::expected_one_of_types(on_expr, vec![expected], actual)
+    pub(crate) fn expected_type(
+        on_expr: Expr,
+        expected: Type,
+        actual: Type,
+        help: Option<UnexpectedTypeHelp>,
+    ) -> Self {
+        TypeError::expected_one_of_types(on_expr, vec![expected], actual, help)
     }
 }
 
@@ -65,20 +71,20 @@ impl Typechecker<'_> {
     ) -> TypecheckAnswer<'a> {
         // Using bogus entity type names here for testing. They'll be treated as
         // having empty attribute records, so tests will behave as expected.
-        let request_env = RequestEnv {
-            principal: &EntityType::Concrete(
+        let request_env = RequestEnv::DeclaredAction {
+            principal: &EntityType::Specified(
                 "Principal"
                     .parse()
                     .expect("Placeholder type \"Principal\" failed to parse as valid type name."),
             ),
             action: &EntityUID::with_eid_and_type(ACTION_ENTITY_TYPE, "action")
                 .expect("ACTION_ENTITY_TYPE failed to parse as type name."),
-            resource: &EntityType::Concrete(
+            resource: &EntityType::Specified(
                 "Resource"
                     .parse()
                     .expect("Placeholder type \"Resource\" failed to parse as valid type name."),
             ),
-            context: &Attributes::with_attributes(None),
+            context: &Type::record_with_attributes(None, OpenTag::ClosedAttributes),
             principal_slot: None,
             resource_slot: None,
         };
@@ -107,6 +113,7 @@ pub(crate) fn with_typechecker_from_schema<F>(
 /// Assert expected == actual by by asserting expected <: actual && actual <: expected.
 /// In the future it might better to only assert actual <: expected to allow
 /// improvement to the typechecker to return more specific types.
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_types_eq(schema: &ValidatorSchema, expected: &Type, actual: &Type) {
     assert!(
             Type::is_subtype(schema, expected, actual, ValidationMode::Permissive),
@@ -120,6 +127,7 @@ pub(crate) fn assert_types_eq(schema: &ValidatorSchema, expected: &Type, actual:
 /// in the expected list of type errors, and that the expected number of
 /// type errors were generated. Equality of types in TypeErrors is
 /// determined in the same way as in `assert_types_eq`.
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_expected_type_errors(expected: &Vec<TypeError>, actual: &HashSet<TypeError>) {
     expected.iter().for_each(|expected| {
             assert!(
@@ -140,6 +148,7 @@ pub(crate) fn assert_expected_type_errors(expected: &Vec<TypeError>, actual: &Ha
     );
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_policy_typechecks(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
     policy: impl Into<Arc<Template>>,
@@ -147,20 +156,38 @@ pub(crate) fn assert_policy_typechecks(
     assert_policy_typechecks_for_mode(schema, policy, ValidationMode::Strict)
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_policy_typechecks_for_mode(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
     policy: impl Into<Arc<Template>>,
     mode: ValidationMode,
 ) {
     with_typechecker_from_schema(schema, |mut typechecker| {
+        let policy: Arc<Template> = policy.into();
         typechecker.mode = mode;
         let mut type_errors: HashSet<TypeError> = HashSet::new();
-        let typechecked = typechecker.typecheck_policy(&policy.into(), &mut type_errors);
+        let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors);
         assert_eq!(type_errors, HashSet::new(), "Did not expect any errors.");
         assert!(typechecked, "Expected that policy would typecheck.");
+
+        // Ensure that partial schema validation doesn't cause any policy that
+        // should validate with a complete schema to no longer validate with the
+        // same complete schema.
+        typechecker.mode = ValidationMode::Permissive;
+        let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors);
+        assert_eq!(
+            type_errors,
+            HashSet::new(),
+            "Did not expect any errors under partial schema validation."
+        );
+        assert!(
+            typechecked,
+            "Expected that policy would typecheck under partial schema validation."
+        );
     });
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_policy_typecheck_fails(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
     policy: impl Into<Arc<Template>>,
@@ -174,6 +201,7 @@ pub(crate) fn assert_policy_typecheck_fails(
     )
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_policy_typecheck_fails_for_mode(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
     policy: impl Into<Arc<Template>>,
@@ -191,6 +219,7 @@ pub(crate) fn assert_policy_typecheck_fails_for_mode(
 
 /// Assert that expr type checks successfully with a particular type, and
 /// that it does not generate any type errors.
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typechecks(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
     expr: Expr,
@@ -199,6 +228,7 @@ pub(crate) fn assert_typechecks(
     assert_typechecks_for_mode(schema, expr, expected, ValidationMode::Strict);
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typechecks_for_mode(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
     expr: Expr,
@@ -209,28 +239,12 @@ pub(crate) fn assert_typechecks_for_mode(
         typechecker.mode = mode;
         let mut type_errors = HashSet::new();
         let actual = typechecker.typecheck_expr(&expr, &mut type_errors);
-        assert_types_eq(
-            typechecker.schema,
-            &expected,
-            &match actual {
-                TypecheckAnswer::TypecheckSuccess { expr_type, .. } => expr_type
-                    .into_data()
-                    .expect("Typechecked expression must have type."),
-                TypecheckAnswer::TypecheckFail { .. } => {
-                    panic!(
-                        "Expected that expression would typecheck. Errors: {}",
-                        type_errors
-                            .iter()
-                            .map(|e| format!("{:#?}", e))
-                            .collect::<Vec<_>>()
-                            .join(",")
-                    );
-                }
-                TypecheckAnswer::RecursionLimit => panic!("Should not have hit recursion limit"),
-            },
-        );
-        assert!(
-            type_errors.is_empty(),
+        assert_matches!(actual, TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
+            assert_types_eq(typechecker.schema, &expected, &expr_type.into_data().expect("Typechecked expression must have type"));
+        });
+        assert_eq!(
+            type_errors,
+            HashSet::new(),
             "Did not expect any errors, saw {:#?}.",
             type_errors
         );
@@ -241,6 +255,7 @@ pub(crate) fn assert_typechecks_for_mode(
 /// expressions. Failed type checking will still return a type that is used
 /// to continue typechecking, so the `expected` type must match the returned
 /// type for this to pass.
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typecheck_fails(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
     expr: Expr,
@@ -256,6 +271,7 @@ pub(crate) fn assert_typecheck_fails(
     )
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typecheck_fails_for_mode(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
     expr: Expr,
@@ -267,21 +283,16 @@ pub(crate) fn assert_typecheck_fails_for_mode(
         typechecker.mode = mode;
         let mut type_errors = HashSet::new();
         let actual = typechecker.typecheck_expr(&expr, &mut type_errors);
-        let actual_ty = match actual {
-            TypecheckAnswer::TypecheckSuccess { .. } => {
-                panic!("Expected that expression would not typecheck.")
+        assert_matches!(actual, TypecheckAnswer::TypecheckFail { expr_recovery_type } => {
+            match (expected_ty.as_ref(), expr_recovery_type.data()) {
+                (None, None) => (),
+                (Some(expected_ty), Some(actual_ty)) => {
+                    assert_types_eq(typechecker.schema, expected_ty, actual_ty);
+                }
+                _ => panic!("Expected that actual type would be defined iff expected type is defined."),
             }
-            TypecheckAnswer::TypecheckFail { expr_recovery_type } => expr_recovery_type,
-            TypecheckAnswer::RecursionLimit => panic!("Should not have hit recursion limit"),
-        };
-        match (expected_ty.as_ref(), actual_ty.data()) {
-            (None, None) => (),
-            (Some(expected_ty), Some(actual_ty)) => {
-                assert_types_eq(typechecker.schema, expected_ty, actual_ty)
-            }
-            _ => panic!("Expected that actual type would be defined iff expected type is defined."),
-        }
-        assert_expected_type_errors(&expected_type_errors, &type_errors);
+            assert_expected_type_errors(&expected_type_errors, &type_errors);
+        });
     });
 }
 
@@ -294,10 +305,12 @@ pub(crate) fn empty_schema_file() -> NamespaceDefinition {
     NamespaceDefinition::new([], [])
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typechecks_empty_schema(expr: Expr, expected: Type) {
     assert_typechecks(empty_schema_file(), expr, expected)
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typechecks_empty_schema_permissive(expr: Expr, expected: Type) {
     assert_typechecks_for_mode(
         empty_schema_file(),
@@ -307,6 +320,7 @@ pub(crate) fn assert_typechecks_empty_schema_permissive(expr: Expr, expected: Ty
     )
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typecheck_fails_empty_schema(
     expr: Expr,
     expected: Type,
@@ -315,6 +329,7 @@ pub(crate) fn assert_typecheck_fails_empty_schema(
     assert_typecheck_fails(empty_schema_file(), expr, Some(expected), type_errors);
 }
 
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typecheck_fails_empty_schema_without_type(
     expr: Expr,
     type_errors: Vec<TypeError>,

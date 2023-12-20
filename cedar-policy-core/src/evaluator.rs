@@ -17,7 +17,7 @@
 //! This module contains the Cedar evaluator.
 
 use crate::ast::*;
-use crate::entities::{Dereference, Entities, EntityAttrValues};
+use crate::entities::{Dereference, Entities};
 use crate::extensions::Extensions;
 #[cfg(test)]
 use std::collections::HashMap;
@@ -62,10 +62,6 @@ pub struct Evaluator<'e> {
     entities: &'e Entities,
     /// Extensions which are active for this evaluation
     extensions: &'e Extensions<'e>,
-    /// Entity attribute value cache
-    ///
-    /// We evaluate entity attribute expressions upon the creation of an evaluator.
-    entity_attr_values: EntityAttrValues<'e>,
 }
 
 /// Evaluator for "restricted" expressions. See notes on `RestrictedExpr`.
@@ -150,43 +146,24 @@ impl<'e> RestrictedEvaluator<'e> {
     }
 }
 
-impl<'q, 'e> Evaluator<'e> {
+impl<'e> Evaluator<'e> {
     /// Create a fresh `Evaluator` for the given `request`, which uses the given
     /// `Entities` to resolve entity references. Use the given `Extension`s when
-    /// evaluating the request.
-    ///
-    /// (An `Entities` is the entity-hierarchy portion of a `Slice`, without the
-    /// policies.)
-    ///
-    /// Can throw an error, eg if evaluating attributes in the `context` throws
-    /// an error.
-    pub fn new(
-        q: &'q Request,
-        entities: &'e Entities,
-        extensions: &'e Extensions<'e>,
-    ) -> Result<Self> {
-        // Eagerly evaluate each attribute expression in the entities.
-        let entity_attr_values = entities.get_attr_values()?;
-        Ok(Self {
-            principal: q.principal().clone(),
-            action: q.action().clone(),
-            resource: q.resource().clone(),
+    /// evaluating.
+    pub fn new(q: Request, entities: &'e Entities, extensions: &'e Extensions<'e>) -> Self {
+        Self {
+            principal: q.principal,
+            action: q.action,
+            resource: q.resource,
             context: {
-                // evaluate each of the context attributes in an evaluator
-                // for "restricted" expressions.
-                // This prohibits them from referring to the `request`,
-                // ie, the variables `principal`, `resource`, etc.
-                // For more, see notes on `RestrictedExpr`.
-                let restricted_eval = RestrictedEvaluator::new(extensions);
-                match &q.context {
+                match q.context {
                     None => PartialValue::unknown(Unknown::new_untyped("context")),
-                    Some(ctxt) => restricted_eval.partial_interpret(ctxt.as_ref().as_borrowed())?,
+                    Some(ctx) => ctx.into(),
                 }
             },
             entities,
             extensions,
-            entity_attr_values,
-        })
+        }
     }
 
     /// Evaluate the given `Policy`, returning either a bool or an error.
@@ -410,8 +387,8 @@ impl<'q, 'e> Evaluator<'e> {
                                 // If arg2 is a record, then possibly they intended `arg2 has arg1`.
                                 if matches!(e.error_kind(), EvaluationErrorKind::TypeError { .. }) {
                                     match arg2 {
-                                        Value::Set(_) => e.set_advice("`in` is for checking the entity hierarchy, use `.contains()` to test set membership".into()),
-                                        Value::Record(_) =>  e.set_advice("`in` is for checking the entity hierarchy, use `has` to test if a record has a key".into()),
+                                        Value::Set(_) => e.set_advice("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()),
+                                        Value::Record(_) =>  e.set_advice("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()),
                                         _ => {}
                                     }
                                 };
@@ -551,7 +528,7 @@ impl<'q, 'e> Evaluator<'e> {
                 let v = self.partial_interpret(expr, slots)?;
                 match v {
                     PartialValue::Value(v) => Ok(match v.get_as_entity()?.entity_type() {
-                        EntityType::Concrete(expr_entity_type) => entity_type == expr_entity_type,
+                        EntityType::Specified(expr_entity_type) => entity_type == expr_entity_type,
                         EntityType::Unspecified => false,
                     }
                     .into()),
@@ -709,19 +686,19 @@ impl<'q, 'e> Evaluator<'e> {
                 })
                 .map(|v| PartialValue::Value(v.clone())),
             PartialValue::Value(Value::Lit(Literal::EntityUID(uid))) => {
-                match self.entity_attr_values.get(uid.as_ref()) {
+                match self.entities.entity(uid.as_ref()) {
                     Dereference::NoSuchEntity => Err(match *uid.entity_type() {
                         EntityType::Unspecified => {
                             EvaluationError::unspecified_entity_access(attr.clone())
                         }
-                        EntityType::Concrete(_) => {
+                        EntityType::Specified(_) => {
                             EvaluationError::entity_does_not_exist(uid.clone())
                         }
                     }),
                     Dereference::Residual(r) => {
                         Ok(PartialValue::Residual(Expr::get_attr(r, attr.clone())))
                     }
-                    Dereference::Data(attrs) => attrs
+                    Dereference::Data(entity) => entity
                         .get(attr)
                         .ok_or_else(|| {
                             EvaluationError::entity_attr_does_not_exist(uid, attr.clone())
@@ -792,7 +769,7 @@ impl Value {
 
     /// Convert the `Value` to a Long, or throw a type error if it's not a
     /// Long.
-    pub(crate) fn get_as_long(&self) -> Result<i64> {
+    pub(crate) fn get_as_long(&self) -> Result<Integer> {
         match self {
             Value::Lit(Literal::Long(i)) => Ok(*i),
             _ => Err(EvaluationError::type_error(
@@ -868,17 +845,20 @@ pub mod test {
             EntityUID::with_eid("test_principal"),
             EntityUID::with_eid("test_action"),
             EntityUID::with_eid("test_resource"),
-            Context::from_pairs([
-                ("cur_time".into(), RestrictedExpr::val("03:22:11")),
-                (
-                    "device_properties".into(),
-                    RestrictedExpr::record(vec![
-                        ("os_name".into(), RestrictedExpr::val("Windows")),
-                        ("manufacturer".into(), RestrictedExpr::val("ACME Corp")),
-                    ])
-                    .unwrap(),
-                ),
-            ])
+            Context::from_pairs(
+                [
+                    ("cur_time".into(), RestrictedExpr::val("03:22:11")),
+                    (
+                        "device_properties".into(),
+                        RestrictedExpr::record(vec![
+                            ("os_name".into(), RestrictedExpr::val("Windows")),
+                            ("manufacturer".into(), RestrictedExpr::val("ACME Corp")),
+                        ])
+                        .unwrap(),
+                    ),
+                ],
+                Extensions::none(),
+            )
             .unwrap(),
             Some(&RequestSchemaAllPass),
             Extensions::none(),
@@ -907,24 +887,36 @@ pub mod test {
         let entity_no_attrs_no_parents =
             Entity::with_uid(EntityUID::with_eid("entity_no_attrs_no_parents"));
         let mut entity_with_attrs = Entity::with_uid(EntityUID::with_eid("entity_with_attrs"));
-        entity_with_attrs.set_attr("spoon".into(), RestrictedExpr::val(787));
-        entity_with_attrs.set_attr(
-            "tags".into(),
-            RestrictedExpr::set(vec![
-                RestrictedExpr::val("fun"),
-                RestrictedExpr::val("good"),
-                RestrictedExpr::val("useful"),
-            ]),
-        );
-        entity_with_attrs.set_attr(
-            "address".into(),
-            RestrictedExpr::record(vec![
-                ("street".into(), RestrictedExpr::val("234 magnolia")),
-                ("town".into(), RestrictedExpr::val("barmstadt")),
-                ("country".into(), RestrictedExpr::val("amazonia")),
-            ])
-            .unwrap(),
-        );
+        entity_with_attrs
+            .set_attr(
+                "spoon".into(),
+                RestrictedExpr::val(787),
+                &Extensions::none(),
+            )
+            .unwrap();
+        entity_with_attrs
+            .set_attr(
+                "tags".into(),
+                RestrictedExpr::set(vec![
+                    RestrictedExpr::val("fun"),
+                    RestrictedExpr::val("good"),
+                    RestrictedExpr::val("useful"),
+                ]),
+                &Extensions::none(),
+            )
+            .unwrap();
+        entity_with_attrs
+            .set_attr(
+                "address".into(),
+                RestrictedExpr::record(vec![
+                    ("street".into(), RestrictedExpr::val("234 magnolia")),
+                    ("town".into(), RestrictedExpr::val("barmstadt")),
+                    ("country".into(), RestrictedExpr::val("amazonia")),
+                ])
+                .unwrap(),
+                &Extensions::none(),
+            )
+            .unwrap();
         let mut child = Entity::with_uid(EntityUID::with_eid("child"));
         let mut parent = Entity::with_uid(EntityUID::with_eid("parent"));
         let grandparent = Entity::with_uid(EntityUID::with_eid("grandparent"));
@@ -967,7 +959,7 @@ pub mod test {
         let second = EntityUID::with_eid("joseph");
         let missing = EntityUID::with_eid("non-present");
         let parent = EntityUID::with_eid("parent");
-        let eval = Evaluator::new(&q, &entities, &exts).unwrap();
+        let eval = Evaluator::new(q, &entities, &exts);
 
         let e = Expr::binary_app(
             BinaryOp::In,
@@ -1017,7 +1009,7 @@ pub mod test {
         let child = EntityUID::with_eid("child");
         let missing = EntityUID::with_eid("non-present");
         let parent = EntityUID::with_eid("parent");
-        let eval = Evaluator::new(&q, &entities, &exts).unwrap();
+        let eval = Evaluator::new(q, &entities, &exts);
 
         let e = Expr::binary_app(BinaryOp::In, Expr::val(child), Expr::val(parent.clone()));
         let r = eval.partial_eval_expr(&e).unwrap();
@@ -1050,7 +1042,7 @@ pub mod test {
         let exts = Extensions::none();
         let has_attr = EntityUID::with_eid("entity_with_attrs");
         let missing = EntityUID::with_eid("missing");
-        let eval = Evaluator::new(&q, &entities, &exts).unwrap();
+        let eval = Evaluator::new(q, &entities, &exts);
 
         let e = Expr::has_attr(Expr::val(has_attr), "spoon".into());
         let r = eval.partial_eval_expr(&e).unwrap();
@@ -1078,7 +1070,7 @@ pub mod test {
         let exts = Extensions::none();
         let has_attr = EntityUID::with_eid("entity_with_attrs");
         let missing = EntityUID::with_eid("missing");
-        let eval = Evaluator::new(&q, &entities, &exts).unwrap();
+        let eval = Evaluator::new(q, &entities, &exts);
 
         let e = Expr::get_attr(Expr::val(has_attr), "spoon".into());
         let r = eval.partial_eval_expr(&e).unwrap();
@@ -1103,7 +1095,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val(false)),
             Ok(Value::Lit(Literal::Bool(false)))
@@ -1135,7 +1127,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val(EntityUID::with_eid("foo"))),
             Ok(Value::Lit(Literal::EntityUID(Arc::new(
@@ -1166,7 +1158,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         assert_eq!(
             eval.interpret_inline_policy(&Expr::var(Var::Principal)),
             Ok(Value::Lit(Literal::EntityUID(Arc::new(
@@ -1192,7 +1184,7 @@ pub mod test {
         let request = basic_request();
         let entities = rich_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // has_attr on an entity with no attrs
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(
@@ -1288,7 +1280,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // if true then 3 else 8
         assert_eq!(
             eval.interpret_inline_policy(&Expr::ite(Expr::val(true), Expr::val(3), Expr::val(8))),
@@ -1461,7 +1453,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // set(8)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::set(vec![Expr::val(8)])),
@@ -1608,7 +1600,7 @@ pub mod test {
         let request = basic_request();
         let entities = rich_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // {"key": 3}["key"] or {"key": 3}.key
         let string_key = Expr::record(vec![("key".into(), Expr::val(3))]).unwrap();
         assert_eq!(
@@ -1917,7 +1909,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // not(true)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::not(Expr::val(true))),
@@ -1973,7 +1965,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // neg(101)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::neg(Expr::val(101))),
@@ -2005,10 +1997,10 @@ pub mod test {
         );
         // overflow
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::neg(Expr::val(std::i64::MIN))),
+            eval.interpret_inline_policy(&Expr::neg(Expr::val(Integer::MIN))),
             Err(IntegerOverflowError::UnaryOp {
                 op: UnaryOp::Neg,
-                arg: Value::from(std::i64::MIN)
+                arg: Value::from(Integer::MIN)
             }
             .into()),
         );
@@ -2033,7 +2025,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // eq(33, 33)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_eq(Expr::val(33), Expr::val(33))),
@@ -2264,7 +2256,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // 3 < 303
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(3), Expr::val(303))),
@@ -2481,7 +2473,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
 
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greatereq(
@@ -2521,7 +2513,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // 11 + 22
         assert_eq!(
             eval.interpret_inline_policy(&Expr::add(Expr::val(11), Expr::val(22))),
@@ -2539,10 +2531,10 @@ pub mod test {
         );
         // overflow
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::add(Expr::val(std::i64::MAX), Expr::val(1))),
+            eval.interpret_inline_policy(&Expr::add(Expr::val(Integer::MAX), Expr::val(1))),
             Err(IntegerOverflowError::BinaryOp {
                 op: BinaryOp::Add,
-                arg1: Value::from(std::i64::MAX),
+                arg1: Value::from(Integer::MAX),
                 arg2: Value::from(1),
             }
             .into())
@@ -2564,10 +2556,10 @@ pub mod test {
         );
         // overflow
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::sub(Expr::val(std::i64::MIN + 2), Expr::val(3))),
+            eval.interpret_inline_policy(&Expr::sub(Expr::val(Integer::MIN + 2), Expr::val(3))),
             Err(IntegerOverflowError::BinaryOp {
                 op: BinaryOp::Sub,
-                arg1: Value::from(std::i64::MIN + 2),
+                arg1: Value::from(Integer::MIN + 2),
                 arg2: Value::from(3),
             }
             .into())
@@ -2594,9 +2586,9 @@ pub mod test {
         );
         // overflow
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::mul(Expr::val(std::i64::MAX - 1), 3)),
+            eval.interpret_inline_policy(&Expr::mul(Expr::val(Integer::MAX - 1), 3)),
             Err(IntegerOverflowError::Multiplication {
-                arg: Value::from(std::i64::MAX - 1),
+                arg: Value::from(Integer::MAX - 1),
                 constant: 3,
             }
             .into())
@@ -2608,7 +2600,7 @@ pub mod test {
         let request = basic_request();
         let entities = rich_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
 
         // [2, 3, 4] contains 2
         assert_eq!(
@@ -2773,7 +2765,7 @@ pub mod test {
         let request = basic_request();
         let entities = rich_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // A in B, where A and B are unrelated (but same type)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_in(
@@ -3045,7 +3037,7 @@ pub mod test {
                         .expect("should be a valid identifier")
                 )],
                 Type::Long,
-                "`in` is for checking the entity hierarchy, use `.contains()` to test set membership".into(),
+                "`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into(),
             ))
         );
         // "foo" in { "foo": 2, "bar": true }
@@ -3063,7 +3055,7 @@ pub mod test {
                         .expect("should be a valid identifier")
                 )],
                 Type::String,
-                "`in` is for checking the entity hierarchy, use `has` to test if a record has a key".into(),
+                "`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into(),
             ))
         );
         // A in { "foo": 2, "bar": true }
@@ -3117,7 +3109,7 @@ pub mod test {
         )
         .expect("failed to create basic entities");
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_in(
                 Expr::val(EntityUID::with_eid("Alice")),
@@ -3159,7 +3151,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // "eggs" vs "ham"
         assert_eq!(
             eval.interpret_inline_policy(
@@ -3329,7 +3321,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         // testing like wth escaped characters -- similar tests are also in parser/convert.rs
         assert_eq!(
             eval.interpret_inline_policy(
@@ -3369,7 +3361,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(&format!(
@@ -3435,7 +3427,7 @@ pub mod test {
         let request = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&request, &entities, &exts).expect("failed to create evaluator");
+        let eval = Evaluator::new(request, &entities, &exts);
         //  [1, -22, 34] containsall of [1, -22]?
         assert_eq!(
             eval.interpret_inline_policy(&Expr::contains_all(
@@ -3688,7 +3680,7 @@ pub mod test {
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
         let exts = Extensions::none();
-        let evaluator = Evaluator::new(&request, &entities, &exts).expect("empty slice");
+        let evaluator = Evaluator::new(request, &entities, &exts);
 
         // short-circuit allows these to pass without error
         let raw_expr = "(false && 3)";
@@ -3801,7 +3793,7 @@ pub mod test {
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
         let exts = Extensions::none();
-        let evaluator = Evaluator::new(&request, &entities, &exts).expect("empty slice");
+        let evaluator = Evaluator::new(request, &entities, &exts);
         let e = Expr::slot(SlotId::principal());
 
         let slots = HashMap::new();
@@ -3861,7 +3853,7 @@ pub mod test {
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
         let entities = eparser.from_json_str("[]").expect("empty slice");
         let exts = Extensions::none();
-        let eval = Evaluator::new(&q, &entities, &exts).expect("Failed to start evaluator");
+        let eval = Evaluator::new(q, &entities, &exts);
 
         let ir = pset.policies().next().expect("No linked policies");
         assert!(
@@ -3873,14 +3865,11 @@ pub mod test {
         );
     }
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_restricted_expression_error(v: Result<PartialValue>) {
-        match v {
-            Err(e) => assert_matches!(
-                e.error_kind(),
-                EvaluationErrorKind::InvalidRestrictedExpression { .. }
-            ),
-            Ok(v) => panic!("Got wrong response: {v}"),
-        }
+        assert_matches!(v, Err(e) => {
+            assert_matches!(e.error_kind(), EvaluationErrorKind::InvalidRestrictedExpression { .. });
+        });
     }
 
     #[test]
@@ -4079,7 +4068,7 @@ pub mod test {
         .unwrap();
         let es = Entities::new();
         let exts = Extensions::none();
-        let e = Evaluator::new(&q, &es, &exts).expect("failed to create evaluator");
+        let e = Evaluator::new(q, &es, &exts);
         match e.partial_evaluate(p).expect("eval error") {
             Either::Left(_) => panic!("Evalled to a value"),
             Either::Right(expr) => {
@@ -4102,7 +4091,7 @@ pub mod test {
         let euid: EntityUID = r#"Test::"test""#.parse().unwrap();
         let rexpr = RestrictedExpr::new(context_expr)
             .expect("Context Expression was not a restricted expression");
-        let context = Context::from_expr(rexpr).unwrap();
+        let context = Context::from_expr(rexpr.as_borrowed(), Extensions::none()).unwrap();
         let q = Request::new(
             euid.clone(),
             euid.clone(),
@@ -4114,7 +4103,7 @@ pub mod test {
         .unwrap();
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&q, &es, &exts).expect("Failed to instantiate evaluator");
+        let eval = Evaluator::new(q, &es, &exts);
         eval.partial_eval_expr(&e).unwrap()
     }
 
@@ -4246,13 +4235,17 @@ pub mod test {
 
     #[test]
     fn partial_context_fail() {
-        let context = Context::from_expr(RestrictedExpr::new_unchecked(
-            Expr::record([
-                ("a".into(), Expr::val(3)),
-                ("b".into(), Expr::unknown(Unknown::new_untyped("b"))),
-            ])
-            .unwrap(),
-        ))
+        let context = Context::from_expr(
+            RestrictedExpr::new_unchecked(
+                Expr::record([
+                    ("a".into(), Expr::val(3)),
+                    ("b".into(), Expr::unknown(Unknown::new_untyped("b"))),
+                ])
+                .unwrap(),
+            )
+            .as_borrowed(),
+            Extensions::none(),
+        )
         .unwrap();
         let euid: EntityUID = r#"Test::"test""#.parse().unwrap();
         let q = Request::new(
@@ -4266,7 +4259,7 @@ pub mod test {
         .unwrap();
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&q, &es, &exts).expect("Failed to instantiate evaluator");
+        let eval = Evaluator::new(q, &es, &exts);
         let e = Expr::get_attr(Expr::var(Var::Context), "foo".into());
         assert!(eval.partial_eval_expr(&e).is_err())
     }
@@ -4299,7 +4292,7 @@ pub mod test {
             Expr::record([("cell".into(), Expr::unknown(Unknown::new_untyped("cell")))]).unwrap(),
         )
         .expect("should qualify as restricted");
-        let context = Context::from_expr(c_expr).unwrap();
+        let context = Context::from_expr(c_expr.as_borrowed(), Extensions::none()).unwrap();
 
         let q = Request::new(
             p,
@@ -4311,7 +4304,7 @@ pub mod test {
         )
         .unwrap();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&q, &es, &exts).expect("Could not create evaluator");
+        let eval = Evaluator::new(q, &es, &exts);
 
         let result = eval.partial_evaluate(policy).expect("Eval error");
         match result {
@@ -4341,7 +4334,7 @@ pub mod test {
         let es = Entities::new();
 
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4377,19 +4370,23 @@ pub mod test {
             EntityUID::with_eid("p"),
             EntityUID::with_eid("a"),
             EntityUID::with_eid("r"),
-            Context::from_expr(RestrictedExpr::new_unchecked(
-                Expr::record([(
-                    "condition".into(),
-                    Expr::unknown(Unknown::new_untyped("unknown_condition")),
-                )])
-                .unwrap(),
-            ))
+            Context::from_expr(
+                RestrictedExpr::new_unchecked(
+                    Expr::record([(
+                        "condition".into(),
+                        Expr::unknown(Unknown::new_untyped("unknown_condition")),
+                    )])
+                    .unwrap(),
+                )
+                .as_borrowed(),
+                Extensions::none(),
+            )
             .unwrap(),
             Some(&RequestSchemaAllPass),
             Extensions::none(),
         )
         .unwrap();
-        let eval = Evaluator::new(&q, &es, &exts).unwrap();
+        let eval = Evaluator::new(q, &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4418,7 +4415,7 @@ pub mod test {
         let es = Entities::new();
 
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
     }
@@ -4433,7 +4430,7 @@ pub mod test {
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4450,7 +4447,7 @@ pub mod test {
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4473,7 +4470,7 @@ pub mod test {
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
     }
@@ -4492,7 +4489,7 @@ pub mod test {
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_ok());
     }
@@ -4508,7 +4505,7 @@ pub mod test {
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4525,7 +4522,7 @@ pub mod test {
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4548,7 +4545,7 @@ pub mod test {
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
     }
@@ -4567,7 +4564,7 @@ pub mod test {
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_ok());
     }
@@ -4581,7 +4578,7 @@ pub mod test {
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&a, &HashMap::new()).is_err());
     }
@@ -4595,7 +4592,7 @@ pub mod test {
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&a, &HashMap::new()).unwrap();
 
@@ -4617,7 +4614,7 @@ pub mod test {
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&a, &HashMap::new()).is_err());
     }
@@ -4635,7 +4632,7 @@ pub mod test {
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&a, &HashMap::new()).unwrap();
 
@@ -4653,7 +4650,7 @@ pub mod test {
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4671,7 +4668,7 @@ pub mod test {
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4696,7 +4693,7 @@ pub mod test {
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4720,7 +4717,7 @@ pub mod test {
 
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
     }
@@ -4733,7 +4730,7 @@ pub mod test {
         let e = Expr::and(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
     }
@@ -4746,7 +4743,7 @@ pub mod test {
         let e = Expr::or(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
     }
@@ -4759,7 +4756,7 @@ pub mod test {
         let e = Expr::and(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4778,7 +4775,7 @@ pub mod test {
         let e = Expr::and(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(r, PartialValue::Value(Value::Lit(false.into())));
@@ -4792,7 +4789,7 @@ pub mod test {
         let e = Expr::and(lhs.clone(), rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         let expected = Expr::and(lhs, Expr::val(true));
@@ -4806,7 +4803,7 @@ pub mod test {
         let e = Expr::and(lhs.clone(), rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         let expected = Expr::and(lhs, Expr::val(false));
@@ -4821,7 +4818,7 @@ pub mod test {
         let e = Expr::and(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4840,7 +4837,7 @@ pub mod test {
         let e = Expr::and(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4862,7 +4859,7 @@ pub mod test {
         let e = Expr::or(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(r, PartialValue::Value(Value::Lit(true.into())));
@@ -4876,7 +4873,7 @@ pub mod test {
         let e = Expr::or(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         let expected = Expr::or(
@@ -4894,7 +4891,7 @@ pub mod test {
         let e = Expr::or(lhs.clone(), rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         let expected = Expr::or(lhs, Expr::val(true));
@@ -4908,7 +4905,7 @@ pub mod test {
         let e = Expr::or(lhs.clone(), rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         let expected = Expr::or(lhs, Expr::val(false));
@@ -4923,7 +4920,7 @@ pub mod test {
         let e = Expr::or(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4942,7 +4939,7 @@ pub mod test {
         let e = Expr::or(lhs, rhs);
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
@@ -4960,7 +4957,7 @@ pub mod test {
     fn partial_unop() {
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let e = Expr::unary_app(UnaryOp::Neg, Expr::unknown(Unknown::new_untyped("a")));
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
@@ -4975,7 +4972,7 @@ pub mod test {
     fn partial_binop() {
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let binops = [
             BinaryOp::Add,
@@ -5050,7 +5047,7 @@ pub mod test {
     fn partial_mul() {
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let e = Expr::mul(Expr::unknown(Unknown::new_untyped("a")), 32);
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
@@ -5061,7 +5058,7 @@ pub mod test {
     fn partial_ext_constructors() {
         let es = Entities::new();
         let exts = Extensions::all_available();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let e = Expr::call_extension_fn(
             "ip".parse().unwrap(),
@@ -5078,7 +5075,7 @@ pub mod test {
     fn partial_ext_unfold() {
         let es = Entities::new();
         let exts = Extensions::all_available();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let a = Expr::call_extension_fn("ip".parse().unwrap(), vec![Expr::val("127.0.0.1")]);
         let b = Expr::unknown(Unknown::new_untyped("a"));
@@ -5107,7 +5104,7 @@ pub mod test {
     fn partial_like() {
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let e = Expr::like(Expr::unknown(Unknown::new_untyped("a")), []);
 
@@ -5120,7 +5117,7 @@ pub mod test {
     fn partial_is() {
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let e = Expr::is_entity_type(
             Expr::unknown(Unknown::new_untyped("a")),
@@ -5136,7 +5133,7 @@ pub mod test {
     fn partial_hasattr() {
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let e = Expr::has_attr(Expr::unknown(Unknown::new_untyped("a")), "test".into());
 
@@ -5149,7 +5146,7 @@ pub mod test {
     fn partial_set() {
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let e = Expr::set([
             Expr::val(1),
@@ -5186,7 +5183,7 @@ pub mod test {
     fn partial_record() {
         let es = Entities::new();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&empty_request(), &es, &exts).unwrap();
+        let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let e = Expr::record([
             ("a".into(), Expr::val(1)),
@@ -5268,7 +5265,7 @@ pub mod test {
         let q = basic_request();
         let entities = basic_entities();
         let exts = Extensions::none();
-        let eval = Evaluator::new(&q, &entities, &exts).unwrap();
+        let eval = Evaluator::new(q, &entities, &exts);
 
         let e = Expr::get_attr(
             Expr::record([

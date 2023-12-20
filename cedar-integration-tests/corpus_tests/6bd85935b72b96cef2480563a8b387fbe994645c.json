@@ -22,7 +22,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected one of [set, (entity of type `any_entity_type`)], got bool"
+        "while evaluating policy `policy0`: type error: expected one of [set, (entity of type `any_entity_type`)], got bool"
       ]
     },
     {
@@ -43,7 +43,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected one of [set, (entity of type `any_entity_type`)], got bool"
+        "while evaluating policy `policy0`: type error: expected one of [set, (entity of type `any_entity_type`)], got bool"
       ]
     },
     {
@@ -64,7 +64,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected one of [set, (entity of type `any_entity_type`)], got bool"
+        "while evaluating policy `policy0`: type error: expected one of [set, (entity of type `any_entity_type`)], got bool"
       ]
     },
     {
@@ -85,7 +85,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected one of [set, (entity of type `any_entity_type`)], got bool"
+        "while evaluating policy `policy0`: type error: expected one of [set, (entity of type `any_entity_type`)], got bool"
       ]
     },
     {
@@ -106,7 +106,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected one of [set, (entity of type `any_entity_type`)], got bool"
+        "while evaluating policy `policy0`: type error: expected one of [set, (entity of type `any_entity_type`)], got bool"
       ]
     },
     {
@@ -127,7 +127,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected one of [set, (entity of type `any_entity_type`)], got bool"
+        "while evaluating policy `policy0`: type error: expected one of [set, (entity of type `any_entity_type`)], got bool"
       ]
     },
     {
@@ -148,7 +148,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected one of [set, (entity of type `any_entity_type`)], got bool"
+        "while evaluating policy `policy0`: type error: expected one of [set, (entity of type `any_entity_type`)], got bool"
       ]
     },
     {
@@ -169,7 +169,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "error occurred while evaluating policy `policy0`: type error: expected one of [set, (entity of type `any_entity_type`)], got bool"
+        "while evaluating policy `policy0`: type error: expected one of [set, (entity of type `any_entity_type`)], got bool"
       ]
     }
   ]

@@ -15,11 +15,11 @@
  */
 
 use crate::ast::*;
-use core::fmt;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
-use itertools::Either;
+use itertools::Itertools;
+use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -40,7 +40,7 @@ pub enum Value {
     ExtensionValue(Arc<ExtensionValueWithArgs>),
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 /// An error that can be thrown converting an expression to a value
 pub enum NotValue {
     /// General error for non-values
@@ -53,7 +53,7 @@ impl TryFrom<Expr> for Value {
 
     fn try_from(value: Expr) -> Result<Self, Self::Error> {
         match value.into_expr_kind() {
-            ExprKind::Lit(l) => Ok(Value::Lit(l)),
+            ExprKind::Lit(lit) => Ok(Value::Lit(lit)),
             ExprKind::Unknown(_) => Err(NotValue::NotValue),
             ExprKind::Var(_) => Err(NotValue::NotValue),
             ExprKind::Slot(_) => Err(NotValue::NotValue),
@@ -82,93 +82,6 @@ impl TryFrom<Expr> for Value {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-/// Intermediate results of partial evaluation
-pub enum PartialValue {
-    /// Fully evaluated values
-    Value(Value),
-    /// Residual expressions containing unknowns
-    /// INVARIANT: A residual _must_ have an unknown contained within
-    Residual(Expr),
-}
-
-impl<V: Into<Value>> From<V> for PartialValue {
-    fn from(into_v: V) -> Self {
-        PartialValue::Value(into_v.into())
-    }
-}
-
-impl From<Expr> for PartialValue {
-    fn from(e: Expr) -> Self {
-        debug_assert!(e.is_unknown());
-        PartialValue::Residual(e)
-    }
-}
-
-impl From<PartialValue> for Expr {
-    fn from(val: PartialValue) -> Self {
-        match val {
-            PartialValue::Value(v) => v.into(),
-            PartialValue::Residual(e) => e,
-        }
-    }
-}
-
-impl TryFrom<PartialValue> for Value {
-    type Error = NotValue;
-
-    fn try_from(value: PartialValue) -> Result<Self, Self::Error> {
-        match value {
-            PartialValue::Value(v) => Ok(v),
-            PartialValue::Residual(e) => e.try_into(),
-        }
-    }
-}
-
-impl fmt::Display for PartialValue {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            PartialValue::Value(v) => write!(f, "{v}"),
-            PartialValue::Residual(r) => write!(f, "{r}"),
-        }
-    }
-}
-
-/// Collect an iterator of either residuals or values into one of the following
-///  a) An iterator over values, if everything evaluated to values
-///  b) An iterator over residuals expressions, if anything only evaluated to a residual
-/// Order is preserved.
-pub fn split<I>(i: I) -> Either<impl Iterator<Item = Value>, impl Iterator<Item = Expr>>
-where
-    I: IntoIterator<Item = PartialValue>,
-{
-    let mut values = vec![];
-    let mut residuals = vec![];
-
-    for item in i.into_iter() {
-        match item {
-            PartialValue::Value(a) => {
-                if residuals.is_empty() {
-                    values.push(a)
-                } else {
-                    residuals.push(a.into())
-                }
-            }
-            PartialValue::Residual(r) => {
-                residuals.push(r);
-            }
-        }
-    }
-
-    if residuals.is_empty() {
-        Either::Left(values.into_iter())
-    } else {
-        let mut exprs: Vec<Expr> = values.into_iter().map(|x| x.into()).collect();
-        exprs.append(&mut residuals);
-        Either::Right(exprs.into_iter())
-    }
-}
-
 /// `Value`'s internal representation of a `Set`
 #[derive(Debug, Clone)]
 pub struct Set {
@@ -192,6 +105,7 @@ impl Set {
     pub fn len(&self) -> usize {
         self.authoritative.len()
     }
+
     /// Convenience method to check if a set is empty
     pub fn is_empty(&self) -> bool {
         self.len() == 0
@@ -217,7 +131,7 @@ impl FromIterator<Value> for Set {
                     literals
                         .into_iter()
                         .map(|v| match v {
-                            Value::Lit(l) => l,
+                            Value::Lit(lit) => lit,
                             // PANIC SAFETY: This is unreachable as every item in `literals` matches Value::Lit
                             #[allow(clippy::unreachable)]
                             _ => unreachable!(),
@@ -330,21 +244,28 @@ impl std::fmt::Display for Value {
                 fast,
                 authoritative,
             }) => {
-                let len = fast
-                    .as_ref()
-                    .map(|set| set.len())
-                    .unwrap_or_else(|| authoritative.len());
-                match len {
+                match authoritative.len() {
                     0 => write!(f, "[]"),
-                    1..=5 => {
+                    n @ 1..=5 => {
                         write!(f, "[")?;
                         if let Some(rc) = fast {
-                            for item in rc.as_ref() {
-                                write!(f, "{item}, ")?;
+                            // sort the elements, because we want the Display output to be
+                            // deterministic, particularly for tests which check equality
+                            // of error messages
+                            for (i, item) in rc.as_ref().iter().sorted_unstable().enumerate() {
+                                write!(f, "{item}")?;
+                                if i < n - 1 {
+                                    write!(f, ", ")?;
+                                }
                             }
                         } else {
-                            for item in authoritative.as_ref() {
-                                write!(f, "{item}, ")?;
+                            // don't need to sort the elements in this case because BTreeSet iterates
+                            // in a deterministic order already
+                            for (i, item) in authoritative.as_ref().iter().enumerate() {
+                                write!(f, "{item}")?;
+                                if i < n - 1 {
+                                    write!(f, ", ")?;
+                                }
                             }
                         }
                         write!(f, "]")?;
@@ -360,7 +281,7 @@ impl std::fmt::Display for Value {
 }
 
 /// Create a `Value` directly from a `Vec<Value>`, or `Vec<T> where T: Into<Value>`
-/// (so `Vec<i64>`, `Vec<String>`, etc)
+/// (so `Vec<Integer>`, `Vec<String>`, etc)
 impl<T: Into<Value>> From<Vec<T>> for Value {
     fn from(v: Vec<T>) -> Self {
         Self::set(v.into_iter().map(Into::into))
@@ -402,7 +323,7 @@ impl From<Vec<(SmolStr, Value)>> for Value {
 }
 
 /// Create a `Value` directly from a `Literal`, or from anything that implements
-/// `Into<Literal>` (so `i64`, `&str`, `EntityUID`, etc)
+/// `Into<Literal>` (so `Integer`, `&str`, `EntityUID`, etc)
 impl<T: Into<Literal>> From<T> for Value {
     fn from(lit: T) -> Self {
         Self::Lit(lit.into())
@@ -579,65 +500,5 @@ mod test {
         let v2 = vec![Value::Set(s)];
         let s2: Set = v2.into_iter().collect();
         assert_eq!(s2.len(), 1);
-    }
-
-    #[test]
-    fn split_values() {
-        let vs = [
-            PartialValue::Value(Value::Lit(1.into())),
-            PartialValue::Value(Value::Lit(2.into())),
-        ];
-        match split(vs) {
-            Either::Left(vs) => assert_eq!(
-                vs.collect::<Vec<_>>(),
-                vec![Value::Lit(1.into()), Value::Lit(2.into())]
-            ),
-            Either::Right(_) => panic!("Got residuals"),
-        }
-    }
-
-    #[test]
-    fn split_residuals() {
-        let rs = [
-            PartialValue::Value(Value::Lit(1.into())),
-            PartialValue::Residual(Expr::val(2)),
-            PartialValue::Value(Value::Lit(3.into())),
-            PartialValue::Residual(Expr::val(4)),
-        ];
-        let expected = vec![Expr::val(1), Expr::val(2), Expr::val(3), Expr::val(4)];
-        match split(rs) {
-            Either::Left(_) => panic!("Got values"),
-            Either::Right(rs) => assert_eq!(rs.collect::<Vec<_>>(), expected),
-        }
-    }
-
-    #[test]
-    fn split_residuals2() {
-        let rs = [
-            PartialValue::Value(Value::Lit(1.into())),
-            PartialValue::Value(Value::Lit(2.into())),
-            PartialValue::Residual(Expr::val(3)),
-            PartialValue::Residual(Expr::val(4)),
-        ];
-        let expected = vec![Expr::val(1), Expr::val(2), Expr::val(3), Expr::val(4)];
-        match split(rs) {
-            Either::Left(_) => panic!("Got values"),
-            Either::Right(rs) => assert_eq!(rs.collect::<Vec<_>>(), expected),
-        }
-    }
-
-    #[test]
-    fn split_residuals3() {
-        let rs = [
-            PartialValue::Residual(Expr::val(1)),
-            PartialValue::Residual(Expr::val(2)),
-            PartialValue::Value(Value::Lit(3.into())),
-            PartialValue::Value(Value::Lit(4.into())),
-        ];
-        let expected = vec![Expr::val(1), Expr::val(2), Expr::val(3), Expr::val(4)];
-        match split(rs) {
-            Either::Left(_) => panic!("Got values"),
-            Either::Right(rs) => assert_eq!(rs.collect::<Vec<_>>(), expected),
-        }
     }
 }

@@ -25,12 +25,15 @@ use cedar_policy::SlotId;
 use cedar_policy_cli::check_parse;
 use cedar_policy_cli::{
     authorize, evaluate, link, validate, Arguments, AuthorizeArgs, CedarExitCode, CheckParseArgs,
-    EvaluateArgs, LinkArgs, RequestArgs, ValidateArgs,
+    EvaluateArgs, LinkArgs, PoliciesArgs, PolicyFormat, RequestArgs, ValidateArgs,
 };
 
 fn run_check_parse_test(policies_file: impl Into<String>, expected_exit_code: CedarExitCode) {
     let cmd = CheckParseArgs {
-        policies_file: Some(policies_file.into()),
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.into()),
+            policy_format: PolicyFormat::Human,
+        },
     };
     let output = check_parse(&cmd);
     assert_eq!(output, expected_exit_code, "{:#?}", cmd);
@@ -73,7 +76,10 @@ fn run_authorize_test_with_linked_policies(
             request_json_file: None,
             request_validation: true,
         },
-        policies_file: policies_file.into(),
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.into()),
+            policy_format: PolicyFormat::Human,
+        },
         template_linked_file: links_file.map(|x| x.to_string()),
         schema_file: None,
         entities_file: entities_file.into(),
@@ -93,7 +99,10 @@ fn run_link_test(
     expected: CedarExitCode,
 ) {
     let cmd = LinkArgs {
-        policies_file: policies_file.into(),
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.into()),
+            policy_format: PolicyFormat::Human,
+        },
         template_linked_file: links_file.into(),
         template_id: template_id.into(),
         new_id: linked_id.into(),
@@ -138,7 +147,10 @@ fn run_authorize_test_context(
             request_json_file: None,
             request_validation: true,
         },
-        policies_file: policies_file.into(),
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.into()),
+            policy_format: PolicyFormat::Human,
+        },
         template_linked_file: None,
         schema_file: None,
         entities_file: entities_file.into(),
@@ -164,7 +176,10 @@ fn run_authorize_test_json(
             request_json_file: Some(request_json.into()),
             request_validation: true,
         },
-        policies_file: policies_file.into(),
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.into()),
+            policy_format: PolicyFormat::Human,
+        },
         template_linked_file: None,
         schema_file: None,
         entities_file: entities_file.into(),
@@ -444,8 +459,12 @@ fn test_authorize_samples() {
 fn run_validate_test(policies_file: &str, schema_file: &str, exit_code: CedarExitCode) {
     let cmd = ValidateArgs {
         schema_file: schema_file.into(),
-        policies_file: policies_file.into(),
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.into()),
+            policy_format: PolicyFormat::Human,
+        },
         deny_warnings: false,
+        partial_validate: false,
     };
     let output = validate(&cmd);
     assert_eq!(exit_code, output, "{:#?}", cmd);

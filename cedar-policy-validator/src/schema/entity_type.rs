@@ -9,7 +9,7 @@ use cedar_policy_core::{
     transitive_closure::TCNode,
 };
 
-use crate::types::{AttributeType, Attributes};
+use crate::types::{AttributeType, Attributes, OpenTag};
 
 /// Contains entity type information for use by the validator. The contents of
 /// the struct are the same as the schema entity type structure, but the
@@ -28,6 +28,13 @@ pub struct ValidatorEntityType {
     /// The attributes associated with this entity. Keys are the attribute
     /// identifiers while the values are the type of the attribute.
     pub(crate) attributes: Attributes,
+
+    /// Indicates that this entity type may have additional attributes
+    /// other than the declared attributes that may be accessed under partial
+    /// schema validation. We do not know if they are present, and do not know
+    /// their type when they are present. Attempting to access an undeclared
+    /// attribute under standard validation is an error regardless of this flag.
+    pub(crate) open_attributes: OpenTag,
 }
 
 impl ValidatorEntityType {
@@ -48,7 +55,7 @@ impl ValidatorEntityType {
     /// in the unspecified case.
     pub fn has_descendant_entity_type(&self, ety: &EntityType) -> bool {
         match ety {
-            EntityType::Concrete(ety) => self.descendants.contains(ety),
+            EntityType::Specified(ety) => self.descendants.contains(ety),
             EntityType::Unspecified => false,
         }
     }

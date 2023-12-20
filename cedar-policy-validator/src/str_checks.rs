@@ -15,6 +15,7 @@
  */
 
 use cedar_policy_core::ast::{Pattern, Template};
+use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::expr_iterator::expr_text;
@@ -55,8 +56,9 @@ impl std::fmt::Display for ValidationWarning<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Error, Eq)]
+#[derive(Debug, Clone, PartialEq, Diagnostic, Error, Eq)]
 #[non_exhaustive]
+#[diagnostic(severity(Warning))]
 pub enum ValidationWarningKind {
     /// A string contains mixed scripts. Different scripts can contain visually similar characters which may be confused for each other.
     #[error("string `\"{0}\"` contains mixed scripts")]
@@ -85,19 +87,19 @@ pub fn confusable_string_checks<'a>(
         let e = policy.condition();
         for str in expr_text(&e) {
             let (loc, warning) = match str {
-                TextKind::String(l, s) => (l, permissable_str(s)),
-                TextKind::Identifier(l, i) => (l, permissable_ident(i)),
-                TextKind::Pattern(l, p) => {
+                TextKind::String(span, s) => (span, permissable_str(s)),
+                TextKind::Identifier(span, i) => (span, permissable_ident(i)),
+                TextKind::Pattern(span, p) => {
                     let pat = Pattern::new(p.iter().copied());
                     let as_str = format!("{pat}");
-                    (l, permissable_str(&as_str))
+                    (span, permissable_str(&as_str))
                 }
             };
 
-            if let Some(w) = warning {
+            if let Some(kind) = warning {
                 warnings.push(ValidationWarning {
-                    location: SourceLocation::new(policy.id(), loc.clone()),
-                    kind: w,
+                    location: SourceLocation::new(policy.id(), loc.cloned()),
+                    kind,
                 })
             }
         }
@@ -147,12 +149,12 @@ const BIDI_CHARS: [char; 9] = [
 #[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
-
     use super::*;
     use cedar_policy_core::{
         ast::{PolicyID, PolicySet},
-        parser::{parse_policy, SourceInfo},
+        parser::{parse_policy, Loc},
     };
+    use std::sync::Arc;
 
     #[test]
     fn strs() {
@@ -248,7 +250,10 @@ mod test {
         );
         assert_eq!(
             location,
-            &SourceLocation::new(&PolicyID::from_string("test"), Some(SourceInfo(64..94))),
+            &SourceLocation::new(
+                &PolicyID::from_string("test"),
+                Some(Loc::new(64..94, Arc::from(src)))
+            ),
         );
     }
 
@@ -276,7 +281,10 @@ mod test {
         assert_eq!(format!("{warning}"), "validation warning on policy `test`: string `\"user‮ ⁦&& principal.is_admin⁩ ⁦\"` contains BIDI control characters");
         assert_eq!(
             location,
-            &SourceLocation::new(&PolicyID::from_string("test"), Some(SourceInfo(90..131)))
+            &SourceLocation::new(
+                &PolicyID::from_string("test"),
+                Some(Loc::new(90..131, Arc::from(src)))
+            )
         );
     }
 }

@@ -15,13 +15,16 @@
  */
 
 use super::{
-    schematype_of_restricted_expr, CedarValueJson, EntityTypeDescription, EntityUidJson,
-    GetSchemaTypeError, JsonDeserializationError, JsonDeserializationErrorContext,
-    JsonSerializationError, NoEntitiesSchema, Schema, TypeAndId, ValueParser,
+    CedarValueJson, EntityTypeDescription, EntityUidJson, JsonDeserializationError,
+    JsonDeserializationErrorContext, JsonSerializationError, NoEntitiesSchema, Schema, TypeAndId,
+    ValueParser,
 };
-use crate::ast::{Entity, EntityType, EntityUID, RestrictedExpr};
+use crate::ast::{
+    BorrowedRestrictedExpr, Entity, EntityType, EntityUID, PartialValue, RestrictedExpr,
+};
 use crate::entities::{
-    unwrap_or_clone, Entities, EntitiesError, EntitySchemaConformanceError, TCComputation,
+    schematype_of_partialvalue, unwrap_or_clone, Entities, EntitiesError,
+    EntitySchemaConformanceError, GetSchemaTypeError, TCComputation, UnexpectedEntityTypeError,
 };
 use crate::extensions::Extensions;
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
@@ -235,16 +238,17 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 } else {
                     EntitySchemaInfo::NonAction(schema.entity_type(etype).ok_or_else(|| {
                         let suggested_types = match etype {
-                            EntityType::Concrete(name) => {
+                            EntityType::Specified(name) => {
                                 schema.entity_types_with_basename(name.basename()).collect()
                             }
                             EntityType::Unspecified => vec![],
                         };
                         JsonDeserializationError::EntitySchemaConformance(
-                            EntitySchemaConformanceError::UnexpectedEntityType {
+                            UnexpectedEntityTypeError {
                                 uid: uid.clone(),
                                 suggested_types,
-                            },
+                            }
+                            .into(),
                         )
                     })?)
                 }
@@ -271,12 +275,21 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                         // `None` indicates the attribute shouldn't exist -- see
                         // docs on the `attr_type()` trait method
                         None => {
-                            return Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::UnexpectedEntityAttr {
-                                    uid: uid.clone(),
-                                    attr: k,
-                                },
-                            ))
+                            if desc.open_attributes() {
+                                vparser.val_into_restricted_expr(v.into(), None, || {
+                                    JsonDeserializationErrorContext::EntityAttribute {
+                                        uid: uid.clone(),
+                                        attr: k.clone(),
+                                    }
+                                })?
+                            } else {
+                                return Err(JsonDeserializationError::EntitySchemaConformance(
+                                    EntitySchemaConformanceError::UnexpectedEntityAttr {
+                                        uid: uid.clone(),
+                                        attr: k,
+                                    },
+                                ));
+                            }
                         }
                         Some(expected_ty) => vparser.val_into_restricted_expr(
                             v.into(),
@@ -294,7 +307,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                     // the type in the JSON is the same as the type in the schema.
                     // (As of this writing, the schema doesn't actually tell us
                     // what type each action attribute is supposed to be)
-                    let expected_rexpr = match action.get(&k) {
+                    let expected_val = match action.get(&k) {
                         // `None` indicates the attribute isn't in the schema's
                         // copy of the action entity
                         None => {
@@ -304,53 +317,43 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                                 },
                             ))
                         }
-                        Some(rexpr) => rexpr,
+                        Some(v) => v,
                     };
-                    let expected_ty = match schematype_of_restricted_expr(
-                        expected_rexpr.as_borrowed(),
-                        self.extensions,
-                    ) {
-                        Ok(ty) => Ok(Some(ty)),
-                        Err(GetSchemaTypeError::HeterogeneousSet(err)) => {
-                            Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::HeterogeneousSet {
-                                    uid: uid.clone(),
-                                    attr: k.clone(),
-                                    err,
-                                },
-                            ))
-                        }
-                        Err(GetSchemaTypeError::ExtensionFunctionLookup(err)) => {
-                            Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::ExtensionFunctionLookup {
-                                    uid: uid.clone(),
-                                    attr: k.clone(),
-                                    err,
-                                },
-                            ))
-                        }
-                        Err(GetSchemaTypeError::UnknownInsufficientTypeInfo { .. })
-                        | Err(GetSchemaTypeError::NontrivialResidual { .. }) => {
-                            // In these cases, we'll just do ordinary non-schema-based parsing.
-                            Ok(None)
-                        }
-                    }?;
-                    let actual_rexpr =
+                    let expected_ty =
+                        match schematype_of_partialvalue(expected_val, self.extensions) {
+                            Ok(ty) => Ok(Some(ty)),
+                            Err(GetSchemaTypeError::HeterogeneousSet(err)) => {
+                                Err(JsonDeserializationError::EntitySchemaConformance(
+                                    EntitySchemaConformanceError::HeterogeneousSet {
+                                        uid: uid.clone(),
+                                        attr: k.clone(),
+                                        err,
+                                    },
+                                ))
+                            }
+                            Err(GetSchemaTypeError::ExtensionFunctionLookup(err)) => {
+                                Err(JsonDeserializationError::EntitySchemaConformance(
+                                    EntitySchemaConformanceError::ExtensionFunctionLookup {
+                                        uid: uid.clone(),
+                                        attr: k.clone(),
+                                        err,
+                                    },
+                                ))
+                            }
+                            Err(GetSchemaTypeError::UnknownInsufficientTypeInfo { .. })
+                            | Err(GetSchemaTypeError::NontrivialResidual { .. }) => {
+                                // In these cases, we'll just do ordinary non-schema-based parsing.
+                                Ok(None)
+                            }
+                        }?;
+                    let rexpr =
                         vparser.val_into_restricted_expr(v.into(), expected_ty.as_ref(), || {
                             JsonDeserializationErrorContext::EntityAttribute {
                                 uid: uid.clone(),
                                 attr: k.clone(),
                             }
                         })?;
-                    if actual_rexpr == *expected_rexpr {
-                        Ok((k, actual_rexpr))
-                    } else {
-                        Err(JsonDeserializationError::EntitySchemaConformance(
-                            EntitySchemaConformanceError::ActionDeclarationMismatch {
-                                uid: uid.clone(),
-                            },
-                        ))
-                    }
+                    Ok((k, rexpr))
                 }
             })
             .collect::<Result<_, JsonDeserializationError>>()?;
@@ -386,7 +389,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 })
             })
             .collect::<Result<_, JsonDeserializationError>>()?;
-        Ok(Entity::new(uid, attrs, parents))
+        Ok(Entity::new(uid, attrs, parents, &self.extensions)?)
     }
 }
 
@@ -400,11 +403,20 @@ impl EntityJson {
             uid: EntityUidJson::ImplicitEntityEscape(TypeAndId::from(entity.uid())),
             attrs: entity
                 .attrs()
-                .map(|(k, expr)| {
-                    Ok((
-                        k.into(),
-                        serde_json::to_value(CedarValueJson::from_expr(expr)?)?.into(),
-                    ))
+                .map(|(k, pvalue)| match pvalue {
+                    PartialValue::Value(value) => {
+                        let cedarvaluejson = CedarValueJson::from_value(value.clone())?;
+                        Ok((k.clone(), serde_json::to_value(cedarvaluejson)?.into()))
+                    }
+                    PartialValue::Residual(expr) => match BorrowedRestrictedExpr::new(expr) {
+                        Ok(expr) => {
+                            let cedarvaluejson = CedarValueJson::from_expr(expr)?;
+                            Ok((k.clone(), serde_json::to_value(cedarvaluejson)?.into()))
+                        }
+                        Err(_) => Err(JsonSerializationError::Residual {
+                            residual: expr.clone(),
+                        }),
+                    },
                 })
                 .collect::<Result<_, JsonSerializationError>>()?,
             parents: entity

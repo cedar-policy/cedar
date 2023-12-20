@@ -18,14 +18,15 @@ use std::fmt::Display;
 
 use super::{HeterogeneousSetError, SchemaType};
 use crate::ast::{
-    BorrowedRestrictedExpr, EntityUID, Expr, ExprKind, Name, PolicyID, RestrictedExpr,
-    RestrictedExprError,
+    BorrowedRestrictedExpr, ContextCreationError, EntityAttrEvaluationError, EntityUID, Expr,
+    ExprKind, Name, PartialValue, PolicyID, RestrictedExpr, RestrictedExprError,
 };
 use crate::entities::conformance::EntitySchemaConformanceError;
 use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
 use either::Either;
 use itertools::Itertools;
+use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
 
@@ -48,26 +49,35 @@ impl Display for EscapeKind {
 }
 
 /// Errors thrown during deserialization from JSON
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum JsonDeserializationError {
     /// Error thrown by the `serde_json` crate
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
     /// Contents of an escape failed to parse.
     #[error("failed to parse escape `{kind}`: {value}, errors: {errs}")]
+    #[diagnostic(help("{}", match .kind {
+        EscapeKind::Entity => r#"an __entity escape should have a value like `{ "type": "SomeType", "id": "SomeId" }`"#,
+        EscapeKind::Extension => r#"an __extn escape should have a value like `{ "fn": "SomeFn", "arg": "SomeArg" }`"#,
+    }))]
     ParseEscape {
         /// Escape kind
         kind: EscapeKind,
         /// Escape value at fault
         value: String,
         /// Parse errors
+        #[diagnostic(transparent)]
         errs: ParseErrors,
     },
     /// Restricted expression error
     #[error(transparent)]
+    #[diagnostic(transparent)]
     RestrictedExpressionError(#[from] RestrictedExprError),
     /// A field that needs to be a literal entity reference, was some other JSON value
     #[error("{ctx}, expected a literal entity reference, but got `{}`", display_json_value(.got.as_ref()))]
+    #[diagnostic(help(
+        r#"literal entity references can be made with `{{ "type": "SomeType", "id": "SomeId" }}`"#
+    ))]
     ExpectedLiteralEntityRef {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -76,20 +86,24 @@ pub enum JsonDeserializationError {
     },
     /// A field that needs to be an extension value, was some other JSON value
     #[error("{ctx}, expected an extension value, but got `{}`", display_json_value(.got.as_ref()))]
+    #[diagnostic(help(
+        r#"extension values can be made with `{{ "fn": "SomeFn", "id": "SomeId" }}`"#
+    ))]
     ExpectedExtnValue {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
         /// the expression we got instead
         got: Box<Either<serde_json::Value, Expr>>,
     },
-    /// Contexts need to be records, but we got some other JSON value
-    #[error("expected `context` to be a record, but got `{got}`")]
-    ExpectedContextToBeRecord {
-        /// Expression we got instead
-        got: Box<RestrictedExpr>,
-    },
+    /// Errors creating the request context from JSON
+    #[error("while parsing context, {0}")]
+    #[diagnostic(transparent)]
+    ContextCreation(#[from] ContextCreationError),
     /// Parents of actions should be actions, but this action has a non-action parent
     #[error("action `{uid}` has a non-action parent `{parent}`")]
+    #[diagnostic(help(
+        "parents of actions need to have type `Action` themselves, perhaps namespaced"
+    ))]
     ActionParentIsNotAction {
         /// Action entity that had the invalid parent
         uid: EntityUID,
@@ -99,6 +113,7 @@ pub enum JsonDeserializationError {
     /// Schema-based parsing needed an implicit extension constructor, but no suitable
     /// constructor was found
     #[error("{ctx}, missing extension constructor for {arg_type} -> {return_type}")]
+    #[diagnostic(help("expected a value of type {return_type} because of the schema"))]
     MissingImpliedConstructor {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -115,12 +130,17 @@ pub enum JsonDeserializationError {
         /// The key that appeared two or more times
         key: SmolStr,
     },
+    /// Error when evaluating an entity attribute
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    EntityAttributeEvaluation(#[from] EntityAttrEvaluationError),
     /// During schema-based parsing, encountered an entity which does not
     /// conform to the schema.
     ///
     /// This error contains the `Entity` analogues some of the other errors
     /// listed below, among other things.
     #[error(transparent)]
+    #[diagnostic(transparent)]
     EntitySchemaConformance(EntitySchemaConformanceError),
     /// During schema-based parsing, encountered this attribute on a record, but
     /// that attribute shouldn't exist on that record
@@ -153,6 +173,7 @@ pub enum JsonDeserializationError {
         /// `Self::EntitySchemaConformance`.)
         ctx: Box<JsonDeserializationErrorContext>,
         /// Underlying error
+        #[diagnostic(transparent)]
         err: TypeMismatchError,
     },
     /// During schema-based parsing, found a set whose elements don't all have
@@ -170,6 +191,7 @@ pub enum JsonDeserializationError {
         /// `Self::EntitySchemaConformance`.)
         ctx: Box<JsonDeserializationErrorContext>,
         /// Underlying error
+        #[diagnostic(transparent)]
         err: HeterogeneousSetError,
     },
     /// During schema-based parsing, error looking up an extension function.
@@ -189,6 +211,7 @@ pub enum JsonDeserializationError {
         /// as `Self::EntitySchemaConformance`.)
         ctx: Box<JsonDeserializationErrorContext>,
         /// Underlying error
+        #[diagnostic(transparent)]
         err: ExtensionFunctionLookupError,
     },
     /// During schema-based parsing, found an unknown in an _argument_ to an
@@ -196,7 +219,10 @@ pub enum JsonDeserializationError {
     /// not currently supported.
     /// To pass an unknown to an extension function, use the
     /// explicit-constructor form.
-    #[error("{ctx}, argument `{arg}` to implicit constructor contains an unknown; this is not currently supported. To pass an unknown to an extension function, use the explicit constructor form")]
+    #[error("{ctx}, argument `{arg}` to implicit constructor contains an unknown; this is not currently supported")]
+    #[diagnostic(help(
+        r#"expected an extension value here because of the schema. To pass an unknown to an extension function, use the explicit constructor form: `{{ "fn": "SomeFn", "arg": "SomeArg" }}`"#
+    ))]
     UnknownInImplicitConstructorArg {
         /// Context of this error
         ctx: Box<JsonDeserializationErrorContext>,
@@ -204,26 +230,31 @@ pub enum JsonDeserializationError {
         arg: Box<RestrictedExpr>,
     },
     /// Raised when a JsonValue contains the no longer supported `__expr` escape
-    #[error("{0}, invalid escape. The `__expr` escape is no longer supported")]
+    #[error("{0}, the `__expr` escape is no longer supported")]
+    #[diagnostic(help("to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly"))]
     ExprTag(Box<JsonDeserializationErrorContext>),
 }
 
 /// Errors thrown during serialization to JSON
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum JsonSerializationError {
     /// Error thrown by `serde_json`
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
     /// Extension-function calls with 0 arguments are not currently supported in
     /// our JSON format.
-    #[error("unsupported call to `{func}`. Extension function calls with 0 arguments are not currently supported in our JSON format")]
+    #[error("unsupported call to `{func}` with 0 arguments")]
+    #[diagnostic(help(
+        "extension function calls with 0 arguments are not currently supported in our JSON format"
+    ))]
     ExtnCall0Arguments {
         /// Name of the function which was called with 0 arguments
         func: Name,
     },
     /// Extension-function calls with 2 or more arguments are not currently
     /// supported in our JSON format.
-    #[error("unsupported call to `{func}`. Extension function calls with 2 or more arguments are not currently supported in our JSON format")]
+    #[error("unsupported call to `{func}` with 2 or more arguments")]
+    #[diagnostic(help("extension function calls with 2 or more arguments are not currently supported in our JSON format"))]
     ExtnCall2OrMoreArguments {
         /// Name of the function which was called with 2 or more arguments
         func: Name,
@@ -242,6 +273,13 @@ pub enum JsonSerializationError {
     UnexpectedRestrictedExprKind {
         /// `ExprKind` which we didn't expect to find
         kind: ExprKind,
+    },
+    /// Encountered a (partial-evaluation) residual which can't be encoded in
+    /// JSON
+    #[error("cannot encode residual as JSON: {residual}")]
+    Residual {
+        /// Residual which can't be encoded in JSON
+        residual: Expr,
     },
 }
 
@@ -273,13 +311,17 @@ pub enum JsonDeserializationErrorContext {
 }
 
 /// Type mismatch error (in terms of `SchemaType`)
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 #[error("type mismatch: value was expected to have type {expected}, but {}: `{}`",
     match .actual_ty {
         Some(actual_ty) => format!("actually has type {actual_ty}"),
         None => "it does not".to_string(),
     },
-    display_restricted_expr(.actual_val.as_borrowed()))]
+    match .actual_val {
+        Either::Left(pval) => format!("{pval}"),
+        Either::Right(expr) => display_restricted_expr(expr.as_borrowed()),
+    }
+)]
 pub struct TypeMismatchError {
     /// Type which was expected
     pub expected: Box<SchemaType>,
@@ -287,8 +329,10 @@ pub struct TypeMismatchError {
     /// the encountered value was an `Unknown` with insufficient type
     /// information to produce a `SchemaType`
     pub actual_ty: Option<Box<SchemaType>>,
-    /// Value which doesn't have the expected type
-    pub actual_val: Box<RestrictedExpr>,
+    /// Value which doesn't have the expected type; represented as either a
+    /// PartialValue or RestrictedExpr, whichever is more convenient for the
+    /// caller
+    pub actual_val: Either<PartialValue, Box<RestrictedExpr>>,
 }
 
 impl std::fmt::Display for JsonDeserializationErrorContext {

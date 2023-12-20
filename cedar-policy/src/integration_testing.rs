@@ -36,6 +36,7 @@ use crate::{
     frontend::is_authorized::InterfaceResponse, Authorizer, Context, Decision, Entities, EntityUid,
     Policy, PolicyId, PolicySet, Request, Schema, ValidationMode, Validator,
 };
+use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use serde::Deserialize;
 use std::{
     env,
@@ -75,24 +76,24 @@ pub struct JsonRequest {
     /// * `{ "__entity": { "type": "User", "id": "123abc" } }`
     /// * `{ "type": "User", "id": "123abc" }`
     #[serde(default)]
-    principal: Option<serde_json::Value>,
+    principal: Option<JsonValueWithNoDuplicateKeys>,
     /// Action for the request, in either explicit or implicit `__entity` form
     ///
     /// Examples:
     /// * `{ "__entity": { "type": "Action", "id": "view" } }`
     /// * `{ "type": "Action", "id": "view" }`
     #[serde(default)]
-    action: Option<serde_json::Value>,
+    action: Option<JsonValueWithNoDuplicateKeys>,
     /// Resource for the request, in either explicit or implicit `__entity` form
     ///
     /// Examples:
     /// * `{ "__entity": { "type": "User", "id": "123abc" } }`
     /// * `{ "type": "User", "id": "123abc" }`
     #[serde(default)]
-    resource: Option<serde_json::Value>,
+    resource: Option<JsonValueWithNoDuplicateKeys>,
     /// Context for the request. This should be a JSON object, not any other kind
     /// of JSON value
-    context: serde_json::Value,
+    context: JsonValueWithNoDuplicateKeys,
     /// Whether to enable request validation for this request
     #[serde(default = "constant_true")]
     enable_request_validation: bool,
@@ -114,14 +115,18 @@ fn constant_true() -> bool {
 ///
 /// # Panics
 ///
-/// Panics if the environment variable `CARGO_MANIFEST_DIR` is not set.
-/// This variable should be set by Cargo at build-time.
+/// Panics if the environment variable `CARGO_MANIFEST_DIR` is not set,
+/// and `CEDAR_INTEGRATION_TESTS_PATH` is not set.
+/// `CARGO_MANIFEST_DIR` should be set by Cargo at build-time, but
+/// `CEDAR_INTEGRATION_TESTS_PATH` overrides `CARGO_MANIFEST_DIR`.
 pub fn resolve_integration_test_path(path: impl AsRef<Path>) -> PathBuf {
     if path.as_ref().is_relative() {
-        let mut full_path = PathBuf::new();
+        if let Ok(integration_tests_env_var) = env::var("CEDAR_INTEGRATION_TESTS_PATH") {
+            return PathBuf::from(integration_tests_env_var);
+        }
         let manifest_dir = env::var("CARGO_MANIFEST_DIR")
             .expect("`CARGO_MANIFEST_DIR` should be set by Cargo at build-time.");
-        full_path.push(manifest_dir.clone());
+        let mut full_path = PathBuf::from(manifest_dir.clone());
         full_path.push("..");
         // We run `cargo test` for cedar-drt. In that case, CARGO_MANIFEST_DIR will be
         // `cedar-spec/cedar-drt` and we want `../cedar/cedar-integration-tests`
@@ -276,7 +281,7 @@ pub fn perform_integration_test_from_json_custom(
 
     for json_request in test.requests {
         let principal = json_request.principal.map(|json| {
-            EntityUid::from_json(json).unwrap_or_else(|e| {
+            EntityUid::from_json(json.into()).unwrap_or_else(|e| {
                 panic!(
                     "Failed to parse principal for request \"{}\" in {}: {e}",
                     json_request.desc,
@@ -285,7 +290,7 @@ pub fn perform_integration_test_from_json_custom(
             })
         });
         let action = json_request.action.map(|json| {
-            EntityUid::from_json(json).unwrap_or_else(|e| {
+            EntityUid::from_json(json.into()).unwrap_or_else(|e| {
                 panic!(
                     "Failed to parse action for request \"{}\" in {}: {e}",
                     json_request.desc,
@@ -294,7 +299,7 @@ pub fn perform_integration_test_from_json_custom(
             })
         });
         let resource = json_request.resource.map(|json| {
-            EntityUid::from_json(json).unwrap_or_else(|e| {
+            EntityUid::from_json(json.into()).unwrap_or_else(|e| {
                 panic!(
                     "Failed to parse resource for request \"{}\" in {}: {e}",
                     json_request.desc,
@@ -303,7 +308,7 @@ pub fn perform_integration_test_from_json_custom(
             })
         });
         let context_schema = action.as_ref().map(|a| (&schema, a));
-        let context = Context::from_json_value(json_request.context, context_schema)
+        let context = Context::from_json_value(json_request.context.into(), context_schema)
             .unwrap_or_else(|e| {
                 panic!(
                     "error parsing context for request \"{}\" in {}: {e}",

@@ -72,7 +72,7 @@ impl std::fmt::Debug for Extension {
 #[derive(Debug, Clone)]
 pub enum ExtensionOutputValue {
     /// A concrete value from an extension call
-    Concrete(Value),
+    Known(Value),
     /// An unknown returned from an extension call
     Unknown(Unknown),
 }
@@ -82,7 +82,7 @@ where
     T: Into<Value>,
 {
     fn from(v: T) -> Self {
-        ExtensionOutputValue::Concrete(v.into())
+        ExtensionOutputValue::Known(v.into())
     }
 }
 
@@ -310,7 +310,7 @@ impl ExtensionFunction {
     /// Call the `ExtensionFunction` with the given args
     pub fn call(&self, args: &[Value]) -> evaluator::Result<PartialValue> {
         match (self.func)(args)? {
-            ExtensionOutputValue::Concrete(v) => Ok(PartialValue::Value(v)),
+            ExtensionOutputValue::Known(v) => Ok(PartialValue::Value(v)),
             ExtensionOutputValue::Unknown(u) => Ok(PartialValue::Residual(Expr::unknown(u))),
         }
     }
@@ -344,15 +344,32 @@ impl<V: ExtensionValue> StaticallyTyped for V {
 }
 
 #[derive(Debug, Clone)]
-/// Object container for extension values, also stores the fully reduced AST
-/// for the arguments
+/// Object container for extension values, also stores the constructor-and-args
+/// that can reproduce the value (important for converting the value back to
+/// `RestrictedExpr` for instance)
 pub struct ExtensionValueWithArgs {
     value: Arc<dyn InternalExtensionValue>,
-    args: Vec<Expr>,
-    constructor: Name,
+    pub(crate) constructor: Name,
+    /// Args are stored in `RestrictedExpr` form, just because that's most
+    /// convenient for reconstructing a `RestrictedExpr` that reproduces this
+    /// extension value
+    pub(crate) args: Vec<RestrictedExpr>,
 }
 
 impl ExtensionValueWithArgs {
+    /// Create a new `ExtensionValueWithArgs`
+    pub fn new(
+        value: Arc<dyn InternalExtensionValue + Send + Sync>,
+        constructor: Name,
+        args: Vec<RestrictedExpr>,
+    ) -> Self {
+        Self {
+            value,
+            constructor,
+            args,
+        }
+    }
+
     /// Get the internal value
     pub fn value(&self) -> &(dyn InternalExtensionValue) {
         self.value.as_ref()
@@ -363,23 +380,15 @@ impl ExtensionValueWithArgs {
         self.value.typename()
     }
 
-    /// Constructor
-    pub fn new(
-        value: Arc<dyn InternalExtensionValue + Send + Sync>,
-        args: Vec<Expr>,
-        constructor: Name,
-    ) -> Self {
-        Self {
-            value,
-            args,
-            constructor,
-        }
+    /// Get the constructor and args that can reproduce this value
+    pub fn constructor_and_args(&self) -> (&Name, &[RestrictedExpr]) {
+        (&self.constructor, &self.args)
     }
 }
 
 impl From<ExtensionValueWithArgs> for Expr {
     fn from(val: ExtensionValueWithArgs) -> Self {
-        ExprBuilder::new().call_extension_fn(val.constructor, val.args)
+        ExprBuilder::new().call_extension_fn(val.constructor, val.args.into_iter().map(Into::into))
     }
 }
 

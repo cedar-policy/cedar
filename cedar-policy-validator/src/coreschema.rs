@@ -2,6 +2,7 @@ use crate::{ValidatorEntityType, ValidatorSchema};
 use cedar_policy_core::entities::GetSchemaTypeError;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::{ast, entities};
+use miette::Diagnostic;
 use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -38,7 +39,7 @@ impl<'a> entities::Schema for CoreSchema<'a> {
     fn entity_type(&self, entity_type: &ast::EntityType) -> Option<EntityTypeDescription> {
         match entity_type {
             ast::EntityType::Unspecified => None, // Unspecified entities cannot be declared in the schema and should not appear in JSON data
-            ast::EntityType::Concrete(name) => EntityTypeDescription::new(self.schema, name),
+            ast::EntityType::Specified(name) => EntityTypeDescription::new(self.schema, name),
         }
     }
 
@@ -52,7 +53,7 @@ impl<'a> entities::Schema for CoreSchema<'a> {
     ) -> Box<dyn Iterator<Item = ast::EntityType> + 'b> {
         Box::new(self.schema.entity_types().filter_map(move |(name, _)| {
             if name.basename() == basename {
-                Some(ast::EntityType::Concrete(name.clone()))
+                Some(ast::EntityType::Specified(name.clone()))
             } else {
                 None
             }
@@ -80,13 +81,13 @@ impl EntityTypeDescription {
     /// Returns `None` if the given type is not in the given schema.
     pub fn new(schema: &ValidatorSchema, type_name: &ast::Name) -> Option<Self> {
         Some(Self {
-            core_type: ast::EntityType::Concrete(type_name.clone()),
+            core_type: ast::EntityType::Specified(type_name.clone()),
             validator_type: schema.get_entity_type(type_name).cloned()?,
             allowed_parent_types: {
                 let mut set = HashSet::new();
                 for (possible_parent_typename, possible_parent_et) in schema.entity_types() {
                     if possible_parent_et.descendants.contains(type_name) {
-                        set.insert(ast::EntityType::Concrete(possible_parent_typename.clone()));
+                        set.insert(ast::EntityType::Specified(possible_parent_typename.clone()));
                     }
                 }
                 Arc::new(set)
@@ -128,6 +129,10 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
     fn allowed_parent_types(&self) -> Arc<HashSet<ast::EntityType>> {
         Arc::clone(&self.allowed_parent_types)
     }
+
+    fn open_attributes(&self) -> bool {
+        self.validator_type.open_attributes.is_open()
+    }
 }
 
 impl ast::RequestSchema for ValidatorSchema {
@@ -141,9 +146,9 @@ impl ast::RequestSchema for ValidatorSchema {
         // first check that principal and resource are of types that exist in
         // the schema, or unspecified.
         // we can do this check even if action is unknown.
-        if let EntityUIDEntry::Concrete(principal) = request.principal() {
+        if let EntityUIDEntry::Known(principal) = request.principal() {
             match principal.entity_type() {
-                ast::EntityType::Concrete(name) => {
+                ast::EntityType::Specified(name) => {
                     if self.get_entity_type(name).is_none() {
                         return Err(RequestValidationError::UndeclaredPrincipalType {
                             principal_ty: principal.entity_type().clone(),
@@ -153,9 +158,9 @@ impl ast::RequestSchema for ValidatorSchema {
                 ast::EntityType::Unspecified => {} // unspecified principal is allowed, unless we find it is not allowed for this action, which we will check below
             }
         }
-        if let EntityUIDEntry::Concrete(resource) = request.resource() {
+        if let EntityUIDEntry::Known(resource) = request.resource() {
             match resource.entity_type() {
-                ast::EntityType::Concrete(name) => {
+                ast::EntityType::Specified(name) => {
                     if self.get_entity_type(name).is_none() {
                         return Err(RequestValidationError::UndeclaredResourceType {
                             resource_ty: resource.entity_type().clone(),
@@ -168,13 +173,13 @@ impl ast::RequestSchema for ValidatorSchema {
 
         // the remaining checks require knowing about the action.
         match request.action() {
-            EntityUIDEntry::Concrete(action) => {
+            EntityUIDEntry::Known(action) => {
                 let validator_action_id = self.get_action_id(action).ok_or_else(|| {
                     RequestValidationError::UndeclaredAction {
                         action: Arc::clone(action),
                     }
                 })?;
-                if let EntityUIDEntry::Concrete(principal) = request.principal() {
+                if let EntityUIDEntry::Known(principal) = request.principal() {
                     if !validator_action_id
                         .applies_to
                         .is_applicable_principal_type(principal.entity_type())
@@ -185,7 +190,7 @@ impl ast::RequestSchema for ValidatorSchema {
                         });
                     }
                 }
-                if let EntityUIDEntry::Concrete(resource) = request.resource() {
+                if let EntityUIDEntry::Known(resource) = request.resource() {
                     if !validator_action_id
                         .applies_to
                         .is_applicable_resource_type(resource.entity_type())
@@ -199,7 +204,7 @@ impl ast::RequestSchema for ValidatorSchema {
                 if let Some(context) = request.context() {
                     let expected_context_ty = validator_action_id.context_type();
                     if !expected_context_ty
-                        .typecheck_restricted_expr(context.as_ref().as_borrowed(), extensions)
+                        .typecheck_partial_value(context.as_ref(), extensions)
                         .map_err(RequestValidationError::TypeOfContext)?
                     {
                         return Err(RequestValidationError::InvalidContext {
@@ -233,7 +238,7 @@ impl<'a> ast::RequestSchema for CoreSchema<'a> {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum RequestValidationError {
     /// Request action is not declared in the schema
     #[error("request's action `{action}` is not declared in the schema")]
@@ -282,6 +287,7 @@ pub enum RequestValidationError {
     /// Error computing the type of the `Context`; see the contained error type
     /// for details about the kinds of errors that can occur
     #[error("context is not valid: {0}")]
+    #[diagnostic(transparent)]
     TypeOfContext(GetSchemaTypeError),
 }
 
@@ -369,7 +375,8 @@ mod test {
                 }
             }
         }});
-        ValidatorSchema::from_json_value(src).expect("failed to create ValidatorSchema")
+        ValidatorSchema::from_json_value(src, Extensions::all_available())
+            .expect("failed to create ValidatorSchema")
     }
 
     /// basic success with concrete request and no context
@@ -396,10 +403,10 @@ mod test {
                 ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                 ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(),
                 ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
-                ast::Context::from_pairs([(
-                    "admin_approval".into(),
-                    ast::RestrictedExpr::val(true)
-                )])
+                ast::Context::from_pairs(
+                    [("admin_approval".into(), ast::RestrictedExpr::val(true))],
+                    Extensions::all_available()
+                )
                 .unwrap(),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -577,7 +584,7 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::UndeclaredPrincipalType { principal_ty }) => {
-                assert_eq!(principal_ty, ast::EntityType::Concrete(ast::Name::parse_unqualified_name("Foo").unwrap()));
+                assert_eq!(principal_ty, ast::EntityType::Specified(ast::Name::parse_unqualified_name("Foo").unwrap()));
             }
         );
     }
@@ -595,7 +602,7 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::UndeclaredPrincipalType { principal_ty }) => {
-                assert_eq!(principal_ty, ast::EntityType::Concrete(ast::Name::parse_unqualified_name("Foo").unwrap()));
+                assert_eq!(principal_ty, ast::EntityType::Specified(ast::Name::parse_unqualified_name("Foo").unwrap()));
             }
         );
     }
@@ -631,7 +638,7 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::UndeclaredResourceType { resource_ty }) => {
-                assert_eq!(resource_ty, ast::EntityType::Concrete(ast::Name::parse_unqualified_name("Foo").unwrap()));
+                assert_eq!(resource_ty, ast::EntityType::Specified(ast::Name::parse_unqualified_name("Foo").unwrap()));
             }
         );
     }
@@ -649,7 +656,7 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::UndeclaredResourceType { resource_ty }) => {
-                assert_eq!(resource_ty, ast::EntityType::Concrete(ast::Name::parse_unqualified_name("Foo").unwrap()));
+                assert_eq!(resource_ty, ast::EntityType::Specified(ast::Name::parse_unqualified_name("Foo").unwrap()));
             }
         );
     }
@@ -685,7 +692,7 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::InvalidPrincipalType { principal_ty, action }) => {
-                assert_eq!(principal_ty, ast::EntityType::Concrete(ast::Name::parse_unqualified_name("Album").unwrap()));
+                assert_eq!(principal_ty, ast::EntityType::Specified(ast::Name::parse_unqualified_name("Album").unwrap()));
                 assert_eq!(&*action, &ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap());
             }
         );
@@ -704,7 +711,7 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(RequestValidationError::InvalidResourceType { resource_ty, action }) => {
-                assert_eq!(resource_ty, ast::EntityType::Concrete(ast::Name::parse_unqualified_name("Group").unwrap()));
+                assert_eq!(resource_ty, ast::EntityType::Specified(ast::Name::parse_unqualified_name("Group").unwrap()));
                 assert_eq!(&*action, &ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap());
             }
         );
@@ -732,10 +739,13 @@ mod test {
     /// request context does not comply with specification: extra attribute
     #[test]
     fn context_extra_attribute() {
-        let context_with_extra_attr = ast::Context::from_pairs([
-            ("admin_approval".into(), ast::RestrictedExpr::val(true)),
-            ("extra".into(), ast::RestrictedExpr::val(42)),
-        ])
+        let context_with_extra_attr = ast::Context::from_pairs(
+            [
+                ("admin_approval".into(), ast::RestrictedExpr::val(true)),
+                ("extra".into(), ast::RestrictedExpr::val(42)),
+            ],
+            Extensions::all_available(),
+        )
         .unwrap();
         assert_matches!(
             ast::Request::new(
@@ -756,10 +766,13 @@ mod test {
     /// request context does not comply with specification: attribute is wrong type
     #[test]
     fn context_attribute_wrong_type() {
-        let context_with_wrong_type_attr = ast::Context::from_pairs([(
-            "admin_approval".into(),
-            ast::RestrictedExpr::set([ast::RestrictedExpr::val(true)]),
-        )])
+        let context_with_wrong_type_attr = ast::Context::from_pairs(
+            [(
+                "admin_approval".into(),
+                ast::RestrictedExpr::set([ast::RestrictedExpr::val(true)]),
+            )],
+            Extensions::all_available(),
+        )
         .unwrap();
         assert_matches!(
             ast::Request::new(
@@ -780,13 +793,16 @@ mod test {
     /// request context contains heterogeneous set
     #[test]
     fn context_attribute_heterogeneous_set() {
-        let context_with_heterogeneous_set = ast::Context::from_pairs([(
-            "admin_approval".into(),
-            ast::RestrictedExpr::set([
-                ast::RestrictedExpr::val(true),
-                ast::RestrictedExpr::val(-1001),
-            ]),
-        )])
+        let context_with_heterogeneous_set = ast::Context::from_pairs(
+            [(
+                "admin_approval".into(),
+                ast::RestrictedExpr::set([
+                    ast::RestrictedExpr::val(true),
+                    ast::RestrictedExpr::val(-1001),
+                ]),
+            )],
+            Extensions::all_available(),
+        )
         .unwrap();
         assert_matches!(
             ast::Request::new(
