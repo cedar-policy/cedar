@@ -121,7 +121,7 @@ jobs:
 
   build-tiny-todo:
     needs: get-branch-name
-    uses: cedar-policy/cedar-examples/.github/workflows/build_tiny_todo_reusable.yml@${{ needs.get-branch-name.outputs.branch_name }}
+    uses: cedar-policy/cedar-examples/.github/workflows/build_tiny_todo_reusable.yml@main
     with:
       cedar_policy_ref: ${{ github.head_ref }}
 
