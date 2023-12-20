@@ -1,0 +1,45 @@
+use std::str::FromStr;
+use std::sync::Arc;
+use cedar_policy_core::parser::err::{RawErrorRecovery, RawUserError};
+use cedar_policy_core::parser::{Node, Loc};
+use crate::custom_schema::ast::{Name as SName};
+
+use lalrpop_util::{ParseError, ErrorRecovery};
+
+/// `errors` collects generated errors.
+///
+/// `src` is the (full) original source being parsed, which the source locations l,r index into.
+grammar<'err, 's>(errors: &'err mut Vec<RawErrorRecovery<'input>>, src: &'s Arc<str>);
+
+extern {
+    type Error = RawUserError;
+}
+
+// New tokens should be reflected in the `FRIENDLY_TOKEN_NAMES` map in err.rs.
+match {
+    // Whitespace and comments
+    r"\s*" => { }, // The default whitespace skipping is disabled an `ignore pattern` is specified
+    r"//[^\n\r]*[\n\r]*" => { }, // Skip `// comments`
+
+    // data input
+    r"[_a-zA-Z][_a-zA-Z0-9]*" => IDENTIFIER,
+    // The `NUMBER` token is a positive integer.
+    // Negative number literals are negation operations.
+    r"[0-9]+" => NUMBER,
+    r#""(\\.|[^"\\])*""# => STRINGLIT,
+}
+
+Comma<E>: Vec<E> = {
+    <e:E?> => e.into_iter().collect(),
+    <mut es:(<E> ",")+> <e:E> => {
+        es.push(e);
+        es
+    },
+}
+
+// Name := IDENT | STR
+pub Name: SName = {
+   <l:@L> <id:IDENTIFIER> <r:@R> => Node::with_source_loc(id.into(), Loc::new(l..r, Arc::clone(src))),
+   <l:@L> <s:STRINGLIT> <r:@R>
+        => Node::with_source_loc(s[1..(s.len() - 1)].into(), Loc::new(l..r, Arc::clone(src))),
+}

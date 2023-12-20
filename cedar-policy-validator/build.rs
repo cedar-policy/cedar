@@ -14,18 +14,15 @@
  * limitations under the License.
  */
 
-use lalrpop_util::lalrpop_mod;
+fn main() {
+    generate_parsers();
+}
 
-lalrpop_mod!(
-    #[allow(warnings, unused)]
-    //PANIC SAFETY: lalrpop uses unwraps, and we are trusting lalrpop to generate correct code
-    #[allow(clippy::unwrap_used)]
-    //PANIC SAFETY: lalrpop uses slicing, and we are trusting lalrpop to generate correct code
-    #[allow(clippy::indexing_slicing)]
-    //PANIC SAFETY: lalrpop uses unreachable, and we are trusting lalrpop to generate correct code
-    #[allow(clippy::unreachable)]
-    //PANIC SAFETY: lalrpop uses panic, and we are trusting lalrpop to generate correct code
-    #[allow(clippy::panic)]
-    pub grammar,
-    "/src/custom_schema/grammar.rs"
-);
+/// Reads parser grammar files (.lalrpop) and generates Rust modules
+fn generate_parsers() {
+    // PANIC SAFETY: panicking inside our build script on a build dependency error is acceptable
+    #[allow(clippy::expect_used)]
+    lalrpop::Configuration::new()
+        .process_dir("src/custom_schema/")
+        .expect("parser synth");
+}

@@ -34,12 +34,12 @@ use crate::parser::unescape::UnescapeError;
 
 use super::cst;
 
-pub(crate) type RawLocation = usize;
-pub(crate) type RawToken<'a> = lalr::lexer::Token<'a>;
-pub(crate) type RawUserError = Node<String>;
+pub type RawLocation = usize;
+pub type RawToken<'a> = lalr::lexer::Token<'a>;
+pub type RawUserError = Node<String>;
 
-pub(crate) type RawParseError<'a> = lalr::ParseError<RawLocation, RawToken<'a>, RawUserError>;
-pub(crate) type RawErrorRecovery<'a> = lalr::ErrorRecovery<RawLocation, RawToken<'a>, RawUserError>;
+pub type RawParseError<'a> = lalr::ParseError<RawLocation, RawToken<'a>, RawUserError>;
+pub type RawErrorRecovery<'a> = lalr::ErrorRecovery<RawLocation, RawToken<'a>, RawUserError>;
 
 type OwnedRawParseError = lalr::ParseError<RawLocation, String, RawUserError>;
 
