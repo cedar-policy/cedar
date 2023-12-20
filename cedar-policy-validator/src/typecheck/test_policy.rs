@@ -780,6 +780,7 @@ fn type_error_is_not_reported_for_every_cross_product_element() {
             Expr::val(true),
             Type::primitive_long(),
             Type::True,
+            None,
         )],
     );
 }

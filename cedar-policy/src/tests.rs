@@ -495,6 +495,43 @@ mod policy_set_tests {
     use cool_asserts::assert_matches;
 
     #[test]
+    fn template_link_lookup() {
+        let mut pset = PolicySet::new();
+        let p = Policy::parse(Some("p".into()), "permit(principal,action,resource);")
+            .expect("Failed to parse");
+        pset.add(p).expect("Failed to add");
+        let template = Template::parse(
+            Some("t".into()),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .expect("Failed to parse");
+        pset.add_template(template).expect("Add failed");
+
+        let env: HashMap<SlotId, EntityUid> =
+            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
+        pset.link(
+            PolicyId::from_str("t").unwrap(),
+            PolicyId::from_str("id").unwrap(),
+            env.clone(),
+        )
+        .expect("Failed to link");
+
+        let p0 = pset.policy(&PolicyId::from_str("p").unwrap()).unwrap();
+        let tp = pset.policy(&PolicyId::from_str("id").unwrap()).unwrap();
+
+        assert_eq!(
+            p0.template_links(),
+            None,
+            "A normal policy should not have template links"
+        );
+        assert_eq!(
+            tp.template_links(),
+            Some(env),
+            "A template-linked policy's links should be stored properly"
+        );
+    }
+
+    #[test]
     fn link_conflicts() {
         let mut pset = PolicySet::new();
         let p1 = Policy::parse(Some("id".into()), "permit(principal,action,resource);")
@@ -3005,5 +3042,98 @@ mod issue_326 {
                 e.related().into_iter().flatten().map(ToString::to_string).join("\n")
             );
         });
+    }
+}
+
+mod policy_id_tests {
+    use super::*;
+    #[test]
+    fn test_default_policy_id() {
+        let policy = crate::Policy::from_str(r#"permit(principal, action, resource);"#)
+            .expect("should succeed");
+        let policy_id: &str = policy.id().as_ref();
+        assert_eq!(policy_id, "policy0");
+    }
+}
+
+mod error_source_tests {
+    use super::*;
+    use cool_asserts::assert_matches;
+    use miette::Diagnostic;
+    use serde_json::json;
+
+    /// These errors should have both a source location (span) and attached source code.
+    #[test]
+    fn errors_have_source_location_and_source_code() {
+        // parse errors
+        let srcs = [
+            r#"@one("two") @one("three") permit(principal, action, resource);"#,
+            r#"superforbid ( principal in Group::"bad", action, resource );"#,
+            r#"permit ( principal is User::"alice", action, resource );"#,
+        ];
+        for src in srcs {
+            assert_matches!(PolicySet::from_str(src), Err(e) => {
+                assert!(e.labels().is_some(), "no source span for the parse error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(e));
+                assert!(e.source_code().is_some(), "no source code for the parse error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(e));
+            });
+        }
+
+        // evaluation errors
+        let srcs = [
+            "1 + true",
+            "3 has foo",
+            "true && ([2, 3, 4] in [4, 5, 6])",
+            "ip(3)",
+        ];
+        let req = Request::new(None, None, None, Context::empty(), None).unwrap();
+        let entities = Entities::empty();
+        for src in srcs {
+            let expr = Expression::from_str(src).unwrap();
+            assert_matches!(eval_expression(&req, &entities, &expr), Err(_e) => {
+                /* TODO(#485): evaluation errors don't currently have source locations
+                assert!(e.labels().is_some(), "no source span for the evaluation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(e));
+                assert!(e.source_code().is_some(), "no source code for the evaluation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(e));
+                */
+            });
+        }
+
+        // evaluation errors in policies
+        let srcs = [
+            "permit ( principal, action, resource ) when { 1 + true };",
+            "permit ( principal, action, resource ) when { 3 has foo };",
+            "permit ( principal, action, resource ) when { true && ([2, 3, 4] in [4, 5, 6]) };",
+            "permit ( principal, action, resource ) when { ip(3) };",
+        ];
+        let req = Request::new(None, None, None, Context::empty(), None).unwrap();
+        let entities = Entities::empty();
+        for src in srcs {
+            let pset = PolicySet::from_str(src).unwrap();
+            let resp = Authorizer::new().is_authorized(&req, &pset, &entities);
+            for _err in resp.diagnostics().errors() {
+                /* TODO(#485): evaluation errors don't currently have source locations
+                assert!(err.labels().is_some(), "no source span for the evaluation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(err.clone()));
+                assert!(err.source_code().is_some(), "no source code for the evaluation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(err.clone()));
+                */
+            }
+        }
+
+        // validation errors
+        let validator = Validator::new(
+            Schema::from_json_value(json!({ "": { "actions": { "view": {} }, "entityTypes": {} }}))
+                .unwrap(),
+        );
+        // same srcs as above
+        for src in srcs {
+            let pset = PolicySet::from_str(src).unwrap();
+            let res = validator.validate(&pset, ValidationMode::Strict);
+            for err in res.validation_errors() {
+                assert!(err.labels().is_some(), "no source span for the validation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(err.clone()));
+                assert!(err.source_code().is_some(), "no source code for the validation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(err.clone()));
+            }
+            for warn in res.validation_warnings() {
+                assert!(warn.labels().is_some(), "no source span for the validation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(warn.clone()));
+                assert!(warn.source_code().is_some(), "no source code for the validation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(warn.clone()));
+            }
+        }
     }
 }

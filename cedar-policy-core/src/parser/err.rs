@@ -20,7 +20,6 @@ use std::iter;
 use std::ops::{Deref, DerefMut};
 
 use either::Either;
-use itertools::Itertools;
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
 use miette::{Diagnostic, LabeledSpan, SourceSpan};
@@ -28,16 +27,16 @@ use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::ast::{self, InputInteger, PolicyID, RestrictedExprError, Var};
-use crate::parser::unescape::UnescapeError;
-
 use crate::parser::fmt::join_with_conjunction;
-use crate::parser::node::ASTNode;
+use crate::parser::loc::Loc;
+use crate::parser::node::Node;
+use crate::parser::unescape::UnescapeError;
 
 use super::cst;
 
 pub(crate) type RawLocation = usize;
 pub(crate) type RawToken<'a> = lalr::lexer::Token<'a>;
-pub(crate) type RawUserError = ASTNode<String>;
+pub(crate) type RawUserError = Node<String>;
 
 pub(crate) type RawParseError<'a> = lalr::ParseError<RawLocation, RawToken<'a>, RawUserError>;
 pub(crate) type RawErrorRecovery<'a> = lalr::ErrorRecovery<RawLocation, RawToken<'a>, RawUserError>;
@@ -70,11 +69,15 @@ impl ParseError {
     pub fn primary_source_span(&self) -> Option<SourceSpan> {
         match self {
             ParseError::ToCST(to_cst_err) => Some(to_cst_err.primary_source_span()),
-            ParseError::ToAST(to_ast_err) => Some(to_ast_err.source_span()),
+            ParseError::ToAST(to_ast_err) => Some(to_ast_err.source_loc().span),
             ParseError::RestrictedExpr(restricted_expr_err) => match restricted_expr_err {
-                RestrictedExprError::InvalidRestrictedExpression { .. } => None,
+                RestrictedExprError::InvalidRestrictedExpression { expr, .. } => {
+                    expr.source_loc().map(|loc| loc.span)
+                }
             },
-            ParseError::ParseLiteral(_) => None,
+            ParseError::ParseLiteral(parse_lit_err) => parse_lit_err
+                .labels()
+                .and_then(|mut it| it.next().map(|lspan| lspan.inner().clone())),
         }
     }
 }
@@ -93,16 +96,14 @@ pub enum ParseLiteralError {
 #[error("{kind}")]
 pub struct ToASTError {
     kind: ToASTErrorKind,
-    source_span: miette::SourceSpan,
+    loc: Loc,
 }
 
-// Aside from `labels` which is constructed based on the `source_span` in this
-// struct, everything is forwarded directly from `kind`.
+// Construct `labels` and `source_code` based on the `loc` in this struct;
+// and everything else forwarded directly to `kind`.
 impl Diagnostic for ToASTError {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        Some(Box::new(iter::once(LabeledSpan::underline(
-            self.source_span,
-        ))))
+        Some(Box::new(iter::once(LabeledSpan::underline(self.loc.span))))
     }
 
     fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
@@ -122,7 +123,7 @@ impl Diagnostic for ToASTError {
     }
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        self.kind.source_code()
+        Some(&self.loc.src as &dyn miette::SourceCode)
     }
 
     fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
@@ -132,8 +133,8 @@ impl Diagnostic for ToASTError {
 
 impl ToASTError {
     /// Construct a new `ToASTError`.
-    pub fn new(kind: ToASTErrorKind, source_span: miette::SourceSpan) -> Self {
-        Self { kind, source_span }
+    pub fn new(kind: ToASTErrorKind, loc: Loc) -> Self {
+        Self { kind, loc }
     }
 
     /// Get the error kind.
@@ -141,8 +142,8 @@ impl ToASTError {
         &self.kind
     }
 
-    pub(crate) fn source_span(&self) -> miette::SourceSpan {
-        self.source_span
+    pub(crate) fn source_loc(&self) -> &Loc {
+        &self.loc
     }
 }
 
@@ -503,7 +504,7 @@ impl ToCSTError {
             OwnedRawParseError::ExtraToken {
                 token: (token_start, _, token_end),
             } => SourceSpan::from(*token_start..*token_end),
-            OwnedRawParseError::User { error } => error.loc,
+            OwnedRawParseError::User { error } => error.loc.span,
         }
     }
 
@@ -628,16 +629,6 @@ impl ParseErrors {
     /// returns a Vec with stringified versions of the ParseErrors
     pub fn errors_as_strings(&self) -> Vec<String> {
         self.0.iter().map(ToString::to_string).collect()
-    }
-
-    /// Display the `ParseErrors`, newline-separated, with `help()`s if present
-    pub fn pretty_with_helps(&self) -> String {
-        self.iter()
-            .map(|e| match e.help() {
-                Some(help) => format!("{e}\n  help: {help}"),
-                None => format!("{e}"),
-            })
-            .join("\n")
     }
 }
 

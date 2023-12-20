@@ -51,6 +51,7 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::Infallible;
+use std::marker::PhantomData;
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -1030,7 +1031,7 @@ impl Validator {
         &'a self,
         pset: &'a PolicySet,
         mode: ValidationMode,
-    ) -> ValidationResult<'a> {
+    ) -> ValidationResult<'static> {
         ValidationResult::from(self.0.validate(&pset.ast, mode.into()))
     }
 }
@@ -1366,8 +1367,9 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
 /// non-fatal warnings present when validation passes.
 #[derive(Debug)]
 pub struct ValidationResult<'a> {
-    validation_errors: Vec<ValidationError<'a>>,
-    validation_warnings: Vec<ValidationWarning<'a>>,
+    validation_errors: Vec<ValidationError<'static>>,
+    validation_warnings: Vec<ValidationWarning<'static>>,
+    phantom: PhantomData<&'a ()>,
 }
 
 impl<'a> ValidationResult<'a> {
@@ -1385,23 +1387,115 @@ impl<'a> ValidationResult<'a> {
     }
 
     /// Get an iterator over the errors found by the validator.
-    pub fn validation_errors(&self) -> impl Iterator<Item = &ValidationError<'a>> {
+    pub fn validation_errors<'b>(&self) -> impl Iterator<Item = &ValidationError<'b>> {
         self.validation_errors.iter()
     }
 
     /// Get an iterator over the warnings found by the validator.
-    pub fn validation_warnings(&self) -> impl Iterator<Item = &ValidationWarning<'a>> {
+    pub fn validation_warnings<'b>(&self) -> impl Iterator<Item = &ValidationWarning<'b>> {
         self.validation_warnings.iter()
+    }
+
+    fn first_error_or_warning(&self) -> Option<&dyn Diagnostic> {
+        self.validation_errors
+            .first()
+            .map(|e| e as &dyn Diagnostic)
+            .or_else(|| {
+                self.validation_warnings
+                    .first()
+                    .map(|w| w as &dyn Diagnostic)
+            })
     }
 }
 
-impl<'a> From<cedar_policy_validator::ValidationResult<'a>> for ValidationResult<'a> {
+impl<'a> From<cedar_policy_validator::ValidationResult<'a>> for ValidationResult<'static> {
     fn from(r: cedar_policy_validator::ValidationResult<'a>) -> Self {
         let (errors, warnings) = r.into_errors_and_warnings();
         Self {
             validation_errors: errors.map(ValidationError::from).collect(),
             validation_warnings: warnings.map(ValidationWarning::from).collect(),
+            phantom: PhantomData,
         }
+    }
+}
+
+impl<'a> std::fmt::Display for ValidationResult<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.first_error_or_warning() {
+            Some(diagnostic) => write!(f, "{diagnostic}"),
+            None => write!(f, "no errors or warnings"),
+        }
+    }
+}
+
+impl<'a> std::error::Error for ValidationResult<'a> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.first_error_or_warning()
+            .and_then(std::error::Error::source)
+    }
+
+    #[allow(deprecated)]
+    fn description(&self) -> &str {
+        self.first_error_or_warning()
+            .map_or("no errors or warnings", std::error::Error::description)
+    }
+
+    #[allow(deprecated)]
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        self.first_error_or_warning()
+            .and_then(std::error::Error::cause)
+    }
+}
+
+// Except for `.related()`, and `.severity` everything is forwarded to the first
+// error, or to the first warning if there are no errors. This is done for the
+// same reason as policy parse errors.
+impl<'a> Diagnostic for ValidationResult<'a> {
+    fn related<'s>(&'s self) -> Option<Box<dyn Iterator<Item = &'s dyn Diagnostic> + 's>> {
+        let mut related = self
+            .validation_errors
+            .iter()
+            .map(|err| err as &dyn Diagnostic)
+            .chain(
+                self.validation_warnings
+                    .iter()
+                    .map(|warn| warn as &dyn Diagnostic),
+            );
+        related.next().map(move |first| match first.related() {
+            Some(first_related) => Box::new(first_related.chain(related)),
+            None => Box::new(related) as Box<dyn Iterator<Item = _>>,
+        })
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.first_error_or_warning()
+            .map_or(Some(miette::Severity::Advice), Diagnostic::severity)
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        self.first_error_or_warning().and_then(Diagnostic::labels)
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.first_error_or_warning()
+            .and_then(Diagnostic::source_code)
+    }
+
+    fn code<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+        self.first_error_or_warning().and_then(Diagnostic::code)
+    }
+
+    fn url<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+        self.first_error_or_warning().and_then(Diagnostic::url)
+    }
+
+    fn help<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+        self.first_error_or_warning().and_then(Diagnostic::help)
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.first_error_or_warning()
+            .and_then(Diagnostic::diagnostic_source)
     }
 }
 
@@ -1409,11 +1503,12 @@ impl<'a> From<cedar_policy_validator::ValidationResult<'a>> for ValidationResult
 /// policy. The error contains a enumeration that specifies the kind of problem,
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
-#[derive(Debug, Error)]
-#[error("validation error on `{}`: {}", self.location, self.error_kind())]
+#[derive(Debug, Clone, Error)]
+#[error("validation error on {location}: {}", self.error_kind())]
 pub struct ValidationError<'a> {
-    location: SourceLocation<'a>,
+    location: SourceLocation<'static>,
     error_kind: ValidationErrorKind,
+    phantom: PhantomData<&'a ()>,
 }
 
 impl<'a> ValidationError<'a> {
@@ -1429,26 +1524,27 @@ impl<'a> ValidationError<'a> {
 }
 
 #[doc(hidden)]
-impl<'a> From<cedar_policy_validator::ValidationError<'a>> for ValidationError<'a> {
+impl<'a> From<cedar_policy_validator::ValidationError<'a>> for ValidationError<'static> {
     fn from(err: cedar_policy_validator::ValidationError<'a>) -> Self {
         let (location, error_kind) = err.into_location_and_error_kind();
         Self {
             location: SourceLocation::from(location),
             error_kind,
+            phantom: PhantomData,
         }
     }
 }
 
-// custom impl of `Diagnostic`: source location is from .location, everything else
-// forwarded to .error_kind
+// custom impl of `Diagnostic`: source location and source code are from
+// .location, everything else forwarded to .error_kind
 impl<'a> Diagnostic for ValidationError<'a> {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        let label = miette::LabeledSpan::underline(self.location.source_range?);
+        let label = miette::LabeledSpan::underline(self.location.source_loc.as_ref()?.span);
         Some(Box::new(std::iter::once(label)))
     }
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        self.error_kind.source_code()
+        Some(&self.location.source_loc.as_ref()?.src)
     }
 
     fn code<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
@@ -1479,53 +1575,48 @@ impl<'a> Diagnostic for ValidationError<'a> {
 /// Represents a location in Cedar policy source.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SourceLocation<'a> {
-    policy_id: &'a PolicyId,
-    source_range: Option<miette::SourceSpan>,
+    policy_id: PolicyId,
+    source_loc: Option<parser::Loc>,
+    phantom: PhantomData<&'a ()>,
 }
 
 impl<'a> SourceLocation<'a> {
     /// Get the `PolicyId` for the policy at this source location.
-    pub fn policy_id(&self) -> &'a PolicyId {
-        self.policy_id
+    pub fn policy_id(&self) -> &PolicyId {
+        &self.policy_id
     }
 
     /// Get the start of the location. Returns `None` if this location does not
     /// have a range.
     pub fn range_start(&self) -> Option<usize> {
-        self.source_range.as_ref().map(miette::SourceSpan::offset)
+        self.source_loc.as_ref().map(parser::Loc::start)
     }
 
     /// Get the end of the location. Returns `None` if this location does not
     /// have a range.
     pub fn range_end(&self) -> Option<usize> {
-        self.source_range
-            .as_ref()
-            .map(|span| span.offset() + span.len())
+        self.source_loc.as_ref().map(parser::Loc::end)
     }
 }
 
 impl<'a> std::fmt::Display for SourceLocation<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "policy `{}`", self.policy_id)?;
-        if let Some(source_range) = &self.source_range {
-            write!(
-                f,
-                " at offset {}-{}",
-                source_range.offset(),
-                source_range.offset() + source_range.len()
-            )?;
+        if let Some(loc) = &self.source_loc {
+            write!(f, " at offset {}-{}", loc.start(), loc.end())?;
         }
         Ok(())
     }
 }
 
-impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation<'a> {
-    fn from(loc: cedar_policy_validator::SourceLocation<'a>) -> SourceLocation<'a> {
-        let policy_id: &'a PolicyId = PolicyId::ref_cast(loc.policy_id());
-        let source_range = loc.source_span();
+impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation<'static> {
+    fn from(loc: cedar_policy_validator::SourceLocation<'a>) -> SourceLocation<'static> {
+        let policy_id = PolicyId(loc.policy_id().clone());
+        let source_loc = loc.source_loc().cloned();
         Self {
             policy_id,
-            source_range,
+            source_loc,
+            phantom: PhantomData,
         }
     }
 }
@@ -1534,19 +1625,23 @@ impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation<'a>
 /// checks are also provided through [`Validator::validate`] which provides more
 /// comprehensive error detection, but this function can be used to check for
 /// confusable strings without defining a schema.
-pub fn confusable_string_checker<'a>(
-    templates: impl Iterator<Item = &'a Template>,
-) -> impl Iterator<Item = ValidationWarning<'a>> {
+pub fn confusable_string_checker<'a, 'b>(
+    templates: impl Iterator<Item = &'a Template> + 'a,
+) -> impl Iterator<Item = ValidationWarning<'b>> + 'a
+where
+    'b: 'a,
+{
     cedar_policy_validator::confusable_string_checks(templates.map(|t| &t.ast))
         .map(std::convert::Into::into)
 }
 
-#[derive(Debug, Error)]
-#[error("validation warning on `{}`: {}", .location, .kind)]
+#[derive(Debug, Clone, Error)]
+#[error("validation warning on {location}: {kind}")]
 /// Warnings found in Cedar policies
 pub struct ValidationWarning<'a> {
-    location: SourceLocation<'a>,
+    location: SourceLocation<'static>,
     kind: ValidationWarningKind,
+    phantom: PhantomData<&'a ()>,
 }
 
 impl<'a> ValidationWarning<'a> {
@@ -1562,26 +1657,27 @@ impl<'a> ValidationWarning<'a> {
 }
 
 #[doc(hidden)]
-impl<'a> From<cedar_policy_validator::ValidationWarning<'a>> for ValidationWarning<'a> {
+impl<'a> From<cedar_policy_validator::ValidationWarning<'a>> for ValidationWarning<'static> {
     fn from(w: cedar_policy_validator::ValidationWarning<'a>) -> Self {
         let (loc, kind) = w.to_kind_and_location();
         ValidationWarning {
             location: loc.into(),
             kind,
+            phantom: PhantomData,
         }
     }
 }
 
-// custom impl of `Diagnostic`: source location is from .location, everything else
-// forwarded to .kind
+// custom impl of `Diagnostic`: source location and source code are from
+// .location, everything else forwarded to .kind
 impl<'a> Diagnostic for ValidationWarning<'a> {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        let label = miette::LabeledSpan::underline(self.location.source_range?);
+        let label = miette::LabeledSpan::underline(self.location.source_loc.as_ref()?.span);
         Some(Box::new(std::iter::once(label)))
     }
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        self.kind.source_code()
+        Some(&self.location.source_loc.as_ref()?.src)
     }
 
     fn code<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
@@ -1777,6 +1873,7 @@ impl EntityUid {
     /// let euid = EntityUid::from_json(json_data).unwrap();
     /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
     /// ```
+    #[allow(clippy::result_large_err)]
     pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
         let parsed: entities::EntityUidJson = serde_json::from_value(json)?;
         // INVARIANT: There is no way to write down the unspecified entityuid
@@ -2570,6 +2667,12 @@ impl std::fmt::Display for PolicyId {
     }
 }
 
+impl AsRef<str> for PolicyId {
+    fn as_ref(&self) -> &str {
+        self.0.as_ref()
+    }
+}
+
 /// Structure for a `Policy`. Includes both static policies and template-linked policies.
 #[derive(Debug, Clone)]
 pub struct Policy {
@@ -2602,6 +2705,22 @@ impl Policy {
             None
         } else {
             Some(PolicyId::ref_cast(self.ast.template().id()))
+        }
+    }
+
+    /// Get the values this `Template` is linked to, expressed as a map from `SlotId` to `EntityUid`.
+    /// If this is a static policy, this will return `None`.
+    pub fn template_links(&self) -> Option<HashMap<SlotId, EntityUid>> {
+        if self.is_static() {
+            None
+        } else {
+            let wrapped_vals: HashMap<SlotId, EntityUid> = self
+                .ast
+                .env()
+                .into_iter()
+                .map(|(key, value)| (SlotId(*key), EntityUid(value.clone())))
+                .collect();
+            Some(wrapped_vals)
         }
     }
 
@@ -3137,6 +3256,7 @@ impl<'a> RequestBuilder<'a> {
     /// not contribute to authorization decisions (e.g., because it is not
     /// used in your policies).
     /// This is different than Unknown for partial-evaluation purposes.
+    #[must_use]
     pub fn principal(self, principal: Option<EntityUid>) -> Self {
         Self {
             principal: match principal {
@@ -3158,6 +3278,7 @@ impl<'a> RequestBuilder<'a> {
     /// not contribute to authorization decisions (e.g., because it is not
     /// used in your policies).
     /// This is different than Unknown for partial-evaluation purposes.
+    #[must_use]
     pub fn action(self, action: Option<EntityUid>) -> Self {
         Self {
             action: match action {
@@ -3179,6 +3300,7 @@ impl<'a> RequestBuilder<'a> {
     /// not contribute to authorization decisions (e.g., because it is not
     /// used in your policies).
     /// This is different than Unknown for partial-evaluation purposes.
+    #[must_use]
     pub fn resource(self, resource: Option<EntityUid>) -> Self {
         Self {
             resource: match resource {
@@ -3192,6 +3314,7 @@ impl<'a> RequestBuilder<'a> {
     }
 
     /// Set the context.
+    #[must_use]
     pub fn context(self, context: Context) -> Self {
         Self {
             context: Some(context.0),
@@ -3200,6 +3323,7 @@ impl<'a> RequestBuilder<'a> {
     }
 
     /// Set the schema. If present, this will be used for request validation.
+    #[must_use]
     pub fn schema(self, schema: &'a Schema) -> Self {
         Self {
             schema: Some(schema),

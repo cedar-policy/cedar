@@ -495,33 +495,21 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
     let validator = Validator::new(schema);
     let result = validator.validate(&pset, mode);
 
-    let exit_code = if !result.validation_passed()
+    if !result.validation_passed()
         || (args.deny_warnings && !result.validation_passed_without_warnings())
     {
-        println!("Validation Failed");
+        println!(
+            "{:?}",
+            Report::new(result).wrap_err("policy set validation failed")
+        );
         CedarExitCode::ValidationFailure
     } else {
-        println!("Validation Passed");
+        println!(
+            "{:?}",
+            Report::new(result).wrap_err("policy set validation passed")
+        );
         CedarExitCode::Success
-    };
-
-    let mut errors = result.validation_errors().peekable();
-    if errors.peek().is_some() {
-        println!("Validation Errors:");
-        for note in errors {
-            println!("{}", note);
-        }
     }
-
-    let mut warnings = result.validation_warnings().peekable();
-    if warnings.peek().is_some() {
-        println!("Validation Warnings:");
-        for note in warnings {
-            println!("{}", note);
-        }
-    }
-
-    exit_code
 }
 
 pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
@@ -545,7 +533,7 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
         match Expression::from_str(&args.expression).wrap_err("failed to parse the expression") {
             Ok(expr) => expr,
             Err(e) => {
-                println!("{e:?}");
+                println!("{:?}", e.with_source_code(args.expression.clone()));
                 return (CedarExitCode::Failure, EvalResult::Bool(false));
             }
         };
@@ -968,9 +956,7 @@ fn read_from_file(filename: impl AsRef<Path>, context: &str) -> Result<String> {
 
 /// Read a policy set, in Cedar human syntax, from the file given in `filename`,
 /// or from stdin if `filename` is `None`.
-fn read_policy_set(
-    filename: Option<impl AsRef<Path> + std::marker::Copy>,
-) -> miette::Result<PolicySet> {
+fn read_policy_set(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Result<PolicySet> {
     let context = "policy set";
     let ps_str = read_from_file_or_stdin(filename, context)?;
     let ps = PolicySet::from_str(&ps_str)
@@ -987,9 +973,7 @@ fn read_policy_set(
 
 /// Read a policy, in Cedar JSON (EST) syntax, from the file given in `filename`,
 /// or from stdin if `filename` is `None`.
-fn read_json_policy(
-    filename: Option<impl AsRef<Path> + std::marker::Copy>,
-) -> miette::Result<PolicySet> {
+fn read_json_policy(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Result<PolicySet> {
     let context = "JSON policy";
     let json = match filename.as_ref() {
         Some(path) => {

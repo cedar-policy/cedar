@@ -24,9 +24,12 @@ mod cst_to_ast;
 pub mod err;
 /// implementations for formatting, like `Display`
 mod fmt;
+/// Source location struct
+mod loc;
+pub use loc::Loc;
 /// Metadata wrapper for CST Nodes
 mod node;
-pub use node::ASTNode;
+pub use node::Node;
 /// Step one: Convert text to CST
 pub mod text_to_cst;
 /// Utility functions to unescape string literals
@@ -80,12 +83,7 @@ pub fn parse_policyset_and_also_return_policy_text(
         let texts = cst
             .with_generated_policyids()
             .expect("shouldn't be None since parse_policies() and to_policyset() didn't return Err")
-            .map(|(id, policy)| {
-                (
-                    id,
-                    &text[policy.loc.offset()..(policy.loc.offset() + policy.loc.len())],
-                )
-            })
+            .map(|(id, policy)| (id, &text[policy.loc.start()..policy.loc.end()]))
             .collect::<HashMap<ast::PolicyID, &str>>();
         Ok((texts, pset))
     } else {
@@ -365,9 +363,13 @@ mod test_utils {
         msg: &ExpectedErrorMessage<'_>,
     ) {
         assert!(
+            !errs.is_empty(),
+            "for the following input:\n{src}\nexpected an error, but the `ParseErrors` was empty"
+        );
+        assert!(
             errs.iter().any(|e| msg.matches(e)),
-            "for the following input:\n{src}\nactual errors were:\n{}",
-            errs.pretty_with_helps(),
+            "for the following input:\n{src}\nexpected some error to match the following:\n{msg}\nbut actual errors were:\n{:?}", // the Debug representation of `miette::Report` is the pretty one, for some reason
+            miette::Report::new(errs.clone()),
         );
     }
 }
@@ -378,6 +380,7 @@ mod test_utils {
 mod test {
     use super::*;
     use crate::ast::{test_generators::*, Template};
+    use cool_asserts::assert_matches;
     use std::collections::HashSet;
 
     #[test]
@@ -385,34 +388,33 @@ mod test {
         for template in all_templates().map(Template::from) {
             let id = template.id();
             let src = format!("{template}");
-            let parsed = parse_policy_template(Some(id.to_string()), &src);
-            match parsed {
-                Ok(p) => {
-                    assert_eq!(
-                        p.slots().collect::<HashSet<_>>(),
-                        template.slots().collect::<HashSet<_>>()
-                    );
-                    assert_eq!(p.id(), template.id());
-                    assert_eq!(p.effect(), template.effect());
-                    assert_eq!(p.principal_constraint(), template.principal_constraint());
-                    assert_eq!(p.action_constraint(), template.action_constraint());
-                    assert_eq!(p.resource_constraint(), template.resource_constraint());
-                    assert!(
-                        p.non_head_constraints()
-                            .eq_shape(template.non_head_constraints()),
-                        "{:?} and {:?} should have the same shape.",
-                        p.non_head_constraints(),
-                        template.non_head_constraints()
-                    );
-                }
-                Err(e) => panic!("Failed to parse {src}, {}", e.pretty_with_helps()),
-            }
+            let parsed = parse_policy_template(Some(id.to_string()), &src).unwrap();
+            assert_eq!(
+                parsed.slots().collect::<HashSet<_>>(),
+                template.slots().collect::<HashSet<_>>()
+            );
+            assert_eq!(parsed.id(), template.id());
+            assert_eq!(parsed.effect(), template.effect());
+            assert_eq!(
+                parsed.principal_constraint(),
+                template.principal_constraint()
+            );
+            assert_eq!(parsed.action_constraint(), template.action_constraint());
+            assert_eq!(parsed.resource_constraint(), template.resource_constraint());
+            assert!(
+                parsed
+                    .non_head_constraints()
+                    .eq_shape(template.non_head_constraints()),
+                "{:?} and {:?} should have the same shape.",
+                parsed.non_head_constraints(),
+                template.non_head_constraints()
+            );
         }
     }
 
     #[test]
     fn test_error_out() {
-        let errors = parse_policyset(
+        assert_matches!(parse_policyset(
             r#"
             permit(principal:p,action:a,resource:r)
             when{w or if c but not z} // expr error
@@ -427,10 +429,7 @@ mod test {
             when   { "private" in resource.tags }
             unless { resource in principal.account };
         "#,
-        )
-        .expect_err("multiple errors above");
-        println!("{}", errors.pretty_with_helps());
-        assert!(errors.len() >= 3);
+        ), Err(e) => assert!(e.len() >= 3, "expected at least 3 errors, but actual errors were:\n{:?}", miette::Report::new(e)) );
     }
 }
 

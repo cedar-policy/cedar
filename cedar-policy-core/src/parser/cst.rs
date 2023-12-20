@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-use super::node::ASTNode;
 use smol_str::SmolStr;
+
 // shortcut because we need CST nodes to potentially be empty,
 // for example, if part of it failed the parse, we can
 // still recover other parts
-type Node<N> = ASTNode<Option<N>>;
+type Node<N> = super::node::Node<Option<N>>;
 
 /// The set of policy statements that forms a policy set
 #[derive(Debug, Clone, PartialEq, Eq)]

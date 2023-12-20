@@ -481,7 +481,8 @@ mod test {
                 TypeError::expected_type(
                     Expr::val(1),
                     Type::primitive_long(),
-                    Type::singleton_boolean(true)
+                    Type::singleton_boolean(true),
+                    None,
                 )
                 .kind
             )]

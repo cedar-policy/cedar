@@ -629,6 +629,7 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes {
 #[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
+    use std::sync::Arc;
     use std::{collections::BTreeMap, str::FromStr};
 
     use crate::types::Type;
@@ -636,6 +637,7 @@ mod test {
 
     use cedar_policy_core::ast::RestrictedExpr;
     use cedar_policy_core::parser::err::{ParseError, ToASTError, ToASTErrorKind};
+    use cedar_policy_core::parser::Loc;
     use cool_asserts::assert_matches;
     use serde_json::json;
 
@@ -1698,13 +1700,14 @@ mod test {
             .expect("constructing the fragment itself should succeed"); // should this fail in the future?
         let err = ValidatorSchema::try_from(fragment)
             .expect_err("should error due to invalid entity type name");
+        let problem_field = "User // comment";
         let expected_err = ParseError::ToAST(ToASTError::new(
             ToASTErrorKind::NonNormalizedString {
                 kind: "Id",
-                src: "User // comment".to_string(),
+                src: problem_field.to_string(),
                 normalized_src: "User".to_string(),
             },
-            miette::SourceSpan::from(4..4),
+            Loc::new(4, Arc::from(problem_field)),
         ))
         .into();
 
@@ -1728,13 +1731,14 @@ mod test {
             .expect("constructing the fragment itself should succeed"); // should this fail in the future?
         let err = ValidatorSchema::try_from(fragment)
             .expect_err("should error due to invalid schema namespace");
+        let problem_field = "ABC     :: //comment \n XYZ  ";
         let expected_err = ParseError::ToAST(ToASTError::new(
             ToASTErrorKind::NonNormalizedString {
                 kind: "Name",
-                src: "ABC     :: //comment \n XYZ  ".to_string(),
+                src: problem_field.to_string(),
                 normalized_src: "ABC::XYZ".to_string(),
             },
-            miette::SourceSpan::from(3..3),
+            Loc::new(3, Arc::from(problem_field)),
         ))
         .into();
         match err {
