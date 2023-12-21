@@ -102,7 +102,7 @@ impl<'e, 's, S: ContextSchema> ContextJsonParser<'e, 's, S> {
 pub enum ContextJsonDeserializationError {
     /// Any JSON deserialization error
     ///
-    /// (TODO: as of this writing, `JsonDeserializationError` actually contains
+    /// (Note: as of this writing, `JsonDeserializationError` actually contains
     /// many variants that aren't possible here)
     #[error("while parsing context, {0}")]
     #[diagnostic(transparent)]
