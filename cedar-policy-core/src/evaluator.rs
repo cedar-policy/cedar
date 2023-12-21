@@ -27,6 +27,7 @@ mod err;
 pub(crate) use err::*;
 pub use err::{EvaluationError, EvaluationErrorKind};
 use itertools::Either;
+use nonempty::nonempty;
 use smol_str::SmolStr;
 
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
@@ -510,8 +511,10 @@ impl<'e> Evaluator<'e> {
                     }
                 }
                 PartialValue::Value(val) => Err(err::EvaluationError::type_error(
-                    Type::Record,
-                    vec![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
+                    nonempty![
+                        Type::Record,
+                        Type::entity_type(names::ANY_ENTITY_TYPE.clone())
+                    ],
                     val.type_of(),
                 )),
                 PartialValue::Residual(r) => Ok(Expr::has_attr(r, attr.clone()).into()),
@@ -590,8 +593,7 @@ impl<'e> Evaluator<'e> {
                 .collect::<Result<Vec<EntityUID>>>()?,
             _ => {
                 return Err(EvaluationError::type_error(
-                    Type::Set,
-                    vec![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
+                    nonempty![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
                     arg2.type_of(),
                 ))
             }
@@ -712,10 +714,10 @@ impl<'e> Evaluator<'e> {
                 // PANIC SAFETY Entity type name is fully static and a valid unqualified `Name`
                 #[allow(clippy::unwrap_used)]
                 Err(EvaluationError::type_error(
-                    Type::Record,
-                    vec![Type::entity_type(
-                        Name::parse_unqualified_name("any_entity_type").unwrap(),
-                    )],
+                    nonempty![
+                        Type::Record,
+                        Type::entity_type(Name::parse_unqualified_name("any_entity_type").unwrap(),)
+                    ],
                     v.type_of(),
                 ))
             }
@@ -1493,11 +1495,13 @@ pub mod test {
                 "hello".into()
             )),
             Err(EvaluationError::type_error(
-                Type::Record,
-                vec![Type::entity_type(
-                    Name::parse_unqualified_name("any_entity_type")
-                        .expect("should be a valid identifier")
-                ),],
+                nonempty![
+                    Type::Record,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    ),
+                ],
                 Type::Set,
             ))
         );
@@ -1505,11 +1509,13 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(Expr::set(vec![]), "hello".into())),
             Err(EvaluationError::type_error(
-                Type::Record,
-                vec![Type::entity_type(
-                    Name::parse_unqualified_name("any_entity_type")
-                        .expect("should be a valid identifier")
-                ),],
+                nonempty![
+                    Type::Record,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    ),
+                ],
                 Type::Set,
             ))
         );
@@ -1533,11 +1539,13 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(mixed_set, "hello".into())),
             Err(EvaluationError::type_error(
-                Type::Record,
-                vec![Type::entity_type(
-                    Name::parse_unqualified_name("any_entity_type")
-                        .expect("should be a valid identifier")
-                ),],
+                nonempty![
+                    Type::Record,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    ),
+                ],
                 Type::Set,
             ))
         );
@@ -1565,11 +1573,13 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(set_of_sets.clone(), "hello".into())),
             Err(EvaluationError::type_error(
-                Type::Record,
-                vec![Type::entity_type(
-                    Name::parse_unqualified_name("any_entity_type")
-                        .expect("should be a valid identifier")
-                ),],
+                nonempty![
+                    Type::Record,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    ),
+                ],
                 Type::Set,
             ))
         );
@@ -1580,11 +1590,13 @@ pub mod test {
                 "eggs".into()
             )),
             Err(EvaluationError::type_error(
-                Type::Record,
-                vec![Type::entity_type(
-                    Name::parse_unqualified_name("any_entity_type")
-                        .expect("should be a valid identifier")
-                ),],
+                nonempty![
+                    Type::Record,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    ),
+                ],
                 Type::Set,
             ))
         );
@@ -1845,11 +1857,13 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(Expr::val(1010122), "hello".into())),
             Err(EvaluationError::type_error(
-                Type::Record,
-                vec![Type::entity_type(
-                    Name::parse_unqualified_name("any_entity_type")
-                        .expect("should be a valid identifier")
-                ),],
+                nonempty![
+                    Type::Record,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    ),
+                ],
                 Type::Long,
             ))
         );
@@ -1857,11 +1871,13 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(Expr::val("hello"), "eggs".into())),
             Err(EvaluationError::type_error(
-                Type::Record,
-                vec![Type::entity_type(
-                    Name::parse_unqualified_name("any_entity_type")
-                        .expect("should be a valid identifier")
-                ),],
+                nonempty![
+                    Type::Record,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    ),
+                ],
                 Type::String,
             ))
         );
@@ -1869,11 +1885,13 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(Expr::val(1010122), "hello".into())),
             Err(EvaluationError::type_error(
-                Type::Record,
-                vec![Type::entity_type(
-                    Name::parse_unqualified_name("any_entity_type")
-                        .expect("should be a valid identifier")
-                ),],
+                nonempty![
+                    Type::Record,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    ),
+                ],
                 Type::Long,
             ))
         );
@@ -1881,11 +1899,13 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(Expr::val("hello"), "eggs".into())),
             Err(EvaluationError::type_error(
-                Type::Record,
-                vec![Type::entity_type(
-                    Name::parse_unqualified_name("any_entity_type")
-                        .expect("should be a valid identifier")
-                ),],
+                nonempty![
+                    Type::Record,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    ),
+                ],
                 Type::String,
             ))
         );
@@ -3056,11 +3076,13 @@ pub mod test {
                 .unwrap()
             )),
             Err(EvaluationError::type_error(
-                Type::Set,
-                vec![Type::entity_type(
-                    Name::parse_unqualified_name("any_entity_type")
-                        .expect("should be a valid identifier")
-                )],
+                nonempty![
+                    Type::Set,
+                    Type::entity_type(
+                        Name::parse_unqualified_name("any_entity_type")
+                            .expect("should be a valid identifier")
+                    )
+                ],
                 Type::Record,
             ))
         );
