@@ -2,6 +2,8 @@
 
 ## 2.4.3
 
+Cedar Language Version: 2.1.3
+
 ### Fixed
 
 - Reverted accidental breaking change to schema format introduced in the 2.3.2
