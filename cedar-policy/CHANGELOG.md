@@ -97,7 +97,7 @@ Cedar Language Version: 3.0.0
 - `Entities::from_*()` methods now validate the entities against the `schema`,
   if a `schema` is provided. (#360)
 - `Entities::from_entities()` and `Entities::add_entities()` now take an
- 8 optional schema argument. (#360)
+  optional schema argument. (#360)
 - `Request::new()` now takes an optional schema argument, and validates the request
   against that schema. To signal validation errors, it now returns a `Result`.
   (#393, resolving #191)
@@ -113,7 +113,7 @@ Cedar Language Version: 3.0.0
   multiple `is_authorized` calls). As a result, it returns `Result`, because
   attribute evaluation can fail. (#430)
 - `Entities::from_json_*()` also now eagerly evaluates entity attributes, and as
-  8a result returns errors when attribute evaluation fails. (#430)
+  a result returns errors when attribute evaluation fails. (#430)
 - `Entity::attr()` now returns errors in many fewer cases (because the attribute
   is stored in already-evaluated form), and its error type has changed. (#430)
 - `Context::from_*()` methods also now eagerly evaluate the `Context`, and as
@@ -128,7 +128,7 @@ Cedar Language Version: 3.0.0
   now return `&SourceLocation<'a>` instead of `&'a PolicyID`, matching
   `ValidationError::location`. (#405)
 - `ValidationWarningKind` is now `non_exhaustive`, allowing future warnings to
-  b8e added without a breaking change. (#404)
+  be added without a breaking change. (#404)
 - Improve schema parsing error messages when a cycle exists in the action
   hierarchy to includes an action which is part of the cycle (#436, resolving
   #416).
