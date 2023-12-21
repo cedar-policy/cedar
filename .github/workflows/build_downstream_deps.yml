@@ -111,4 +111,5 @@ jobs:
     uses: cedar-policy/cedar-examples/.github/workflows/build_tiny_todo_reusable.yml@main
     with:
       cedar_policy_ref: ${{ github.head_ref }}
+      cedar_examples_ref: "main"
 
