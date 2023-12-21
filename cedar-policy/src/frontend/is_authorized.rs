@@ -324,21 +324,21 @@ impl AuthorizationCall {
     fn get_components_partial(self) -> Result<(Request, PolicySet, Entities), Vec<String>> {
         let schema = self
             .schema
-            .map(Schema::from_json_value)
+            .map(|v| Schema::from_json_value(v.into()))
             .transpose()
             .map_err(|e| [e.to_string()])?;
         let principal = match self.principal {
             Some(p) => Some(
-                EntityUid::from_json(p)
+                EntityUid::from_json(p.into())
                     .map_err(|e| ["Failed to parse principal".into(), e.to_string()])?,
             ),
             None => None,
         };
-        let action = EntityUid::from_json(self.action)
+        let action = EntityUid::from_json(self.action.into())
             .map_err(|e| ["Failed to parse action".into(), e.to_string()])?;
         let resource = match self.resource {
             Some(r) => Some(
-                EntityUid::from_json(r)
+                EntityUid::from_json(r.into())
                     .map_err(|e| ["Failed to parse resource".into(), e.to_string()])?,
             ),
             None => None,
@@ -1705,44 +1705,23 @@ mod test {
     }
 
     #[cfg(feature = "partial-eval")]
+    #[track_caller]
     fn assert_is_residual(result: InterfaceResult, residual_ids: HashSet<&str>) {
-        match result {
-            InterfaceResult::Success { result } => {
-                let parsed_result: AuthorizationAnswer =
-                    serde_json::from_str(result.as_str()).unwrap();
-                match parsed_result {
-                    AuthorizationAnswer::ParseFailed { .. } => {
-                        panic!("expected parse to succeed, but got {parsed_result:?}")
+        assert_matches!(result, InterfaceResult::Success { result } => {
+            let parsed_result: AuthorizationAnswer = serde_json::from_str(result.as_str()).unwrap();
+            assert_matches!(parsed_result, AuthorizationAnswer::Success { response } => {
+                let num_errors = response.diagnostics().errors().count();
+                assert_eq!(num_errors, 0, "got {num_errors} errors");
+                assert_matches!(response.payload(), InterfacePayload::Residual(residual) => {
+                    for id in &residual_ids {
+                        assert!(residual.contains_key(&PolicyId::from_str(id).ok().unwrap()), "expected residual for {id}, but it's missing")
                     }
-                    AuthorizationAnswer::Success { response } => {
-                        if response.diagnostics().errors().peekable().peek().is_some() {
-                            panic!("got errors {}", response.diagnostics().errors().join(", "))
-                        } else {
-                            match response.payload() {
-                                InterfacePayload::Concrete(decision) => {
-                                    panic!("expected residual, but got concrete {decision:?}")
-                                },
-                                InterfacePayload::Residual(residual) => {
-                                    for id in &residual_ids {
-                                        if residual.get(&PolicyId::from_str(id).unwrap()).is_none() {
-                                            panic!("expected residual for {id}, but it's missing")
-                                        }
-                                    }
-                                    for key in residual.keys() {
-                                        if !residual_ids.contains(&*key.to_string()) {
-                                            panic!("found unexpected residual for {key}")
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                    for key in residual.keys() {
+                        assert!(residual_ids.contains(key.to_string().as_str()),"found unexpected residual for {key}")
                     }
-                }
-            }
-            InterfaceResult::Failure { .. } => {
-                panic!("Expected a successful response, not {result:?}");
-            }
-        }
+                })
+            })
+        })
     }
 
 }
