@@ -102,10 +102,14 @@ jobs:
              printf "\npath = \"../cedar/cedar-policy\"" >> Cargo.toml
              cargo build
              cargo test
-      - name: build tinytodo
+      - name: echo
         working-directory: cedar-examples/tinytodo
-        run: |
-             printf "\npath = \"../cedar/cedar-policy\"" >> Cargo.toml
-             cargo build
-             cargo test
+        run: echo "'${{ needs.get-branch-name.outputs.branch_name }}'"
+
+  build-tiny-todo:
+    needs: get-branch-name
+    uses: cedar-policy/cedar-examples/.github/workflows/build_tiny_todo_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.head_ref }}
+      cedar_examples_ref: "main"
 
