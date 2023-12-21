@@ -17,7 +17,6 @@ use cedar_policy_core::{
 use smol_str::SmolStr;
 
 use super::ValidatorApplySpec;
-use crate::types::OpenTag;
 use crate::{
     err::*,
     schema_file_format,
@@ -25,6 +24,7 @@ use crate::{
     ActionBehavior, ActionEntityUID, ActionType, NamespaceDefinition, SchemaType,
     SchemaTypeVariant, TypeOfAttribute, SCHEMA_TYPE_VARIANT_TAGS,
 };
+use crate::{types::OpenTag, StrNode, TypeNode};
 
 /// The current schema format specification does not include multiple action entity
 /// types. All action entities are required to use a single `Action` entity
@@ -246,7 +246,7 @@ impl ValidatorNamespaceDef {
     }
 
     fn build_type_defs(
-        schema_file_type_def: HashMap<SmolStr, SchemaType>,
+        schema_file_type_def: HashMap<SmolStr, TypeNode>,
         schema_namespace: Option<&Name>,
     ) -> Result<TypeDefs> {
         let type_defs = schema_file_type_def
@@ -260,8 +260,9 @@ impl ValidatorNamespaceDef {
                     schema_namespace.cloned(),
                 )
                 .map_err(SchemaError::ParseCommonType)?;
-                let ty = Self::try_schema_type_into_validator_type(schema_namespace, schema_ty)?
-                    .resolve_type_defs(&HashMap::new())?;
+                let ty =
+                    Self::try_schema_type_into_validator_type(schema_namespace, schema_ty.data)?
+                        .resolve_type_defs(&HashMap::new())?;
                 Ok((name, ty))
             })
             .collect::<Result<HashMap<_, _>>>()?;
@@ -290,7 +291,7 @@ impl ValidatorNamespaceDef {
                         .iter()
                         .map(|parent| -> Result<_> {
                             Self::parse_possibly_qualified_name_with_default_namespace(
-                                parent,
+                                &parent.data,
                                 schema_namespace,
                             )
                             .map_err(SchemaError::ParseEntityType)
@@ -541,7 +542,7 @@ impl ValidatorNamespaceDef {
                 Ok((
                     attr,
                     (
-                        Self::try_schema_type_into_validator_type(schema_namespace, ty.ty)?,
+                        Self::try_schema_type_into_validator_type(schema_namespace, ty.ty.data)?,
                         ty.required,
                     ),
                 ))
@@ -565,7 +566,7 @@ impl ValidatorNamespaceDef {
     /// of the entity type names cannot be parsed, then the `Err` case is
     /// returned, and it will indicate which name did not parse.
     fn parse_apply_spec_type_list(
-        types: Option<Vec<SmolStr>>,
+        types: Option<Vec<StrNode>>,
         namespace: Option<&Name>,
     ) -> Result<HashSet<EntityType>> {
         types
@@ -578,7 +579,8 @@ impl ValidatorNamespaceDef {
                     .map(|ty_str| {
                         Ok(EntityType::Specified(
                             Self::parse_possibly_qualified_name_with_default_namespace(
-                                ty_str, namespace,
+                                &ty_str.data,
+                                namespace,
                             )
                             .map_err(SchemaError::ParseEntityType)?,
                         ))
@@ -673,7 +675,7 @@ impl ValidatorNamespaceDef {
             SchemaType::Type(SchemaTypeVariant::Long) => Ok(Type::primitive_long().into()),
             SchemaType::Type(SchemaTypeVariant::Boolean) => Ok(Type::primitive_boolean().into()),
             SchemaType::Type(SchemaTypeVariant::Set { element }) => Ok(
-                Self::try_schema_type_into_validator_type(default_namespace, *element)?
+                Self::try_schema_type_into_validator_type(default_namespace, element.data)?
                     .map(Type::set),
             ),
             SchemaType::Type(SchemaTypeVariant::Record {
