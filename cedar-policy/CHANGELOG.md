@@ -154,6 +154,23 @@ Cedar Language Version: 3.0.0
   To continue using this feature you must enable the `permissive-validate`
   feature flag. (#428)
 
+  
+## [2.4.3] - 2023-12-21
+
+Cedar Language Version: 2.1.3
+
+### Fixed
+
+- Reverted accidental breaking change to schema format introduced in the 2.3.2
+  release.
+  Attribute types in schema files may now contain unexpected keys (as they could
+  before 2.3.2).
+  As a side effect, schema parsing error messages are less useful when an
+  attribute type is missing a required key.
+  The 2.4.2 behavior, including the more useful error messages, remain available
+  in all 3.x versions of Cedar.
+  (#520)
+
 ## [2.4.2] - 2023-10-23
 Cedar Language Version: 2.1.2
 
