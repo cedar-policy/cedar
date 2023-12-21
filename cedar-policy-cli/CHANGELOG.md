@@ -1,5 +1,7 @@
 # Changelog
 
+## 3.0.1
+
 ## 3.0.0
 
 Now uses Cedar language version 3.0.0.
