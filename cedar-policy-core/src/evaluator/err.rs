@@ -260,7 +260,7 @@ pub enum EvaluationErrorKind {
     /// operation
     #[error("{}", pretty_type_error(expected, actual))]
     TypeError {
-        /// Expected one of these type
+        /// Expected one of these types
         expected: NonEmpty<Type>,
         /// Encountered this type instead
         actual: Type,
