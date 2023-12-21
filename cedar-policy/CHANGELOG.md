@@ -97,7 +97,7 @@ Cedar Language Version: 3.0.0
 - `Entities::from_*()` methods now validate the entities against the `schema`,
   if a `schema` is provided. (#360)
 - `Entities::from_entities()` and `Entities::add_entities()` now take an
-  optional schema argument. (#360)
+ 8 optional schema argument. (#360)
 - `Request::new()` now takes an optional schema argument, and validates the request
   against that schema. To signal validation errors, it now returns a `Result`.
   (#393, resolving #191)
@@ -113,7 +113,7 @@ Cedar Language Version: 3.0.0
   multiple `is_authorized` calls). As a result, it returns `Result`, because
   attribute evaluation can fail. (#430)
 - `Entities::from_json_*()` also now eagerly evaluates entity attributes, and as
-  a result returns errors when attribute evaluation fails. (#430)
+  8a result returns errors when attribute evaluation fails. (#430)
 - `Entity::attr()` now returns errors in many fewer cases (because the attribute
   is stored in already-evaluated form), and its error type has changed. (#430)
 - `Context::from_*()` methods also now eagerly evaluate the `Context`, and as
@@ -128,7 +128,7 @@ Cedar Language Version: 3.0.0
   now return `&SourceLocation<'a>` instead of `&'a PolicyID`, matching
   `ValidationError::location`. (#405)
 - `ValidationWarningKind` is now `non_exhaustive`, allowing future warnings to
-  be added without a breaking change. (#404)
+  b8e added without a breaking change. (#404)
 - Improve schema parsing error messages when a cycle exists in the action
   hierarchy to includes an action which is part of the cycle (#436, resolving
   #416).
@@ -162,6 +162,14 @@ Cedar Language Version: 2.1.3
 ### Fixed
 
 - Reverted accidental breaking change to schema format introduced in the 2.3.2
+  release.
+  Attribute types in schema files may now contain unexpected keys (as they could
+  before 2.3.2).
+  As a side effect, schema parsing error messages are less useful when an
+  attribute type is missing a required key.
+  The 2.4.2 behavior, including the more useful error messages, remain available
+  in all 3.x versions of Cedar.
+  (#520)
 
 ## [2.4.2] - 2023-10-23
 Cedar Language Version: 2.1.2
