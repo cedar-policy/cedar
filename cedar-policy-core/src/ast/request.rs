@@ -183,7 +183,6 @@ pub struct Context {
     // INVARIANT(ContextRecord): This must be a `Record`: either
     // `PartialValue::Value(Value::Record)`, or
     // `PartialValue::Residual(Expr::Record)`, or an appropriate unknown
-    // TODO: This should be refactored if possible to require this runtime invariant
     #[serde(flatten)]
     context: PartialValueSerializedAsExpr,
 }
