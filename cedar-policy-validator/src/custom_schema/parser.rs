@@ -14,7 +14,11 @@
  * limitations under the License.
  */
 
+use std::sync::Arc;
+
 use lalrpop_util::lalrpop_mod;
+
+use super::{ast::Schema, err};
 
 lalrpop_mod!(
     #[allow(warnings, unused)]
@@ -29,3 +33,47 @@ lalrpop_mod!(
     pub grammar,
     "/src/custom_schema/grammar.rs"
 );
+
+/// This helper function calls a generated parser, collects errors that could be
+/// generated multiple ways, and returns a single Result where the error type is
+/// [`err::ParseErrors`].
+fn parse_collect_errors<'a, P, T>(
+    parser: &P,
+    parse: impl FnOnce(
+        &P,
+        &mut Vec<err::RawErrorRecovery<'a>>,
+        &Arc<str>,
+        &'a str,
+    ) -> Result<T, err::RawParseError<'a>>,
+    text: &'a str,
+) -> Result<T, err::ParseErrors> {
+    let mut errs = Vec::new();
+    let result = parse(parser, &mut errs, &Arc::from(text), text);
+
+    let mut errors: err::ParseErrors = errs
+        .into_iter()
+        .map(err::ParseError::from_raw_err_recovery)
+        .collect();
+    let parsed = match result {
+        Ok(parsed) => parsed,
+        Err(e) => {
+            errors.push(err::ParseError::from_raw_parse_err(e));
+            return Err(errors);
+        }
+    };
+    if errors.is_empty() {
+        Ok(parsed)
+    } else {
+        Err(errors)
+    }
+}
+
+// Thread-safe "global" parsers, initialized at first use
+lazy_static::lazy_static! {
+    static ref POLICIES_PARSER: grammar::SchemaParser = grammar::SchemaParser::new();
+}
+
+/// Parse schema from text
+pub fn parse_schema(text: &str) -> Result<Schema, err::ParseErrors> {
+    parse_collect_errors(&*POLICIES_PARSER, grammar::SchemaParser::parse, text)
+}

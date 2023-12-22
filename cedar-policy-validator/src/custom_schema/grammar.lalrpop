@@ -1,8 +1,10 @@
 use std::str::FromStr;
 use std::sync::Arc;
-use cedar_policy_core::parser::err::{RawErrorRecovery, RawUserError};
+use crate::custom_schema::err::{RawErrorRecovery, RawUserError};
 use cedar_policy_core::parser::{Node, Loc};
-use crate::custom_schema::ast::{Name as SName};
+use cedar_policy_core::ast::Id;
+use crate::custom_schema::ast::{Name as SName, Ident as SIdent, Path as SPath, EntityDecl, Declaration, Namespace, Schema as ASchema};
+use itertools::Either;
 
 use lalrpop_util::{ParseError, ErrorRecovery};
 
@@ -21,12 +23,34 @@ match {
     r"\s*" => { }, // The default whitespace skipping is disabled an `ignore pattern` is specified
     r"//[^\n\r]*[\n\r]*" => { }, // Skip `// comments`
 
+    // keywords
+    "namespace" => NAMESPACE,
+    "entity" => ENTITY,
+    "in" => IN,
+    "type" => TYPE,
+    "set" => SET,
+    "appliesTo" => APPLIESTO,
+    "principal" => PRINCIPAL,
+    "action" => ACTION,
+    "resource" => RESOURCE,
+    "context" => CONTEXT,
+
+    // types
+    "Bool" => TYBOOL,
+    "Long" => TYLONG,
+    "String" => TYSTRING,
+
     // data input
     r"[_a-zA-Z][_a-zA-Z0-9]*" => IDENTIFIER,
     // The `NUMBER` token is a positive integer.
     // Negative number literals are negation operations.
     r"[0-9]+" => NUMBER,
     r#""(\\.|[^"\\])*""# => STRINGLIT,
+
+    // other tokens
+    ",", ";", "::", "{", "}", "[", "]",
+    "<", ">", "=", "?", 
+
 }
 
 Comma<E>: Vec<E> = {
@@ -37,9 +61,78 @@ Comma<E>: Vec<E> = {
     },
 }
 
+// IDENT := ['_''a'-'z''A'-'Z']['_''a'-'z''A'-'Z''0'-'9']* - PRIMTYPE
+Ident: SIdent = {
+    <l:@L> NAMESPACE <r:@R>
+        => Node::with_source_loc("namespace".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> ENTITY <r:@R>
+        => Node::with_source_loc("entity".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> IN <r:@R>
+        => Node::with_source_loc("in".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> SET <r:@R>
+        => Node::with_source_loc("set".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> APPLIESTO <r:@R>
+        => Node::with_source_loc("appliesTo".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> PRINCIPAL <r:@R>
+        => Node::with_source_loc("principal".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> ACTION <r:@R>
+        => Node::with_source_loc("action".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> RESOURCE <r:@R>
+        => Node::with_source_loc("resource".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> CONTEXT <r:@R>
+        => Node::with_source_loc("context".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> <i:IDENTIFIER> <r:@R>
+        => Node::with_source_loc(i.parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+}
+
 // Name := IDENT | STR
-pub Name: SName = {
-   <l:@L> <id:IDENTIFIER> <r:@R> => Node::with_source_loc(id.into(), Loc::new(l..r, Arc::clone(src))),
+Name: SName = {
+   <id: Ident> => Either::Left(id),
    <l:@L> <s:STRINGLIT> <r:@R>
-        => Node::with_source_loc(s[1..(s.len() - 1)].into(), Loc::new(l..r, Arc::clone(src))),
+        => Either::Right(Node::with_source_loc(s[1..(s.len() - 1)].into(), Loc::new(l..r, Arc::clone(src)))),
+}
+
+// Path := IDENT {'::' IDENT}
+Path: Node<SPath> = {
+    <l:@L> <i:Ident> <r:@R>
+        => Node::with_source_loc(SPath {base: i, prefix: vec![]}, Loc::new(l..r, Arc::clone(src))),
+    <l:@L> <is:(<Ident> "::")+> <i:Ident> <r:@R>
+        => Node::with_source_loc(SPath {base: i, prefix: is}, Loc::new(l..r, Arc::clone(src))),
+}
+
+// Idents := IDENT {',' IDENT}
+Idents: Vec<SIdent> = {
+    <i:Ident> <mut is:("," <Ident>)*>
+        => { is.insert(0, i); is},
+} 
+
+// EntType   := Path
+// EntTypes  := Path {',' Path}
+// EntOrTyps := EntType | '[' [EntTypes] ']'
+EntTypes: Node<Vec<Node<SPath>>> = {
+    <l:@L> <et: Path> <r:@R>
+        => Node::with_source_loc(vec![et], Loc::new(l..r, Arc::clone(src))),
+    <l:@L> "[" <ets: Comma<Path>> "]" <r:@R>
+        => Node::with_source_loc(ets, Loc::new(l..r, Arc::clone(src))),
+}
+
+// Decl := Entity | Action | TypeDecl
+// Entity := 'entity' Idents ['in' EntOrTyps] [['='] RecType] ';'
+// Action := 'action' Names ['in' (Name | '[' [Names] ']')] [AppliesTo] [ActAttrs]';'
+Decl: Node<Declaration> = {
+    <l:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> ";" <r:@R>
+        => Node::with_source_loc(Declaration::Entity(EntityDecl { names: ets, member_of_types: ps }), Loc::new(l..r, Arc::clone(src))),
+}
+
+// "named" space
+// Namespace := 'namespace' Path '{' {Decl} '}'
+Namespace: Node<Namespace> = {
+    <l:@L> NAMESPACE <p: Path> "{" <decls: Decl*> "}" <r:@R>
+        => Node::with_source_loc(Namespace { name: Some(p), decls}, Loc::new(l..r, Arc::clone(src))),
+}
+
+// Schema := {Namespace} | Decl {Decl}
+pub Schema: ASchema = {
+    <ns: Namespace*> => ns,
+    <l:@L> <decls: Decl+> <r:@R> => vec![Node::with_source_loc(Namespace {name: None, decls}, Loc::new(l..r, Arc::clone(src)))],
 }
