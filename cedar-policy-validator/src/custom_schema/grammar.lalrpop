@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::custom_schema::err::{RawErrorRecovery, RawUserError};
 use cedar_policy_core::parser::{Node, Loc};
 use cedar_policy_core::ast::Id;
-use crate::custom_schema::ast::{Name as SName, Ident as SIdent, Path as SPath, EntityDecl, Declaration, Namespace, Schema as ASchema};
+use crate::custom_schema::ast::{Name as SName, Ident as SIdent, Path as SPath, EntityDecl, Declaration, Namespace, Schema as ASchema, Type as SType, AttrDecl, ActionDecl, PR, AppDecl, PRAppDecl};
 use itertools::Either;
 
 use lalrpop_util::{ParseError, ErrorRecovery};
@@ -28,12 +28,13 @@ match {
     "entity" => ENTITY,
     "in" => IN,
     "type" => TYPE,
-    "set" => SET,
+    "Set" => SET,
     "appliesTo" => APPLIESTO,
     "principal" => PRINCIPAL,
     "action" => ACTION,
     "resource" => RESOURCE,
     "context" => CONTEXT,
+    "attributes" => ATTRIBUTES,
 
     // types
     "Bool" => TYBOOL,
@@ -48,8 +49,8 @@ match {
     r#""(\\.|[^"\\])*""# => STRINGLIT,
 
     // other tokens
-    ",", ";", "::", "{", "}", "[", "]",
-    "<", ">", "=", "?", 
+    ",", ";", ":", "::", "{", "}", "[", "]",
+    "<", ">", "=", "?",
 
 }
 
@@ -81,6 +82,8 @@ Ident: SIdent = {
         => Node::with_source_loc("resource".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> CONTEXT <r:@R>
         => Node::with_source_loc("context".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> ATTRIBUTES <r:@R>
+        => Node::with_source_loc("attributes".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <i:IDENTIFIER> <r:@R>
         => Node::with_source_loc(i.parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
 }
@@ -102,26 +105,95 @@ Path: Node<SPath> = {
 
 // Idents := IDENT {',' IDENT}
 Idents: Vec<SIdent> = {
-    <i:Ident> <mut is:("," <Ident>)*>
-        => { is.insert(0, i); is},
-} 
+    <i:Ident> => vec![i],
+    <mut is:(<Ident> ",")+> <i:Ident> => {
+        is.push(i);
+        is
+    },
+}
+
+// Names := Name {',' Name}
+Names: Vec<SName> = {
+    <n:Name> => vec![n],
+    <mut ns:(<Name> ",")+> <n:Name> => {
+        ns.push(n);
+        ns
+    },
+}
+
+// PRIMTYPE := 'Long' | 'String' | 'Bool'
+// SetType := 'Set' '<' Type '>'
+// RecType := '{' [AttrDecls] '}'
+// Type := PRIMTYPE | IDENT | SetType | RecType
+Type: Node<SType> = {
+    <l:@L> TYBOOL <r:@R>
+        => Node::with_source_loc(SType::Bool, Loc::new(l..r, Arc::clone(src))),
+    <l:@L> TYSTRING <r:@R>
+        => Node::with_source_loc(SType::String, Loc::new(l..r, Arc::clone(src))),
+    <l:@L> TYLONG <r:@R>
+        => Node::with_source_loc(SType::Long, Loc::new(l..r, Arc::clone(src))),
+    <l:@L> <i:Ident> <r:@R>
+        => Node::with_source_loc(SType::Ident(i), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> SET "<" <t:Type> ">" <r:@R>
+        => Node::with_source_loc(SType::Set(Box::new(t)), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> "{" <ds:AttrDecls?> "}" <r:@R>
+        => Node::with_source_loc(SType::Record(ds.unwrap_or_default()), Loc::new(l..r, Arc::clone(src))),
+}
+
+// AttrDecls := Name ['?'] ':' Type [',' | ',' AttrDecls]
+AttrDecls: Vec<Node<AttrDecl>> = {
+    <l:@L> <name: Name> <required:"?"?> ":" <ty:Type> ","? <r:@R>
+        => vec![Node::with_source_loc(AttrDecl { name, required: required.map(|_| ()), ty}, Loc::new(l..r, Arc::clone(src)))],
+    <l:@L> <name: Name> <required:"?"?> ":" <ty:Type> "," <r:@R> <mut ds: AttrDecls>
+        => {ds.insert(0, Node::with_source_loc(AttrDecl { name, required: required.map(|_| ()), ty}, Loc::new(l..r, Arc::clone(src)))); ds},
+}
+
+PrincipalOrResource: Node<PR> = {
+    <l:@L> PRINCIPAL <r:@R> => Node::with_source_loc(PR::Principal, Loc::new(l..r, Arc::clone(src))),
+    <l:@L> RESOURCE <r:@R> => Node::with_source_loc(PR::Resource, Loc::new(l..r, Arc::clone(src))),
+}
+
+// AppDecls := ('principal' | 'resource') ':' EntOrTyps [',' | ',' AppDecls]
+//          | 'context' ':' RecType [',' | ',' AppDecls]
+AppDecls: Vec<Node<AppDecl>> = {
+    <l:@L> <pr: PrincipalOrResource> ":" <ets:EntTypes> ","? <r:@R>
+        => vec![Node::with_source_loc(AppDecl::PR(PRAppDecl { ty:pr, entity_tys: ets}), Loc::new(l..r, Arc::clone(src)))],
+    <l:@L> <pr: PrincipalOrResource> ":" <ets:EntTypes> "," <r:@R> <mut ds: AppDecls>
+        => {ds.insert(0, Node::with_source_loc(AppDecl::PR(PRAppDecl { ty:pr, entity_tys: ets}), Loc::new(l..r, Arc::clone(src)))); ds},
+    <l:@L> CONTEXT ":" "{" <attrs:AttrDecls?> "}" ","? <r:@R>
+        => vec![Node::with_source_loc(AppDecl::Context(attrs.unwrap_or_default()), Loc::new(l..r, Arc::clone(src)))],
+    <l:@L> CONTEXT ":" "{" <attrs:AttrDecls?> "}" "," <r:@R> <mut ds: AppDecls>
+        => {ds.insert(0, Node::with_source_loc(AppDecl::Context(attrs.unwrap_or_default()), Loc::new(l..r, Arc::clone(src)))); ds},
+}
 
 // EntType   := Path
 // EntTypes  := Path {',' Path}
 // EntOrTyps := EntType | '[' [EntTypes] ']'
-EntTypes: Node<Vec<Node<SPath>>> = {
-    <l:@L> <et: Path> <r:@R>
-        => Node::with_source_loc(vec![et], Loc::new(l..r, Arc::clone(src))),
-    <l:@L> "[" <ets: Comma<Path>> "]" <r:@R>
-        => Node::with_source_loc(ets, Loc::new(l..r, Arc::clone(src))),
+EntTypes: Vec<Node<SPath>> = {
+    <et: Path>
+        => vec![et],
+    "[" <ets: Comma<Path>> "]"
+        => ets,
+}
+
+NameOrNames: Vec<SName> = {
+    <n:Name> => vec![n],
+    "[" <ns:Comma<Name>> "]" => ns,
 }
 
 // Decl := Entity | Action | TypeDecl
-// Entity := 'entity' Idents ['in' EntOrTyps] [['='] RecType] ';'
+// Entity := 'entity' Idents ['in' EntOrTyps] [['='] '{' [AttrDecls] '}'] ';'
+// AppliesTo := 'appliesTo' '{' AppDecls '}'
+// ActAttrs  := 'attributes' '{' AttrDecls '}'
 // Action := 'action' Names ['in' (Name | '[' [Names] ']')] [AppliesTo] [ActAttrs]';'
+// TypeDecl := 'type' IDENT '=' Type ';'
 Decl: Node<Declaration> = {
-    <l:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> ";" <r:@R>
-        => Node::with_source_loc(Declaration::Entity(EntityDecl { names: ets, member_of_types: ps }), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> <ds:("="? "{" <AttrDecls?> "}")?> ";" <r:@R>
+        => Node::with_source_loc(Declaration::Entity(EntityDecl { names: ets, member_of_types: ps, attrs: ds.map(|ds| ds.unwrap_or_default()).unwrap_or_default()}), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> ACTION <ns:Names> <ps:(IN <NameOrNames>)?> <ads:(APPLIESTO "{" <AppDecls> "}")?> <attrs:(ATTRIBUTES "{" <AttrDecls> "}")?>";" <r:@R>
+        => Node::with_source_loc(Declaration::Action(ActionDecl { names: ns, parents: ps, app_decls: ads.unwrap_or_default(), attrs: attrs.unwrap_or_default()}), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> TYPE <i:Ident> "=" <t:Type> ";" <r:@R>
+        => Node::with_source_loc(Declaration::Type(i, t), Loc::new(l..r, Arc::clone(src))),
 }
 
 // "named" space

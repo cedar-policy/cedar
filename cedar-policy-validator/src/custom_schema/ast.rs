@@ -23,26 +23,55 @@ pub struct Namespace {
 pub enum Declaration {
     Entity(EntityDecl),
     Action(ActionDecl),
-    Type(TypeDecl),
+    Type(Ident, Node<Type>),
 }
 
 #[derive(Debug, Clone)]
 pub struct EntityDecl {
     pub names: Vec<Ident>,
-    pub member_of_types: Option<Node<Vec<Node<Path>>>>,
+    pub member_of_types: Option<Vec<Node<Path>>>,
+    pub attrs: Vec<Node<AttrDecl>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Type {
+    Long,
+    Bool,
+    String,
+    Set(Box<Node<Type>>),
+    Ident(Ident),
+    Record(Vec<Node<AttrDecl>>),
+}
+
+#[derive(Debug, Clone)]
+pub struct AttrDecl {
+    pub name: Name,
+    pub required: Option<()>,
+    pub ty: Node<Type>,
+}
+
+#[derive(Debug, Clone)]
+pub enum PR {
+    Principal,
+    Resource,
+}
+
+#[derive(Debug, Clone)]
+pub struct PRAppDecl {
+    pub ty: Node<PR>,
+    pub entity_tys: Vec<Node<Path>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum AppDecl {
+    PR(PRAppDecl),
+    Context(Vec<Node<AttrDecl>>),
 }
 
 #[derive(Debug, Clone)]
 pub struct ActionDecl {
     pub names: Vec<Name>,
-}
-
-#[derive(Debug, Clone)]
-pub struct TypeDecl {
-    pub name: Vec<Ident>,
-}
-
-pub struct AttrDecl {
-    pub name: Name,
-    pub required: bool,
+    pub parents: Option<Vec<Name>>,
+    pub app_decls: Vec<Node<AppDecl>>,
+    pub attrs: Vec<Node<AttrDecl>>,
 }
