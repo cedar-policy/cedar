@@ -42,9 +42,6 @@ fn scenario_2c() {
     perform_integration_test_from_json(folder().join("2c.json"));
 }
 
-// note: 2d and 2e currently omitted, mostly to avoid cluttering the entity
-// hierarchy in sandbox_a (which is used in the introductory CLI sandbox)
-
 #[test]
 fn scenario_3a() {
     perform_integration_test_from_json(folder().join("3a.json"));
