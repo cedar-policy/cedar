@@ -1,9 +1,10 @@
 use std::str::FromStr;
 use std::sync::Arc;
 use crate::custom_schema::err::{RawErrorRecovery, RawUserError};
-use cedar_policy_core::parser::{Node, Loc};
+use cedar_policy_core::parser::{Node, Loc, unescape::to_unescaped_string};
 use cedar_policy_core::ast::Id;
 use crate::custom_schema::ast::{Name as SName, Ident as SIdent, Path as SPath, EntityDecl, Declaration, Namespace, Schema as ASchema, Type as SType, AttrDecl, ActionDecl, PR, AppDecl, PRAppDecl};
+use nonempty::{NonEmpty, nonempty};
 use itertools::Either;
 
 use lalrpop_util::{ParseError, ErrorRecovery};
@@ -92,7 +93,9 @@ Ident: SIdent = {
 Name: SName = {
    <id: Ident> => Either::Left(id),
    <l:@L> <s:STRINGLIT> <r:@R>
-        => Either::Right(Node::with_source_loc(s[1..(s.len() - 1)].into(), Loc::new(l..r, Arc::clone(src)))),
+        =>? to_unescaped_string(&s[1..(s.len() - 1)]).map_or_else(|e| Err(ParseError::User {
+            error: Node::with_source_loc(format!("invalid escape sequence: {e:?}"), Loc::new(l..r, Arc::clone(src))),
+        }), |v| Ok(Either::Right(Node::with_source_loc(v, Loc::new(l..r, Arc::clone(src)))))),
 }
 
 // Path := IDENT {'::' IDENT}
@@ -155,13 +158,17 @@ PrincipalOrResource: Node<PR> = {
 
 // AppDecls := ('principal' | 'resource') ':' EntOrTyps [',' | ',' AppDecls]
 //          | 'context' ':' RecType [',' | ',' AppDecls]
-AppDecls: Vec<Node<AppDecl>> = {
+AppDecls: NonEmpty<Node<AppDecl>> = {
     <l:@L> <pr: PrincipalOrResource> ":" <ets:EntTypes> ","? <r:@R>
-        => vec![Node::with_source_loc(AppDecl::PR(PRAppDecl { ty:pr, entity_tys: ets}), Loc::new(l..r, Arc::clone(src)))],
+        =>? 
+            NonEmpty::collect(ets.into_iter()).map(|ets| nonempty![Node::with_source_loc(AppDecl::PR(PRAppDecl { ty:pr, entity_tys: ets}), Loc::new(l..r, Arc::clone(src)))]).ok_or(ParseError::User {
+                error: Node::with_source_loc(format!("empty entity type list"), Loc::new(l..r, Arc::clone(src)))}),
     <l:@L> <pr: PrincipalOrResource> ":" <ets:EntTypes> "," <r:@R> <mut ds: AppDecls>
-        => {ds.insert(0, Node::with_source_loc(AppDecl::PR(PRAppDecl { ty:pr, entity_tys: ets}), Loc::new(l..r, Arc::clone(src)))); ds},
+        =>? 
+            NonEmpty::collect(ets.into_iter()).map(|ets| {ds.insert(0, Node::with_source_loc(AppDecl::PR(PRAppDecl { ty:pr, entity_tys: ets}), Loc::new(l..r, Arc::clone(src)))); ds}).ok_or(ParseError::User {
+                error: Node::with_source_loc(format!("empty entity type list"), Loc::new(l..r, Arc::clone(src)))}),
     <l:@L> CONTEXT ":" "{" <attrs:AttrDecls?> "}" ","? <r:@R>
-        => vec![Node::with_source_loc(AppDecl::Context(attrs.unwrap_or_default()), Loc::new(l..r, Arc::clone(src)))],
+        => nonempty![Node::with_source_loc(AppDecl::Context(attrs.unwrap_or_default()), Loc::new(l..r, Arc::clone(src)))],
     <l:@L> CONTEXT ":" "{" <attrs:AttrDecls?> "}" "," <r:@R> <mut ds: AppDecls>
         => {ds.insert(0, Node::with_source_loc(AppDecl::Context(attrs.unwrap_or_default()), Loc::new(l..r, Arc::clone(src)))); ds},
 }
@@ -191,7 +198,7 @@ Decl: Node<Declaration> = {
     <l:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> <ds:("="? "{" <AttrDecls?> "}")?> ";" <r:@R>
         => Node::with_source_loc(Declaration::Entity(EntityDecl { names: ets, member_of_types: ps, attrs: ds.map(|ds| ds.unwrap_or_default()).unwrap_or_default()}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> ACTION <ns:Names> <ps:(IN <NameOrNames>)?> <ads:(APPLIESTO "{" <AppDecls> "}")?> <attrs:(ATTRIBUTES "{" <AttrDecls> "}")?>";" <r:@R>
-        => Node::with_source_loc(Declaration::Action(ActionDecl { names: ns, parents: ps, app_decls: ads.unwrap_or_default(), attrs: attrs.unwrap_or_default()}), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(Declaration::Action(ActionDecl { names: ns, parents: ps, app_decls: ads, attrs: attrs.unwrap_or_default()}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> TYPE <i:Ident> "=" <t:Type> ";" <r:@R>
         => Node::with_source_loc(Declaration::Type(i, t), Loc::new(l..r, Arc::clone(src))),
 }

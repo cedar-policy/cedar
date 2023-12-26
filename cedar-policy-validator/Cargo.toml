@@ -24,6 +24,7 @@ stacker = "0.1.15"
 arbitrary = { version = "1", features = ["derive"], optional = true }
 lalrpop-util = { version = "0.20.0", features = ["lexer", "unicode"] }
 lazy_static = "1.4.0"
+nonempty = "0.9.0"
 
 [features]
 # by default, enable all Cedar extensions

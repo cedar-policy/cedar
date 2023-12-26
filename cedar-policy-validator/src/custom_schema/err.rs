@@ -4,6 +4,8 @@ use cedar_policy_core::parser::Node;
 use lalrpop_util as lalr;
 use thiserror::Error;
 
+use super::ast::Str;
+
 pub(crate) type RawLocation = usize;
 pub(crate) type RawToken<'a> = lalr::lexer::Token<'a>;
 pub(crate) type RawUserError = Node<String>;
@@ -121,4 +123,15 @@ impl<'a> IntoIterator for &'a mut ParseErrors {
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter_mut()
     }
+}
+
+/// For errors during schema format conversion
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum ToValidatorSchemaError {
+    /// Error raised when there are duplicate keys
+    #[error("Duplicate keys found: {0:?} and {1:?}")]
+    DuplicateKeys(Str, Str),
+    /// Error raised when there are multiple context defined
+    #[error("Multiple context defined")]
+    MultipleContext,
 }
