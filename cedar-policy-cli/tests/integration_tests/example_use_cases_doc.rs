@@ -65,17 +65,6 @@ fn scenario_4a() {
     perform_integration_test_from_json(folder().join("4a.json"));
 }
 
-// note: 4b currently omitted because it requires date/timestamp functionality
-
-/// currently failing, as the validator does not support action attributes
-#[should_panic(
-    expected = "while evaluating policy `policy0`: `Action::\\\"view\\\"` does not have the attribute `readOnly`"
-)]
-#[test]
-fn scenario_4c() {
-    perform_integration_test_from_json(folder().join("4c.json"));
-}
-
 #[test]
 fn scenario_4d() {
     perform_integration_test_from_json(folder().join("4d.json"));
@@ -91,15 +80,7 @@ fn scenario_4f() {
     perform_integration_test_from_json(folder().join("4f.json"));
 }
 
-// note: 5a currently omitted because IP-related tests are covered in a separate folder
-
 #[test]
 fn scenario_5b() {
     perform_integration_test_from_json(folder().join("5b.json"));
 }
-
-// note: 6a and 6b currently omitted because they require date/timestamp functionality
-// note: 6c currently omitted because it's covered instead in multi/3.json. Tests with
-// only a forbid policy, and no permit policies, wouldn't be terribly enlightening
-
-// note: 7c currently omitted because it requires date/timestamp functionality
