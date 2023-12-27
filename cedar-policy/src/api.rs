@@ -3397,7 +3397,7 @@ impl<'a> RequestBuilder<'a> {
 
 /// An authorization request is a tuple `<P, A, R, C>` where
 /// * P is the principal [`EntityUid`],
-/// * A is the action [`EntityUid`] ,
+/// * A is the action [`EntityUid`],
 /// * R is the resource [`EntityUid`], and
 /// * C is the request [`Context`] record.
 ///
