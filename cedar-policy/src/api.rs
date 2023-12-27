@@ -1831,7 +1831,7 @@ impl std::fmt::Display for EntityTypeName {
 pub struct EntityNamespace(ast::Name);
 
 /// This FromStr implementation requires the _normalized_ representation of the
-/// namespace. See https://github.com/cedar-policy/rfcs/pull/9/.
+/// namespace. See <https://github.com/cedar-policy/rfcs/pull/9/>.
 impl FromStr for EntityNamespace {
     type Err = ParseErrors;
 
