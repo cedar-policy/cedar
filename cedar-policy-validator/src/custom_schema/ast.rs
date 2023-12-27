@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeSet, HashMap, HashSet},
-    fmt::Display,
-};
+use std::collections::{HashMap, HashSet};
 
 use cedar_policy_core::{
     ast::{Id, Name as CName},
@@ -13,7 +10,7 @@ use smol_str::SmolStr;
 
 use crate::{
     ActionEntityUID, ActionType, ApplySpec, AttributesOrContext, EntityType, NamespaceDefinition,
-    SchemaFragment, SchemaType, SchemaTypeVariant, ValidatorSchema,
+    SchemaFragment, SchemaType, SchemaTypeVariant, TypeOfAttribute,
 };
 
 use super::err::ToValidatorSchemaError;
@@ -23,10 +20,13 @@ pub type Str = Node<SmolStr>;
 pub type Name = Either<Ident, Str>;
 pub type Schema = Vec<Node<Namespace>>;
 
-fn name_to_str(name: Name) -> SmolStr {
+fn name_to_str(name: Name) -> Str {
     match name {
-        Either::Left(id) => id.node.to_smolstr(),
-        Either::Right(s) => s.node,
+        Either::Left(id) => Node {
+            node: id.node.to_smolstr(),
+            loc: id.loc,
+        },
+        Either::Right(s) => s,
     }
 }
 
@@ -134,7 +134,25 @@ pub struct AttrDecl {
 impl TryFrom<Vec<Node<AttrDecl>>> for SchemaTypeVariant {
     type Error = ToValidatorSchemaError;
     fn try_from(value: Vec<Node<AttrDecl>>) -> Result<Self, Self::Error> {
-        todo!("...")
+        let mut attrs: HashMap<Str, crate::TypeOfAttribute> = HashMap::new();
+        for n in value {
+            let attr_decl = n.node;
+            let name_str = name_to_str(attr_decl.name);
+            if let Some((ns, _)) = attrs.get_key_value(&name_str) {
+                return Err(ToValidatorSchemaError::DuplicateKeys(name_str, ns.clone()));
+            }
+            attrs.insert(
+                name_str,
+                TypeOfAttribute {
+                    ty: attr_decl.ty.node.try_into()?,
+                    required: attr_decl.required.is_some(),
+                },
+            );
+        }
+        Ok(Self::Record {
+            attributes: attrs.into_iter().map(|(n, ty)| (n.node, ty)).collect(),
+            additional_attributes: false,
+        })
     }
 }
 
@@ -235,9 +253,9 @@ impl TryFrom<Schema> for SchemaFragment {
     fn try_from(value: Schema) -> Result<Self, Self::Error> {
         let mut validator_schema = HashMap::new();
         for ns_def in value {
-            let mut entity_types: HashMap<Str, EntityType> = HashMap::new();
+            let mut entity_types: HashMap<Node<Id>, EntityType> = HashMap::new();
             let mut actions: HashMap<Str, ActionType> = HashMap::new();
-            let mut common_types: HashMap<Str, SchemaType> = HashMap::new();
+            let mut common_types: HashMap<Node<Id>, SchemaType> = HashMap::new();
             let ns_def = ns_def.node;
             let ns = ns_def
                 .name
@@ -251,57 +269,77 @@ impl TryFrom<Schema> for SchemaFragment {
                             .names
                             .iter()
                             .map(|id| {
-                                if ids.contains(todo!()) || actions.contains_key(todo!()) {
-                                    Err(ToValidatorSchemaError::DuplicateKeys(todo!(), todo!()))
-                                } else {
-                                    ids.insert(todo!());
-                                    Ok(())
+                                let id_str = name_to_str(id.clone());
+                                if let Some(existing_id) = ids.get(&id_str) {
+                                    return Err(ToValidatorSchemaError::DuplicateKeys(
+                                        id_str,
+                                        existing_id.clone(),
+                                    ));
                                 }
+                                if let Some((existing_id, _)) = actions.get_key_value(&id_str) {
+                                    return Err(ToValidatorSchemaError::DuplicateKeys(
+                                        id_str,
+                                        existing_id.clone(),
+                                    ));
+                                }
+                                ids.insert(id_str);
+                                Ok(())
                             })
                             .collect::<Result<(), Self::Error>>()?;
                         let at: ActionType = action_decl.try_into()?;
                         actions.extend(ids.iter().map(|n| (n.clone(), at.clone())));
                     }
                     Declaration::Entity(entity_decl) => {
-                        let mut names: HashSet<Str> = HashSet::new();
+                        let mut names: HashSet<Node<Id>> = HashSet::new();
                         let _ = entity_decl
                             .names
                             .iter()
                             .map(|name| {
-                                if names.contains(todo!()) || entity_types.contains_key(todo!()) {
-                                    Err(ToValidatorSchemaError::DuplicateKeys(todo!(), todo!()))
-                                } else {
-                                    names.insert(todo!());
-                                    Ok(())
+                                if let Some(existing_name) = names.get(name) {
+                                    return Err(ToValidatorSchemaError::DuplicateKeys(
+                                        existing_name.clone().map(Id::to_smolstr),
+                                        name.clone().map(Id::to_smolstr),
+                                    ));
                                 }
+                                if let Some((existing_name, _)) = entity_types.get_key_value(name) {
+                                    return Err(ToValidatorSchemaError::DuplicateKeys(
+                                        existing_name.clone().map(Id::to_smolstr),
+                                        name.clone().map(Id::to_smolstr),
+                                    ));
+                                }
+                                names.insert(name.clone());
+                                Ok(())
                             })
                             .collect::<Result<(), Self::Error>>()?;
                         let et: EntityType = entity_decl.try_into()?;
                         entity_types.extend(names.iter().map(|n| (n.clone(), et.clone())));
                     }
                     Declaration::Type(id, ty) => {
-                        if common_types.contains_key(todo!()) {
-                            return Err(ToValidatorSchemaError::DuplicateKeys(todo!(), todo!()));
+                        if let Some((existing_id, _)) = common_types.get_key_value(&id) {
+                            return Err(ToValidatorSchemaError::DuplicateKeys(
+                                id.clone().map(Id::to_smolstr),
+                                existing_id.clone().map(Id::to_smolstr),
+                            ));
                         } else {
-                            common_types.insert(todo!(), ty.node.try_into()?);
+                            common_types.insert(id.clone(), ty.node.try_into()?);
                         }
                     }
                 }
             }
             if validator_schema.contains_key(&ns) {
-                return Err(ToValidatorSchemaError::DuplicateKeys(todo!(), todo!()));
+                return Err(ToValidatorSchemaError::DuplicateNSIds(ns));
             } else {
                 validator_schema.insert(
                     ns,
                     NamespaceDefinition {
                         entity_types: entity_types
                             .into_iter()
-                            .map(|(n, et)| (n.node, et))
+                            .map(|(n, et)| (n.node.to_smolstr(), et))
                             .collect(),
                         actions: actions.into_iter().map(|(n, a)| (n.node, a)).collect(),
                         common_types: common_types
                             .into_iter()
-                            .map(|(n, ct)| (n.node, ct))
+                            .map(|(n, ct)| (n.node.to_smolstr(), ct))
                             .collect(),
                     },
                 );

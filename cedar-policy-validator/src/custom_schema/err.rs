@@ -2,6 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use cedar_policy_core::parser::Node;
 use lalrpop_util as lalr;
+use smol_str::SmolStr;
 use thiserror::Error;
 
 use super::ast::Str;
@@ -131,6 +132,9 @@ pub enum ToValidatorSchemaError {
     /// Error raised when there are duplicate keys
     #[error("Duplicate keys found: {0:?} and {1:?}")]
     DuplicateKeys(Str, Str),
+    /// Error raised when there are duplicate namespace IDs
+    #[error("Duplicate namespace IDs: {0}")]
+    DuplicateNSIds(SmolStr),
     /// Error raised when there are multiple context defined
     #[error("Multiple context defined")]
     MultipleContext,

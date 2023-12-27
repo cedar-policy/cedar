@@ -606,17 +606,19 @@ fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
                 .map_err(|err| miette!("fail to parse schema fragment: {err}"))?;
         cedar_policy_formatter::schema_fragment_to_pretty(&schema_fragment)
     } else {
-        let new_schema =
-            cedar_policy_validator::custom_schema::parse_schema_fragment_from_str(&input_str)
-                .map_err(|err| {
-                    let name = args
-                        .input_file
-                        .as_ref()
-                        .map_or_else(|| "<stdin>".to_owned(), |n| n.to_owned());
-                    Report::new(err).with_source_code(NamedSource::new(name, input_str))
-                })
-                .wrap_err_with(|| format!("failed to parse custom schema"))?;
-        serde_json::to_string(&new_schema)
+        let new_schema = cedar_policy_validator::custom_schema::parser::parse_schema(&input_str)
+            .map_err(|err| {
+                let name = args
+                    .input_file
+                    .as_ref()
+                    .map_or_else(|| "<stdin>".to_owned(), |n| n.to_owned());
+                miette!("{err:?}")
+            })
+            .wrap_err_with(|| format!("failed to parse custom schema"))?;
+        let ns: Result<cedar_policy_validator::SchemaFragment> = new_schema
+            .try_into()
+            .map_err(|err| miette!("error converting custom schema to JSON schema: {err:?}"));
+        serde_json::to_string(&ns?)
             .map_err(|err| miette!("fail to serialize schema fragment: {err}"))
     }
 }

@@ -1,4 +1,4 @@
 mod ast;
 mod err;
-mod parser;
+pub mod parser;
 mod test;
