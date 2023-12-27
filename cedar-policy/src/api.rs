@@ -1716,6 +1716,7 @@ impl<'a> Diagnostic for ValidationWarning<'a> {
 /// ```
 /// # use cedar_policy::EntityId;
 /// let id : EntityId = "my-id".parse().unwrap_or_else(|never| match never {});
+/// # assert_eq!(id.as_ref(), "my-id");
 /// ```
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
@@ -1752,7 +1753,9 @@ impl std::fmt::Display for EntityId {
 ///
 /// ```
 /// # use cedar_policy::EntityTypeName;
-/// let id : Result<EntityTypeName, _> = "MyType".parse();
+/// let id : Result<EntityTypeName, _> = "Namespace::Type".parse();
+/// # assert_eq!(id.unwrap().basename(), "Type");
+/// # assert_eq!(id.unwrap().namespace(), "Namespace");
 /// ```
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
@@ -1813,12 +1816,22 @@ impl std::fmt::Display for EntityTypeName {
     }
 }
 
-/// Represents a namespace
+/// Represents an namespace.
+///
+/// An `EntityNamespace` can can be constructed using
+/// [`EntityNamespace::from_str`] or by calling `parse()` on a string.
+/// _This can fail_, so it is important to properly handle an `Err` result.
+///
+/// ```
+/// # use cedar_policy::EntityNamespace;
+/// let id : Result<EntityNamespace, _> = "My::Name::Space".parse();
+/// # assert_eq!(id.unwrap().to_string(), "My::Name::Space".to_string());
+/// ```
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EntityNamespace(ast::Name);
 
-// This FromStr implementation requires the _normalized_ representation of the
-// namespace. See https://github.com/cedar-policy/rfcs/pull/9/.
+/// This FromStr implementation requires the _normalized_ representation of the
+/// namespace. See https://github.com/cedar-policy/rfcs/pull/9/.
 impl FromStr for EntityNamespace {
     type Err = ParseErrors;
 
@@ -2683,6 +2696,7 @@ impl TemplateResourceConstraint {
 /// ```
 /// # use cedar_policy::PolicyId;
 /// let id : PolicyId = "my-id".parse().unwrap();
+/// # assert_eq!(id.as_ref(), "my-id");
 /// ```
 #[repr(transparent)]
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize, Deserialize, RefCast)]
