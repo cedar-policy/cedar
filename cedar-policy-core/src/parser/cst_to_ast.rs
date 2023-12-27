@@ -4489,6 +4489,14 @@ mod tests {
                     "use a method-style call: `e.greaterThan(..)`",
                 ),
             ),
+            (
+                "[].bar()",
+                ExpectedErrorMessage::error("not a valid method name: `bar`"),
+            ),
+            (
+                "bar([])",
+                ExpectedErrorMessage::error("`bar` is not a function"),
+            ),
         ];
         for (src, expected) in invalid_exprs {
             assert_matches!(parse_expr(src), Err(e) => {
@@ -4538,5 +4546,163 @@ mod tests {
                 expect_err(p_src, &e, &expected);
             });
         }
+    }
+
+    #[test]
+    fn missing_scope_constraint() {
+        let p_src = "permit();";
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error("this policy is missing the `principal` variable in the scope"));
+        });
+        let p_src = "permit(principal);";
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error("this policy is missing the `action` variable in the scope"));
+        });
+        let p_src = "permit(principal, action);";
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error("this policy is missing the `resource` variable in the scope"));
+        });
+    }
+
+    #[test]
+    fn invalid_scope_constraint() {
+        let p_src = "permit(foo, action, resource);";
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+                "expected a variable that is valid in the policy scope; found: `foo`",
+                "must be one of `principal`, `action`, or `resource`"
+            ));
+        });
+        let p_src = "permit(resource, action, resource);";
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error("the variable `resource` is invalid in this policy scope clause, the variable `principal` is expected"));
+        });
+
+        let p_src = "permit(principal, principal, resource);";
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error("the variable `principal` is invalid in this policy scope clause, the variable `action` is expected"));
+        });
+        let p_src = "permit(principal, if, resource);";
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+                "expected a variable that is valid in the policy scope; found: `if`",
+                "must be one of `principal`, `action`, or `resource`"
+            ));
+        });
+
+        let p_src = "permit(principal, action, like);";
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+                "expected a variable that is valid in the policy scope; found: `like`",
+                "must be one of `principal`, `action`, or `resource`"
+            ));
+        });
+        let p_src = "permit(principal, action, principal);";
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error("the variable `principal` is invalid in this policy scope clause, the variable `resource` is expected"));
+        });
+        let p_src = "permit(principal, action, action);";
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error("the variable `action` is invalid in this policy scope clause, the variable `resource` is expected"));
+        });
+    }
+
+    #[test]
+    fn invalid_scope_operator() {
+        let p_src = r#"permit(principal > User::"alice", action, resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+                "not a valid policy scope constraint: >",
+                "policy scope constraints must either `==`, `in`, `is`, or `_ is _ in _`"
+            ));
+        });
+        let p_src = r#"permit(principal, action != Action::"view", resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+                "not a valid policy scope constraint: !=",
+                "policy scope constraints must either `==`, `in`, `is`, or `_ is _ in _`"
+            ));
+        });
+        let p_src = r#"permit(principal, action, resource <= Folder::"things");"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+                "not a valid policy scope constraint: <=",
+                "policy scope constraints must either `==`, `in`, `is`, or `_ is _ in _`"
+            ));
+        });
+    }
+
+    #[test]
+    fn scope_action_eq_set() {
+        let p_src = r#"permit(principal, action == [Action::"view", Action::"edit"], resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error("the right hand side of equality in the policy scope must be a single entity uid or a template slot"));
+        });
+    }
+
+    #[test]
+    fn scope_action_rel_non_action() {
+        let p_src = r#"permit(principal, action == User::"alice", resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+                "expected an entity uid with the type `Action` but got `User::\"alice\"`",
+                "action entities must have type `Action`, optionally in a namespace"
+            ));
+        });
+        let p_src = r#"permit(principal, action in [User::"alice", Action::"edit"], resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+                "expected an entity uid with the type `Action` but got `User::\"alice\"`",
+                "action entities must have type `Action`, optionally in a namespace"
+            ));
+        });
+    }
+
+    #[test]
+    fn unescape_err() {
+        let assert_invalid_escape = |p_src| {
+            assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+                expect_err(p_src, &e, &ExpectedErrorMessage::error("the input `\\q` is not a valid escape: InvalidEscape"));
+            });
+        };
+        assert_invalid_escape(r#"@foo("\q")permit(principal, action, resource);"#);
+        assert_invalid_escape(r#"permit(principal, action, resource) when { "\q" };"#);
+        assert_invalid_escape(r#"permit(principal, action, resource) when { "\q".contains(0) };"#);
+        assert_invalid_escape(r#"permit(principal, action, resource) when { "\q".bar };"#);
+        assert_invalid_escape(r#"permit(principal, action, resource) when { "\q"["a"] };"#);
+        assert_invalid_escape(r#"permit(principal, action, resource) when { "" like "\q" };"#);
+        assert_invalid_escape(r#"permit(principal, action, resource) when { {}["\q"] };"#);
+        assert_invalid_escape(r#"permit(principal, action, resource) when { {"\q": 0} };"#);
+        assert_invalid_escape(r#"permit(principal, action, resource) when { User::"\q" };"#);
+    }
+
+    #[test]
+    fn unsupported_ops() {
+        let src = "1/2";
+        assert_matches!(parse_expr(src), Err(e) => {
+            expect_err(src, &e, &ExpectedErrorMessage::error("division is not supported"));
+        });
+        let src = "7 % 3";
+        assert_matches!(parse_expr(src), Err(e) => {
+            expect_err(src, &e, &ExpectedErrorMessage::error("remainder/modulo is not supported"));
+        });
+    }
+
+    #[test]
+    fn over_unary() {
+        let src = "!!!!!!false";
+        assert_matches!(parse_expr(src), Err(e) => {
+            expect_err(src, &e, &ExpectedErrorMessage::error_and_help(
+                "too many occurrences of `!_`",
+                "cannot chain more the 4 applications of a unary operator"
+            ));
+        });
+        let src = "-------0";
+        assert_matches!(parse_expr(src), Err(e) => {
+            expect_err(src, &e, &ExpectedErrorMessage::error_and_help(
+                "too many occurrences of `-_`",
+                "cannot chain more the 4 applications of a unary operator"
+            ));
+        });
     }
 }
