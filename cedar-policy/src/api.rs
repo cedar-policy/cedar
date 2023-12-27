@@ -1754,8 +1754,9 @@ impl std::fmt::Display for EntityId {
 /// ```
 /// # use cedar_policy::EntityTypeName;
 /// let id : Result<EntityTypeName, _> = "Namespace::Type".parse();
-/// # assert_eq!(id.unwrap().basename(), "Type");
-/// # assert_eq!(id.unwrap().namespace(), "Namespace");
+/// # let id = id.unwrap();
+/// # assert_eq!(id.basename(), "Type");
+/// # assert_eq!(id.namespace(), "Namespace");
 /// ```
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
