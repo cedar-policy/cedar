@@ -1707,7 +1707,7 @@ impl<'a> Diagnostic for ValidationWarning<'a> {
     }
 }
 
-/// Unique identifier portion of the [`EntityUid`] type.
+/// Identifier portion of the [`EntityUid`] type.
 ///
 /// An `EntityId` can can be constructed using [`EntityId::from_str`] or by
 /// calling `parse()` on a string. This implementation is `Infallible`, so the
@@ -1744,7 +1744,7 @@ impl std::fmt::Display for EntityId {
     }
 }
 
-/// Represents a concatenation of Namespaces and `TypeName`.
+/// Represents an entity type name. Consists of a namespace and the type name.
 ///
 /// An `EntityTypeName` can can be constructed using
 /// [`EntityTypeName::from_str`] or by calling `parse()` on a string. Unlike
@@ -1817,7 +1817,7 @@ impl std::fmt::Display for EntityTypeName {
     }
 }
 
-/// Represents an namespace.
+/// Represents a namespace.
 ///
 /// An `EntityNamespace` can can be constructed using
 /// [`EntityNamespace::from_str`] or by calling `parse()` on a string.
@@ -1847,7 +1847,7 @@ impl std::fmt::Display for EntityNamespace {
     }
 }
 
-/// Unique Id for an entity, such as `User::"alice"`.
+/// Unique id for an entity, such as `User::"alice"`.
 ///
 /// An `EntityUid` contains an [`EntityTypeName`] and [`EntityId`]. It can
 /// be constructed from these components using
@@ -2689,7 +2689,7 @@ impl TemplateResourceConstraint {
     }
 }
 
-/// Unique Ids assigned to policies and templates.
+/// Unique ids assigned to policies and templates.
 ///
 /// A `PolicyId` can can be constructed using [`PolicyId::from_str`] or by
 /// calling `parse()` on a string. This currently always returns `Ok()`.
@@ -3395,14 +3395,14 @@ impl<'a> RequestBuilder<'a> {
     }
 }
 
-/// Represents an authorization request tuple  asking the question, "Can this
-/// principal take this action on this resource in this context?"
-///
 /// An authorization request is a tuple `<P, A, R, C>` where
 /// * P is the principal [`EntityUid`],
 /// * A is the action [`EntityUid`] ,
 /// * R is the resource [`EntityUid`], and
 /// * C is the request [`Context`] record.
+///
+/// It represents an authorization request asking the question, "Can this
+/// principal take this action on this resource in this context?"
 #[repr(transparent)]
 #[derive(Debug, RefCast)]
 pub struct Request(pub(crate) ast::Request);
