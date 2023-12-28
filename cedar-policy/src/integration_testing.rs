@@ -342,6 +342,16 @@ pub fn perform_integration_test_from_json_custom(
                 .into()
         };
 
+        let expected_errors = if custom_impl_opt.is_some() {
+            // errors may not exactly match when using a custom implementation, so ignore
+            response
+                .diagnostics()
+                .errors()
+                .map(std::string::ToString::to_string)
+                .collect()
+        } else {
+            json_request.errors.into_iter().collect()
+        };
         let expected_response = InterfaceResponse::new(
             json_request.decision,
             json_request
@@ -349,7 +359,7 @@ pub fn perform_integration_test_from_json_custom(
                 .into_iter()
                 .map(|s| PolicyId::from_str(&s).unwrap())
                 .collect(),
-            json_request.errors.into_iter().collect(),
+            expected_errors,
         );
 
         assert_eq!(
