@@ -465,6 +465,7 @@ fn run_validate_test(policies_file: &str, schema_file: &str, exit_code: CedarExi
         },
         deny_warnings: false,
         partial_validate: false,
+        schema_format: cedar_policy_cli::SchemaFormat::Json,
     };
     let output = validate(&cmd);
     assert_eq!(exit_code, output, "{:#?}", cmd);

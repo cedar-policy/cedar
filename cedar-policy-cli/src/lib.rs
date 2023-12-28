@@ -108,6 +108,14 @@ pub struct TranslateSchemaArgs {
     pub input_file: Option<String>,
 }
 
+#[derive(Debug, Clone, ValueEnum)]
+pub enum SchemaFormat {
+    /// Default JSON format
+    Json,
+    /// Custom format
+    Custom,
+}
+
 #[derive(Args, Debug)]
 pub struct ValidateArgs {
     /// File containing the schema
@@ -124,6 +132,9 @@ pub struct ValidateArgs {
     /// experimental `partial-validate` feature enabled.
     #[arg(long = "partial-validate")]
     pub partial_validate: bool,
+    /// Schema format (JSON or Custom)
+    #[arg(long, value_enum, default_value_t = SchemaFormat::Json)]
+    pub schema_format: SchemaFormat,
 }
 
 #[derive(Args, Debug)]
@@ -494,7 +505,7 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
         }
     };
 
-    let schema = match read_schema_file(&args.schema_file) {
+    let schema = match read_schema_file(&args.schema_file, args.schema_format.clone()) {
         Ok(schema) => schema,
         Err(e) => {
             println!("{e:?}");
@@ -524,7 +535,11 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
 
 pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
     println!();
-    let schema = match args.schema_file.as_ref().map(read_schema_file) {
+    let schema = match args
+        .schema_file
+        .as_ref()
+        .map(|f| read_schema_file(f, SchemaFormat::Json))
+    {
         None => None,
         Some(Ok(schema)) => Some(schema),
         Some(Err(e)) => {
@@ -608,7 +623,7 @@ fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
     } else {
         let new_schema = cedar_policy_validator::custom_schema::parser::parse_schema(&input_str)
             .map_err(|err| {
-                let name = args
+                let _name = args
                     .input_file
                     .as_ref()
                     .map_or_else(|| "<stdin>".to_owned(), |n| n.to_owned());
@@ -1057,14 +1072,32 @@ fn read_json_policy(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> R
         .wrap_err_with(|| format!("failed to create policy set from {context}"))
 }
 
-fn read_schema_file(filename: impl AsRef<Path> + std::marker::Copy) -> Result<Schema> {
+fn read_schema_file(
+    filename: impl AsRef<Path> + std::marker::Copy,
+    format: SchemaFormat,
+) -> Result<Schema> {
     let schema_src = read_from_file(filename, "schema")?;
-    Schema::from_str(&schema_src).wrap_err_with(|| {
-        format!(
-            "failed to parse schema from file {}",
-            filename.as_ref().display()
-        )
-    })
+    match format {
+        SchemaFormat::Json => Schema::from_str(&schema_src).wrap_err_with(|| {
+            format!(
+                "failed to parse schema from file {}",
+                filename.as_ref().display()
+            )
+        }),
+        SchemaFormat::Custom => {
+            let custom_schema =
+                cedar_policy_validator::custom_schema::parser::parse_schema(&schema_src)
+                    .map_err(|err| miette!("failed to parse custom schema: {err:?}"))?;
+            let json_schema: cedar_policy_validator::SchemaFragment = custom_schema
+                .try_into()
+                .map_err(|err| miette!("failed to translate custom schema: {err:?}"))?;
+            Schema::from_str(
+                &serde_json::to_string(&json_schema)
+                    .map_err(|err| miette!("failed to serialize schema: {err}"))?,
+            )
+            .map_err(|err| miette!("failed to parse translated schema: {err}"))
+        }
+    }
 }
 
 /// This uses the Cedar API to call the authorization engine.
@@ -1089,7 +1122,7 @@ fn execute_request(
             PolicySet::new()
         }
     };
-    let schema = match schema_filename.map(read_schema_file) {
+    let schema = match schema_filename.map(|f| read_schema_file(f, SchemaFormat::Json)) {
         None => None,
         Some(Ok(schema)) => Some(schema),
         Some(Err(e)) => {
