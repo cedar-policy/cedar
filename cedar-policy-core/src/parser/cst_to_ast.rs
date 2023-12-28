@@ -3631,36 +3631,6 @@ mod tests {
         }
     }
 
-    const WRONG_VAR_TEMPLATES: [&str; 16] = [
-        r#"permit(principal == ?resource, action, resource);"#,
-        r#"permit(principal in ?resource, action, resource);"#,
-        r#"permit(principal, action, resource == ?principal);"#,
-        r#"permit(principal, action, resource in ?principal);"#,
-        r#"permit(principal, action == ?principal, resource);"#,
-        r#"permit(principal, action in ?principal, resource);"#,
-        r#"permit(principal, action == ?resource, resource);"#,
-        r#"permit(principal, action in ?resource, resource);"#,
-        r#"forbid(principal == ?resource, action, resource);"#,
-        r#"forbid(principal in ?resource, action, resource);"#,
-        r#"forbid(principal, action, resource == ?principal);"#,
-        r#"forbid(principal, action, resource in ?principal);"#,
-        r#"forbid(principal, action == ?principal, resource);"#,
-        r#"forbid(principal, action in ?principal, resource);"#,
-        r#"forbid(principal, action == ?resource, resource);"#,
-        r#"forbid(principal, action in ?resource, resource);"#,
-    ];
-
-    #[test]
-    fn test_wrong_template_var() {
-        for src in WRONG_VAR_TEMPLATES {
-            let mut errs = ParseErrors::new();
-            let e = text_to_cst::parse_policy(src)
-                .expect("Parse Error")
-                .to_policy_template(ast::PolicyID::from_string("id0"), &mut errs);
-            assert!(e.is_none());
-        }
-    }
-
     #[test]
     fn var_type() {
         let mut errs = ParseErrors::new();
@@ -3719,6 +3689,24 @@ mod tests {
         test_invalid("\\\\aa\\p", 1);
         // invalid escape `\a` and empty unicode escape
         test_invalid(r"\aaa\u{}", 2);
+    }
+
+    #[test]
+    fn unescape_err_positions() {
+        let assert_invalid_escape = |p_src| {
+            assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+                expect_err(p_src, &e, &ExpectedErrorMessage::error("the input `\\q` is not a valid escape: InvalidEscape"));
+            });
+        };
+        assert_invalid_escape(r#"@foo("\q")permit(principal, action, resource);"#);
+        assert_invalid_escape(r#"permit(principal, action, resource) when { "\q" };"#);
+        assert_invalid_escape(r#"permit(principal, action, resource) when { "\q".contains(0) };"#);
+        assert_invalid_escape(r#"permit(principal, action, resource) when { "\q".bar };"#);
+        assert_invalid_escape(r#"permit(principal, action, resource) when { "\q"["a"] };"#);
+        assert_invalid_escape(r#"permit(principal, action, resource) when { "" like "\q" };"#);
+        assert_invalid_escape(r#"permit(principal, action, resource) when { {}["\q"] };"#);
+        assert_invalid_escape(r#"permit(principal, action, resource) when { {"\q": 0} };"#);
+        assert_invalid_escape(r#"permit(principal, action, resource) when { User::"\q" };"#);
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
@@ -4513,8 +4501,33 @@ mod tests {
                 ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?resource instead of ?principal"),
             ),
             (
+                r#"permit(principal in ?resource, action, resource);"#,
+                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?resource instead of ?principal"),
+            ),
+            (
+                r#"permit(principal == ?foo, action, resource);"#,
+                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?foo instead of ?principal"),
+            ),
+            (
+                r#"permit(principal in ?foo, action, resource);"#,
+                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?foo instead of ?principal"),
+            ),
+
+            (
                 r#"permit(principal, action, resource == ?principal);"#,
                 ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?principal instead of ?resource"),
+            ),
+            (
+                r#"permit(principal, action, resource in ?principal);"#,
+                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?principal instead of ?resource"),
+            ),
+            (
+                r#"permit(principal, action, resource == ?baz);"#,
+                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?baz instead of ?resource"),
+            ),
+            (
+                r#"permit(principal, action, resource in ?baz);"#,
+                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?baz instead of ?resource"),
             ),
             (
                 r#"permit(principal, action, resource) when { principal == ?foo};"#,
@@ -4523,27 +4536,44 @@ mod tests {
                     "a template slot may only be `?principal` or `?resource`",
                 )
             ),
-            (
-                r#"permit(principal == ?foo, action, resource);"#,
-                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?foo instead of ?principal"),
-            ),
+
             (
                 r#"permit(principal, action == ?action, resource);"#,
+                ExpectedErrorMessage::error("expected single entity uid or set of entity uids, got: template slot"),
+            ),
+            (
+                r#"permit(principal, action in ?action, resource);"#,
+                ExpectedErrorMessage::error("expected single entity uid or set of entity uids, got: template slot"),
+            ),
+            (
+                r#"permit(principal, action == ?principal, resource);"#,
+                ExpectedErrorMessage::error("expected single entity uid or set of entity uids, got: template slot"),
+            ),
+            (
+                r#"permit(principal, action in ?principal, resource);"#,
+                ExpectedErrorMessage::error("expected single entity uid or set of entity uids, got: template slot"),
+            ),
+            (
+                r#"permit(principal, action == ?resource, resource);"#,
+                ExpectedErrorMessage::error("expected single entity uid or set of entity uids, got: template slot"),
+            ),
+            (
+                r#"permit(principal, action in ?resource, resource);"#,
                 ExpectedErrorMessage::error("expected single entity uid or set of entity uids, got: template slot"),
             ),
             (
                 r#"permit(principal, action in [?bar], resource);"#,
                 ExpectedErrorMessage::error("expected single entity uid, got: template slot"),
             ),
-            (
-                r#"permit(principal, action, resource in ?baz);"#,
-                ExpectedErrorMessage::error("expected an entity uid or matching template slot, found ?baz instead of ?resource"),
-            ),
         ];
 
         for (p_src, expected) in invalid_policies {
             assert_matches!(parse_policy_template(None, p_src), Err(e) => {
                 expect_err(p_src, &e, &expected);
+            });
+            let forbid_src = format!("forbid{}", &p_src[6..]);
+            assert_matches!(parse_policy_template(None, &forbid_src), Err(e) => {
+                expect_err(forbid_src.as_str(), &e, &expected);
             });
         }
     }
@@ -4638,42 +4668,6 @@ mod tests {
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error("the right hand side of equality in the policy scope must be a single entity uid or a template slot"));
         });
-    }
-
-    #[test]
-    fn scope_action_rel_non_action() {
-        let p_src = r#"permit(principal, action == User::"alice", resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
-                "expected an entity uid with the type `Action` but got `User::\"alice\"`",
-                "action entities must have type `Action`, optionally in a namespace"
-            ));
-        });
-        let p_src = r#"permit(principal, action in [User::"alice", Action::"edit"], resource);"#;
-        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
-                "expected an entity uid with the type `Action` but got `User::\"alice\"`",
-                "action entities must have type `Action`, optionally in a namespace"
-            ));
-        });
-    }
-
-    #[test]
-    fn unescape_err() {
-        let assert_invalid_escape = |p_src| {
-            assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-                expect_err(p_src, &e, &ExpectedErrorMessage::error("the input `\\q` is not a valid escape: InvalidEscape"));
-            });
-        };
-        assert_invalid_escape(r#"@foo("\q")permit(principal, action, resource);"#);
-        assert_invalid_escape(r#"permit(principal, action, resource) when { "\q" };"#);
-        assert_invalid_escape(r#"permit(principal, action, resource) when { "\q".contains(0) };"#);
-        assert_invalid_escape(r#"permit(principal, action, resource) when { "\q".bar };"#);
-        assert_invalid_escape(r#"permit(principal, action, resource) when { "\q"["a"] };"#);
-        assert_invalid_escape(r#"permit(principal, action, resource) when { "" like "\q" };"#);
-        assert_invalid_escape(r#"permit(principal, action, resource) when { {}["\q"] };"#);
-        assert_invalid_escape(r#"permit(principal, action, resource) when { {"\q": 0} };"#);
-        assert_invalid_escape(r#"permit(principal, action, resource) when { User::"\q" };"#);
     }
 
     #[test]
