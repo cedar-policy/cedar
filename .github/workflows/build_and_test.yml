@@ -19,7 +19,7 @@ jobs:
       - run: RUSTFLAGS="-D warnings -F unsafe-code" cargo build --verbose
       - run: cargo doc --all-features --no-deps
       # Clippy is configured by `.cargo/config.toml` to deny on lints like
-      # `unwrap_used`. The aren't detected by `panic_safety.sh` which only
+      # `unwrap_used`. They aren't detected by `panic_safety.sh` which only
       # looks for comments where we've added an `allow` directive for clippy.
       - run: cargo clippy --all-features
       - run: cargo test --verbose --features "experimental"
