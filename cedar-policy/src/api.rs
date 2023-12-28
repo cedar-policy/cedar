@@ -794,7 +794,8 @@ impl From<authorizer::Diagnostics> for Diagnostics {
 }
 
 impl Diagnostics {
-    /// Get the policies that contributed to the decision
+    /// Get the `PolicyId`s of the policies that contributed to the decision.
+    /// If no policies applied to the request, this set will be empty.
     /// ```
     /// # use cedar_policy::{Authorizer, Context, Decision, Entities, EntityId, EntityTypeName,
     /// # EntityUid, Request,PolicySet};
@@ -853,7 +854,8 @@ impl Diagnostics {
         self.reason.iter()
     }
 
-    /// Get the errors
+    /// Get the errors that occurred during authorization. The errors should be
+    /// treated as unordered, since policies may be evaluated in any order.
     /// ```
     /// # use cedar_policy::{Authorizer, Context, Decision, Entities, EntityId, EntityTypeName,
     /// # EntityUid, Request,PolicySet};
@@ -1705,7 +1707,17 @@ impl<'a> Diagnostic for ValidationWarning<'a> {
     }
 }
 
-/// unique identifier portion of the `EntityUid` type
+/// Identifier portion of the [`EntityUid`] type.
+///
+/// An `EntityId` can can be constructed using [`EntityId::from_str`] or by
+/// calling `parse()` on a string. This implementation is `Infallible`, so the
+/// parsed `EntityId` can be extracted safely.
+///
+/// ```
+/// # use cedar_policy::EntityId;
+/// let id : EntityId = "my-id".parse().unwrap_or_else(|never| match never {});
+/// # assert_eq!(id.as_ref(), "my-id");
+/// ```
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
 pub struct EntityId(ast::Eid);
@@ -1732,7 +1744,20 @@ impl std::fmt::Display for EntityId {
     }
 }
 
-/// Represents a concatenation of Namespaces and `TypeName`
+/// Represents an entity type name. Consists of a namespace and the type name.
+///
+/// An `EntityTypeName` can can be constructed using
+/// [`EntityTypeName::from_str`] or by calling `parse()` on a string. Unlike
+/// [`EntityId::from_str`], _this can fail_, so it is important to properly
+/// handle an `Err` result.
+///
+/// ```
+/// # use cedar_policy::EntityTypeName;
+/// let id : Result<EntityTypeName, _> = "Namespace::Type".parse();
+/// # let id = id.unwrap();
+/// # assert_eq!(id.basename(), "Type");
+/// # assert_eq!(id.namespace(), "Namespace");
+/// ```
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
 pub struct EntityTypeName(ast::Name);
@@ -1776,8 +1801,8 @@ impl EntityTypeName {
     }
 }
 
-// This FromStr implementation requires the _normalized_ representation of the
-// type name. See https://github.com/cedar-policy/rfcs/pull/9/.
+/// This `FromStr` implementation requires the _normalized_ representation of the
+/// type name. See <https://github.com/cedar-policy/rfcs/pull/9/>.
 impl FromStr for EntityTypeName {
     type Err = ParseErrors;
 
@@ -1792,12 +1817,22 @@ impl std::fmt::Display for EntityTypeName {
     }
 }
 
-/// Represents a namespace
+/// Represents a namespace.
+///
+/// An `EntityNamespace` can can be constructed using
+/// [`EntityNamespace::from_str`] or by calling `parse()` on a string.
+/// _This can fail_, so it is important to properly handle an `Err` result.
+///
+/// ```
+/// # use cedar_policy::EntityNamespace;
+/// let id : Result<EntityNamespace, _> = "My::Name::Space".parse();
+/// # assert_eq!(id.unwrap().to_string(), "My::Name::Space".to_string());
+/// ```
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EntityNamespace(ast::Name);
 
-// This FromStr implementation requires the _normalized_ representation of the
-// namespace. See https://github.com/cedar-policy/rfcs/pull/9/.
+/// This `FromStr` implementation requires the _normalized_ representation of the
+/// namespace. See <https://github.com/cedar-policy/rfcs/pull/9/>.
 impl FromStr for EntityNamespace {
     type Err = ParseErrors;
 
@@ -1812,7 +1847,14 @@ impl std::fmt::Display for EntityNamespace {
     }
 }
 
-/// Unique Id for an entity, such as `User::"alice"`
+/// Unique id for an entity, such as `User::"alice"`.
+///
+/// An `EntityUid` contains an [`EntityTypeName`] and [`EntityId`]. It can
+/// be constructed from these components using
+/// [`EntityUid::from_type_name_and_id`], parsed from a string using `.parse()`
+/// (via [`EntityUid::from_str`]), or constructed from a JSON value using
+/// [`EntityUid::from_json`].
+///
 // INVARIANT: this can never be an `ast::EntityType::Unspecified`
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
@@ -2647,7 +2689,16 @@ impl TemplateResourceConstraint {
     }
 }
 
-/// Unique Ids assigned to policies and templates
+/// Unique ids assigned to policies and templates.
+///
+/// A `PolicyId` can can be constructed using [`PolicyId::from_str`] or by
+/// calling `parse()` on a string. This currently always returns `Ok()`.
+///
+/// ```
+/// # use cedar_policy::PolicyId;
+/// let id : PolicyId = "my-id".parse().unwrap();
+/// # assert_eq!(id.as_ref(), "my-id");
+/// ```
 #[repr(transparent)]
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize, Deserialize, RefCast)]
 pub struct PolicyId(ast::PolicyID);
@@ -3344,7 +3395,14 @@ impl<'a> RequestBuilder<'a> {
     }
 }
 
-/// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
+/// An authorization request is a tuple `<P, A, R, C>` where
+/// * P is the principal [`EntityUid`],
+/// * A is the action [`EntityUid`],
+/// * R is the resource [`EntityUid`], and
+/// * C is the request [`Context`] record.
+///
+/// It represents an authorization request asking the question, "Can this
+/// principal take this action on this resource in this context?"
 #[repr(transparent)]
 #[derive(Debug, RefCast)]
 pub struct Request(pub(crate) ast::Request);
