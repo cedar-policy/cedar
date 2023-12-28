@@ -209,13 +209,13 @@ impl TryFrom<NonEmpty<Node<AppDecl>>> for ApplySpec {
         }
         Ok(Self {
             // In JSON schema format, unspecified resource is represented by a None field
-            resource_types: if resource_types.is_empty() {
+            resource_types: if !resource_types.is_empty() {
                 Some(resource_types)
             } else {
                 None
             },
             // In JSON schema format, unspecified principal is represented by a None field
-            principal_types: if principal_types.is_empty() {
+            principal_types: if !principal_types.is_empty() {
                 Some(principal_types)
             } else {
                 None

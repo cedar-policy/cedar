@@ -23,4 +23,3 @@ pub mod lexer;
 mod schema;
 pub mod token;
 mod utils;
-pub use schema::*;
