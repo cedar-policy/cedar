@@ -270,8 +270,6 @@ impl PolicySet {
     pub fn add_static(&mut self, policy: StaticPolicy) -> Result<(), PolicySetError> {
         let (t, p) = Template::link_static_policy(policy);
 
-        // TODO: Use `try_insert` when stabilized.
-        // https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert
         match (
             self.templates.entry(t.id().clone()),
             self.links.entry(t.id().clone()),
@@ -303,8 +301,6 @@ impl PolicySet {
             return Err(PolicySetError::Occupied { id: t.id().clone() });
         }
 
-        // TODO: Use `try_insert` when stabilized.
-        // https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert
         match self.templates.entry(t.id().clone()) {
             Entry::Occupied(oentry) => Err(PolicySetError::Occupied {
                 id: oentry.key().clone(),

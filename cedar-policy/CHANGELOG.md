@@ -10,11 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `AsRef<str>` implementation for `PolicyId`.
-- New API `template_links` for `Policy` to retrieve the linked values for a 
+- New API `template_links` for `Policy` to retrieve the linked values for a
   template-linked policy. (resolving #489)
 
 ### Changed
 
+- Changed `TypeError` to enforce its invariant statically
 - Add hints suggesting how to fix some type errors.
 - The `ValidationResult` returned from `Validator::validate` now has a static
   lifetime, allowing it to be used in more contexts. The lifetime parameter
@@ -38,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - For the `partial-eval` experimental feature: make the return values of
   `RequestBuilder`'s `principal`, `action`, `resource`, `context` and
   `schema` functions `#[must_use]`.
+
+### Fixed
+
+- Possible panic (when stack size limit reached) in `Context::empty()` (#524,
+  fixed by #526)
 
 ## [3.0.0] - 2023-12-15
 Cedar Language Version: 3.0.0
@@ -148,6 +154,23 @@ Cedar Language Version: 3.0.0
 - Move `ValidationMode::Permissive` behind an experimental feature flag.
   To continue using this feature you must enable the `permissive-validate`
   feature flag. (#428)
+
+  
+## [2.4.3] - 2023-12-21
+
+Cedar Language Version: 2.1.3
+
+### Fixed
+
+- Reverted accidental breaking change to schema format introduced in the 2.3.2
+  release.
+  Attribute types in schema files may now contain unexpected keys (as they could
+  before 2.3.2).
+  As a side effect, schema parsing error messages are less useful when an
+  attribute type is missing a required key.
+  The 2.4.2 behavior, including the more useful error messages, remain available
+  in all 3.x versions of Cedar.
+  (#520)
 
 ## [2.4.2] - 2023-10-23
 Cedar Language Version: 2.1.2
