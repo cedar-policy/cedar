@@ -138,4 +138,7 @@ pub enum ToValidatorSchemaError {
     /// Error raised when there are multiple context defined
     #[error("Multiple context defined")]
     MultipleContext,
+    /// Invalid type name
+    #[error("Invalid type name: {0:?}")]
+    InvalidTypeName(SmolStr),
 }

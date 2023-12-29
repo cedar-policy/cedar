@@ -127,7 +127,7 @@ Names: Vec<SName> = {
 // PRIMTYPE := 'Long' | 'String' | 'Bool'
 // SetType := 'Set' '<' Type '>'
 // RecType := '{' [AttrDecls] '}'
-// Type := PRIMTYPE | IDENT | SetType | RecType
+// Type := PRIMTYPE | Path | SetType | RecType
 Type: Node<SType> = {
     <l:@L> TYBOOL <r:@R>
         => Node::with_source_loc(SType::Bool, Loc::new(l..r, Arc::clone(src))),
@@ -135,8 +135,8 @@ Type: Node<SType> = {
         => Node::with_source_loc(SType::String, Loc::new(l..r, Arc::clone(src))),
     <l:@L> TYLONG <r:@R>
         => Node::with_source_loc(SType::Long, Loc::new(l..r, Arc::clone(src))),
-    <l:@L> <i:Ident> <r:@R>
-        => Node::with_source_loc(SType::Ident(i), Loc::new(l..r, Arc::clone(src))),
+    <p:Path>
+        => p.map(|n| SType::Ident(n)),
     <l:@L> SET "<" <t:Type> ">" <r:@R>
         => Node::with_source_loc(SType::Set(Box::new(t)), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "{" <ds:AttrDecls?> "}" <r:@R>
