@@ -175,7 +175,7 @@ impl TryFrom<Vec<Node<AttrDecl>>> for SchemaTypeVariant {
                 name_str,
                 TypeOfAttribute {
                     ty: TryInto::try_into(attr_decl.ty.node, context)?,
-                    required: attr_decl.required.is_some(),
+                    required: attr_decl.required.is_none(),
                 },
             );
         }

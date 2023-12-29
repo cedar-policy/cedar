@@ -214,9 +214,9 @@ impl Doc for TypeOfAttribute {
 impl Doc for SchemaTypeVariant {
     fn to_doc(&self, context: &mut crate::Context<'_>) -> Option<RcDoc<'_>> {
         Some(match self {
-            Self::Boolean => RcDoc::text("Boolean"),
+            Self::Boolean => RcDoc::text("Bool"),
             Self::Entity { name } => RcDoc::text(name.to_string()),
-            Self::Extension { name: _ } => unimplemented!("do we want to support extension?"),
+            Self::Extension { name } => RcDoc::text(format!("__cedar::{name}")),
             Self::Long => RcDoc::text("Long"),
             Self::Record {
                 attributes,
