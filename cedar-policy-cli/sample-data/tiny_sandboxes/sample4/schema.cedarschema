@@ -1,0 +1,11 @@
+// Entity type declarations
+entity Photo in [Album] { owner: User };
+entity UserGroup;
+entity Album in [Album];
+entity User in [UserGroup];
+
+// Common type declarations
+
+
+// Action declarations
+action edit, view appliesTo { principal: [User], resource: [Photo] };
