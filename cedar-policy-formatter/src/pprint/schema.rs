@@ -102,34 +102,22 @@ impl Doc for ApplySpec {
                     RcDoc::line()
                         .append(RcDoc::intersperse(
                             vec![
-                                if let Some(principals) = &self.principal_types {
-                                    Some(
-                                        RcDoc::text("principal: [")
-                                            .append(RcDoc::intersperse(
-                                                principals
-                                                    .iter()
-                                                    .map(|t| RcDoc::text(t.to_string())),
-                                                RcDoc::text(", "),
-                                            ))
-                                            .append(RcDoc::text("]")),
-                                    )
-                                } else {
-                                    None
-                                },
-                                if let Some(resources) = &self.resource_types {
-                                    Some(
-                                        RcDoc::text("resource: [")
-                                            .append(RcDoc::intersperse(
-                                                resources
-                                                    .iter()
-                                                    .map(|t| RcDoc::text(t.to_string())),
-                                                RcDoc::text(", "),
-                                            ))
-                                            .append(RcDoc::text("]")),
-                                    )
-                                } else {
-                                    None
-                                },
+                                self.principal_types.as_ref().map(|principals| {
+                                    RcDoc::text("principal: [")
+                                        .append(RcDoc::intersperse(
+                                            principals.iter().map(|t| RcDoc::text(t.to_string())),
+                                            RcDoc::text(", "),
+                                        ))
+                                        .append(RcDoc::text("]"))
+                                }),
+                                self.resource_types.as_ref().map(|resources| {
+                                    RcDoc::text("resource: [")
+                                        .append(RcDoc::intersperse(
+                                            resources.iter().map(|t| RcDoc::text(t.to_string())),
+                                            RcDoc::text(", "),
+                                        ))
+                                        .append(RcDoc::text("]"))
+                                }),
                                 if let SchemaType::Type(SchemaTypeVariant::Record {
                                     attributes,
                                     additional_attributes: _,

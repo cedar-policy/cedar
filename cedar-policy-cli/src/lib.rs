@@ -629,7 +629,7 @@ fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
                     .map_or_else(|| "<stdin>".to_owned(), |n| n.to_owned());
                 miette!("{err:?}")
             })
-            .wrap_err_with(|| format!("failed to parse custom schema"))?;
+            .wrap_err_with(|| "failed to parse custom schema".to_string())?;
         let ns: Result<cedar_policy_validator::SchemaFragment> = new_schema
             .try_into()
             .map_err(|err| miette!("error converting custom schema to JSON schema: {err:?}"));

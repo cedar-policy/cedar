@@ -2126,7 +2126,7 @@ impl PolicySet {
         };
         if self
             .ast
-            .remove_static(&ast::PolicyID::from_string(policy_id.to_string()))
+            .remove_static(&ast::PolicyID::from_string(&policy_id))
             .is_ok()
         {
             Ok(policy)
@@ -2158,7 +2158,7 @@ impl PolicySet {
         #[allow(clippy::panic)]
         match self
             .ast
-            .remove_template(&ast::PolicyID::from_string(template_id.to_string()))
+            .remove_template(&ast::PolicyID::from_string(&template_id))
         {
             Ok(_) => Ok(template),
             Err(ast::PolicySetTemplateRemovalError::RemoveTemplateWithLinksError(_)) => {
@@ -2184,7 +2184,7 @@ impl PolicySet {
         template_id: PolicyId,
     ) -> Result<impl Iterator<Item = &PolicyId>, PolicySetError> {
         self.ast
-            .get_linked_policies(&ast::PolicyID::from_string(template_id.to_string()))
+            .get_linked_policies(&ast::PolicyID::from_string(&template_id))
             .map_or_else(
                 |_| Err(PolicySetError::TemplateNonexistentError(template_id)),
                 |v| Ok(v.map(PolicyId::ref_cast)),
@@ -2338,10 +2338,7 @@ impl PolicySet {
         // If self.policies and self.ast disagree, authorization cannot be trusted.
         // PANIC SAFETY: We just found the policy in self.policies.
         #[allow(clippy::panic)]
-        match self
-            .ast
-            .unlink(&ast::PolicyID::from_string(policy_id.to_string()))
-        {
+        match self.ast.unlink(&ast::PolicyID::from_string(&policy_id)) {
             Ok(_) => Ok(policy),
             Err(ast::PolicySetUnlinkError::NotLinkError(_)) => {
                 //Restore self.policies
@@ -2768,7 +2765,7 @@ impl Policy {
             let wrapped_vals: HashMap<SlotId, EntityUid> = self
                 .ast
                 .env()
-                .into_iter()
+                .iter()
                 .map(|(key, value)| (SlotId(*key), EntityUid(value.clone())))
                 .collect();
             Some(wrapped_vals)

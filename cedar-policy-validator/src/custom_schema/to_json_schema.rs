@@ -83,18 +83,18 @@ fn build_context(namespace: &Namespace) -> Context {
                     et_decl
                         .names
                         .iter()
-                        .map(|id| id.clone().map(|id| Name::unqualified_name(id))),
+                        .map(|id| id.clone().map(Name::unqualified_name)),
                 );
             }
             Declaration::Type(id, _) => {
-                common_types.insert(id.clone().map(|id| Name::unqualified_name(id)));
+                common_types.insert(id.clone().map(Name::unqualified_name));
             }
             _ => {}
         }
     }
     Context {
-        common_types: common_types.into_iter().map(|n| n.node.into()).collect(),
-        entity_types: entity_types.into_iter().map(|n| n.node.into()).collect(),
+        common_types: common_types.into_iter().map(|n| n.node).collect(),
+        entity_types: entity_types.into_iter().map(|n| n.node).collect(),
     }
 }
 
@@ -194,12 +194,16 @@ impl TryFrom<NonEmpty<Node<AppDecl>>> for ApplySpec {
         let mut attr_context: Option<AttributesOrContext> = None;
         for decl in value {
             match decl.node {
-                AppDecl::PR(PRAppDecl { ty, entity_tys }) if matches!(ty.node, PR::Principal) => {
-                    principal_types.extend(entity_tys.into_iter().map(|et| et.node.to_smolstr()))
-                }
-                AppDecl::PR(PRAppDecl { ty, entity_tys }) if matches!(ty.node, PR::Resource) => {
-                    resource_types.extend(entity_tys.into_iter().map(|et| et.node.to_smolstr()))
-                }
+                AppDecl::PR(PRAppDecl { ty, entity_tys }) => match ty.node {
+                    PR::Principal => {
+                        principal_types
+                            .extend(entity_tys.into_iter().map(|et| et.node.to_smolstr()));
+                    }
+                    PR::Resource => {
+                        resource_types
+                            .extend(entity_tys.into_iter().map(|et| et.node.to_smolstr()));
+                    }
+                },
                 AppDecl::Context(attrs) => {
                     if attr_context.is_some() {
                         return Err(Self::Error::MultipleContext);
@@ -207,9 +211,6 @@ impl TryFrom<NonEmpty<Node<AppDecl>>> for ApplySpec {
                     attr_context = Some(AttributesOrContext(SchemaType::Type(TryInto::try_into(
                         attrs, context,
                     )?)));
-                }
-                _ => {
-                    unreachable!("")
                 }
             }
         }
@@ -273,52 +274,44 @@ impl std::convert::TryFrom<Schema> for SchemaFragment {
                 match decl.node {
                     Declaration::Action(action_decl) => {
                         let mut ids: HashSet<Str> = HashSet::new();
-                        let _ = action_decl
-                            .names
-                            .iter()
-                            .map(|id| {
-                                let id_str = name_to_str(id.clone());
-                                if let Some(existing_id) = ids.get(&id_str) {
-                                    return Err(ToValidatorSchemaError::DuplicateKeys(
-                                        id_str,
-                                        existing_id.clone(),
-                                    ));
-                                }
-                                if let Some((existing_id, _)) = actions.get_key_value(&id_str) {
-                                    return Err(ToValidatorSchemaError::DuplicateKeys(
-                                        id_str,
-                                        existing_id.clone(),
-                                    ));
-                                }
-                                ids.insert(id_str);
-                                Ok(())
-                            })
-                            .collect::<Result<(), Self::Error>>()?;
+                        action_decl.names.iter().try_for_each(|id| {
+                            let id_str = name_to_str(id.clone());
+                            if let Some(existing_id) = ids.get(&id_str) {
+                                return Err(ToValidatorSchemaError::DuplicateKeys(
+                                    id_str,
+                                    existing_id.clone(),
+                                ));
+                            }
+                            if let Some((existing_id, _)) = actions.get_key_value(&id_str) {
+                                return Err(ToValidatorSchemaError::DuplicateKeys(
+                                    id_str,
+                                    existing_id.clone(),
+                                ));
+                            }
+                            ids.insert(id_str);
+                            Ok(())
+                        })?;
                         let at: ActionType = TryInto::try_into(action_decl, context)?;
                         actions.extend(ids.iter().map(|n| (n.clone(), at.clone())));
                     }
                     Declaration::Entity(entity_decl) => {
                         let mut names: HashSet<Node<Id>> = HashSet::new();
-                        let _ = entity_decl
-                            .names
-                            .iter()
-                            .map(|name| {
-                                if let Some(existing_name) = names.get(name) {
-                                    return Err(ToValidatorSchemaError::DuplicateKeys(
-                                        existing_name.clone().map(Id::to_smolstr),
-                                        name.clone().map(Id::to_smolstr),
-                                    ));
-                                }
-                                if let Some((existing_name, _)) = entity_types.get_key_value(name) {
-                                    return Err(ToValidatorSchemaError::DuplicateKeys(
-                                        existing_name.clone().map(Id::to_smolstr),
-                                        name.clone().map(Id::to_smolstr),
-                                    ));
-                                }
-                                names.insert(name.clone());
-                                Ok(())
-                            })
-                            .collect::<Result<(), Self::Error>>()?;
+                        entity_decl.names.iter().try_for_each(|name| {
+                            if let Some(existing_name) = names.get(name) {
+                                return Err(ToValidatorSchemaError::DuplicateKeys(
+                                    existing_name.clone().map(Id::to_smolstr),
+                                    name.clone().map(Id::to_smolstr),
+                                ));
+                            }
+                            if let Some((existing_name, _)) = entity_types.get_key_value(name) {
+                                return Err(ToValidatorSchemaError::DuplicateKeys(
+                                    existing_name.clone().map(Id::to_smolstr),
+                                    name.clone().map(Id::to_smolstr),
+                                ));
+                            }
+                            names.insert(name.clone());
+                            Ok(())
+                        })?;
                         let et: EntityType = TryInto::try_into(entity_decl, context)?;
                         entity_types.extend(names.iter().map(|n| (n.clone(), et.clone())));
                     }
