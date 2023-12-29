@@ -623,11 +623,11 @@ fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
     } else {
         let new_schema = cedar_policy_validator::custom_schema::parser::parse_schema(&input_str)
             .map_err(|err| {
-                let _name = args
+                let name = args
                     .input_file
                     .as_ref()
                     .map_or_else(|| "<stdin>".to_owned(), |n| n.to_owned());
-                miette!("{err:?}")
+                Report::new(err).with_source_code(NamedSource::new(name, input_str))
             })
             .wrap_err_with(|| "failed to parse custom schema".to_string())?;
         let ns: Result<cedar_policy_validator::SchemaFragment> = new_schema
@@ -1087,7 +1087,18 @@ fn read_schema_file(
         SchemaFormat::Custom => {
             let custom_schema =
                 cedar_policy_validator::custom_schema::parser::parse_schema(&schema_src)
-                    .map_err(|err| miette!("failed to parse custom schema: {err:?}"))?;
+                    .map_err(|err| {
+                        Report::new(err).with_source_code(NamedSource::new(
+                            filename.as_ref().to_string_lossy(),
+                            schema_src,
+                        ))
+                    })
+                    .wrap_err_with(|| {
+                        format!(
+                            "failed to parse schema from file {}",
+                            filename.as_ref().display()
+                        )
+                    })?;
             let json_schema: cedar_policy_validator::SchemaFragment = custom_schema
                 .try_into()
                 .map_err(|err| miette!("failed to translate custom schema: {err:?}"))?;
