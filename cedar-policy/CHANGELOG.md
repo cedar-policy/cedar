@@ -42,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [3.0.1] - 2023-12-21
+Cedar Language Version: 3.0.0
+
+### Fixed
+
 - Possible panic (when stack size limit reached) in `Context::empty()` (#524,
   fixed by #526)
 
@@ -340,8 +345,10 @@ Cedar Language Version: 2.0.0
 Cedar Language Version: 2.0.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.0.0...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.0.1...main
+[3.0.1]: https://github.com/cedar-policy/cedar/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.2...v3.0.0
+[2.4.3]: https://github.com/cedar-policy/cedar/compare/v2.4.2...v2.4.3
 [2.4.2]: https://github.com/cedar-policy/cedar/compare/v2.4.1...v2.4.2
 [2.4.1]: https://github.com/cedar-policy/cedar/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/cedar-policy/cedar/compare/v2.3.3...v2.4.0

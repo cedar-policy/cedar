@@ -9,6 +9,8 @@
 - `--policy-format` flag to many subcommands, allowing you to pass policies in
   JSON format. The default remains `human` format.
 
+## 3.0.1
+
 ## 3.0.0
 
 Now uses Cedar language version 3.0.0.
