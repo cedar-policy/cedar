@@ -3609,13 +3609,13 @@ impl Context {
     ///     });
     /// let schema = Schema::from_json_value(schema_json).unwrap();
     ///
-    /// let action = EntityUid::from_str(r#"Action::"view""#).unwrap();
-    /// let data = serde_json::json!(
-    /// {
+    /// let a_eid = EntityId::from_str("view").unwrap();
+    /// let a_name: EntityTypeName = EntityTypeName::from_str("Action").unwrap();
+    /// let action = EntityUid::from_type_name_and_id(a_name, a_eid);
+    /// let data = serde_json::json!({
     ///     "sub": 1234
     /// });
     /// let context = Context::from_json_value(data, Some((&schema, &action))).unwrap();
-    /// # // create a request
     /// # let p = EntityUid::from_str(r#"User::"alice""#).unwrap();
     /// # let r = EntityUid::from_str(r#"Album::"trip""#).unwrap();
     /// # let request: Request = Request::new(Some(p), Some(action), Some(r), context, Some(&schema)).unwrap();
