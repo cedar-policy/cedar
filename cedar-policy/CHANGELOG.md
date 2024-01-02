@@ -9,25 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `AsRef<str>` implementation for `PolicyId`.
+- `AsRef<str>` implementation for `PolicyId`. (#504, resolving #503)
 - New API `template_links` for `Policy` to retrieve the linked values for a
-  template-linked policy. (resolving #489)
+  template-linked policy. (#515, resolving #489)
 
 ### Changed
 
-- Changed `TypeError` to enforce its invariant statically
-- Add hints suggesting how to fix some type errors.
+- Add hints suggesting how to fix some type errors. (#513)
 - The `ValidationResult` returned from `Validator::validate` now has a static
   lifetime, allowing it to be used in more contexts. The lifetime parameter
-  will be removed in a future major version.
-- Improve parse error around invalid `is` expressions.
+  will be removed in a future major version. (#512)
+- Improve parse error around invalid `is` expressions. (#491, resolving #409)
 - Improve parser error message when a policy includes an invalid template slot.
   The error now identifies that the policy used an invalid slot and suggests using
-  one of the valid slots.
+  one of the valid slots. (#487, resolving #451)
 - Improve parser error messages to more reliably notice that a function or
   method does exists when it is called with an incorrect number of arguments or
-  using the wrong call style.
-- Include source spans on more parser error messages.
+  using the wrong call style. (#482)
+- Include source spans on more parser error messages. (#471, resolving #465)
 - Better integration with `miette` for various error types. If you have
   previously been just using the `Display` trait to get the error message from a
   Cedar error type, you may want to consider also examining other data provided
@@ -35,10 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Alternately, you can use `miette` and its `fancy` feature to format the error
   and all associated information in a pretty human-readable format or as JSON.
   For more details, see `miette`'s
-  [documentation](https://docs.rs/miette/latest/miette/index.html).
+  [documentation](https://docs.rs/miette/latest/miette/index.html). (#477)
 - For the `partial-eval` experimental feature: make the return values of
   `RequestBuilder`'s `principal`, `action`, `resource`, `context` and
-  `schema` functions `#[must_use]`.
+  `schema` functions `#[must_use]`. (#502)
 
 ### Fixed
 
