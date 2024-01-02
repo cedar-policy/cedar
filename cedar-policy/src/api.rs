@@ -3582,7 +3582,7 @@ impl Context {
     /// Since different Actions have different schemas for `Context`, you also
     /// must specify the `Action` for schema-based parsing.
     /// ```
-    /// # use cedar_policy::{Context, EntityUid, RestrictedExpression, Request, Schema};
+    /// # use cedar_policy::{Context, EntityUid, EntityId, EntityTypeName, RestrictedExpression, Request, Schema};
     /// # use std::str::FromStr;
     /// let schema_json = serde_json::json!(
     ///     {
