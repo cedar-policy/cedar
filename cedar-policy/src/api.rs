@@ -3515,16 +3515,9 @@ impl Context {
     ///   ("age".to_string(), RestrictedExpression::from_str("18").unwrap()),
     /// ]).unwrap();
     /// # // create a request
-    /// # let p_eid = EntityId::from_str("alice").unwrap();
-    /// # let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
-    /// # let p = EntityUid::from_type_name_and_id(p_name, p_eid);
-    /// #
-    /// # let a_eid = EntityId::from_str("view").unwrap();
-    /// # let a_name: EntityTypeName = EntityTypeName::from_str("Action").unwrap();
-    /// # let a = EntityUid::from_type_name_and_id(a_name, a_eid);
-    /// # let r_eid = EntityId::from_str("trip").unwrap();
-    /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
-    /// # let r = EntityUid::from_type_name_and_id(r_name, r_eid);
+    /// # let p = EntityUid::from_str(r#"User::"alice""#).unwrap();
+    /// # let a = EntityUid::from_str(r#"Action::"view""#).unwrap();
+    /// # let r = EntityUid::from_str(r#"Album::"trip""#).unwrap();
     /// # let request: Request = Request::new(Some(p), Some(a), Some(r), context, None).unwrap();
     /// ```
     pub fn from_pairs(
@@ -3560,16 +3553,9 @@ impl Context {
     /// }"#;
     /// let context = Context::from_json_str(json_data, None).unwrap();
     /// # // create a request
-    /// # let p_eid = EntityId::from_str("alice").unwrap();
-    /// # let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
-    /// # let p = EntityUid::from_type_name_and_id(p_name, p_eid);
-    /// #
-    /// # let a_eid = EntityId::from_str("view").unwrap();
-    /// # let a_name: EntityTypeName = EntityTypeName::from_str("Action").unwrap();
-    /// # let a = EntityUid::from_type_name_and_id(a_name, a_eid);
-    /// # let r_eid = EntityId::from_str("trip").unwrap();
-    /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
-    /// # let r = EntityUid::from_type_name_and_id(r_name, r_eid);
+    /// # let p = EntityUid::from_str(r#"User::"alice""#).unwrap();
+    /// # let a = EntityUid::from_str(r#"Action::"view""#).unwrap();
+    /// # let r = EntityUid::from_str(r#"Album::"trip""#).unwrap();
     /// # let request: Request = Request::new(Some(p), Some(a), Some(r), context, None).unwrap();
     /// ```
     pub fn from_json_str(
