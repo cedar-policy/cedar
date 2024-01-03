@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::custom_schema::err::{RawErrorRecovery, RawUserError};
 use cedar_policy_core::parser::{Node, Loc, unescape::to_unescaped_string};
 use cedar_policy_core::ast::Id;
-use crate::custom_schema::ast::{Name as SName, Ident as SIdent, Path as SPath, EntityDecl, Declaration, Namespace, Schema as ASchema, Type as SType, AttrDecl, ActionDecl, PR, AppDecl, PRAppDecl};
+use crate::custom_schema::ast::{Name as SName, Ident as SIdent, Path as SPath, EntityDecl, Declaration, Namespace, Schema as ASchema, Type as SType, AttrDecl, ActionDecl, PR, AppDecl, PRAppDecl, Ref as SRef};
 use nonempty::{NonEmpty, nonempty};
 use itertools::Either;
 
@@ -37,11 +37,6 @@ match {
     "context" => CONTEXT,
     "attributes" => ATTRIBUTES,
 
-    // types
-    "Bool" => TYBOOL,
-    "Long" => TYLONG,
-    "String" => TYSTRING,
-
     // data input
     r"[_a-zA-Z][_a-zA-Z0-9]*" => IDENTIFIER,
     // The `NUMBER` token is a positive integer.
@@ -63,7 +58,7 @@ Comma<E>: Vec<E> = {
     },
 }
 
-// IDENT := ['_''a'-'z''A'-'Z']['_''a'-'z''A'-'Z''0'-'9']* - PRIMTYPE
+// IDENT := ['_''a'-'z''A'-'Z']['_''a'-'z''A'-'Z''0'-'9']*
 Ident: SIdent = {
     <l:@L> NAMESPACE <r:@R>
         => Node::with_source_loc("namespace".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
@@ -89,17 +84,22 @@ Ident: SIdent = {
         => Node::with_source_loc(i.parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
 }
 
-// Name := IDENT | STR
-Name: SName = {
-   <id: Ident> => Either::Left(id),
-   <l:@L> <s:STRINGLIT> <r:@R>
+STR: SName = {
+    <l:@L> <s:STRINGLIT> <r:@R>
         =>? to_unescaped_string(&s[1..(s.len() - 1)]).map_or_else(|e| Err(ParseError::User {
             error: Node::with_source_loc(format!("invalid escape sequence: {e:?}"), Loc::new(l..r, Arc::clone(src))),
         }), |v| Ok(Either::Right(Node::with_source_loc(v, Loc::new(l..r, Arc::clone(src)))))),
 }
 
+// Name := IDENT | STR
+Name: SName = {
+   <id: Ident> => Either::Left(id),
+   <s: STR> => s,
+}
+
 // Path := IDENT {'::' IDENT}
-Path: Node<SPath> = {
+#[inline]
+PathInline: Node<SPath> = {
     <l:@L> <i:Ident> <r:@R>
         => Node::with_source_loc(SPath {base: i, prefix: vec![]}, Loc::new(l..r, Arc::clone(src))),
     <l:@L> <is:(<Ident> "::")+> <i:Ident> <r:@R>
@@ -124,17 +124,10 @@ Names: Vec<SName> = {
     },
 }
 
-// PRIMTYPE := 'Long' | 'String' | 'Bool'
 // SetType := 'Set' '<' Type '>'
 // RecType := '{' [AttrDecls] '}'
-// Type := PRIMTYPE | Path | SetType | RecType
+// Type := Path | SetType | RecType
 Type: Node<SType> = {
-    <l:@L> TYBOOL <r:@R>
-        => Node::with_source_loc(SType::Bool, Loc::new(l..r, Arc::clone(src))),
-    <l:@L> TYSTRING <r:@R>
-        => Node::with_source_loc(SType::String, Loc::new(l..r, Arc::clone(src))),
-    <l:@L> TYLONG <r:@R>
-        => Node::with_source_loc(SType::Long, Loc::new(l..r, Arc::clone(src))),
     <p:Path>
         => p.map(|n| SType::Ident(n)),
     <l:@L> SET "<" <t:Type> ">" <r:@R>
@@ -183,22 +176,33 @@ EntTypes: Vec<Node<SPath>> = {
         => ets,
 }
 
-NameOrNames: Vec<SName> = {
-    <n:Name> => vec![n],
-    "[" <ns:Comma<Name>> "]" => ns,
+RefOrRefs: Vec<SRef> = {
+    <n:Ref> => vec![n],
+    "[" <ns:Comma<Ref>> "]" => ns,
+}
+
+Path: Node<SPath> = PathInline;
+
+// Ref := Path '::' STR | Name
+Ref: SRef = {
+    <n:Name> => SRef { ty: None, id: n},
+    // We would encounter a conflict if `Path` is used here.
+    <p:PathInline> "::" <s:STR> => SRef { ty: Some(p.node), id: s},
 }
 
 // Decl := Entity | Action | TypeDecl
 // Entity := 'entity' Idents ['in' EntOrTyps] [['='] '{' [AttrDecls] '}'] ';'
 // AppliesTo := 'appliesTo' '{' AppDecls '}'
-// ActAttrs  := 'attributes' '{' AttrDecls '}'
+// Action attributes declare Cedar values instead of types.
+// We temporarily make it empty until we come up a grammar for Cedar values.
+// ActAttrs  := 'attributes' '{' '}'
 // Action := 'action' Names ['in' (Name | '[' [Names] ']')] [AppliesTo] [ActAttrs]';'
 // TypeDecl := 'type' IDENT '=' Type ';'
 Decl: Node<Declaration> = {
     <l:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> <ds:("="? "{" <AttrDecls?> "}")?> ";" <r:@R>
         => Node::with_source_loc(Declaration::Entity(EntityDecl { names: ets, member_of_types: ps, attrs: ds.map(|ds| ds.unwrap_or_default()).unwrap_or_default()}), Loc::new(l..r, Arc::clone(src))),
-    <l:@L> ACTION <ns:Names> <ps:(IN <NameOrNames>)?> <ads:(APPLIESTO "{" <AppDecls> "}")?> <attrs:(ATTRIBUTES "{" <AttrDecls> "}")?>";" <r:@R>
-        => Node::with_source_loc(Declaration::Action(ActionDecl { names: ns, parents: ps, app_decls: ads, attrs: attrs.unwrap_or_default()}), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> ACTION <ns:Names> <ps:(IN <RefOrRefs>)?> <ads:(APPLIESTO "{" <AppDecls> "}")?> <attrs:(ATTRIBUTES "{" "}")?>";" <r:@R>
+        => Node::with_source_loc(Declaration::Action(ActionDecl { names: ns, parents: ps, app_decls: ads}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> TYPE <i:Ident> "=" <t:Type> ";" <r:@R>
         => Node::with_source_loc(Declaration::Type(i, t), Loc::new(l..r, Arc::clone(src))),
 }

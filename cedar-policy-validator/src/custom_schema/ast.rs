@@ -7,13 +7,9 @@ use lazy_static::lazy_static;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
 
-lazy_static! {
-    static ref RESERVED_NAMESPACE: CName = "__cedar".parse().unwrap();
-    static ref IPADDR_EXTENSION_NAME: CName =
-        CName::type_in_namespace("ipaddr".parse().unwrap(), RESERVED_NAMESPACE.clone());
-    static ref DECIMAL_EXTENSION_NAME: CName =
-        CName::type_in_namespace("decimal".parse().unwrap(), RESERVED_NAMESPACE.clone());
-}
+const IPADDR_EXTENSION: &str = "ipaddr";
+const DECIMAL_EXTENSION: &str = "decimal";
+const CEDAR_NAMESPACE: &str = "__cedar";
 
 pub type Ident = Node<Id>;
 pub type Str = Node<SmolStr>;
@@ -27,24 +23,28 @@ pub struct Path {
 }
 
 impl Path {
-    pub fn is_ip_extension(&self) -> bool {
-        <Path as Into<CName>>::into(self.clone()) == *IPADDR_EXTENSION_NAME
+    pub fn is_ipaddr_extension(&self) -> bool {
+        self.is_cedar_builtin() && self.base.node.clone().to_smolstr() == IPADDR_EXTENSION
     }
 
     pub fn is_decimal_extension(&self) -> bool {
-        <Path as Into<CName>>::into(self.clone()) == *DECIMAL_EXTENSION_NAME
+        self.is_cedar_builtin() && self.base.node.clone().to_smolstr() == DECIMAL_EXTENSION
     }
 
     pub fn to_smolstr(self) -> SmolStr {
         <Path as Into<CName>>::into(self).to_string().into()
     }
 
-    pub fn is_unqualified_ip(&self) -> bool {
-        self.prefix.is_empty() && (&self.base.node.clone().to_smolstr() == "ipaddr")
+    pub fn is_unqualified_ipaddr(&self) -> bool {
+        self.prefix.is_empty() && (&self.base.node.clone().to_smolstr() == IPADDR_EXTENSION)
     }
 
     pub fn is_unqualified_decimal(&self) -> bool {
-        self.prefix.is_empty() && (&self.base.node.clone().to_smolstr() == "decimal")
+        self.prefix.is_empty() && (&self.base.node.clone().to_smolstr() == DECIMAL_EXTENSION)
+    }
+
+    fn is_cedar_builtin(&self) -> bool {
+        matches!(self.prefix.as_slice(), [Node { node, loc: _ }] if node.as_ref() == CEDAR_NAMESPACE)
     }
 }
 
@@ -114,9 +114,14 @@ pub enum AppDecl {
 }
 
 #[derive(Debug, Clone)]
+pub struct Ref {
+    pub ty: Option<Path>,
+    pub id: Name,
+}
+
+#[derive(Debug, Clone)]
 pub struct ActionDecl {
     pub names: Vec<Name>,
-    pub parents: Option<Vec<Name>>,
+    pub parents: Option<Vec<Ref>>,
     pub app_decls: Option<NonEmpty<Node<AppDecl>>>,
-    pub attrs: Vec<Node<AttrDecl>>,
 }

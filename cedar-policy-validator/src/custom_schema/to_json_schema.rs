@@ -14,34 +14,36 @@ use crate::{
 
 use super::{
     ast::{
-        ActionDecl, AppDecl, AttrDecl, Declaration, EntityDecl, Namespace, PRAppDecl, Path, Schema,
-        Str, Type, PR,
+        ActionDecl, AppDecl, AttrDecl, Declaration, EntityDecl, Namespace, PRAppDecl, Path, Ref,
+        Schema, Str, Type, PR,
     },
     err::ToValidatorSchemaError,
 };
 
+#[derive(Debug, Clone)]
 pub struct Context {
     pub common_types: HashSet<Name>,
     pub entity_types: HashSet<Name>,
 }
 
-pub enum TypeCategory {
+#[derive(Debug, Clone)]
+pub enum Kind {
     Common,
     Entity,
     Extension,
 }
 
 impl Context {
-    pub fn lookup(&self, node: &Path) -> Option<TypeCategory> {
+    pub fn lookup(&self, node: &Path) -> Option<Kind> {
         let name = <Path as Into<Name>>::into(node.clone());
-        if node.is_decimal_extension() || node.is_ip_extension() {
-            Some(TypeCategory::Extension)
+        if node.is_decimal_extension() || node.is_ipaddr_extension() {
+            Some(Kind::Extension)
         } else if self.common_types.contains(&name) {
-            Some(TypeCategory::Common)
+            Some(Kind::Common)
         } else if self.entity_types.contains(&name) {
-            Some(TypeCategory::Entity)
-        } else if node.is_unqualified_decimal() || node.is_unqualified_ip() {
-            Some(TypeCategory::Extension)
+            Some(Kind::Entity)
+        } else if node.is_unqualified_decimal() || node.is_unqualified_ipaddr() {
+            Some(Kind::Extension)
         } else {
             None
         }
@@ -58,17 +60,11 @@ fn name_to_str(name: super::ast::Name) -> Str {
     }
 }
 
-// TODO: cross namespace action EUID reference
-fn name_to_action_euid(name: super::ast::Name) -> ActionEntityUID {
-    match name {
-        Either::Left(id) => ActionEntityUID {
-            id: id.node.to_smolstr(),
-            ty: None,
-        },
-        Either::Right(s) => ActionEntityUID {
-            id: s.node,
-            ty: None,
-        },
+fn ref_to_action_euid(name: Ref) -> ActionEntityUID {
+    let Ref { ty, id } = name;
+    ActionEntityUID {
+        id: name_to_str(id).node,
+        ty: ty.map(|p| p.to_smolstr()),
     }
 }
 
@@ -128,13 +124,13 @@ impl TryFrom<Type> for SchemaType {
         Ok(match value {
             Type::Bool => Self::Type(SchemaTypeVariant::Boolean),
             Type::Ident(id) => match context.lookup(&id) {
-                Some(TypeCategory::Common) => Self::TypeDef {
+                Some(Kind::Common) => Self::TypeDef {
                     type_name: id.to_smolstr(),
                 },
-                Some(TypeCategory::Entity) => Self::Type(SchemaTypeVariant::Entity {
+                Some(Kind::Entity) => Self::Type(SchemaTypeVariant::Entity {
                     name: id.to_smolstr(),
                 }),
-                Some(TypeCategory::Extension) => Self::Type(SchemaTypeVariant::Extension {
+                Some(Kind::Extension) => Self::Type(SchemaTypeVariant::Extension {
                     name: id.base.node.to_smolstr(),
                 }),
                 None => Err(ToValidatorSchemaError::InvalidTypeName(id.to_smolstr()))?,
@@ -245,7 +241,7 @@ impl TryFrom<ActionDecl> for ActionType {
         };
         let member_of = value
             .parents
-            .map(|ps| ps.iter().map(|n| name_to_action_euid(n.clone())).collect());
+            .map(|ps| ps.iter().map(|n| ref_to_action_euid(n.clone())).collect());
         Ok(ActionType {
             applies_to,
             // TODO: it should error instead!
