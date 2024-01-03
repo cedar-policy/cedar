@@ -3,7 +3,6 @@ use cedar_policy_core::{
     parser::Node,
 };
 use itertools::Either;
-use lazy_static::lazy_static;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
 
