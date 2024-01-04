@@ -35,11 +35,11 @@ impl Path {
     }
 
     pub fn is_unqualified_ipaddr(&self) -> bool {
-        self.prefix.is_empty() && (&self.base.node.clone().to_smolstr() == IPADDR_EXTENSION)
+        self.prefix.is_empty() && self.base.node.clone().to_smolstr() == IPADDR_EXTENSION
     }
 
     pub fn is_unqualified_decimal(&self) -> bool {
-        self.prefix.is_empty() && (&self.base.node.clone().to_smolstr() == DECIMAL_EXTENSION)
+        self.prefix.is_empty() && self.base.node.clone().to_smolstr() == DECIMAL_EXTENSION
     }
 
     fn is_cedar_builtin(&self) -> bool {

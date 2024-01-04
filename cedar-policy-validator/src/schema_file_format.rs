@@ -191,7 +191,7 @@ impl std::fmt::Display for ActionEntityUID {
         } else {
             write!(f, "Action::")?
         }
-        write!(f, "\"{}\"", self.id)
+        write!(f, "\"{}\"", self.id.escape_debug())
     }
 }
 
