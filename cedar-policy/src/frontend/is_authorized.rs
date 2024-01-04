@@ -173,7 +173,7 @@ impl InterfaceResponse {
     pub fn decision(&self) -> Decision {
         match self.payload {
             InterfacePayload::Concrete(decision) => decision,
-            InterfacePayload::Residual(_) => Decision::Deny
+            InterfacePayload::Residual(_) => Decision::NoDecision
         }
     }
 

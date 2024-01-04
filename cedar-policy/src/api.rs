@@ -836,6 +836,7 @@ impl Diagnostics {
     /// match response.decision() {
     ///     Decision::Allow => println!("ALLOW"),
     ///     Decision::Deny => println!("DENY"),
+    ///     _ => println!("UNKNOWN")
     /// }
     /// println!("note: this decision was due to the following policies:");
     /// for reason in response.diagnostics().reason() {
@@ -896,6 +897,7 @@ impl Diagnostics {
     /// match response.decision() {
     ///     Decision::Allow => println!("ALLOW"),
     ///     Decision::Deny => println!("DENY"),
+    ///     _ => println!("UNKNOWN")
     /// }
     /// for err in response.diagnostics().errors() {
     ///     println!("{}", err);

@@ -847,6 +847,11 @@ pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {
                     println!("DENY");
                     CedarExitCode::AuthorizeDeny
                 }
+                // Handle NoDecision without having to deal with features
+                _ => {
+                    println!("UNKNOWN");
+                    CedarExitCode::Failure
+                }
             };
             if ans.diagnostics().errors().peekable().peek().is_some() {
                 println!();

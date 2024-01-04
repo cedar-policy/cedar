@@ -892,4 +892,8 @@ pub enum Decision {
     /// that no decision could be safely reached; for example, errors parsing
     /// the policies.
     Deny,
+    /// The `Authorizer` determined that some information required to reach
+    /// a decision is missing.
+    #[cfg(feature = "partial-eval")]
+    NoDecision,
 }

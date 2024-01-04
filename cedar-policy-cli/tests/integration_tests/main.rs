@@ -216,6 +216,8 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
         let authorize_cmd = match json_request.decision {
             Decision::Deny => authorize_cmd.code(2),
             Decision::Allow => authorize_cmd.success(),
+            // Handle NoDecision without having to deal with features
+            _ => authorize_cmd.code(3)
         };
 
         let output = String::from_utf8(authorize_cmd.get_output().stdout.clone())
