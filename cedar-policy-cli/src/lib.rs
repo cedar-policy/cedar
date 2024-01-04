@@ -838,6 +838,7 @@ pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {
     );
     match ans {
         Ok(ans) => {
+            #[allow(unreachable_patterns)]
             let status = match ans.decision() {
                 Decision::Allow => {
                     println!("ALLOW");

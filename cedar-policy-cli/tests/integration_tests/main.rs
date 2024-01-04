@@ -213,6 +213,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             .assert()
             .append_context("authorization", json_request.desc.clone());
 
+        #[allow(unreachable_patterns)]
         let authorize_cmd = match json_request.decision {
             Decision::Deny => authorize_cmd.code(2),
             Decision::Allow => authorize_cmd.success(),
