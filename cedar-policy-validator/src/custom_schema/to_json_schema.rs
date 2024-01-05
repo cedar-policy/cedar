@@ -6,6 +6,7 @@ use cedar_policy_core::{
 };
 use itertools::Either;
 use nonempty::NonEmpty;
+use smol_str::SmolStr;
 
 use crate::{
     ActionEntityUID, ActionType, ApplySpec, AttributesOrContext, EntityType, NamespaceDefinition,
@@ -25,25 +26,56 @@ pub struct Context {
     pub common_types: HashSet<Name>,
     pub entity_types: HashSet<Name>,
 }
-
 #[derive(Debug, Clone)]
-pub enum Kind {
-    Common,
-    Entity,
-    Extension,
+pub enum PrimitiveType {
+    Bool,
+    Long,
+    String,
+}
+#[derive(Debug, Clone)]
+pub enum NamedType {
+    Common(SmolStr),
+    Entity(SmolStr),
+    Extension(SmolStr),
+    Primitive(PrimitiveType),
+}
+
+impl From<NamedType> for SchemaType {
+    fn from(value: NamedType) -> Self {
+        match value {
+            NamedType::Common(type_name) => Self::TypeDef { type_name },
+            NamedType::Entity(name) => Self::Type(SchemaTypeVariant::Entity { name }),
+            NamedType::Extension(name) => Self::Type(SchemaTypeVariant::Extension { name }),
+            NamedType::Primitive(PrimitiveType::Bool) => Self::Type(SchemaTypeVariant::Boolean),
+            NamedType::Primitive(PrimitiveType::Long) => Self::Type(SchemaTypeVariant::Long),
+            NamedType::Primitive(PrimitiveType::String) => Self::Type(SchemaTypeVariant::String),
+        }
+    }
 }
 
 impl Context {
-    pub fn lookup(&self, node: &Path) -> Option<Kind> {
+    pub fn lookup(&self, node: &Path) -> Option<NamedType> {
         let name = <Path as Into<Name>>::into(node.clone());
         if node.is_decimal_extension() || node.is_ipaddr_extension() {
-            Some(Kind::Extension)
+            Some(NamedType::Extension(node.base.node.clone().to_smolstr()))
+        } else if node.is_builtin_bool() {
+            Some(NamedType::Primitive(PrimitiveType::Bool))
+        } else if node.is_builtin_long() {
+            Some(NamedType::Primitive(PrimitiveType::Long))
+        } else if node.is_builtin_string() {
+            Some(NamedType::Primitive(PrimitiveType::String))
         } else if self.common_types.contains(&name) {
-            Some(Kind::Common)
+            Some(NamedType::Common(node.clone().to_smolstr()))
         } else if self.entity_types.contains(&name) {
-            Some(Kind::Entity)
+            Some(NamedType::Entity(node.clone().to_smolstr()))
+        } else if node.is_unqualified_bool() {
+            Some(NamedType::Primitive(PrimitiveType::Bool))
+        } else if node.is_unqualified_long() {
+            Some(NamedType::Primitive(PrimitiveType::Long))
+        } else if node.is_unqualified_string() {
+            Some(NamedType::Primitive(PrimitiveType::String))
         } else if node.is_unqualified_decimal() || node.is_unqualified_ipaddr() {
-            Some(Kind::Extension)
+            Some(NamedType::Extension(node.clone().to_smolstr()))
         } else {
             None
         }
@@ -122,25 +154,14 @@ impl TryFrom<Type> for SchemaType {
     type Error = ToValidatorSchemaError;
     fn try_from(value: Type, context: &Context) -> Result<Self, Self::Error> {
         Ok(match value {
-            Type::Bool => Self::Type(SchemaTypeVariant::Boolean),
             Type::Ident(id) => match context.lookup(&id) {
-                Some(Kind::Common) => Self::TypeDef {
-                    type_name: id.to_smolstr(),
-                },
-                Some(Kind::Entity) => Self::Type(SchemaTypeVariant::Entity {
-                    name: id.to_smolstr(),
-                }),
-                Some(Kind::Extension) => Self::Type(SchemaTypeVariant::Extension {
-                    name: id.base.node.to_smolstr(),
-                }),
+                Some(ty) => ty.into(),
                 None => Err(ToValidatorSchemaError::InvalidTypeName(id.to_smolstr()))?,
             },
-            Type::Long => Self::Type(SchemaTypeVariant::Long),
             Type::Record(attrs) => Self::Type(TryInto::try_into(attrs, context)?),
             Type::Set(b) => Self::Type(SchemaTypeVariant::Set {
                 element: Box::new(TryInto::try_into(b.node, context)?),
             }),
-            Type::String => Self::Type(SchemaTypeVariant::String),
         })
     }
 }

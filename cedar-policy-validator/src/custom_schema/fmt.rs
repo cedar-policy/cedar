@@ -80,6 +80,8 @@ fn fmt_vec<T: Display>(f: &mut std::fmt::Formatter<'_>, ets: &[T]) -> std::fmt::
                 Ok(())
             }
         }
+        // PANIC SAFETY: input should be non-empty a slice
+        #[allow(clippy::unreachable)]
         None => unreachable!("entity type list must not be empty"),
     }
 }
@@ -99,11 +101,11 @@ impl Display for EntityType {
 impl Display for ActionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.member_of {
-            Some(ps) => {
+            Some(ps) if !ps.is_empty() => {
                 write!(f, "in ")?;
                 fmt_vec(f, &ps)?;
             }
-            None => {}
+            _ => {}
         }
         match &self.applies_to {
             Some(spec) => {

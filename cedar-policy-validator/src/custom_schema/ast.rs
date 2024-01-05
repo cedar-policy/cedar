@@ -30,8 +30,32 @@ impl Path {
         self.is_cedar_builtin() && self.base.node.clone().to_smolstr() == DECIMAL_EXTENSION
     }
 
+    pub fn is_builtin_bool(&self) -> bool {
+        self.is_cedar_builtin() && self.base.node.clone().to_smolstr() == "Bool"
+    }
+
+    pub fn is_builtin_string(&self) -> bool {
+        self.is_cedar_builtin() && self.base.node.clone().to_smolstr() == "String"
+    }
+
+    pub fn is_builtin_long(&self) -> bool {
+        self.is_cedar_builtin() && self.base.node.clone().to_smolstr() == "Long"
+    }
+
     pub fn to_smolstr(self) -> SmolStr {
         <Path as Into<CName>>::into(self).to_string().into()
+    }
+
+    pub fn is_unqualified_bool(&self) -> bool {
+        self.prefix.is_empty() && self.base.node.clone().to_smolstr() == "Bool"
+    }
+
+    pub fn is_unqualified_string(&self) -> bool {
+        self.prefix.is_empty() && self.base.node.clone().to_smolstr() == "String"
+    }
+
+    pub fn is_unqualified_long(&self) -> bool {
+        self.prefix.is_empty() && self.base.node.clone().to_smolstr() == "Long"
     }
 
     pub fn is_unqualified_ipaddr(&self) -> bool {
@@ -79,9 +103,6 @@ pub struct EntityDecl {
 
 #[derive(Debug, Clone)]
 pub enum Type {
-    Long,
-    Bool,
-    String,
     Set(Box<Node<Type>>),
     Ident(Path),
     Record(Vec<Node<AttrDecl>>),
