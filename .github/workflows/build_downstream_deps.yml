@@ -86,7 +86,7 @@ jobs:
 
   build-cedar-examples-hello-world:
     needs: get-branch-name
-    uses: cedar-policy/cedar-examples/.github/workflows/build_cedar_rust_hello_world_reusable.yml@main
+    uses: cedar-policy/cedar-examples/.github/workflows/build_rust_hello_world_reusable.yml@main
     with:
       cedar_policy_ref: ${{ github.head_ref }}
       cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}
