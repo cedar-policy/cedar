@@ -76,7 +76,11 @@ impl Context {
             Some(NamedType::Primitive(PrimitiveType::String))
         } else if node.is_unqualified_decimal() || node.is_unqualified_ipaddr() {
             Some(NamedType::Extension(node.clone().to_smolstr()))
+        } else if !node.prefix.is_empty() {
+            // TODO: is it possible to do cross-namespace common type reference?
+            Some(NamedType::Entity(node.clone().to_smolstr()))
         } else {
+            // TODO: Should be unreachable?
             None
         }
     }
