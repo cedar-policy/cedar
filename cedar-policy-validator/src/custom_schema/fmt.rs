@@ -82,7 +82,7 @@ fn fmt_vec<T: Display>(f: &mut std::fmt::Formatter<'_>, ets: &[T]) -> std::fmt::
         }
         // PANIC SAFETY: input should be non-empty a slice
         #[allow(clippy::unreachable)]
-        None => unreachable!("entity type list must not be empty"),
+        None => unreachable!("input list must not be empty"),
     }
 }
 impl Display for EntityType {
@@ -110,7 +110,11 @@ impl Display for ActionType {
         match &self.applies_to {
             Some(spec) => {
                 match (&spec.principal_types, &spec.resource_types) {
-                    (Some(ps), Some(rs)) if ps.is_empty() || rs.is_empty() => {
+                    (Some(ps), _) if ps.is_empty() => {
+                        // "absurd" action
+                        write!(f, "")?;
+                    }
+                    (_, Some(rs)) if rs.is_empty() => {
                         // "absurd" action
                         write!(f, "")?;
                     }
