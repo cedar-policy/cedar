@@ -838,7 +838,6 @@ pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {
     );
     match ans {
         Ok(ans) => {
-            #[allow(unreachable_patterns)]
             let status = match ans.decision() {
                 Decision::Allow => {
                     println!("ALLOW");
@@ -847,11 +846,6 @@ pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {
                 Decision::Deny => {
                     println!("DENY");
                     CedarExitCode::AuthorizeDeny
-                }
-                // Handle NoDecision without having to deal with features
-                _ => {
-                    println!("UNKNOWN");
-                    CedarExitCode::Failure
                 }
             };
             if ans.diagnostics().errors().peekable().peek().is_some() {

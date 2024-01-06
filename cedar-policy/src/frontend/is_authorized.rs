@@ -46,7 +46,7 @@ thread_local!(
 fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
     match call.get_components() {
         Ok((request, policies, entities)) => {
-            AUTHORIZER.with(|authorizer| AuthorizationAnswer::Success {
+            AUTHORIZER.with(|authorizer| AuthorizationAnswer::Concrete {
                 response: authorizer
                     .is_authorized(&request, &policies, &entities)
                     .into(),
@@ -64,10 +64,10 @@ pub fn json_is_authorized(input: &str) -> InterfaceResult {
     serde_json::from_str::<AuthorizationCall>(input).map_or_else(
         |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
         |call| match is_authorized(call) {
-            answer @ AuthorizationAnswer::Success { .. } => InterfaceResult::succeed(answer),
-            AuthorizationAnswer::ParseFailed { errors } => {
-                InterfaceResult::fail_bad_request(errors)
-            }
+            answer @ AuthorizationAnswer::Concrete { .. } => InterfaceResult::succeed(answer),
+            AuthorizationAnswer::ParseFailed { errors } => InterfaceResult::fail_bad_request(errors),
+            #[cfg(feature = "partial-eval")]
+            _ => InterfaceResult::fail_internally(String::from("unexpected authorization answer")),
         },
     )
 }
@@ -76,12 +76,17 @@ pub fn json_is_authorized(input: &str) -> InterfaceResult {
 fn is_authorized_partial(call: AuthorizationCall) -> AuthorizationAnswer {
     match call.get_components_partial() {
         Ok((request, policies, entities)) => {
-            AUTHORIZER.with(|authorizer| AuthorizationAnswer::Success {
-                response: authorizer
-                    .is_authorized_partial(&request, &policies, &entities)
-                    .into()
-            })
-        }
+            AUTHORIZER.with(|authorizer|
+                match authorizer.is_authorized_partial(&request, &policies, &entities) {
+                    concrete_response @ PartialResponse::Concrete(_) => AuthorizationAnswer::Concrete {
+                        response: concrete_response.into()
+                    },
+                    residual_response @ PartialResponse::Residual(_) => AuthorizationAnswer::Residuals {
+                        response: residual_response.into()
+                    }
+                }
+            )
+        },
         Err(errors) => AuthorizationAnswer::ParseFailed { errors },
     }
 }
@@ -95,7 +100,8 @@ pub fn json_is_authorized_partial(input: &str) -> InterfaceResult {
     serde_json::from_str::<AuthorizationCall>(input).map_or_else(
         |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
         |call| match is_authorized_partial(call) {
-            answer @ AuthorizationAnswer::Success { .. } => InterfaceResult::succeed(answer),
+            answer @ AuthorizationAnswer::Concrete { .. } => InterfaceResult::succeed(answer),
+            answer @ AuthorizationAnswer::Residuals { .. } => InterfaceResult::succeed(answer),
             AuthorizationAnswer::ParseFailed { errors } => {
                 InterfaceResult::fail_bad_request(errors)
             }
@@ -103,26 +109,11 @@ pub fn json_is_authorized_partial(input: &str) -> InterfaceResult {
     )
 }
 
-/// Integration version of an authorization response returned from `is_authorized_partial`.
-/// It can either be a full concrete response, or a residual response.
-#[cfg(feature = "partial-eval")]
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-pub enum InterfacePayload {
-    /// A full, concrete response.
-    Concrete(Decision),
-    /// A residual response. Determining the concrete response requires further processing.
-    Residual(HashMap<PolicyId, serde_json::Value>)
-}
-
 /// Interface version of a `Response` that uses `InterfaceDiagnostics` for simpler (de)serialization
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InterfaceResponse {
-    #[cfg(not(feature = "partial-eval"))]
     /// Authorization decision
     decision: Decision,
-    /// Payload
-    #[cfg(feature = "partial-eval")]
-    payload: InterfacePayload,
     /// Diagnostics providing more information on how this decision was reached
     diagnostics: InterfaceDiagnostics,
 }
@@ -139,7 +130,6 @@ pub struct InterfaceDiagnostics {
 
 impl InterfaceResponse {
     /// Construct an `InterfaceResponse`
-    #[cfg(not(feature = "partial-eval"))]
     pub fn new(decision: Decision, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
         Self {
             decision,
@@ -147,39 +137,10 @@ impl InterfaceResponse {
         }
     }
 
-    /// Construct a residual `InterfaceResponse`
-    #[cfg(feature = "partial-eval")]
-    pub fn for_payload(payload: InterfacePayload, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
-        Self {
-            payload: payload,
-            diagnostics: InterfaceDiagnostics { reason, errors }
-        }
-    }
-
-    /// Construct a concrete `InterfaceResponse`
-    #[cfg(feature = "partial-eval")]
-    pub fn new(decision: Decision, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
-        InterfaceResponse::for_payload(InterfacePayload::Concrete(decision), reason, errors)
-    }
-
-    #[cfg(not(feature = "partial-eval"))]
     /// Get the authorization decision
     pub fn decision(&self) -> Decision {
         self.decision
     }
-
-    #[cfg(feature = "partial-eval")]
-    /// Get the authorization decision
-    pub fn decision(&self) -> Decision {
-        match self.payload {
-            InterfacePayload::Concrete(decision) => decision,
-            InterfacePayload::Residual(_) => Decision::NoDecision
-        }
-    }
-
-    /// Get the payload
-    #[cfg(feature = "partial-eval")]
-    pub fn payload(&self) -> &InterfacePayload { &self.payload }
 
     /// Get the authorization diagnostics
     pub fn diagnostics(&self) -> &InterfaceDiagnostics {
@@ -205,27 +166,12 @@ impl From<Response> for InterfaceResponse {
 impl From<PartialResponse> for InterfaceResponse {
     fn from(partial_response: PartialResponse) -> Self {
         match partial_response {
-            PartialResponse::Concrete(response) => Self::new(
-                response.decision(),
-                response.diagnostics().reason().cloned().collect(),
-                response
-                    .diagnostics()
-                    .errors()
-                    .map(ToString::to_string)
-                    .collect(),
+            PartialResponse::Concrete(concrete) => Self::new(
+                concrete.decision(),
+                concrete.diagnostics().reason().cloned().collect(),
+                concrete.diagnostics().errors().map(ToString::to_string).collect(),
             ),
-            PartialResponse::Residual(residual_response) => Self::for_payload(
-                InterfacePayload::Residual(
-                residual_response.residuals().policies()
-                .map( | policy| (policy.id().clone(), policy.to_json().unwrap()))
-                .collect()),
-                residual_response.diagnostics().reason().cloned().collect(),
-                residual_response
-                .diagnostics()
-                .errors()
-                .map(ToString::to_string)
-                .collect(),
-            )
+            PartialResponse::Residual(_) => panic!("Unsupported")
         }
     }
 }
@@ -242,11 +188,54 @@ impl InterfaceDiagnostics {
     }
 }
 
+/// Integration version of a `PartialResponse` that uses `InterfaceDiagnistics` for simpler (de)serialization
+#[cfg(feature = "partial-eval")]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct InterfaceResidualResponse {
+    /// A residual set of policies. Determining the concrete response requires further processing.
+    residuals: HashMap<PolicyId, serde_json::Value>,
+    /// Diagnostics providing more information on how this decision was reached
+    diagnostics: InterfaceDiagnostics,
+}
+
+#[cfg(feature = "partial-eval")]
+impl InterfaceResidualResponse {
+    /// Construct an `InterfaceResidualResponse`
+    pub fn new(residuals: HashMap<PolicyId, serde_json::Value>, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
+        Self {
+            residuals,
+            diagnostics: InterfaceDiagnostics { reason, errors },
+        }
+    }
+}
+
+#[cfg(feature = "partial-eval")]
+impl From<PartialResponse> for InterfaceResidualResponse {
+    fn from(partial_response: PartialResponse) -> Self {
+        match partial_response {
+            PartialResponse::Residual(residual) => Self::new(
+                residual.residuals().policies()
+                    .map( | policy| (policy.id().clone(), policy.to_json().unwrap()))
+                    .collect(),
+                residual.diagnostics().reason().cloned().collect(),
+                residual
+                    .diagnostics()
+                    .errors()
+                    .map(ToString::to_string)
+                    .collect()
+            ),
+            PartialResponse::Concrete(_) => panic!("Unsupported")
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 enum AuthorizationAnswer {
     ParseFailed { errors: Vec<String> },
-    Success { response: InterfaceResponse },
+    Concrete { response: InterfaceResponse },
+    #[cfg(feature = "partial-eval")]
+    Residuals { response: InterfaceResidualResponse },
 }
 
 #[serde_as]
@@ -1318,7 +1307,7 @@ mod test {
         assert_matches!(result, InterfaceResult::Success { result } => {
             let parsed_result: AuthorizationAnswer =
                 serde_json::from_str(result.as_str()).unwrap();
-            assert_matches!(parsed_result, AuthorizationAnswer::Success { response } => {
+            assert_matches!(parsed_result, AuthorizationAnswer::Concrete { response } => {
                 assert_eq!(response.decision(), Decision::Allow);
                 assert_eq!(response.diagnostics().errors.len(), 0);
             });
@@ -1330,7 +1319,7 @@ mod test {
         assert_matches!(result, InterfaceResult::Success { result } => {
             let parsed_result: AuthorizationAnswer =
                 serde_json::from_str(result.as_str()).unwrap();
-            assert_matches!(parsed_result, AuthorizationAnswer::Success { response } => {
+            assert_matches!(parsed_result, AuthorizationAnswer::Concrete { response } => {
                 assert_eq!(response.decision(), Decision::Deny);
                 assert_eq!(response.diagnostics().errors.len(), 0);
             });
@@ -1709,17 +1698,16 @@ mod test {
     fn assert_is_residual(result: InterfaceResult, residual_ids: HashSet<&str>) {
         assert_matches!(result, InterfaceResult::Success { result } => {
             let parsed_result: AuthorizationAnswer = serde_json::from_str(result.as_str()).unwrap();
-            assert_matches!(parsed_result, AuthorizationAnswer::Success { response } => {
-                let num_errors = response.diagnostics().errors().count();
+            assert_matches!(parsed_result, AuthorizationAnswer::Residuals { response } => {
+                let num_errors = response.diagnostics.errors().count();
                 assert_eq!(num_errors, 0, "got {num_errors} errors");
-                assert_matches!(response.payload(), InterfacePayload::Residual(residual) => {
-                    for id in &residual_ids {
-                        assert!(residual.contains_key(&PolicyId::from_str(id).ok().unwrap()), "expected residual for {id}, but it's missing")
-                    }
-                    for key in residual.keys() {
-                        assert!(residual_ids.contains(key.to_string().as_str()),"found unexpected residual for {key}")
-                    }
-                })
+                let residual = response.residual;
+                for id in &residual_ids {
+                    assert!(residual.contains_key(&PolicyId::from_str(id).ok().unwrap()), "expected residual for {id}, but it's missing")
+                }
+                for key in residual.keys() {
+                    assert!(residual_ids.contains(key.to_string().as_str()),"found unexpected residual for {key}")
+                }
             })
         })
     }
