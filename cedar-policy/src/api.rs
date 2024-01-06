@@ -835,7 +835,7 @@ impl Diagnostics {
     /// let response = authorizer.is_authorized(&request, &policy, &entities);
     /// match response.decision() {
     ///     Decision::Allow => println!("ALLOW"),
-    ///     Decision::Deny => println!("DENY")
+    ///     Decision::Deny => println!("DENY"),
     /// }
     /// println!("note: this decision was due to the following policies:");
     /// for reason in response.diagnostics().reason() {
@@ -895,7 +895,7 @@ impl Diagnostics {
     /// let response = authorizer.is_authorized(&request, &policy, &entities);
     /// match response.decision() {
     ///     Decision::Allow => println!("ALLOW"),
-    ///     Decision::Deny => println!("DENY")
+    ///     Decision::Deny => println!("DENY"),
     /// }
     /// for err in response.diagnostics().errors() {
     ///     println!("{}", err);

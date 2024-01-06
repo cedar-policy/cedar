@@ -22,8 +22,8 @@ use crate::api::EntityId;
 use crate::api::EntityTypeName;
 use crate::PolicyId;
 use crate::{
-    Authorizer, Context, Decision, Entities, EntityUid, ParseErrors, Policy,
-    PolicySet, Request, Response, Schema, SlotId, Template,
+    Authorizer, Context, Decision, Entities, EntityUid, ParseErrors, Policy, PolicySet, Request,
+    Response, Schema, SlotId, Template,
 };
 use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use itertools::Itertools;
@@ -910,8 +910,6 @@ mod test {
         assert_is_authorized(json_is_authorized(call));
     }
 
-
-
     #[test]
     fn test_authorized_on_multi_policy_slice_with_string_policies() {
         let call = r#"
@@ -1711,5 +1709,4 @@ mod test {
             })
         })
     }
-
 }

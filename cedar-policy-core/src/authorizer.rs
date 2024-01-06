@@ -891,5 +891,5 @@ pub enum Decision {
     /// This is also returned if sufficiently fatal errors are encountered such
     /// that no decision could be safely reached; for example, errors parsing
     /// the policies.
-    Deny
+    Deny,
 }
