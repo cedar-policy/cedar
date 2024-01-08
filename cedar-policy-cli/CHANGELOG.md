@@ -9,6 +9,8 @@
 - `--policy-format` flag to many subcommands, allowing you to pass policies in
   JSON format. The default remains `human` format.
 
+## 3.0.1
+
 ## 3.0.0
 
 Now uses Cedar language version 3.0.0.
@@ -28,6 +30,10 @@ Now uses Cedar language version 3.0.0.
   long form of the flag is also now accepted across all subcommands.
 - The short form of `--template-linked` was changed from `-t` to `-k`.
 - The `format` subcommand no longer takes a positional file argument.
+
+## 2.4.3
+
+Now uses Cedar language version 2.1.3.
 
 ## 2.4.2
 

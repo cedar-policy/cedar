@@ -204,17 +204,17 @@ fn as_decimal(v: &Value) -> Result<&Decimal, evaluator::EvaluationError> {
         Value::Lit {
             lit: Literal::String(_),
             ..
-        } => Err(evaluator::EvaluationError::type_error_with_advice(
-            vec![Type::Extension {
+        } => Err(evaluator::EvaluationError::type_error_with_advice_single(
+            Type::Extension {
                 name: Decimal::typename(),
-            }],
+            },
             v.type_of(),
             ADVICE_MSG.into(),
         )),
-        _ => Err(evaluator::EvaluationError::type_error(
-            vec![Type::Extension {
+        _ => Err(evaluator::EvaluationError::type_error_single(
+            Type::Extension {
                 name: Decimal::typename(),
-            }],
+            },
             v.type_of(),
         )),
     }
@@ -614,8 +614,8 @@ mod tests {
             eval.interpret_inline_policy(
                 &parse_expr(r#"decimal("1.23") < decimal("1.24")"#).expect("parsing error")
             ),
-            Err(evaluator::EvaluationError::type_error(
-                vec![Type::Long],
+            Err(evaluator::EvaluationError::type_error_single(
+                Type::Long,
                 Type::Extension {
                     name: Name::parse_unqualified_name("decimal")
                         .expect("should be a valid identifier")
@@ -626,11 +626,11 @@ mod tests {
             eval.interpret_inline_policy(
                 &parse_expr(r#"decimal("-1.23").lessThan("1.23")"#).expect("parsing error")
             ),
-            Err(evaluator::EvaluationError::type_error_with_advice(
-                vec![Type::Extension {
+            Err(evaluator::EvaluationError::type_error_with_advice_single(
+                Type::Extension {
                     name: Name::parse_unqualified_name("decimal")
                         .expect("should be a valid identifier")
-                }],
+                },
                 Type::String,
                 ADVICE_MSG.into(),
             ))

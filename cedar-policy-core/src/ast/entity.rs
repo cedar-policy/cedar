@@ -269,7 +269,7 @@ impl Entity {
     ) -> Self {
         Entity {
             uid,
-            attrs: attrs.into_iter().map(|(k, v)| (k, v.into())).collect(), // TODO: can we do this without disassembling and reassembling the HashMap
+            attrs: attrs.into_iter().map(|(k, v)| (k, v.into())).collect(), // TODO(#540): can we do this without disassembling and reassembling the HashMap
             ancestors,
         }
     }

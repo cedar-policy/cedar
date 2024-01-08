@@ -297,17 +297,17 @@ fn as_ipaddr(v: &Value) -> Result<&IPAddr, evaluator::EvaluationError> {
         Value::Lit {
             lit: Literal::String(_),
             ..
-        } => Err(evaluator::EvaluationError::type_error_with_advice(
-            vec![Type::Extension {
+        } => Err(evaluator::EvaluationError::type_error_with_advice_single(
+            Type::Extension {
                 name: IPAddr::typename(),
-            }],
+            },
             v.type_of(),
             ADVICE_MSG.into(),
         )),
-        _ => Err(evaluator::EvaluationError::type_error(
-            vec![Type::Extension {
+        _ => Err(evaluator::EvaluationError::type_error_single(
+            Type::Extension {
                 name: IPAddr::typename(),
-            }],
+            },
             v.type_of(),
         )),
     }
@@ -561,8 +561,8 @@ mod tests {
                     Expr::val(1)
                 ))]
             )),
-            Err(evaluator::EvaluationError::type_error(
-                vec![Type::String],
+            Err(evaluator::EvaluationError::type_error_single(
+                Type::String,
                 Type::Set
             ))
         );
@@ -570,8 +570,8 @@ mod tests {
         // test that < on ipaddr values is an error
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(ip("127.0.0.1"), ip("10.0.0.10"))),
-            Err(evaluator::EvaluationError::type_error(
-                vec![Type::Long],
+            Err(evaluator::EvaluationError::type_error_single(
+                Type::Long,
                 Type::Extension {
                     name: Name::parse_unqualified_name("ipaddr")
                         .expect("should be a valid identifier")
@@ -584,11 +584,11 @@ mod tests {
                 Name::parse_unqualified_name("isIpv4").expect("should be a valid identifier"),
                 vec![Expr::val("127.0.0.1")]
             )),
-            Err(evaluator::EvaluationError::type_error_with_advice(
-                vec![Type::Extension {
+            Err(evaluator::EvaluationError::type_error_with_advice_single(
+                Type::Extension {
                     name: Name::parse_unqualified_name("ipaddr")
                         .expect("should be a valid identifier")
-                }],
+                },
                 Type::String,
                 ADVICE_MSG.into(),
             ))

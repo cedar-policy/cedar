@@ -84,37 +84,23 @@ jobs:
         working-directory: cedar-java/CedarJava
         run: export MUST_RUN_CEDAR_INTEGRATION_TESTS=1 && ./gradlew build
 
-
-  cedar-examples:
-    name: CedarExamples
-    runs-on: ubuntu-latest
+  build-cedar-examples-hello-world:
     needs: get-branch-name
-    strategy:
-      matrix:
-        toolchain:
-          - stable
-    steps:
-      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - name: Checkout cedar-examples
-        uses: actions/checkout@v3
-        with:
-          repository: cedar-policy/cedar-examples
-          ref: ${{ needs.get-branch-name.outputs.branch_name }}
-          path: ./cedar-examples
-      - name: checkout cedar
-        uses: actions/checkout@v3
-        with:
-          path: cedar-examples/cedar
-      - name: build rust-hello-world
-        working-directory: cedar-examples/cedar-rust-hello-world
-        run: |
-             printf "\npath = \"../cedar/cedar-policy\"" >> Cargo.toml
-             cargo build
-             cargo test
-      - name: build tinytodo
-        working-directory: cedar-examples/tinytodo
-        run: |
-             printf "\npath = \"../cedar/cedar-policy\"" >> Cargo.toml
-             cargo build
-             cargo test
+    uses: cedar-policy/cedar-examples/.github/workflows/build_rust_hello_world_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.head_ref }}
+      cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}
 
+  run-cedar-examples-use-cases:
+    needs: get-branch-name
+    uses: cedar-policy/cedar-examples/.github/workflows/run_example_use_cases_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.head_ref }}
+      cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}
+
+  build-tiny-todo:
+    needs: get-branch-name
+    uses: cedar-policy/cedar-examples/.github/workflows/build_tiny_todo_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.head_ref }}
+      cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}

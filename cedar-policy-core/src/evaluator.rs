@@ -27,6 +27,7 @@ mod err;
 pub(crate) use err::*;
 pub use err::{EvaluationError, EvaluationErrorKind};
 use itertools::Either;
+use nonempty::nonempty;
 use smol_str::SmolStr;
 
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
@@ -415,7 +416,10 @@ impl<'e> Evaluator<'e> {
                             set: Set { authoritative, .. },
                             ..
                         } => Ok((authoritative.contains(&arg2)).into()),
-                        _ => Err(EvaluationError::type_error(vec![Type::Set], arg1.type_of())),
+                        _ => Err(EvaluationError::type_error_single(
+                            Type::Set,
+                            arg1.type_of(),
+                        )),
                     },
                     // ContainsAll and ContainsAny, which work on Sets
                     BinaryOp::ContainsAll | BinaryOp::ContainsAny => {
@@ -514,9 +518,9 @@ impl<'e> Evaluator<'e> {
                     Dereference::Data(e) => Ok(e.get(attr).is_some().into()),
                 },
                 PartialValue::Value(val) => Err(err::EvaluationError::type_error(
-                    vec![
+                    nonempty![
                         Type::Record,
-                        Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
+                        Type::entity_type(names::ANY_ENTITY_TYPE.clone())
                     ],
                     val.type_of(),
                 )),
@@ -609,7 +613,7 @@ impl<'e> Evaluator<'e> {
                 .collect::<Result<Vec<EntityUID>>>()?,
             _ => {
                 return Err(EvaluationError::type_error(
-                    vec![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
+                    nonempty![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
                     arg2.type_of(),
                 ))
             }
@@ -727,9 +731,9 @@ impl<'e> Evaluator<'e> {
                 // PANIC SAFETY Entity type name is fully static and a valid unqualified `Name`
                 #[allow(clippy::unwrap_used)]
                 Err(EvaluationError::type_error(
-                    vec![
+                    nonempty![
                         Type::Record,
-                        Type::entity_type(Name::parse_unqualified_name("any_entity_type").unwrap()),
+                        Type::entity_type(Name::parse_unqualified_name("any_entity_type").unwrap(),)
                     ],
                     v.type_of(),
                 ))
@@ -786,8 +790,8 @@ impl Value {
                 lit: Literal::Bool(b),
                 ..
             } => Ok(*b),
-            _ => Err(EvaluationError::type_error(
-                vec![Type::Bool],
+            _ => Err(EvaluationError::type_error_single(
+                Type::Bool,
                 self.type_of(),
             )),
         }
@@ -801,8 +805,8 @@ impl Value {
                 lit: Literal::Long(i),
                 ..
             } => Ok(*i),
-            _ => Err(EvaluationError::type_error(
-                vec![Type::Long],
+            _ => Err(EvaluationError::type_error_single(
+                Type::Long,
                 self.type_of(),
             )),
         }
@@ -816,8 +820,8 @@ impl Value {
                 lit: Literal::String(s),
                 ..
             } => Ok(s),
-            _ => Err(EvaluationError::type_error(
-                vec![Type::String],
+            _ => Err(EvaluationError::type_error_single(
+                Type::String,
                 self.type_of(),
             )),
         }
@@ -827,7 +831,10 @@ impl Value {
     pub(crate) fn get_as_set(&self) -> Result<&Set> {
         match self {
             Value::Set { set, .. } => Ok(set),
-            _ => Err(EvaluationError::type_error(vec![Type::Set], self.type_of())),
+            _ => Err(EvaluationError::type_error_single(
+                Type::Set,
+                self.type_of(),
+            )),
         }
     }
 
@@ -839,8 +846,8 @@ impl Value {
                 lit: Literal::EntityUID(uid),
                 ..
             } => Ok(uid.as_ref()),
-            _ => Err(EvaluationError::type_error(
-                vec![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
+            _ => Err(EvaluationError::type_error_single(
+                Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
                 self.type_of(),
             )),
         }
@@ -1376,7 +1383,7 @@ pub mod test {
                 Expr::val(3),
                 Expr::val(8)
             )),
-            Err(EvaluationError::type_error(vec![Type::Bool], Type::String))
+            Err(EvaluationError::type_error_single(Type::Bool, Type::String))
         );
         // if principal then 3 else 8
         assert_eq!(
@@ -1385,8 +1392,8 @@ pub mod test {
                 Expr::val(3),
                 Expr::val(8)
             )),
-            Err(EvaluationError::type_error(
-                vec![Type::Bool],
+            Err(EvaluationError::type_error_single(
+                Type::Bool,
                 Type::Entity {
                     ty: EntityUID::test_entity_type(),
                 },
@@ -1572,7 +1579,7 @@ pub mod test {
                 "hello".into()
             )),
             Err(EvaluationError::type_error(
-                vec![
+                nonempty![
                     Type::Record,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
@@ -1586,7 +1593,7 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(Expr::set(vec![]), "hello".into())),
             Err(EvaluationError::type_error(
-                vec![
+                nonempty![
                     Type::Record,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
@@ -1631,7 +1638,7 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(mixed_set, "hello".into())),
             Err(EvaluationError::type_error(
-                vec![
+                nonempty![
                     Type::Record,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
@@ -1692,7 +1699,7 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(set_of_sets.clone(), "hello".into())),
             Err(EvaluationError::type_error(
-                vec![
+                nonempty![
                     Type::Record,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
@@ -1709,7 +1716,7 @@ pub mod test {
                 "eggs".into()
             )),
             Err(EvaluationError::type_error(
-                vec![
+                nonempty![
                     Type::Record,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
@@ -1975,7 +1982,7 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(Expr::val(1010122), "hello".into())),
             Err(EvaluationError::type_error(
-                vec![
+                nonempty![
                     Type::Record,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
@@ -1989,7 +1996,7 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(Expr::val("hello"), "eggs".into())),
             Err(EvaluationError::type_error(
-                vec![
+                nonempty![
                     Type::Record,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
@@ -2003,7 +2010,7 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(Expr::val(1010122), "hello".into())),
             Err(EvaluationError::type_error(
-                vec![
+                nonempty![
                     Type::Record,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
@@ -2017,7 +2024,7 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::has_attr(Expr::val("hello"), "eggs".into())),
             Err(EvaluationError::type_error(
-                vec![
+                nonempty![
                     Type::Record,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
@@ -2048,13 +2055,13 @@ pub mod test {
         // not(8)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::not(Expr::val(8))),
-            Err(EvaluationError::type_error(vec![Type::Bool], Type::Long))
+            Err(EvaluationError::type_error_single(Type::Bool, Type::Long))
         );
         // not(action)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::not(Expr::var(Var::Action))),
-            Err(EvaluationError::type_error(
-                vec![Type::Bool],
+            Err(EvaluationError::type_error_single(
+                Type::Bool,
                 Type::Entity {
                     ty: EntityUID::test_entity_type(),
                 },
@@ -2132,7 +2139,7 @@ pub mod test {
         // neg(false)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::neg(Expr::val(false))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
+            Err(EvaluationError::type_error_single(Type::Long, Type::Bool))
         );
         // neg([1, 2, 3])
         assert_eq!(
@@ -2141,7 +2148,7 @@ pub mod test {
                 Expr::val(2),
                 Expr::val(3)
             ]))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::Set))
+            Err(EvaluationError::type_error_single(Type::Long, Type::Set))
         );
     }
 
@@ -2445,97 +2452,97 @@ pub mod test {
         // false < true
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(true))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
+            Err(EvaluationError::type_error_single(Type::Long, Type::Bool))
         );
         // false < false
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(false))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
+            Err(EvaluationError::type_error_single(Type::Long, Type::Bool))
         );
         // true <= false
         assert_eq!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val(true), Expr::val(false))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
+            Err(EvaluationError::type_error_single(Type::Long, Type::Bool))
         );
         // false <= false
         assert_eq!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val(false), Expr::val(false))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
+            Err(EvaluationError::type_error_single(Type::Long, Type::Bool))
         );
         // false > true
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greater(Expr::val(false), Expr::val(true))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
+            Err(EvaluationError::type_error_single(Type::Long, Type::Bool))
         );
         // true > true
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greater(Expr::val(true), Expr::val(true))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
+            Err(EvaluationError::type_error_single(Type::Long, Type::Bool))
         );
         // true >= false
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(true), Expr::val(false))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
+            Err(EvaluationError::type_error_single(Type::Long, Type::Bool))
         );
         // true >= true
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(true), Expr::val(true))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
+            Err(EvaluationError::type_error_single(Type::Long, Type::Bool))
         );
         // bc < zzz
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("bc"), Expr::val("zzz"))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // banana < zzz
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("banana"), Expr::val("zzz"))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // "" < zzz
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(""), Expr::val("zzz"))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // a < 1
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("a"), Expr::val("1"))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // a < A
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("a"), Expr::val("A"))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // A < A
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("A"), Expr::val("A"))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // zebra < zebras
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("zebra"), Expr::val("zebras"))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // zebra <= zebras
         assert_eq!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebra"), Expr::val("zebras"))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // zebras <= zebras
         assert_eq!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebras"), Expr::val("zebras"))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // zebras <= Zebras
         assert_eq!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebras"), Expr::val("Zebras"))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // 123 > 78
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greater(Expr::val("123"), Expr::val("78"))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // <space>zebras >= zebras
         assert_eq!(
@@ -2543,42 +2550,42 @@ pub mod test {
                 Expr::val(" zebras"),
                 Expr::val("zebras")
             )),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // "" >= ""
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(""), Expr::val(""))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // "" >= _hi
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(""), Expr::val("_hi"))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // 🦀 >= _hi
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val("🦀"), Expr::val("_hi"))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // 2 < "4"
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(2), Expr::val("4"))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // "4" < 2
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val("4"), Expr::val(2))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // false < 1
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(1))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
+            Err(EvaluationError::type_error_single(Type::Long, Type::Bool))
         );
         // 1 < false
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(1), Expr::val(false))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::Bool))
+            Err(EvaluationError::type_error_single(Type::Long, Type::Bool))
         );
         // [1, 2] < [47, 0]
         assert_eq!(
@@ -2586,7 +2593,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(1), Expr::val(2)]),
                 Expr::set(vec![Expr::val(47), Expr::val(0)])
             )),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::Set))
+            Err(EvaluationError::type_error_single(Type::Long, Type::Set))
         );
     }
 
@@ -2605,7 +2612,7 @@ pub mod test {
                 Expr::add(Expr::val("a"), Expr::val("b")),
                 Expr::add(Expr::val(false), Expr::val(true))
             )),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
 
         assert_eq!(
@@ -2613,7 +2620,7 @@ pub mod test {
                 Expr::add(Expr::val("a"), Expr::val("b")),
                 Expr::add(Expr::val(false), Expr::val(true))
             )),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
 
         assert_eq!(
@@ -2621,7 +2628,7 @@ pub mod test {
                 Expr::add(Expr::val("a"), Expr::val("b")),
                 Expr::add(Expr::val(false), Expr::val(true))
             )),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
 
         assert_eq!(
@@ -2629,7 +2636,7 @@ pub mod test {
                 Expr::add(Expr::val("a"), Expr::val("b")),
                 Expr::add(Expr::val(false), Expr::val(true))
             )),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
     }
 
@@ -2667,7 +2674,7 @@ pub mod test {
         // 7 + "3"
         assert_eq!(
             eval.interpret_inline_policy(&Expr::add(Expr::val(7), Expr::val("3"))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // 44 - 31
         assert_eq!(
@@ -2692,7 +2699,7 @@ pub mod test {
         // "ham" - "ha"
         assert_eq!(
             eval.interpret_inline_policy(&Expr::sub(Expr::val("ham"), Expr::val("ha"))),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // 5 * (-3)
         assert_eq!(
@@ -2707,7 +2714,7 @@ pub mod test {
         // "5" * 0
         assert_eq!(
             eval.interpret_inline_policy(&Expr::mul(Expr::val("5"), 0)),
-            Err(EvaluationError::type_error(vec![Type::Long], Type::String))
+            Err(EvaluationError::type_error_single(Type::Long, Type::String))
         );
         // overflow
         assert_eq!(
@@ -2865,7 +2872,7 @@ pub mod test {
         // 3 contains 7
         assert_eq!(
             eval.interpret_inline_policy(&Expr::contains(Expr::val(3), Expr::val(7))),
-            Err(EvaluationError::type_error(vec![Type::Set], Type::Long))
+            Err(EvaluationError::type_error_single(Type::Set, Type::Long))
         );
         // { ham: "eggs" } contains "ham"
         assert_eq!(
@@ -2873,7 +2880,7 @@ pub mod test {
                 Expr::record(vec![("ham".into(), Expr::val("eggs"))]).unwrap(),
                 Expr::val("ham")
             )),
-            Err(EvaluationError::type_error(vec![Type::Set], Type::Record))
+            Err(EvaluationError::type_error_single(Type::Set, Type::Record))
         );
         // wrong argument order
         assert_eq!(
@@ -2881,7 +2888,7 @@ pub mod test {
                 Expr::val(3),
                 Expr::set(vec![Expr::val(1), Expr::val(3), Expr::val(7)])
             )),
-            Err(EvaluationError::type_error(vec![Type::Set], Type::Long))
+            Err(EvaluationError::type_error_single(Type::Set, Type::Long))
         );
     }
 
@@ -3073,11 +3080,11 @@ pub mod test {
                     Expr::val(true),
                 ])
             )),
-            Err(EvaluationError::type_error(
-                vec![Type::entity_type(
+            Err(EvaluationError::type_error_single(
+                Type::entity_type(
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
-                )],
+                ),
                 Type::Bool,
             ))
         );
@@ -3128,11 +3135,11 @@ pub mod test {
         // "foo" in "foobar"
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_in(Expr::val("foo"), Expr::val("foobar"))),
-            Err(EvaluationError::type_error(
-                vec![Type::entity_type(
+            Err(EvaluationError::type_error_single(
+                Type::entity_type(
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
-                )],
+                ),
                 Type::String,
             ))
         );
@@ -3142,11 +3149,11 @@ pub mod test {
                 Expr::val("spoon"),
                 Expr::val(EntityUID::with_eid("entity_with_attrs"))
             )),
-            Err(EvaluationError::type_error(
-                vec![Type::entity_type(
+            Err(EvaluationError::type_error_single(
+                Type::entity_type(
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
-                )],
+                ),
                 Type::String,
             ))
         );
@@ -3156,11 +3163,11 @@ pub mod test {
                 Expr::val(3),
                 Expr::set(vec![Expr::val(34), Expr::val(-2), Expr::val(7)])
             )),
-            Err(EvaluationError::type_error_with_advice(
-                vec![Type::entity_type(
+            Err(EvaluationError::type_error_with_advice_single(
+                Type::entity_type(
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
-                )],
+                ),
                 Type::Long,
                 "`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into(),
             ))
@@ -3174,11 +3181,11 @@ pub mod test {
                     ("bar".into(), Expr::val(true)),
                 ]).unwrap()
             )),
-            Err(EvaluationError::type_error_with_advice(
-                vec![Type::entity_type(
+            Err(EvaluationError::type_error_with_advice_single(
+                Type::entity_type(
                     Name::parse_unqualified_name("any_entity_type")
                         .expect("should be a valid identifier")
-                )],
+                ),
                 Type::String,
                 "`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into(),
             ))
@@ -3194,7 +3201,7 @@ pub mod test {
                 .unwrap()
             )),
             Err(EvaluationError::type_error(
-                vec![
+                nonempty![
                     Type::Set,
                     Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
@@ -3414,7 +3421,7 @@ pub mod test {
         // type error
         assert_eq!(
             eval.interpret_inline_policy(&Expr::like(Expr::val(354), vec![])),
-            Err(EvaluationError::type_error(vec![Type::String], Type::Long))
+            Err(EvaluationError::type_error_single(Type::String, Type::Long))
         );
         // 'contains' is not allowed on strings
         assert_eq!(
@@ -3422,7 +3429,7 @@ pub mod test {
                 Expr::val("ham and ham"),
                 Expr::val("ham")
             )),
-            Err(EvaluationError::type_error(vec![Type::Set], Type::String))
+            Err(EvaluationError::type_error_single(Type::Set, Type::String))
         );
         // '\0' should not match '*'
         assert_eq!(
@@ -3540,8 +3547,8 @@ pub mod test {
         );
         assert_eq!(
             eval.interpret_inline_policy(&parse_expr(r#"1 is Group"#).expect("parsing error")),
-            Err(EvaluationError::type_error(
-                vec![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
+            Err(EvaluationError::type_error_single(
+                Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
                 Type::Long
             ))
         );
@@ -3666,7 +3673,7 @@ pub mod test {
                 Expr::val("ham"),
                 Expr::val("ham and eggs")
             )),
-            Err(EvaluationError::type_error(vec![Type::Set], Type::String))
+            Err(EvaluationError::type_error_single(Type::Set, Type::String))
         );
         // {"2": "ham", "3": "eggs"} containsall {"2": "ham"} ?
         assert_eq!(
@@ -3678,7 +3685,7 @@ pub mod test {
                 ])
                 .unwrap()
             )),
-            Err(EvaluationError::type_error(vec![Type::Set], Type::Record))
+            Err(EvaluationError::type_error_single(Type::Set, Type::Record))
         );
         // test for [1, -22] contains_any of [1, -22, 34]
         assert_eq!(
@@ -3780,7 +3787,7 @@ pub mod test {
                 Expr::val("ham"),
                 Expr::val("ham and eggs")
             )),
-            Err(EvaluationError::type_error(vec![Type::Set], Type::String))
+            Err(EvaluationError::type_error_single(Type::Set, Type::String))
         );
         // test for {"2": "ham"} contains_any of {"2": "ham", "3": "eggs"}
         assert_eq!(
@@ -3792,7 +3799,7 @@ pub mod test {
                 ])
                 .unwrap()
             )),
-            Err(EvaluationError::type_error(vec![Type::Set], Type::Record))
+            Err(EvaluationError::type_error_single(Type::Set, Type::Record))
         );
         Ok(())
     }
