@@ -66,9 +66,7 @@ impl Context<'_> {
             Some(NamedType::Primitive(PrimitiveType::Long))
         } else if node.is_builtin_string() {
             Some(NamedType::Primitive(PrimitiveType::String))
-        } else if self.common_types.contains(&name) {
-            Some(NamedType::Common(node.clone().to_smolstr()))
-        } else if self.global_common_types.contains(&name) {
+        } else if self.common_types.contains(&name) || self.global_common_types.contains(&name) {
             // global common types maybe `Bool`, `Long`, `String`,
             // `ipaddr`, `decimal`, and entity types defined in this namespace
             Some(NamedType::Common(node.clone().to_smolstr()))
