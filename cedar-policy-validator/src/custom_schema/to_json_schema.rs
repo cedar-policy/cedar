@@ -22,18 +22,20 @@ use super::{
 };
 
 #[derive(Debug, Clone)]
-pub struct Context {
-    pub common_types: HashSet<Name>,
-    pub entity_types: HashSet<Name>,
+pub(super) struct Context<'a> {
+    common_types: HashSet<Name>,
+    entity_types: HashSet<Name>,
+    global_common_types: &'a HashSet<Name>,
 }
+
 #[derive(Debug, Clone)]
-pub enum PrimitiveType {
+pub(super) enum PrimitiveType {
     Bool,
     Long,
     String,
 }
 #[derive(Debug, Clone)]
-pub enum NamedType {
+pub(super) enum NamedType {
     Common(SmolStr),
     Entity(SmolStr),
     Extension(SmolStr),
@@ -53,7 +55,7 @@ impl From<NamedType> for SchemaType {
     }
 }
 
-impl Context {
+impl Context<'_> {
     pub fn lookup(&self, node: &Path) -> Option<NamedType> {
         let name = <Path as Into<Name>>::into(node.clone());
         if node.is_decimal_extension() || node.is_ipaddr_extension() {
@@ -66,6 +68,10 @@ impl Context {
             Some(NamedType::Primitive(PrimitiveType::String))
         } else if self.common_types.contains(&name) {
             Some(NamedType::Common(node.clone().to_smolstr()))
+        } else if self.global_common_types.contains(&name) {
+            // global common types maybe `Bool`, `Long`, `String`,
+            // `ipaddr`, `decimal`, and entity types defined in this namespace
+            Some(NamedType::Common(node.clone().to_smolstr()))
         } else if self.entity_types.contains(&name) {
             Some(NamedType::Entity(node.clone().to_smolstr()))
         } else if node.is_unqualified_bool() {
@@ -77,7 +83,6 @@ impl Context {
         } else if node.is_unqualified_decimal() || node.is_unqualified_ipaddr() {
             Some(NamedType::Extension(node.clone().to_smolstr()))
         } else if !node.prefix.is_empty() {
-            // TODO: is it possible to do cross-namespace common type reference?
             Some(NamedType::Entity(node.clone().to_smolstr()))
         } else {
             // TODO: Should be unreachable?
@@ -104,8 +109,34 @@ fn ref_to_action_euid(name: Ref) -> ActionEntityUID {
     }
 }
 
+fn collect_global_common_types(schema: &Schema) -> HashSet<Name> {
+    let mut tys = HashSet::new();
+    for ns_def in schema {
+        let prefix: Vec<super::ast::Ident> = if let Some(ns) = ns_def.node.name.clone() {
+            [ns.node.prefix, vec![ns.node.base]].concat()
+        } else {
+            vec![]
+        };
+        for common_ty_def in &ns_def.node.decls {
+            match &common_ty_def.node {
+                Declaration::Type(id, _) => {
+                    tys.insert(
+                        Path {
+                            base: id.clone(),
+                            prefix: prefix.clone(),
+                        }
+                        .into(),
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+    tys
+}
+
 // We delay the handling of duplicate keys so that this function is total
-fn build_context(namespace: &Namespace) -> Context {
+fn build_context<'a>(namespace: &Namespace, global_common_types: &'a HashSet<Name>) -> Context<'a> {
     let mut common_types: HashSet<Node<Name>> = HashSet::new();
     let mut entity_types: HashSet<Node<Name>> = HashSet::new();
     for decl in &namespace.decls {
@@ -127,17 +158,18 @@ fn build_context(namespace: &Namespace) -> Context {
     Context {
         common_types: common_types.into_iter().map(|n| n.node).collect(),
         entity_types: entity_types.into_iter().map(|n| n.node).collect(),
+        global_common_types,
     }
 }
 
-pub trait TryFrom<T>: Sized {
+pub(super) trait TryFrom<T>: Sized {
     type Error;
 
     // Required method
     fn try_from(value: T, context: &Context) -> Result<Self, Self::Error>;
 }
 
-pub trait TryInto<T>: Sized {
+pub(super) trait TryInto<T>: Sized {
     type Error;
 
     fn try_into(self, context: &Context) -> Result<T, Self::Error>;
@@ -280,6 +312,7 @@ impl std::convert::TryFrom<Schema> for SchemaFragment {
     type Error = ToValidatorSchemaError;
     fn try_from(value: Schema) -> Result<Self, Self::Error> {
         let mut validator_schema = HashMap::new();
+        let global_common_types = collect_global_common_types(&value);
         for ns_def in value {
             let mut entity_types: HashMap<Node<Id>, EntityType> = HashMap::new();
             let mut actions: HashMap<Str, ActionType> = HashMap::new();
@@ -290,7 +323,7 @@ impl std::convert::TryFrom<Schema> for SchemaFragment {
                 .as_ref()
                 .map(|ns| ns.node.clone().to_smolstr())
                 .unwrap_or_default();
-            let context = &build_context(&ns_def);
+            let context = &build_context(&ns_def, &global_common_types);
             for decl in ns_def.decls {
                 match decl.node {
                     Declaration::Action(action_decl) => {
