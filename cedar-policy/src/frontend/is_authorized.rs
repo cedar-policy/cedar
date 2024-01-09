@@ -46,7 +46,7 @@ thread_local!(
 fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
     match call.get_components() {
         Ok((request, policies, entities)) => {
-            AUTHORIZER.with(|authorizer| AuthorizationAnswer::Concrete {
+            AUTHORIZER.with(|authorizer| AuthorizationAnswer::Success {
                 response: authorizer
                     .is_authorized(&request, &policies, &entities)
                     .into(),
@@ -64,30 +64,28 @@ pub fn json_is_authorized(input: &str) -> InterfaceResult {
     serde_json::from_str::<AuthorizationCall>(input).map_or_else(
         |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
         |call| match is_authorized(call) {
-            answer @ AuthorizationAnswer::Concrete { .. } => InterfaceResult::succeed(answer),
+            answer @ AuthorizationAnswer::Success { .. } => InterfaceResult::succeed(answer),
             AuthorizationAnswer::ParseFailed { errors } => InterfaceResult::fail_bad_request(errors),
-            #[cfg(feature = "partial-eval")]
-            _ => InterfaceResult::fail_internally(String::from("unexpected authorization answer")),
         },
     )
 }
 
 #[cfg(feature = "partial-eval")]
-fn is_authorized_partial(call: AuthorizationCall) -> AuthorizationAnswer {
+fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAnswer {
     match call.get_components_partial() {
         Ok((request, policies, entities)) => {
             AUTHORIZER.with(|authorizer|
                 match authorizer.is_authorized_partial(&request, &policies, &entities) {
-                    concrete_response @ PartialResponse::Concrete(_) => AuthorizationAnswer::Concrete {
+                    concrete_response @ PartialResponse::Concrete(_) => PartialAuthorizationAnswer::Concrete {
                         response: concrete_response.into()
                     },
-                    residual_response @ PartialResponse::Residual(_) => AuthorizationAnswer::Residuals {
+                    residual_response @ PartialResponse::Residual(_) => PartialAuthorizationAnswer::Residuals {
                         response: residual_response.into()
                     }
                 }
             )
         },
-        Err(errors) => AuthorizationAnswer::ParseFailed { errors },
+        Err(errors) => PartialAuthorizationAnswer::ParseFailed { errors },
     }
 }
 
@@ -100,9 +98,9 @@ pub fn json_is_authorized_partial(input: &str) -> InterfaceResult {
     serde_json::from_str::<AuthorizationCall>(input).map_or_else(
         |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
         |call| match is_authorized_partial(call) {
-            answer @ AuthorizationAnswer::Concrete { .. } => InterfaceResult::succeed(answer),
-            answer @ AuthorizationAnswer::Residuals { .. } => InterfaceResult::succeed(answer),
-            AuthorizationAnswer::ParseFailed { errors } => {
+            answer @ PartialAuthorizationAnswer::Concrete { .. } => InterfaceResult::succeed(answer),
+            answer @ PartialAuthorizationAnswer::Residuals { .. } => InterfaceResult::succeed(answer),
+            PartialAuthorizationAnswer::ParseFailed { errors } => {
                 InterfaceResult::fail_bad_request(errors)
             }
         },
@@ -233,8 +231,15 @@ impl From<PartialResponse> for InterfaceResidualResponse {
 #[serde(untagged)]
 enum AuthorizationAnswer {
     ParseFailed { errors: Vec<String> },
+    Success { response: InterfaceResponse },
+}
+
+#[cfg(feature = "partial-eval")]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+enum PartialAuthorizationAnswer {
+    ParseFailed { errors: Vec<String> },
     Concrete { response: InterfaceResponse },
-    #[cfg(feature = "partial-eval")]
     Residuals { response: InterfaceResidualResponse },
 }
 
@@ -1305,7 +1310,7 @@ mod test {
         assert_matches!(result, InterfaceResult::Success { result } => {
             let parsed_result: AuthorizationAnswer =
                 serde_json::from_str(result.as_str()).unwrap();
-            assert_matches!(parsed_result, AuthorizationAnswer::Concrete { response } => {
+            assert_matches!(parsed_result, AuthorizationAnswer::Success { response } => {
                 assert_eq!(response.decision(), Decision::Allow);
                 assert_eq!(response.diagnostics().errors.len(), 0);
             });
@@ -1317,7 +1322,7 @@ mod test {
         assert_matches!(result, InterfaceResult::Success { result } => {
             let parsed_result: AuthorizationAnswer =
                 serde_json::from_str(result.as_str()).unwrap();
-            assert_matches!(parsed_result, AuthorizationAnswer::Concrete { response } => {
+            assert_matches!(parsed_result, AuthorizationAnswer::Success { response } => {
                 assert_eq!(response.decision(), Decision::Deny);
                 assert_eq!(response.diagnostics().errors.len(), 0);
             });
@@ -1562,13 +1567,13 @@ mod test {
 
     #[cfg(feature = "partial-eval")]
     mod partial {
-        use super::super::AuthorizationAnswer;
+        use super::super::PartialAuthorizationAnswer;
         use std::collections::HashSet;
         use std::str::FromStr;
         use cool_asserts::assert_matches;
         use crate::frontend::is_authorized::json_is_authorized_partial;
-        use crate::frontend::is_authorized::test::{assert_is_authorized, assert_is_not_authorized};
         use crate::frontend::utils::InterfaceResult;
+        use crate::Decision;
         use crate::PolicyId;
 
         #[test]
@@ -1697,11 +1702,33 @@ mod test {
             assert_is_residual(json_is_authorized_partial(call), HashSet::from(["ID1"]));
         }
 
-        #[track_caller]
+        #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+        fn assert_is_authorized(result: InterfaceResult) {
+            assert_matches!(result, InterfaceResult::Success { result } => {
+                let parsed_result: PartialAuthorizationAnswer = serde_json::from_str(result.as_str()).unwrap();
+                assert_matches!(parsed_result, PartialAuthorizationAnswer::Concrete { response } => {
+                    assert_eq!(response.decision(), Decision::Allow);
+                    assert_eq!(response.diagnostics().errors.len(), 0);
+                });
+            });
+        }
+
+        #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+        fn assert_is_not_authorized(result: InterfaceResult) {
+            assert_matches!(result, InterfaceResult::Success { result } => {
+                let parsed_result: PartialAuthorizationAnswer = serde_json::from_str(result.as_str()).unwrap();
+                assert_matches!(parsed_result, PartialAuthorizationAnswer::Concrete { response } => {
+                    assert_eq!(response.decision(), Decision::Deny);
+                    assert_eq!(response.diagnostics().errors.len(), 0);
+                });
+            });
+        }
+
+        #[track_caller] // report the caller's location as the location of the panic, not the location in this function
         fn assert_is_residual(result: InterfaceResult, residual_ids: HashSet<&str>) {
             assert_matches!(result, InterfaceResult::Success { result } => {
-                let parsed_result: AuthorizationAnswer = serde_json::from_str(result.as_str()).unwrap();
-                assert_matches!(parsed_result, AuthorizationAnswer::Residuals { response } => {
+                let parsed_result: PartialAuthorizationAnswer = serde_json::from_str(result.as_str()).unwrap();
+                assert_matches!(parsed_result, PartialAuthorizationAnswer::Residuals { response } => {
                     let num_errors = response.diagnostics.errors().count();
                     assert_eq!(num_errors, 0, "got {num_errors} errors");
                     let residuals = response.residuals;
