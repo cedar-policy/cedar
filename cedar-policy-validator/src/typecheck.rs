@@ -2431,7 +2431,7 @@ impl<'a> Typechecker<'a> {
             .collect();
 
         let fn_name_str = f.to_string();
-        match extension_funcs.get(0) {
+        match extension_funcs.first() {
             Some(e) if extension_funcs.len() == 1 => Ok(e),
             _ => Err(move |e| {
                 if extension_funcs.is_empty() {

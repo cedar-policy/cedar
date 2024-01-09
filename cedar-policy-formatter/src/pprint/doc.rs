@@ -487,18 +487,21 @@ impl Doc for Node<Option<Name>> {
             Some(
                 path.get(1..)?
                     .iter()
-                    .try_fold((path.get(0)?.to_doc(context)?, path.get(0)?), |pair, p| {
-                        let (d, e) = pair;
-                        Some((
-                            d.append(add_comment(
-                                RcDoc::as_string("::"),
-                                get_comment_after_end(e.loc.span, &mut context.tokens)?,
-                                RcDoc::nil(),
+                    .try_fold(
+                        (path.first()?.to_doc(context)?, path.first()?),
+                        |pair, p| {
+                            let (d, e) = pair;
+                            Some((
+                                d.append(add_comment(
+                                    RcDoc::as_string("::"),
+                                    get_comment_after_end(e.loc.span, &mut context.tokens)?,
+                                    RcDoc::nil(),
+                                ))
+                                .append(p.to_doc(context)?),
+                                p,
                             ))
-                            .append(p.to_doc(context)?),
-                            p,
-                        ))
-                    })?
+                        },
+                    )?
                     .0
                     .append(add_comment(
                         RcDoc::as_string("::"),
@@ -588,7 +591,7 @@ impl Doc for Node<Option<Primary>> {
                 } else {
                     el.get(1..)?
                         .iter()
-                        .try_fold((el.get(0)?.to_doc(context)?, el.get(0)?), |pair, v| {
+                        .try_fold((el.first()?.to_doc(context)?, el.first()?), |pair, v| {
                             let (d, e) = pair;
                             Some((
                                 d.append(add_comment(
@@ -620,7 +623,7 @@ impl Doc for Node<Option<Primary>> {
                 } else {
                     ri.get(1..)?
                         .iter()
-                        .try_fold((ri.get(0)?.to_doc(context)?, ri.get(0)?), |pair, v| {
+                        .try_fold((ri.first()?.to_doc(context)?, ri.first()?), |pair, v| {
                             let (d, e) = pair;
                             Some((
                                 d.append(add_comment(
@@ -676,7 +679,7 @@ impl Doc for Node<Option<MemAccess>> {
                     args.get(1..)?
                         .iter()
                         .try_fold(
-                            (args.get(0)?.to_doc(context)?, args.get(0)?),
+                            (args.first()?.to_doc(context)?, args.first()?),
                             |pair, arg| {
                                 let (d, e) = pair;
                                 Some((
@@ -772,7 +775,7 @@ impl Doc for Node<Option<Policy>> {
             get_leading_comment_at_start(policy.effect.loc.span, &mut context.tokens)?;
         let eff_doc = policy.effect.to_doc(context)?;
         let vars = &policy.variables;
-        let principal_doc = vars.get(0)?.to_doc(context)?;
+        let principal_doc = vars.first()?.to_doc(context)?;
         let action_doc = vars.get(1)?.to_doc(context)?;
         let resource_doc = vars.get(2)?.to_doc(context)?;
         let vars_doc = if vars.get(0..3)?.iter().all(|v| {
@@ -785,7 +788,7 @@ impl Doc for Node<Option<Policy>> {
             principal_doc
                 .append(add_comment(
                     RcDoc::text(","),
-                    get_comment_after_end(vars.get(0)?.loc.span, &mut context.tokens)?,
+                    get_comment_after_end(vars.first()?.loc.span, &mut context.tokens)?,
                     RcDoc::space(),
                 ))
                 .append(action_doc)
@@ -803,7 +806,7 @@ impl Doc for Node<Option<Policy>> {
                     principal_doc
                         .append(add_comment(
                             RcDoc::text(","),
-                            get_comment_after_end(vars.get(0)?.loc.span, &mut context.tokens)?,
+                            get_comment_after_end(vars.first()?.loc.span, &mut context.tokens)?,
                             RcDoc::hardline(),
                         ))
                         .append(action_doc)

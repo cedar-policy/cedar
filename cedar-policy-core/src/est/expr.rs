@@ -1368,44 +1368,6 @@ fn ident_to_str_len(i: &Ident) -> usize {
     }
 }
 
-#[cfg(test)]
-// PANIC SAFETY: this is unit test code
-#[allow(clippy::indexing_slicing)]
-// PANIC SAFETY: Unit Test Code
-#[allow(clippy::panic)]
-mod test {
-    use crate::parser::err::ParseError;
-
-    use super::*;
-    use cool_asserts::assert_matches;
-
-    #[test]
-    fn test_invalid_expr_from_cst_name() {
-        let src = "some_long_str";
-        let path = vec![Node::with_source_loc(
-            Some(cst::Ident::Ident(src.into())),
-            Loc::new(0..12, Arc::from(src)),
-        )];
-        let name = Node::with_source_loc(Some(cst::Ident::Else), Loc::new(13..16, Arc::from(src)));
-        let cst_name = Node::with_source_loc(
-            Some(cst::Name { path, name }),
-            Loc::new(0..16, Arc::from(src)),
-        );
-
-        assert_matches!(Expr::try_from(&cst_name), Err(e) => {
-            assert!(e.len() == 1);
-            assert_matches!(&e[0],
-                ParseError::ToAST(to_ast_error) => {
-                    assert_matches!(to_ast_error.kind(), ToASTErrorKind::InvalidExpression(e) => {
-                        println!("{e:?}");
-                        assert_eq!(e.name.loc.end(), 16);
-                    });
-                }
-            );
-        });
-    }
-}
-
 impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -1703,5 +1665,43 @@ fn maybe_with_parens(expr: &Expr) -> String {
         Expr::ExprNoExt(ExprNoExt::Set(_)) => expr.to_string(),
         Expr::ExprNoExt(ExprNoExt::Record(_)) => expr.to_string(),
         Expr::ExtFuncCall { .. } => format!("({expr})"),
+    }
+}
+
+#[cfg(test)]
+// PANIC SAFETY: this is unit test code
+#[allow(clippy::indexing_slicing)]
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
+mod test {
+    use crate::parser::err::ParseError;
+
+    use super::*;
+    use cool_asserts::assert_matches;
+
+    #[test]
+    fn test_invalid_expr_from_cst_name() {
+        let src = "some_long_str";
+        let path = vec![Node::with_source_loc(
+            Some(cst::Ident::Ident(src.into())),
+            Loc::new(0..12, Arc::from(src)),
+        )];
+        let name = Node::with_source_loc(Some(cst::Ident::Else), Loc::new(13..16, Arc::from(src)));
+        let cst_name = Node::with_source_loc(
+            Some(cst::Name { path, name }),
+            Loc::new(0..16, Arc::from(src)),
+        );
+
+        assert_matches!(Expr::try_from(&cst_name), Err(e) => {
+            assert!(e.len() == 1);
+            assert_matches!(&e[0],
+                ParseError::ToAST(to_ast_error) => {
+                    assert_matches!(to_ast_error.kind(), ToASTErrorKind::InvalidExpression(e) => {
+                        println!("{e:?}");
+                        assert_eq!(e.name.loc.end(), 16);
+                    });
+                }
+            );
+        });
     }
 }

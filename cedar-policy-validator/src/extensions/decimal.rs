@@ -93,7 +93,7 @@ pub fn extension_schema() -> ExtensionSchema {
 /// Extra validation step for the `decimal` function.
 /// Note that `exprs` will have already been checked to contain the correct number of arguments.
 fn validate_decimal_string(exprs: &[Expr]) -> Result<(), String> {
-    match exprs.get(0) {
+    match exprs.first() {
         Some(arg) if matches!(arg.expr_kind(), ExprKind::Lit(Literal::String(_))) => {
             let exts = Extensions::all_available();
             let evaluator = RestrictedEvaluator::new(&exts);
