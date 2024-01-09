@@ -3794,35 +3794,25 @@ impl Record {
 #[doc(hidden)]
 impl From<ast::Value> for EvalResult {
     fn from(v: ast::Value) -> Self {
-        match v {
-            ast::Value::Lit {
-                lit: ast::Literal::Bool(b),
-                ..
-            } => Self::Bool(b),
-            ast::Value::Lit {
-                lit: ast::Literal::Long(i),
-                ..
-            } => Self::Long(i),
-            ast::Value::Lit {
-                lit: ast::Literal::String(s),
-                ..
-            } => Self::String(s.to_string()),
-            ast::Value::Lit {
-                lit: ast::Literal::EntityUID(e),
-                ..
-            } => Self::EntityUid(EntityUid(ast::EntityUID::clone(&e))),
-            ast::Value::Set { set, .. } => Self::Set(Set(set
+        match v.value {
+            ast::ValueKind::Lit(ast::Literal::Bool(b)) => Self::Bool(b),
+            ast::ValueKind::Lit(ast::Literal::Long(i)) => Self::Long(i),
+            ast::ValueKind::Lit(ast::Literal::String(s)) => Self::String(s.to_string()),
+            ast::ValueKind::Lit(ast::Literal::EntityUID(e)) => {
+                Self::EntityUid(EntityUid(ast::EntityUID::clone(&e)))
+            }
+            ast::ValueKind::Set(set) => Self::Set(Set(set
                 .authoritative
                 .iter()
                 .map(|v| v.clone().into())
                 .collect())),
-            ast::Value::Record { record, .. } => Self::Record(Record(
+            ast::ValueKind::Record(record) => Self::Record(Record(
                 record
                     .iter()
                     .map(|(k, v)| (k.to_string(), v.clone().into()))
                     .collect(),
             )),
-            ast::Value::ExtensionValue { ev, .. } => Self::ExtensionValue(ev.to_string()),
+            ast::ValueKind::ExtensionValue(ev) => Self::ExtensionValue(ev.to_string()),
         }
     }
 }

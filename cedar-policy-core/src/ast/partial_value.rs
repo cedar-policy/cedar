@@ -1,4 +1,5 @@
-use super::{Expr, Value};
+use super::{Expr, Unknown, Value};
+use crate::parser::Loc;
 use itertools::Either;
 use miette::Diagnostic;
 use thiserror::Error;
@@ -11,6 +12,21 @@ pub enum PartialValue {
     /// Residual expressions containing unknowns
     /// INVARIANT: A residual _must_ have an unknown contained within
     Residual(Expr),
+}
+
+impl PartialValue {
+    /// Create a new `PartialValue` consisting of just this single `Unknown`
+    pub fn unknown(u: Unknown) -> Self {
+        Self::Residual(Expr::unknown(u))
+    }
+
+    /// Return the `PartialValue`, but with the given `Loc` (or `None`)
+    pub fn with_maybe_source_loc(self, loc: Option<Loc>) -> Self {
+        match self {
+            Self::Value(v) => Self::Value(v.with_maybe_source_loc(loc)),
+            Self::Residual(e) => Self::Residual(e.with_maybe_source_loc(loc)),
+        }
+    }
 }
 
 impl<V: Into<Value>> From<V> for PartialValue {

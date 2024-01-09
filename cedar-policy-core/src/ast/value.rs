@@ -16,7 +16,7 @@
 
 use crate::ast::*;
 use crate::parser::Loc;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::sync::Arc;
 
 use itertools::Itertools;
@@ -30,35 +30,34 @@ use thiserror::Error;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(into = "Expr")]
 #[serde(try_from = "Expr")]
-pub enum Value {
+pub struct Value {
+    /// Underlying actual value
+    pub value: ValueKind,
+    /// Source location associated with the value, if any
+    pub loc: Option<Loc>,
+}
+
+/// This describes all the values which could be the dynamic result of evaluating an `Expr`.
+/// Cloning is O(1).
+#[derive(Debug, Clone, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(into = "Expr")]
+#[serde(try_from = "Expr")]
+pub enum ValueKind {
     /// anything that is a Literal can also be the dynamic result of evaluating an `Expr`
-    Lit {
-        /// the value
-        lit: Literal,
-        /// Source location associated with the value, if any
-        loc: Option<Loc>,
-    },
+    Lit(Literal),
     /// Evaluating an `Expr` can result in a first-class set
-    Set {
-        /// the value
-        set: Set,
-        /// Source location associated with the value, if any
-        loc: Option<Loc>,
-    },
+    Set(Set),
     /// Evaluating an `Expr` can result in a first-class anonymous record (keyed on String)
-    Record {
-        /// the value
-        record: Arc<BTreeMap<SmolStr, Value>>,
-        /// Source location associated with the value, if any
-        loc: Option<Loc>,
-    },
+    Record(Arc<BTreeMap<SmolStr, Value>>),
     /// Evaluating an `Expr` can result in an extension value
-    ExtensionValue {
-        /// the value
-        ev: Arc<ExtensionValueWithArgs>,
-        /// Source location associated with the value, if any
-        loc: Option<Loc>,
-    },
+    ExtensionValue(Arc<ExtensionValueWithArgs>),
+}
+
+// Custom impl of `Ord`: ignore the `Loc`s
+impl Ord for Value {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.value.cmp(&other.value)
+    }
 }
 
 impl PartialOrd<Value> for Value {
@@ -68,74 +67,36 @@ impl PartialOrd<Value> for Value {
     }
 }
 
-// Custom impl of `Ord`: ignore the `Loc`s
-impl Ord for Value {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match (self, other) {
-            // first the cases for values of the same kind: delegate to the Ord for those kinds, ignoring the `Loc`
-            (Value::Lit { lit: selflit, .. }, Value::Lit { lit: otherlit, .. }) => {
-                selflit.cmp(otherlit)
-            }
-            (Value::Set { set: selfset, .. }, Value::Set { set: otherset, .. }) => {
-                selfset.cmp(otherset)
-            }
-            (
-                Value::Record {
-                    record: selfrecord, ..
-                },
-                Value::Record {
-                    record: otherrecord,
-                    ..
-                },
-            ) => selfrecord.cmp(otherrecord),
-            (
-                Value::ExtensionValue { ev: selfev, .. },
-                Value::ExtensionValue { ev: otherev, .. },
-            ) => selfev.cmp(otherev),
-            // now the cases for values of different kinds: arbitrarily, Lit < Set < Record < ExtensionValue
-            (Value::Lit { .. }, _) => std::cmp::Ordering::Less,
-            (_, Value::Lit { .. }) => std::cmp::Ordering::Greater,
-            (Value::Set { .. }, _) => std::cmp::Ordering::Less,
-            (_, Value::Set { .. }) => std::cmp::Ordering::Greater,
-            (Value::Record { .. }, _) => std::cmp::Ordering::Less,
-            (_, Value::Record { .. }) => std::cmp::Ordering::Greater,
-        }
-    }
-}
-
 impl Value {
     /// Create a new empty set
     pub fn empty_set(loc: Option<Loc>) -> Self {
-        Self::Set {
-            set: Set {
-                authoritative: Arc::new(BTreeSet::new()),
-                fast: Some(Arc::new(HashSet::new())),
-            },
+        Self {
+            value: ValueKind::empty_set(),
             loc,
         }
     }
 
     /// Create a new empty record
     pub fn empty_record(loc: Option<Loc>) -> Self {
-        Self::Record {
-            record: Arc::new(BTreeMap::new()),
+        Self {
+            value: ValueKind::empty_record(),
+            loc,
+        }
+    }
+
+    /// Create a `Value` from anything that implements `Into<ValueKind>` and an
+    /// optional source location
+    pub fn new(value: impl Into<ValueKind>, loc: Option<Loc>) -> Self {
+        Self {
+            value: value.into(),
             loc,
         }
     }
 
     /// Create a set with the given `Value`s as elements
     pub fn set(vals: impl IntoIterator<Item = Value>, loc: Option<Loc>) -> Self {
-        let authoritative: BTreeSet<Value> = vals.into_iter().collect();
-        let fast: Option<Arc<HashSet<Literal>>> = authoritative
-            .iter()
-            .map(|v| v.try_as_lit().cloned())
-            .collect::<Option<HashSet<Literal>>>()
-            .map(Arc::new);
-        Self::Set {
-            set: Set {
-                authoritative: Arc::new(authoritative),
-                fast,
-            },
+        Self {
+            value: ValueKind::set(vals),
             loc,
         }
     }
@@ -145,19 +106,8 @@ impl Value {
     /// the resulting `Value` will have the given `loc` attached, but its
     /// individual `Literal` elements will not have a source loc attached
     pub fn set_of_lits(lits: impl IntoIterator<Item = Literal>, loc: Option<Loc>) -> Self {
-        let fast: HashSet<Literal> = lits.into_iter().collect();
-        let authoritative: BTreeSet<Value> = fast
-            .iter()
-            .map(|lit| Value::Lit {
-                lit: lit.clone(),
-                loc: None,
-            })
-            .collect();
-        Self::Set {
-            set: Set {
-                authoritative: Arc::new(authoritative),
-                fast: Some(Arc::new(fast)),
-            },
+        Self {
+            value: ValueKind::set_of_lits(lits),
             loc,
         }
     }
@@ -167,43 +117,30 @@ impl Value {
         pairs: impl IntoIterator<Item = (K, V)>,
         loc: Option<Loc>,
     ) -> Self {
-        Self::Record {
-            record: Arc::new(
-                pairs
-                    .into_iter()
-                    .map(|(k, v)| (k.into(), v.into()))
-                    .collect(),
-            ),
+        Self {
+            value: ValueKind::record(pairs),
             loc,
         }
     }
 
     /// Return the `Value`, but with the given `Loc` (or `None`)
     pub fn with_maybe_source_loc(self, loc: Option<Loc>) -> Self {
-        match self {
-            Value::Lit { lit, .. } => Value::Lit { lit, loc },
-            Value::Set { set, .. } => Value::Set { set, loc },
-            Value::Record { record, .. } => Value::Record { record, loc },
-            Value::ExtensionValue { ev, .. } => Value::ExtensionValue { ev, loc },
-        }
+        Self { loc, ..self }
+    }
+
+    /// Get the `ValueKind` for this `Value`
+    pub fn value_kind(&self) -> &ValueKind {
+        &self.value
     }
 
     /// Get the `Loc` attached to this `Value`, if there is one
     pub fn source_loc(&self) -> Option<&Loc> {
-        match self {
-            Self::Lit { loc, .. } => loc.as_ref(),
-            Self::Set { loc, .. } => loc.as_ref(),
-            Self::Record { loc, .. } => loc.as_ref(),
-            Self::ExtensionValue { loc, .. } => loc.as_ref(),
-        }
+        self.loc.as_ref()
     }
 
-    /// If the value is a Literal, get a reference to the underlying Literal
+    /// If the value is a `Literal`, get a reference to the underlying `Literal`
     pub(crate) fn try_as_lit(&self) -> Option<&Literal> {
-        match self {
-            Self::Lit { lit, .. } => Some(lit),
-            _ => None,
-        }
+        self.value.try_as_lit()
     }
 
     /// The `PartialEq` and `Eq` implementations for `Value` ignore the source location.
@@ -211,6 +148,48 @@ impl Value {
     /// same source location, you can use this.
     pub fn eq_and_same_source_loc(&self, other: &Self) -> bool {
         self == other && self.source_loc() == other.source_loc()
+    }
+}
+
+impl ValueKind {
+    /// Create a new empty set
+    pub fn empty_set() -> Self {
+        Self::Set(Set::empty())
+    }
+
+    /// Create a new empty record
+    pub fn empty_record() -> Self {
+        Self::Record(Arc::new(BTreeMap::new()))
+    }
+
+    /// Create a set with the given `Value`s as elements
+    pub fn set(vals: impl IntoIterator<Item = Value>) -> Self {
+        Self::Set(Set::new(vals))
+    }
+
+    /// Create a set with the given `Literal`s as elements
+    pub fn set_of_lits(lits: impl IntoIterator<Item = Literal>) -> Self {
+        Self::Set(Set::of_lits(lits))
+    }
+
+    /// Create a record with the given (key, value) pairs
+    pub fn record<K: Into<SmolStr>, V: Into<Value>>(
+        pairs: impl IntoIterator<Item = (K, V)>,
+    ) -> Self {
+        Self::Record(Arc::new(
+            pairs
+                .into_iter()
+                .map(|(k, v)| (k.into(), v.into()))
+                .collect(),
+        ))
+    }
+
+    /// If the value is a `Literal`, get a reference to the underlying `Literal`
+    pub(crate) fn try_as_lit(&self) -> Option<&Literal> {
+        match &self {
+            Self::Lit(lit) => Some(lit),
+            _ => None,
+        }
     }
 }
 
@@ -245,10 +224,22 @@ impl Diagnostic for NotValue {
 impl TryFrom<Expr> for Value {
     type Error = NotValue;
 
-    fn try_from(value: Expr) -> Result<Self, Self::Error> {
-        let loc = value.source_loc().cloned();
-        match value.into_expr_kind() {
-            ExprKind::Lit(lit) => Ok(Value::Lit { lit, loc }),
+    fn try_from(expr: Expr) -> Result<Self, Self::Error> {
+        let loc = expr.source_loc().cloned();
+        Ok(Self {
+            value: ValueKind::try_from(expr)?,
+            loc,
+        })
+    }
+}
+
+impl TryFrom<Expr> for ValueKind {
+    type Error = NotValue;
+
+    fn try_from(expr: Expr) -> Result<Self, Self::Error> {
+        let loc = expr.source_loc().cloned();
+        match expr.into_expr_kind() {
+            ExprKind::Lit(lit) => Ok(Self::Lit(lit)),
             ExprKind::Unknown(_) => Err(NotValue::NotValue { loc }),
             ExprKind::Var(_) => Err(NotValue::NotValue { loc }),
             ExprKind::Slot(_) => Err(NotValue::NotValue { loc }),
@@ -265,17 +256,14 @@ impl TryFrom<Expr> for Value {
             ExprKind::Is { .. } => Err(NotValue::NotValue { loc }),
             ExprKind::Set(members) => members
                 .iter()
-                .map(|e| e.clone().try_into())
+                .map(|e| Value::try_from(e.clone()))
                 .collect::<Result<Set, _>>()
-                .map(|set| Value::Set { set, loc }),
+                .map(Self::Set),
             ExprKind::Record(map) => map
                 .iter()
-                .map(|(k, v)| v.clone().try_into().map(|v: Value| (k.clone(), v)))
+                .map(|(k, v)| Value::try_from(v.clone()).map(|v| (k.clone(), v)))
                 .collect::<Result<BTreeMap<SmolStr, Value>, _>>()
-                .map(|m| Value::Record {
-                    record: Arc::new(m),
-                    loc,
-                }),
+                .map(|m| Self::Record(Arc::new(m))),
         }
     }
 }
@@ -299,6 +287,44 @@ pub struct Set {
 }
 
 impl Set {
+    /// Create an empty set
+    pub fn empty() -> Self {
+        Self {
+            authoritative: Arc::new(BTreeSet::new()),
+            fast: Some(Arc::new(HashSet::new())),
+        }
+    }
+
+    /// Create a set with the given `Value`s as elements
+    pub fn new(vals: impl IntoIterator<Item = Value>) -> Self {
+        let authoritative: BTreeSet<Value> = vals.into_iter().collect();
+        let fast: Option<Arc<HashSet<Literal>>> = authoritative
+            .iter()
+            .map(|v| v.try_as_lit().cloned())
+            .collect::<Option<HashSet<Literal>>>()
+            .map(Arc::new);
+        Self {
+            authoritative: Arc::new(authoritative),
+            fast,
+        }
+    }
+
+    /// Create a set with the given `Literal`s as elements
+    pub fn of_lits(lits: impl IntoIterator<Item = Literal>) -> Self {
+        let fast: HashSet<Literal> = lits.into_iter().collect();
+        let authoritative: BTreeSet<Value> = fast
+            .iter()
+            .map(|lit| Value {
+                value: ValueKind::Lit(lit.clone()),
+                loc: None,
+            })
+            .collect();
+        Self {
+            authoritative: Arc::new(authoritative),
+            fast: Some(Arc::new(fast)),
+        }
+    }
+
     /// Get the number of items in the set
     pub fn len(&self) -> usize {
         self.authoritative.len()
@@ -319,25 +345,18 @@ impl FromIterator<Value> for Set {
     fn from_iter<T: IntoIterator<Item = Value>>(iter: T) -> Self {
         let (literals, non_literals): (BTreeSet<_>, BTreeSet<_>) = iter
             .into_iter()
-            .partition(|v| matches!(v, Value::Lit { .. }));
+            .partition(|v| matches!(&v.value, ValueKind::Lit { .. }));
 
         if non_literals.is_empty() {
-            // INVARIANT (FastRepr)
-            // There are 0 non-literals, so we need to populate `fast`
-            Self {
-                authoritative: Arc::new(literals.clone()), // non_literals is empty, so this drops no items
-                fast: Some(Arc::new(
-                    literals
-                        .into_iter()
-                        .map(|v| match v {
-                            Value::Lit { lit, .. } => lit,
-                            // PANIC SAFETY: This is unreachable as every item in `literals` matches Value::Lit
-                            #[allow(clippy::unreachable)]
-                            _ => unreachable!(),
-                        })
-                        .collect(),
-                )),
-            }
+            Self::from_iter(literals.into_iter().map(|v| match v {
+                Value {
+                    value: ValueKind::Lit(lit),
+                    ..
+                } => lit,
+                // PANIC SAFETY: This is unreachable as every item in `literals` matches ValueKind::Lit
+                #[allow(clippy::unreachable)]
+                _ => unreachable!(),
+            }))
         } else {
             // INVARIANT (FastRepr)
             // There are non-literals, so we need `fast` should be `None`
@@ -353,90 +372,57 @@ impl FromIterator<Value> for Set {
     }
 }
 
-// Trying to derive `PartialEq` for `Value` fails with a compile error (at
+impl FromIterator<Literal> for Set {
+    fn from_iter<T: IntoIterator<Item = Literal>>(iter: T) -> Self {
+        // INVARIANT (FastRepr)
+        // There are 0 non-literals, so we need to populate `fast`
+        let fast: HashSet<Literal> = iter.into_iter().collect();
+        Self {
+            authoritative: Arc::new(fast.iter().cloned().map(Into::into).collect()),
+            fast: Some(Arc::new(fast)),
+        }
+    }
+}
+
+// Trying to derive `PartialEq` for `ValueKind` fails with a compile error (at
 // least, as of this writing) due to the `Arc<dyn>`, so we write out the
 // implementation manually.
-//
-// This implementation also ignores the `Loc` of the values.
-impl PartialEq for Value {
-    fn eq(&self, other: &Value) -> bool {
+impl PartialEq for ValueKind {
+    fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Value::Lit { lit: lit1, .. }, Value::Lit { lit: lit2, .. }) => lit1 == lit2,
-            (
-                Value::Set {
-                    set: Set {
-                        fast: Some(rc1), ..
-                    },
-                    ..
-                },
-                Value::Set {
-                    set: Set {
-                        fast: Some(rc2), ..
-                    },
-                    ..
-                },
-            ) => rc1 == rc2,
-            (
-                Value::Set {
-                    set: Set { fast: Some(_), .. },
-                    ..
-                },
-                Value::Set {
-                    set: Set { fast: None, .. },
-                    ..
-                },
-            ) => false, // due to internal invariant documented on `Set`, we know that one set contains a non-literal and the other does not
-            (
-                Value::Set {
-                    set: Set { fast: None, .. },
-                    ..
-                },
-                Value::Set {
-                    set: Set { fast: Some(_), .. },
-                    ..
-                },
-            ) => false, // due to internal invariant documented on `Set`, we know that one set contains a non-literal and the other does not
-            (
-                Value::Set {
-                    set: Set {
-                        authoritative: a1, ..
-                    },
-                    ..
-                },
-                Value::Set {
-                    set: Set {
-                        authoritative: a2, ..
-                    },
-                    ..
-                },
-            ) => a1 == a2,
-            (Value::Record { record: r1, .. }, Value::Record { record: r2, .. }) => r1 == r2,
-            (Value::ExtensionValue { ev: ev1, .. }, Value::ExtensionValue { ev: ev2, .. }) => {
-                ev1 == ev2
-            }
+            (ValueKind::Lit(lit1), ValueKind::Lit(lit2)) => lit1 == lit2,
+            (ValueKind::Set(set1), ValueKind::Set(set2)) => set1 == set2,
+            (ValueKind::Record(r1), ValueKind::Record(r2)) => r1 == r2,
+            (ValueKind::ExtensionValue(ev1), ValueKind::ExtensionValue(ev2)) => ev1 == ev2,
             (_, _) => false, // values of different types are not equal
         }
     }
 }
 
+impl Eq for ValueKind {}
+
+// The implementation of `PartialEq` for `Value` ignores the `Loc` of the values.
+impl PartialEq for Value {
+    fn eq(&self, other: &Value) -> bool {
+        &self.value == &other.value
+    }
+}
+
 impl Eq for Value {}
 
-// PartialEq on Set compares only the `authoritative` version
+// PartialEq on Set is optimized to take advantage of the internal invariant documented on `Set`
 impl PartialEq for Set {
     fn eq(&self, other: &Self) -> bool {
-        self.authoritative.as_ref() == other.authoritative.as_ref()
+        match (self.fast.as_ref(), other.fast.as_ref()) {
+            (Some(rc1), Some(rc2)) => rc1 == rc2,
+            (Some(_), None) => false, // due to internal invariant documented on `Set`, we know that one set contains a non-literal and the other does not
+            (None, Some(_)) => false, // due to internal invariant documented on `Set`, we know that one set contains a non-literal and the other does not
+            (None, None) => self.authoritative.as_ref() == other.authoritative.as_ref(),
+        }
     }
 }
 
 impl Eq for Set {}
-
-// PartialOrd on Set compares only the `authoritative` version; note that
-// HashSet doesn't implement PartialOrd
-impl PartialOrd<Set> for Set {
-    fn partial_cmp(&self, other: &Set) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
 
 // Ord on Set compares only the `authoritative` version; note that HashSet
 // doesn't implement Ord
@@ -448,29 +434,44 @@ impl Ord for Set {
     }
 }
 
+impl PartialOrd<Set> for Set {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        // delegate to `Ord`
+        Some(self.cmp(other))
+    }
+}
+
 impl StaticallyTyped for Value {
     fn type_of(&self) -> Type {
+        self.value.type_of()
+    }
+}
+
+impl StaticallyTyped for ValueKind {
+    fn type_of(&self) -> Type {
         match self {
-            Self::Lit { lit, .. } => lit.type_of(),
-            Self::Set { .. } => Type::Set,
-            Self::Record { .. } => Type::Record,
-            Self::ExtensionValue { ev, .. } => ev.type_of(),
+            Self::Lit(lit) => lit.type_of(),
+            Self::Set(_) => Type::Set,
+            Self::Record(_) => Type::Record,
+            Self::ExtensionValue(ev) => ev.type_of(),
         }
     }
 }
 
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
+impl std::fmt::Display for ValueKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Lit { lit, .. } => write!(f, "{}", lit),
-            Self::Set {
-                set:
-                    Set {
-                        fast,
-                        authoritative,
-                    },
-                ..
-            } => {
+            Self::Lit(lit) => write!(f, "{}", lit),
+            Self::Set(Set {
+                fast,
+                authoritative,
+            }) => {
                 match authoritative.len() {
                     0 => write!(f, "[]"),
                     n @ 1..=5 => {
@@ -501,10 +502,10 @@ impl std::fmt::Display for Value {
                     n => write!(f, "<set with {} elements>", n),
                 }
             }
-            Self::Record { record, .. } => {
+            Self::Record(record) => {
                 write!(f, "<first-class record with {} fields>", record.len())
             }
-            Self::ExtensionValue { ev, .. } => write!(f, "{}", ev),
+            Self::ExtensionValue(ev) => write!(f, "{}", ev),
         }
     }
 }
@@ -520,51 +521,11 @@ impl<T: Into<Value>> From<Vec<T>> for Value {
     }
 }
 
-/// Create a `Value::Record` from a map of `String` to `Value`
-///
-/// This impl does not propagate source location; the resulting `Value` will
-/// have no source location info attached
-impl<S> From<BTreeMap<S, Value>> for Value
-where
-    S: Into<SmolStr>,
-{
-    fn from(map: BTreeMap<S, Value>) -> Self {
-        Self::Record {
-            record: Arc::new(map.into_iter().map(|(k, v)| (k.into(), v)).collect()),
-            loc: None,
-        }
-    }
-}
-
-/// As above, create a `Value::Record` from a map of `SmolStr` to `Value`.
-/// This implementation provides conversion from `HashMap` while the earlier
-/// implementation provides conversion from `BTreeMap`.
-///
-/// This impl does not propagate source location; the resulting `Value` will
-/// have no source location info attached
-impl<S> From<HashMap<S, Value>> for Value
-where
-    S: Into<SmolStr>,
-{
-    fn from(map: HashMap<S, Value>) -> Self {
-        Self::Record {
-            record: Arc::new(map.into_iter().map(|(k, v)| (k.into(), v)).collect()),
-            loc: None,
-        }
-    }
-}
-
-/// Create a `Value` directly from a `Vec` of `(String, Value)` pairs, which
-/// will be interpreted as (field, value) pairs for a first-class record
-///
-/// This impl does not propagate source location; the resulting `Value` will
-/// have no source location info attached
-impl From<Vec<(SmolStr, Value)>> for Value {
-    fn from(v: Vec<(SmolStr, Value)>) -> Self {
-        Self::Record {
-            record: Arc::new(v.into_iter().collect()),
-            loc: None,
-        }
+/// Create a `ValueKind` directly from a `Vec<Value>`, or `Vec<T> where T: Into<Value>`
+/// (so `Vec<Integer>`, `Vec<String>`, etc)
+impl<T: Into<Value>> From<Vec<T>> for ValueKind {
+    fn from(v: Vec<T>) -> Self {
+        Self::set(v.into_iter().map(Into::into))
     }
 }
 
@@ -575,25 +536,18 @@ impl From<Vec<(SmolStr, Value)>> for Value {
 /// have no source location info attached
 impl<T: Into<Literal>> From<T> for Value {
     fn from(lit: T) -> Self {
-        Self::Lit {
-            lit: lit.into(),
+        Self {
+            value: lit.into().into(),
             loc: None,
         }
     }
 }
 
-impl PartialValue {
-    /// Create a new `PartialValue` consisting of just this single `Unknown`
-    pub fn unknown(u: Unknown) -> Self {
-        Self::Residual(Expr::unknown(u))
-    }
-
-    /// Return the `PartialValue`, but with the given `Loc` (or `None`)
-    pub fn with_maybe_source_loc(self, loc: Option<Loc>) -> Self {
-        match self {
-            Self::Value(v) => Self::Value(v.with_maybe_source_loc(loc)),
-            Self::Residual(e) => Self::Residual(e.with_maybe_source_loc(loc)),
-        }
+/// Create a `ValueKind` directly from a `Literal`, or from anything that implements
+/// `Into<Literal>` (so `Integer`, `&str`, `EntityUID`, etc)
+impl<T: Into<Literal>> From<T> for ValueKind {
+    fn from(lit: T) -> Self {
+        Self::Lit(lit.into())
     }
 }
 
@@ -607,57 +561,57 @@ mod test {
     fn values() {
         assert_eq!(
             Value::from(true),
-            Value::Lit {
-                lit: Literal::Bool(true),
+            Value {
+                value: ValueKind::Lit(Literal::Bool(true)),
                 loc: None,
             },
         );
         assert_eq!(
             Value::from(false),
-            Value::Lit {
-                lit: Literal::Bool(false),
+            Value {
+                value: ValueKind::Lit(Literal::Bool(false)),
                 loc: None,
             },
         );
         assert_eq!(
             Value::from(23),
-            Value::Lit {
-                lit: Literal::Long(23),
+            Value {
+                value: ValueKind::Lit(Literal::Long(23)),
                 loc: None,
             },
         );
         assert_eq!(
             Value::from(-47),
-            Value::Lit {
-                lit: Literal::Long(-47),
+            Value {
+                value: ValueKind::Lit(Literal::Long(-47)),
                 loc: None,
             },
         );
         assert_eq!(
             Value::from("hello"),
-            Value::Lit {
-                lit: Literal::String("hello".into()),
+            Value {
+                value: ValueKind::Lit(Literal::String("hello".into())),
                 loc: None,
             },
         );
         assert_eq!(
             Value::from("hello".to_owned()),
-            Value::Lit {
-                lit: Literal::String("hello".into()),
+            Value {
+                value: ValueKind::Lit(Literal::String("hello".into())),
                 loc: None,
             },
         );
         assert_eq!(
             Value::from(String::new()),
-            Value::Lit {
-                lit: Literal::String(SmolStr::default()),
+            Value {
+                value: ValueKind::Lit(Literal::String(SmolStr::default())),
                 loc: None,
             },
         );
         assert_eq!(
             Value::from(""),
-            Value::Lit {
-                lit: Literal::String(SmolStr::default()),
+            Value {
+                value: ValueKind::Lit(Literal::String(SmolStr::default())),
                 loc: None,
             },
         );
@@ -678,9 +632,9 @@ mod test {
         rec1.insert("ham".into(), 3.into());
         rec1.insert("eggs".into(), "hickory".into());
         assert_eq!(
-            Value::from(rec1.clone()),
-            Value::Record {
-                record: Arc::new(rec1),
+            Value::record(rec1.clone(), None),
+            Value {
+                value: ValueKind::Record(Arc::new(rec1)),
                 loc: None,
             },
         );
@@ -689,20 +643,17 @@ mod test {
         rec2.insert("hi".into(), "ham".into());
         rec2.insert("eggs".into(), "hickory".into());
         assert_eq!(
-            Value::from(vec![
-                ("hi".into(), "ham".into()),
-                ("eggs".into(), "hickory".into()),
-            ]),
-            Value::Record {
-                record: Arc::new(rec2),
+            Value::record(vec![("hi", "ham"), ("eggs", "hickory"),], None),
+            Value {
+                value: ValueKind::Record(Arc::new(rec2)),
                 loc: None,
             },
         );
 
         assert_eq!(
             Value::from(EntityUID::with_eid("foo")),
-            Value::Lit {
-                lit: Literal::EntityUID(Arc::new(EntityUID::with_eid("foo"))),
+            Value {
+                value: ValueKind::Lit(Literal::EntityUID(Arc::new(EntityUID::with_eid("foo")))),
                 loc: None,
             },
         );
@@ -718,7 +669,7 @@ mod test {
         assert_eq!(Value::empty_set(None).type_of(), Type::Set);
         assert_eq!(Value::empty_record(None).type_of(), Type::Record);
         assert_eq!(
-            Value::from(vec![("hello".into(), Value::from("ham"))]).type_of(),
+            Value::record(vec![("hello", Value::from("ham"))], None).type_of(),
             Type::Record
         );
         assert_eq!(
@@ -756,13 +707,16 @@ mod test {
 
     #[test]
     fn set_collect() {
-        let v = vec![Value::Lit {
-            lit: 1.into(),
+        let v = vec![Value {
+            value: 1.into(),
             loc: None,
         }];
         let set: Set = v.into_iter().collect();
         assert_eq!(set.len(), 1);
-        let v2 = vec![Value::Set { set, loc: None }];
+        let v2 = vec![Value {
+            value: ValueKind::Set(set),
+            loc: None,
+        }];
         let set2: Set = v2.into_iter().collect();
         assert_eq!(set2.len(), 1);
     }

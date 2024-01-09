@@ -157,23 +157,24 @@ pub enum ExprKind<T = ()> {
 
 impl From<Value> for Expr {
     fn from(v: Value) -> Self {
+        Expr::from(v.value).with_maybe_source_loc(v.loc)
+    }
+}
+
+impl From<ValueKind> for Expr {
+    fn from(v: ValueKind) -> Self {
         match v {
-            Value::Lit { lit, loc } => Expr::val(lit).with_maybe_source_loc(loc),
-            Value::Set { set, loc } => {
-                Expr::set(set.iter().map(|v| Expr::from(v.clone()))).with_maybe_source_loc(loc)
-            }
+            ValueKind::Lit(lit) => Expr::val(lit),
+            ValueKind::Set(set) => Expr::set(set.iter().map(|v| Expr::from(v.clone()))),
             // PANIC SAFETY: cannot have duplicate key because the input was already a BTreeMap
             #[allow(clippy::expect_used)]
-            Value::Record { record, loc } => Expr::record(
+            ValueKind::Record(record) => Expr::record(
                 unwrap_or_clone(record)
                     .into_iter()
                     .map(|(k, v)| (k, Expr::from(v))),
             )
-            .expect("cannot have duplicate key because the input was already a BTreeMap")
-            .with_maybe_source_loc(loc),
-            Value::ExtensionValue { ev, loc } => {
-                Expr::from(ev.as_ref().clone()).with_maybe_source_loc(loc)
-            }
+            .expect("cannot have duplicate key because the input was already a BTreeMap"),
+            ValueKind::ExtensionValue(ev) => Expr::from(ev.as_ref().clone()),
         }
     }
 }

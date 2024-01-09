@@ -16,7 +16,7 @@
 
 use super::{
     unwrap_or_clone, EntityUID, Expr, ExprConstructionError, ExprKind, Literal, Name, PartialValue,
-    Unknown, Value,
+    Unknown, Value, ValueKind,
 };
 use crate::entities::JsonSerializationError;
 use crate::parser::err::ParseErrors;
@@ -240,25 +240,28 @@ impl RestrictedExpr {
 
 impl From<Value> for RestrictedExpr {
     fn from(value: Value) -> RestrictedExpr {
+        RestrictedExpr::from(value.value).with_maybe_source_loc(value.loc)
+    }
+}
+
+impl From<ValueKind> for RestrictedExpr {
+    fn from(value: ValueKind) -> RestrictedExpr {
         match value {
-            Value::Lit { lit, loc } => RestrictedExpr::val(lit).with_maybe_source_loc(loc),
-            Value::Set { set, loc } => {
+            ValueKind::Lit(lit) => RestrictedExpr::val(lit),
+            ValueKind::Set(set) => {
                 RestrictedExpr::set(set.iter().map(|val| RestrictedExpr::from(val.clone())))
-                    .with_maybe_source_loc(loc)
             }
             // PANIC SAFETY: cannot have duplicate key because the input was already a BTreeMap
             #[allow(clippy::expect_used)]
-            Value::Record { record, loc } => RestrictedExpr::record(
+            ValueKind::Record(record) => RestrictedExpr::record(
                 unwrap_or_clone(record)
                     .into_iter()
                     .map(|(k, v)| (k, RestrictedExpr::from(v))),
             )
-            .expect("can't have duplicate keys, because the input `map` was already a BTreeMap")
-            .with_maybe_source_loc(loc),
-            Value::ExtensionValue { ev, loc } => {
+            .expect("can't have duplicate keys, because the input `map` was already a BTreeMap"),
+            ValueKind::ExtensionValue(ev) => {
                 let ev = unwrap_or_clone(ev);
                 RestrictedExpr::call_extension_fn(ev.constructor, ev.args)
-                    .with_maybe_source_loc(loc)
             }
         }
     }

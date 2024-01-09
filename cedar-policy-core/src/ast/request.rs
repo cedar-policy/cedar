@@ -25,8 +25,8 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use super::{
-    BorrowedRestrictedExpr, EntityUID, Expr, ExprConstructionError, ExprKind, Literal,
-    PartialValue, PartialValueSerializedAsExpr, RestrictedExpr, Unknown, Value, Var,
+    unwrap_or_clone, BorrowedRestrictedExpr, EntityUID, Expr, ExprConstructionError, ExprKind,
+    PartialValue, PartialValueSerializedAsExpr, RestrictedExpr, Unknown, Value, ValueKind, Var,
 };
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
@@ -71,11 +71,9 @@ impl EntityUIDEntry {
     /// An unknown corresponding to the passed `var`
     pub fn evaluate(&self, var: Var) -> PartialValue {
         match self {
-            EntityUIDEntry::Known { euid, loc } => Value::Lit {
-                lit: Literal::EntityUID(euid.clone()),
-                loc: loc.clone(),
+            EntityUIDEntry::Known { euid, loc } => {
+                Value::new(unwrap_or_clone(Arc::clone(euid)), loc.clone()).into()
             }
-            .into(),
             EntityUIDEntry::Unknown { loc } => Expr::unknown(Unknown::new_untyped(var.to_string()))
                 .with_maybe_source_loc(loc.clone())
                 .into(),
@@ -303,7 +301,10 @@ impl Context {
         // PANIC SAFETY invariant on `self.context` ensures that it is a record
         #[allow(clippy::panic)]
         match self.context.as_ref() {
-            PartialValue::Value(Value::Record { record, .. }) => Some(Box::new(
+            PartialValue::Value(Value {
+                value: ValueKind::Record(record),
+                ..
+            }) => Some(Box::new(
                 record
                     .iter()
                     .map(|(k, v)| (k, PartialValue::Value(v.clone()))),

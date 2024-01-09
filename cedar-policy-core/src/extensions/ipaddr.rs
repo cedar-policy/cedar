@@ -18,7 +18,7 @@
 
 use crate::ast::{
     CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue,
-    ExtensionValueWithArgs, Literal, Name, StaticallyTyped, Type, Value,
+    ExtensionValueWithArgs, Literal, Name, StaticallyTyped, Type, Value, ValueKind,
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
@@ -275,16 +275,16 @@ fn ip_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
         function_name,
         vec![arg.into()],
     );
-    Ok(Value::ExtensionValue {
-        ev: Arc::new(ipaddr),
+    Ok(Value {
+        value: ValueKind::ExtensionValue(Arc::new(ipaddr)),
         loc: arg_source_loc, // this gives the loc of the arg. We could perhaps give instead the loc of the entire `ip("...")` call, but that is hard to do at this program point
     }
     .into())
 }
 
 fn as_ipaddr(v: &Value) -> Result<&IPAddr, evaluator::EvaluationError> {
-    match v {
-        Value::ExtensionValue { ev, .. } if ev.typename() == IPAddr::typename() => {
+    match &v.value {
+        ValueKind::ExtensionValue(ev) if ev.typename() == IPAddr::typename() => {
             // PANIC SAFETY Conditional above performs a typecheck
             #[allow(clippy::expect_used)]
             let ipaddr = ev
@@ -294,16 +294,15 @@ fn as_ipaddr(v: &Value) -> Result<&IPAddr, evaluator::EvaluationError> {
                 .expect("already typechecked, so this downcast should succeed");
             Ok(ipaddr)
         }
-        Value::Lit {
-            lit: Literal::String(_),
-            ..
-        } => Err(evaluator::EvaluationError::type_error_with_advice_single(
-            Type::Extension {
-                name: IPAddr::typename(),
-            },
-            v.type_of(),
-            ADVICE_MSG.into(),
-        )),
+        ValueKind::Lit(Literal::String(_)) => {
+            Err(evaluator::EvaluationError::type_error_with_advice_single(
+                Type::Extension {
+                    name: IPAddr::typename(),
+                },
+                v.type_of(),
+                ADVICE_MSG.into(),
+            ))
+        }
         _ => Err(evaluator::EvaluationError::type_error_single(
             Type::Extension {
                 name: IPAddr::typename(),

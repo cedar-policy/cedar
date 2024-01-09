@@ -404,18 +404,15 @@ impl<'e> Evaluator<'e> {
                         }
                     }
                     // contains, which works on Sets
-                    BinaryOp::Contains => match arg1 {
-                        Value::Set {
-                            set: Set { fast: Some(h), .. },
-                            ..
-                        } => match arg2.try_as_lit() {
+                    BinaryOp::Contains => match arg1.value {
+                        ValueKind::Set(Set { fast: Some(h), .. }) => match arg2.try_as_lit() {
                             Some(lit) => Ok((h.contains(lit)).into()),
                             None => Ok(false.into()), // we know it doesn't contain a non-literal
                         },
-                        Value::Set {
-                            set: Set { authoritative, .. },
-                            ..
-                        } => Ok((authoritative.contains(&arg2)).into()),
+                        ValueKind::Set(Set {
+                            fast: None,
+                            authoritative,
+                        }) => Ok((authoritative.contains(&arg2)).into()),
                         _ => Err(EvaluationError::type_error_single(
                             Type::Set,
                             arg1.type_of(),
@@ -504,11 +501,12 @@ impl<'e> Evaluator<'e> {
             }
             ExprKind::GetAttr { expr, attr } => self.get_attr(expr.as_ref(), attr, slots),
             ExprKind::HasAttr { expr, attr } => match self.partial_interpret(expr, slots)? {
-                PartialValue::Value(Value::Record { record, .. }) => {
-                    Ok(record.get(attr).is_some().into())
-                }
-                PartialValue::Value(Value::Lit {
-                    lit: Literal::EntityUID(uid),
+                PartialValue::Value(Value {
+                    value: ValueKind::Record(record),
+                    ..
+                }) => Ok(record.get(attr).is_some().into()),
+                PartialValue::Value(Value {
+                    value: ValueKind::Lit(Literal::EntityUID(uid)),
                     ..
                 }) => match self.entities.entity(&uid) {
                     Dereference::NoSuchEntity => Ok(false.into()),
@@ -597,17 +595,11 @@ impl<'e> Evaluator<'e> {
     ) -> Result<PartialValue> {
         // `rhs` is a list of all the UIDs for which we need to
         // check if `uid1` is a descendant of
-        let rhs = match arg2 {
-            Value::Lit {
-                lit: Literal::EntityUID(uid),
-                ..
-            } => vec![(*uid).clone()],
+        let rhs = match arg2.value {
+            ValueKind::Lit(Literal::EntityUID(uid)) => vec![(*uid).clone()],
             // we assume that iterating the `authoritative` BTreeSet is
             // approximately the same cost as iterating the `fast` HashSet
-            Value::Set {
-                set: Set { authoritative, .. },
-                ..
-            } => authoritative
+            ValueKind::Set(Set { authoritative, .. }) => authoritative
                 .iter()
                 .map(|val| Ok(val.get_as_entity()?.clone()))
                 .collect::<Result<Vec<EntityUID>>>()?,
@@ -699,7 +691,10 @@ impl<'e> Evaluator<'e> {
                     _ => Ok(PartialValue::Residual(Expr::get_attr(e, attr.clone()))),
                 }
             }
-            PartialValue::Value(Value::Record { record, .. }) => record
+            PartialValue::Value(Value {
+                value: ValueKind::Record(record),
+                ..
+            }) => record
                 .as_ref()
                 .get(attr)
                 .ok_or_else(|| {
@@ -709,8 +704,8 @@ impl<'e> Evaluator<'e> {
                     )
                 })
                 .map(|v| PartialValue::Value(v.clone())),
-            PartialValue::Value(Value::Lit {
-                lit: Literal::EntityUID(uid),
+            PartialValue::Value(Value {
+                value: ValueKind::Lit(Literal::EntityUID(uid)),
                 ..
             }) => match self.entities.entity(uid.as_ref()) {
                 Dereference::NoSuchEntity => Err(match *uid.entity_type() {
@@ -785,11 +780,8 @@ impl Value {
     /// Convert the `Value` to a boolean, or throw a type error if it's not a
     /// boolean.
     pub(crate) fn get_as_bool(&self) -> Result<bool> {
-        match self {
-            Value::Lit {
-                lit: Literal::Bool(b),
-                ..
-            } => Ok(*b),
+        match &self.value {
+            ValueKind::Lit(Literal::Bool(b)) => Ok(*b),
             _ => Err(EvaluationError::type_error_single(
                 Type::Bool,
                 self.type_of(),
@@ -800,11 +792,8 @@ impl Value {
     /// Convert the `Value` to a Long, or throw a type error if it's not a
     /// Long.
     pub(crate) fn get_as_long(&self) -> Result<Integer> {
-        match self {
-            Value::Lit {
-                lit: Literal::Long(i),
-                ..
-            } => Ok(*i),
+        match &self.value {
+            ValueKind::Lit(Literal::Long(i)) => Ok(*i),
             _ => Err(EvaluationError::type_error_single(
                 Type::Long,
                 self.type_of(),
@@ -815,11 +804,8 @@ impl Value {
     /// Convert the `Value` to a String, or throw a type error if it's not a
     /// String.
     pub(crate) fn get_as_string(&self) -> Result<&SmolStr> {
-        match self {
-            Value::Lit {
-                lit: Literal::String(s),
-                ..
-            } => Ok(s),
+        match &self.value {
+            ValueKind::Lit(Literal::String(s)) => Ok(s),
             _ => Err(EvaluationError::type_error_single(
                 Type::String,
                 self.type_of(),
@@ -829,8 +815,8 @@ impl Value {
 
     /// Convert the `Value` to a Set, or throw a type error if it's not a Set.
     pub(crate) fn get_as_set(&self) -> Result<&Set> {
-        match self {
-            Value::Set { set, .. } => Ok(set),
+        match &self.value {
+            ValueKind::Set(set) => Ok(set),
             _ => Err(EvaluationError::type_error_single(
                 Type::Set,
                 self.type_of(),
@@ -841,11 +827,8 @@ impl Value {
     /// Convert the `Value` to an Entity, or throw a type error if it's not a
     /// Entity.
     pub(crate) fn get_as_entity(&self) -> Result<&EntityUID> {
-        match self {
-            Value::Lit {
-                lit: Literal::EntityUID(uid),
-                ..
-            } => Ok(uid.as_ref()),
+        match &self.value {
+            ValueKind::Lit(Literal::EntityUID(uid)) => Ok(uid.as_ref()),
             _ => Err(EvaluationError::type_error_single(
                 Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
                 self.type_of(),
@@ -1145,43 +1128,43 @@ pub mod test {
         // they could produce any source location other than `None`
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val(false)),
-            Ok(Value::Lit {
-                lit: Literal::Bool(false),
+            Ok(Value {
+                value: ValueKind::Lit(Literal::Bool(false)),
                 loc: None,
             }),
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val(true)),
-            Ok(Value::Lit {
-                lit: Literal::Bool(true),
+            Ok(Value {
+                value: ValueKind::Lit(Literal::Bool(true)),
                 loc: None,
             }),
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val(57)),
-            Ok(Value::Lit {
-                lit: Literal::Long(57),
+            Ok(Value {
+                value: ValueKind::Lit(Literal::Long(57)),
                 loc: None,
             }),
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val(-3)),
-            Ok(Value::Lit {
-                lit: Literal::Long(-3),
+            Ok(Value {
+                value: ValueKind::Lit(Literal::Long(-3)),
                 loc: None,
             }),
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val("")),
-            Ok(Value::Lit {
-                lit: Literal::String("".into()),
+            Ok(Value {
+                value: ValueKind::Lit(Literal::String("".into())),
                 loc: None,
             }),
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val("Hello")),
-            Ok(Value::Lit {
-                lit: Literal::String("Hello".into()),
+            Ok(Value {
+                value: ValueKind::Lit(Literal::String("Hello".into())),
                 loc: None,
             }),
         );
@@ -1200,8 +1183,8 @@ pub mod test {
         // they could produce any source location other than `None`
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val(EntityUID::with_eid("foo"))),
-            Ok(Value::Lit {
-                lit: Literal::EntityUID(Arc::new(EntityUID::with_eid("foo"))),
+            Ok(Value {
+                value: ValueKind::Lit(Literal::EntityUID(Arc::new(EntityUID::with_eid("foo")))),
                 loc: None,
             }),
         );
@@ -1209,8 +1192,10 @@ pub mod test {
         // (for instance, A == B is allowed even when A and/or B do not exist.)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val(EntityUID::with_eid("doesnotexist"))),
-            Ok(Value::Lit {
-                lit: Literal::EntityUID(Arc::new(EntityUID::with_eid("doesnotexist"))),
+            Ok(Value {
+                value: ValueKind::Lit(Literal::EntityUID(Arc::new(EntityUID::with_eid(
+                    "doesnotexist"
+                )))),
                 loc: None,
             }),
         );
@@ -1219,8 +1204,10 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::val(EntityUID::unspecified_from_eid(Eid::new(
                 "foo"
             )))),
-            Ok(Value::Lit {
-                lit: Literal::EntityUID(Arc::new(EntityUID::unspecified_from_eid(Eid::new("foo")))),
+            Ok(Value {
+                value: ValueKind::Lit(Literal::EntityUID(Arc::new(
+                    EntityUID::unspecified_from_eid(Eid::new("foo"))
+                ))),
                 loc: None,
             }),
         );
@@ -1531,8 +1518,8 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::set(vec![Expr::val(8)])),
             Ok(Value::set(
-                vec![Value::Lit {
-                    lit: Literal::Long(8),
+                vec![Value {
+                    value: ValueKind::Lit(Literal::Long(8)),
                     loc: None,
                 }],
                 None,
@@ -1547,16 +1534,16 @@ pub mod test {
             ])),
             Ok(Value::set(
                 vec![
-                    Value::Lit {
-                        lit: Literal::Long(8),
+                    Value {
+                        value: ValueKind::Lit(Literal::Long(8)),
                         loc: None,
                     },
-                    Value::Lit {
-                        lit: Literal::Long(2),
+                    Value {
+                        value: ValueKind::Lit(Literal::Long(2)),
                         loc: None,
                     },
-                    Value::Lit {
-                        lit: Literal::Long(101),
+                    Value {
+                        value: ValueKind::Lit(Literal::Long(101)),
                         loc: None,
                     },
                 ],
@@ -1614,20 +1601,22 @@ pub mod test {
             eval.interpret_inline_policy(&mixed_set),
             Ok(Value::set(
                 vec![
-                    Value::Lit {
-                        lit: Literal::String("hello".into()),
+                    Value {
+                        value: ValueKind::Lit(Literal::String("hello".into())),
                         loc: None,
                     },
-                    Value::Lit {
-                        lit: Literal::Long(2),
+                    Value {
+                        value: ValueKind::Lit(Literal::Long(2)),
                         loc: None,
                     },
-                    Value::Lit {
-                        lit: Literal::Bool(true),
+                    Value {
+                        value: ValueKind::Lit(Literal::Bool(true)),
                         loc: None,
                     },
-                    Value::Lit {
-                        lit: Literal::EntityUID(Arc::new(EntityUID::with_eid("foo"))),
+                    Value {
+                        value: ValueKind::Lit(Literal::EntityUID(Arc::new(EntityUID::with_eid(
+                            "foo"
+                        )))),
                         loc: None,
                     },
                 ],
@@ -1660,12 +1649,12 @@ pub mod test {
                 vec![
                     Value::set(
                         vec![
-                            Value::Lit {
-                                lit: Literal::Long(8),
+                            Value {
+                                value: ValueKind::Lit(Literal::Long(8)),
                                 loc: None,
                             },
-                            Value::Lit {
-                                lit: Literal::Long(2),
+                            Value {
+                                value: ValueKind::Lit(Literal::Long(2)),
                                 loc: None,
                             },
                         ],
@@ -1673,20 +1662,20 @@ pub mod test {
                     ),
                     Value::set(
                         vec![
-                            Value::Lit {
-                                lit: Literal::Long(13),
+                            Value {
+                                value: ValueKind::Lit(Literal::Long(13)),
                                 loc: None,
                             },
-                            Value::Lit {
-                                lit: Literal::Long(702),
+                            Value {
+                                value: ValueKind::Lit(Literal::Long(702)),
                                 loc: None,
                             },
                         ],
                         None,
                     ),
                     Value::set(
-                        vec![Value::Lit {
-                            lit: Literal::Long(3),
+                        vec![Value {
+                            value: ValueKind::Lit(Literal::Long(3)),
                             loc: None,
                         }],
                         None,
@@ -4089,7 +4078,10 @@ pub mod test {
             ))
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
-            Ok(PartialValue::Value(Value::ExtensionValue { .. }))
+            Ok(PartialValue::Value(Value {
+                value: ValueKind::ExtensionValue(_),
+                ..
+            }))
         );
         assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::get_attr(
@@ -4124,7 +4116,10 @@ pub mod test {
             BorrowedRestrictedExpr::new(&Expr::set([Expr::val("hi"), Expr::val("there")]))
                 .map_err(Into::into)
                 .and_then(|e| evaluator.partial_interpret(e)),
-            Ok(PartialValue::Value(Value::Set { .. }))
+            Ok(PartialValue::Value(Value {
+                value: ValueKind::Set(_),
+                ..
+            }))
         );
         assert_matches!(
             BorrowedRestrictedExpr::new(
@@ -4136,7 +4131,10 @@ pub mod test {
             )
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
-            Ok(PartialValue::Value(Value::Record { .. }))
+            Ok(PartialValue::Value(Value {
+                value: ValueKind::Record(_),
+                ..
+            }))
         );
 
         // complex expressions -- for instance, violation not at top level
@@ -5384,7 +5382,7 @@ pub mod test {
         let exts = Extensions::none();
         let eval = RestrictedEvaluator::new(&exts);
         let r = eval.partial_interpret(re.as_borrowed()).unwrap();
-        assert_matches!(r, PartialValue::Value(Value::Set { set, .. }) => {
+        assert_matches!(r, PartialValue::Value(Value { value: ValueKind::Set(set), .. }) => {
             assert_eq!(set.len(), 1);
         });
     }
