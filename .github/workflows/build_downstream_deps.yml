@@ -88,19 +88,19 @@ jobs:
     needs: get-branch-name
     uses: cedar-policy/cedar-examples/.github/workflows/build_rust_hello_world_reusable.yml@main
     with:
-      cedar_policy_ref: ${{ github.head_ref }}
+      cedar_policy_ref: ${{ github.ref }}
       cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}
 
   run-cedar-examples-use-cases:
     needs: get-branch-name
     uses: cedar-policy/cedar-examples/.github/workflows/run_example_use_cases_reusable.yml@main
     with:
-      cedar_policy_ref: ${{ github.head_ref }}
+      cedar_policy_ref: ${{ github.ref }}
       cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}
 
   build-tiny-todo:
     needs: get-branch-name
     uses: cedar-policy/cedar-examples/.github/workflows/build_tiny_todo_reusable.yml@main
     with:
-      cedar_policy_ref: ${{ github.head_ref }}
+      cedar_policy_ref: ${{ github.ref }}
       cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}
