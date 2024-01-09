@@ -711,6 +711,8 @@ impl Authorizer {
     /// assert_eq!(response.decision(), Decision::Allow);
     /// ```
     pub fn is_authorized(&self, r: &Request, p: &PolicySet, e: &Entities) -> Response {
+        #[allow(clippy::panic)]
+        panic!("If downstream build is using the correct branch, it will panic here.");
         self.0.is_authorized(r.0.clone(), &p.ast, &e.0).into()
     }
 
