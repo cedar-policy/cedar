@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests {
+mod demo_tests {
     use crate::custom_schema::parser::parse_schema;
 
     #[test]
@@ -52,6 +52,23 @@ mod tests {
             entity Public in [DocumentShare];
             entity Drive;
         }"#,
+        );
+        assert!(res.is_ok(), "{res:?}");
+    }
+}
+
+#[cfg(test)]
+mod parser_tests {
+    use crate::custom_schema::parser::parse_schema;
+
+    #[test]
+    fn mixed_decls() {
+        let res = parse_schema(
+            r#"
+        entity A;
+        namespace Foo {}
+        type B = A;
+        "#,
         );
         assert!(res.is_ok(), "{res:?}");
     }

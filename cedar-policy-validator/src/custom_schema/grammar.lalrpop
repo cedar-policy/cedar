@@ -212,10 +212,10 @@ Decl: Node<Declaration> = {
 Namespace: Node<Namespace> = {
     <l:@L> NAMESPACE <p: Path> "{" <decls: Decl*> "}" <r:@R>
         => Node::with_source_loc(Namespace { name: Some(p), decls}, Loc::new(l..r, Arc::clone(src))),
+     <l:@L> <decl: Decl> <r:@R> => Node::with_source_loc(Namespace {name: None, decls: vec![decl]}, Loc::new(l..r, Arc::clone(src))),
 }
 
-// Schema := {Namespace} | Decl {Decl}
+// Schema := {Namespace}
 pub Schema: ASchema = {
     <ns: Namespace*> => ns,
-    <l:@L> <decls: Decl+> <r:@R> => vec![Node::with_source_loc(Namespace {name: None, decls}, Loc::new(l..r, Arc::clone(src)))],
 }
