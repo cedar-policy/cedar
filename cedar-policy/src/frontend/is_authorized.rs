@@ -1561,152 +1561,159 @@ mod test {
     }
 
     #[cfg(feature = "partial-eval")]
-    #[test]
-    fn test_authorized_partial_no_resource() {
-        let call = r#"
-        {
-            "principal": {
-             "type": "User",
-             "id": "alice"
-            },
-            "action": {
-             "type": "Photo",
-             "id": "view"
-            },
-            "context": {},
-            "slice": {
-             "policies": {
-              "ID1": "permit(principal == User::\"alice\", action, resource);"
-             },
-             "entities": []
-            },
-            "partial_evaluation": true
-           }
-        "#;
-        assert_is_authorized(json_is_authorized_partial(call));
-    }
+    mod partial {
+        use super::super::AuthorizationAnswer;
+        use std::collections::HashSet;
+        use std::str::FromStr;
+        use cool_asserts::assert_matches;
+        use crate::frontend::is_authorized::json_is_authorized_partial;
+        use crate::frontend::is_authorized::test::{assert_is_authorized, assert_is_not_authorized};
+        use crate::frontend::utils::InterfaceResult;
+        use crate::PolicyId;
 
-    #[cfg(feature = "partial-eval")]
-    #[test]
-    fn test_authorized_partial_not_authorized_no_resource() {
-        let call = r#"
-        {
-            "principal": {
-             "type": "User",
-             "id": "john"
-            },
-            "action": {
-             "type": "Photo",
-             "id": "view"
-            },
-            "context": {},
-            "slice": {
-             "policies": {
-              "ID1": "permit(principal == User::\"alice\", action, resource);"
-             },
-             "entities": []
-            },
-            "partial_evaluation": true
-           }
-        "#;
-        assert_is_not_authorized(json_is_authorized_partial(call));
-    }
+        #[test]
+        fn test_authorized_partial_no_resource() {
+            let call = r#"
+              {
+                "principal": {
+                 "type": "User",
+                 "id": "alice"
+                },
+                "action": {
+                 "type": "Photo",
+                 "id": "view"
+                },
+                "context": {},
+                "slice": {
+                 "policies": {
+                  "ID1": "permit(principal == User::\"alice\", action, resource);"
+                 },
+                 "entities": []
+                },
+                "partial_evaluation": true
+              }
+            "#;
+            assert_is_authorized(json_is_authorized_partial(call));
+        }
 
-    #[cfg(feature = "partial-eval")]
-    #[test]
-    fn test_authorized_partial_residual_no_principal_scope() {
-        let call = r#"
-        {
-            "action": {
-             "type": "Photo",
-             "id": "view"
-            },
-            "resource" : {
-                "type" : "Photo",
-                "id" : "door"
-            },
-            "context": {},
-            "slice": {
-             "policies": {
-              "ID1": "permit(principal == User::\"alice\", action, resource);"
-             },
-             "entities": []
-            },
-            "partial_evaluation": true
-           }
-        "#;
-        assert_is_residual(json_is_authorized_partial(call), HashSet::from(["ID1"]));
-    }
+        #[test]
+        fn test_authorized_partial_not_authorized_no_resource() {
+            let call = r#"
+              {
+                "principal": {
+                 "type": "User",
+                 "id": "john"
+                },
+                "action": {
+                 "type": "Photo",
+                 "id": "view"
+                },
+                "context": {},
+                "slice": {
+                 "policies": {
+                  "ID1": "permit(principal == User::\"alice\", action, resource);"
+                 },
+                 "entities": []
+                },
+                "partial_evaluation": true
+              }
+            "#;
+            assert_is_not_authorized(json_is_authorized_partial(call));
+        }
 
-    #[cfg(feature = "partial-eval")]
-    #[test]
-    fn test_authorized_partial_residual_no_principal_when() {
-        let call = r#"
-        {
-            "action": {
-             "type": "Photo",
-             "id": "view"
-            },
-            "resource" : {
-                "type" : "Photo",
-                "id" : "door"
-            },
-            "context": {},
-            "slice": {
-             "policies": {
-              "ID1": "permit(principal, action, resource) when { principal == User::\"alice\" };"
-             },
-             "entities": []
-            },
-            "partial_evaluation": true
-           }
-        "#;
-        assert_is_residual(json_is_authorized_partial(call), HashSet::from(["ID1"]));
-    }
+        #[test]
+        fn test_authorized_partial_residual_no_principal_scope() {
+            let call = r#"
+              {
+                "action": {
+                 "type": "Photo",
+                 "id": "view"
+                },
+                "resource" : {
+                    "type" : "Photo",
+                    "id" : "door"
+                },
+                "context": {},
+                "slice": {
+                 "policies": {
+                  "ID1": "permit(principal == User::\"alice\", action, resource);"
+                 },
+                 "entities": []
+                },
+                "partial_evaluation": true
+              }
+            "#;
+            assert_is_residual(json_is_authorized_partial(call), HashSet::from(["ID1"]));
+        }
 
-    #[cfg(feature = "partial-eval")]
-    #[test]
-    fn test_authorized_partial_residual_no_principal_ignored_forbid() {
-        let call = r#"
-        {
-            "action": {
-             "type": "Photo",
-             "id": "view"
-            },
-            "resource" : {
-                "type" : "Photo",
-                "id" : "door"
-            },
-            "context": {},
-            "slice": {
-             "policies": {
-              "ID1": "permit(principal, action, resource) when { principal == User::\"alice\" };",
-              "ID2": "forbid(principal, action, resource) unless { resource == Photo::\"door\" };"
-             },
-             "entities": []
-            },
-            "partial_evaluation": true
-           }
-        "#;
-        assert_is_residual(json_is_authorized_partial(call), HashSet::from(["ID1"]));
-    }
+        #[test]
+        fn test_authorized_partial_residual_no_principal_when() {
+            let call = r#"
+              {
+                "action": {
+                 "type": "Photo",
+                 "id": "view"
+                },
+                "resource" : {
+                    "type" : "Photo",
+                    "id" : "door"
+                },
+                "context": {},
+                "slice": {
+                 "policies": {
+                  "ID1": "permit(principal, action, resource) when { principal == User::\"alice\" };"
+                 },
+                 "entities": []
+                },
+                "partial_evaluation": true
+              }
+            "#;
+            assert_is_residual(json_is_authorized_partial(call), HashSet::from(["ID1"]));
+        }
 
-    #[cfg(feature = "partial-eval")]
-    #[track_caller]
-    fn assert_is_residual(result: InterfaceResult, residual_ids: HashSet<&str>) {
-        assert_matches!(result, InterfaceResult::Success { result } => {
-            let parsed_result: AuthorizationAnswer = serde_json::from_str(result.as_str()).unwrap();
-            assert_matches!(parsed_result, AuthorizationAnswer::Residuals { response } => {
-                let num_errors = response.diagnostics.errors().count();
-                assert_eq!(num_errors, 0, "got {num_errors} errors");
-                let residual = response.residual;
-                for id in &residual_ids {
-                    assert!(residual.contains_key(&PolicyId::from_str(id).ok().unwrap()), "expected residual for {id}, but it's missing")
-                }
-                for key in residual.keys() {
-                    assert!(residual_ids.contains(key.to_string().as_str()),"found unexpected residual for {key}")
-                }
+        #[test]
+        fn test_authorized_partial_residual_no_principal_ignored_forbid() {
+            let call = r#"
+              {
+                "action": {
+                 "type": "Photo",
+                 "id": "view"
+                },
+                "resource" : {
+                    "type" : "Photo",
+                    "id" : "door"
+                },
+                "context": {},
+                "slice": {
+                 "policies": {
+                  "ID1": "permit(principal, action, resource) when { principal == User::\"alice\" };",
+                  "ID2": "forbid(principal, action, resource) unless { resource == Photo::\"door\" };"
+                 },
+                 "entities": []
+                },
+                "partial_evaluation": true
+              }
+            "#;
+            assert_is_residual(json_is_authorized_partial(call), HashSet::from(["ID1"]));
+        }
+
+        #[track_caller]
+        fn assert_is_residual(result: InterfaceResult, residual_ids: HashSet<&str>) {
+            assert_matches!(result, InterfaceResult::Success { result } => {
+                let parsed_result: AuthorizationAnswer = serde_json::from_str(result.as_str()).unwrap();
+                assert_matches!(parsed_result, AuthorizationAnswer::Residuals { response } => {
+                    let num_errors = response.diagnostics.errors().count();
+                    assert_eq!(num_errors, 0, "got {num_errors} errors");
+                    let residuals = response.residuals;
+                    for id in &residual_ids {
+                        assert!(residuals.contains_key(&PolicyId::from_str(id).ok().unwrap()), "expected residual for {id}, but it's missing")
+                    }
+                    for key in residuals.keys() {
+                        assert!(residual_ids.contains(key.to_string().as_str()),"found unexpected residual for {key}")
+                    }
+                })
             })
-        })
+        }
     }
 }
+
