@@ -59,7 +59,7 @@ fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
 /// public string-based JSON interfaced to be invoked by FFIs. In the policies portion of
 /// the `RecvdSlice`, you can either pass a `Map<String, String>` where the values are all single policies,
 /// or a single String which is a concatenation of multiple policies. If you choose the latter,
-/// policy id's will be auto-generated for you in the format `policyX` where X is a Whole Number (zero or a positive int)
+/// policy id's will be auto-generated for you in the format `policyX` where X is a Natural Number (zero or a positive int)
 pub fn json_is_authorized(input: &str) -> InterfaceResult {
     serde_json::from_str::<AuthorizationCall>(input).map_or_else(
         |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
@@ -94,7 +94,7 @@ fn is_authorized_partial(call: AuthorizationCall) -> AuthorizationAnswer {
 /// public string-based JSON interfaced to be invoked by FFIs. In the policies portion of
 /// the `RecvdSlice`, you can either pass a `Map<String, String>` where the values are all single policies,
 /// or a single String which is a concatenation of multiple policies. If you choose the latter,
-/// policy id's will be auto-generated for you in the format `policyX` where X is a Whole Number (zero or a positive int)
+/// policy id's will be auto-generated for you in the format `policyX` where X is a Natural Number (zero or a positive int)
 #[cfg(feature = "partial-eval")]
 pub fn json_is_authorized_partial(input: &str) -> InterfaceResult {
     serde_json::from_str::<AuthorizationCall>(input).map_or_else(
