@@ -168,7 +168,7 @@ fn strict_typecheck_catches_regular_type_error() {
 
             assert!(errs.len() == 1);
             assert!(matches!(
-                errs.get(0).unwrap().kind,
+                errs.first().unwrap().kind,
                 TypeErrorKind::UnexpectedType(_)
             ));
         })
