@@ -71,13 +71,13 @@ impl<'a> std::fmt::Display for ExpectedErrorMessage<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.prefix {
             writeln!(f, "expected error to start with: {}", self.error)?;
-            match self.help.as_deref() {
+            match self.help {
                 Some(help) => writeln!(f, "expected help to start with: {help}")?,
                 None => writeln!(f, "  with no help message")?,
             }
         } else {
             writeln!(f, "expected error: {}", self.error)?;
-            match self.help.as_deref() {
+            match self.help {
                 Some(help) => writeln!(f, "expected help: {help}")?,
                 None => writeln!(f, "  with no help message")?,
             }

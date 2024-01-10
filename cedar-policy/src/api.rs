@@ -2118,7 +2118,7 @@ impl PolicySet {
         };
         if self
             .ast
-            .remove_static(&ast::PolicyID::from_string(policy_id.to_string()))
+            .remove_static(&ast::PolicyID::from_string(&policy_id))
             .is_ok()
         {
             Ok(policy)
@@ -2150,7 +2150,7 @@ impl PolicySet {
         #[allow(clippy::panic)]
         match self
             .ast
-            .remove_template(&ast::PolicyID::from_string(template_id.to_string()))
+            .remove_template(&ast::PolicyID::from_string(&template_id))
         {
             Ok(_) => Ok(template),
             Err(ast::PolicySetTemplateRemovalError::RemoveTemplateWithLinksError(_)) => {
@@ -2176,7 +2176,7 @@ impl PolicySet {
         template_id: PolicyId,
     ) -> Result<impl Iterator<Item = &PolicyId>, PolicySetError> {
         self.ast
-            .get_linked_policies(&ast::PolicyID::from_string(template_id.to_string()))
+            .get_linked_policies(&ast::PolicyID::from_string(&template_id))
             .map_or_else(
                 |_| Err(PolicySetError::TemplateNonexistentError(template_id)),
                 |v| Ok(v.map(PolicyId::ref_cast)),
@@ -2330,10 +2330,7 @@ impl PolicySet {
         // If self.policies and self.ast disagree, authorization cannot be trusted.
         // PANIC SAFETY: We just found the policy in self.policies.
         #[allow(clippy::panic)]
-        match self
-            .ast
-            .unlink(&ast::PolicyID::from_string(policy_id.to_string()))
-        {
+        match self.ast.unlink(&ast::PolicyID::from_string(&policy_id)) {
             Ok(_) => Ok(policy),
             Err(ast::PolicySetUnlinkError::NotLinkError(_)) => {
                 //Restore self.policies
@@ -2698,7 +2695,7 @@ pub struct PolicyId(ast::PolicyID);
 impl FromStr for PolicyId {
     type Err = ParseErrors;
 
-    /// Create a `PolicyId` from a string. Currently always returns Ok().
+    /// Create a `PolicyId` from a string. Currently always returns `Ok()`.
     fn from_str(id: &str) -> Result<Self, Self::Err> {
         Ok(Self(ast::PolicyID::from_string(id)))
     }
@@ -2760,7 +2757,7 @@ impl Policy {
             let wrapped_vals: HashMap<SlotId, EntityUid> = self
                 .ast
                 .env()
-                .into_iter()
+                .iter()
                 .map(|(key, value)| (SlotId(*key), EntityUid(value.clone())))
                 .collect();
             Some(wrapped_vals)
@@ -3278,9 +3275,9 @@ pub struct RequestBuilder<'a> {
 impl<'a> Default for RequestBuilder<'a> {
     fn default() -> Self {
         Self {
-            principal: ast::EntityUIDEntry::Unknown,
-            action: ast::EntityUIDEntry::Unknown,
-            resource: ast::EntityUIDEntry::Unknown,
+            principal: ast::EntityUIDEntry::Unknown { loc: None },
+            action: ast::EntityUIDEntry::Unknown { loc: None },
+            resource: ast::EntityUIDEntry::Unknown { loc: None },
             context: None,
             schema: None,
         }
@@ -3302,10 +3299,11 @@ impl<'a> RequestBuilder<'a> {
     pub fn principal(self, principal: Option<EntityUid>) -> Self {
         Self {
             principal: match principal {
-                Some(p) => ast::EntityUIDEntry::concrete(p.0),
-                None => ast::EntityUIDEntry::concrete(ast::EntityUID::unspecified_from_eid(
-                    ast::Eid::new("principal"),
-                )),
+                Some(p) => ast::EntityUIDEntry::concrete(p.0, None),
+                None => ast::EntityUIDEntry::concrete(
+                    ast::EntityUID::unspecified_from_eid(ast::Eid::new("principal")),
+                    None,
+                ),
             },
             ..self
         }
@@ -3324,10 +3322,11 @@ impl<'a> RequestBuilder<'a> {
     pub fn action(self, action: Option<EntityUid>) -> Self {
         Self {
             action: match action {
-                Some(a) => ast::EntityUIDEntry::concrete(a.0),
-                None => ast::EntityUIDEntry::concrete(ast::EntityUID::unspecified_from_eid(
-                    ast::Eid::new("action"),
-                )),
+                Some(a) => ast::EntityUIDEntry::concrete(a.0, None),
+                None => ast::EntityUIDEntry::concrete(
+                    ast::EntityUID::unspecified_from_eid(ast::Eid::new("action")),
+                    None,
+                ),
             },
             ..self
         }
@@ -3346,10 +3345,11 @@ impl<'a> RequestBuilder<'a> {
     pub fn resource(self, resource: Option<EntityUid>) -> Self {
         Self {
             resource: match resource {
-                Some(r) => ast::EntityUIDEntry::concrete(r.0),
-                None => ast::EntityUIDEntry::concrete(ast::EntityUID::unspecified_from_eid(
-                    ast::Eid::new("resource"),
-                )),
+                Some(r) => ast::EntityUIDEntry::concrete(r.0, None),
+                None => ast::EntityUIDEntry::concrete(
+                    ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")),
+                    None,
+                ),
             },
             ..self
         }
@@ -3437,9 +3437,9 @@ impl Request {
             None => ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")),
         };
         Ok(Self(ast::Request::new(
-            p,
-            a,
-            r,
+            (p, None),
+            (a, None),
+            (r, None),
             context.0,
             schema.map(|schema| &schema.0),
             Extensions::all_available(),
@@ -3451,12 +3451,12 @@ impl Request {
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn principal(&self) -> Option<&EntityUid> {
         match self.0.principal() {
-            ast::EntityUIDEntry::Known(euid) => match euid.entity_type() {
+            ast::EntityUIDEntry::Known { euid, .. } => match euid.entity_type() {
                 // INVARIANT: we ensure Concrete-ness here
                 ast::EntityType::Specified(_) => Some(EntityUid::ref_cast(euid.as_ref())),
                 ast::EntityType::Unspecified => None,
             },
-            ast::EntityUIDEntry::Unknown => None,
+            ast::EntityUIDEntry::Unknown { .. } => None,
         }
     }
 
@@ -3465,12 +3465,12 @@ impl Request {
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn action(&self) -> Option<&EntityUid> {
         match self.0.action() {
-            ast::EntityUIDEntry::Known(euid) => match euid.entity_type() {
+            ast::EntityUIDEntry::Known { euid, .. } => match euid.entity_type() {
                 // INVARIANT: we ensure Concrete-ness here
                 ast::EntityType::Specified(_) => Some(EntityUid::ref_cast(euid.as_ref())),
                 ast::EntityType::Unspecified => None,
             },
-            ast::EntityUIDEntry::Unknown => None,
+            ast::EntityUIDEntry::Unknown { .. } => None,
         }
     }
 
@@ -3479,12 +3479,12 @@ impl Request {
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn resource(&self) -> Option<&EntityUid> {
         match self.0.resource() {
-            ast::EntityUIDEntry::Known(euid) => match euid.entity_type() {
+            ast::EntityUIDEntry::Known { euid, .. } => match euid.entity_type() {
                 // INVARIANT: we ensure Concrete-ness here
                 ast::EntityType::Specified(_) => Some(EntityUid::ref_cast(euid.as_ref())),
                 ast::EntityType::Unspecified => None,
             },
-            ast::EntityUIDEntry::Unknown => None,
+            ast::EntityUIDEntry::Unknown { .. } => None,
         }
     }
 }
@@ -3791,24 +3791,25 @@ impl Record {
 #[doc(hidden)]
 impl From<ast::Value> for EvalResult {
     fn from(v: ast::Value) -> Self {
-        match v {
-            ast::Value::Lit(ast::Literal::Bool(b)) => Self::Bool(b),
-            ast::Value::Lit(ast::Literal::Long(i)) => Self::Long(i),
-            ast::Value::Lit(ast::Literal::String(s)) => Self::String(s.to_string()),
-            ast::Value::Lit(ast::Literal::EntityUID(e)) => {
+        match v.value {
+            ast::ValueKind::Lit(ast::Literal::Bool(b)) => Self::Bool(b),
+            ast::ValueKind::Lit(ast::Literal::Long(i)) => Self::Long(i),
+            ast::ValueKind::Lit(ast::Literal::String(s)) => Self::String(s.to_string()),
+            ast::ValueKind::Lit(ast::Literal::EntityUID(e)) => {
                 Self::EntityUid(EntityUid(ast::EntityUID::clone(&e)))
             }
-            ast::Value::Set(s) => Self::Set(Set(s
+            ast::ValueKind::Set(set) => Self::Set(Set(set
                 .authoritative
                 .iter()
                 .map(|v| v.clone().into())
                 .collect())),
-            ast::Value::Record(r) => Self::Record(Record(
-                r.iter()
+            ast::ValueKind::Record(record) => Self::Record(Record(
+                record
+                    .iter()
                     .map(|(k, v)| (k.to_string(), v.clone().into()))
                     .collect(),
             )),
-            ast::Value::ExtensionValue(v) => Self::ExtensionValue(v.to_string()),
+            ast::ValueKind::ExtensionValue(ev) => Self::ExtensionValue(ev.to_string()),
         }
     }
 }

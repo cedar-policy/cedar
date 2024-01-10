@@ -356,7 +356,7 @@ mod test {
         let ast = est
             .try_into_ast_policy(None)
             .expect("Failed to convert to AST");
-        ast.try_into().expect("Failed to convert to EST")
+        ast.into()
     }
 
     /// helper function to take EST-->AST-->EST for templates.
@@ -365,7 +365,7 @@ mod test {
         let ast = est
             .try_into_ast_template(None)
             .expect("Failed to convert to AST");
-        ast.try_into().expect("Failed to convert to EST")
+        ast.into()
     }
 
     /// helper function to take EST-->AST-->text-->CST-->EST for inline policies.

@@ -16,11 +16,11 @@
 
 use super::{
     unwrap_or_clone, EntityUID, Expr, ExprConstructionError, ExprKind, Literal, Name, PartialValue,
-    Unknown, Value,
+    Unknown, Value, ValueKind,
 };
 use crate::entities::JsonSerializationError;
-use crate::parser;
 use crate::parser::err::ParseErrors;
+use crate::parser::{self, Loc};
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -84,6 +84,11 @@ impl RestrictedExpr {
         } else {
             Self(expr)
         }
+    }
+
+    /// Return the `RestrictedExpr`, but with the new `source_loc` (or `None`).
+    pub fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+        Self(self.0.with_maybe_source_loc(source_loc))
     }
 
     /// Create a `RestrictedExpr` that's just a single `Literal`.
@@ -235,20 +240,26 @@ impl RestrictedExpr {
 
 impl From<Value> for RestrictedExpr {
     fn from(value: Value) -> RestrictedExpr {
+        RestrictedExpr::from(value.value).with_maybe_source_loc(value.loc)
+    }
+}
+
+impl From<ValueKind> for RestrictedExpr {
+    fn from(value: ValueKind) -> RestrictedExpr {
         match value {
-            Value::Lit(lit) => RestrictedExpr::val(lit),
-            Value::Set(set) => {
+            ValueKind::Lit(lit) => RestrictedExpr::val(lit),
+            ValueKind::Set(set) => {
                 RestrictedExpr::set(set.iter().map(|val| RestrictedExpr::from(val.clone())))
             }
             // PANIC SAFETY: cannot have duplicate key because the input was already a BTreeMap
             #[allow(clippy::expect_used)]
-            Value::Record(map) => RestrictedExpr::record(
-                unwrap_or_clone(map)
+            ValueKind::Record(record) => RestrictedExpr::record(
+                unwrap_or_clone(record)
                     .into_iter()
                     .map(|(k, v)| (k, RestrictedExpr::from(v))),
             )
             .expect("can't have duplicate keys, because the input `map` was already a BTreeMap"),
-            Value::ExtensionValue(ev) => {
+            ValueKind::ExtensionValue(ev) => {
                 let ev = unwrap_or_clone(ev);
                 RestrictedExpr::call_extension_fn(ev.constructor, ev.args)
             }

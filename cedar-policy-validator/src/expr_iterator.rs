@@ -90,7 +90,7 @@ pub(super) fn expr_text(e: &'_ Expr) -> impl Iterator<Item = TextKind<'_>> {
 }
 
 // Returns a vector containing the text in the top level expression
-fn text_in_expr<'a>(e: &'a Expr) -> impl IntoIterator<Item = TextKind<'a>> {
+fn text_in_expr(e: &Expr) -> impl IntoIterator<Item = TextKind<'_>> {
     match e.expr_kind() {
         ExprKind::Lit(lit) => text_in_lit(e.source_loc(), lit).into_iter().collect(),
         ExprKind::ExtensionFunctionApp { fn_name, .. } => {

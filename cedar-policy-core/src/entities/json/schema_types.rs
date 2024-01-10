@@ -16,7 +16,7 @@
 
 use crate::ast::{
     BorrowedRestrictedExpr, EntityType, Expr, ExprKind, Literal, Name, PartialValue, Type, Unknown,
-    Value,
+    Value, ValueKind,
 };
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use itertools::Itertools;
@@ -381,20 +381,36 @@ pub fn schematype_of_restricted_expr(
 /// That is, this assumes that all existing attributes are required, and that no
 /// other optional attributes are possible.
 pub fn schematype_of_value(value: &Value) -> Result<SchemaType, HeterogeneousSetError> {
+    schematype_of_valuekind(&value.value)
+}
+
+/// Get the [`SchemaType`] of a [`ValueKind`].
+///
+/// Note that while getting the [`Type`] of a [`ValueKind`] (with `value.type_of()`)
+/// is O(1), getting the [`SchemaType`] requires recursively traversing the
+/// whole value and is thus O(n).
+///
+/// If the `ValueKind` is a record, we can't know whether the attributes in the
+/// given record are required or optional.
+/// This function will return the `SchemaType` where all attributes that appear
+/// in the `ValueKind` are required, and no other attributes exist.
+/// That is, this assumes that all existing attributes are required, and that no
+/// other optional attributes are possible.
+pub fn schematype_of_valuekind(value: &ValueKind) -> Result<SchemaType, HeterogeneousSetError> {
     match value {
-        Value::Lit(lit) => Ok(schematype_of_lit(lit)),
-        Value::Set(set) => {
+        ValueKind::Lit(lit) => Ok(schematype_of_lit(lit)),
+        ValueKind::Set(set) => {
             let element_types = set.iter().map(schematype_of_value);
             schematype_of_set_elements(element_types)
         }
-        Value::Record(map) => Ok(SchemaType::Record {
-            attrs: map
+        ValueKind::Record(record) => Ok(SchemaType::Record {
+            attrs: record
                 .iter()
                 .map(|(k, v)| Ok((k.clone(), AttributeType::required(schematype_of_value(v)?))))
                 .collect::<Result<_, HeterogeneousSetError>>()?,
             open_attrs: false,
         }),
-        Value::ExtensionValue(ev) => Ok(SchemaType::Extension {
+        ValueKind::ExtensionValue(ev) => Ok(SchemaType::Extension {
             name: ev.typename(),
         }),
     }

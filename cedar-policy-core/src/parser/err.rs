@@ -77,7 +77,7 @@ impl ParseError {
             },
             ParseError::ParseLiteral(parse_lit_err) => parse_lit_err
                 .labels()
-                .and_then(|mut it| it.next().map(|lspan| lspan.inner().clone())),
+                .and_then(|mut it| it.next().map(|lspan| *lspan.inner())),
         }
     }
 }
