@@ -18,7 +18,7 @@ use super::{
         ActionDecl, AppDecl, AttrDecl, Declaration, EntityDecl, Namespace, PRAppDecl, Path, Ref,
         Schema, Str, Type, PR,
     },
-    err::ToValidatorSchemaError,
+    err::ToJsonSchemaError,
 };
 
 #[derive(Debug, Clone)]
@@ -185,12 +185,12 @@ where
 }
 
 impl TryFrom<Type> for SchemaType {
-    type Error = ToValidatorSchemaError;
+    type Error = ToJsonSchemaError;
     fn try_from(value: Type, context: &Context) -> Result<Self, Self::Error> {
         Ok(match value {
             Type::Ident(id) => match context.lookup(&id) {
                 Some(ty) => ty.into(),
-                None => Err(ToValidatorSchemaError::InvalidTypeName(id.to_smolstr()))?,
+                None => Err(ToJsonSchemaError::InvalidTypeName(id.to_smolstr()))?,
             },
             Type::Record(attrs) => Self::Type(TryInto::try_into(attrs, context)?),
             Type::Set(b) => Self::Type(SchemaTypeVariant::Set {
@@ -201,7 +201,7 @@ impl TryFrom<Type> for SchemaType {
 }
 
 impl TryFrom<EntityDecl> for EntityType {
-    type Error = ToValidatorSchemaError;
+    type Error = ToJsonSchemaError;
     fn try_from(value: EntityDecl, context: &Context) -> Result<Self, Self::Error> {
         Ok(Self {
             member_of_types: value.member_of_types.map_or(vec![], |ns| {
@@ -213,14 +213,14 @@ impl TryFrom<EntityDecl> for EntityType {
 }
 
 impl TryFrom<Vec<Node<AttrDecl>>> for SchemaTypeVariant {
-    type Error = ToValidatorSchemaError;
+    type Error = ToJsonSchemaError;
     fn try_from(value: Vec<Node<AttrDecl>>, context: &Context) -> Result<Self, Self::Error> {
         let mut attrs: HashMap<Str, crate::TypeOfAttribute> = HashMap::new();
         for n in value {
             let attr_decl = n.node;
             let name_str = name_to_str(attr_decl.name);
             if let Some((ns, _)) = attrs.get_key_value(&name_str) {
-                return Err(ToValidatorSchemaError::DuplicateKeys(name_str, ns.clone()));
+                return Err(ToJsonSchemaError::DuplicateKeys(name_str, ns.clone()));
             }
             attrs.insert(
                 name_str,
@@ -238,7 +238,7 @@ impl TryFrom<Vec<Node<AttrDecl>>> for SchemaTypeVariant {
 }
 
 impl TryFrom<NonEmpty<Node<AppDecl>>> for ApplySpec {
-    type Error = ToValidatorSchemaError;
+    type Error = ToJsonSchemaError;
     fn try_from(value: NonEmpty<Node<AppDecl>>, context: &Context) -> Result<Self, Self::Error> {
         let mut resource_types = Vec::new();
         let mut principal_types = Vec::new();
@@ -284,7 +284,7 @@ impl TryFrom<NonEmpty<Node<AppDecl>>> for ApplySpec {
 }
 
 impl TryFrom<ActionDecl> for ActionType {
-    type Error = ToValidatorSchemaError;
+    type Error = ToJsonSchemaError;
     fn try_from(value: ActionDecl, context: &Context) -> Result<Self, Self::Error> {
         let applies_to: Option<ApplySpec> = match value.app_decls {
             Some(decls) => Some(TryInto::try_into(decls, context)?),
@@ -306,98 +306,114 @@ impl TryFrom<ActionDecl> for ActionType {
     }
 }
 
-impl std::convert::TryFrom<Schema> for SchemaFragment {
-    type Error = ToValidatorSchemaError;
-    fn try_from(value: Schema) -> Result<Self, Self::Error> {
-        let mut validator_schema = HashMap::new();
-        let global_common_types = collect_global_common_types(&value);
-        for ns_def in value {
-            let mut entity_types: HashMap<Node<Id>, EntityType> = HashMap::new();
-            let mut actions: HashMap<Str, ActionType> = HashMap::new();
-            let mut common_types: HashMap<Node<Id>, SchemaType> = HashMap::new();
-            let ns_def = ns_def.node;
-            let ns = &ns_def
-                .name
-                .as_ref()
-                .map(|ns| ns.node.clone().to_smolstr())
-                .unwrap_or_default();
-            let context = &build_context(&ns_def, &global_common_types);
-            for decl in ns_def.decls {
-                match decl.node {
-                    Declaration::Action(action_decl) => {
-                        let mut ids: HashSet<Str> = HashSet::new();
-                        action_decl.names.iter().try_for_each(|id| {
-                            let id_str = name_to_str(id.clone());
-                            if let Some(existing_id) = ids.get(&id_str) {
-                                return Err(ToValidatorSchemaError::DuplicateKeys(
-                                    id_str,
-                                    existing_id.clone(),
-                                ));
-                            }
-                            if let Some((existing_id, _)) = actions.get_key_value(&id_str) {
-                                return Err(ToValidatorSchemaError::DuplicateKeys(
-                                    id_str,
-                                    existing_id.clone(),
-                                ));
-                            }
-                            ids.insert(id_str);
-                            Ok(())
-                        })?;
-                        let at: ActionType = TryInto::try_into(action_decl, context)?;
-                        actions.extend(ids.iter().map(|n| (n.clone(), at.clone())));
+fn ns_to_ns_def(
+    ns_def: Namespace,
+    global_common_types: &HashSet<Name>,
+) -> Result<NamespaceDefinition, ToJsonSchemaError> {
+    let mut entity_types: HashMap<Node<Id>, EntityType> = HashMap::new();
+    let mut actions: HashMap<Str, ActionType> = HashMap::new();
+    let mut common_types: HashMap<Node<Id>, SchemaType> = HashMap::new();
+    let context = &build_context(&ns_def, &global_common_types);
+    for decl in ns_def.decls {
+        match decl.node {
+            Declaration::Action(action_decl) => {
+                let mut ids: HashSet<Str> = HashSet::new();
+                action_decl.names.iter().try_for_each(|id| {
+                    let id_str = name_to_str(id.clone());
+                    if let Some(existing_id) = ids.get(&id_str) {
+                        return Err(ToJsonSchemaError::DuplicateKeys(
+                            id_str,
+                            existing_id.clone(),
+                        ));
                     }
-                    Declaration::Entity(entity_decl) => {
-                        let mut names: HashSet<Node<Id>> = HashSet::new();
-                        entity_decl.names.iter().try_for_each(|name| {
-                            if let Some(existing_name) = names.get(name) {
-                                return Err(ToValidatorSchemaError::DuplicateKeys(
-                                    existing_name.clone().map(Id::to_smolstr),
-                                    name.clone().map(Id::to_smolstr),
-                                ));
-                            }
-                            if let Some((existing_name, _)) = entity_types.get_key_value(name) {
-                                return Err(ToValidatorSchemaError::DuplicateKeys(
-                                    existing_name.clone().map(Id::to_smolstr),
-                                    name.clone().map(Id::to_smolstr),
-                                ));
-                            }
-                            names.insert(name.clone());
-                            Ok(())
-                        })?;
-                        let et: EntityType = TryInto::try_into(entity_decl, context)?;
-                        entity_types.extend(names.iter().map(|n| (n.clone(), et.clone())));
+                    if let Some((existing_id, _)) = actions.get_key_value(&id_str) {
+                        return Err(ToJsonSchemaError::DuplicateKeys(
+                            id_str,
+                            existing_id.clone(),
+                        ));
                     }
-                    Declaration::Type(id, ty) => {
-                        if let Some((existing_id, _)) = common_types.get_key_value(&id) {
-                            return Err(ToValidatorSchemaError::DuplicateKeys(
-                                id.clone().map(Id::to_smolstr),
-                                existing_id.clone().map(Id::to_smolstr),
-                            ));
-                        } else {
-                            common_types.insert(id.clone(), TryInto::try_into(ty.node, context)?);
-                        }
+                    ids.insert(id_str);
+                    Ok(())
+                })?;
+                let at: ActionType = TryInto::try_into(action_decl, context)?;
+                actions.extend(ids.iter().map(|n| (n.clone(), at.clone())));
+            }
+            Declaration::Entity(entity_decl) => {
+                let mut names: HashSet<Node<Id>> = HashSet::new();
+                entity_decl.names.iter().try_for_each(|name| {
+                    if let Some(existing_name) = names.get(name) {
+                        return Err(ToJsonSchemaError::DuplicateKeys(
+                            existing_name.clone().map(Id::to_smolstr),
+                            name.clone().map(Id::to_smolstr),
+                        ));
                     }
+                    if let Some((existing_name, _)) = entity_types.get_key_value(name) {
+                        return Err(ToJsonSchemaError::DuplicateKeys(
+                            existing_name.clone().map(Id::to_smolstr),
+                            name.clone().map(Id::to_smolstr),
+                        ));
+                    }
+                    names.insert(name.clone());
+                    Ok(())
+                })?;
+                let et: EntityType = TryInto::try_into(entity_decl, context)?;
+                entity_types.extend(names.iter().map(|n| (n.clone(), et.clone())));
+            }
+            Declaration::Type(id, ty) => {
+                if let Some((existing_id, _)) = common_types.get_key_value(&id) {
+                    return Err(ToJsonSchemaError::DuplicateKeys(
+                        id.clone().map(Id::to_smolstr),
+                        existing_id.clone().map(Id::to_smolstr),
+                    ));
+                } else {
+                    common_types.insert(id.clone(), TryInto::try_into(ty.node, context)?);
                 }
             }
-            if validator_schema.contains_key(ns) {
-                return Err(ToValidatorSchemaError::DuplicateNSIds(ns.clone()));
-            } else {
-                validator_schema.insert(
-                    ns.clone(),
-                    NamespaceDefinition {
-                        entity_types: entity_types
-                            .into_iter()
-                            .map(|(n, et)| (n.node.to_smolstr(), et))
-                            .collect(),
-                        actions: actions.into_iter().map(|(n, a)| (n.node, a)).collect(),
-                        common_types: common_types
-                            .into_iter()
-                            .map(|(n, ct)| (n.node.to_smolstr(), ct))
-                            .collect(),
-                    },
-                );
-            }
         }
-        Ok(SchemaFragment(validator_schema))
+    }
+    Ok(NamespaceDefinition {
+        entity_types: entity_types
+            .into_iter()
+            .map(|(n, et)| (n.node.to_smolstr(), et))
+            .collect(),
+        actions: actions.into_iter().map(|(n, a)| (n.node, a)).collect(),
+        common_types: common_types
+            .into_iter()
+            .map(|(n, ct)| (n.node.to_smolstr(), ct))
+            .collect(),
+    })
+}
+
+fn deduplicate_ns(schema: Schema) -> Result<HashMap<SmolStr, Namespace>, ToJsonSchemaError> {
+    let mut namespaces: HashMap<SmolStr, Namespace> = HashMap::new();
+    for ns_node in schema {
+        let ns = ns_node.node;
+        let name = ns
+            .name
+            .clone()
+            .map_or(SmolStr::default(), |name| name.node.to_smolstr());
+        if let Some(existing_ns) = namespaces.get_mut(&name) {
+            if name.is_empty() {
+                existing_ns.decls.extend(ns.decls);
+            } else {
+                // Duplicate `namespace` constructs are not allowed
+                return Err(ToJsonSchemaError::DuplicateNSIds(name));
+            }
+        } else {
+            namespaces.insert(name, ns);
+        }
+    }
+    Ok(namespaces)
+}
+impl std::convert::TryFrom<Schema> for SchemaFragment {
+    type Error = ToJsonSchemaError;
+    fn try_from(value: Schema) -> Result<Self, Self::Error> {
+        let mut json_schema = HashMap::new();
+        let global_common_types = collect_global_common_types(&value);
+        let deduplicated_ns = deduplicate_ns(value)?;
+        for (name, ns) in deduplicated_ns {
+            json_schema.insert(name, ns_to_ns_def(ns, &global_common_types)?);
+        }
+        Ok(SchemaFragment(json_schema))
     }
 }

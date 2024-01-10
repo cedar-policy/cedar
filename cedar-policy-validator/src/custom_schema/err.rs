@@ -270,7 +270,7 @@ impl Diagnostic for ParseErrors {
 
 /// For errors during schema format conversion
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
-pub enum ToValidatorSchemaError {
+pub enum ToJsonSchemaError {
     /// Error raised when there are duplicate keys
     #[error("Duplicate keys found: {0:?} and {1:?}")]
     DuplicateKeys(Str, Str),
