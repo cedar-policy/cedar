@@ -15,18 +15,17 @@ jobs:
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: ./panic_safety.sh
       - run: cargo fmt --all --check
-      - run: RUSTFLAGS="-D warnings -F unsafe-code" cargo build --verbose --features "experimental"
-      - run: RUSTFLAGS="-D warnings -F unsafe-code" cargo build --verbose
+      - run: RUSTFLAGS="-D warnings -F unsafe-code" cargo build --all-features --verbose
       - run: cargo doc --all-features --no-deps
       # Clippy is configured by `.cargo/config.toml` to deny on lints like
       # `unwrap_used`. They aren't detected by `panic_safety.sh` which only
       # looks for comments where we've added an `allow` directive for clippy.
       - run: cargo clippy --all-features
-      - run: cargo test --verbose --features "experimental"
       - run: cargo test --verbose
-      - run: cargo test --verbose --no-default-features
       - run: cargo test --verbose -- --ignored
-      - run: cargo bench --no-run
+      - run: cargo bench --no-run --profile=dev
+      - run: cargo test --verbose --features "experimental"
+      - run: cargo test --verbose --no-default-features
       - run: cargo audit --deny warnings # For some reason this hangs if you don't cargo build first
 
   cargo-deny:
