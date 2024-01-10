@@ -20,6 +20,8 @@
 use super::utils::{InterfaceResult, PolicySpecification};
 use crate::api::EntityId;
 use crate::api::EntityTypeName;
+#[cfg(feature = "partial-eval")]
+use crate::api::PartialResponse;
 use crate::PolicyId;
 use crate::{
     Authorizer, Context, Decision, Entities, EntityUid, ParseErrors, Policy, PolicySet, Request,
@@ -34,8 +36,6 @@ use serde_with::MapPreventDuplicates;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use thiserror::Error;
-#[cfg(feature = "partial-eval")]
-use crate::api::PartialResponse;
 
 thread_local!(
     /// Per-thread authorizer instance, initialized on first use
@@ -65,7 +65,9 @@ pub fn json_is_authorized(input: &str) -> InterfaceResult {
         |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
         |call| match is_authorized(call) {
             answer @ AuthorizationAnswer::Success { .. } => InterfaceResult::succeed(answer),
-            AuthorizationAnswer::ParseFailed { errors } => InterfaceResult::fail_bad_request(errors),
+            AuthorizationAnswer::ParseFailed { errors } => {
+                InterfaceResult::fail_bad_request(errors)
+            }
         },
     )
 }
@@ -73,18 +75,20 @@ pub fn json_is_authorized(input: &str) -> InterfaceResult {
 #[cfg(feature = "partial-eval")]
 fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAnswer {
     match call.get_components_partial() {
-        Ok((request, policies, entities)) => {
-            AUTHORIZER.with(|authorizer|
-                match authorizer.is_authorized_partial(&request, &policies, &entities) {
-                    concrete_response @ PartialResponse::Concrete(_) => PartialAuthorizationAnswer::Concrete {
-                        response: concrete_response.into()
-                    },
-                    residual_response @ PartialResponse::Residual(_) => PartialAuthorizationAnswer::Residuals {
-                        response: residual_response.into()
+        Ok((request, policies, entities)) => AUTHORIZER.with(|authorizer| {
+            match authorizer.is_authorized_partial(&request, &policies, &entities) {
+                concrete_response @ PartialResponse::Concrete(_) => {
+                    PartialAuthorizationAnswer::Concrete {
+                        response: concrete_response.into(),
                     }
                 }
-            )
-        },
+                residual_response @ PartialResponse::Residual(_) => {
+                    PartialAuthorizationAnswer::Residuals {
+                        response: residual_response.into(),
+                    }
+                }
+            }
+        }),
         Err(errors) => PartialAuthorizationAnswer::ParseFailed { errors },
     }
 }
@@ -98,8 +102,12 @@ pub fn json_is_authorized_partial(input: &str) -> InterfaceResult {
     serde_json::from_str::<AuthorizationCall>(input).map_or_else(
         |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
         |call| match is_authorized_partial(call) {
-            answer @ PartialAuthorizationAnswer::Concrete { .. } => InterfaceResult::succeed(answer),
-            answer @ PartialAuthorizationAnswer::Residuals { .. } => InterfaceResult::succeed(answer),
+            answer @ PartialAuthorizationAnswer::Concrete { .. } => {
+                InterfaceResult::succeed(answer)
+            }
+            answer @ PartialAuthorizationAnswer::Residuals { .. } => {
+                InterfaceResult::succeed(answer)
+            }
             PartialAuthorizationAnswer::ParseFailed { errors } => {
                 InterfaceResult::fail_bad_request(errors)
             }
@@ -167,9 +175,13 @@ impl From<PartialResponse> for InterfaceResponse {
             PartialResponse::Concrete(concrete) => Self::new(
                 concrete.decision(),
                 concrete.diagnostics().reason().cloned().collect(),
-                concrete.diagnostics().errors().map(ToString::to_string).collect(),
+                concrete
+                    .diagnostics()
+                    .errors()
+                    .map(ToString::to_string)
+                    .collect(),
             ),
-            PartialResponse::Residual(_) => panic!("Unsupported")
+            PartialResponse::Residual(_) => panic!("Unsupported"),
         }
     }
 }
@@ -199,7 +211,11 @@ pub struct InterfaceResidualResponse {
 #[cfg(feature = "partial-eval")]
 impl InterfaceResidualResponse {
     /// Construct an `InterfaceResidualResponse`
-    pub fn new(residuals: HashMap<PolicyId, serde_json::Value>, reason: HashSet<PolicyId>, errors: HashSet<String>) -> Self {
+    pub fn new(
+        residuals: HashMap<PolicyId, serde_json::Value>,
+        reason: HashSet<PolicyId>,
+        errors: HashSet<String>,
+    ) -> Self {
         Self {
             residuals,
             diagnostics: InterfaceDiagnostics { reason, errors },
@@ -212,17 +228,19 @@ impl From<PartialResponse> for InterfaceResidualResponse {
     fn from(partial_response: PartialResponse) -> Self {
         match partial_response {
             PartialResponse::Residual(residual) => Self::new(
-                residual.residuals().policies()
-                    .map( | policy| (policy.id().clone(), policy.to_json().unwrap()))
+                residual
+                    .residuals()
+                    .policies()
+                    .map(|policy| (policy.id().clone(), policy.to_json().unwrap()))
                     .collect(),
                 residual.diagnostics().reason().cloned().collect(),
                 residual
                     .diagnostics()
                     .errors()
                     .map(ToString::to_string)
-                    .collect()
+                    .collect(),
             ),
-            PartialResponse::Concrete(_) => panic!("Unsupported")
+            PartialResponse::Concrete(_) => panic!("Unsupported"),
         }
     }
 }
@@ -293,7 +311,6 @@ impl AuthorizationCall {
             ),
             None => None,
         };
-
         let context = serde_json::to_value(self.context)
             .map_err(|e| [format!("Error encoding the context as JSON: {e}")])?;
         let context = Context::from_json_value(context, schema.as_ref().map(|s| (s, &action)))
@@ -343,8 +360,12 @@ impl AuthorizationCall {
         let context = Context::from_json_value(context, schema.as_ref().map(|s| (s, &action)))
             .map_err(|e| [e.to_string()])?;
         let mut b = Request::builder().action(Some(action)).context(context);
-        if principal.is_some() { b = b.principal(principal) }
-        if resource.is_some() { b = b.resource(resource) }
+        if principal.is_some() {
+            b = b.principal(principal)
+        }
+        if resource.is_some() {
+            b = b.resource(resource)
+        }
         if self.enable_request_validation && schema.is_some() {
             b = b.schema(schema.as_ref().unwrap());
         }
@@ -1568,13 +1589,13 @@ mod test {
     #[cfg(feature = "partial-eval")]
     mod partial {
         use super::super::PartialAuthorizationAnswer;
-        use std::collections::HashSet;
-        use std::str::FromStr;
-        use cool_asserts::assert_matches;
         use crate::frontend::is_authorized::json_is_authorized_partial;
         use crate::frontend::utils::InterfaceResult;
         use crate::Decision;
         use crate::PolicyId;
+        use cool_asserts::assert_matches;
+        use std::collections::HashSet;
+        use std::str::FromStr;
 
         #[test]
         fn test_authorized_partial_no_resource() {
@@ -1743,4 +1764,3 @@ mod test {
         }
     }
 }
-
