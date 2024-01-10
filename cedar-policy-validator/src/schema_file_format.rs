@@ -98,6 +98,19 @@ where
 
 impl<T> Eq for Node<T> where T: Eq {}
 
+#[cfg(feature = "arbitrary")]
+impl<'a, T> arbitrary::Arbitrary<'a> for Node<T>
+where
+    T: arbitrary::Arbitrary<'a>,
+{
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Node::no_loc(u.arbitrary()?))
+    }
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        <T as arbitrary::Arbitrary>::size_hint(depth)
+    }
+}
+
 /// A node wrapping a string
 pub type StrNode = Node<SmolStr>;
 /// A node wrapping a schema type
