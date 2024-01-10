@@ -53,7 +53,7 @@ pub enum ValueKind {
     ExtensionValue(Arc<ExtensionValueWithArgs>),
 }
 
-// Custom impl of `Ord`: ignore the `Loc`s
+// Custom impl of `Ord`, ignoring the `Loc`s
 impl Ord for Value {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.value.cmp(&other.value)
