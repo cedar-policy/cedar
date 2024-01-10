@@ -358,7 +358,7 @@ impl AuthorizationCall {
         if self.enable_request_validation {
             b = match schema.as_ref() {
                 Some(schema_ref) => b.schema(schema_ref),
-                None => b
+                None => b,
             }
         }
         let q = b.build().map_err(|e| [e.to_string()])?;
