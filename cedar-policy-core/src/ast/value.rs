@@ -169,7 +169,7 @@ impl ValueKind {
 
     /// Create a set with the given `Literal`s as elements
     pub fn set_of_lits(lits: impl IntoIterator<Item = Literal>) -> Self {
-        Self::Set(Set::of_lits(lits))
+        Self::Set(Set::from_lits(lits))
     }
 
     /// Create a record with the given (key, value) pairs
@@ -310,7 +310,7 @@ impl Set {
     }
 
     /// Create a set with the given `Literal`s as elements
-    pub fn of_lits(lits: impl IntoIterator<Item = Literal>) -> Self {
+    pub fn from_lits(lits: impl IntoIterator<Item = Literal>) -> Self {
         let fast: HashSet<Literal> = lits.into_iter().collect();
         let authoritative: BTreeSet<Value> = fast
             .iter()
