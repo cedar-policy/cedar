@@ -288,33 +288,43 @@ fn constant_true() -> bool {
     true
 }
 
+fn parse_schema(
+    schema_json: Option<JsonValueWithNoDuplicateKeys>,
+) -> Result<Option<Schema>, Vec<String>> {
+    schema_json
+        .map(|v| Schema::from_json_value(v.into()))
+        .transpose()
+        .map_err(|e| vec![e.to_string()])
+}
+
+fn parse_entity_uid(
+    entity_uid_json: Option<JsonValueWithNoDuplicateKeys>,
+    category: &str,
+) -> Result<Option<EntityUid>, Vec<String>> {
+    entity_uid_json
+        .map(|v| EntityUid::from_json(v.into()))
+        .transpose()
+        .map_err(|e| vec![format!("Failed to parse {category}"), e.to_string()])
+}
+
+fn parse_context(
+    context_map: HashMap<String, JsonValueWithNoDuplicateKeys>,
+    schema_ref: Option<&Schema>,
+    action_ref: &EntityUid,
+) -> Result<Context, Vec<String>> {
+    let context = serde_json::to_value(context_map)
+        .map_err(|e| vec!["Failed to parse context".into(), e.to_string()])?;
+    Context::from_json_value(context, schema_ref.map(|s| (s, action_ref)))
+        .map_err(|e| vec![e.to_string()])
+}
+
 impl AuthorizationCall {
     fn get_components(self) -> Result<(Request, PolicySet, Entities), Vec<String>> {
-        let schema = self
-            .schema
-            .map(|v| Schema::from_json_value(v.into()))
-            .transpose()
-            .map_err(|e| [e.to_string()])?;
-        let principal = match self.principal {
-            Some(p) => Some(
-                EntityUid::from_json(p.into())
-                    .map_err(|e| ["Failed to parse principal".into(), e.to_string()])?,
-            ),
-            None => None,
-        };
-        let action = EntityUid::from_json(self.action.into())
-            .map_err(|e| ["Failed to parse action".into(), e.to_string()])?;
-        let resource = match self.resource {
-            Some(r) => Some(
-                EntityUid::from_json(r.into())
-                    .map_err(|e| ["Failed to parse resource".into(), e.to_string()])?,
-            ),
-            None => None,
-        };
-        let context = serde_json::to_value(self.context)
-            .map_err(|e| [format!("Error encoding the context as JSON: {e}")])?;
-        let context = Context::from_json_value(context, schema.as_ref().map(|s| (s, &action)))
-            .map_err(|e| [e.to_string()])?;
+        let schema = parse_schema(self.schema)?;
+        let principal = parse_entity_uid(self.principal, "principal")?;
+        let action = parse_entity_uid(Some(self.action), "action")?.unwrap();
+        let resource = parse_entity_uid(self.resource, "resource")?;
+        let context = parse_context(self.context, schema.as_ref(), &action)?;
         let q = Request::new(
             principal,
             Some(action),
@@ -333,32 +343,11 @@ impl AuthorizationCall {
 
     #[cfg(feature = "partial-eval")]
     fn get_components_partial(self) -> Result<(Request, PolicySet, Entities), Vec<String>> {
-        let schema = self
-            .schema
-            .map(|v| Schema::from_json_value(v.into()))
-            .transpose()
-            .map_err(|e| [e.to_string()])?;
-        let principal = match self.principal {
-            Some(p) => Some(
-                EntityUid::from_json(p.into())
-                    .map_err(|e| ["Failed to parse principal".into(), e.to_string()])?,
-            ),
-            None => None,
-        };
-        let action = EntityUid::from_json(self.action.into())
-            .map_err(|e| ["Failed to parse action".into(), e.to_string()])?;
-        let resource = match self.resource {
-            Some(r) => Some(
-                EntityUid::from_json(r.into())
-                    .map_err(|e| ["Failed to parse resource".into(), e.to_string()])?,
-            ),
-            None => None,
-        };
-
-        let context = serde_json::to_value(self.context)
-            .map_err(|e| [format!("Error encoding the context as JSON: {e}")])?;
-        let context = Context::from_json_value(context, schema.as_ref().map(|s| (s, &action)))
-            .map_err(|e| [e.to_string()])?;
+        let schema = parse_schema(self.schema)?;
+        let principal = parse_entity_uid(self.principal, "principal")?;
+        let action = parse_entity_uid(Some(self.action), "action")?.unwrap();
+        let resource = parse_entity_uid(self.resource, "resource")?;
+        let context = parse_context(self.context, schema.as_ref(), &action)?;
         let mut b = Request::builder().action(Some(action)).context(context);
         if principal.is_some() {
             b = b.principal(principal)
