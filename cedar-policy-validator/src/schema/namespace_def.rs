@@ -339,7 +339,7 @@ impl ValidatorNamespaceDef {
                     OpenTag::ClosedAttributes,
                 ))
             }
-            CedarValueJson::Set(v) => match v.get(0) {
+            CedarValueJson::Set(v) => match v.first() {
                 //sets with elements of different types will be rejected elsewhere
                 None => Err(SchemaError::ActionAttributesContainEmptySet(
                     action_id.clone(),

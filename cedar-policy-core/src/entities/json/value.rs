@@ -19,7 +19,7 @@ use super::{
 };
 use crate::ast::{
     BorrowedRestrictedExpr, Eid, EntityUID, ExprConstructionError, ExprKind, Literal, Name,
-    RestrictedExpr, Unknown, Value,
+    RestrictedExpr, Unknown, Value, ValueKind,
 };
 use crate::entities::{
     schematype_of_restricted_expr, unwrap_or_clone, EntitySchemaConformanceError, EscapeKind,
@@ -313,26 +313,34 @@ impl CedarValueJson {
     ///     argument falls into one of these two cases itself, or because the
     ///     argument is a nontrivial residual.)
     pub fn from_value(value: Value) -> Result<Self, JsonSerializationError> {
+        Self::from_valuekind(value.value)
+    }
+
+    /// Convert a Cedar `ValueKind` into a `CedarValueJson`.
+    ///
+    /// For discussion of when this throws errors, see notes on `from_value`.
+    pub fn from_valuekind(value: ValueKind) -> Result<Self, JsonSerializationError> {
         match value {
-            Value::Lit(lit) => Ok(Self::from_lit(lit)),
-            Value::Set(set) => Ok(Self::Set(
+            ValueKind::Lit(lit) => Ok(Self::from_lit(lit)),
+            ValueKind::Set(set) => Ok(Self::Set(
                 set.iter()
                     .cloned()
                     .map(Self::from_value)
                     .collect::<Result<_, _>>()?,
             )),
-            Value::Record(map) => {
+            ValueKind::Record(record) => {
                 // if `map` contains a key which collides with one of our JSON
                 // escapes, then we have a problem because it would be interpreted
                 // as an escape when being read back in.
-                check_for_reserved_keys(map.keys())?;
+                check_for_reserved_keys(record.keys())?;
                 Ok(Self::Record(
-                    map.iter()
+                    record
+                        .iter()
                         .map(|(k, v)| Ok((k.clone(), Self::from_value(v.clone())?)))
                         .collect::<Result<JsonRecord, JsonSerializationError>>()?,
                 ))
             }
-            Value::ExtensionValue(ev) => {
+            ValueKind::ExtensionValue(ev) => {
                 let ext_fn: &Name = &ev.constructor;
                 Ok(Self::ExtnEscape {
                     __extn: FnAndArg {

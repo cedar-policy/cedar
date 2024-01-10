@@ -77,7 +77,7 @@ impl ParseError {
             },
             ParseError::ParseLiteral(parse_lit_err) => parse_lit_err
                 .labels()
-                .and_then(|mut it| it.next().map(|lspan| lspan.inner().clone())),
+                .and_then(|mut it| it.next().map(|lspan| *lspan.inner())),
         }
     }
 }
@@ -625,7 +625,6 @@ impl ParseErrors {
         self.0.push(err.into());
     }
 
-    // TODO(spinda): Can we get rid of this?
     /// returns a Vec with stringified versions of the ParseErrors
     pub fn errors_as_strings(&self) -> Vec<String> {
         self.0.iter().map(ToString::to_string).collect()

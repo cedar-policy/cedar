@@ -256,8 +256,6 @@ pub fn typecheck_value_against_schematype(
     expected_ty: &SchemaType,
     extensions: Extensions<'_>,
 ) -> Result<(), TypecheckError> {
-    // TODO: can this `.clone()` be avoided, perhaps by converting to
-    // `BorrowedRestrictedExpr` instead of `RestrictedExpr`
     match RestrictedExpr::try_from(value.clone()) {
         Ok(expr) => typecheck_restricted_expr_against_schematype(
             expr.as_borrowed(),

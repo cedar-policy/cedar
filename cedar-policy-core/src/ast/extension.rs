@@ -178,7 +178,7 @@ impl ExtensionFunction {
         Self::new(
             name.clone(),
             style,
-            Box::new(move |args: &[Value]| match args.get(0) {
+            Box::new(move |args: &[Value]| match args.first() {
                 Some(arg) => func(arg.clone()),
                 None => Err(evaluator::EvaluationError::wrong_num_arguments(
                     name.clone(),

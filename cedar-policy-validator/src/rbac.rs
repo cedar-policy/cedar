@@ -451,7 +451,7 @@ mod test {
         let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
 
         assert_eq!(1, notes.len());
-        match notes.get(0) {
+        match notes.first() {
             Some(ValidationErrorKind::UnrecognizedEntityType(UnrecognizedEntityType {
                 actual_entity_type,
                 suggested_entity_type,
@@ -615,7 +615,7 @@ mod test {
         let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
 
         assert_eq!(1, notes.len());
-        match notes.get(0) {
+        match notes.first() {
             Some(ValidationErrorKind::UnrecognizedEntityType(UnrecognizedEntityType {
                 actual_entity_type,
                 suggested_entity_type,
@@ -652,7 +652,7 @@ mod test {
         let notes: Vec<ValidationErrorKind> = validate.validate_action_ids(&policy).collect();
 
         assert_eq!(1, notes.len());
-        match notes.get(0) {
+        match notes.first() {
             Some(ValidationErrorKind::UnrecognizedActionId(UnrecognizedActionId {
                 actual_action_id,
                 suggested_action_id,
@@ -778,7 +778,7 @@ mod test {
             validator.validate_entity_types_in_slots(&env).collect();
 
         assert_eq!(1, notes.len());
-        match notes.get(0) {
+        match notes.first() {
             Some(ValidationErrorKind::UnrecognizedEntityType(UnrecognizedEntityType {
                 actual_entity_type,
                 suggested_entity_type,
@@ -827,7 +827,7 @@ mod test {
         let notes: Vec<ValidationErrorKind> = validate.validate_action_ids(&policy).collect();
 
         assert_eq!(1, notes.len());
-        match notes.get(0) {
+        match notes.first() {
             Some(ValidationErrorKind::UnrecognizedActionId(UnrecognizedActionId {
                 actual_action_id,
                 suggested_action_id,
@@ -1189,7 +1189,7 @@ mod test {
             )
             .collect();
         assert_eq!(1, notes.len());
-        match notes.get(0) {
+        match notes.first() {
             Some(ValidationErrorKind::InvalidActionApplication(_)) => (),
             _ => panic!("Unexpected variant of ValidationErrorKind."),
         }
@@ -1214,7 +1214,7 @@ mod test {
             )
             .collect();
         assert_eq!(1, notes.len());
-        match notes.get(0) {
+        match notes.first() {
             Some(ValidationErrorKind::InvalidActionApplication(_)) => (),
             _ => panic!("Unexpected variant of ValidationErrorKind."),
         }
@@ -1239,7 +1239,7 @@ mod test {
             )
             .collect();
         assert_eq!(1, notes.len());
-        match notes.get(0) {
+        match notes.first() {
             Some(ValidationErrorKind::InvalidActionApplication(_)) => (),
             _ => panic!("Unexpected variant of ValidationErrorKind."),
         }
@@ -1630,7 +1630,7 @@ mod test {
         );
         let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
         assert_eq!(1, notes.len());
-        assert_matches!(notes.get(0),
+        assert_matches!(notes.first(),
             Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
                 assert_eq!("foo", entity_id);
             }
@@ -1648,7 +1648,7 @@ mod test {
         );
         let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
         assert_eq!(1, notes.len());
-        assert_matches!(notes.get(0),
+        assert_matches!(notes.first(),
             Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
                 assert_eq!("foo", entity_id);
             }
@@ -1677,7 +1677,7 @@ mod test {
         let notes: Vec<ValidationErrorKind> = validate.validate_entity_types(&policy).collect();
         println!("{:?}", notes);
         assert_eq!(1, notes.len());
-        assert_matches!(notes.get(0),
+        assert_matches!(notes.first(),
             Some(ValidationErrorKind::UnspecifiedEntity(UnspecifiedEntityError { entity_id })) => {
                 assert_eq!("foo", entity_id);
             }

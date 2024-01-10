@@ -9,24 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `AsRef<str>` implementation for `PolicyId`.
+- `AsRef<str>` implementation for `PolicyId`. (#504, resolving #503)
 - New API `template_links` for `Policy` to retrieve the linked values for a
-  template-linked policy. (resolving #489)
+  template-linked policy. (#515, resolving #489)
 
 ### Changed
 
-- Add hints suggesting how to fix some type errors.
+- Add hints suggesting how to fix some type errors. (#513)
 - The `ValidationResult` returned from `Validator::validate` now has a static
   lifetime, allowing it to be used in more contexts. The lifetime parameter
-  will be removed in a future major version.
-- Improve parse error around invalid `is` expressions.
+  will be removed in a future major version. (#512)
+- Improve parse error around invalid `is` expressions. (#491, resolving #409)
 - Improve parser error message when a policy includes an invalid template slot.
   The error now identifies that the policy used an invalid slot and suggests using
-  one of the valid slots.
+  one of the valid slots. (#487, resolving #451)
 - Improve parser error messages to more reliably notice that a function or
   method does exists when it is called with an incorrect number of arguments or
-  using the wrong call style.
-- Include source spans on more parser error messages.
+  using the wrong call style. (#482)
+- Include source spans on more parser error messages. (#471, resolving #465)
 - Better integration with `miette` for various error types. If you have
   previously been just using the `Display` trait to get the error message from a
   Cedar error type, you may want to consider also examining other data provided
@@ -34,10 +34,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Alternately, you can use `miette` and its `fancy` feature to format the error
   and all associated information in a pretty human-readable format or as JSON.
   For more details, see `miette`'s
-  [documentation](https://docs.rs/miette/latest/miette/index.html).
+  [documentation](https://docs.rs/miette/latest/miette/index.html). (#477)
 - For the `partial-eval` experimental feature: make the return values of
   `RequestBuilder`'s `principal`, `action`, `resource`, `context` and
-  `schema` functions `#[must_use]`.
+  `schema` functions `#[must_use]`. (#502)
+
+### Fixed
+
+## [3.0.1] - 2023-12-21
+Cedar Language Version: 3.0.0
 
 ### Fixed
 
@@ -153,6 +158,23 @@ Cedar Language Version: 3.0.0
 - Move `ValidationMode::Permissive` behind an experimental feature flag.
   To continue using this feature you must enable the `permissive-validate`
   feature flag. (#428)
+
+  
+## [2.4.3] - 2023-12-21
+
+Cedar Language Version: 2.1.3
+
+### Fixed
+
+- Reverted accidental breaking change to schema format introduced in the 2.3.2
+  release.
+  Attribute types in schema files may now contain unexpected keys (as they could
+  before 2.3.2).
+  As a side effect, schema parsing error messages are less useful when an
+  attribute type is missing a required key.
+  The 2.4.2 behavior, including the more useful error messages, remain available
+  in all 3.x versions of Cedar.
+  (#520)
 
 ## [2.4.2] - 2023-10-23
 Cedar Language Version: 2.1.2
@@ -322,8 +344,10 @@ Cedar Language Version: 2.0.0
 Cedar Language Version: 2.0.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.0.0...main
-[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.2...v3.0.0
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.0.1...main
+[3.0.1]: https://github.com/cedar-policy/cedar/compare/v3.0.0...v3.0.1
+[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.3...v3.0.0
+[2.4.3]: https://github.com/cedar-policy/cedar/compare/v2.4.2...v2.4.3
 [2.4.2]: https://github.com/cedar-policy/cedar/compare/v2.4.1...v2.4.2
 [2.4.1]: https://github.com/cedar-policy/cedar/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/cedar-policy/cedar/compare/v2.3.3...v2.4.0

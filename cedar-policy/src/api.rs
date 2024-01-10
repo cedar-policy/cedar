@@ -154,7 +154,7 @@ impl Entity {
 
     /// Create a new `Entity` with this Uid, no attributes, and no parents.
     /// ```
-    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// # use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
     /// # use std::str::FromStr;
     /// let eid = EntityId::from_str("alice").unwrap();
     /// let type_name = EntityTypeName::from_str("User").unwrap();
@@ -187,10 +187,9 @@ impl Entity {
     /// This can also return Some(Err) if the attribute is not a value (i.e., is
     /// unknown due to partial evaluation).
     /// ```
-    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid, EvalResult,
-    ///     RestrictedExpression};
-    /// use std::collections::{HashMap, HashSet};
-    /// use std::str::FromStr;
+    /// # use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid, EvalResult, RestrictedExpression};
+    /// # use std::collections::{HashMap, HashSet};
+    /// # use std::str::FromStr;
     /// let eid = EntityId::from_str("alice").unwrap();
     /// let type_name = EntityTypeName::from_str("User").unwrap();
     /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
@@ -229,7 +228,7 @@ pub use entities::EntitiesError;
 impl Entities {
     /// Create a fresh `Entities` with no entities
     /// ```
-    /// use cedar_policy::Entities;
+    /// # use cedar_policy::Entities;
     /// let entities = Entities::empty();
     /// ```
     pub fn empty() -> Self {
@@ -432,9 +431,8 @@ impl Entities {
     /// superfluous attributes are provided.
     ///
     /// ```
-    /// use std::collections::HashMap;
-    /// use std::str::FromStr;
     /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, EvalResult, Request,PolicySet};
+    /// # use std::str::FromStr;
     /// let data =r#"
     /// [
     /// {
@@ -446,20 +444,18 @@ impl Entities {
     ///   "parents": [{"type":"Group","id":"admin"}]
     /// },
     /// {
-    ///   "uid": {"type":"Groupd","id":"admin"},
+    ///   "uid": {"type":"Group","id":"admin"},
     ///   "attrs": {},
     ///   "parents": []
     /// }
     /// ]
     /// "#;
     /// let entities = Entities::from_json_str(data, None).unwrap();
-    /// let eid = EntityId::from_str("alice").unwrap();
-    /// let type_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
-    /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
-    /// let entity = entities.get(&euid).unwrap();
-    /// assert_eq!(entity.attr("age").unwrap().unwrap(), EvalResult::Long(19));
-    /// let ip = entity.attr("ip_addr").unwrap().unwrap();
-    /// assert_eq!(ip, EvalResult::ExtensionValue("10.0.1.101/32".to_string()));
+    /// # let euid = EntityUid::from_str(r#"User::"alice""#).unwrap();
+    /// # let entity = entities.get(&euid).unwrap();
+    /// # assert_eq!(entity.attr("age").unwrap().unwrap(), EvalResult::Long(19));
+    /// # let ip = entity.attr("ip_addr").unwrap().unwrap();
+    /// # assert_eq!(ip, EvalResult::ExtensionValue("10.0.1.101/32".to_string()));
     /// ```
     pub fn from_json_str(
         json: &str,
@@ -493,8 +489,6 @@ impl Entities {
     /// superfluous attributes are provided.
     ///
     /// ```
-    /// use std::collections::HashMap;
-    /// use std::str::FromStr;
     /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, EvalResult, Request,PolicySet};
     /// let data =serde_json::json!(
     /// [
@@ -669,10 +663,8 @@ impl Authorizer {
     /// The language spec and Dafny model give a precise definition of how this
     /// is computed.
     /// ```
-    /// use cedar_policy::{Authorizer,Context,Entities,EntityId,EntityTypeName,
-    /// EntityUid, Request,PolicySet};
-    /// use std::str::FromStr;
-    ///
+    /// # use cedar_policy::{Authorizer,Context,Decision,Entities,EntityId,EntityTypeName, EntityUid, Request,PolicySet};
+    /// # use std::str::FromStr;
     /// // create a request
     /// let p_eid = EntityId::from_str("alice").unwrap();
     /// let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
@@ -700,7 +692,7 @@ impl Authorizer {
     /// when { principal.ip_addr.isIpv4() };
     /// "#;
     /// let policy = PolicySet::from_str(s).expect("policy error");
-
+    ///
     /// // create entities
     /// let e = r#"[
     ///     {
@@ -715,8 +707,8 @@ impl Authorizer {
     /// let entities = Entities::from_json_str(e, None).expect("entity error");
     ///
     /// let authorizer = Authorizer::new();
-    /// let r = authorizer.is_authorized(&request, &policy, &entities);
-    /// println!("{:?}", r);
+    /// let response = authorizer.is_authorized(&request, &policy, &entities);
+    /// assert_eq!(response.decision(), Decision::Allow);
     /// ```
     pub fn is_authorized(&self, r: &Request, p: &PolicySet, e: &Entities) -> Response {
         self.0.is_authorized(r.0.clone(), &p.ast, &e.0).into()
@@ -794,7 +786,8 @@ impl From<authorizer::Diagnostics> for Diagnostics {
 }
 
 impl Diagnostics {
-    /// Get the policies that contributed to the decision
+    /// Get the `PolicyId`s of the policies that contributed to the decision.
+    /// If no policies applied to the request, this set will be empty.
     /// ```
     /// # use cedar_policy::{Authorizer, Context, Decision, Entities, EntityId, EntityTypeName,
     /// # EntityUid, Request,PolicySet};
@@ -853,7 +846,8 @@ impl Diagnostics {
         self.reason.iter()
     }
 
-    /// Get the errors
+    /// Get the errors that occurred during authorization. The errors should be
+    /// treated as unordered, since policies may be evaluated in any order.
     /// ```
     /// # use cedar_policy::{Authorizer, Context, Decision, Entities, EntityId, EntityTypeName,
     /// # EntityUid, Request,PolicySet};
@@ -1705,7 +1699,17 @@ impl<'a> Diagnostic for ValidationWarning<'a> {
     }
 }
 
-/// unique identifier portion of the `EntityUid` type
+/// Identifier portion of the [`EntityUid`] type.
+///
+/// An `EntityId` can can be constructed using [`EntityId::from_str`] or by
+/// calling `parse()` on a string. This implementation is `Infallible`, so the
+/// parsed `EntityId` can be extracted safely.
+///
+/// ```
+/// # use cedar_policy::EntityId;
+/// let id : EntityId = "my-id".parse().unwrap_or_else(|never| match never {});
+/// # assert_eq!(id.as_ref(), "my-id");
+/// ```
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
 pub struct EntityId(ast::Eid);
@@ -1732,7 +1736,20 @@ impl std::fmt::Display for EntityId {
     }
 }
 
-/// Represents a concatenation of Namespaces and `TypeName`
+/// Represents an entity type name. Consists of a namespace and the type name.
+///
+/// An `EntityTypeName` can can be constructed using
+/// [`EntityTypeName::from_str`] or by calling `parse()` on a string. Unlike
+/// [`EntityId::from_str`], _this can fail_, so it is important to properly
+/// handle an `Err` result.
+///
+/// ```
+/// # use cedar_policy::EntityTypeName;
+/// let id : Result<EntityTypeName, _> = "Namespace::Type".parse();
+/// # let id = id.unwrap();
+/// # assert_eq!(id.basename(), "Type");
+/// # assert_eq!(id.namespace(), "Namespace");
+/// ```
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
 pub struct EntityTypeName(ast::Name);
@@ -1740,8 +1757,8 @@ pub struct EntityTypeName(ast::Name);
 impl EntityTypeName {
     /// Get the basename of the `EntityTypeName` (ie, with namespaces stripped).
     /// ```
-    /// use cedar_policy::EntityTypeName;
-    /// use std::str::FromStr;
+    /// # use cedar_policy::EntityTypeName;
+    /// # use std::str::FromStr;
     /// let type_name = EntityTypeName::from_str("MySpace::User").unwrap();
     /// assert_eq!(type_name.basename(), "User");
     /// ```
@@ -1751,8 +1768,8 @@ impl EntityTypeName {
 
     /// Get the namespace of the `EntityTypeName`, as components
     /// ```
-    /// use cedar_policy::EntityTypeName;
-    /// use std::str::FromStr;
+    /// # use cedar_policy::EntityTypeName;
+    /// # use std::str::FromStr;
     /// let type_name = EntityTypeName::from_str("Namespace::MySpace::User").unwrap();
     /// let mut components = type_name.namespace_components();
     /// assert_eq!(components.next(), Some("Namespace"));
@@ -1765,8 +1782,8 @@ impl EntityTypeName {
 
     /// Get the full namespace of the `EntityTypeName`, as a single string.
     /// ```
-    /// use cedar_policy::EntityTypeName;
-    /// use std::str::FromStr;
+    /// # use cedar_policy::EntityTypeName;
+    /// # use std::str::FromStr;
     /// let type_name = EntityTypeName::from_str("Namespace::MySpace::User").unwrap();
     /// let components = type_name.namespace();
     /// assert_eq!(components,"Namespace::MySpace");
@@ -1776,8 +1793,8 @@ impl EntityTypeName {
     }
 }
 
-// This FromStr implementation requires the _normalized_ representation of the
-// type name. See https://github.com/cedar-policy/rfcs/pull/9/.
+/// This `FromStr` implementation requires the _normalized_ representation of the
+/// type name. See <https://github.com/cedar-policy/rfcs/pull/9/>.
 impl FromStr for EntityTypeName {
     type Err = ParseErrors;
 
@@ -1792,12 +1809,22 @@ impl std::fmt::Display for EntityTypeName {
     }
 }
 
-/// Represents a namespace
+/// Represents a namespace.
+///
+/// An `EntityNamespace` can can be constructed using
+/// [`EntityNamespace::from_str`] or by calling `parse()` on a string.
+/// _This can fail_, so it is important to properly handle an `Err` result.
+///
+/// ```
+/// # use cedar_policy::EntityNamespace;
+/// let id : Result<EntityNamespace, _> = "My::Name::Space".parse();
+/// # assert_eq!(id.unwrap().to_string(), "My::Name::Space".to_string());
+/// ```
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EntityNamespace(ast::Name);
 
-// This FromStr implementation requires the _normalized_ representation of the
-// namespace. See https://github.com/cedar-policy/rfcs/pull/9/.
+/// This `FromStr` implementation requires the _normalized_ representation of the
+/// namespace. See <https://github.com/cedar-policy/rfcs/pull/9/>.
 impl FromStr for EntityNamespace {
     type Err = ParseErrors;
 
@@ -1812,7 +1839,14 @@ impl std::fmt::Display for EntityNamespace {
     }
 }
 
-/// Unique Id for an entity, such as `User::"alice"`
+/// Unique id for an entity, such as `User::"alice"`.
+///
+/// An `EntityUid` contains an [`EntityTypeName`] and [`EntityId`]. It can
+/// be constructed from these components using
+/// [`EntityUid::from_type_name_and_id`], parsed from a string using `.parse()`
+/// (via [`EntityUid::from_str`]), or constructed from a JSON value using
+/// [`EntityUid::from_json`].
+///
 // INVARIANT: this can never be an `ast::EntityType::Unspecified`
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
@@ -1821,8 +1855,8 @@ pub struct EntityUid(ast::EntityUID);
 impl EntityUid {
     /// Returns the portion of the Euid that represents namespace and entity type
     /// ```
-    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
-    /// use std::str::FromStr;
+    /// # use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// # use std::str::FromStr;
     /// let json_data = serde_json::json!({ "__entity": { "type": "User", "id": "alice" } });
     /// let euid = EntityUid::from_json(json_data).unwrap();
     /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
@@ -1838,8 +1872,8 @@ impl EntityUid {
 
     /// Returns the id portion of the Euid
     /// ```
-    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
-    /// use std::str::FromStr;
+    /// # use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// # use std::str::FromStr;
     /// let json_data = serde_json::json!({ "__entity": { "type": "User", "id": "alice" } });
     /// let euid = EntityUid::from_json(json_data).unwrap();
     /// assert_eq!(euid.id(), &EntityId::from_str("alice").unwrap());
@@ -1850,14 +1884,13 @@ impl EntityUid {
 
     /// Creates `EntityUid` from `EntityTypeName` and `EntityId`
     ///```
-    /// use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
-    /// use std::str::FromStr;
+    /// # use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
+    /// # use std::str::FromStr;
     /// let eid = EntityId::from_str("alice").unwrap();
     /// let type_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
     /// let euid = EntityUid::from_type_name_and_id(type_name, eid);
-    /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
-    /// assert_eq!(euid.id(), &EntityId::from_str("alice").unwrap());
-    ///
+    /// # assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
+    /// # assert_eq!(euid.id(), &EntityId::from_str("alice").unwrap());
     /// ```
     pub fn from_type_name_and_id(name: EntityTypeName, id: EntityId) -> Self {
         // INVARIANT: `from_components` always constructs a Concrete id
@@ -1871,7 +1904,8 @@ impl EntityUid {
     /// # use std::str::FromStr;
     /// let json_data = serde_json::json!({ "__entity": { "type": "User", "id": "123abc" } });
     /// let euid = EntityUid::from_json(json_data).unwrap();
-    /// assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
+    /// # assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
+    /// # assert_eq!(euid.id(), &EntityId::from_str("123abc").unwrap());
     /// ```
     #[allow(clippy::result_large_err)]
     pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
@@ -1903,7 +1937,7 @@ impl FromStr for EntityUid {
     ///
     /// Examples:
     /// ```
-    ///  use cedar_policy::EntityUid;
+    ///  # use cedar_policy::EntityUid;
     ///  let euid: EntityUid = r#"Foo::Bar::"george""#.parse().unwrap();
     ///  // Get the type of this euid (`Foo::Bar`)
     ///  euid.type_name();
@@ -2084,7 +2118,7 @@ impl PolicySet {
         };
         if self
             .ast
-            .remove_static(&ast::PolicyID::from_string(policy_id.to_string()))
+            .remove_static(&ast::PolicyID::from_string(&policy_id))
             .is_ok()
         {
             Ok(policy)
@@ -2116,7 +2150,7 @@ impl PolicySet {
         #[allow(clippy::panic)]
         match self
             .ast
-            .remove_template(&ast::PolicyID::from_string(template_id.to_string()))
+            .remove_template(&ast::PolicyID::from_string(&template_id))
         {
             Ok(_) => Ok(template),
             Err(ast::PolicySetTemplateRemovalError::RemoveTemplateWithLinksError(_)) => {
@@ -2142,7 +2176,7 @@ impl PolicySet {
         template_id: PolicyId,
     ) -> Result<impl Iterator<Item = &PolicyId>, PolicySetError> {
         self.ast
-            .get_linked_policies(&ast::PolicyID::from_string(template_id.to_string()))
+            .get_linked_policies(&ast::PolicyID::from_string(&template_id))
             .map_or_else(
                 |_| Err(PolicySetError::TemplateNonexistentError(template_id)),
                 |v| Ok(v.map(PolicyId::ref_cast)),
@@ -2296,10 +2330,7 @@ impl PolicySet {
         // If self.policies and self.ast disagree, authorization cannot be trusted.
         // PANIC SAFETY: We just found the policy in self.policies.
         #[allow(clippy::panic)]
-        match self
-            .ast
-            .unlink(&ast::PolicyID::from_string(policy_id.to_string()))
-        {
+        match self.ast.unlink(&ast::PolicyID::from_string(&policy_id)) {
             Ok(_) => Ok(policy),
             Err(ast::PolicySetUnlinkError::NotLinkError(_)) => {
                 //Restore self.policies
@@ -2647,7 +2678,16 @@ impl TemplateResourceConstraint {
     }
 }
 
-/// Unique Ids assigned to policies and templates
+/// Unique ids assigned to policies and templates.
+///
+/// A `PolicyId` can can be constructed using [`PolicyId::from_str`] or by
+/// calling `parse()` on a string. This currently always returns `Ok()`.
+///
+/// ```
+/// # use cedar_policy::PolicyId;
+/// let id : PolicyId = "my-id".parse().unwrap();
+/// # assert_eq!(id.as_ref(), "my-id");
+/// ```
 #[repr(transparent)]
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize, Deserialize, RefCast)]
 pub struct PolicyId(ast::PolicyID);
@@ -2655,7 +2695,7 @@ pub struct PolicyId(ast::PolicyID);
 impl FromStr for PolicyId {
     type Err = ParseErrors;
 
-    /// Create a `PolicyId` from a string. Currently always returns Ok().
+    /// Create a `PolicyId` from a string. Currently always returns `Ok()`.
     fn from_str(id: &str) -> Result<Self, Self::Err> {
         Ok(Self(ast::PolicyID::from_string(id)))
     }
@@ -2717,7 +2757,7 @@ impl Policy {
             let wrapped_vals: HashMap<SlotId, EntityUid> = self
                 .ast
                 .env()
-                .into_iter()
+                .iter()
                 .map(|(key, value)| (SlotId(*key), EntityUid(value.clone())))
                 .collect();
             Some(wrapped_vals)
@@ -2867,8 +2907,7 @@ impl Policy {
     /// The behavior around None may change in the future.
     ///
     /// ```
-    /// use cedar_policy::{Policy, PolicyId};
-    /// use std::str::FromStr;
+    /// # use cedar_policy::{Policy, PolicyId};
     ///
     /// let json: serde_json::Value = serde_json::json!(
     ///        {
@@ -3236,9 +3275,9 @@ pub struct RequestBuilder<'a> {
 impl<'a> Default for RequestBuilder<'a> {
     fn default() -> Self {
         Self {
-            principal: ast::EntityUIDEntry::Unknown,
-            action: ast::EntityUIDEntry::Unknown,
-            resource: ast::EntityUIDEntry::Unknown,
+            principal: ast::EntityUIDEntry::Unknown { loc: None },
+            action: ast::EntityUIDEntry::Unknown { loc: None },
+            resource: ast::EntityUIDEntry::Unknown { loc: None },
             context: None,
             schema: None,
         }
@@ -3260,10 +3299,11 @@ impl<'a> RequestBuilder<'a> {
     pub fn principal(self, principal: Option<EntityUid>) -> Self {
         Self {
             principal: match principal {
-                Some(p) => ast::EntityUIDEntry::concrete(p.0),
-                None => ast::EntityUIDEntry::concrete(ast::EntityUID::unspecified_from_eid(
-                    ast::Eid::new("principal"),
-                )),
+                Some(p) => ast::EntityUIDEntry::concrete(p.0, None),
+                None => ast::EntityUIDEntry::concrete(
+                    ast::EntityUID::unspecified_from_eid(ast::Eid::new("principal")),
+                    None,
+                ),
             },
             ..self
         }
@@ -3282,10 +3322,11 @@ impl<'a> RequestBuilder<'a> {
     pub fn action(self, action: Option<EntityUid>) -> Self {
         Self {
             action: match action {
-                Some(a) => ast::EntityUIDEntry::concrete(a.0),
-                None => ast::EntityUIDEntry::concrete(ast::EntityUID::unspecified_from_eid(
-                    ast::Eid::new("action"),
-                )),
+                Some(a) => ast::EntityUIDEntry::concrete(a.0, None),
+                None => ast::EntityUIDEntry::concrete(
+                    ast::EntityUID::unspecified_from_eid(ast::Eid::new("action")),
+                    None,
+                ),
             },
             ..self
         }
@@ -3304,10 +3345,11 @@ impl<'a> RequestBuilder<'a> {
     pub fn resource(self, resource: Option<EntityUid>) -> Self {
         Self {
             resource: match resource {
-                Some(r) => ast::EntityUIDEntry::concrete(r.0),
-                None => ast::EntityUIDEntry::concrete(ast::EntityUID::unspecified_from_eid(
-                    ast::Eid::new("resource"),
-                )),
+                Some(r) => ast::EntityUIDEntry::concrete(r.0, None),
+                None => ast::EntityUIDEntry::concrete(
+                    ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")),
+                    None,
+                ),
             },
             ..self
         }
@@ -3344,7 +3386,14 @@ impl<'a> RequestBuilder<'a> {
     }
 }
 
-/// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
+/// An authorization request is a tuple `<P, A, R, C>` where
+/// * P is the principal [`EntityUid`],
+/// * A is the action [`EntityUid`],
+/// * R is the resource [`EntityUid`], and
+/// * C is the request [`Context`] record.
+///
+/// It represents an authorization request asking the question, "Can this
+/// principal take this action on this resource in this context?"
 #[repr(transparent)]
 #[derive(Debug, RefCast)]
 pub struct Request(pub(crate) ast::Request);
@@ -3388,9 +3437,9 @@ impl Request {
             None => ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")),
         };
         Ok(Self(ast::Request::new(
-            p,
-            a,
-            r,
+            (p, None),
+            (a, None),
+            (r, None),
             context.0,
             schema.map(|schema| &schema.0),
             Extensions::all_available(),
@@ -3402,12 +3451,12 @@ impl Request {
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn principal(&self) -> Option<&EntityUid> {
         match self.0.principal() {
-            ast::EntityUIDEntry::Known(euid) => match euid.entity_type() {
+            ast::EntityUIDEntry::Known { euid, .. } => match euid.entity_type() {
                 // INVARIANT: we ensure Concrete-ness here
                 ast::EntityType::Specified(_) => Some(EntityUid::ref_cast(euid.as_ref())),
                 ast::EntityType::Unspecified => None,
             },
-            ast::EntityUIDEntry::Unknown => None,
+            ast::EntityUIDEntry::Unknown { .. } => None,
         }
     }
 
@@ -3416,12 +3465,12 @@ impl Request {
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn action(&self) -> Option<&EntityUid> {
         match self.0.action() {
-            ast::EntityUIDEntry::Known(euid) => match euid.entity_type() {
+            ast::EntityUIDEntry::Known { euid, .. } => match euid.entity_type() {
                 // INVARIANT: we ensure Concrete-ness here
                 ast::EntityType::Specified(_) => Some(EntityUid::ref_cast(euid.as_ref())),
                 ast::EntityType::Unspecified => None,
             },
-            ast::EntityUIDEntry::Unknown => None,
+            ast::EntityUIDEntry::Unknown { .. } => None,
         }
     }
 
@@ -3430,12 +3479,12 @@ impl Request {
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn resource(&self) -> Option<&EntityUid> {
         match self.0.resource() {
-            ast::EntityUIDEntry::Known(euid) => match euid.entity_type() {
+            ast::EntityUIDEntry::Known { euid, .. } => match euid.entity_type() {
                 // INVARIANT: we ensure Concrete-ness here
                 ast::EntityType::Specified(_) => Some(EntityUid::ref_cast(euid.as_ref())),
                 ast::EntityType::Unspecified => None,
             },
-            ast::EntityUIDEntry::Unknown => None,
+            ast::EntityUIDEntry::Unknown { .. } => None,
         }
     }
 }
@@ -3448,7 +3497,7 @@ pub struct Context(ast::Context);
 impl Context {
     /// Create an empty `Context`
     /// ```
-    /// use cedar_policy::Context;
+    /// # use cedar_policy::Context;
     /// let context = Context::empty();
     /// ```
     pub fn empty() -> Self {
@@ -3459,34 +3508,16 @@ impl Context {
     /// or a Vec of `(key, restricted expression)` pairs, or any other iterator
     /// of `(key, restricted expression)` pairs.
     /// ```
-    /// use cedar_policy::{Context, RestrictedExpression};
-    /// # use std::collections::HashMap;
-    /// use std::str::FromStr;
-    /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request,PolicySet};
-    /// let data : serde_json::Value = serde_json::json!({
-    ///     "sub": "1234",
-    ///     "groups": {
-    ///         "1234": {
-    ///             "group_id": "abcd",
-    ///             "group_name": "test-group"
-    ///         }
-    ///     }
-    /// });
-    /// let mut groups: HashMap<String, RestrictedExpression> = HashMap::new();
-    /// groups.insert("key".to_string(), RestrictedExpression::from_str(&data.to_string()).unwrap());
-    /// groups.insert("age".to_string(), RestrictedExpression::from_str("18").unwrap());
-    /// let context = Context::from_pairs(groups).unwrap();
+    /// # use cedar_policy::{Context, EntityUid, RestrictedExpression, Request};
+    /// # use std::str::FromStr;
+    /// let context = Context::from_pairs([
+    ///   ("key".to_string(), RestrictedExpression::from_str(r#""value""#).unwrap()),
+    ///   ("age".to_string(), RestrictedExpression::from_str("18").unwrap()),
+    /// ]).unwrap();
     /// # // create a request
-    /// # let p_eid = EntityId::from_str("alice").unwrap();
-    /// # let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
-    /// # let p = EntityUid::from_type_name_and_id(p_name, p_eid);
-    /// #
-    /// # let a_eid = EntityId::from_str("view").unwrap();
-    /// # let a_name: EntityTypeName = EntityTypeName::from_str("Action").unwrap();
-    /// # let a = EntityUid::from_type_name_and_id(a_name, a_eid);
-    /// # let r_eid = EntityId::from_str("trip").unwrap();
-    /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
-    /// # let r = EntityUid::from_type_name_and_id(r_name, r_eid);
+    /// # let p = EntityUid::from_str(r#"User::"alice""#).unwrap();
+    /// # let a = EntityUid::from_str(r#"Action::"view""#).unwrap();
+    /// # let r = EntityUid::from_str(r#"Album::"trip""#).unwrap();
     /// # let request: Request = Request::new(Some(p), Some(a), Some(r), context, None).unwrap();
     /// ```
     pub fn from_pairs(
@@ -3509,11 +3540,9 @@ impl Context {
     /// Since different Actions have different schemas for `Context`, you also
     /// must specify the `Action` for schema-based parsing.
     /// ```
-    /// use cedar_policy::{Context, RestrictedExpression};
-    /// # use std::collections::HashMap;
-    /// use std::str::FromStr;
-    /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request,PolicySet};
-    /// let data =r#"{
+    /// # use cedar_policy::{Context, EntityUid, RestrictedExpression, Request};
+    /// # use std::str::FromStr;
+    /// let json_data = r#"{
     ///     "sub": "1234",
     ///     "groups": {
     ///         "1234": {
@@ -3522,18 +3551,11 @@ impl Context {
     ///         }
     ///     }
     /// }"#;
-    /// let context = Context::from_json_str(data, None).unwrap();
+    /// let context = Context::from_json_str(json_data, None).unwrap();
     /// # // create a request
-    /// # let p_eid = EntityId::from_str("alice").unwrap();
-    /// # let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
-    /// # let p = EntityUid::from_type_name_and_id(p_name, p_eid);
-    /// #
-    /// # let a_eid = EntityId::from_str("view").unwrap();
-    /// # let a_name: EntityTypeName = EntityTypeName::from_str("Action").unwrap();
-    /// # let a = EntityUid::from_type_name_and_id(a_name, a_eid);
-    /// # let r_eid = EntityId::from_str("trip").unwrap();
-    /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
-    /// # let r = EntityUid::from_type_name_and_id(r_name, r_eid);
+    /// # let p = EntityUid::from_str(r#"User::"alice""#).unwrap();
+    /// # let a = EntityUid::from_str(r#"Action::"view""#).unwrap();
+    /// # let r = EntityUid::from_str(r#"Album::"trip""#).unwrap();
     /// # let request: Request = Request::new(Some(p), Some(a), Some(r), context, None).unwrap();
     /// ```
     pub fn from_json_str(
@@ -3560,14 +3582,8 @@ impl Context {
     /// Since different Actions have different schemas for `Context`, you also
     /// must specify the `Action` for schema-based parsing.
     /// ```
-    /// use cedar_policy::{Context, RestrictedExpression, Schema};
-    /// # use std::collections::HashMap;
-    /// use std::str::FromStr;
-    /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request,PolicySet};
-    /// let data = serde_json::json!(
-    /// {
-    ///     "sub": 1234
-    /// });
+    /// # use cedar_policy::{Context, EntityUid, EntityId, EntityTypeName, RestrictedExpression, Request, Schema};
+    /// # use std::str::FromStr;
     /// let schema_json = serde_json::json!(
     ///     {
     ///       "": {
@@ -3579,31 +3595,30 @@ impl Context {
     ///           "view": {
     ///              "appliesTo": {
     ///                "principalTypes": ["User"],
-    ///                 "resourceTypes": ["Album"],
-    ///                 "context": {
-    ///                   "type": "Record",
-    ///                   "attributes": {
-    ///                     "sub": { "type": "Long" }
-    ///                   }
-    ///                 }
-    ///               }
-    ///             }
+    ///                "resourceTypes": ["Album"],
+    ///                "context": {
+    ///                  "type": "Record",
+    ///                  "attributes": {
+    ///                    "sub": { "type": "Long" }
+    ///                  }
+    ///                }
+    ///              }
     ///           }
+    ///         }
     ///       }
     ///     });
-    /// # // create a request
-    /// # let p_eid = EntityId::from_str("alice").unwrap();
-    /// # let p_name: EntityTypeName = EntityTypeName::from_str("User").unwrap();
-    /// # let principal = EntityUid::from_type_name_and_id(p_name, p_eid);
+    /// let schema = Schema::from_json_value(schema_json).unwrap();
+    ///
     /// let a_eid = EntityId::from_str("view").unwrap();
     /// let a_name: EntityTypeName = EntityTypeName::from_str("Action").unwrap();
     /// let action = EntityUid::from_type_name_and_id(a_name, a_eid);
-    /// # let r_eid = EntityId::from_str("trip").unwrap();
-    /// # let r_name: EntityTypeName = EntityTypeName::from_str("Album").unwrap();
-    /// # let resource = EntityUid::from_type_name_and_id(r_name, r_eid);
-    /// let schema = Schema::from_json_value(schema_json).unwrap();
+    /// let data = serde_json::json!({
+    ///     "sub": 1234
+    /// });
     /// let context = Context::from_json_value(data, Some((&schema, &action))).unwrap();
-    /// # let request: Request = Request::new(Some(principal), Some(action), Some(resource), context, Some(&schema)).unwrap();
+    /// # let p = EntityUid::from_str(r#"User::"alice""#).unwrap();
+    /// # let r = EntityUid::from_str(r#"Album::"trip""#).unwrap();
+    /// # let request: Request = Request::new(Some(p), Some(action), Some(r), context, Some(&schema)).unwrap();
     /// ```
     pub fn from_json_value(
         json: serde_json::Value,
@@ -3634,7 +3649,7 @@ impl Context {
     /// # use std::collections::HashMap;
     /// # use std::str::FromStr;
     /// # use std::fs::File;
-    /// let mut json = File::open("json_file.txt").unwrap();
+    /// let mut json = File::open("json_file.json").unwrap();
     /// let context = Context::from_json_file(&json, None).unwrap();
     /// # // create a request
     /// # let p_eid = EntityId::from_str("alice").unwrap();
@@ -3776,24 +3791,25 @@ impl Record {
 #[doc(hidden)]
 impl From<ast::Value> for EvalResult {
     fn from(v: ast::Value) -> Self {
-        match v {
-            ast::Value::Lit(ast::Literal::Bool(b)) => Self::Bool(b),
-            ast::Value::Lit(ast::Literal::Long(i)) => Self::Long(i),
-            ast::Value::Lit(ast::Literal::String(s)) => Self::String(s.to_string()),
-            ast::Value::Lit(ast::Literal::EntityUID(e)) => {
+        match v.value {
+            ast::ValueKind::Lit(ast::Literal::Bool(b)) => Self::Bool(b),
+            ast::ValueKind::Lit(ast::Literal::Long(i)) => Self::Long(i),
+            ast::ValueKind::Lit(ast::Literal::String(s)) => Self::String(s.to_string()),
+            ast::ValueKind::Lit(ast::Literal::EntityUID(e)) => {
                 Self::EntityUid(EntityUid(ast::EntityUID::clone(&e)))
             }
-            ast::Value::Set(s) => Self::Set(Set(s
+            ast::ValueKind::Set(set) => Self::Set(Set(set
                 .authoritative
                 .iter()
                 .map(|v| v.clone().into())
                 .collect())),
-            ast::Value::Record(r) => Self::Record(Record(
-                r.iter()
+            ast::ValueKind::Record(record) => Self::Record(Record(
+                record
+                    .iter()
                     .map(|(k, v)| (k.to_string(), v.clone().into()))
                     .collect(),
             )),
-            ast::Value::ExtensionValue(v) => Self::ExtensionValue(v.to_string()),
+            ast::ValueKind::ExtensionValue(ev) => Self::ExtensionValue(ev.to_string()),
         }
     }
 }

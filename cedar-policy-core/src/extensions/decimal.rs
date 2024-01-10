@@ -20,7 +20,7 @@ use regex::Regex;
 
 use crate::ast::{
     CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue,
-    ExtensionValueWithArgs, Literal, Name, StaticallyTyped, Type, Value,
+    ExtensionValueWithArgs, Literal, Name, StaticallyTyped, Type, Value, ValueKind,
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
@@ -179,14 +179,19 @@ fn decimal_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
     let decimal = Decimal::from_str(str.as_str()).map_err(|e| extension_err(e.to_string()))?;
     let function_name = names::DECIMAL_FROM_STR_NAME.clone();
+    let arg_source_loc = arg.source_loc().cloned();
     let e = ExtensionValueWithArgs::new(Arc::new(decimal), function_name, vec![arg.into()]);
-    Ok(Value::ExtensionValue(Arc::new(e)).into())
+    Ok(Value {
+        value: ValueKind::ExtensionValue(Arc::new(e)),
+        loc: arg_source_loc, // this gives the loc of the arg. We could perhaps give instead the loc of the entire `decimal("x.yz")` call, but that is hard to do at this program point
+    }
+    .into())
 }
 
 /// Check that `v` is a decimal type and, if it is, return the wrapped value
 fn as_decimal(v: &Value) -> Result<&Decimal, evaluator::EvaluationError> {
-    match v {
-        Value::ExtensionValue(ev) if ev.typename() == Decimal::typename() => {
+    match &v.value {
+        ValueKind::ExtensionValue(ev) if ev.typename() == Decimal::typename() => {
             // PANIC SAFETY Conditional above performs a typecheck
             #[allow(clippy::expect_used)]
             let d = ev
@@ -196,17 +201,19 @@ fn as_decimal(v: &Value) -> Result<&Decimal, evaluator::EvaluationError> {
                 .expect("already typechecked, so this downcast should succeed");
             Ok(d)
         }
-        Value::Lit(Literal::String(_)) => Err(evaluator::EvaluationError::type_error_with_advice(
-            vec![Type::Extension {
+        ValueKind::Lit(Literal::String(_)) => {
+            Err(evaluator::EvaluationError::type_error_with_advice_single(
+                Type::Extension {
+                    name: Decimal::typename(),
+                },
+                v.type_of(),
+                ADVICE_MSG.into(),
+            ))
+        }
+        _ => Err(evaluator::EvaluationError::type_error_single(
+            Type::Extension {
                 name: Decimal::typename(),
-            }],
-            v.type_of(),
-            ADVICE_MSG.into(),
-        )),
-        _ => Err(evaluator::EvaluationError::type_error(
-            vec![Type::Extension {
-                name: Decimal::typename(),
-            }],
+            },
             v.type_of(),
         )),
     }
@@ -217,7 +224,7 @@ fn as_decimal(v: &Value) -> Result<&Decimal, evaluator::EvaluationError> {
 fn decimal_lt(left: Value, right: Value) -> evaluator::Result<ExtensionOutputValue> {
     let left = as_decimal(&left)?;
     let right = as_decimal(&right)?;
-    Ok(Value::Lit((left < right).into()).into())
+    Ok(Value::from(left < right).into())
 }
 
 /// Cedar function that tests whether the first `decimal` Cedar type is
@@ -225,7 +232,7 @@ fn decimal_lt(left: Value, right: Value) -> evaluator::Result<ExtensionOutputVal
 fn decimal_le(left: Value, right: Value) -> evaluator::Result<ExtensionOutputValue> {
     let left = as_decimal(&left)?;
     let right = as_decimal(&right)?;
-    Ok(Value::Lit((left <= right).into()).into())
+    Ok(Value::from(left <= right).into())
 }
 
 /// Cedar function that tests whether the first `decimal` Cedar type is
@@ -233,7 +240,7 @@ fn decimal_le(left: Value, right: Value) -> evaluator::Result<ExtensionOutputVal
 fn decimal_gt(left: Value, right: Value) -> evaluator::Result<ExtensionOutputValue> {
     let left = as_decimal(&left)?;
     let right = as_decimal(&right)?;
-    Ok(Value::Lit((left > right).into()).into())
+    Ok(Value::from(left > right).into())
 }
 
 /// Cedar function that tests whether the first `decimal` Cedar type is
@@ -241,7 +248,7 @@ fn decimal_gt(left: Value, right: Value) -> evaluator::Result<ExtensionOutputVal
 fn decimal_ge(left: Value, right: Value) -> evaluator::Result<ExtensionOutputValue> {
     let left = as_decimal(&left)?;
     let right = as_decimal(&right)?;
-    Ok(Value::Lit((left >= right).into()).into())
+    Ok(Value::from(left >= right).into())
 }
 
 /// Construct the extension
@@ -324,7 +331,7 @@ mod tests {
     /// Asserts that a `Result` is a decimal value
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_decimal_valid(res: evaluator::Result<Value>) {
-        assert_matches!(res, Ok(Value::ExtensionValue(ev)) => {
+        assert_matches!(res, Ok(Value { value: ValueKind::ExtensionValue(ev), .. }) => {
             assert_eq!(ev.typename(), Decimal::typename());
         });
     }
@@ -606,8 +613,8 @@ mod tests {
             eval.interpret_inline_policy(
                 &parse_expr(r#"decimal("1.23") < decimal("1.24")"#).expect("parsing error")
             ),
-            Err(evaluator::EvaluationError::type_error(
-                vec![Type::Long],
+            Err(evaluator::EvaluationError::type_error_single(
+                Type::Long,
                 Type::Extension {
                     name: Name::parse_unqualified_name("decimal")
                         .expect("should be a valid identifier")
@@ -618,11 +625,11 @@ mod tests {
             eval.interpret_inline_policy(
                 &parse_expr(r#"decimal("-1.23").lessThan("1.23")"#).expect("parsing error")
             ),
-            Err(evaluator::EvaluationError::type_error_with_advice(
-                vec![Type::Extension {
+            Err(evaluator::EvaluationError::type_error_with_advice_single(
+                Type::Extension {
                     name: Name::parse_unqualified_name("decimal")
                         .expect("should be a valid identifier")
-                }],
+                },
                 Type::String,
                 ADVICE_MSG.into(),
             ))

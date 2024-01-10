@@ -18,7 +18,7 @@
 
 use crate::ast::{
     CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue,
-    ExtensionValueWithArgs, Literal, Name, StaticallyTyped, Type, Value,
+    ExtensionValueWithArgs, Literal, Name, StaticallyTyped, Type, Value, ValueKind,
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
@@ -269,17 +269,22 @@ fn str_contains_colons_and_dots(s: &str) -> Result<(), String> {
 fn ip_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
     let function_name = names::IP_FROM_STR_NAME.clone();
+    let arg_source_loc = arg.source_loc().cloned();
     let ipaddr = ExtensionValueWithArgs::new(
         Arc::new(IPAddr::from_str(str.as_str()).map_err(extension_err)?),
         function_name,
         vec![arg.into()],
     );
-    Ok(Value::ExtensionValue(Arc::new(ipaddr)).into())
+    Ok(Value {
+        value: ValueKind::ExtensionValue(Arc::new(ipaddr)),
+        loc: arg_source_loc, // this gives the loc of the arg. We could perhaps give instead the loc of the entire `ip("...")` call, but that is hard to do at this program point
+    }
+    .into())
 }
 
 fn as_ipaddr(v: &Value) -> Result<&IPAddr, evaluator::EvaluationError> {
-    match v {
-        Value::ExtensionValue(ev) if ev.typename() == IPAddr::typename() => {
+    match &v.value {
+        ValueKind::ExtensionValue(ev) if ev.typename() == IPAddr::typename() => {
             // PANIC SAFETY Conditional above performs a typecheck
             #[allow(clippy::expect_used)]
             let ipaddr = ev
@@ -289,17 +294,19 @@ fn as_ipaddr(v: &Value) -> Result<&IPAddr, evaluator::EvaluationError> {
                 .expect("already typechecked, so this downcast should succeed");
             Ok(ipaddr)
         }
-        Value::Lit(Literal::String(_)) => Err(evaluator::EvaluationError::type_error_with_advice(
-            vec![Type::Extension {
+        ValueKind::Lit(Literal::String(_)) => {
+            Err(evaluator::EvaluationError::type_error_with_advice_single(
+                Type::Extension {
+                    name: IPAddr::typename(),
+                },
+                v.type_of(),
+                ADVICE_MSG.into(),
+            ))
+        }
+        _ => Err(evaluator::EvaluationError::type_error_single(
+            Type::Extension {
                 name: IPAddr::typename(),
-            }],
-            v.type_of(),
-            ADVICE_MSG.into(),
-        )),
-        _ => Err(evaluator::EvaluationError::type_error(
-            vec![Type::Extension {
-                name: IPAddr::typename(),
-            }],
+            },
             v.type_of(),
         )),
     }
@@ -553,8 +560,8 @@ mod tests {
                     Expr::val(1)
                 ))]
             )),
-            Err(evaluator::EvaluationError::type_error(
-                vec![Type::String],
+            Err(evaluator::EvaluationError::type_error_single(
+                Type::String,
                 Type::Set
             ))
         );
@@ -562,8 +569,8 @@ mod tests {
         // test that < on ipaddr values is an error
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(ip("127.0.0.1"), ip("10.0.0.10"))),
-            Err(evaluator::EvaluationError::type_error(
-                vec![Type::Long],
+            Err(evaluator::EvaluationError::type_error_single(
+                Type::Long,
                 Type::Extension {
                     name: Name::parse_unqualified_name("ipaddr")
                         .expect("should be a valid identifier")
@@ -576,11 +583,11 @@ mod tests {
                 Name::parse_unqualified_name("isIpv4").expect("should be a valid identifier"),
                 vec![Expr::val("127.0.0.1")]
             )),
-            Err(evaluator::EvaluationError::type_error_with_advice(
-                vec![Type::Extension {
+            Err(evaluator::EvaluationError::type_error_with_advice_single(
+                Type::Extension {
                     name: Name::parse_unqualified_name("ipaddr")
                         .expect("should be a valid identifier")
-                }],
+                },
                 Type::String,
                 ADVICE_MSG.into(),
             ))
