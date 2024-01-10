@@ -634,7 +634,7 @@ fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
             .try_into()
             .map_err(|err| miette!("error converting custom schema to JSON schema: {err:?}"));
         serde_json::to_string(&ns?)
-            .map_err(|err| miette!("fail to serialize schema fragment: {err}"))
+            .map_err(|err| miette!("failed to serialize schema fragment: {err}"))
     }
 }
 pub fn translate_schema(args: &TranslateSchemaArgs) -> CedarExitCode {
