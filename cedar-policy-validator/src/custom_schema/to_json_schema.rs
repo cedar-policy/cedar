@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use cedar_policy_core::{
     ast::{Id, Name},
-    parser::Node,
+    parser::{Loc, Node},
 };
 use itertools::Either;
 use nonempty::NonEmpty;
@@ -23,10 +23,10 @@ use super::{
 
 #[derive(Debug, Clone)]
 pub(super) struct Context<'a> {
-    common_types: HashSet<Name>,
-    entity_types: HashSet<Name>,
-    global_common_types: &'a HashSet<Name>,
-    global_entity_types: &'a HashSet<Name>,
+    common_types: HashSet<Node<Name>>,
+    entity_types: HashSet<Node<Name>>,
+    global_common_types: &'a HashSet<Node<Name>>,
+    global_entity_types: &'a HashSet<Node<Name>>,
 }
 
 #[derive(Debug, Clone)]
@@ -58,7 +58,7 @@ impl From<NamedType> for SchemaType {
 
 impl Context<'_> {
     pub fn lookup(&self, node: &Path) -> Option<NamedType> {
-        let name = <Path as Into<Name>>::into(node.clone());
+        let name = Node::with_source_loc(Name::from(node.clone()), node.get_loc());
         if node.is_decimal_extension() || node.is_ipaddr_extension() {
             Some(NamedType::Extension(node.base.node.clone().to_smolstr()))
         } else if node.is_builtin_bool() {
@@ -107,7 +107,7 @@ fn ref_to_action_euid(name: Ref) -> ActionEntityUID {
     }
 }
 
-fn collect_global_type_names(schema: &Schema) -> (HashSet<Name>, HashSet<Name>) {
+fn collect_global_type_names(schema: &Schema) -> (HashSet<Node<Name>>, HashSet<Node<Name>>) {
     let mut common_tys = HashSet::new();
     let mut ets = HashSet::new();
     for ns_def in schema {
@@ -119,21 +119,19 @@ fn collect_global_type_names(schema: &Schema) -> (HashSet<Name>, HashSet<Name>) 
         for decl in &ns_def.node.decls {
             match &decl.node {
                 Declaration::Type(id, _) => {
-                    common_tys.insert(
-                        Path {
-                            base: id.clone(),
-                            prefix: prefix.clone(),
-                        }
-                        .into(),
-                    );
+                    let path = Path {
+                        base: id.clone(),
+                        prefix: prefix.clone(),
+                    };
+                    common_tys.insert(Node::with_source_loc(path.clone().into(), path.get_loc()));
                 }
                 Declaration::Entity(decl) => {
                     ets.extend(decl.names.iter().map(|id| {
-                        Path {
+                        let path = Path {
                             base: id.clone(),
                             prefix: prefix.clone(),
-                        }
-                        .into()
+                        };
+                        Node::with_source_loc(path.clone().into(), path.get_loc())
                     }));
                 }
                 _ => {}
@@ -146,8 +144,8 @@ fn collect_global_type_names(schema: &Schema) -> (HashSet<Name>, HashSet<Name>) 
 // We delay the handling of duplicate keys so that this function is total
 fn build_context<'a>(
     namespace: &Namespace,
-    global_common_types: &'a HashSet<Name>,
-    global_entity_types: &'a HashSet<Name>,
+    global_common_types: &'a HashSet<Node<Name>>,
+    global_entity_types: &'a HashSet<Node<Name>>,
 ) -> Context<'a> {
     let mut common_types: HashSet<Node<Name>> = HashSet::new();
     let mut entity_types: HashSet<Node<Name>> = HashSet::new();
@@ -168,8 +166,8 @@ fn build_context<'a>(
         }
     }
     Context {
-        common_types: common_types.into_iter().map(|n| n.node).collect(),
-        entity_types: entity_types.into_iter().map(|n| n.node).collect(),
+        common_types,
+        entity_types,
         global_common_types,
         global_entity_types,
     }
@@ -205,7 +203,10 @@ impl TryFrom<Type> for SchemaType {
         Ok(match value {
             Type::Ident(id) => match context.lookup(&id) {
                 Some(ty) => ty.into(),
-                None => Err(ToJsonSchemaError::UnknownTypeName(id.to_smolstr()))?,
+                None => Err(ToJsonSchemaError::UnknownTypeName(Node::with_source_loc(
+                    id.clone().to_smolstr(),
+                    id.get_loc(),
+                )))?,
             },
             Type::Record(attrs) => Self::Type(TryInto::try_into(attrs, context)?),
             Type::Set(b) => Self::Type(SchemaTypeVariant::Set {
@@ -235,7 +236,10 @@ impl TryFrom<Vec<Node<AttrDecl>>> for SchemaTypeVariant {
             let attr_decl = n.node;
             let name_str = name_to_str(attr_decl.name);
             if let Some((ns, _)) = attrs.get_key_value(&name_str) {
-                return Err(ToJsonSchemaError::DuplicateKeys(name_str, ns.clone()));
+                return Err(ToJsonSchemaError::DuplicateKeys(
+                    name_str.node,
+                    (name_str.loc, ns.loc.clone()),
+                ));
             }
             attrs.insert(
                 name_str,
@@ -255,45 +259,66 @@ impl TryFrom<Vec<Node<AttrDecl>>> for SchemaTypeVariant {
 impl TryFrom<NonEmpty<Node<AppDecl>>> for ApplySpec {
     type Error = ToJsonSchemaError;
     fn try_from(value: NonEmpty<Node<AppDecl>>, context: &Context) -> Result<Self, Self::Error> {
-        let mut resource_types = Vec::new();
-        let mut principal_types = Vec::new();
-        let mut attr_context: Option<AttributesOrContext> = None;
+        let mut resource_types: Option<(NonEmpty<SmolStr>, Loc)> = None;
+        let mut principal_types: Option<(NonEmpty<SmolStr>, Loc)> = None;
+        let mut attr_context: Option<(AttributesOrContext, Loc)> = None;
         for decl in value {
             match decl.node {
                 AppDecl::PR(PRAppDecl { ty, entity_tys }) => match ty.node {
                     PR::Principal => {
-                        principal_types
-                            .extend(entity_tys.into_iter().map(|et| et.node.to_smolstr()));
+                        if let Some((_, existing_loc)) = principal_types {
+                            return Err(Self::Error::DuplicateKeys(
+                                "principal".into(),
+                                (existing_loc, decl.loc.clone()),
+                            ));
+                        } else {
+                            principal_types =
+                                Some((entity_tys.map(|et| et.node.to_smolstr()), decl.loc));
+                        }
                     }
                     PR::Resource => {
-                        resource_types
-                            .extend(entity_tys.into_iter().map(|et| et.node.to_smolstr()));
+                        if let Some((_, existing_loc)) = resource_types {
+                            return Err(Self::Error::DuplicateKeys(
+                                "resource".into(),
+                                (existing_loc, decl.loc.clone()),
+                            ));
+                        } else {
+                            resource_types =
+                                Some((entity_tys.map(|et| et.node.to_smolstr()), decl.loc));
+                        }
                     }
                 },
                 AppDecl::Context(attrs) => {
-                    if attr_context.is_some() {
-                        return Err(Self::Error::MultipleContext);
+                    if let Some((_, existing_loc)) = attr_context {
+                        return Err(Self::Error::DuplicateKeys(
+                            "context".into(),
+                            (existing_loc, decl.loc.clone()),
+                        ));
+                    } else {
+                        attr_context = Some((
+                            AttributesOrContext(SchemaType::Type(TryInto::try_into(
+                                attrs, context,
+                            )?)),
+                            decl.loc,
+                        ));
                     }
-                    attr_context = Some(AttributesOrContext(SchemaType::Type(TryInto::try_into(
-                        attrs, context,
-                    )?)));
                 }
             }
         }
         Ok(Self {
             // In JSON schema format, unspecified resource is represented by a None field
-            resource_types: if !resource_types.is_empty() {
-                Some(resource_types)
+            resource_types: if let Some((resource_types, _)) = resource_types {
+                Some(resource_types.into())
             } else {
                 None
             },
             // In JSON schema format, unspecified principal is represented by a None field
-            principal_types: if !principal_types.is_empty() {
-                Some(principal_types)
+            principal_types: if let Some((principal_types, _)) = principal_types {
+                Some(principal_types.into())
             } else {
                 None
             },
-            context: attr_context.unwrap_or_default(),
+            context: attr_context.map_or(AttributesOrContext::default(), |(attrs, _)| attrs),
         })
     }
 }
@@ -323,8 +348,8 @@ impl TryFrom<ActionDecl> for ActionType {
 
 fn ns_to_ns_def(
     ns_def: Namespace,
-    global_common_types: &HashSet<Name>,
-    global_entity_types: &HashSet<Name>,
+    global_common_types: &HashSet<Node<Name>>,
+    global_entity_types: &HashSet<Node<Name>>,
 ) -> Result<NamespaceDefinition, ToJsonSchemaError> {
     let mut entity_types: HashMap<Node<Id>, EntityType> = HashMap::new();
     let mut actions: HashMap<Str, ActionType> = HashMap::new();
@@ -336,16 +361,10 @@ fn ns_to_ns_def(
                 let mut ids: HashSet<Str> = HashSet::new();
                 action_decl.names.iter().try_for_each(|id| {
                     let id_str = name_to_str(id.clone());
-                    if let Some(existing_id) = ids.get(&id_str) {
-                        return Err(ToJsonSchemaError::DuplicateKeys(
-                            id_str,
-                            existing_id.clone(),
-                        ));
-                    }
                     if let Some((existing_id, _)) = actions.get_key_value(&id_str) {
-                        return Err(ToJsonSchemaError::DuplicateKeys(
-                            id_str,
-                            existing_id.clone(),
+                        return Err(ToJsonSchemaError::DuplicateDeclarations(
+                            id_str.node.clone(),
+                            (id_str.loc, existing_id.loc.clone()),
                         ));
                     }
                     ids.insert(id_str);
@@ -357,16 +376,10 @@ fn ns_to_ns_def(
             Declaration::Entity(entity_decl) => {
                 let mut names: HashSet<Node<Id>> = HashSet::new();
                 entity_decl.names.iter().try_for_each(|name| {
-                    if let Some(existing_name) = names.get(name) {
-                        return Err(ToJsonSchemaError::DuplicateKeys(
-                            existing_name.clone().map(Id::to_smolstr),
-                            name.clone().map(Id::to_smolstr),
-                        ));
-                    }
                     if let Some((existing_name, _)) = entity_types.get_key_value(name) {
-                        return Err(ToJsonSchemaError::DuplicateKeys(
-                            existing_name.clone().map(Id::to_smolstr),
-                            name.clone().map(Id::to_smolstr),
+                        return Err(ToJsonSchemaError::DuplicateDeclarations(
+                            existing_name.node.clone().to_smolstr(),
+                            (existing_name.loc.clone(), name.loc.clone()),
                         ));
                     }
                     names.insert(name.clone());
@@ -377,9 +390,9 @@ fn ns_to_ns_def(
             }
             Declaration::Type(id, ty) => {
                 if let Some((existing_id, _)) = common_types.get_key_value(&id) {
-                    return Err(ToJsonSchemaError::DuplicateKeys(
-                        id.clone().map(Id::to_smolstr),
-                        existing_id.clone().map(Id::to_smolstr),
+                    return Err(ToJsonSchemaError::DuplicateDeclarations(
+                        id.node.to_smolstr(),
+                        (id.loc.clone(), existing_id.loc.clone()),
                     ));
                 } else {
                     common_types.insert(id.clone(), TryInto::try_into(ty.node, context)?);
@@ -401,32 +414,45 @@ fn ns_to_ns_def(
 }
 
 fn deduplicate_ns(schema: Schema) -> Result<HashMap<SmolStr, Namespace>, ToJsonSchemaError> {
-    let mut namespaces: HashMap<SmolStr, Namespace> = HashMap::new();
+    let mut namespaces: HashMap<Str, Namespace> = HashMap::new();
     for ns_node in schema {
         let ns = ns_node.node;
-        let name = ns
-            .name
-            .clone()
-            .map_or(SmolStr::default(), |name| name.node.to_smolstr());
-        if name == CEDAR_NAMESPACE {
+        let name: Str = Node::with_source_loc(
+            ns.name
+                .clone()
+                .map_or(SmolStr::default(), |name| name.node.to_smolstr()),
+            ns_node.loc.clone(),
+        );
+        if name.node == CEDAR_NAMESPACE {
             // PANIC SAFETY: The name field is a `Some` when the `name` is not empty
             #[allow(clippy::unwrap_used)]
             return Err(ToJsonSchemaError::UseReservedNamespace(
                 ns.name.unwrap().loc,
             ));
         }
-        if let Some(existing_ns) = namespaces.get_mut(&name) {
-            if name.is_empty() {
-                existing_ns.decls.extend(ns.decls);
-            } else {
-                // Duplicate `namespace` constructs are not allowed
-                return Err(ToJsonSchemaError::DuplicateNSIds(name));
+
+        match namespaces.entry(name.clone()) {
+            std::collections::hash_map::Entry::Occupied(mut entry) => {
+                let existing_name = entry.key();
+                if existing_name.node.is_empty() {
+                    entry.get_mut().decls.extend(ns.decls);
+                } else {
+                    // Duplicate `namespace` constructs are not allowed
+                    return Err(ToJsonSchemaError::DuplicateNSIds(
+                        existing_name.node.clone(),
+                        (name.loc, existing_name.loc.clone()),
+                    ));
+                }
             }
-        } else {
-            namespaces.insert(name, ns);
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(ns);
+            }
         }
     }
-    Ok(namespaces)
+    Ok(namespaces
+        .into_iter()
+        .map(|(name, def)| (name.node, def))
+        .collect())
 }
 
 impl std::convert::TryFrom<Schema> for SchemaFragment {

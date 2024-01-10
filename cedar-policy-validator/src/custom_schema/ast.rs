@@ -1,8 +1,9 @@
 use cedar_policy_core::{
     ast::{Id, Name as CName},
-    parser::Node,
+    parser::{Loc, Node},
 };
 use itertools::Either;
+use miette::SourceSpan;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
 
@@ -68,6 +69,17 @@ impl Path {
 
     fn is_cedar_builtin(&self) -> bool {
         matches!(self.prefix.as_slice(), [Node { node, loc: _ }] if node.as_ref() == CEDAR_NAMESPACE)
+    }
+
+    pub(super) fn get_loc(&self) -> Loc {
+        let base_loc = self.base.loc.clone();
+        if let Some(head) = self.prefix.first() {
+            let start = head.loc.span.offset();
+            let length = base_loc.span.offset() + base_loc.span.len() - start;
+            Loc::new(SourceSpan::new(start.into(), length.into()), base_loc.src)
+        } else {
+            base_loc
+        }
     }
 }
 

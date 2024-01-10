@@ -272,17 +272,17 @@ impl Diagnostic for ParseErrors {
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum ToJsonSchemaError {
     /// Error raised when there are duplicate keys
-    #[error("Duplicate keys found: {0:?} and {1:?}")]
-    DuplicateKeys(Str, Str),
+    #[error("Duplicate keys: `{0}`")]
+    DuplicateKeys(SmolStr, (Loc, Loc)),
+    /// Error raised when there are duplicate declarations
+    #[error("Duplicate declarations: `{0}`")]
+    DuplicateDeclarations(SmolStr, (Loc, Loc)),
     /// Error raised when there are duplicate namespace IDs
-    #[error("Duplicate namespace IDs: {0}")]
-    DuplicateNSIds(SmolStr),
-    /// Error raised when there are multiple context defined
-    #[error("Multiple context defined")]
-    MultipleContext,
+    #[error("Duplicate namespace IDs: `{0}`")]
+    DuplicateNSIds(SmolStr, (Loc, Loc)),
     /// Invalid type name
-    #[error("Unknown type name: {0:?}")]
-    UnknownTypeName(SmolStr),
+    #[error("Unknown type name: `{0:?}`")]
+    UnknownTypeName(Str),
     #[error("Use reserved namespace `__cedar`")]
     UseReservedNamespace(Loc),
 }

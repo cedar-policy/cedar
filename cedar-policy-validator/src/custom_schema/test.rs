@@ -324,7 +324,8 @@ mod translator_tests {
         "#,
         );
         assert!(
-            schema.is_err() && matches!(schema.unwrap_err(), ToJsonSchemaError::DuplicateNSIds(_)),
+            schema.is_err()
+                && matches!(schema.unwrap_err(), ToJsonSchemaError::DuplicateNSIds(_, _)),
             "duplicate namespaces shouldn't be allowed"
         );
     }
@@ -341,7 +342,7 @@ mod translator_tests {
             schema.is_err()
                 && matches!(
                     schema.as_ref().unwrap_err(),
-                    ToJsonSchemaError::DuplicateKeys(_, _)
+                    ToJsonSchemaError::DuplicateDeclarations(_, _)
                 ),
             "duplicate action type names shouldn't be allowed: {schema:?}"
         );
@@ -355,7 +356,7 @@ mod translator_tests {
             schema.is_err()
                 && matches!(
                     schema.as_ref().unwrap_err(),
-                    ToJsonSchemaError::DuplicateKeys(_, _)
+                    ToJsonSchemaError::DuplicateDeclarations(_, _)
                 ),
             "duplicate action type names shouldn't be allowed: {schema:?}"
         );
@@ -380,7 +381,7 @@ mod translator_tests {
             schema.is_err()
                 && matches!(
                     schema.as_ref().unwrap_err(),
-                    ToJsonSchemaError::DuplicateKeys(_, _)
+                    ToJsonSchemaError::DuplicateDeclarations(_, _)
                 ),
             "duplicate entity type names shouldn't be allowed: {schema:?}"
         );
@@ -405,7 +406,7 @@ mod translator_tests {
             schema.is_err()
                 && matches!(
                     schema.as_ref().unwrap_err(),
-                    ToJsonSchemaError::DuplicateKeys(_, _)
+                    ToJsonSchemaError::DuplicateDeclarations(_, _)
                 ),
             "duplicate common type names shouldn't be allowed: {schema:?}"
         );
