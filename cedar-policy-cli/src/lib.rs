@@ -618,7 +618,7 @@ fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
     if args.from_json {
         let schema_fragment =
             cedar_policy_validator::SchemaFragment::from_file(input_str.as_bytes())
-                .map_err(|err| miette!("fail to parse schema fragment: {err}"))?;
+                .map_err(|err| miette!("failed to parse schema fragment: {err}"))?;
         cedar_policy_formatter::schema_fragment_to_pretty(&schema_fragment)
     } else {
         let new_schema = cedar_policy_validator::custom_schema::parser::parse_schema(&input_str)
