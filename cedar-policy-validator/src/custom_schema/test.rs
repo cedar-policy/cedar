@@ -285,12 +285,34 @@ mod parser_tests {
 
 #[cfg(test)]
 mod translator_tests {
-    use crate::custom_schema::{err::ToJsonSchemaError, parser::parse_schema};
+    use cedar_policy_core::FromNormalizedStr;
+
+    use crate::{
+        custom_schema::{err::ToJsonSchemaError, parser::parse_schema},
+        SchemaError, ValidatorSchema,
+    };
 
     fn custom_schema_str_to_json_schema(
         s: &str,
     ) -> Result<crate::SchemaFragment, ToJsonSchemaError> {
         parse_schema(s).expect("parse error").try_into()
+    }
+
+    #[test]
+    fn use_reserved_namespace() {
+        let schema = custom_schema_str_to_json_schema(
+            r#"
+          namespace __cedar {}
+        "#,
+        );
+        assert!(
+            schema.is_err()
+                && matches!(
+                    schema.unwrap_err(),
+                    ToJsonSchemaError::UseReservedNamespace(_)
+                ),
+            "duplicate namespaces shouldn't be allowed"
+        );
     }
 
     #[test]
@@ -394,5 +416,178 @@ mod translator_tests {
         "#,
         );
         assert!(schema.is_ok());
+    }
+
+    #[test]
+    fn type_name_resolution_basic() {
+        let schema = custom_schema_str_to_json_schema(
+            r#"
+        namespace Demo {
+            entity Host {
+              ip: ipaddr,
+              bandwidth: decimal,
+            };
+            entity String {
+              groups: Set<__cedar::String>,
+            };
+            type ipaddr = {
+              repr: String,
+              isV4: Bool,
+            };
+          }
+        "#,
+        );
+        let validator_schema: ValidatorSchema = schema
+            .expect("should be a valid custom schema")
+            .try_into()
+            .expect("should be a valid schema");
+        for (name, ety) in validator_schema.entity_types() {
+            match name.to_string().as_ref() {
+                "Demo::Host" => {
+                    for (attr_name, attr) in ety.attributes() {
+                        match attr_name.as_ref() {
+                            "ip" => assert!(
+                                matches!(
+                                    &attr.attr_type,
+                                    crate::types::Type::EntityOrRecord(
+                                        crate::types::EntityRecordKind::Record {
+                                            attrs: _,
+                                            open_attributes: _
+                                        }
+                                    )
+                                ),
+                                "wrong type for attr `ip`"
+                            ),
+                            "bandwidth" => assert!(
+                                matches!(&attr.attr_type, crate::types::Type::ExtensionType { name } if name.clone() == cedar_policy_core::ast::Name::from_normalized_str("decimal").unwrap()),
+                                "wrong type for attr `bandwidth`"
+                            ),
+                            _ => unreachable!("unexpected attr: {attr_name}"),
+                        }
+                    }
+                }
+                "Demo::String" => {
+                    for (attr_name, attr) in ety.attributes() {
+                        match attr_name.as_ref() {
+                            "groups" => assert!(
+                                matches!(&attr.attr_type, crate::types::Type::Set { element_type: Some(t)} if **t == crate::types::Type::Primitive { primitive_type: crate::types::Primitive::String }),
+                                "wrong type for attr `groups`"
+                            ),
+                            _ => unreachable!("unexpected attr: {attr_name}"),
+                        }
+                    }
+                }
+                _ => unreachable!("unexpected entity type: {name}"),
+            }
+        }
+    }
+
+    #[test]
+    fn type_name_cross_namespace() {
+        let schema = custom_schema_str_to_json_schema(
+            r#"namespace A {
+                entity B in [X::Y, A::C];
+                entity C;
+            }
+            namespace X {
+                entity Y;
+            }
+            "#,
+        );
+        let validator_schema: ValidatorSchema = schema
+            .expect("should be a valid custom schema")
+            .try_into()
+            .expect("should be a valid schema");
+        for (name, et) in validator_schema.entity_types() {
+            if name.to_string() == "A::C" {
+                assert!(et
+                    .descendants
+                    .contains(&cedar_policy_core::ast::Name::from_normalized_str("A::B").unwrap()));
+            } else if name.to_string() == "X::Y" {
+                assert!(et
+                    .descendants
+                    .contains(&cedar_policy_core::ast::Name::from_normalized_str("A::B").unwrap()));
+            }
+        }
+    }
+
+    #[test]
+    fn type_name_resolution_empty_namespace() {
+        let schema = custom_schema_str_to_json_schema(
+            r#"type id = {
+            group: String,
+            name: String,
+          };
+          
+          type email_address = {
+            id: String,
+            domain: String,
+          };
+          
+          namespace Demo {
+            entity User {
+              name: id,
+              email: email_address,
+            };
+            entity email_address {
+              where: String,
+            };
+            type id = String;
+          }"#,
+        );
+        let validator_schema: Result<ValidatorSchema, _> =
+            schema.expect("should be a valid custom schema").try_into();
+        assert!(validator_schema.is_err());
+    }
+
+    #[test]
+    fn type_name_resolution_cross_namespace() {
+        let schema = custom_schema_str_to_json_schema(
+            r#"namespace A {
+                entity B in [A::C] = {
+                    foo?: X::Y,
+                };
+                entity C;
+            }
+            namespace X {
+                type Y = Bool;
+                entity Y;
+            }
+            "#,
+        );
+        let validator_schema: ValidatorSchema = schema
+            .expect("should be a valid custom schema")
+            .try_into()
+            .expect("should be a valid schema");
+        let et = validator_schema
+            .get_entity_type(&cedar_policy_core::ast::Name::from_normalized_str("A::B").unwrap())
+            .unwrap();
+        let attr = et.attr("foo").unwrap();
+        assert!(
+            matches!(&attr.attr_type, crate::types::Type::Primitive { primitive_type } if matches!(primitive_type, crate::types::Primitive::Bool))
+        );
+
+        let schema = custom_schema_str_to_json_schema(
+            r#"namespace A {
+                entity B in [A::C] = {
+                    foo?: X::Y,
+                };
+                entity C;
+            }
+            namespace X {
+                type Y = X::Y;
+                entity Y;
+            }
+            "#,
+        );
+        let validator_schema: Result<ValidatorSchema, _> =
+            schema.expect("should be a valid custom schema").try_into();
+        assert!(
+            validator_schema.is_err()
+                && matches!(
+                    validator_schema.unwrap_err(),
+                    SchemaError::UndeclaredCommonTypes(_)
+                )
+        );
     }
 }

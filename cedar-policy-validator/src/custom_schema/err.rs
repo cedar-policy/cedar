@@ -4,7 +4,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use cedar_policy_core::parser::{err::expected_to_string, Node};
+use cedar_policy_core::parser::{err::expected_to_string, Loc, Node};
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
 use miette::{Diagnostic, LabeledSpan, SourceSpan};
@@ -281,6 +281,8 @@ pub enum ToJsonSchemaError {
     #[error("Multiple context defined")]
     MultipleContext,
     /// Invalid type name
-    #[error("Invalid type name: {0:?}")]
-    InvalidTypeName(SmolStr),
+    #[error("Unknown type name: {0:?}")]
+    UnknownTypeName(SmolStr),
+    #[error("Use reserved namespace `__cedar`")]
+    UseReservedNamespace(Loc),
 }

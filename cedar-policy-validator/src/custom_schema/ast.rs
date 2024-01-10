@@ -8,7 +8,7 @@ use smol_str::SmolStr;
 
 const IPADDR_EXTENSION: &str = "ipaddr";
 const DECIMAL_EXTENSION: &str = "decimal";
-const CEDAR_NAMESPACE: &str = "__cedar";
+pub(super) const CEDAR_NAMESPACE: &str = "__cedar";
 
 pub type Ident = Node<Id>;
 pub type Str = Node<SmolStr>;

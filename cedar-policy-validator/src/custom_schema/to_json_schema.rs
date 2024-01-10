@@ -16,7 +16,7 @@ use crate::{
 use super::{
     ast::{
         ActionDecl, AppDecl, AttrDecl, Declaration, EntityDecl, Namespace, PRAppDecl, Path, Ref,
-        Schema, Str, Type, PR,
+        Schema, Str, Type, CEDAR_NAMESPACE, PR,
     },
     err::ToJsonSchemaError,
 };
@@ -26,6 +26,7 @@ pub(super) struct Context<'a> {
     common_types: HashSet<Name>,
     entity_types: HashSet<Name>,
     global_common_types: &'a HashSet<Name>,
+    global_entity_types: &'a HashSet<Name>,
 }
 
 #[derive(Debug, Clone)]
@@ -68,9 +69,11 @@ impl Context<'_> {
             Some(NamedType::Primitive(PrimitiveType::String))
         } else if self.common_types.contains(&name) || self.global_common_types.contains(&name) {
             // global common types maybe `Bool`, `Long`, `String`,
-            // `ipaddr`, `decimal`, and entity types defined in this namespace
+            // `ipaddr`, `decimal`? and entity types defined in this namespace
             Some(NamedType::Common(node.clone().to_smolstr()))
-        } else if self.entity_types.contains(&name) {
+        } else if self.entity_types.contains(&name) || self.global_entity_types.contains(&name) {
+            // global common types maybe `Bool`, `Long`, `String`,
+            // `ipaddr`, `decimal`?
             Some(NamedType::Entity(node.clone().to_smolstr()))
         } else if node.is_unqualified_bool() {
             Some(NamedType::Primitive(PrimitiveType::Bool))
@@ -80,10 +83,7 @@ impl Context<'_> {
             Some(NamedType::Primitive(PrimitiveType::String))
         } else if node.is_unqualified_decimal() || node.is_unqualified_ipaddr() {
             Some(NamedType::Extension(node.clone().to_smolstr()))
-        } else if !node.prefix.is_empty() {
-            Some(NamedType::Entity(node.clone().to_smolstr()))
         } else {
-            // TODO: Should be unreachable?
             None
         }
     }
@@ -107,18 +107,19 @@ fn ref_to_action_euid(name: Ref) -> ActionEntityUID {
     }
 }
 
-fn collect_global_common_types(schema: &Schema) -> HashSet<Name> {
-    let mut tys = HashSet::new();
+fn collect_global_type_names(schema: &Schema) -> (HashSet<Name>, HashSet<Name>) {
+    let mut common_tys = HashSet::new();
+    let mut ets = HashSet::new();
     for ns_def in schema {
         let prefix: Vec<super::ast::Ident> = if let Some(ns) = ns_def.node.name.clone() {
             [ns.node.prefix, vec![ns.node.base]].concat()
         } else {
             vec![]
         };
-        for common_ty_def in &ns_def.node.decls {
-            match &common_ty_def.node {
+        for decl in &ns_def.node.decls {
+            match &decl.node {
                 Declaration::Type(id, _) => {
-                    tys.insert(
+                    common_tys.insert(
                         Path {
                             base: id.clone(),
                             prefix: prefix.clone(),
@@ -126,15 +127,28 @@ fn collect_global_common_types(schema: &Schema) -> HashSet<Name> {
                         .into(),
                     );
                 }
+                Declaration::Entity(decl) => {
+                    ets.extend(decl.names.iter().map(|id| {
+                        Path {
+                            base: id.clone(),
+                            prefix: prefix.clone(),
+                        }
+                        .into()
+                    }));
+                }
                 _ => {}
             }
         }
     }
-    tys
+    (common_tys, ets)
 }
 
 // We delay the handling of duplicate keys so that this function is total
-fn build_context<'a>(namespace: &Namespace, global_common_types: &'a HashSet<Name>) -> Context<'a> {
+fn build_context<'a>(
+    namespace: &Namespace,
+    global_common_types: &'a HashSet<Name>,
+    global_entity_types: &'a HashSet<Name>,
+) -> Context<'a> {
     let mut common_types: HashSet<Node<Name>> = HashSet::new();
     let mut entity_types: HashSet<Node<Name>> = HashSet::new();
     for decl in &namespace.decls {
@@ -157,6 +171,7 @@ fn build_context<'a>(namespace: &Namespace, global_common_types: &'a HashSet<Nam
         common_types: common_types.into_iter().map(|n| n.node).collect(),
         entity_types: entity_types.into_iter().map(|n| n.node).collect(),
         global_common_types,
+        global_entity_types,
     }
 }
 
@@ -190,7 +205,7 @@ impl TryFrom<Type> for SchemaType {
         Ok(match value {
             Type::Ident(id) => match context.lookup(&id) {
                 Some(ty) => ty.into(),
-                None => Err(ToJsonSchemaError::InvalidTypeName(id.to_smolstr()))?,
+                None => Err(ToJsonSchemaError::UnknownTypeName(id.to_smolstr()))?,
             },
             Type::Record(attrs) => Self::Type(TryInto::try_into(attrs, context)?),
             Type::Set(b) => Self::Type(SchemaTypeVariant::Set {
@@ -309,11 +324,12 @@ impl TryFrom<ActionDecl> for ActionType {
 fn ns_to_ns_def(
     ns_def: Namespace,
     global_common_types: &HashSet<Name>,
+    global_entity_types: &HashSet<Name>,
 ) -> Result<NamespaceDefinition, ToJsonSchemaError> {
     let mut entity_types: HashMap<Node<Id>, EntityType> = HashMap::new();
     let mut actions: HashMap<Str, ActionType> = HashMap::new();
     let mut common_types: HashMap<Node<Id>, SchemaType> = HashMap::new();
-    let context = &build_context(&ns_def, &global_common_types);
+    let context = &build_context(&ns_def, global_common_types, global_entity_types);
     for decl in ns_def.decls {
         match decl.node {
             Declaration::Action(action_decl) => {
@@ -392,6 +408,13 @@ fn deduplicate_ns(schema: Schema) -> Result<HashMap<SmolStr, Namespace>, ToJsonS
             .name
             .clone()
             .map_or(SmolStr::default(), |name| name.node.to_smolstr());
+        if name == CEDAR_NAMESPACE {
+            // PANIC SAFETY: The name field is a `Some` when the `name` is not empty
+            #[allow(clippy::unwrap_used)]
+            return Err(ToJsonSchemaError::UseReservedNamespace(
+                ns.name.unwrap().loc,
+            ));
+        }
         if let Some(existing_ns) = namespaces.get_mut(&name) {
             if name.is_empty() {
                 existing_ns.decls.extend(ns.decls);
@@ -405,14 +428,18 @@ fn deduplicate_ns(schema: Schema) -> Result<HashMap<SmolStr, Namespace>, ToJsonS
     }
     Ok(namespaces)
 }
+
 impl std::convert::TryFrom<Schema> for SchemaFragment {
     type Error = ToJsonSchemaError;
     fn try_from(value: Schema) -> Result<Self, Self::Error> {
         let mut json_schema = HashMap::new();
-        let global_common_types = collect_global_common_types(&value);
+        let (global_common_types, global_entity_types) = collect_global_type_names(&value);
         let deduplicated_ns = deduplicate_ns(value)?;
         for (name, ns) in deduplicated_ns {
-            json_schema.insert(name, ns_to_ns_def(ns, &global_common_types)?);
+            json_schema.insert(
+                name,
+                ns_to_ns_def(ns, &global_common_types, &global_entity_types)?,
+            );
         }
         Ok(SchemaFragment(json_schema))
     }
