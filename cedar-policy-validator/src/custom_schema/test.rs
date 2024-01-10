@@ -308,6 +308,45 @@ mod translator_tests {
     }
 
     #[test]
+    fn duplicate_action_types() {
+        let schema = custom_schema_str_to_json_schema(
+            r#"
+          action A;
+          action A appliesTo { context: {}};
+        "#,
+        );
+        assert!(
+            schema.is_err()
+                && matches!(
+                    schema.as_ref().unwrap_err(),
+                    ToJsonSchemaError::DuplicateKeys(_, _)
+                ),
+            "duplicate action type names shouldn't be allowed: {schema:?}"
+        );
+        let schema = custom_schema_str_to_json_schema(
+            r#"
+          action A;
+          action "A";
+        "#,
+        );
+        assert!(
+            schema.is_err()
+                && matches!(
+                    schema.as_ref().unwrap_err(),
+                    ToJsonSchemaError::DuplicateKeys(_, _)
+                ),
+            "duplicate action type names shouldn't be allowed: {schema:?}"
+        );
+        let schema = custom_schema_str_to_json_schema(
+            r#"
+          namespace X { action A; }
+          action A;
+        "#,
+        );
+        assert!(schema.is_ok());
+    }
+
+    #[test]
     fn duplicate_entity_types() {
         let schema = custom_schema_str_to_json_schema(
             r#"
@@ -323,5 +362,37 @@ mod translator_tests {
                 ),
             "duplicate entity type names shouldn't be allowed: {schema:?}"
         );
+        let schema = custom_schema_str_to_json_schema(
+            r#"
+          namespace X { entity A; }
+          entity A {};
+        "#,
+        );
+        assert!(schema.is_ok());
+    }
+
+    #[test]
+    fn duplicate_common_types() {
+        let schema = custom_schema_str_to_json_schema(
+            r#"
+          type A = Bool;
+          type A = Long;
+        "#,
+        );
+        assert!(
+            schema.is_err()
+                && matches!(
+                    schema.as_ref().unwrap_err(),
+                    ToJsonSchemaError::DuplicateKeys(_, _)
+                ),
+            "duplicate common type names shouldn't be allowed: {schema:?}"
+        );
+        let schema = custom_schema_str_to_json_schema(
+            r#"
+          namespace X { type A = Bool; }
+          type A = Long;
+        "#,
+        );
+        assert!(schema.is_ok());
     }
 }
