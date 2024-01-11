@@ -38,4 +38,11 @@ impl Loc {
     pub fn end(&self) -> usize {
         self.span.offset() + self.span.len()
     }
+
+    /// Get the actual source snippet indicated, or `None` if the `Loc` isn't
+    /// internally consistent (its `SourceSpan` isn't a valid index into its
+    /// `src`)
+    pub fn snippet(&self) -> Option<&str> {
+        self.src.get(self.start()..self.end())
+    }
 }

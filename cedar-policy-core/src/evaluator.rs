@@ -102,7 +102,7 @@ impl<'e> RestrictedEvaluator<'e> {
                     .map(|item| self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(item))) // assuming the invariant holds for `e`, it will hold here
                     .collect::<Result<Vec<_>>>()?;
                 match split(vals) {
-                    Either::Left(values) => Ok(Value::Set(values.collect()).into()),
+                    Either::Left(values) => Ok(Value::set(values, e.source_loc().cloned()).into()),
                     Either::Right(residuals) => Ok(Expr::set(residuals).into()),
                 }
             }
@@ -114,7 +114,7 @@ impl<'e> RestrictedEvaluator<'e> {
                     .collect::<Result<Vec<_>>>()?;
                 let (names, attrs) : (Vec<_>, Vec<_>) = map.into_iter().unzip();
                 match split(attrs) {
-                    Either::Left(values) => Ok(Value::Record(Arc::new(names.into_iter().zip(values).collect())).into()),
+                    Either::Left(values) => Ok(Value::record(names.into_iter().zip(values), e.source_loc().cloned()).into()),
                     Either::Right(residuals) => {
                         // PANIC SAFETY: can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`
                         #[allow(clippy::expect_used)]
@@ -236,7 +236,7 @@ impl<'e> Evaluator<'e> {
     pub fn partial_interpret(&self, e: &Expr, slots: &SlotEnv) -> Result<PartialValue> {
         stack_size_check()?;
 
-        match e.expr_kind() {
+        let pval = match e.expr_kind() {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
             ExprKind::Slot(id) => slots
                 .get(id)
@@ -387,9 +387,9 @@ impl<'e> Evaluator<'e> {
                                 // the user intended `arg2.contains(arg1)` rather than `arg1 in arg2`.
                                 // If arg2 is a record, then possibly they intended `arg2 has arg1`.
                                 if matches!(e.error_kind(), EvaluationErrorKind::TypeError { .. }) {
-                                    match arg2 {
-                                        Value::Set(_) => e.set_advice("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()),
-                                        Value::Record(_) =>  e.set_advice("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()),
+                                    match arg2.type_of() {
+                                        Type::Set => e.set_advice("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()),
+                                        Type::Record => e.set_advice("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()),
                                         _ => {}
                                     }
                                 };
@@ -400,18 +400,19 @@ impl<'e> Evaluator<'e> {
                                 Expr::binary_app(BinaryOp::In, r, arg2.into()),
                             )),
                             Dereference::NoSuchEntity => self.eval_in(uid1, None, arg2),
-                            Dereference::Data(e) => self.eval_in(uid1, Some(e), arg2),
+                            Dereference::Data(entity1) => self.eval_in(uid1, Some(entity1), arg2),
                         }
                     }
                     // contains, which works on Sets
-                    BinaryOp::Contains => match arg1 {
-                        Value::Set(Set { fast: Some(h), .. }) => match arg2.try_as_lit() {
+                    BinaryOp::Contains => match arg1.value {
+                        ValueKind::Set(Set { fast: Some(h), .. }) => match arg2.try_as_lit() {
                             Some(lit) => Ok((h.contains(lit)).into()),
                             None => Ok(false.into()), // we know it doesn't contain a non-literal
                         },
-                        Value::Set(Set { authoritative, .. }) => {
-                            Ok((authoritative.contains(&arg2)).into())
-                        }
+                        ValueKind::Set(Set {
+                            fast: None,
+                            authoritative,
+                        }) => Ok((authoritative.contains(&arg2)).into()),
                         _ => Err(EvaluationError::type_error_single(
                             Type::Set,
                             arg1.type_of(),
@@ -500,16 +501,20 @@ impl<'e> Evaluator<'e> {
             }
             ExprKind::GetAttr { expr, attr } => self.get_attr(expr.as_ref(), attr, slots),
             ExprKind::HasAttr { expr, attr } => match self.partial_interpret(expr, slots)? {
-                PartialValue::Value(Value::Record(record)) => Ok(record.get(attr).is_some().into()),
-                PartialValue::Value(Value::Lit(Literal::EntityUID(uid))) => {
-                    match self.entities.entity(&uid) {
-                        Dereference::NoSuchEntity => Ok(false.into()),
-                        Dereference::Residual(r) => {
-                            Ok(PartialValue::Residual(Expr::has_attr(r, attr.clone())))
-                        }
-                        Dereference::Data(e) => Ok(e.get(attr).is_some().into()),
+                PartialValue::Value(Value {
+                    value: ValueKind::Record(record),
+                    ..
+                }) => Ok(record.get(attr).is_some().into()),
+                PartialValue::Value(Value {
+                    value: ValueKind::Lit(Literal::EntityUID(uid)),
+                    ..
+                }) => match self.entities.entity(&uid) {
+                    Dereference::NoSuchEntity => Ok(false.into()),
+                    Dereference::Residual(r) => {
+                        Ok(PartialValue::Residual(Expr::has_attr(r, attr.clone())))
                     }
-                }
+                    Dereference::Data(e) => Ok(e.get(attr).is_some().into()),
+                },
                 PartialValue::Value(val) => Err(err::EvaluationError::type_error(
                     nonempty![
                         Type::Record,
@@ -547,7 +552,7 @@ impl<'e> Evaluator<'e> {
                     .map(|item| self.partial_interpret(item, slots))
                     .collect::<Result<Vec<_>>>()?;
                 match split(vals) {
-                    Either::Left(vals) => Ok(Value::set(vals).into()),
+                    Either::Left(vals) => Ok(Value::set(vals, e.source_loc().cloned()).into()),
                     Either::Right(r) => Ok(Expr::set(r).into()),
                 }
             }
@@ -558,9 +563,11 @@ impl<'e> Evaluator<'e> {
                     .collect::<Result<Vec<_>>>()?;
                 let (names, evalled): (Vec<SmolStr>, Vec<PartialValue>) = map.into_iter().unzip();
                 match split(evalled) {
-                    Either::Left(vals) => {
-                        Ok(Value::Record(Arc::new(names.into_iter().zip(vals).collect())).into())
-                    }
+                    Either::Left(vals) => Ok(Value::record(
+                        names.into_iter().zip(vals),
+                        e.source_loc().cloned(),
+                    )
+                    .into()),
                     Either::Right(rs) => {
                         // PANIC SAFETY: can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`
                         #[allow(clippy::expect_used)]
@@ -572,7 +579,12 @@ impl<'e> Evaluator<'e> {
                     }
                 }
             }
-        }
+        };
+        // set the returned value's source location to the same source location
+        // as the input expression had.
+        // we do this here so that we don't have to set/propagate the source
+        // location in every arm of the big `match` above.
+        pval.map(|pval| pval.with_maybe_source_loc(e.source_loc().cloned()))
     }
 
     fn eval_in(
@@ -583,11 +595,11 @@ impl<'e> Evaluator<'e> {
     ) -> Result<PartialValue> {
         // `rhs` is a list of all the UIDs for which we need to
         // check if `uid1` is a descendant of
-        let rhs = match arg2 {
-            Value::Lit(Literal::EntityUID(uid)) => vec![(*uid).clone()],
+        let rhs = match arg2.value {
+            ValueKind::Lit(Literal::EntityUID(uid)) => vec![(*uid).clone()],
             // we assume that iterating the `authoritative` BTreeSet is
             // approximately the same cost as iterating the `fast` HashSet
-            Value::Set(Set { authoritative, .. }) => authoritative
+            ValueKind::Set(Set { authoritative, .. }) => authoritative
                 .iter()
                 .map(|val| Ok(val.get_as_entity()?.clone()))
                 .collect::<Result<Vec<EntityUID>>>()?,
@@ -679,37 +691,37 @@ impl<'e> Evaluator<'e> {
                     _ => Ok(PartialValue::Residual(Expr::get_attr(e, attr.clone()))),
                 }
             }
-            PartialValue::Value(Value::Record(attrs)) => attrs
+            PartialValue::Value(Value {
+                value: ValueKind::Record(record),
+                ..
+            }) => record
                 .as_ref()
                 .get(attr)
                 .ok_or_else(|| {
                     EvaluationError::record_attr_does_not_exist(
                         attr.clone(),
-                        attrs.iter().map(|(f, _)| f.clone()).collect(),
+                        record.iter().map(|(k, _)| k.clone()).collect(),
                     )
                 })
                 .map(|v| PartialValue::Value(v.clone())),
-            PartialValue::Value(Value::Lit(Literal::EntityUID(uid))) => {
-                match self.entities.entity(uid.as_ref()) {
-                    Dereference::NoSuchEntity => Err(match *uid.entity_type() {
-                        EntityType::Unspecified => {
-                            EvaluationError::unspecified_entity_access(attr.clone())
-                        }
-                        EntityType::Specified(_) => {
-                            EvaluationError::entity_does_not_exist(uid.clone())
-                        }
-                    }),
-                    Dereference::Residual(r) => {
-                        Ok(PartialValue::Residual(Expr::get_attr(r, attr.clone())))
+            PartialValue::Value(Value {
+                value: ValueKind::Lit(Literal::EntityUID(uid)),
+                ..
+            }) => match self.entities.entity(uid.as_ref()) {
+                Dereference::NoSuchEntity => Err(match *uid.entity_type() {
+                    EntityType::Unspecified => {
+                        EvaluationError::unspecified_entity_access(attr.clone())
                     }
-                    Dereference::Data(entity) => entity
-                        .get(attr)
-                        .ok_or_else(|| {
-                            EvaluationError::entity_attr_does_not_exist(uid, attr.clone())
-                        })
-                        .cloned(),
+                    EntityType::Specified(_) => EvaluationError::entity_does_not_exist(uid.clone()),
+                }),
+                Dereference::Residual(r) => {
+                    Ok(PartialValue::Residual(Expr::get_attr(r, attr.clone())))
                 }
-            }
+                Dereference::Data(entity) => entity
+                    .get(attr)
+                    .ok_or_else(|| EvaluationError::entity_attr_does_not_exist(uid, attr.clone()))
+                    .cloned(),
+            },
             PartialValue::Value(v) => {
                 // PANIC SAFETY Entity type name is fully static and a valid unqualified `Name`
                 #[allow(clippy::unwrap_used)]
@@ -727,8 +739,14 @@ impl<'e> Evaluator<'e> {
     #[cfg(test)]
     pub fn interpret_inline_policy(&self, e: &Expr) -> Result<Value> {
         match self.partial_interpret(e, &HashMap::new())? {
-            PartialValue::Value(v) => Ok(v),
-            PartialValue::Residual(r) => Err(err::EvaluationError::non_value(r)),
+            PartialValue::Value(v) => {
+                debug_assert!(e.source_loc().is_some() == v.source_loc().is_some());
+                Ok(v)
+            }
+            PartialValue::Residual(r) => {
+                debug_assert!(e.source_loc().is_some() == r.source_loc().is_some());
+                Err(err::EvaluationError::non_value(r))
+            }
         }
     }
 
@@ -762,8 +780,8 @@ impl Value {
     /// Convert the `Value` to a boolean, or throw a type error if it's not a
     /// boolean.
     pub(crate) fn get_as_bool(&self) -> Result<bool> {
-        match self {
-            Value::Lit(Literal::Bool(b)) => Ok(*b),
+        match &self.value {
+            ValueKind::Lit(Literal::Bool(b)) => Ok(*b),
             _ => Err(EvaluationError::type_error_single(
                 Type::Bool,
                 self.type_of(),
@@ -774,8 +792,8 @@ impl Value {
     /// Convert the `Value` to a Long, or throw a type error if it's not a
     /// Long.
     pub(crate) fn get_as_long(&self) -> Result<Integer> {
-        match self {
-            Value::Lit(Literal::Long(i)) => Ok(*i),
+        match &self.value {
+            ValueKind::Lit(Literal::Long(i)) => Ok(*i),
             _ => Err(EvaluationError::type_error_single(
                 Type::Long,
                 self.type_of(),
@@ -786,8 +804,8 @@ impl Value {
     /// Convert the `Value` to a String, or throw a type error if it's not a
     /// String.
     pub(crate) fn get_as_string(&self) -> Result<&SmolStr> {
-        match self {
-            Value::Lit(Literal::String(s)) => Ok(s),
+        match &self.value {
+            ValueKind::Lit(Literal::String(s)) => Ok(s),
             _ => Err(EvaluationError::type_error_single(
                 Type::String,
                 self.type_of(),
@@ -797,8 +815,8 @@ impl Value {
 
     /// Convert the `Value` to a Set, or throw a type error if it's not a Set.
     pub(crate) fn get_as_set(&self) -> Result<&Set> {
-        match self {
-            Value::Set(s) => Ok(s),
+        match &self.value {
+            ValueKind::Set(set) => Ok(set),
             _ => Err(EvaluationError::type_error_single(
                 Type::Set,
                 self.type_of(),
@@ -809,8 +827,8 @@ impl Value {
     /// Convert the `Value` to an Entity, or throw a type error if it's not a
     /// Entity.
     pub(crate) fn get_as_entity(&self) -> Result<&EntityUID> {
-        match self {
-            Value::Lit(Literal::EntityUID(uid)) => Ok(uid.as_ref()),
+        match &self.value {
+            ValueKind::Lit(Literal::EntityUID(uid)) => Ok(uid.as_ref()),
             _ => Err(EvaluationError::type_error_single(
                 Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
                 self.type_of(),
@@ -849,9 +867,9 @@ pub mod test {
     // Many of these tests use this Request
     pub fn basic_request() -> Request {
         Request::new(
-            EntityUID::with_eid("test_principal"),
-            EntityUID::with_eid("test_action"),
-            EntityUID::with_eid("test_resource"),
+            (EntityUID::with_eid("test_principal"), None),
+            (EntityUID::with_eid("test_action"), None),
+            (EntityUID::with_eid("test_resource"), None),
             Context::from_pairs(
                 [
                     ("cur_time".into(), RestrictedExpr::val("03:22:11")),
@@ -1103,29 +1121,52 @@ pub mod test {
         let entities = basic_entities();
         let exts = Extensions::none();
         let eval = Evaluator::new(request, &entities, &exts);
+        // The below `assert_eq`s don't actually check the value's source location,
+        // because `PartialEq` and `Eq` for `Value` don't compare source locations,
+        // but checking the value's source location would not be an interesting
+        // test, because these tests don't invoke the parser and there's no way
+        // they could produce any source location other than `None`
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val(false)),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value {
+                value: ValueKind::Lit(Literal::Bool(false)),
+                loc: None,
+            }),
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val(true)),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value {
+                value: ValueKind::Lit(Literal::Bool(true)),
+                loc: None,
+            }),
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val(57)),
-            Ok(Value::Lit(Literal::Long(57)))
+            Ok(Value {
+                value: ValueKind::Lit(Literal::Long(57)),
+                loc: None,
+            }),
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val(-3)),
-            Ok(Value::Lit(Literal::Long(-3)))
+            Ok(Value {
+                value: ValueKind::Lit(Literal::Long(-3)),
+                loc: None,
+            }),
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val("")),
-            Ok(Value::Lit(Literal::String("".into())))
+            Ok(Value {
+                value: ValueKind::Lit(Literal::String("".into())),
+                loc: None,
+            }),
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val("Hello")),
-            Ok(Value::Lit(Literal::String("Hello".into())))
+            Ok(Value {
+                value: ValueKind::Lit(Literal::String("Hello".into())),
+                loc: None,
+            }),
         );
     }
 
@@ -1135,28 +1176,40 @@ pub mod test {
         let entities = basic_entities();
         let exts = Extensions::none();
         let eval = Evaluator::new(request, &entities, &exts);
+        // The below `assert_eq`s don't actually check the value's source location,
+        // because `PartialEq` and `Eq` for `Value` don't compare source locations,
+        // but checking the value's source location would not be an interesting
+        // test, because these tests don't invoke the parser and there's no way
+        // they could produce any source location other than `None`
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val(EntityUID::with_eid("foo"))),
-            Ok(Value::Lit(Literal::EntityUID(Arc::new(
-                EntityUID::with_eid("foo")
-            ))))
+            Ok(Value {
+                value: ValueKind::Lit(Literal::EntityUID(Arc::new(EntityUID::with_eid("foo")))),
+                loc: None,
+            }),
         );
         // should be no error here even for entities that do not exist.
         // (for instance, A == B is allowed even when A and/or B do not exist.)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val(EntityUID::with_eid("doesnotexist"))),
-            Ok(Value::Lit(Literal::EntityUID(Arc::new(
-                EntityUID::with_eid("doesnotexist")
-            ))))
+            Ok(Value {
+                value: ValueKind::Lit(Literal::EntityUID(Arc::new(EntityUID::with_eid(
+                    "doesnotexist"
+                )))),
+                loc: None,
+            }),
         );
         // unspecified entities should not result in an error.
         assert_eq!(
             eval.interpret_inline_policy(&Expr::val(EntityUID::unspecified_from_eid(Eid::new(
                 "foo"
             )))),
-            Ok(Value::Lit(Literal::EntityUID(Arc::new(
-                EntityUID::unspecified_from_eid(Eid::new("foo"))
-            ))))
+            Ok(Value {
+                value: ValueKind::Lit(Literal::EntityUID(Arc::new(
+                    EntityUID::unspecified_from_eid(Eid::new("foo"))
+                ))),
+                loc: None,
+            }),
         );
     }
 
@@ -1168,21 +1221,15 @@ pub mod test {
         let eval = Evaluator::new(request, &entities, &exts);
         assert_eq!(
             eval.interpret_inline_policy(&Expr::var(Var::Principal)),
-            Ok(Value::Lit(Literal::EntityUID(Arc::new(
-                EntityUID::with_eid("test_principal")
-            ))))
+            Ok(Value::from(EntityUID::with_eid("test_principal")))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::var(Var::Action)),
-            Ok(Value::Lit(Literal::EntityUID(Arc::new(
-                EntityUID::with_eid("test_action")
-            ))))
+            Ok(Value::from(EntityUID::with_eid("test_action")))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::var(Var::Resource)),
-            Ok(Value::Lit(Literal::EntityUID(Arc::new(
-                EntityUID::with_eid("test_resource")
-            ))))
+            Ok(Value::from(EntityUID::with_eid("test_resource")))
         );
     }
 
@@ -1198,7 +1245,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("entity_no_attrs_no_parents")),
                 "doesnotexist".into()
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // has_attr on an entity that has attrs, but not that one
         assert_eq!(
@@ -1206,7 +1253,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("entity_with_attrs")),
                 "doesnotexist".into()
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // has_attr where the response is true
         assert_eq!(
@@ -1214,7 +1261,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("entity_with_attrs")),
                 "tags".into()
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // get_attr on an attr which doesn't exist
         assert_eq!(
@@ -1233,7 +1280,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("entity_with_attrs")),
                 "spoon".into()
             )),
-            Ok(Value::Lit(Literal::Long(787)))
+            Ok(Value::from(787))
         );
         // get_attr on an attr which does exist (and has Set type)
         assert_eq!(
@@ -1291,12 +1338,12 @@ pub mod test {
         // if true then 3 else 8
         assert_eq!(
             eval.interpret_inline_policy(&Expr::ite(Expr::val(true), Expr::val(3), Expr::val(8))),
-            Ok(Value::Lit(Literal::Long(3)))
+            Ok(Value::from(3))
         );
         // if false then 3 else 8
         assert_eq!(
             eval.interpret_inline_policy(&Expr::ite(Expr::val(false), Expr::val(3), Expr::val(8))),
-            Ok(Value::Lit(Literal::Long(8)))
+            Ok(Value::from(8))
         );
         // if false then false else true
         assert_eq!(
@@ -1305,7 +1352,7 @@ pub mod test {
                 Expr::val(false),
                 Expr::val(true)
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // if false then principal else resource
         assert_eq!(
@@ -1355,7 +1402,7 @@ pub mod test {
                 Expr::val("hello"),
                 Expr::val(2)
             )),
-            Ok(Value::Lit(Literal::Long(2)))
+            Ok(Value::from(2))
         );
         // if true then (if true then 3 else 8) else -10
         assert_eq!(
@@ -1364,7 +1411,7 @@ pub mod test {
                 Expr::ite(Expr::val(true), Expr::val(3), Expr::val(8)),
                 Expr::val(-10)
             )),
-            Ok(Value::Lit(Literal::Long(3)))
+            Ok(Value::from(3))
         );
         // if true then (if false then 3 else 8) else -10
         assert_eq!(
@@ -1373,7 +1420,7 @@ pub mod test {
                 Expr::ite(Expr::val(false), Expr::val(3), Expr::val(8)),
                 Expr::val(-10)
             )),
-            Ok(Value::Lit(Literal::Long(8)))
+            Ok(Value::from(8))
         );
         // if false then (if false then 3 else 8) else -10
         assert_eq!(
@@ -1382,7 +1429,7 @@ pub mod test {
                 Expr::ite(Expr::val(false), Expr::val(3), Expr::val(8)),
                 Expr::val(-10)
             )),
-            Ok(Value::Lit(Literal::Long(-10)))
+            Ok(Value::from(-10))
         );
         // if false then (if "hello" then 3 else 8) else -10
         assert_eq!(
@@ -1391,7 +1438,7 @@ pub mod test {
                 Expr::ite(Expr::val("hello"), Expr::val(3), Expr::val(8)),
                 Expr::val(-10)
             )),
-            Ok(Value::Lit(Literal::Long(-10)))
+            Ok(Value::from(-10))
         );
         // if true then 3 else (if true then 8 else -10)
         assert_eq!(
@@ -1400,7 +1447,7 @@ pub mod test {
                 Expr::val(3),
                 Expr::ite(Expr::val(true), Expr::val(8), Expr::val(-10))
             )),
-            Ok(Value::Lit(Literal::Long(3)))
+            Ok(Value::from(3))
         );
         // if (if true then false else true) then 3 else 8
         assert_eq!(
@@ -1409,7 +1456,7 @@ pub mod test {
                 Expr::val(3),
                 Expr::val(8)
             )),
-            Ok(Value::Lit(Literal::Long(8)))
+            Ok(Value::from(8))
         );
         // if true then 3 else <err>
         assert_eq!(
@@ -1418,7 +1465,7 @@ pub mod test {
                 Expr::val(3),
                 Expr::get_attr(Expr::record(vec![]).unwrap(), "foo".into()),
             )),
-            Ok(Value::Lit(Literal::Long(3)))
+            Ok(Value::from(3))
         );
         // if false then 3 else <err>
         assert_eq!(
@@ -1451,7 +1498,7 @@ pub mod test {
                 Expr::get_attr(Expr::record(vec![]).unwrap(), "foo".into()),
                 Expr::val(3),
             )),
-            Ok(Value::Lit(Literal::Long(3)))
+            Ok(Value::from(3))
         );
     }
 
@@ -1461,32 +1508,56 @@ pub mod test {
         let entities = basic_entities();
         let exts = Extensions::none();
         let eval = Evaluator::new(request, &entities, &exts);
+        // The below `assert_eq`s don't actually check the value's source location,
+        // because `PartialEq` and `Eq` for `Value` don't compare source locations,
+        // but checking the value's source location would not be an interesting
+        // test, because these tests don't invoke the parser and there's no way
+        // they could produce any source location other than `None`
+
         // set(8)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::set(vec![Expr::val(8)])),
-            Ok(Value::set(vec![Value::Lit(Literal::Long(8))]))
+            Ok(Value::set(
+                vec![Value {
+                    value: ValueKind::Lit(Literal::Long(8)),
+                    loc: None,
+                }],
+                None,
+            )),
         );
         // set(8, 2, 101)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::set(vec![
                 Expr::val(8),
                 Expr::val(2),
-                Expr::val(101)
+                Expr::val(101),
             ])),
-            Ok(Value::set(vec![
-                Value::Lit(Literal::Long(8)),
-                Value::Lit(Literal::Long(2)),
-                Value::Lit(Literal::Long(101))
-            ]))
+            Ok(Value::set(
+                vec![
+                    Value {
+                        value: ValueKind::Lit(Literal::Long(8)),
+                        loc: None,
+                    },
+                    Value {
+                        value: ValueKind::Lit(Literal::Long(2)),
+                        loc: None,
+                    },
+                    Value {
+                        value: ValueKind::Lit(Literal::Long(101)),
+                        loc: None,
+                    },
+                ],
+                None,
+            )),
         );
         // empty set
         assert_eq!(
             eval.interpret_inline_policy(&Expr::set(vec![])),
-            Ok(Value::empty_set())
+            Ok(Value::empty_set(None)),
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::set(vec![])),
-            Ok(Value::empty_set())
+            Ok(Value::empty_set(None)),
         );
         // set(8)["hello"]
         assert_eq!(
@@ -1528,12 +1599,29 @@ pub mod test {
         ]);
         assert_eq!(
             eval.interpret_inline_policy(&mixed_set),
-            Ok(Value::set(vec![
-                Value::Lit(Literal::String("hello".into())),
-                Value::Lit(Literal::Long(2)),
-                Value::Lit(Literal::Bool(true)),
-                Value::Lit(Literal::EntityUID(Arc::new(EntityUID::with_eid("foo")))),
-            ]))
+            Ok(Value::set(
+                vec![
+                    Value {
+                        value: ValueKind::Lit(Literal::String("hello".into())),
+                        loc: None,
+                    },
+                    Value {
+                        value: ValueKind::Lit(Literal::Long(2)),
+                        loc: None,
+                    },
+                    Value {
+                        value: ValueKind::Lit(Literal::Bool(true)),
+                        loc: None,
+                    },
+                    Value {
+                        value: ValueKind::Lit(Literal::EntityUID(Arc::new(EntityUID::with_eid(
+                            "foo"
+                        )))),
+                        loc: None,
+                    },
+                ],
+                None,
+            )),
         );
         // set("hello", 2, true, <entity foo>)["hello"]
         assert_eq!(
@@ -1557,17 +1645,44 @@ pub mod test {
         ]);
         assert_eq!(
             eval.interpret_inline_policy(&set_of_sets),
-            Ok(Value::set(vec![
-                Value::set(vec![
-                    Value::Lit(Literal::Long(8)),
-                    Value::Lit(Literal::Long(2))
-                ]),
-                Value::set(vec![
-                    Value::Lit(Literal::Long(13)),
-                    Value::Lit(Literal::Long(702))
-                ]),
-                Value::set(vec![Value::Lit(Literal::Long(3))]),
-            ]))
+            Ok(Value::set(
+                vec![
+                    Value::set(
+                        vec![
+                            Value {
+                                value: ValueKind::Lit(Literal::Long(8)),
+                                loc: None,
+                            },
+                            Value {
+                                value: ValueKind::Lit(Literal::Long(2)),
+                                loc: None,
+                            },
+                        ],
+                        None,
+                    ),
+                    Value::set(
+                        vec![
+                            Value {
+                                value: ValueKind::Lit(Literal::Long(13)),
+                                loc: None,
+                            },
+                            Value {
+                                value: ValueKind::Lit(Literal::Long(702)),
+                                loc: None,
+                            },
+                        ],
+                        None,
+                    ),
+                    Value::set(
+                        vec![Value {
+                            value: ValueKind::Lit(Literal::Long(3)),
+                            loc: None,
+                        }],
+                        None,
+                    ),
+                ],
+                None,
+            )),
         );
         // set(set(8, 2), set(13, 702), set(3))["hello"]
         assert_eq!(
@@ -1612,7 +1727,7 @@ pub mod test {
         let string_key = Expr::record(vec![("key".into(), Expr::val(3))]).unwrap();
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(string_key, "key".into())),
-            Ok(Value::Lit(Literal::Long(3)))
+            Ok(Value::from(3))
         );
         // {"ham": 3, "eggs": 7}["ham"] or {"ham": 3, "eggs": 7}.ham
         let ham_and_eggs = Expr::record(vec![
@@ -1622,12 +1737,12 @@ pub mod test {
         .unwrap();
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(ham_and_eggs.clone(), "ham".into())),
-            Ok(Value::Lit(Literal::Long(3)))
+            Ok(Value::from(3))
         );
         // {"ham": 3, "eggs": 7}["eggs"]
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(ham_and_eggs.clone(), "eggs".into())),
-            Ok(Value::Lit(Literal::Long(7)))
+            Ok(Value::from(7))
         );
         // {"ham": 3, "eggs": 7}["what"]
         assert_eq!(
@@ -1646,7 +1761,7 @@ pub mod test {
         .unwrap();
         assert_eq!(
             eval.interpret_inline_policy(&Expr::get_attr(ham_and_eggs_2.clone(), "ham".into())),
-            Ok(Value::Lit(Literal::Long(3)))
+            Ok(Value::from(3))
         );
         // {"ham": 3, "eggs": "why"}["eggs"]
         assert_eq!(
@@ -1682,7 +1797,7 @@ pub mod test {
                 Expr::get_attr(hams_and_eggs, "hams".into()),
                 "more".into()
             )),
-            Ok(Value::Lit(Literal::Long(2)))
+            Ok(Value::from(2))
         );
         // {"this is a valid map key+.-_%() ": 7}["this is a valid map key+.-_%() "]
         let weird_key = Expr::record(vec![(
@@ -1695,7 +1810,7 @@ pub mod test {
                 weird_key,
                 "this is a valid map key+.-_%() ".into()
             )),
-            Ok(Value::Lit(Literal::Long(7)))
+            Ok(Value::from(7))
         );
         // { foo: 2, bar: [3, 33, 333] }.bar
         assert_eq!(
@@ -1710,11 +1825,10 @@ pub mod test {
                 .unwrap(),
                 "bar".into()
             )),
-            Ok(Value::set(vec![
-                Value::from(3),
-                Value::from(33),
-                Value::from(333)
-            ]))
+            Ok(Value::set(
+                vec![Value::from(3), Value::from(33), Value::from(333)],
+                None
+            ))
         );
         // { foo: 2, bar: {"a+b": 5, "jkl;": 10} }.bar["a+b"]
         assert_eq!(
@@ -1736,7 +1850,7 @@ pub mod test {
                 ),
                 "a+b".into()
             )),
-            Ok(Value::Lit(Literal::Long(5)))
+            Ok(Value::from(5))
         );
         // { foo: 2, bar: { foo: 4, cake: 77 } }.bar.foo
         assert_eq!(
@@ -1758,7 +1872,7 @@ pub mod test {
                 ),
                 "foo".into(),
             )),
-            Ok(Value::Lit(Literal::Long(4)))
+            Ok(Value::from(4))
         );
         // duplicate record key
         // { foo: 2, bar: 4, foo: "hi" }.bar
@@ -1779,7 +1893,7 @@ pub mod test {
                 ),
                 "street".into()
             )),
-            Ok(Value::Lit(Literal::String("234 magnolia".into())))
+            Ok(Value::from("234 magnolia"))
         );
         // context.cur_time
         assert_eq!(
@@ -1787,7 +1901,7 @@ pub mod test {
                 Expr::var(Var::Context),
                 "cur_time".into()
             )),
-            Ok(Value::Lit(Literal::String("03:22:11".into())))
+            Ok(Value::from("03:22:11"))
         );
         // context.device_properties.os_name
         assert_eq!(
@@ -1795,7 +1909,7 @@ pub mod test {
                 Expr::get_attr(Expr::var(Var::Context), "device_properties".into()),
                 "os_name".into()
             )),
-            Ok(Value::Lit(Literal::String("Windows".into())))
+            Ok(Value::from("Windows"))
         );
         // using has() to test for existence of a record field (which does exist)
         // has({"foo": 77, "bar" : "pancakes"}.foo)
@@ -1808,7 +1922,7 @@ pub mod test {
                 .unwrap(),
                 "foo".into()
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // using has() to test for existence of a record field (which doesn't exist)
         // {"foo": 77, "bar" : "pancakes"} has pancakes
@@ -1821,7 +1935,7 @@ pub mod test {
                 .unwrap(),
                 "pancakes".into()
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // {"2": "ham"} has "2"
         assert_eq!(
@@ -1829,7 +1943,7 @@ pub mod test {
                 Expr::record(vec![("2".into(), Expr::val("ham"))]).unwrap(),
                 "2".into()
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // {"ham": 17, "eggs": if foo has spaghetti then 3 else 7} has ham
         assert_eq!(
@@ -1851,7 +1965,7 @@ pub mod test {
                 .unwrap(),
                 "ham".into()
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // indexing into something that's not a record, 1010122["hello"]
         assert_eq!(
@@ -1920,12 +2034,12 @@ pub mod test {
         // not(true)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::not(Expr::val(true))),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // not(false)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::not(Expr::val(false))),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // not(8)
         assert_eq!(
@@ -1945,7 +2059,7 @@ pub mod test {
         // not(not(true))
         assert_eq!(
             eval.interpret_inline_policy(&Expr::not(Expr::not(Expr::val(true)))),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // not(if true then false else true)
         assert_eq!(
@@ -1954,7 +2068,7 @@ pub mod test {
                 Expr::val(false),
                 Expr::val(true)
             ))),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // if not(true) then "hello" else "goodbye"
         assert_eq!(
@@ -1976,22 +2090,22 @@ pub mod test {
         // neg(101)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::neg(Expr::val(101))),
-            Ok(Value::Lit(Literal::Long(-101)))
+            Ok(Value::from(-101))
         );
         // neg(-101)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::neg(Expr::val(-101))),
-            Ok(Value::Lit(Literal::Long(101)))
+            Ok(Value::from(101))
         );
         // neg(0)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::neg(Expr::val(0))),
-            Ok(Value::Lit(Literal::Long(0)))
+            Ok(Value::from(0))
         );
         // neg(neg(7))
         assert_eq!(
             eval.interpret_inline_policy(&Expr::neg(Expr::neg(Expr::val(7)))),
-            Ok(Value::Lit(Literal::Long(7)))
+            Ok(Value::from(7))
         );
         // if true then neg(8) else neg(1)
         assert_eq!(
@@ -2000,7 +2114,7 @@ pub mod test {
                 Expr::neg(Expr::val(8)),
                 Expr::neg(Expr::val(1))
             )),
-            Ok(Value::Lit(Literal::Long(-8)))
+            Ok(Value::from(-8))
         );
         // overflow
         assert_eq!(
@@ -2036,12 +2150,12 @@ pub mod test {
         // eq(33, 33)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_eq(Expr::val(33), Expr::val(33))),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // eq(33, -12)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_eq(Expr::val(33), Expr::val(-12))),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // if eq("foo", "foo") then 12 else 97
         assert_eq!(
@@ -2050,7 +2164,7 @@ pub mod test {
                 Expr::val(12),
                 Expr::val(97),
             )),
-            Ok(Value::Lit(Literal::Long(12)))
+            Ok(Value::from(12))
         );
         // if eq([1, -33, 707], [1, -33]) then 12 else 97
         assert_eq!(
@@ -2062,7 +2176,7 @@ pub mod test {
                 Expr::val(12),
                 Expr::val(97),
             )),
-            Ok(Value::Lit(Literal::Long(97)))
+            Ok(Value::from(97))
         );
         // eq(2>0, 0>(-2))
         assert_eq!(
@@ -2070,7 +2184,7 @@ pub mod test {
                 Expr::greater(Expr::val(2), Expr::val(0)),
                 Expr::greater(Expr::val(0), Expr::val(-2))
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // eq(12+33, 50-5)
         assert_eq!(
@@ -2078,7 +2192,7 @@ pub mod test {
                 Expr::add(Expr::val(12), Expr::val(33)),
                 Expr::sub(Expr::val(50), Expr::val(5)),
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // eq([1, 2, 40], [1, 2, 40])
         assert_eq!(
@@ -2086,7 +2200,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(1), Expr::val(2), Expr::val(40)]),
                 Expr::set(vec![Expr::val(1), Expr::val(2), Expr::val(40)])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // eq([1, 2, 40], [1, 40, 2])
         assert_eq!(
@@ -2094,7 +2208,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(1), Expr::val(2), Expr::val(40)]),
                 Expr::set(vec![Expr::val(1), Expr::val(40), Expr::val(2)])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // eq([1, -2, 40], [1, 40])
         assert_eq!(
@@ -2102,7 +2216,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(1), Expr::val(-2), Expr::val(40)]),
                 Expr::set(vec![Expr::val(1), Expr::val(40)])
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // eq([1, 1, 1, 2, 40], [40, 1, 2])
         assert_eq!(
@@ -2116,7 +2230,7 @@ pub mod test {
                 ]),
                 Expr::set(vec![Expr::val(40), Expr::val(1), Expr::val(2)])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // eq([1, 1, 2, 1, 40, 2, 1, 2, 40, 1], [1, 40, 1, 2])
         assert_eq!(
@@ -2140,7 +2254,7 @@ pub mod test {
                     Expr::val(2)
                 ])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // eq(context.device_properties, { appropriate record literal })
         assert_eq!(
@@ -2152,7 +2266,7 @@ pub mod test {
                 ])
                 .unwrap()
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // eq(context.device_properties, { record literal missing one field })
         assert_eq!(
@@ -2160,7 +2274,7 @@ pub mod test {
                 Expr::get_attr(Expr::var(Var::Context), "device_properties".into()),
                 Expr::record(vec![("os_name".into(), Expr::val("Windows"))]).unwrap()
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // eq(context.device_properties, { record literal with an extra field })
         assert_eq!(
@@ -2173,7 +2287,7 @@ pub mod test {
                 ])
                 .unwrap()
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // eq(context.device_properties, { record literal with the same keys/values })
         assert_eq!(
@@ -2185,7 +2299,7 @@ pub mod test {
                 ])
                 .unwrap()
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // eq(A, A) where A is an Entity
         assert_eq!(
@@ -2193,7 +2307,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("foo")),
                 Expr::val(EntityUID::with_eid("foo")),
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // eq(A, A) where A is an Entity that doesn't exist
         assert_eq!(
@@ -2201,7 +2315,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("doesnotexist")),
                 Expr::val(EntityUID::with_eid("doesnotexist")),
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // eq(A, B) where A and B are entities of the same type
         assert_eq!(
@@ -2209,7 +2323,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("foo")),
                 Expr::val(EntityUID::with_eid("bar")),
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // eq(A, B) where A and B are entities of different types
         assert_eq!(
@@ -2223,7 +2337,7 @@ pub mod test {
                         .expect("should be a valid identifier")
                 ),
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // eq(A, B) where A and B are entities of different types but happen to
         // have the same name
@@ -2238,7 +2352,7 @@ pub mod test {
                         .expect("should be a valid identifier")
                 ),
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // eq(A, B) where A exists but B does not
         assert_eq!(
@@ -2246,7 +2360,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("foo")),
                 Expr::val(EntityUID::with_eid("doesnotexist")),
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // eq("foo", <entity foo>)
         assert_eq!(
@@ -2254,7 +2368,7 @@ pub mod test {
                 Expr::val("foo"),
                 Expr::val(EntityUID::with_eid("foo"))
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
     }
 
@@ -2267,62 +2381,62 @@ pub mod test {
         // 3 < 303
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(3), Expr::val(303))),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // 3 < -303
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(3), Expr::val(-303))),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // -303 < -1
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(-303), Expr::val(-1))),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // 3 < 3
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(3), Expr::val(3))),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // -33 <= 0
         assert_eq!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val(-33), Expr::val(0))),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // 3 <= 3
         assert_eq!(
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val(3), Expr::val(3))),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // 7 > 3
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greater(Expr::val(7), Expr::val(3))),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // 7 > -3
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greater(Expr::val(7), Expr::val(-3))),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // 7 > 7
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greater(Expr::val(7), Expr::val(7))),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // 0 >= -7
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(0), Expr::val(-7))),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // -1 >= 7
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(-1), Expr::val(7))),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // 7 >= 7
         assert_eq!(
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(7), Expr::val(7))),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // false < true
         assert_eq!(
@@ -2524,17 +2638,17 @@ pub mod test {
         // 11 + 22
         assert_eq!(
             eval.interpret_inline_policy(&Expr::add(Expr::val(11), Expr::val(22))),
-            Ok(Value::Lit(Literal::Long(33)))
+            Ok(Value::from(33))
         );
         // 11 + 0
         assert_eq!(
             eval.interpret_inline_policy(&Expr::add(Expr::val(11), Expr::val(0))),
-            Ok(Value::Lit(Literal::Long(11)))
+            Ok(Value::from(11))
         );
         // -1 + 1
         assert_eq!(
             eval.interpret_inline_policy(&Expr::add(Expr::val(-1), Expr::val(1))),
-            Ok(Value::Lit(Literal::Long(0)))
+            Ok(Value::from(0))
         );
         // overflow
         assert_eq!(
@@ -2554,12 +2668,12 @@ pub mod test {
         // 44 - 31
         assert_eq!(
             eval.interpret_inline_policy(&Expr::sub(Expr::val(44), Expr::val(31))),
-            Ok(Value::Lit(Literal::Long(13)))
+            Ok(Value::from(13))
         );
         // 5 - (-3)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::sub(Expr::val(5), Expr::val(-3))),
-            Ok(Value::Lit(Literal::Long(8)))
+            Ok(Value::from(8))
         );
         // overflow
         assert_eq!(
@@ -2579,12 +2693,12 @@ pub mod test {
         // 5 * (-3)
         assert_eq!(
             eval.interpret_inline_policy(&Expr::mul(Expr::val(5), -3)),
-            Ok(Value::Lit(Literal::Long(-15)))
+            Ok(Value::from(-15))
         );
         // 5 * 0
         assert_eq!(
             eval.interpret_inline_policy(&Expr::mul(Expr::val(5), 0)),
-            Ok(Value::Lit(Literal::Long(0)))
+            Ok(Value::from(0))
         );
         // "5" * 0
         assert_eq!(
@@ -2615,7 +2729,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(2), Expr::val(3), Expr::val(4)]),
                 Expr::val(2)
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // [34, 2, -7] contains 2
         assert_eq!(
@@ -2623,7 +2737,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(34), Expr::val(2), Expr::val(-7)]),
                 Expr::val(2)
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // [34, 2, -7] contains 3
         assert_eq!(
@@ -2631,12 +2745,12 @@ pub mod test {
                 Expr::set(vec![Expr::val(34), Expr::val(2), Expr::val(-7)]),
                 Expr::val(3)
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // [] contains 7
         assert_eq!(
             eval.interpret_inline_policy(&Expr::contains(Expr::set(vec![]), Expr::val(7))),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // ["some", "useful", "tags"] contains "foo"
         assert_eq!(
@@ -2648,7 +2762,7 @@ pub mod test {
                 ]),
                 Expr::val("foo")
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // ["some", "useful", "tags"] contains "useful"
         assert_eq!(
@@ -2660,7 +2774,7 @@ pub mod test {
                 ]),
                 Expr::val("useful")
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // [<entity child>, <entity sibling>] contains <entity child>
         assert_eq!(
@@ -2671,7 +2785,7 @@ pub mod test {
                 ]),
                 Expr::val(EntityUID::with_eid("child"))
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // [<entity parent>, <entity sibling>] contains <entity child>
         assert_eq!(
@@ -2682,7 +2796,7 @@ pub mod test {
                 ]),
                 Expr::val(EntityUID::with_eid("child"))
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // ["foo", "bar"] contains 3
         assert_eq!(
@@ -2690,7 +2804,7 @@ pub mod test {
                 Expr::set(vec![Expr::val("foo"), Expr::val("bar")]),
                 Expr::val(3)
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // ["foo", "bar"] contains [3]
         assert_eq!(
@@ -2698,7 +2812,7 @@ pub mod test {
                 Expr::set(vec![Expr::val("foo"), Expr::val("bar")]),
                 Expr::set(vec![Expr::val(3)])
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // [[7], "eggs", [3]] contains [3]
         assert_eq!(
@@ -2710,7 +2824,7 @@ pub mod test {
                 ]),
                 Expr::set(vec![Expr::val(3)])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
 
         // ["2", 20, true, <entity foo>] contains 2
@@ -2724,7 +2838,7 @@ pub mod test {
                 ]),
                 Expr::val(2)
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // ["ham", entity_with_attrs.address.town, -1] contains "barmstadt"
         assert_eq!(
@@ -2742,7 +2856,7 @@ pub mod test {
                 ]),
                 Expr::val("barmstadt")
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // 3 contains 7
         assert_eq!(
@@ -2779,7 +2893,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("child")),
                 Expr::val(EntityUID::with_eid("unrelated"))
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // A in B, where A and B are the same type and it's true
         assert_eq!(
@@ -2787,7 +2901,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("child")),
                 Expr::val(EntityUID::with_eid("parent"))
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // A in B, where A and B are different types and it's true
         assert_eq!(
@@ -2798,7 +2912,7 @@ pub mod test {
                 ),
                 Expr::val(EntityUID::with_eid("parent"))
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // A in B, where A and B are unrelated _and_ different types
         assert_eq!(
@@ -2809,7 +2923,7 @@ pub mod test {
                 ),
                 Expr::val(EntityUID::with_eid("unrelated"))
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // A in B, where A and B are siblings
         assert_eq!(
@@ -2817,7 +2931,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("child")),
                 Expr::val(EntityUID::with_eid("sibling"))
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // A in A, where A exists
         assert_eq!(
@@ -2825,7 +2939,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("parent")),
                 Expr::val(EntityUID::with_eid("parent"))
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // A in A, where A does not exist
         assert_eq!(
@@ -2833,7 +2947,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("doesnotexist")),
                 Expr::val(EntityUID::with_eid("doesnotexist")),
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // A in A, where A is unspecified
         assert_eq!(
@@ -2841,7 +2955,7 @@ pub mod test {
                 Expr::val(EntityUID::unspecified_from_eid(Eid::new("foo"))),
                 Expr::val(EntityUID::unspecified_from_eid(Eid::new("foo"))),
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // A in B, where actually B in A
         assert_eq!(
@@ -2849,7 +2963,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("parent")),
                 Expr::val(EntityUID::with_eid("child"))
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // A in B, where actually A is a grandchild of B
         assert_eq!(
@@ -2857,7 +2971,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("child")),
                 Expr::val(EntityUID::with_eid("grandparent"))
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // A in B, where A doesn't exist but B does
         assert_eq!(
@@ -2865,7 +2979,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("doesnotexist")),
                 Expr::val(EntityUID::with_eid("parent"))
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // A in B, where B doesn't exist but A does
         assert_eq!(
@@ -2873,7 +2987,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("parent")),
                 Expr::val(EntityUID::with_eid("doesnotexist"))
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // A in B, where A is unspecified but B exists
         assert_eq!(
@@ -2881,7 +2995,7 @@ pub mod test {
                 Expr::val(EntityUID::unspecified_from_eid(Eid::new("foo"))),
                 Expr::val(EntityUID::with_eid("parent"))
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // A in B, where A exists but B is unspecified
         assert_eq!(
@@ -2889,7 +3003,7 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("parent")),
                 Expr::val(EntityUID::unspecified_from_eid(Eid::new("foo")))
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // A in [B, C] where A in B but not A in C
         assert_eq!(
@@ -2900,7 +3014,7 @@ pub mod test {
                     Expr::val(EntityUID::with_eid("sibling")),
                 ])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // A in [B, C] where A in C but not A in B
         assert_eq!(
@@ -2911,7 +3025,7 @@ pub mod test {
                     Expr::val(EntityUID::with_eid("grandparent")),
                 ])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // A in [B, C] where A is in neither B nor C
         assert_eq!(
@@ -2922,7 +3036,7 @@ pub mod test {
                     Expr::val(EntityUID::with_eid("unrelated")),
                 ])
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // A in [A, B] where B is unrelated
         assert_eq!(
@@ -2933,7 +3047,7 @@ pub mod test {
                     Expr::val(EntityUID::with_eid("child")),
                 ])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // A in [B, A] where B is unrelated
         assert_eq!(
@@ -2944,7 +3058,7 @@ pub mod test {
                     Expr::val(EntityUID::with_eid("unrelated")),
                 ])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // A in [A, true]
         assert_eq!(
@@ -2972,7 +3086,7 @@ pub mod test {
                     Expr::val(EntityUID::with_eid("doesnotexistB")),
                 ])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // A in [B, C] where none of A, B, or C exist
         assert_eq!(
@@ -2983,7 +3097,7 @@ pub mod test {
                     Expr::val(EntityUID::with_eid("doesnotexistC")),
                 ])
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // A in [B, C] where B and C do not exist but A does
         assert_eq!(
@@ -2994,7 +3108,7 @@ pub mod test {
                     Expr::val(EntityUID::with_eid("doesnotexistC")),
                 ])
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // A in [B, C] where B and C exist but A does not
         assert_eq!(
@@ -3005,7 +3119,7 @@ pub mod test {
                     Expr::val(EntityUID::with_eid("grandparent")),
                 ])
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // "foo" in "foobar"
         assert_eq!(
@@ -3096,9 +3210,9 @@ pub mod test {
         // Should be allow under new semantics for "in"
 
         let request = Request::new(
-            EntityUID::with_eid("Alice"),
-            EntityUID::with_eid("test_action"),
-            EntityUID::with_eid("test_resource"),
+            (EntityUID::with_eid("Alice"), None),
+            (EntityUID::with_eid("test_action"), None),
+            (EntityUID::with_eid("test_resource"), None),
             Context::empty(),
             Some(&RequestSchemaAllPass),
             Extensions::none(),
@@ -3122,14 +3236,14 @@ pub mod test {
                 Expr::val(EntityUID::with_eid("Alice")),
                 Expr::val(EntityUID::with_eid("Friends"))
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_in(
                 Expr::val(EntityUID::with_eid("Bob")),
                 Expr::val(EntityUID::with_eid("Friends"))
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_in(
@@ -3139,7 +3253,7 @@ pub mod test {
                     Expr::val(EntityUID::with_eid("Bob"))
                 ])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_in(
@@ -3149,7 +3263,7 @@ pub mod test {
                     Expr::val(EntityUID::with_eid("Alice"))
                 ])
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
     }
 
@@ -3164,134 +3278,134 @@ pub mod test {
             eval.interpret_inline_policy(
                 &parse_expr(r#""eggs" like "ham*""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""eggs" like "*ham""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""eggs" like "*ham*""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // "ham and eggs" vs "ham"
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""ham and eggs" like "ham*""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""ham and eggs" like "*ham""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""ham and eggs" like "*ham*""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""ham and eggs" like "*h*a*m*""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // "eggs and ham" vs "ham"
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""eggs and ham" like "ham*""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""eggs and ham" like "*ham""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // "eggs, ham, and spinach" vs "ham"
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""eggs, ham, and spinach" like "ham*""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""eggs, ham, and spinach" like "*ham""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""eggs, ham, and spinach" like "*ham*""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // "Gotham" vs "ham"
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""Gotham" like "ham*""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""Gotham" like "*ham""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // "ham" vs "ham"
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""ham" like "ham""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""ham" like "ham*""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""ham" like "*ham""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""ham" like "*h*a*m*""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // "ham and ham" vs "ham"
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""ham and ham" like "ham*""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""ham and ham" like "*ham""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // "ham" vs "ham and eggs"
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""ham" like "*ham and eggs*""#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // type error
         assert_eq!(
@@ -3312,14 +3426,14 @@ pub mod test {
                 Expr::val("*"),
                 vec![PatternElem::Char('\u{0000}')]
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
 
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#"   "\\afterslash" like "\\*"   "#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
     }
 
@@ -3335,7 +3449,7 @@ pub mod test {
                 &parse_expr(r#""string\\with\\backslashes" like "string\\with\\backslashes""#)
                     .expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(
@@ -3344,23 +3458,23 @@ pub mod test {
                 )
                 .expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""string\\with\\backslashes" like "string*with*backslashes""#)
                     .expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#""string*with*stars" like "string\*with\*stars""#)
                     .expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
-        assert_eq!(eval.interpret_inline_policy(&parse_expr(r#""string\\*with\\*backslashes\\*and\\*stars" like "string\\*with\\*backslashes\\*and\\*stars""#).expect("parsing error")), Ok(Value::Lit(Literal::Bool(true))));
+        assert_eq!(eval.interpret_inline_policy(&parse_expr(r#""string\\*with\\*backslashes\\*and\\*stars" like "string\\*with\\*backslashes\\*and\\*stars""#).expect("parsing error")), Ok(Value::from(true)));
     }
 
     #[test]
@@ -3377,7 +3491,7 @@ pub mod test {
                 ))
                 .expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(
@@ -3387,38 +3501,38 @@ pub mod test {
                 ))
                 .expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#"User::"alice" is User"#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#"User::"alice" is Group"#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#"N::S::User::"alice" is N::S::User"#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         assert_eq!(
             eval.interpret_inline_policy(
                 &parse_expr(r#"N::S::User::"alice" is User"#).expect("parsing error")
             ),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(&Expr::is_entity_type(
                 Expr::val(EntityUID::unspecified_from_eid(Eid::new("thing"))),
                 "User".parse().unwrap()
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         assert_eq!(
             eval.interpret_inline_policy(&parse_expr(r#"1 is Group"#).expect("parsing error")),
@@ -3441,7 +3555,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(1), Expr::val(-22), Expr::val(34)]),
                 Expr::set(vec![Expr::val(1), Expr::val(-22)])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // [1, -22, 34] containsall [-22, 1]?
         assert_eq!(
@@ -3449,7 +3563,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(1), Expr::val(-22), Expr::val(34)]),
                 Expr::set(vec![Expr::val(-22), Expr::val(1)])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // [1, -22, 34] containsall [-22]?
         assert_eq!(
@@ -3457,7 +3571,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(1), Expr::val(-22), Expr::val(34)]),
                 Expr::set(vec![Expr::val(-22)])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // [43, 34] containsall [34, 43]?
         assert_eq!(
@@ -3465,7 +3579,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(43), Expr::val(34)]),
                 Expr::set(vec![Expr::val(34), Expr::val(43)])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // [1, -2, 34] containsall [1, -22]?
         assert_eq!(
@@ -3473,7 +3587,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(1), Expr::val(-2), Expr::val(34)]),
                 Expr::set(vec![Expr::val(1), Expr::val(-22)])
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // [1, 34] containsall [1, 101, 34]?
         assert_eq!(
@@ -3481,7 +3595,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(1), Expr::val(34)]),
                 Expr::set(vec![Expr::val(1), Expr::val(101), Expr::val(34)])
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // [1, 34, 102] containsall [1, 101, 34]?
         assert_eq!(
@@ -3489,7 +3603,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(1), Expr::val(34), Expr::val(102)]),
                 Expr::set(vec![Expr::val(1), Expr::val(101), Expr::val(34)])
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // [2, -7, 387] containsall [1, 101, 34]?
         assert_eq!(
@@ -3497,7 +3611,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(2), Expr::val(-7), Expr::val(387)]),
                 Expr::set(vec![Expr::val(1), Expr::val(101), Expr::val(34)])
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // [2, 43] containsall []?
         assert_eq!(
@@ -3505,7 +3619,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(2), Expr::val(43)]),
                 Expr::set(vec![])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // [] containsall [2, 43]?
         assert_eq!(
@@ -3513,7 +3627,7 @@ pub mod test {
                 Expr::set(vec![]),
                 Expr::set(vec![Expr::val(2), Expr::val(43)])
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // [<entity bar>, <entity foo>] containsall [<entity foo>]?
         assert_eq!(
@@ -3524,7 +3638,7 @@ pub mod test {
                 ]),
                 Expr::set(vec![Expr::val(EntityUID::with_eid("foo"))])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // [false, 3, [47, 0], {"2": "ham"}] containsall [3, {"2": "ham"}]?
         assert_eq!(
@@ -3540,7 +3654,7 @@ pub mod test {
                     Expr::record(vec![("2".into(), Expr::val("ham"))]).unwrap()
                 ])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         //  "ham and eggs" containsall "ham"?
         assert_eq!(
@@ -3568,7 +3682,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(1), Expr::val(-22)]),
                 Expr::set(vec![Expr::val(1), Expr::val(-22), Expr::val(34)])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // test for [1, -22, 34] contains_any of [1, -22]
         assert_eq!(
@@ -3576,7 +3690,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(1), Expr::val(-22), Expr::val(34)]),
                 Expr::set(vec![Expr::val(1), Expr::val(-22)])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // test for [-22] contains_any of [1, -22, 34]
         assert_eq!(
@@ -3584,7 +3698,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(-22)]),
                 Expr::set(vec![Expr::val(1), Expr::val(-22), Expr::val(34)])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // test for [1, 101] contains_any of [1, -22, 34]
         assert_eq!(
@@ -3592,7 +3706,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(1), Expr::val(101)]),
                 Expr::set(vec![Expr::val(1), Expr::val(-22), Expr::val(34)])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // test for [1, 101] contains_any of [-22, 34]
         assert_eq!(
@@ -3600,7 +3714,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(1), Expr::val(101)]),
                 Expr::set(vec![Expr::val(-22), Expr::val(34)])
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // test for [] contains_any of [-22, 34]
         assert_eq!(
@@ -3608,7 +3722,7 @@ pub mod test {
                 Expr::set(vec![]),
                 Expr::set(vec![Expr::val(-22), Expr::val(34)])
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // test for [-22, 34] contains_any of []
         assert_eq!(
@@ -3616,7 +3730,7 @@ pub mod test {
                 Expr::set(vec![Expr::val(-22), Expr::val(34)]),
                 Expr::set(vec![])
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // test for [<entity foo>, <entity bar>] contains_any of [<entity ham>, <entity eggs>]
         assert_eq!(
@@ -3630,7 +3744,7 @@ pub mod test {
                     Expr::val(EntityUID::with_eid("eggs"))
                 ])
             )),
-            Ok(Value::Lit(Literal::Bool(false)))
+            Ok(Value::from(false))
         );
         // test for [3, {"2": "ham", "1": "eggs"}] contains_any of [7, false, [-22, true], {"1": "eggs", "2": "ham"}]
         assert_eq!(
@@ -3654,7 +3768,7 @@ pub mod test {
                     .unwrap()
                 ])
             )),
-            Ok(Value::Lit(Literal::Bool(true)))
+            Ok(Value::from(true))
         );
         // test for "ham" contains_any of "ham and eggs"
         assert_eq!(
@@ -3692,103 +3806,103 @@ pub mod test {
         // short-circuit allows these to pass without error
         let raw_expr = "(false && 3)";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_ok());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Ok(_));
 
         let raw_expr = "(true || 3)";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_ok());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Ok(_));
 
         // short-circuit plus total equality allows these to pass without error
         let raw_expr = "(false && 3) == 3";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_ok());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Ok(_));
 
         let raw_expr = "(true || 3) == 3";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_ok());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Ok(_));
 
         let raw_expr = "(false && 3 && true) == 3";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_ok());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Ok(_));
 
         let raw_expr = "(true || 3 || true) == 3";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_ok());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Ok(_));
 
         // These must error
         let raw_expr = "(true && 3)";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
         let t = evaluator.interpret_inline_policy(&expr);
         println!("EXPR={:?}", t);
-        assert!(evaluator.interpret_inline_policy(&expr).is_err());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(3 && true)";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_err());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(3 && false)";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_err());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(3 || true)";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_err());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(3 || false)";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_err());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(false || 3)";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_err());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(true && 3) == 3";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_err());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(3 && true) == 3";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_err());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(3 && false) == 3";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_err());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(3 || true) == 3";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_err());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(3 || false) == 3";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_err());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(false || 3) == 3";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_err());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(true && 3 && true) == 3";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_err());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(3 && true && true) == 3";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_err());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(3 && false && true) == 3";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_err());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(3 || true || true) == 3";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_err());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(3 || false || true) == 3";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_err());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(false || 3 || true) == 3";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
-        assert!(evaluator.interpret_inline_policy(&expr).is_err());
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         Ok(())
     }
@@ -3805,28 +3919,23 @@ pub mod test {
 
         let slots = HashMap::new();
         let r = evaluator.partial_interpret(&e, &slots);
-        match r {
-            Err(e) => match e.error_kind() {
-                EvaluationErrorKind::UnlinkedSlot(slotid) => {
-                    assert_eq!(*slotid, SlotId::principal())
-                }
-                _ => panic!("Got wrong error: {e}"),
-            },
-            Ok(v) => panic!("Got wrong response: {v}"),
-        };
+        assert_matches!(r, Err(e) => {
+            assert_matches!(e.error_kind(), EvaluationErrorKind::UnlinkedSlot(slotid) => {
+                assert_eq!(*slotid, SlotId::principal());
+            });
+        });
 
         let mut slots = HashMap::new();
         slots.insert(SlotId::principal(), EntityUID::with_eid("eid"));
         let r = evaluator.partial_interpret(&e, &slots);
-        match r {
-            Ok(e) => assert_eq!(
+        assert_matches!(r, Ok(e) => {
+            assert_eq!(
                 e,
-                PartialValue::Value(Value::Lit(Literal::EntityUID(Arc::new(
+                PartialValue::Value(Value::from(
                     EntityUID::with_eid("eid")
-                ))))
-            ),
-            Err(e) => panic!("Got unexpected error {e}"),
-        };
+                ))
+            );
+        });
     }
 
     #[test]
@@ -3848,9 +3957,9 @@ pub mod test {
         )
         .expect("Instantiation failed!");
         let q = Request::new(
-            EntityUID::with_eid("p"),
-            EntityUID::with_eid("a"),
-            EntityUID::with_eid("r"),
+            (EntityUID::with_eid("p"), None),
+            (EntityUID::with_eid("a"), None),
+            (EntityUID::with_eid("r"), None),
             Context::empty(),
             Some(&RequestSchemaAllPass),
             Extensions::none(),
@@ -3863,13 +3972,9 @@ pub mod test {
         let eval = Evaluator::new(q, &entities, &exts);
 
         let ir = pset.policies().next().expect("No linked policies");
-        assert!(
-            match eval.partial_evaluate(ir).expect("evaluation_failed") {
-                Either::Left(b) => b,
-                Either::Right(_) => false,
-            },
-            "Should be enforced"
-        );
+        assert_matches!(eval.partial_evaluate(ir), Ok(Either::Left(b)) => {
+            assert!(b, "Should be enforced");
+        });
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
@@ -3973,7 +4078,10 @@ pub mod test {
             ))
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
-            Ok(PartialValue::Value(Value::ExtensionValue(_)))
+            Ok(PartialValue::Value(Value {
+                value: ValueKind::ExtensionValue(_),
+                ..
+            }))
         );
         assert_restricted_expression_error(
             BorrowedRestrictedExpr::new(&Expr::get_attr(
@@ -4008,7 +4116,10 @@ pub mod test {
             BorrowedRestrictedExpr::new(&Expr::set([Expr::val("hi"), Expr::val("there")]))
                 .map_err(Into::into)
                 .and_then(|e| evaluator.partial_interpret(e)),
-            Ok(PartialValue::Value(Value::Set(_)))
+            Ok(PartialValue::Value(Value {
+                value: ValueKind::Set(_),
+                ..
+            }))
         );
         assert_matches!(
             BorrowedRestrictedExpr::new(
@@ -4020,7 +4131,10 @@ pub mod test {
             )
             .map_err(Into::into)
             .and_then(|e| evaluator.partial_interpret(e)),
-            Ok(PartialValue::Value(Value::Record(_)))
+            Ok(PartialValue::Value(Value {
+                value: ValueKind::Record(_),
+                ..
+            }))
         );
 
         // complex expressions -- for instance, violation not at top level
@@ -4065,9 +4179,9 @@ pub mod test {
             .get(&PolicyID::from_string("policy0"))
             .expect("No such policy");
         let q = Request::new_with_unknowns(
-            EntityUIDEntry::Unknown,
-            EntityUIDEntry::Unknown,
-            EntityUIDEntry::Unknown,
+            EntityUIDEntry::Unknown { loc: None },
+            EntityUIDEntry::Unknown { loc: None },
+            EntityUIDEntry::Unknown { loc: None },
             Some(Context::empty()),
             Some(&RequestSchemaAllPass),
             Extensions::none(),
@@ -4081,7 +4195,7 @@ pub mod test {
             Either::Right(expr) => {
                 println!("{expr}");
                 assert!(expr.is_unknown());
-                let m: HashMap<_, _> = [("principal".into(), Value::Lit(Literal::EntityUID(euid)))]
+                let m: HashMap<_, _> = [("principal".into(), Value::from(euid))]
                     .into_iter()
                     .collect();
                 let new_expr = expr.substitute(&m).unwrap();
@@ -4100,9 +4214,9 @@ pub mod test {
             .expect("Context Expression was not a restricted expression");
         let context = Context::from_expr(rexpr.as_borrowed(), Extensions::none()).unwrap();
         let q = Request::new(
-            euid.clone(),
-            euid.clone(),
-            euid,
+            (euid.clone(), None),
+            (euid.clone(), None),
+            (euid, None),
             context,
             Some(&RequestSchemaAllPass),
             Extensions::none(),
@@ -4256,9 +4370,9 @@ pub mod test {
         .unwrap();
         let euid: EntityUID = r#"Test::"test""#.parse().unwrap();
         let q = Request::new(
-            euid.clone(),
-            euid.clone(),
-            euid,
+            (euid.clone(), None),
+            (euid.clone(), None),
+            (euid, None),
             context,
             Some(&RequestSchemaAllPass),
             Extensions::none(),
@@ -4268,7 +4382,7 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(q, &es, &exts);
         let e = Expr::get_attr(Expr::var(Var::Context), "foo".into());
-        assert!(eval.partial_eval_expr(&e).is_err())
+        assert_matches!(eval.partial_eval_expr(&e), Err(_))
     }
 
     #[test]
@@ -4302,9 +4416,9 @@ pub mod test {
         let context = Context::from_expr(c_expr.as_borrowed(), Extensions::none()).unwrap();
 
         let q = Request::new(
-            p,
-            a,
-            r,
+            (p, None),
+            (a, None),
+            (r, None),
             context,
             Some(&RequestSchemaAllPass),
             Extensions::none(),
@@ -4327,7 +4441,15 @@ pub mod test {
         let a: EntityUID = r#"a::"Action""#.parse().unwrap();
         let r: EntityUID = r#"r::"Resource""#.parse().unwrap();
         let c = Context::empty();
-        Request::new(p, a, r, c, Some(&RequestSchemaAllPass), Extensions::none()).unwrap()
+        Request::new(
+            (p, None),
+            (a, None),
+            (r, None),
+            c,
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -4374,9 +4496,9 @@ pub mod test {
 
         let exts = Extensions::none();
         let q = Request::new(
-            EntityUID::with_eid("p"),
-            EntityUID::with_eid("a"),
-            EntityUID::with_eid("r"),
+            (EntityUID::with_eid("p"), None),
+            (EntityUID::with_eid("a"), None),
+            (EntityUID::with_eid("r"), None),
             Context::from_expr(
                 RestrictedExpr::new_unchecked(
                     Expr::record([(
@@ -4424,7 +4546,7 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(empty_request(), &es, &exts);
 
-        assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
     }
 
     #[test]
@@ -4441,7 +4563,7 @@ pub mod test {
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
-        assert_eq!(r, PartialValue::Value(Value::Lit(Literal::Bool(false))));
+        assert_eq!(r, PartialValue::Value(Value::from(false)));
     }
 
     #[test]
@@ -4479,7 +4601,7 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(empty_request(), &es, &exts);
 
-        assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
     }
 
     #[test]
@@ -4498,7 +4620,7 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(empty_request(), &es, &exts);
 
-        assert!(eval.partial_interpret(&e, &HashMap::new()).is_ok());
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Ok(_));
     }
 
     #[test]
@@ -4516,7 +4638,7 @@ pub mod test {
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
-        assert_eq!(r, PartialValue::Value(Value::Lit(Literal::Bool(true))));
+        assert_eq!(r, PartialValue::Value(Value::from(true)));
     }
 
     #[test]
@@ -4554,7 +4676,7 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(empty_request(), &es, &exts);
 
-        assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
     }
 
     #[test]
@@ -4573,7 +4695,7 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(empty_request(), &es, &exts);
 
-        assert!(eval.partial_interpret(&e, &HashMap::new()).is_ok());
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Ok(_));
     }
 
     #[test]
@@ -4587,7 +4709,7 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(empty_request(), &es, &exts);
 
-        assert!(eval.partial_interpret(&a, &HashMap::new()).is_err());
+        assert_matches!(eval.partial_interpret(&a, &HashMap::new()), Err(_));
     }
 
     #[test]
@@ -4623,7 +4745,7 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(empty_request(), &es, &exts);
 
-        assert!(eval.partial_interpret(&a, &HashMap::new()).is_err());
+        assert_matches!(eval.partial_interpret(&a, &HashMap::new()), Err(_));
     }
 
     #[test]
@@ -4726,7 +4848,7 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(empty_request(), &es, &exts);
 
-        assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
     }
 
     // err && res -> err
@@ -4739,7 +4861,7 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(empty_request(), &es, &exts);
 
-        assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
     }
 
     // err || res -> err
@@ -4752,7 +4874,7 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(empty_request(), &es, &exts);
 
-        assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
     }
 
     // true && res -> true && res
@@ -4785,7 +4907,7 @@ pub mod test {
         let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
-        assert_eq!(r, PartialValue::Value(Value::Lit(false.into())));
+        assert_eq!(r, PartialValue::Value(Value::from(false)));
     }
 
     // res && true -> res && true
@@ -4869,7 +4991,7 @@ pub mod test {
         let eval = Evaluator::new(empty_request(), &es, &exts);
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
-        assert_eq!(r, PartialValue::Value(Value::Lit(true.into())));
+        assert_eq!(r, PartialValue::Value(Value::from(true)));
     }
 
     // false || res -> false || res
@@ -5013,7 +5135,7 @@ pub mod test {
                 Expr::binary_app(BinaryOp::Add, Expr::val("hello"), Expr::val(2)),
                 Expr::unknown(Unknown::new_untyped("a")),
             );
-            assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
+            assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
             // ensure PE evaluates right side
             let e = Expr::binary_app(
                 binop,
@@ -5033,7 +5155,7 @@ pub mod test {
                 Expr::unknown(Unknown::new_untyped("a")),
                 Expr::binary_app(BinaryOp::Add, Expr::val("hello"), Expr::val(2)),
             );
-            assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
+            assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
             // Both left and right residuals
             let e = Expr::binary_app(
                 binop,
@@ -5104,7 +5226,7 @@ pub mod test {
         let a = Expr::unknown(Unknown::new_untyped("a"));
         let e = Expr::call_extension_fn("isInRange".parse().unwrap(), vec![a, b]);
 
-        assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
     }
 
     #[test]
@@ -5183,7 +5305,7 @@ pub mod test {
             Expr::unknown(Unknown::new_untyped("a")),
             Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("a")),
         ]);
-        assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
     }
 
     #[test]
@@ -5250,7 +5372,7 @@ pub mod test {
             ),
         ])
         .unwrap();
-        assert!(eval.partial_interpret(&e, &HashMap::new()).is_err());
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
     }
 
     #[test]
@@ -5260,11 +5382,9 @@ pub mod test {
         let exts = Extensions::none();
         let eval = RestrictedEvaluator::new(&exts);
         let r = eval.partial_interpret(re.as_borrowed()).unwrap();
-        match r {
-            PartialValue::Value(Value::Set(s)) => assert_eq!(s.len(), 1),
-            PartialValue::Value(_) => panic!("wrong value"),
-            PartialValue::Residual(_) => panic!("Wrong residual"),
-        }
+        assert_matches!(r, PartialValue::Value(Value { value: ValueKind::Set(set), .. }) => {
+            assert_eq!(set.len(), 1);
+        });
     }
 
     #[test]
@@ -5304,6 +5424,6 @@ pub mod test {
             .unwrap(),
             "b".into(),
         );
-        assert!(eval.partial_eval_expr(&e).is_err());
+        assert_matches!(eval.partial_eval_expr(&e), Err(_));
     }
 }

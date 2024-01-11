@@ -441,6 +441,8 @@ mod eval_tests {
     use crate::extensions::Extensions;
     use crate::parser::err::ParseError;
 
+    use std::sync::Arc;
+
     #[test]
     fn entity_literals1() {
         let src = r#"Test::{ test : "Test" }"#;
@@ -469,52 +471,51 @@ mod eval_tests {
         let entities = eval::test::basic_entities();
         let exts = Extensions::none();
         let evaluator = eval::Evaluator::new(request, &entities, &exts);
+        // The below tests check not only that we get the expected `Value`, but
+        // that it has the expected source location.
+        // We have to check that separately because the `PartialEq` and `Eq`
+        // impls for `Value` do not compare source locations.
+        // This is somewhat a test of the evaluator, not just the parser; but
+        // the actual evaluator unit tests do not use the parser and thus do
+        // not have source locations attached to their input expressions, so
+        // this file is where we effectively perform evaluator tests related to
+        // propagating source locations from expressions to values.
 
         // bools
-        let expr = parse_expr("false").expect("parse fail");
-        assert_eq!(
-            evaluator
-                .interpret_inline_policy(&expr)
-                .expect("interpret fail"),
-            ast::Value::Lit(ast::Literal::Bool(false))
-        );
-        let expr = parse_expr("true && true").expect("parse fail");
-        assert_eq!(
-            evaluator
-                .interpret_inline_policy(&expr)
-                .expect("interpret fail"),
-            ast::Value::Lit(ast::Literal::Bool(true))
-        );
-        let expr = parse_expr("!true || false && !true").expect("parse fail");
-        assert_eq!(
-            evaluator
-                .interpret_inline_policy(&expr)
-                .expect("interpret fail"),
-            ast::Value::Lit(ast::Literal::Bool(false))
-        );
-        let expr = parse_expr("!!!!true").expect("parse fail");
-        assert_eq!(
-            evaluator
-                .interpret_inline_policy(&expr)
-                .expect("interpret fail"),
-            ast::Value::Lit(ast::Literal::Bool(true))
-        );
+        let src = "false";
+        let expr = parse_expr(src).unwrap();
+        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        assert_eq!(val, ast::Value::from(false));
+        assert_eq!(val.source_loc(), Some(&Loc::new(0..5, Arc::from(src))));
 
-        let expr = parse_expr(
-            r#"
+        let src = "true && true";
+        let expr = parse_expr(src).unwrap();
+        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        assert_eq!(val, ast::Value::from(true));
+        assert_eq!(val.source_loc(), Some(&Loc::new(0..12, Arc::from(src))));
+
+        let src = "!true || false && !true";
+        let expr = parse_expr(src).unwrap();
+        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        assert_eq!(val, ast::Value::from(false));
+        assert_eq!(val.source_loc(), Some(&Loc::new(0..23, Arc::from(src))));
+
+        let src = "!!!!true";
+        let expr = parse_expr(src).unwrap();
+        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        assert_eq!(val, ast::Value::from(true));
+        assert_eq!(val.source_loc(), Some(&Loc::new(0..8, Arc::from(src))));
+
+        let src = r#"
         if false || true != 4 then
             600
         else
             -200
-        "#,
-        )
-        .expect("parse fail");
-        assert_eq!(
-            evaluator
-                .interpret_inline_policy(&expr)
-                .expect("interpret fail"),
-            ast::Value::Lit(ast::Literal::Long(600))
-        );
+        "#;
+        let expr = parse_expr(src).unwrap();
+        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        assert_eq!(val, ast::Value::from(600));
+        assert_eq!(val.source_loc(), Some(&Loc::new(9..81, Arc::from(src))));
     }
 
     #[test]
@@ -523,66 +524,81 @@ mod eval_tests {
         let entities = eval::test::rich_entities();
         let exts = Extensions::none();
         let evaluator = eval::Evaluator::new(request, &entities, &exts);
+        // The below tests check not only that we get the expected `Value`, but
+        // that it has the expected source location.
+        // See note on this in the above test.
 
-        let expr = parse_expr(
-            r#"
+        let src = r#"
 
         test_entity_type::"child" in
             test_entity_type::"unrelated"
 
-        "#,
-        )
-        .expect("parse fail");
+        "#;
+        let expr = parse_expr(src).unwrap();
+        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        assert_eq!(val, ast::Value::from(false));
+        assert_eq!(val.source_loc(), Some(&Loc::new(10..80, Arc::from(src))));
+        // because "10..80" is hard to read, we also assert that the correct portion of `src` is indicated
         assert_eq!(
-            evaluator
-                .interpret_inline_policy(&expr)
-                .expect("interpret fail"),
-            ast::Value::Lit(ast::Literal::Bool(false))
+            val.source_loc().unwrap().snippet(),
+            Some(
+                r#"test_entity_type::"child" in
+            test_entity_type::"unrelated""#
+            )
         );
-        let expr = parse_expr(
-            r#"
+
+        let src = r#"
 
         test_entity_type::"child" in
             test_entity_type::"child"
 
-        "#,
-        )
-        .expect("parse fail");
+        "#;
+        let expr = parse_expr(src).unwrap();
+        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        assert_eq!(val, ast::Value::from(true));
+        assert_eq!(val.source_loc(), Some(&Loc::new(10..76, Arc::from(src))));
         assert_eq!(
-            evaluator
-                .interpret_inline_policy(&expr)
-                .expect("interpret fail"),
-            ast::Value::Lit(ast::Literal::Bool(true))
+            val.source_loc().unwrap().snippet(),
+            Some(
+                r#"test_entity_type::"child" in
+            test_entity_type::"child""#
+            )
         );
-        let expr = parse_expr(
-            r#"
+
+        let src = r#"
 
         other_type::"other_child" in
             test_entity_type::"parent"
 
-        "#,
-        )
-        .expect("parse fail");
+        "#;
+        let expr = parse_expr(src).unwrap();
+        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        assert_eq!(val, ast::Value::from(true));
+        assert_eq!(val.source_loc(), Some(&Loc::new(10..77, Arc::from(src))));
         assert_eq!(
-            evaluator
-                .interpret_inline_policy(&expr)
-                .expect("interpret fail"),
-            ast::Value::Lit(ast::Literal::Bool(true))
+            val.source_loc().unwrap().snippet(),
+            Some(
+                r#"other_type::"other_child" in
+            test_entity_type::"parent""#
+            )
         );
-        let expr = parse_expr(
-            r#"
+
+        let src = r#"
 
         test_entity_type::"child" in
             test_entity_type::"grandparent"
 
-        "#,
-        )
-        .expect("parse fail");
+        "#;
+        let expr = parse_expr(src).unwrap();
+        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        assert_eq!(val, ast::Value::from(true));
+        assert_eq!(val.source_loc(), Some(&Loc::new(10..82, Arc::from(src))));
         assert_eq!(
-            evaluator
-                .interpret_inline_policy(&expr)
-                .expect("interpret fail"),
-            ast::Value::Lit(ast::Literal::Bool(true))
+            val.source_loc().unwrap().snippet(),
+            Some(
+                r#"test_entity_type::"child" in
+            test_entity_type::"grandparent""#
+            )
         );
     }
 
@@ -592,34 +608,34 @@ mod eval_tests {
         let entities = eval::test::basic_entities();
         let exts = Extensions::none();
         let evaluator = eval::Evaluator::new(request, &entities, &exts);
+        // The below tests check not only that we get the expected `Value`, but
+        // that it has the expected source location.
+        // See note on this in the above test.
 
-        let expr = parse_expr(
-            r#"
+        let src = r#"
 
             3 < 2 || 2 > 3
 
-        "#,
-        )
-        .expect("parse fail");
-        assert_eq!(
-            evaluator
-                .interpret_inline_policy(&expr)
-                .expect("interpret fail"),
-            ast::Value::Lit(ast::Literal::Bool(false))
-        );
-        let expr = parse_expr(
-            r#"
+        "#;
+        let expr = parse_expr(src).unwrap();
+        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        assert_eq!(val, ast::Value::from(false));
+        assert_eq!(val.source_loc(), Some(&Loc::new(14..28, Arc::from(src))));
+        // because "14..28" is hard to read, we also assert that the correct portion of `src` is indicated
+        assert_eq!(val.source_loc().unwrap().snippet(), Some("3 < 2 || 2 > 3"));
+
+        let src = r#"
 
             7 <= 7 && 4 != 5
 
-        "#,
-        )
-        .expect("parse fail");
+        "#;
+        let expr = parse_expr(src).unwrap();
+        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        assert_eq!(val, ast::Value::from(true));
+        assert_eq!(val.source_loc(), Some(&Loc::new(14..30, Arc::from(src))));
         assert_eq!(
-            evaluator
-                .interpret_inline_policy(&expr)
-                .expect("interpret fail"),
-            ast::Value::Lit(ast::Literal::Bool(true))
+            val.source_loc().unwrap().snippet(),
+            Some("7 <= 7 && 4 != 5")
         );
     }
 }

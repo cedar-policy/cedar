@@ -146,7 +146,10 @@ impl ast::RequestSchema for ValidatorSchema {
         // first check that principal and resource are of types that exist in
         // the schema, or unspecified.
         // we can do this check even if action is unknown.
-        if let EntityUIDEntry::Known(principal) = request.principal() {
+        if let EntityUIDEntry::Known {
+            euid: principal, ..
+        } = request.principal()
+        {
             match principal.entity_type() {
                 ast::EntityType::Specified(name) => {
                     if self.get_entity_type(name).is_none() {
@@ -158,7 +161,7 @@ impl ast::RequestSchema for ValidatorSchema {
                 ast::EntityType::Unspecified => {} // unspecified principal is allowed, unless we find it is not allowed for this action, which we will check below
             }
         }
-        if let EntityUIDEntry::Known(resource) = request.resource() {
+        if let EntityUIDEntry::Known { euid: resource, .. } = request.resource() {
             match resource.entity_type() {
                 ast::EntityType::Specified(name) => {
                     if self.get_entity_type(name).is_none() {
@@ -173,13 +176,16 @@ impl ast::RequestSchema for ValidatorSchema {
 
         // the remaining checks require knowing about the action.
         match request.action() {
-            EntityUIDEntry::Known(action) => {
+            EntityUIDEntry::Known { euid: action, .. } => {
                 let validator_action_id = self.get_action_id(action).ok_or_else(|| {
                     RequestValidationError::UndeclaredAction {
                         action: Arc::clone(action),
                     }
                 })?;
-                if let EntityUIDEntry::Known(principal) = request.principal() {
+                if let EntityUIDEntry::Known {
+                    euid: principal, ..
+                } = request.principal()
+                {
                     if !validator_action_id
                         .applies_to
                         .is_applicable_principal_type(principal.entity_type())
@@ -190,7 +196,7 @@ impl ast::RequestSchema for ValidatorSchema {
                         });
                     }
                 }
-                if let EntityUIDEntry::Known(resource) = request.resource() {
+                if let EntityUIDEntry::Known { euid: resource, .. } = request.resource() {
                     if !validator_action_id
                         .applies_to
                         .is_applicable_resource_type(resource.entity_type())
@@ -214,7 +220,7 @@ impl ast::RequestSchema for ValidatorSchema {
                     }
                 }
             }
-            EntityUIDEntry::Unknown => {
+            EntityUIDEntry::Unknown { .. } => {
                 // We could hypothetically ensure that the concrete parts of the
                 // request are valid for _some_ action, but this is probably more
                 // expensive than we want for this validation step.
@@ -384,9 +390,18 @@ mod test {
     fn success_concrete_request_no_context() {
         assert_matches!(
             ast::Request::new(
-                ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
-                ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
-                ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
+                (
+                    ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
+                    None
+                ),
+                (
+                    ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
+                    None
+                ),
+                (
+                    ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
+                    None
+                ),
                 ast::Context::empty(),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -400,9 +415,18 @@ mod test {
     fn success_concrete_request_with_context() {
         assert_matches!(
             ast::Request::new(
-                ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
-                ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(),
-                ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
+                (
+                    ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
+                    None
+                ),
+                (
+                    ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(),
+                    None
+                ),
+                (
+                    ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
+                    None
+                ),
                 ast::Context::from_pairs(
                     [("admin_approval".into(), ast::RestrictedExpr::val(true))],
                     Extensions::all_available()
@@ -420,12 +444,14 @@ mod test {
     fn success_principal_unknown() {
         assert_matches!(
             ast::Request::new_with_unknowns(
-                ast::EntityUIDEntry::Unknown,
+                ast::EntityUIDEntry::Unknown { loc: None },
                 ast::EntityUIDEntry::concrete(
-                    ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap()
+                    ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
+                    None,
                 ),
                 ast::EntityUIDEntry::concrete(
-                    ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap()
+                    ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
+                    None,
                 ),
                 Some(ast::Context::empty()),
                 Some(&schema()),
@@ -441,11 +467,13 @@ mod test {
         assert_matches!(
             ast::Request::new_with_unknowns(
                 ast::EntityUIDEntry::concrete(
-                    ast::EntityUID::with_eid_and_type("User", "abc123").unwrap()
+                    ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
+                    None,
                 ),
-                ast::EntityUIDEntry::Unknown,
+                ast::EntityUIDEntry::Unknown { loc: None },
                 ast::EntityUIDEntry::concrete(
-                    ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap()
+                    ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
+                    None,
                 ),
                 Some(ast::Context::empty()),
                 Some(&schema()),
@@ -461,12 +489,14 @@ mod test {
         assert_matches!(
             ast::Request::new_with_unknowns(
                 ast::EntityUIDEntry::concrete(
-                    ast::EntityUID::with_eid_and_type("User", "abc123").unwrap()
+                    ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
+                    None,
                 ),
                 ast::EntityUIDEntry::concrete(
-                    ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap()
+                    ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
+                    None,
                 ),
-                ast::EntityUIDEntry::Unknown,
+                ast::EntityUIDEntry::Unknown { loc: None },
                 Some(ast::Context::empty()),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -481,13 +511,16 @@ mod test {
         assert_matches!(
             ast::Request::new_with_unknowns(
                 ast::EntityUIDEntry::concrete(
-                    ast::EntityUID::with_eid_and_type("User", "abc123").unwrap()
+                    ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
+                    None,
                 ),
                 ast::EntityUIDEntry::concrete(
-                    ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap()
+                    ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
+                    None,
                 ),
                 ast::EntityUIDEntry::concrete(
-                    ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap()
+                    ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
+                    None,
                 ),
                 None,
                 Some(&schema()),
@@ -502,9 +535,9 @@ mod test {
     fn success_everything_unspecified() {
         assert_matches!(
             ast::Request::new_with_unknowns(
-                ast::EntityUIDEntry::Unknown,
-                ast::EntityUIDEntry::Unknown,
-                ast::EntityUIDEntry::Unknown,
+                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::Unknown { loc: None },
                 None,
                 Some(&schema()),
                 Extensions::all_available(),
@@ -521,11 +554,13 @@ mod test {
         assert_matches!(
             ast::Request::new_with_unknowns(
                 ast::EntityUIDEntry::concrete(
-                    ast::EntityUID::with_eid_and_type("Album", "abc123").unwrap()
+                    ast::EntityUID::with_eid_and_type("Album", "abc123").unwrap(),
+                    None,
                 ),
-                ast::EntityUIDEntry::Unknown,
+                ast::EntityUIDEntry::Unknown { loc: None },
                 ast::EntityUIDEntry::concrete(
-                    ast::EntityUID::with_eid_and_type("User", "alice").unwrap()
+                    ast::EntityUID::with_eid_and_type("User", "alice").unwrap(),
+                    None,
                 ),
                 None,
                 Some(&schema()),
@@ -540,9 +575,9 @@ mod test {
     fn action_not_declared() {
         assert_matches!(
             ast::Request::new(
-                ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
-                ast::EntityUID::with_eid_and_type("Action", "destroy").unwrap(),
-                ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
+                (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "destroy").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
                 ast::Context::empty(),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -558,9 +593,9 @@ mod test {
     fn action_unspecified() {
         assert_matches!(
             ast::Request::new(
-                ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
-                ast::EntityUID::unspecified_from_eid(ast::Eid::new("blahblah")),
-                ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
+                (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
+                (ast::EntityUID::unspecified_from_eid(ast::Eid::new("blahblah")), None),
+                (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
                 ast::Context::empty(),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -576,9 +611,9 @@ mod test {
     fn principal_type_not_declared() {
         assert_matches!(
             ast::Request::new(
-                ast::EntityUID::with_eid_and_type("Foo", "abc123").unwrap(),
-                ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
-                ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
+                (ast::EntityUID::with_eid_and_type("Foo", "abc123").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
                 ast::Context::empty(),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -594,9 +629,9 @@ mod test {
     fn principal_type_not_declared_action_unspecified() {
         assert_matches!(
             ast::Request::new(
-                ast::EntityUID::with_eid_and_type("Foo", "abc123").unwrap(),
-                ast::EntityUID::unspecified_from_eid(ast::Eid::new("blahblah")),
-                ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
+                (ast::EntityUID::with_eid_and_type("Foo", "abc123").unwrap(), None),
+                (ast::EntityUID::unspecified_from_eid(ast::Eid::new("blahblah")), None),
+                (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
                 ast::Context::empty(),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -612,9 +647,9 @@ mod test {
     fn principal_unspecified() {
         assert_matches!(
             ast::Request::new(
-                ast::EntityUID::unspecified_from_eid(ast::Eid::new("principal")),
-                ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
-                ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
+                (ast::EntityUID::unspecified_from_eid(ast::Eid::new("principal")), None),
+                (ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
                 ast::Context::empty(),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -630,9 +665,9 @@ mod test {
     fn resource_type_not_declared() {
         assert_matches!(
             ast::Request::new(
-                ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
-                ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
-                ast::EntityUID::with_eid_and_type("Foo", "vacationphoto94.jpg").unwrap(),
+                (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Foo", "vacationphoto94.jpg").unwrap(), None),
                 ast::Context::empty(),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -648,9 +683,9 @@ mod test {
     fn resource_type_not_declared_action_unspecified() {
         assert_matches!(
             ast::Request::new(
-                ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
-                ast::EntityUID::unspecified_from_eid(ast::Eid::new("blahblah")),
-                ast::EntityUID::with_eid_and_type("Foo", "vacationphoto94.jpg").unwrap(),
+                (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
+                (ast::EntityUID::unspecified_from_eid(ast::Eid::new("blahblah")), None),
+                (ast::EntityUID::with_eid_and_type("Foo", "vacationphoto94.jpg").unwrap(), None),
                 ast::Context::empty(),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -666,9 +701,9 @@ mod test {
     fn resource_unspecified() {
         assert_matches!(
             ast::Request::new(
-                ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
-                ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
-                ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")),
+                (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(), None),
+                (ast::EntityUID::unspecified_from_eid(ast::Eid::new("resource")), None),
                 ast::Context::empty(),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -684,9 +719,9 @@ mod test {
     fn principal_type_invalid() {
         assert_matches!(
             ast::Request::new(
-                ast::EntityUID::with_eid_and_type("Album", "abc123").unwrap(),
-                ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
-                ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
+                (ast::EntityUID::with_eid_and_type("Album", "abc123").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
                 ast::Context::empty(),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -703,9 +738,9 @@ mod test {
     fn resource_type_invalid() {
         assert_matches!(
             ast::Request::new(
-                ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
-                ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
-                ast::EntityUID::with_eid_and_type("Group", "coders").unwrap(),
+                (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Group", "coders").unwrap(), None),
                 ast::Context::empty(),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -722,9 +757,9 @@ mod test {
     fn context_missing_attribute() {
         assert_matches!(
             ast::Request::new(
-                ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
-                ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(),
-                ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
+                (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
                 ast::Context::empty(),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -749,9 +784,9 @@ mod test {
         .unwrap();
         assert_matches!(
             ast::Request::new(
-                ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
-                ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(),
-                ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
+                (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
                 context_with_extra_attr.clone(),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -776,9 +811,9 @@ mod test {
         .unwrap();
         assert_matches!(
             ast::Request::new(
-                ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
-                ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(),
-                ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
+                (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
                 context_with_wrong_type_attr.clone(),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -806,9 +841,9 @@ mod test {
         .unwrap();
         assert_matches!(
             ast::Request::new(
-                ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
-                ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(),
-                ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
+                (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
                 context_with_heterogeneous_set.clone(),
                 Some(&schema()),
                 Extensions::all_available(),
