@@ -22,6 +22,15 @@ pub struct Path {
     pub prefix: Vec<Ident>,
 }
 
+impl From<Ident> for Path {
+    fn from(value: Ident) -> Self {
+        Path {
+            base: value,
+            prefix: vec![],
+        }
+    }
+}
+
 impl Path {
     pub fn is_ipaddr_extension(&self) -> bool {
         self.is_cedar_builtin() && self.base.node.clone().to_smolstr() == IPADDR_EXTENSION
@@ -69,6 +78,14 @@ impl Path {
 
     fn is_cedar_builtin(&self) -> bool {
         matches!(self.prefix.as_slice(), [Node { node, loc: _ }] if node.as_ref() == CEDAR_NAMESPACE)
+    }
+
+    pub fn is_unqualified_builtin(&self) -> bool {
+        self.is_unqualified_bool()
+            || self.is_unqualified_decimal()
+            || self.is_unqualified_ipaddr()
+            || self.is_unqualified_long()
+            || self.is_unqualified_string()
     }
 
     pub(super) fn get_loc(&self) -> Loc {

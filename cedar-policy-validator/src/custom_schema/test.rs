@@ -288,14 +288,17 @@ mod translator_tests {
     use cedar_policy_core::FromNormalizedStr;
 
     use crate::{
-        custom_schema::{err::ToJsonSchemaError, parser::parse_schema},
+        custom_schema::{
+            err::ToJsonSchemaError, parser::parse_schema,
+            to_json_schema::custom_schema_to_json_schema,
+        },
         SchemaError, ValidatorSchema,
     };
 
     fn custom_schema_str_to_json_schema(
         s: &str,
     ) -> Result<crate::SchemaFragment, ToJsonSchemaError> {
-        parse_schema(s).expect("parse error").try_into()
+        custom_schema_to_json_schema(parse_schema(s).expect("parse error")).map(|(sf, _)| sf)
     }
 
     #[test]
@@ -388,7 +391,7 @@ mod translator_tests {
         let schema = custom_schema_str_to_json_schema(
             r#"
           namespace X { entity A; }
-          entity A {};
+          entity A, A {};
         "#,
         );
         assert!(schema.is_ok());

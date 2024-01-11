@@ -19,6 +19,7 @@
 // omitted.
 #![allow(clippy::needless_return)]
 
+use cedar_policy_validator::custom_schema::to_json_schema::custom_schema_to_json_schema;
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use serde::{Deserialize, Serialize};
@@ -630,10 +631,9 @@ fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
                 Report::new(err).with_source_code(NamedSource::new(name, input_str))
             })
             .wrap_err_with(|| "failed to parse custom schema".to_string())?;
-        let ns: Result<cedar_policy_validator::SchemaFragment> = new_schema
-            .try_into()
-            .map_err(|err| miette!("error converting custom schema to JSON schema: {err:?}"));
-        serde_json::to_string(&ns?)
+        let (ns, _) = custom_schema_to_json_schema(new_schema)
+            .map_err(|err| miette!("error converting custom schema to JSON schema: {err:?}"))?;
+        serde_json::to_string(&ns)
             .map_err(|err| miette!("failed to serialize schema fragment: {err}"))
     }
 }
@@ -1099,8 +1099,7 @@ fn read_schema_file(
                             filename.as_ref().display()
                         )
                     })?;
-            let json_schema: cedar_policy_validator::SchemaFragment = custom_schema
-                .try_into()
+            let (json_schema, _) = custom_schema_to_json_schema(custom_schema)
                 .map_err(|err| miette!("failed to translate custom schema: {err:?}"))?;
             Schema::from_str(
                 &serde_json::to_string(&json_schema)
