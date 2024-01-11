@@ -2894,6 +2894,136 @@ mod schema_based_parsing_tests {
             Some(Err(e)) => assert_contains_unknown(&e.to_string(), "ttt")
         );
     }
+
+    /// If a user passes actions through both the schema and the entities, then
+    /// those actions should exactly match _unless_ the `TCComputation::ComputeNow`
+    /// option is used, in which case only the TC has to match.
+    #[test]
+    fn issue_285() {
+        let schema = Schema::from_json_value(json!(
+        {"": {
+            "entityTypes": {},
+            "actions": {
+                "A": {},
+                "B": {
+                    "memberOf": [{"id": "A"}]
+                },
+                "C": {
+                    "memberOf": [{"id": "B"}]
+                }
+            }
+        }}
+        ))
+        .expect("should be a valid schema");
+
+        let entitiesjson_tc = json!(
+            [
+                {
+                    "uid": { "type": "Action", "id": "A" },
+                    "attrs": {},
+                    "parents": []
+                },
+                {
+                    "uid": { "type": "Action", "id": "B" },
+                    "attrs": {},
+                    "parents": [
+                        { "type": "Action", "id": "A" }
+                    ]
+                },
+                {
+                    "uid": { "type": "Action", "id": "C" },
+                    "attrs": {},
+                    "parents": [
+                        { "type": "Action", "id": "A" },
+                        { "type": "Action", "id": "B" }
+                    ]
+                }
+            ]
+        );
+
+        let entitiesjson_no_tc = json!(
+            [
+                {
+                    "uid": { "type": "Action", "id": "A" },
+                    "attrs": {},
+                    "parents": []
+                },
+                {
+                    "uid": { "type": "Action", "id": "B" },
+                    "attrs": {},
+                    "parents": [
+                        { "type": "Action", "id": "A" }
+                    ]
+                },
+                {
+                    "uid": { "type": "Action", "id": "C" },
+                    "attrs": {},
+                    "parents": [
+                        { "type": "Action", "id": "B" }
+                    ]
+                }
+            ]
+        );
+
+        // Both entity jsons are ok (the default TC setting is `ComputeNow`)
+        assert!(Entities::from_json_value(entitiesjson_tc.clone(), Some(&schema)).is_ok());
+        assert!(Entities::from_json_value(entitiesjson_no_tc.clone(), Some(&schema)).is_ok());
+
+        // Parsing will fail if the TC doesn't match
+        let entitiesjson_bad = json!(
+            [
+                {
+                    "uid": { "type": "Action", "id": "A" },
+                    "attrs": {},
+                    "parents": []
+                },
+                {
+                    "uid": { "type": "Action", "id": "B" },
+                    "attrs": {},
+                    "parents": [
+                        { "type": "Action", "id": "A" }
+                    ]
+                },
+                {
+                    "uid": { "type": "Action", "id": "C" },
+                    "attrs": {},
+                    "parents": [
+                        { "type": "Action", "id": "A" }
+                    ]
+                }
+            ]
+        );
+        assert!(matches!(
+            Entities::from_json_value(entitiesjson_bad, Some(&schema)),
+            Err(EntitiesError::InvalidEntity(
+                entities::EntitySchemaConformanceError::ActionDeclarationMismatch { uid: _ }
+            ))
+        ));
+
+        // Parsing will fail if we change the TC setting
+        let schema = cedar_policy_validator::CoreSchema::new(&schema.0);
+        let parser_assume_computed = entities::EntityJsonParser::new(
+            Some(&schema),
+            extensions::Extensions::all_available(),
+            entities::TCComputation::AssumeAlreadyComputed,
+        );
+        assert!(matches!(
+            parser_assume_computed.from_json_value(entitiesjson_no_tc.clone()),
+            Err(EntitiesError::InvalidEntity(
+                entities::EntitySchemaConformanceError::ActionDeclarationMismatch { uid: _ }
+            ))
+        ));
+
+        let parser_enforce_computed = entities::EntityJsonParser::new(
+            Some(&schema),
+            extensions::Extensions::all_available(),
+            entities::TCComputation::EnforceAlreadyComputed,
+        );
+        assert!(matches!(
+            parser_enforce_computed.from_json_value(entitiesjson_no_tc),
+            Err(EntitiesError::TransitiveClosureError(_))
+        ));
+    }
 }
 
 #[cfg(not(feature = "partial-validate"))]

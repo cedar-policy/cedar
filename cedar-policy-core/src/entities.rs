@@ -160,21 +160,18 @@ impl Entities {
     ) -> Result<Self> {
         let mut entity_map = create_entity_map(entities.into_iter())?;
         if let Some(schema) = schema {
-            // validate entities against schema.
-            // we do this before adding the actions, because we trust the
+            // Validate non-action entities against schema.
+            // We do this before adding the actions, because we trust the
             // actions were already validated as part of constructing the
             // `Schema`
             let checker = EntitySchemaConformanceChecker::new(schema, extensions);
             for entity in entity_map.values() {
-                checker.validate_entity(entity)?;
+                let uid = entity.uid();
+                let etype = uid.entity_type();
+                if !etype.is_action() {
+                    checker.validate_entity(entity)?;
+                }
             }
-            // now add the action entities from the schema
-            entity_map.extend(
-                schema
-                    .action_entities()
-                    .into_iter()
-                    .map(|e| (e.uid(), unwrap_or_clone(e))),
-            );
         }
         match tc_computation {
             TCComputation::AssumeAlreadyComputed => {}
@@ -184,6 +181,28 @@ impl Entities {
             TCComputation::ComputeNow => {
                 compute_tc(&mut entity_map, true).map_err(Box::new)?;
             }
+        }
+        // Now that TC has been enforced, we can check action entities for
+        // conformance with the schema and add action entities to the store.
+        // This is fine to do after TC because the action hierarchy in the
+        // schema already satisfies TC, and action and non-action entities
+        // will never be in the same hierarchy.
+        if let Some(schema) = schema {
+            let checker = EntitySchemaConformanceChecker::new(schema, extensions);
+            for entity in entity_map.values() {
+                let uid = entity.uid();
+                let etype = uid.entity_type();
+                if etype.is_action() {
+                    checker.validate_entity(entity)?;
+                }
+            }
+            // Add the action entities from the schema
+            entity_map.extend(
+                schema
+                    .action_entities()
+                    .into_iter()
+                    .map(|e| (e.uid(), unwrap_or_clone(e))),
+            );
         }
         Ok(Self {
             entities: entity_map,
