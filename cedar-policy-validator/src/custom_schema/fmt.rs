@@ -95,7 +95,7 @@ impl Display for EntityType {
         let ps = &self.member_of_types;
         if !ps.is_empty() {
             write!(f, "in ")?;
-            fmt_vec(f, &ps)?;
+            fmt_vec(f, ps)?;
         }
         let ty = &self.shape.0;
         write!(f, " = {ty}")?;
@@ -108,7 +108,7 @@ impl Display for ActionType {
         match &self.member_of {
             Some(ps) if !ps.is_empty() => {
                 write!(f, "in ")?;
-                fmt_vec(f, &ps)?;
+                fmt_vec(f, ps)?;
             }
             _ => {}
         }
@@ -126,23 +126,23 @@ impl Display for ActionType {
                     (Some(ps), Some(rs)) => {
                         write!(f, "appliesTo {{")?;
                         write!(f, "principal: ")?;
-                        fmt_vec(f, &ps)?;
+                        fmt_vec(f, ps)?;
                         write!(f, ", \nresource: ")?;
-                        fmt_vec(f, &rs)?;
+                        fmt_vec(f, rs)?;
                         write!(f, ", \ncontext: {}", &spec.context.0)?;
                         write!(f, "}}")?;
                     }
                     (Some(ps), None) => {
                         write!(f, "appliesTo {{")?;
                         write!(f, "principal: ")?;
-                        fmt_vec(f, &ps)?;
+                        fmt_vec(f, ps)?;
                         write!(f, ", \ncontext: {}", &spec.context.0)?;
                         write!(f, "}}")?;
                     }
                     (None, Some(rs)) => {
                         write!(f, "appliesTo {{")?;
                         write!(f, "resource: ")?;
-                        fmt_vec(f, &rs)?;
+                        fmt_vec(f, rs)?;
                         write!(f, ", \ncontext: {}", &spec.context.0)?;
                         write!(f, "}}")?;
                     }
@@ -178,24 +178,20 @@ pub fn json_schema_to_custom_schema_str(
     for (name, ns) in json_schema.0.iter().filter(|(name, _)| !name.is_empty()) {
         let entity_types: HashSet<SmolStr> = ns
             .entity_types
-            .iter()
-            .map(|(ty_name, _)| format!("{name}::{ty_name}").into())
+            .keys()
+            .map(|ty_name| format!("{name}::{ty_name}").into())
             .collect();
         let common_types: HashSet<SmolStr> = ns
             .common_types
-            .iter()
-            .map(|(ty_name, _)| format!("{name}::{ty_name}").into())
+            .keys()
+            .map(|ty_name| format!("{name}::{ty_name}").into())
             .collect();
-        name_collisions.extend(
-            entity_types
-                .intersection(&common_types)
-                .map(|ty_name| ty_name.clone()),
-        );
+        name_collisions.extend(entity_types.intersection(&common_types).cloned());
     }
     if let Some((head, tail)) = name_collisions.split_first() {
         return Err(ToCustomSchemaStrError::NameCollisions(NonEmpty {
             head: head.clone(),
-            tail: tail.iter().map(|ty_name| ty_name.clone()).collect(),
+            tail: tail.to_vec(),
         }));
     }
     Ok(json_schema.to_string())
