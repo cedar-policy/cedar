@@ -166,9 +166,7 @@ impl Entities {
             // `Schema`
             let checker = EntitySchemaConformanceChecker::new(schema, extensions);
             for entity in entity_map.values() {
-                let uid = entity.uid();
-                let etype = uid.entity_type();
-                if !etype.is_action() {
+                if !entity.uid().entity_type().is_action() {
                     checker.validate_entity(entity)?;
                 }
             }
@@ -186,13 +184,11 @@ impl Entities {
         // conformance with the schema and add action entities to the store.
         // This is fine to do after TC because the action hierarchy in the
         // schema already satisfies TC, and action and non-action entities
-        // will never be in the same hierarchy.
+        // can never be in the same hierarchy when using schema-based parsing.
         if let Some(schema) = schema {
             let checker = EntitySchemaConformanceChecker::new(schema, extensions);
             for entity in entity_map.values() {
-                let uid = entity.uid();
-                let etype = uid.entity_type();
-                if etype.is_action() {
+                if entity.uid().entity_type().is_action() {
                     checker.validate_entity(entity)?;
                 }
             }
