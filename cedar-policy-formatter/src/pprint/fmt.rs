@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-use cedar_policy_validator::SchemaFragment;
 use miette::{miette, Result, WrapErr};
 
 use cedar_policy_core::ast::{PolicySet, Template};
@@ -22,22 +21,12 @@ use cedar_policy_core::parser::parse_policyset;
 use cedar_policy_core::parser::{err::ParseErrors, text_to_cst::parse_policies};
 
 use crate::token::get_comment;
-use crate::Context;
 
 use super::lexer::get_token_stream;
 use super::utils::remove_empty_lines;
 
 use super::config::{self, Config};
 use super::doc::*;
-
-pub fn schema_fragment_to_pretty(sf: &SchemaFragment) -> Result<String> {
-    let config = &Config::default();
-    let mut context = Context {
-        config,
-        tokens: vec![],
-    };
-    tree_to_pretty(sf, &mut context)
-}
 
 fn tree_to_pretty<T: Doc>(t: &T, context: &mut config::Context<'_>) -> Result<String> {
     let mut w = Vec::new();

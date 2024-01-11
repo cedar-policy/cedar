@@ -19,7 +19,9 @@
 // omitted.
 #![allow(clippy::needless_return)]
 
-use cedar_policy_validator::custom_schema::to_json_schema::custom_schema_to_json_schema;
+use cedar_policy_validator::custom_schema::{
+    json_schema_to_custom_schema_str, to_json_schema::custom_schema_to_json_schema,
+};
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use serde::{Deserialize, Serialize};
@@ -620,7 +622,8 @@ fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
         let schema_fragment =
             cedar_policy_validator::SchemaFragment::from_file(input_str.as_bytes())
                 .map_err(|err| miette!("failed to parse schema fragment: {err}"))?;
-        cedar_policy_formatter::schema_fragment_to_pretty(&schema_fragment)
+        json_schema_to_custom_schema_str(&schema_fragment)
+            .map_err(|err| miette!("failed to convert json schema to custom schema: {err}"))
     } else {
         let new_schema = cedar_policy_validator::custom_schema::parser::parse_schema(&input_str)
             .map_err(|err| {

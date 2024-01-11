@@ -1,7 +1,12 @@
-use std::fmt::Display;
+use std::{collections::HashSet, fmt::Display};
+
+use nonempty::NonEmpty;
+use smol_str::SmolStr;
+use thiserror::Error;
 
 use crate::{
-    ActionType, EntityType, NamespaceDefinition, SchemaFragment, SchemaType, SchemaTypeVariant,
+    ActionType, EntityType, NamespaceDefinition, SchemaError, SchemaFragment, SchemaType,
+    SchemaTypeVariant, ValidatorSchema,
 };
 
 impl Display for SchemaFragment {
@@ -155,4 +160,43 @@ impl Display for ActionType {
         }
         Ok(())
     }
+}
+
+#[derive(Debug, Error)]
+pub enum ToCustomSchemaStrError {
+    #[error("There exist type name collisions: {:?}", .0)]
+    NameCollisions(NonEmpty<SmolStr>),
+    #[error(transparent)]
+    Invalid(#[from] SchemaError),
+}
+
+pub fn json_schema_to_custom_schema_str(
+    json_schema: &SchemaFragment,
+) -> Result<String, ToCustomSchemaStrError> {
+    let mut name_collisions: Vec<SmolStr> = Vec::new();
+    let _: ValidatorSchema = json_schema.clone().try_into()?;
+    for (name, ns) in json_schema.0.iter().filter(|(name, _)| !name.is_empty()) {
+        let entity_types: HashSet<SmolStr> = ns
+            .entity_types
+            .iter()
+            .map(|(ty_name, _)| format!("{name}::{ty_name}").into())
+            .collect();
+        let common_types: HashSet<SmolStr> = ns
+            .common_types
+            .iter()
+            .map(|(ty_name, _)| format!("{name}::{ty_name}").into())
+            .collect();
+        name_collisions.extend(
+            entity_types
+                .intersection(&common_types)
+                .map(|ty_name| ty_name.clone()),
+        );
+    }
+    if let Some((head, tail)) = name_collisions.split_first() {
+        return Err(ToCustomSchemaStrError::NameCollisions(NonEmpty {
+            head: head.clone(),
+            tail: tail.iter().map(|ty_name| ty_name.clone()).collect(),
+        }));
+    }
+    Ok(json_schema.to_string())
 }
