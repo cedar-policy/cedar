@@ -41,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Action entities in the store will pass schema-based validation without requiring
+  the transitive closure to be pre-computed. (#581, resolving #285)
+
 ## [3.0.1] - 2023-12-21
 Cedar Language Version: 3.0.0
 
