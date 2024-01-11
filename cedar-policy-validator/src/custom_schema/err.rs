@@ -298,3 +298,25 @@ pub enum ToJsonSchemaError {
     #[error("Use reserved namespace `__cedar`")]
     UseReservedNamespace(Loc),
 }
+
+impl Diagnostic for ToJsonSchemaError {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        match self {
+            ToJsonSchemaError::DuplicateDeclarations(_, (loc1, loc2))
+            | ToJsonSchemaError::DuplicateKeys(_, (loc1, loc2))
+            | ToJsonSchemaError::DuplicateNSIds(_, (loc1, loc2)) => Some(Box::new(
+                vec![
+                    LabeledSpan::underline(loc1.span),
+                    LabeledSpan::underline(loc2.span),
+                ]
+                .into_iter(),
+            )),
+            ToJsonSchemaError::UnknownTypeName(node) => Some(Box::new(std::iter::once(
+                LabeledSpan::underline(node.loc.span),
+            ))),
+            ToJsonSchemaError::UseReservedNamespace(loc) => {
+                Some(Box::new(std::iter::once(LabeledSpan::underline(loc.span))))
+            }
+        }
+    }
+}

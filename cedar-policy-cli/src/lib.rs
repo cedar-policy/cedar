@@ -631,11 +631,18 @@ fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
                     .input_file
                     .as_ref()
                     .map_or_else(|| "<stdin>".to_owned(), |n| n.to_owned());
-                Report::new(err).with_source_code(NamedSource::new(name, input_str))
+                Report::new(err).with_source_code(NamedSource::new(name, input_str.clone()))
             })
             .wrap_err_with(|| "failed to parse custom schema".to_string())?;
         let (ns, _) = custom_schema_to_json_schema(new_schema)
-            .map_err(|err| miette!("error converting custom schema to JSON schema: {err:?}"))?;
+            .map_err(|err| {
+                let name = args
+                    .input_file
+                    .as_ref()
+                    .map_or_else(|| "<stdin>".to_owned(), |n| n.to_owned());
+                Report::new(err).with_source_code(NamedSource::new(name, input_str))
+            })
+            .wrap_err_with(|| "failed to translate custom schema to json schema".to_string())?;
         serde_json::to_string(&ns)
             .map_err(|err| miette!("failed to serialize schema fragment: {err}"))
     }
