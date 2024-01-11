@@ -4,18 +4,25 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use cedar_policy_core::parser::{err::expected_to_string, Loc, Node};
+use cedar_policy_core::parser::{err::expected_to_string, unescape::UnescapeError, Loc, Node};
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
 use miette::{Diagnostic, LabeledSpan, SourceSpan};
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use thiserror::Error;
 
 use super::ast::Str;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserError {
+    EmptyList,
+    StringEscape(NonEmpty<UnescapeError>),
+}
+
 pub(crate) type RawLocation = usize;
 pub(crate) type RawToken<'a> = lalr::lexer::Token<'a>;
-pub(crate) type RawUserError = Node<String>;
+pub(crate) type RawUserError = Node<UserError>;
 
 pub(crate) type RawParseError<'a> = lalr::ParseError<RawLocation, RawToken<'a>, RawUserError>;
 pub(crate) type RawErrorRecovery<'a> = lalr::ErrorRecovery<RawLocation, RawToken<'a>, RawUserError>;
@@ -86,7 +93,12 @@ impl Display for ParseError {
                 token: (_, token, _),
                 ..
             } => write!(f, "extra token `{token}`"),
-            OwnedRawParseError::User { error } => write!(f, "{error}"),
+            OwnedRawParseError::User {
+                error: Node { node, .. },
+            } => match node {
+                UserError::EmptyList => write!(f, "expected a non-empty list"),
+                UserError::StringEscape(unescape_errs) => write!(f, "{}", unescape_errs.first()),
+            },
         }
     }
 }

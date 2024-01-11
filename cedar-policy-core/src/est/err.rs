@@ -19,6 +19,7 @@ use crate::entities::JsonDeserializationError;
 use crate::parser::err::ParseErrors;
 use crate::parser::unescape;
 use miette::Diagnostic;
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use thiserror::Error;
 
@@ -64,8 +65,8 @@ pub enum FromJsonError {
     },
     /// Error thrown while processing string escapes
     // show just the first error in the main error message, like in [`ParseErrors`]; see #326 and discussion on #477
-    #[error("{}", match .0.first() { Some(err) => format!("{err}"), None => "invalid escape".into() })]
-    UnescapeError(#[related] Vec<unescape::UnescapeError>),
+    #[error("{}", .0.first())]
+    UnescapeError(#[related] NonEmpty<unescape::UnescapeError>),
     /// Error reported when the entity type tested by an `is` expression cannot be parsed.
     #[error("invalid entity type: {0}")]
     #[diagnostic(transparent)]

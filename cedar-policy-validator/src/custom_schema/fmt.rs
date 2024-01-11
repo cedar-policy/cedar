@@ -41,10 +41,10 @@ impl Display for SchemaType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SchemaType::Type(ty) => match ty {
-                SchemaTypeVariant::Boolean => write!(f, "Bool"),
+                SchemaTypeVariant::Boolean => write!(f, "__cedar::Bool"),
                 SchemaTypeVariant::Entity { name } => write!(f, "{name}"),
-                SchemaTypeVariant::Extension { name } => write!(f, "{name}"),
-                SchemaTypeVariant::Long => write!(f, "Long"),
+                SchemaTypeVariant::Extension { name } => write!(f, "__cedar::{name}"),
+                SchemaTypeVariant::Long => write!(f, "__cedar::Long"),
                 SchemaTypeVariant::Record {
                     attributes,
                     additional_attributes: _,
@@ -63,7 +63,7 @@ impl Display for SchemaType {
                     Ok(())
                 }
                 SchemaTypeVariant::Set { element } => write!(f, "Set < {element} >"),
-                SchemaTypeVariant::String => write!(f, "String"),
+                SchemaTypeVariant::String => write!(f, "__cedar::String"),
             },
             SchemaType::TypeDef { type_name } => write!(f, "{type_name}"),
         }
@@ -125,31 +125,31 @@ impl Display for ActionType {
                     }
                     (Some(ps), Some(rs)) => {
                         write!(f, "appliesTo {{")?;
-                        write!(f, "principal: ")?;
+                        write!(f, "  principal: ")?;
                         fmt_vec(f, ps)?;
-                        write!(f, ", \nresource: ")?;
+                        write!(f, ", \n  resource: ")?;
                         fmt_vec(f, rs)?;
-                        write!(f, ", \ncontext: {}", &spec.context.0)?;
-                        write!(f, "}}")?;
+                        write!(f, ", \n  context: {}", &spec.context.0)?;
+                        write!(f, "\n}}")?;
                     }
                     (Some(ps), None) => {
                         write!(f, "appliesTo {{")?;
-                        write!(f, "principal: ")?;
+                        write!(f, "  principal: ")?;
                         fmt_vec(f, ps)?;
-                        write!(f, ", \ncontext: {}", &spec.context.0)?;
-                        write!(f, "}}")?;
+                        write!(f, ", \n  context: {}", &spec.context.0)?;
+                        write!(f, "\n}}")?;
                     }
                     (None, Some(rs)) => {
                         write!(f, "appliesTo {{")?;
-                        write!(f, "resource: ")?;
+                        write!(f, "  resource: ")?;
                         fmt_vec(f, rs)?;
-                        write!(f, ", \ncontext: {}", &spec.context.0)?;
-                        write!(f, "}}")?;
+                        write!(f, ", \n  context: {}", &spec.context.0)?;
+                        write!(f, "\n}}")?;
                     }
                     (None, None) => {
                         write!(f, "appliesTo {{")?;
-                        write!(f, "context: {}", &spec.context.0)?;
-                        write!(f, "}}")?;
+                        write!(f, "  context: {}", &spec.context.0)?;
+                        write!(f, "\n}}")?;
                     }
                 }
             }
