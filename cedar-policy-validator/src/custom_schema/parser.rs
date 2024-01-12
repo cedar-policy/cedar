@@ -6,8 +6,8 @@ use std::{
 use cedar_policy_core::ast::{Id, Name};
 use cedar_policy_core::parser::unescape::to_unescaped_string;
 use combine::{
-    between, choice, eof, many, many1, optional, satisfy_map, sep_by1, stream::ResetStream, Parser,
-    Positioned, StreamOnce,
+    attempt, between, choice, eof, many, many1, optional, parser::char::string, satisfy,
+    satisfy_map, sep_by1, stream::ResetStream, Parser, Positioned, StreamOnce,
 };
 use itertools::Itertools;
 use logos::Span;
@@ -68,11 +68,25 @@ impl<'a> Positioned for TokenStream<'a> {
 // For instance, "principal" also matches the `IDENT` pattern but `VarPrincipal`
 // wins because it's more specific.
 fn parse_id<'a>() -> impl Parser<TokenStream<'a>, Output = Id> {
-    satisfy_map(|(t, _)| match t {
-        Token::Identifier(d) => Some(Id::from_str(&d).unwrap()),
-        t if t.is_special_id() => Some(Id::from_str(&t.to_string()).unwrap()),
-        _ => None,
-    })
+    choice((
+        accept(Token::TyBool).map(|_| Id::from_str("Bool").unwrap()),
+        accept(Token::TyLong).map(|_| Id::from_str("Bool").unwrap()),
+        accept(Token::TyString).map(|_| Id::from_str("Bool").unwrap()),
+        accept(Token::Entity).map(|_| Id::from_str("Bool").unwrap()),
+        accept(Token::In).map(|_| Id::from_str("Bool").unwrap()),
+        accept(Token::Namespace).map(|_| Id::from_str("Bool").unwrap()),
+        accept(Token::Set).map(|_| Id::from_str("Bool").unwrap()),
+        accept(Token::Type).map(|_| Id::from_str("Bool").unwrap()),
+        accept(Token::VarAction).map(|_| Id::from_str("Bool").unwrap()),
+        accept(Token::VarContext).map(|_| Id::from_str("Bool").unwrap()),
+        accept(Token::VarPrincipal).map(|_| Id::from_str("Bool").unwrap()),
+        accept(Token::VarResource).map(|_| Id::from_str("Bool").unwrap()),
+        accept(Token::AppliesTo).map(|_| Id::from_str("AppliesTo").unwrap()),
+        satisfy_map(|(t, _)| match t {
+            Token::Identifier(d) => Some(Id::from_str(&d).unwrap()),
+            _ => None,
+        }),
+    ))
 }
 
 fn parse_ids<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<Id>> {
@@ -101,7 +115,7 @@ impl<'a> Parser<TokenStream<'a>> for AppParser {
         match self.parse(input.clone()) {
             Ok((res, tokens)) => {
                 *input = tokens;
-                combine::ParseResult::CommitOk(res)
+                combine::ParseResult::PeekOk(res)
             }
             Err(err) => combine::ParseResult::PeekErr(combine::error::Tracked::from(err)),
         }
@@ -207,7 +221,7 @@ impl<'a> Parser<TokenStream<'a>> for AttrParser {
         match self.parse(input.clone()) {
             Ok((res, tokens)) => {
                 *input = tokens;
-                combine::ParseResult::CommitOk(res)
+                combine::ParseResult::PeekOk(res)
             }
             Err(err) => combine::ParseResult::PeekErr(combine::error::Tracked::from(err)),
         }
@@ -218,17 +232,15 @@ impl<'a> Parser<TokenStream<'a>> for AttrParser {
         input: TokenStream<'a>,
     ) -> Result<(Self::Output, TokenStream<'a>), <TokenStream<'a> as combine::StreamOnce>::Error>
     {
-        (
+        match (
             parse_name(),
             optional(accept(Token::Question)),
             accept(Token::Colon),
             parse_type(),
-            optional(choice((
-                (accept(Token::Comma), AttrParser()).map(|(_, attrs)| attrs),
-                accept(Token::Comma).map(|_| BTreeMap::new()),
-            ))),
+            accept(Token::Comma),
+            AttrParser(),
         )
-            .map(|(id, q, _, ty, rs)| {
+            .map(|(id, q, _, ty, _, rs)| {
                 let mut pairs = BTreeMap::new();
                 pairs.insert(
                     SmolStr::new(id.as_ref()),
@@ -237,9 +249,33 @@ impl<'a> Parser<TokenStream<'a>> for AttrParser {
                         required: q.is_none(),
                     },
                 );
-                if let Some(rs) = rs {
-                    pairs.extend(rs);
-                }
+
+                pairs.extend(rs);
+                pairs
+            })
+            .parse(input.clone())
+        {
+            Ok(res) => {
+                return Ok(res);
+            }
+            Err(_) => {}
+        }
+        (
+            parse_name(),
+            optional(accept(Token::Question)),
+            accept(Token::Colon),
+            parse_type(),
+            optional(accept(Token::Comma)),
+        )
+            .map(|(id, q, _, ty, _)| {
+                let mut pairs = BTreeMap::new();
+                pairs.insert(
+                    SmolStr::new(id.as_ref()),
+                    TypeOfAttribute {
+                        ty,
+                        required: q.is_none(),
+                    },
+                );
                 pairs
             })
             .parse(input)
@@ -264,22 +300,19 @@ impl<'a> Parser<TokenStream<'a>> for TypeParser {
         match self.parse(input.clone()) {
             Ok((res, tokens)) => {
                 *input = tokens;
-                combine::ParseResult::CommitOk(res)
+                combine::ParseResult::PeekOk(res)
             }
             Err(err) => combine::ParseResult::PeekErr(combine::error::Tracked::from(err)),
         }
     }
 
-    // Type = PRIMTYPE | IDENT | SetType | RecType
+    // Type = Path | SetType | RecType
     fn parse(
         &mut self,
         input: TokenStream<'a>,
     ) -> Result<(Self::Output, TokenStream<'a>), <TokenStream<'a> as combine::StreamOnce>::Error>
     {
         choice((
-            accept(Token::TyBool).map(|_| SchemaType::Type(SchemaTypeVariant::Boolean)),
-            accept(Token::TyLong).map(|_| SchemaType::Type(SchemaTypeVariant::Long)),
-            accept(Token::TyString).map(|_| SchemaType::Type(SchemaTypeVariant::String)),
             parse_set_type(),
             parse_rec_type().map(|attrs| {
                 SchemaType::Type(SchemaTypeVariant::Record {
@@ -287,9 +320,9 @@ impl<'a> Parser<TokenStream<'a>> for TypeParser {
                     additional_attributes: false,
                 })
             }),
-            parse_id().map(|id| {
+            parse_path().map(|id| {
                 SchemaType::Type(SchemaTypeVariant::Entity {
-                    name: SmolStr::new(id.as_ref()),
+                    name: SmolStr::new(id.to_string()),
                 })
             }),
         ))
@@ -398,6 +431,22 @@ fn parse_names<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<SmolStr>> {
     sep_by1(parse_name(), accept(Token::Comma))
 }
 
+// Ref := Path '::' STR | Name
+fn parse_ref<'a>() -> impl Parser<TokenStream<'a>, Output = SmolStr> {
+    choice((
+        (
+            many1::<Vec<_>, _, _>((parse_id(), accept(Token::DoubleColon)).map(|(id, _)| id)),
+            parse_str(),
+        )
+            .map(|(_, base)| format!("::{base}").into()),
+        parse_name(),
+    ))
+}
+
+fn parse_refs<'a>() -> impl Parser<TokenStream<'a>, Output = Vec<SmolStr>> {
+    sep_by1(parse_ref(), accept(Token::Comma))
+}
+
 // Namespace := ('namespace' Path '{' {Decl} '}') | {Decl}
 fn parse_namespace<'a>() -> impl Parser<TokenStream<'a>, Output = (SmolStr, NamespaceDefinition)> {
     choice((
@@ -434,9 +483,9 @@ fn parse_action_decl<'a>() -> impl Parser<TokenStream<'a>, Output = HashMap<Smol
                     between(
                         accept(Token::LBracket),
                         accept(Token::RBracket),
-                        parse_names(),
+                        parse_refs(),
                     ),
-                    parse_name().map(|p| vec![p]),
+                    parse_ref().map(|p| vec![p]),
                 )),
             )
                 .map(|(_, ns)| ns),

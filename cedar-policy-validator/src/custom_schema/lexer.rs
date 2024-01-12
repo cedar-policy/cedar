@@ -120,6 +120,9 @@ impl Token {
                 | Self::VarContext
                 | Self::VarPrincipal
                 | Self::VarResource
+                | Self::TyBool
+                | Self::TyLong
+                | Self::TyString
         )
     }
 }
