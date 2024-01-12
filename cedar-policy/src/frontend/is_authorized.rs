@@ -78,13 +78,15 @@ fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAnswer 
         Ok((request, policies, entities)) => AUTHORIZER.with(|authorizer| {
             match authorizer.is_authorized_partial(&request, &policies, &entities) {
                 concrete_response @ PartialResponse::Concrete(_) => {
-                    PartialAuthorizationAnswer::Concrete {
-                        response: concrete_response.into(),
+                    match concrete_response.try_into() {
+                        Ok(response) => PartialAuthorizationAnswer::Concrete { response },
+                        Err(errors) => PartialAuthorizationAnswer::ParseFailed { errors },
                     }
                 }
                 residual_response @ PartialResponse::Residual(_) => {
-                    PartialAuthorizationAnswer::Residuals {
-                        response: residual_response.into(),
+                    match residual_response.try_into() {
+                        Ok(response) => PartialAuthorizationAnswer::Residuals { response },
+                        Err(errors) => PartialAuthorizationAnswer::ParseFailed { errors },
                     }
                 }
             }
@@ -102,12 +104,8 @@ pub fn json_is_authorized_partial(input: &str) -> InterfaceResult {
     serde_json::from_str::<AuthorizationCall>(input).map_or_else(
         |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
         |call| match is_authorized_partial(call) {
-            answer @ PartialAuthorizationAnswer::Concrete { .. } => {
-                InterfaceResult::succeed(answer)
-            }
-            answer @ PartialAuthorizationAnswer::Residuals { .. } => {
-                InterfaceResult::succeed(answer)
-            }
+            answer @ (PartialAuthorizationAnswer::Concrete { .. }
+            | PartialAuthorizationAnswer::Residuals { .. }) => InterfaceResult::succeed(answer),
             PartialAuthorizationAnswer::ParseFailed { errors } => {
                 InterfaceResult::fail_bad_request(errors)
             }
@@ -169,10 +167,12 @@ impl From<Response> for InterfaceResponse {
 }
 
 #[cfg(feature = "partial-eval")]
-impl From<PartialResponse> for InterfaceResponse {
-    fn from(partial_response: PartialResponse) -> Self {
+impl TryFrom<PartialResponse> for InterfaceResponse {
+    type Error = Vec<String>;
+
+    fn try_from(partial_response: PartialResponse) -> Result<Self, Self::Error> {
         match partial_response {
-            PartialResponse::Concrete(concrete) => Self::new(
+            PartialResponse::Concrete(concrete) => Ok(Self::new(
                 concrete.decision(),
                 concrete.diagnostics().reason().cloned().collect(),
                 concrete
@@ -180,8 +180,8 @@ impl From<PartialResponse> for InterfaceResponse {
                     .errors()
                     .map(ToString::to_string)
                     .collect(),
-            ),
-            PartialResponse::Residual(_) => panic!("Unsupported"),
+            )),
+            PartialResponse::Residual(_) => Err(vec!["unsupported".into()]),
         }
     }
 }
@@ -224,14 +224,21 @@ impl InterfaceResidualResponse {
 }
 
 #[cfg(feature = "partial-eval")]
-impl From<PartialResponse> for InterfaceResidualResponse {
-    fn from(partial_response: PartialResponse) -> Self {
+impl TryFrom<PartialResponse> for InterfaceResidualResponse {
+    type Error = Vec<String>;
+
+    fn try_from(partial_response: PartialResponse) -> Result<Self, Self::Error> {
         match partial_response {
-            PartialResponse::Residual(residual) => Self::new(
+            PartialResponse::Residual(residual) => Ok(Self::new(
                 residual
                     .residuals()
                     .policies()
-                    .map(|policy| (policy.id().clone(), policy.to_json().unwrap()))
+                    .map(|policy| match policy.to_json() {
+                        Ok(json) => Ok((policy.id().clone(), json)),
+                        Err(errors) => Err(vec![errors.to_string()]),
+                    })
+                    .collect::<Result<Vec<(PolicyId, serde_json::Value)>, Self::Error>>()?
+                    .into_iter()
                     .collect(),
                 residual.diagnostics().reason().cloned().collect(),
                 residual
@@ -239,8 +246,8 @@ impl From<PartialResponse> for InterfaceResidualResponse {
                     .errors()
                     .map(ToString::to_string)
                     .collect(),
-            ),
-            PartialResponse::Concrete(_) => panic!("Unsupported"),
+            )),
+            PartialResponse::Concrete(_) => Err(vec!["unsupported".into()]),
         }
     }
 }
@@ -307,6 +314,11 @@ fn parse_entity_uid(
         .map_err(|e| vec![format!("Failed to parse {category}"), e.to_string()])
 }
 
+fn parse_action(entity_uid_json: JsonValueWithNoDuplicateKeys) -> Result<EntityUid, Vec<String>> {
+    parse_entity_uid(Some(entity_uid_json), "action")?
+        .map_or_else(|| Err(vec!["parsing action return none".into()]), Ok)
+}
+
 fn parse_context(
     context_map: HashMap<String, JsonValueWithNoDuplicateKeys>,
     schema_ref: Option<&Schema>,
@@ -322,7 +334,7 @@ impl AuthorizationCall {
     fn get_components(self) -> Result<(Request, PolicySet, Entities), Vec<String>> {
         let schema = parse_schema(self.schema)?;
         let principal = parse_entity_uid(self.principal, "principal")?;
-        let action = parse_entity_uid(Some(self.action), "action")?.unwrap();
+        let action = parse_action(self.action)?;
         let resource = parse_entity_uid(self.resource, "resource")?;
         let context = parse_context(self.context, schema.as_ref(), &action)?;
         let q = Request::new(
@@ -345,15 +357,15 @@ impl AuthorizationCall {
     fn get_components_partial(self) -> Result<(Request, PolicySet, Entities), Vec<String>> {
         let schema = parse_schema(self.schema)?;
         let principal = parse_entity_uid(self.principal, "principal")?;
-        let action = parse_entity_uid(Some(self.action), "action")?.unwrap();
+        let action = parse_action(self.action)?;
         let resource = parse_entity_uid(self.resource, "resource")?;
         let context = parse_context(self.context, schema.as_ref(), &action)?;
         let mut b = Request::builder().action(Some(action)).context(context);
         if principal.is_some() {
-            b = b.principal(principal)
+            b = b.principal(principal);
         }
         if resource.is_some() {
-            b = b.resource(resource)
+            b = b.resource(resource);
         }
         if self.enable_request_validation {
             b = match schema.as_ref() {
