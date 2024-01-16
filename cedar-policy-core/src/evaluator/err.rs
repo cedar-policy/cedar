@@ -108,7 +108,7 @@ impl EvaluationError {
     }
 
     /// Return the `EvaluationError`, but with the new `source_loc` (or `None`).
-    pub fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+    pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
         Self { source_loc, ..self }
     }
 
