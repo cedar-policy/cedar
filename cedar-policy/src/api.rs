@@ -1716,7 +1716,7 @@ impl<'a> Diagnostic for ValidationWarning<'a> {
 pub struct EntityId(ast::Eid);
 
 impl EntityId {
-    /// Construct an [`EntityUid`] from a source string
+    /// Construct an [`EntityId`] from a source string
     pub fn new(src: impl AsRef<str>) -> Self {
         match src.as_ref().parse() {
             Ok(eid) => eid,
