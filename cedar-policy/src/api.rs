@@ -2697,6 +2697,7 @@ impl TemplateResourceConstraint {
 /// ```
 /// # use cedar_policy::PolicyId;
 /// let id = PolicyId::new("my-id");
+/// let id : PolicyId = "my-id".parse().unwrap_or_else(|never| match never {});
 /// # assert_eq!(id.as_ref(), "my-id");
 /// ```
 #[repr(transparent)]
@@ -2711,7 +2712,7 @@ impl PolicyId {
 }
 
 impl FromStr for PolicyId {
-    type Err = ParseErrors;
+    type Err = Infallible;
 
     /// Create a `PolicyId` from a string. Currently always returns `Ok()`.
     fn from_str(id: &str) -> Result<Self, Self::Err> {
