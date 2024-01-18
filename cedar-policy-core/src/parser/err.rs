@@ -394,7 +394,7 @@ pub enum ToASTErrorKind {
 }
 
 impl ToASTErrorKind {
-    /// Constructor for the [`ToASTError::WrongNode`] error
+    /// Constructor for the [`ToASTErrorKind::WrongNode`] error
     pub fn wrong_node(
         expected: &'static str,
         got: impl Into<String>,
@@ -407,7 +407,7 @@ impl ToASTErrorKind {
         }
     }
 
-    /// Constructor for the [`ToASTError::WrongArity`] error
+    /// Constructor for the [`ToASTErrorKind::WrongArity`] error
     pub fn wrong_arity(name: &'static str, expected: usize, got: usize) -> Self {
         Self::WrongArity {
             name,
