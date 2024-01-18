@@ -9,9 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `PolicyId::new()` added to `PolicyId` (#587, resolving #551)
 - `AsRef<str>` implementation for `PolicyId`. (#504, resolving #503)
 - New API `template_links` for `Policy` to retrieve the linked values for a
   template-linked policy. (#515, resolving #489)
+- Added `EntityId::new()` constructor (#583, resolving #553)
+- New feature for cedar-policy and cedar-policy core to allow targeting wasm
 
 ### Changed
 
@@ -23,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and all associated information in a pretty human-readable format or as JSON.
   For more details, see `miette`'s
   [documentation](https://docs.rs/miette/latest/miette/index.html). (#477)
+- Moved `(PolicyId as FromStr)::Err` to `Infallible` (#588, resolving #551)
 - Add hints suggesting how to fix some type errors. (#513)
 - The `ValidationResult` returned from `Validator::validate` now has a static
   lifetime, allowing it to be used in more contexts. The lifetime parameter
