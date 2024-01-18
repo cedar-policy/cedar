@@ -1706,9 +1706,10 @@ impl<'a> Diagnostic for ValidationWarning<'a> {
 
 /// Identifier portion of the [`EntityUid`] type.
 ///
-/// An `EntityId` can can be constructed using [`EntityId::from_str`] or by
-/// calling `parse()` on a string. This implementation is `Infallible`, so the
-/// parsed `EntityId` can be extracted safely.
+/// All strings are valid [`EntityId`]s, and can be
+/// constructed either using [`EntityId::new`]
+/// or by using the implementation of [`FromStr`]. This implementation is [`Infallible`], so the
+/// parsed [`EntityId`] can be extracted safely.
 ///
 /// ```
 /// # use cedar_policy::EntityId;
@@ -1718,6 +1719,16 @@ impl<'a> Diagnostic for ValidationWarning<'a> {
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
 pub struct EntityId(ast::Eid);
+
+impl EntityId {
+    /// Construct an [`EntityId`] from a source string
+    pub fn new(src: impl AsRef<str>) -> Self {
+        match src.as_ref().parse() {
+            Ok(eid) => eid,
+            Err(infallible) => match infallible {},
+        }
+    }
+}
 
 impl FromStr for EntityId {
     type Err = Infallible;
@@ -2685,17 +2696,24 @@ impl TemplateResourceConstraint {
 
 /// Unique ids assigned to policies and templates.
 ///
-/// A `PolicyId` can can be constructed using [`PolicyId::from_str`] or by
+/// A [`PolicyId`] can can be constructed using [`PolicyId::from_str`] or by
 /// calling `parse()` on a string. This currently always returns `Ok()`.
 ///
 /// ```
 /// # use cedar_policy::PolicyId;
-/// let id : PolicyId = "my-id".parse().unwrap();
+/// let id = PolicyId::new("my-id");
 /// # assert_eq!(id.as_ref(), "my-id");
 /// ```
 #[repr(transparent)]
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize, Deserialize, RefCast)]
 pub struct PolicyId(ast::PolicyID);
+
+impl PolicyId {
+    /// Construct a [`PolicyId`] from a source string
+    pub fn new(id: impl AsRef<str>) -> Self {
+        Self(ast::PolicyID::from_string(id.as_ref()))
+    }
+}
 
 impl FromStr for PolicyId {
     type Err = ParseErrors;
