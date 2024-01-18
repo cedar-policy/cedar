@@ -137,9 +137,8 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
         // check that the expected decision is "Deny" and that the parse error is
         // of the expected type (NotAFunction).
         if let Err(parse_errs) = policies_res {
-            // We may see a `NotAFunction` parse error for auto-generated policies:
-            // See the comment in the `ExtensionFunctionApp` case of the `Display`
-            // implementation for `Expr` in ast/exprs.rs.
+            // We may see a `NotAFunction` parse error for programmatically generated
+            // policies, which are not guaranteed to be parsable
             assert_eq!(
                 json_request.decision,
                 Decision::Deny,

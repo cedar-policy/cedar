@@ -32,3 +32,12 @@ pub enum AuthorizationError {
         error: EvaluationError,
     },
 }
+
+impl AuthorizationError {
+    /// Get the id of the erroring policy
+    pub fn id(&self) -> &PolicyID {
+        match self {
+            Self::PolicyEvaluationError { id, error: _ } => id,
+        }
+    }
+}

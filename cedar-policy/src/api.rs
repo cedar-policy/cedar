@@ -904,6 +904,11 @@ impl Diagnostics {
     pub fn errors(&self) -> impl Iterator<Item = &AuthorizationError> + '_ {
         self.errors.iter()
     }
+
+    /// Get the `PolicyId`s of the policies where an error occurred during authorization.
+    pub fn error_ids(&self) -> impl Iterator<Item = &PolicyId> {
+        self.errors.iter().map(|e| PolicyId::ref_cast(e.id()))
+    }
 }
 
 impl Response {
