@@ -24,8 +24,8 @@ use crate::api::EntityTypeName;
 use crate::api::PartialResponse;
 use crate::PolicyId;
 use crate::{
-    Authorizer, Context, Decision, Entities, EntityUid, ParseErrors, Policy, PolicySet, Request,
-    Response, Schema, SlotId, Template,
+    Authorizer, Context, Decision, Entities, EntityUid, Policy, PolicySet, Request, Response,
+    Schema, SlotId, Template,
 };
 use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use itertools::Itertools;
@@ -496,11 +496,7 @@ fn parse_instantiations(
     let template_id = PolicyId::from_str(instantiation.template_id.as_str());
     let instance_id = PolicyId::from_str(instantiation.result_policy_id.as_str());
     match (template_id, instance_id) {
-        (Ok(_), Err(e)) | (Err(e), Ok(_)) => Err(e.errors_as_strings()),
-        (Err(mut e1), Err(mut e2)) => {
-            e1.0.append(&mut e2.0);
-            Err(ParseErrors(e1.0).errors_as_strings())
-        }
+        (Err(never), _) | (_, Err(never)) => match never {},
         (Ok(template_id), Ok(instance_id)) => {
             let mut vals = HashMap::new();
             for i in instantiation.instantiations.0 {
