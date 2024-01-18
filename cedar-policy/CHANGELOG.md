@@ -18,7 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Moved `(PolicyId as FromStr)::Err` to `Infallible` (#588 resolving #551)
+- Better integration with `miette` for various error types. If you have
+  previously been just using the `Display` trait to get the error message from a
+  Cedar error type, you may want to consider also examining other data provided
+  by the `miette::Diagnostic` trait, for instance `.help()`.
+  Alternately, you can use `miette` and its `fancy` feature to format the error
+  and all associated information in a pretty human-readable format or as JSON.
+  For more details, see `miette`'s
+  [documentation](https://docs.rs/miette/latest/miette/index.html). (#477)
+- Moved `(PolicyId as FromStr)::Err` to `Infallible` (#588, resolving #551)
 - Add hints suggesting how to fix some type errors. (#513)
 - The `ValidationResult` returned from `Validator::validate` now has a static
   lifetime, allowing it to be used in more contexts. The lifetime parameter
@@ -31,14 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   method does exists when it is called with an incorrect number of arguments or
   using the wrong call style. (#482)
 - Include source spans on more parser error messages. (#471, resolving #465)
-- Better integration with `miette` for various error types. If you have
-  previously been just using the `Display` trait to get the error message from a
-  Cedar error type, you may want to consider also examining other data provided
-  by the `miette::Diagnostic` trait, for instance `.help()`.
-  Alternately, you can use `miette` and its `fancy` feature to format the error
-  and all associated information in a pretty human-readable format or as JSON.
-  For more details, see `miette`'s
-  [documentation](https://docs.rs/miette/latest/miette/index.html). (#477)
+- Include source spans on more evaluation error messages. (#582)
 - For the `partial-eval` experimental feature: make the return values of
   `RequestBuilder`'s `principal`, `action`, `resource`, `context` and
   `schema` functions `#[must_use]`. (#502)
@@ -166,7 +167,7 @@ Cedar Language Version: 3.0.0
   To continue using this feature you must enable the `permissive-validate`
   feature flag. (#428)
 
-  
+
 ## [2.4.3] - 2023-12-21
 
 Cedar Language Version: 2.1.3

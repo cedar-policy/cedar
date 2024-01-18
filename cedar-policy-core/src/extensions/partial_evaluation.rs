@@ -35,6 +35,7 @@ fn throw_error(v: Value) -> evaluator::Result<ExtensionOutputValue> {
     let err = EvaluationError::failed_extension_function_application(
         "partial_evaluation".parse().unwrap(),
         msg.to_string(),
+        None, // source loc will be added by the evaluator
     );
     Err(err)
 }
