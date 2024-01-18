@@ -906,8 +906,10 @@ impl Diagnostics {
     }
 
     /// Get the `PolicyId`s of the policies where an error occurred during authorization.
-    pub fn error_ids(&self) -> impl Iterator<Item = &PolicyId> {
-        self.errors.iter().map(|e| PolicyId::ref_cast(e.id()))
+    pub fn error_policy_ids(&self) -> impl Iterator<Item = &PolicyId> {
+        self.errors.iter().map(|e| match e {
+            AuthorizationError::PolicyEvaluationError { id, error: _ } => PolicyId::ref_cast(id),
+        })
     }
 }
 

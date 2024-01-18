@@ -37,7 +37,7 @@ use crate::{
     Policy, PolicyId, PolicySet, Request, Schema, ValidationMode, Validator,
 };
 use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     env,
@@ -46,7 +46,7 @@ use std::{
 };
 
 /// JSON representation of our integration test file format
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct JsonTest {
     /// Filename of the policies to use (in pure Cedar syntax)
@@ -66,7 +66,7 @@ pub struct JsonTest {
 
 /// JSON representation of a single request, along with its expected result,
 /// in our integration test file format
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct JsonRequest {
     /// Description for the request
@@ -375,7 +375,8 @@ pub fn perform_integration_test_from_json_custom(
                 &json_request.desc
             );
             // check errors
-            let errors: HashSet<PolicyId> = response.diagnostics().error_ids().cloned().collect();
+            let errors: HashSet<PolicyId> =
+                response.diagnostics().error_policy_ids().cloned().collect();
             assert_eq!(
                 errors,
                 json_request.errors.into_iter().collect(),
