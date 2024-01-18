@@ -2692,8 +2692,9 @@ impl TemplateResourceConstraint {
 /// Unique ids assigned to policies and templates.
 ///
 /// A [`PolicyId`] can can be constructed using [`PolicyId::from_str`] or by
-/// calling `parse()` on a string. This currently always returns `Ok()`.
-///
+/// calling `parse()` on a string.
+/// This implementation is [`Infallible`], so the parsed [`EntityId`] can be extracted safely.
+/// Examples:
 /// ```
 /// # use cedar_policy::PolicyId;
 /// let id = PolicyId::new("my-id");
