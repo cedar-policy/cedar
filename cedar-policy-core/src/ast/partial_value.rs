@@ -1,5 +1,5 @@
 use super::{Expr, Unknown, Value};
-use crate::parser::Loc;
+use crate::{evaluator::EvaluationError, parser::Loc};
 use itertools::Either;
 use miette::Diagnostic;
 use thiserror::Error;
@@ -51,6 +51,14 @@ pub enum PartialValueToValueError {
         /// Residual expression which contains an unknown
         residual: Expr,
     },
+}
+
+impl From<PartialValueToValueError> for EvaluationError {
+    fn from(value: PartialValueToValueError) -> Self {
+        match value {
+            PartialValueToValueError::ContainsUnknown { residual } => Self::non_value(residual),
+        }
+    }
 }
 
 impl TryFrom<PartialValue> for Value {

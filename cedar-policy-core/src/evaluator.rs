@@ -252,9 +252,273 @@ impl<'e> Evaluator<'e> {
     /// May return an error, for instance if the `Expr` tries to access an
     /// attribute that doesn't exist.
     pub fn interpret(&self, e: &Expr, slots: &SlotEnv) -> Result<Value> {
-        match self.partial_interpret(e, slots)? {
-            PartialValue::Value(v) => Ok(v),
-            PartialValue::Residual(r) => Err(EvaluationError::non_value(r)),
+        stack_size_check()?;
+        let res = self.interpret_internal(e, slots);
+
+        // set the returned value's source location to the same source location
+        // as the input expression had.
+        // we do this here so that we don't have to set/propagate the source
+        // location in every arm of the big `match` in `partial_interpret_internal()`.
+        // also, if there is an error, set its source location to the source
+        // location of the input expression as well, unless it already had a
+        // more specific location
+        res.map(|pval| pval.with_maybe_source_loc(e.source_loc().cloned()))
+            .map_err(|err| match err.source_loc() {
+                None => err.with_maybe_source_loc(e.source_loc().cloned()),
+                Some(_) => err,
+            })
+    }
+
+    /// Internal function to interpret an `Expr`. (External callers, use
+    /// `interpret()` or `partial_interpret()`.)
+    ///
+    /// Part of the reason this exists, instead of inlining this into
+    /// `partial_interpret()`, is so that we can use `?` inside this function
+    /// without immediately shortcircuiting into a return from
+    /// `partial_interpret()` -- ie, so we can make sure the source locations of
+    /// all errors are set properly before returning them from
+    /// `partial_interpret()`.
+    fn interpret_internal(&self, expr: &Expr, slots: &SlotEnv) -> Result<Value> {
+        let loc = expr.source_loc(); // the `loc` describing the location of the entire expression
+        match expr.expr_kind() {
+            ExprKind::Lit(lit) => Ok(lit.clone().into()),
+            ExprKind::Slot(id) => slots
+                .get(id)
+                .ok_or_else(|| err::EvaluationError::unlinked_slot(*id, loc.cloned()))
+                .map(|euid| Value::from(euid.clone())),
+            ExprKind::Var(v) => match v {
+                Var::Principal => Ok(self.principal.evaluate(*v).try_into()?),
+                Var::Action => Ok(self.action.evaluate(*v).try_into()?),
+                Var::Resource => Ok(self.resource.evaluate(*v).try_into()?),
+                Var::Context => Ok(self.context.clone().try_into()?),
+            },
+            ExprKind::Unknown(_) => Err(EvaluationError::non_value(expr.clone())),
+            ExprKind::If {
+                test_expr,
+                then_expr,
+                else_expr,
+            } => self.eval_if(test_expr, then_expr, else_expr, slots),
+            ExprKind::And { left, right } => {
+                if self.interpret(left, slots)?.get_as_bool()? {
+                    Ok(self.interpret(right, slots)?.get_as_bool()?.into())
+                } else {
+                    // We can short circuit here
+                    Ok(false.into())
+                }
+            }
+            ExprKind::Or { left, right } => {
+                if self.interpret(left, slots)?.get_as_bool()? {
+                    // We can short circuit here
+                    Ok(true.into())
+                } else {
+                    Ok(self.interpret(right, slots)?.get_as_bool()?.into())
+                }
+            }
+            ExprKind::UnaryApp { op, arg } => {
+                let arg = self.interpret(arg, slots)?;
+                match op {
+                    UnaryOp::Not => match arg.get_as_bool()? {
+                        true => Ok(false.into()),
+                        false => Ok(true.into()),
+                    },
+                    UnaryOp::Neg => {
+                        let i = arg.get_as_long()?;
+                        match i.checked_neg() {
+                            Some(v) => Ok(v.into()),
+                            None => Err(EvaluationError::integer_overflow(
+                                IntegerOverflowError::UnaryOp { op: *op, arg },
+                                loc.cloned(),
+                            )),
+                        }
+                    }
+                }
+            }
+            ExprKind::BinaryApp { op, arg1, arg2 } => {
+                // NOTE: There are more precise partial eval opportunities here, esp w/ typed unknowns
+                // Current limitations:
+                //   Operators are not partially evaluated.
+                let (arg1, arg2) = (self.interpret(arg1, slots)?, self.interpret(arg2, slots)?);
+                // Borrow from cedar-spec
+                match (&arg1, &arg2, op) {
+                    (arg1, arg2, BinaryOp::Eq) => Ok((arg1 == arg2).into()),
+                    // comparison and arithmetic operators, which only work on Longs
+                    (Value { value: ValueKind::Lit(Literal::Long(i1)), ..}, Value { value: ValueKind::Lit(Literal::Long(i2)), ..}, BinaryOp::Less) =>
+                        Ok((i1 < i2).into()),
+                    (Value { value: ValueKind::Lit(Literal::Long(i1)), ..}, Value { value: ValueKind::Lit(Literal::Long(i2)), ..}, BinaryOp::LessEq) =>
+                        Ok((i1 <= i2).into()),
+                    (Value { value: ValueKind::Lit(Literal::Long(i1)), ..}, Value { value: ValueKind::Lit(Literal::Long(i2)), ..}, BinaryOp::Add) =>
+                        match i1.checked_add(*i2) {
+                            Some(sum) => Ok(sum.into()),
+                            None => Err(EvaluationError::integer_overflow(
+                                IntegerOverflowError::BinaryOp {
+                                    op: *op,
+                                    arg1,
+                                    arg2,
+                                },
+                                loc.cloned(),
+                            )),
+                    },
+                    (Value { value: ValueKind::Lit(Literal::Long(i1)), ..}, Value { value: ValueKind::Lit(Literal::Long(i2)), ..}, BinaryOp::Sub) =>
+                      match i1.checked_sub(*i2) {
+                                Some(diff) => Ok(diff.into()),
+                                None => Err(EvaluationError::integer_overflow(
+                                    IntegerOverflowError::BinaryOp {
+                                        op: *op,
+                                        arg1,
+                                        arg2,
+                                    },
+                                    loc.cloned(),
+                                )),
+                            },
+                    (_, _, BinaryOp::Less) | (_, _, BinaryOp::LessEq) | (_, _, BinaryOp::Add) | (_, _, BinaryOp::Sub) => {
+                        let culprit = if arg1.get_as_long().is_err() { arg1 } else { arg2 };
+                        Err(EvaluationError::type_error_with_advice(nonempty![Type::Long], &culprit, format!("operation `{op}` should have integer operands")))
+                    },
+                    // hierarchy membership operator; see note on `BinaryOp::In`
+                    (Value {value: ValueKind::Lit(Literal::EntityUID(uid1)), ..}, _, BinaryOp::In) =>
+                        match self.entities.entity(&uid1) {
+                            Dereference::Residual(r) => Ok(PartialValue::Residual(
+                                Expr::binary_app(BinaryOp::In, r, arg2.into()),
+                            ).try_into()?),
+                            Dereference::NoSuchEntity => self.eval_in(&uid1, None, arg2),
+                            Dereference::Data(entity1) => self.eval_in(&uid1, Some(entity1), arg2),
+                        },
+                    (_, Value {value: ValueKind::Set(_), ..}, BinaryOp::In) => {
+                        Err(EvaluationError::type_error_with_advice(nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())], &arg1, "`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into())) },
+                        (_, Value {value: ValueKind::Record(_), ..}, BinaryOp::In) => {
+                            Err(EvaluationError::type_error_with_advice(nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())], &arg1,"`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()))
+                        },
+                    (_, _, BinaryOp::In) => {
+                        Err(EvaluationError::type_error_with_advice(nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())], &arg1,"the LHS of `in` should be an entity".into()))
+                    },
+                    // contains, which works on Sets
+                    (_, _, BinaryOp::Contains) => match arg1.value {
+                        ValueKind::Set(Set { fast: Some(h), .. }) => match arg2.try_as_lit() {
+                            Some(lit) => Ok((h.contains(lit)).into()),
+                            None => Ok(false.into()), // we know it doesn't contain a non-literal
+                        },
+                        ValueKind::Set(Set {
+                            fast: None,
+                            authoritative,
+                        }) => Ok((authoritative.contains(&arg2)).into()),
+                        _ => Err(EvaluationError::type_error_single(Type::Set, &arg1)),
+                    },
+                    // ContainsAll and ContainsAny, which work on Sets
+                    (Value { value: ValueKind::Set(Set {authoritative: _, fast: Some(arg1_set)}), ..},
+                    Value { value: ValueKind::Set(Set {authoritative: _, fast: Some(arg2_set)}), ..},
+                     BinaryOp::ContainsAll) => {
+                            Ok((arg2_set.is_subset(&arg1_set)).into())
+                        }
+                    ,
+                    (Value { value: ValueKind::Set(Set {authoritative: _, fast: Some(arg1_set)}), ..},
+                    Value { value: ValueKind::Set(Set {authoritative: _, fast: Some(arg2_set)}), ..},
+                    BinaryOp::ContainsAny) => {
+                            Ok((arg2_set.is_disjoint(&arg1_set)).into())}
+                    ,
+                    (Value { value: ValueKind::Set(arg1_set), ..}, Value { value: ValueKind::Set(arg2_set), ..}, BinaryOp::ContainsAll) => {
+                        let is_subset = arg2_set
+                                            .authoritative
+                                            .iter()
+                                            .all(|item| arg1_set.authoritative.contains(item));
+                                        Ok(is_subset.into())
+                    },
+                    (Value { value: ValueKind::Set(arg1_set), ..}, Value { value: ValueKind::Set(arg2_set), ..}, BinaryOp::ContainsAny) => {
+                        let not_disjoint = arg1_set
+                        .authoritative
+                        .iter()
+                        .any(|item| arg2_set.authoritative.contains(item));
+                    Ok(not_disjoint.into())
+                    },
+                    (_, _, BinaryOp::ContainsAll) | (_, _, BinaryOp::ContainsAny) => {
+                        let culprit = if arg1.get_as_set().is_err() { arg1 } else { arg2 };
+                        Err(EvaluationError::type_error_with_advice(nonempty![Type::Set], &culprit, format!("operation `{op}` should have set operands")))
+            }
+        }
+            }
+            ExprKind::MulByConst { arg, constant } => {
+                let arg = self.interpret(&arg, slots)?;
+                let i1 = arg.get_as_long()?;
+                match i1.checked_mul(*constant) {
+                    Some(prod) => Ok(prod.into()),
+                    None => Err(EvaluationError::integer_overflow(
+                        IntegerOverflowError::Multiplication {
+                            arg,
+                            constant: *constant,
+                        },
+                        loc.cloned(),
+                    )),
+                }
+            }
+            ExprKind::ExtensionFunctionApp { fn_name, args } => {
+                let efunc = self
+                    .extensions
+                    .func(&fn_name)
+                    .map_err(|err| EvaluationError::extension_function_lookup(err, loc.cloned()))?;
+                let args = args
+                    .iter()
+                    .map(|arg| self.interpret(arg, slots).into())
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(efunc.call(&args)?.try_into()?)
+            }
+            ExprKind::GetAttr { expr, attr } => {
+                Ok(self.get_attr(expr.as_ref(), attr, slots, loc)?.try_into()?)
+            }
+            ExprKind::HasAttr { expr, attr } => {
+                let val = self.interpret(&expr, slots)?;
+                match val {
+                    Value {
+                        value: ValueKind::Record(record),
+                        ..
+                    } => Ok(record.get(attr).is_some().into()),
+                    Value {
+                        value: ValueKind::Lit(Literal::EntityUID(uid)),
+                        ..
+                    } => match self.entities.entity(&uid) {
+                        Dereference::NoSuchEntity => Ok(false.into()),
+                        Dereference::Residual(r) => {
+                            Ok(PartialValue::Residual(Expr::has_attr(r, attr.clone()))
+                                .try_into()?)
+                        }
+                        Dereference::Data(e) => Ok(e.get(&attr).is_some().into()),
+                    },
+                    _ => Err(err::EvaluationError::type_error(
+                        nonempty![
+                            Type::Record,
+                            Type::entity_type(names::ANY_ENTITY_TYPE.clone())
+                        ],
+                        &val,
+                    )),
+                }
+            }
+            ExprKind::Like { expr, pattern } => {
+                let v = self.interpret(&expr, slots)?.get_as_string()?.clone();
+
+                Ok((pattern.wildcard_match(&v)).into())
+            }
+            ExprKind::Is { expr, entity_type } => {
+                let v = self.interpret(&expr, slots)?.get_as_entity()?.clone();
+                Ok(match v.entity_type() {
+                    EntityType::Specified(expr_entity_type) => entity_type == expr_entity_type,
+                    EntityType::Unspecified => false,
+                }
+                .into())
+            }
+            ExprKind::Set(items) => {
+                let vals = items
+                    .iter()
+                    .map(|item| self.interpret(item, slots))
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(Value::set(vals, loc.cloned()))
+            }
+            ExprKind::Record(map) => {
+                let map = map
+                    .iter()
+                    .map(|(k, v)| Ok((k.clone(), self.interpret(v, slots)?)))
+                    .collect::<Result<Vec<_>>>()?;
+                let (names, evalled): (Vec<SmolStr>, Vec<Value>) = map.into_iter().unzip();
+
+                Ok(Value::record(names.into_iter().zip(evalled), loc.cloned()))
+            }
         }
     }
 
@@ -310,7 +574,7 @@ impl<'e> Evaluator<'e> {
                 test_expr,
                 then_expr,
                 else_expr,
-            } => self.eval_if(test_expr, then_expr, else_expr, slots),
+            } => self.eval_if_partial(test_expr, then_expr, else_expr, slots),
             ExprKind::And { left, right } => {
                 match self.partial_interpret(left, slots)? {
                     // PE Case
@@ -463,8 +727,10 @@ impl<'e> Evaluator<'e> {
                             Dereference::Residual(r) => Ok(PartialValue::Residual(
                                 Expr::binary_app(BinaryOp::In, r, arg2.into()),
                             )),
-                            Dereference::NoSuchEntity => self.eval_in(uid1, None, arg2),
-                            Dereference::Data(entity1) => self.eval_in(uid1, Some(entity1), arg2),
+                            Dereference::NoSuchEntity => Ok(self.eval_in(uid1, None, arg2)?.into()),
+                            Dereference::Data(entity1) => {
+                                Ok(self.eval_in(uid1, Some(entity1), arg2)?.into())
+                            }
                         }
                     }
                     // contains, which works on Sets
@@ -645,12 +911,7 @@ impl<'e> Evaluator<'e> {
         }
     }
 
-    fn eval_in(
-        &self,
-        uid1: &EntityUID,
-        entity1: Option<&Entity>,
-        arg2: Value,
-    ) -> Result<PartialValue> {
+    fn eval_in(&self, uid1: &EntityUID, entity1: Option<&Entity>, arg2: Value) -> Result<Value> {
         // `rhs` is a list of all the UIDs for which we need to
         // check if `uid1` is a descendant of
         let rhs = match arg2.value {
@@ -684,7 +945,7 @@ impl<'e> Evaluator<'e> {
 
     /// Evaluation of conditionals
     /// Must be sure to respect short-circuiting semantics
-    fn eval_if(
+    fn eval_if_partial(
         &self,
         guard: &Expr,
         consequent: &Expr,
@@ -708,6 +969,22 @@ impl<'e> Evaluator<'e> {
                     _ => Ok(Expr::ite(guard, consequent.into(), alternative.into()).into()),
                 }
             }
+        }
+    }
+
+    /// Evaluation of conditionals
+    /// Must be sure to respect short-circuiting semantics
+    fn eval_if(
+        &self,
+        guard: &Expr,
+        consequent: &Expr,
+        alternative: &Expr,
+        slots: &SlotEnv,
+    ) -> Result<Value> {
+        if self.interpret(guard, slots)?.get_as_bool()? {
+            self.interpret(consequent, slots)
+        } else {
+            self.interpret(alternative, slots)
         }
     }
 
