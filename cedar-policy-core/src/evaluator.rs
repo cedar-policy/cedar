@@ -297,7 +297,13 @@ impl<'e> Evaluator<'e> {
                 test_expr,
                 then_expr,
                 else_expr,
-            } => self.eval_if(test_expr, then_expr, else_expr, slots),
+            } => {
+                if self.interpret(test_expr, slots)?.get_as_bool()? {
+                    self.interpret(then_expr, slots)
+                } else {
+                    self.interpret(else_expr, slots)
+                }
+            }
             ExprKind::And { left, right } => {
                 if self.interpret(left, slots)?.get_as_bool()? {
                     Ok(self.interpret(right, slots)?.get_as_bool()?.into())
@@ -317,39 +323,45 @@ impl<'e> Evaluator<'e> {
             ExprKind::UnaryApp { op, arg } => {
                 let arg = self.interpret(arg, slots)?;
                 match op {
-                    UnaryOp::Not => match arg.get_as_bool()? {
-                        true => Ok(false.into()),
-                        false => Ok(true.into()),
-                    },
-                    UnaryOp::Neg => {
-                        let i = arg.get_as_long()?;
-                        match i.checked_neg() {
-                            Some(v) => Ok(v.into()),
-                            None => Err(EvaluationError::integer_overflow(
+                    UnaryOp::Not => arg.get_as_bool().map(|b| (!b).into()),
+                    UnaryOp::Neg => arg
+                        .get_as_long()?
+                        .checked_neg()
+                        .map(Value::from)
+                        .ok_or_else(|| {
+                            EvaluationError::integer_overflow(
                                 IntegerOverflowError::UnaryOp { op: *op, arg },
                                 loc.cloned(),
-                            )),
-                        }
-                    }
+                            )
+                        }),
                 }
             }
             ExprKind::BinaryApp { op, arg1, arg2 } => {
-                // NOTE: There are more precise partial eval opportunities here, esp w/ typed unknowns
-                // Current limitations:
-                //   Operators are not partially evaluated.
                 let (arg1, arg2) = (self.interpret(arg1, slots)?, self.interpret(arg2, slots)?);
                 // Borrow from cedar-spec
                 match (&arg1, &arg2, op) {
                     (arg1, arg2, BinaryOp::Eq) => Ok((arg1 == arg2).into()),
                     // comparison and arithmetic operators, which only work on Longs
-                    (Value { value: ValueKind::Lit(Literal::Long(i1)), ..}, Value { value: ValueKind::Lit(Literal::Long(i2)), ..}, BinaryOp::Less) =>
+                    (
+                        Value { value: ValueKind::Lit(Literal::Long(i1)), ..},
+                        Value { value: ValueKind::Lit(Literal::Long(i2)), ..},
+                        BinaryOp::Less
+                    ) =>
                         Ok((i1 < i2).into()),
-                    (Value { value: ValueKind::Lit(Literal::Long(i1)), ..}, Value { value: ValueKind::Lit(Literal::Long(i2)), ..}, BinaryOp::LessEq) =>
+                    (
+                        Value { value: ValueKind::Lit(Literal::Long(i1)), ..},
+                        Value { value: ValueKind::Lit(Literal::Long(i2)), ..},
+                        BinaryOp::LessEq
+                    ) =>
                         Ok((i1 <= i2).into()),
-                    (Value { value: ValueKind::Lit(Literal::Long(i1)), ..}, Value { value: ValueKind::Lit(Literal::Long(i2)), ..}, BinaryOp::Add) =>
-                        match i1.checked_add(*i2) {
-                            Some(sum) => Ok(sum.into()),
-                            None => Err(EvaluationError::integer_overflow(
+                    // Arithmetic
+                    (
+                        Value { value: ValueKind::Lit(Literal::Long(i1)), ..},
+                        Value { value: ValueKind::Lit(Literal::Long(i2)), ..},
+                        BinaryOp::Add
+                    ) =>
+                        i1.checked_add(*i2).map(Value::from).ok_or_else(||
+                           EvaluationError::integer_overflow(
                                 IntegerOverflowError::BinaryOp {
                                     op: *op,
                                     arg1,
@@ -357,25 +369,31 @@ impl<'e> Evaluator<'e> {
                                 },
                                 loc.cloned(),
                             )),
-                    },
-                    (Value { value: ValueKind::Lit(Literal::Long(i1)), ..}, Value { value: ValueKind::Lit(Literal::Long(i2)), ..}, BinaryOp::Sub) =>
-                      match i1.checked_sub(*i2) {
-                                Some(diff) => Ok(diff.into()),
-                                None => Err(EvaluationError::integer_overflow(
-                                    IntegerOverflowError::BinaryOp {
-                                        op: *op,
-                                        arg1,
-                                        arg2,
-                                    },
-                                    loc.cloned(),
-                                )),
-                            },
+                    (
+                        Value { value: ValueKind::Lit(Literal::Long(i1)), ..},
+                        Value { value: ValueKind::Lit(Literal::Long(i2)), ..},
+                        BinaryOp::Sub
+                    ) =>
+                        i1.checked_sub(*i2).map(Value::from).ok_or_else(||
+                            EvaluationError::integer_overflow(
+                             IntegerOverflowError::BinaryOp {
+                                 op: *op,
+                                 arg1,
+                                 arg2,
+                             },
+                             loc.cloned(),
+                         )),
+                    // this pattern should match all type errors for integer binary ops
                     (_, _, BinaryOp::Less) | (_, _, BinaryOp::LessEq) | (_, _, BinaryOp::Add) | (_, _, BinaryOp::Sub) => {
                         let culprit = if arg1.get_as_long().is_err() { arg1 } else { arg2 };
                         Err(EvaluationError::type_error_with_advice(nonempty![Type::Long], &culprit, format!("operation `{op}` should have integer operands")))
                     },
                     // hierarchy membership operator; see note on `BinaryOp::In`
-                    (Value {value: ValueKind::Lit(Literal::EntityUID(uid1)), ..}, _, BinaryOp::In) =>
+                    (
+                        Value {value: ValueKind::Lit(Literal::EntityUID(uid1)), ..},
+                        _,
+                        BinaryOp::In
+                    ) =>
                         match self.entities.entity(&uid1) {
                             Dereference::Residual(r) => Ok(PartialValue::Residual(
                                 Expr::binary_app(BinaryOp::In, r, arg2.into()),
@@ -383,20 +401,25 @@ impl<'e> Evaluator<'e> {
                             Dereference::NoSuchEntity => self.eval_in(&uid1, None, arg2),
                             Dereference::Data(entity1) => self.eval_in(&uid1, Some(entity1), arg2),
                         },
-                    (_, Value {value: ValueKind::Set(_), ..}, BinaryOp::In) => {
+                    (
+                        _,
+                        Value {value: ValueKind::Set(_), ..},
+                        BinaryOp::In
+                    ) => {
                         Err(EvaluationError::type_error_with_advice(nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())], &arg1, "`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into())) },
-                        (_, Value {value: ValueKind::Record(_), ..}, BinaryOp::In) => {
+                    (
+                        _,
+                        Value {value: ValueKind::Record(_), ..},
+                        BinaryOp::In
+                    ) => {
                             Err(EvaluationError::type_error_with_advice(nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())], &arg1,"`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()))
-                        },
+                    },
                     (_, _, BinaryOp::In) => {
                         Err(EvaluationError::type_error_with_advice(nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())], &arg1,"the LHS of `in` should be an entity".into()))
                     },
                     // contains, which works on Sets
                     (_, _, BinaryOp::Contains) => match arg1.value {
-                        ValueKind::Set(Set { fast: Some(h), .. }) => match arg2.try_as_lit() {
-                            Some(lit) => Ok((h.contains(lit)).into()),
-                            None => Ok(false.into()), // we know it doesn't contain a non-literal
-                        },
+                        ValueKind::Set(Set { fast: Some(h), .. }) => Ok(arg2.try_as_lit().map_or(false, |lit| h.contains(lit)).into()),
                         ValueKind::Set(Set {
                             fast: None,
                             authoritative,
@@ -404,50 +427,55 @@ impl<'e> Evaluator<'e> {
                         _ => Err(EvaluationError::type_error_single(Type::Set, &arg1)),
                     },
                     // ContainsAll and ContainsAny, which work on Sets
-                    (Value { value: ValueKind::Set(Set {authoritative: _, fast: Some(arg1_set)}), ..},
-                    Value { value: ValueKind::Set(Set {authoritative: _, fast: Some(arg2_set)}), ..},
-                     BinaryOp::ContainsAll) => {
-                            Ok((arg2_set.is_subset(&arg1_set)).into())
-                        }
-                    ,
-                    (Value { value: ValueKind::Set(Set {authoritative: _, fast: Some(arg1_set)}), ..},
-                    Value { value: ValueKind::Set(Set {authoritative: _, fast: Some(arg2_set)}), ..},
-                    BinaryOp::ContainsAny) => {
-                            Ok((arg2_set.is_disjoint(&arg1_set)).into())}
-                    ,
-                    (Value { value: ValueKind::Set(arg1_set), ..}, Value { value: ValueKind::Set(arg2_set), ..}, BinaryOp::ContainsAll) => {
-                        let is_subset = arg2_set
-                                            .authoritative
-                                            .iter()
-                                            .all(|item| arg1_set.authoritative.contains(item));
-                                        Ok(is_subset.into())
-                    },
-                    (Value { value: ValueKind::Set(arg1_set), ..}, Value { value: ValueKind::Set(arg2_set), ..}, BinaryOp::ContainsAny) => {
-                        let not_disjoint = arg1_set
+                    (
+                        Value { value: ValueKind::Set(Set {authoritative: _, fast: Some(arg1_set)}), ..},
+                        Value { value: ValueKind::Set(Set {authoritative: _, fast: Some(arg2_set)}), ..},
+                        BinaryOp::ContainsAll
+                    ) =>
+                        Ok((arg2_set.is_subset(&arg1_set)).into()),
+                    (
+                        Value { value: ValueKind::Set(Set {authoritative: _, fast: Some(arg1_set)}), ..},
+                        Value { value: ValueKind::Set(Set {authoritative: _, fast: Some(arg2_set)}), ..},
+                        BinaryOp::ContainsAny
+                    ) =>
+                        Ok((arg2_set.is_disjoint(&arg1_set)).into()),
+                    (
+                        Value { value: ValueKind::Set(arg1_set), ..}, Value { value: ValueKind::Set(arg2_set), ..},
+                        BinaryOp::ContainsAll
+                    ) => {
+                        Ok(arg2_set
+                            .authoritative
+                            .iter()
+                            .all(|item| arg1_set.authoritative.contains(item)).into())
+                    }
+                    (
+                        Value { value: ValueKind::Set(arg1_set), ..}, Value { value: ValueKind::Set(arg2_set), ..}, BinaryOp::ContainsAny
+                    ) => {
+                        Ok(arg1_set
                         .authoritative
                         .iter()
-                        .any(|item| arg2_set.authoritative.contains(item));
-                    Ok(not_disjoint.into())
+                        .any(|item| arg2_set.authoritative.contains(item)).into())
                     },
                     (_, _, BinaryOp::ContainsAll) | (_, _, BinaryOp::ContainsAny) => {
                         let culprit = if arg1.get_as_set().is_err() { arg1 } else { arg2 };
                         Err(EvaluationError::type_error_with_advice(nonempty![Type::Set], &culprit, format!("operation `{op}` should have set operands")))
-            }
-        }
+                    }
+                }
             }
             ExprKind::MulByConst { arg, constant } => {
                 let arg = self.interpret(&arg, slots)?;
-                let i1 = arg.get_as_long()?;
-                match i1.checked_mul(*constant) {
-                    Some(prod) => Ok(prod.into()),
-                    None => Err(EvaluationError::integer_overflow(
-                        IntegerOverflowError::Multiplication {
-                            arg,
-                            constant: *constant,
-                        },
-                        loc.cloned(),
-                    )),
-                }
+                arg.get_as_long()?
+                    .checked_mul(*constant)
+                    .map(Value::from)
+                    .ok_or_else(|| {
+                        EvaluationError::integer_overflow(
+                            IntegerOverflowError::Multiplication {
+                                arg,
+                                constant: *constant,
+                            },
+                            loc.cloned(),
+                        )
+                    })
             }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let efunc = self
@@ -969,22 +997,6 @@ impl<'e> Evaluator<'e> {
                     _ => Ok(Expr::ite(guard, consequent.into(), alternative.into()).into()),
                 }
             }
-        }
-    }
-
-    /// Evaluation of conditionals
-    /// Must be sure to respect short-circuiting semantics
-    fn eval_if(
-        &self,
-        guard: &Expr,
-        consequent: &Expr,
-        alternative: &Expr,
-        slots: &SlotEnv,
-    ) -> Result<Value> {
-        if self.interpret(guard, slots)?.get_as_bool()? {
-            self.interpret(consequent, slots)
-        } else {
-            self.interpret(alternative, slots)
         }
     }
 
