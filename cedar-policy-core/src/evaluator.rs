@@ -596,42 +596,17 @@ impl<'e> Evaluator<'e> {
                 Ok(efunc.call(&args)?.try_into()?)
             }
             ExprKind::GetAttr { expr, attr } => {
-                Ok(self.get_attr(expr.as_ref(), attr, slots, loc)?.try_into()?)
+                self.get_attr(self.interpret(expr, slots)?, attr, loc)
             }
             ExprKind::HasAttr { expr, attr } => {
-                let val = self.interpret(&expr, slots)?;
-                match val {
-                    Value {
-                        value: ValueKind::Record(record),
-                        ..
-                    } => Ok(record.get(attr).is_some().into()),
-                    Value {
-                        value: ValueKind::Lit(Literal::EntityUID(uid)),
-                        ..
-                    } => match self.entities.entity(&uid) {
-                        Dereference::NoSuchEntity => Ok(false.into()),
-                        Dereference::Residual(r) => {
-                            Ok(PartialValue::Residual(Expr::has_attr(r, attr.clone()))
-                                .try_into()?)
-                        }
-                        Dereference::Data(e) => Ok(e.get(&attr).is_some().into()),
-                    },
-                    _ => Err(err::EvaluationError::type_error(
-                        nonempty![
-                            Type::Record,
-                            Type::entity_type(names::ANY_ENTITY_TYPE.clone())
-                        ],
-                        &val,
-                    )),
-                }
+                self.has_attr(self.interpret(expr, slots)?, attr, loc)
             }
             ExprKind::Like { expr, pattern } => {
-                let v = self.interpret(&expr, slots)?.get_as_string()?.clone();
-
+                let v = self.interpret(expr, slots)?.get_as_string()?.clone();
                 Ok((pattern.wildcard_match(&v)).into())
             }
             ExprKind::Is { expr, entity_type } => {
-                let v = self.interpret(&expr, slots)?.get_as_entity()?.clone();
+                let v = self.interpret(expr, slots)?.get_as_entity()?.clone();
                 Ok(match v.entity_type() {
                     EntityType::Specified(expr_entity_type) => entity_type == expr_entity_type,
                     EntityType::Unspecified => false,
@@ -965,29 +940,11 @@ impl<'e> Evaluator<'e> {
                     )),
                 }
             }
-            ExprKind::GetAttr { expr, attr } => self.get_attr(expr.as_ref(), attr, slots, loc),
+            ExprKind::GetAttr { expr, attr } => {
+                self.get_attr_partial(expr.as_ref(), attr, slots, loc)
+            }
             ExprKind::HasAttr { expr, attr } => match self.partial_interpret(expr, slots)? {
-                PartialValue::Value(Value {
-                    value: ValueKind::Record(record),
-                    ..
-                }) => Ok(record.get(attr).is_some().into()),
-                PartialValue::Value(Value {
-                    value: ValueKind::Lit(Literal::EntityUID(uid)),
-                    ..
-                }) => match self.entities.entity(&uid) {
-                    Dereference::NoSuchEntity => Ok(false.into()),
-                    Dereference::Residual(r) => {
-                        Ok(PartialValue::Residual(Expr::has_attr(r, attr.clone())))
-                    }
-                    Dereference::Data(e) => Ok(e.get(attr).is_some().into()),
-                },
-                PartialValue::Value(val) => Err(err::EvaluationError::type_error(
-                    nonempty![
-                        Type::Record,
-                        Type::entity_type(names::ANY_ENTITY_TYPE.clone())
-                    ],
-                    &val,
-                )),
+                PartialValue::Value(val) => Ok(self.has_attr(val, attr, loc)?.into()),
                 PartialValue::Residual(r) => Ok(Expr::has_attr(r, attr.clone()).into()),
             },
             ExprKind::Like { expr, pattern } => {
@@ -1107,10 +1064,90 @@ impl<'e> Evaluator<'e> {
         }
     }
 
+    fn has_attr(&self, val: Value, attr: &SmolStr, source_loc: Option<&Loc>) -> Result<Value> {
+        match val {
+            Value {
+                value: ValueKind::Record(record),
+                ..
+            } => Ok(record.get(attr).is_some().into()),
+            Value {
+                value: ValueKind::Lit(Literal::EntityUID(uid)),
+                ..
+            } => match self.entities.entity(&uid) {
+                Dereference::NoSuchEntity => Ok(false.into()),
+                Dereference::Residual(r) => {
+                    Ok(PartialValue::Residual(Expr::has_attr(r, attr.clone())).try_into()?)
+                }
+                Dereference::Data(e) => Ok(e.get(&attr).is_some().into()),
+            },
+            _ => Err(err::EvaluationError::type_error(
+                nonempty![
+                    Type::Record,
+                    Type::entity_type(names::ANY_ENTITY_TYPE.clone())
+                ],
+                &val,
+            )),
+        }
+    }
+
+    fn get_attr(&self, val: Value, attr: &SmolStr, source_loc: Option<&Loc>) -> Result<Value> {
+        match val {
+            Value {
+                value: ValueKind::Record(record),
+                ..
+            } => record.as_ref().get(attr).map(|v| v.clone()).ok_or_else(|| {
+                EvaluationError::record_attr_does_not_exist(
+                    attr.clone(),
+                    record.iter().map(|(k, _)| k.clone()).collect(),
+                    source_loc.cloned(),
+                )
+            }),
+            Value {
+                value: ValueKind::Lit(Literal::EntityUID(uid)),
+                loc,
+            } => match self.entities.entity(uid.as_ref()) {
+                Dereference::NoSuchEntity => Err(match *uid.entity_type() {
+                    EntityType::Unspecified => EvaluationError::unspecified_entity_access(
+                        attr.clone(),
+                        source_loc.cloned(),
+                    ),
+                    EntityType::Specified(_) => {
+                        // intentionally using the location of the euid (the LHS) and not the entire GetAttr expression
+                        EvaluationError::entity_does_not_exist(uid.clone(), loc)
+                    }
+                }),
+                Dereference::Residual(r) => {
+                    Err(EvaluationError::non_value(Expr::get_attr(r, attr.clone())))
+                }
+                Dereference::Data(entity) => {
+                    let v = entity.get(attr).ok_or_else(|| {
+                        EvaluationError::entity_attr_does_not_exist(
+                            uid,
+                            attr.clone(),
+                            source_loc.cloned(),
+                        )
+                    })?;
+                    Ok(v.clone().try_into()?)
+                }
+            },
+            _ => {
+                // PANIC SAFETY Entity type name is fully static and a valid unqualified `Name`
+                #[allow(clippy::unwrap_used)]
+                Err(EvaluationError::type_error(
+                    nonempty![
+                        Type::Record,
+                        Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
+                    ],
+                    &val,
+                ))
+            }
+        }
+    }
+
     /// We don't use the `source_loc()` on `expr` because that's only the loc
     /// for the LHS of the GetAttr. `source_loc` argument should be the loc for
     /// the entire GetAttr expression
-    fn get_attr(
+    fn get_attr_partial(
         &self,
         expr: &Expr,
         attr: &SmolStr,
@@ -1156,59 +1193,7 @@ impl<'e> Evaluator<'e> {
                     _ => Ok(PartialValue::Residual(Expr::get_attr(res, attr.clone()))),
                 }
             }
-            PartialValue::Value(Value {
-                value: ValueKind::Record(record),
-                ..
-            }) => record
-                .as_ref()
-                .get(attr)
-                .ok_or_else(|| {
-                    EvaluationError::record_attr_does_not_exist(
-                        attr.clone(),
-                        record.iter().map(|(k, _)| k.clone()).collect(),
-                        source_loc.cloned(),
-                    )
-                })
-                .map(|v| PartialValue::Value(v.clone())),
-            PartialValue::Value(Value {
-                value: ValueKind::Lit(Literal::EntityUID(uid)),
-                loc,
-            }) => match self.entities.entity(uid.as_ref()) {
-                Dereference::NoSuchEntity => Err(match *uid.entity_type() {
-                    EntityType::Unspecified => EvaluationError::unspecified_entity_access(
-                        attr.clone(),
-                        source_loc.cloned(),
-                    ),
-                    EntityType::Specified(_) => {
-                        // intentionally using the location of the euid (the LHS) and not the entire GetAttr expression
-                        EvaluationError::entity_does_not_exist(uid.clone(), loc)
-                    }
-                }),
-                Dereference::Residual(r) => {
-                    Ok(PartialValue::Residual(Expr::get_attr(r, attr.clone())))
-                }
-                Dereference::Data(entity) => entity
-                    .get(attr)
-                    .ok_or_else(|| {
-                        EvaluationError::entity_attr_does_not_exist(
-                            uid,
-                            attr.clone(),
-                            source_loc.cloned(),
-                        )
-                    })
-                    .cloned(),
-            },
-            PartialValue::Value(v) => {
-                // PANIC SAFETY Entity type name is fully static and a valid unqualified `Name`
-                #[allow(clippy::unwrap_used)]
-                Err(EvaluationError::type_error(
-                    nonempty![
-                        Type::Record,
-                        Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
-                    ],
-                    &v,
-                ))
-            }
+            PartialValue::Value(val) => Ok(self.get_attr(val, attr, source_loc)?.into()),
         }
     }
 
