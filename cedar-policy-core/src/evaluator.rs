@@ -343,83 +343,143 @@ impl<'e> Evaluator<'e> {
                     (arg1, arg2, BinaryOp::Eq) => Ok((arg1 == arg2).into()),
                     // comparison and arithmetic operators, which only work on Longs
                     (
-                        Value { value: ValueKind::Lit(Literal::Long(i1)), ..},
-                        Value { value: ValueKind::Lit(Literal::Long(i2)), ..},
-                        BinaryOp::Less
-                    ) =>
-                        Ok((i1 < i2).into()),
+                        Value {
+                            value: ValueKind::Lit(Literal::Long(i1)),
+                            ..
+                        },
+                        Value {
+                            value: ValueKind::Lit(Literal::Long(i2)),
+                            ..
+                        },
+                        BinaryOp::Less,
+                    ) => Ok((i1 < i2).into()),
                     (
-                        Value { value: ValueKind::Lit(Literal::Long(i1)), ..},
-                        Value { value: ValueKind::Lit(Literal::Long(i2)), ..},
-                        BinaryOp::LessEq
-                    ) =>
-                        Ok((i1 <= i2).into()),
-                    // Arithmetic
+                        Value {
+                            value: ValueKind::Lit(Literal::Long(i1)),
+                            ..
+                        },
+                        Value {
+                            value: ValueKind::Lit(Literal::Long(i2)),
+                            ..
+                        },
+                        BinaryOp::LessEq,
+                    ) => Ok((i1 <= i2).into()),
+                    // arithmetic
                     (
-                        Value { value: ValueKind::Lit(Literal::Long(i1)), ..},
-                        Value { value: ValueKind::Lit(Literal::Long(i2)), ..},
-                        BinaryOp::Add
-                    ) =>
-                        i1.checked_add(*i2).map(Value::from).ok_or_else(||
-                           EvaluationError::integer_overflow(
-                                IntegerOverflowError::BinaryOp {
-                                    op: *op,
-                                    arg1,
-                                    arg2,
-                                },
-                                loc.cloned(),
-                            )),
+                        Value {
+                            value: ValueKind::Lit(Literal::Long(i1)),
+                            ..
+                        },
+                        Value {
+                            value: ValueKind::Lit(Literal::Long(i2)),
+                            ..
+                        },
+                        BinaryOp::Add,
+                    ) => i1.checked_add(*i2).map(Value::from).ok_or_else(|| {
+                        EvaluationError::integer_overflow(
+                            IntegerOverflowError::BinaryOp {
+                                op: *op,
+                                arg1,
+                                arg2,
+                            },
+                            loc.cloned(),
+                        )
+                    }),
                     (
-                        Value { value: ValueKind::Lit(Literal::Long(i1)), ..},
-                        Value { value: ValueKind::Lit(Literal::Long(i2)), ..},
-                        BinaryOp::Sub
-                    ) =>
-                        i1.checked_sub(*i2).map(Value::from).ok_or_else(||
-                            EvaluationError::integer_overflow(
-                             IntegerOverflowError::BinaryOp {
-                                 op: *op,
-                                 arg1,
-                                 arg2,
-                             },
-                             loc.cloned(),
-                         )),
+                        Value {
+                            value: ValueKind::Lit(Literal::Long(i1)),
+                            ..
+                        },
+                        Value {
+                            value: ValueKind::Lit(Literal::Long(i2)),
+                            ..
+                        },
+                        BinaryOp::Sub,
+                    ) => i1.checked_sub(*i2).map(Value::from).ok_or_else(|| {
+                        EvaluationError::integer_overflow(
+                            IntegerOverflowError::BinaryOp {
+                                op: *op,
+                                arg1,
+                                arg2,
+                            },
+                            loc.cloned(),
+                        )
+                    }),
                     // this pattern should match all type errors for integer binary ops
-                    (_, _, BinaryOp::Less) | (_, _, BinaryOp::LessEq) | (_, _, BinaryOp::Add) | (_, _, BinaryOp::Sub) => {
-                        let culprit = if arg1.get_as_long().is_err() { arg1 } else { arg2 };
-                        Err(EvaluationError::type_error_with_advice(nonempty![Type::Long], &culprit, format!("operation `{op}` should have integer operands")))
-                    },
+                    (_, _, BinaryOp::Less)
+                    | (_, _, BinaryOp::LessEq)
+                    | (_, _, BinaryOp::Add)
+                    | (_, _, BinaryOp::Sub) => {
+                        let culprit = if arg1.get_as_long().is_err() {
+                            arg1
+                        } else {
+                            arg2
+                        };
+                        Err(EvaluationError::type_error_with_advice(
+                            nonempty![Type::Long],
+                            &culprit,
+                            format!("operation `{op}` should have integer operands"),
+                        ))
+                    }
                     // hierarchy membership operator; see note on `BinaryOp::In`
                     (
-                        Value {value: ValueKind::Lit(Literal::EntityUID(uid1)), ..},
+                        Value {
+                            value: ValueKind::Lit(Literal::EntityUID(uid1)),
+                            ..
+                        },
                         _,
-                        BinaryOp::In
-                    ) =>
+                        BinaryOp::In,
+                    ) => {
                         match self.entities.entity(&uid1) {
                             Dereference::Residual(r) => Ok(PartialValue::Residual(
                                 Expr::binary_app(BinaryOp::In, r, arg2.into()),
-                            ).try_into()?),
+                            )
+                            .try_into()?),
                             Dereference::NoSuchEntity => self.eval_in(&uid1, None, arg2),
                             Dereference::Data(entity1) => self.eval_in(&uid1, Some(entity1), arg2),
+                        }
+                    }
+                    (
+                        _,
+                        Value {
+                            value: ValueKind::Set(_),
+                            ..
                         },
+                        BinaryOp::In,
+                    ) => Err(EvaluationError::type_error_with_advice(
+                        nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
+                        &arg1,
+                        "`in` is for checking the entity hierarchy;
+                        \
+                        use `.contains()` to test set membership"
+                            .into(),
+                    )),
                     (
                         _,
-                        Value {value: ValueKind::Set(_), ..},
-                        BinaryOp::In
-                    ) => {
-                        Err(EvaluationError::type_error_with_advice(nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())], &arg1, "`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into())) },
-                    (
-                        _,
-                        Value {value: ValueKind::Record(_), ..},
-                        BinaryOp::In
-                    ) => {
-                            Err(EvaluationError::type_error_with_advice(nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())], &arg1,"`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()))
-                    },
-                    (_, _, BinaryOp::In) => {
-                        Err(EvaluationError::type_error_with_advice(nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())], &arg1,"the LHS of `in` should be an entity".into()))
-                    },
+                        Value {
+                            value: ValueKind::Record(_),
+                            ..
+                        },
+                        BinaryOp::In,
+                    ) => Err(EvaluationError::type_error_with_advice(
+                        nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
+                        &arg1,
+                        "`in` is for checking the entity hierarchy;
+                        \
+                        use `has` to test if a record has a key"
+                            .into(),
+                    )),
+                    (_, _, BinaryOp::In) => Err(EvaluationError::type_error_with_advice(
+                        nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
+                        &arg1,
+                        "the LHS of `in` should be an entity".into(),
+                    )),
                     // contains, which works on Sets
                     (_, _, BinaryOp::Contains) => match arg1.value {
-                        ValueKind::Set(Set { fast: Some(h), .. }) => Ok(arg2.try_as_lit().map_or(false, |lit| h.contains(lit)).into()),
+                        ValueKind::Set(Set { fast: Some(h), .. }) => Ok(arg2
+                            .try_as_lit()
+                            .map_or(false, |lit| h.contains(lit))
+                            .into()),
                         ValueKind::Set(Set {
                             fast: None,
                             authoritative,
@@ -428,37 +488,84 @@ impl<'e> Evaluator<'e> {
                     },
                     // ContainsAll and ContainsAny, which work on Sets
                     (
-                        Value { value: ValueKind::Set(Set {authoritative: _, fast: Some(arg1_set)}), ..},
-                        Value { value: ValueKind::Set(Set {authoritative: _, fast: Some(arg2_set)}), ..},
-                        BinaryOp::ContainsAll
-                    ) =>
-                        Ok((arg2_set.is_subset(&arg1_set)).into()),
+                        Value {
+                            value:
+                                ValueKind::Set(Set {
+                                    authoritative: _,
+                                    fast: Some(arg1_set),
+                                }),
+                            ..
+                        },
+                        Value {
+                            value:
+                                ValueKind::Set(Set {
+                                    authoritative: _,
+                                    fast: Some(arg2_set),
+                                }),
+                            ..
+                        },
+                        BinaryOp::ContainsAll,
+                    ) => Ok((arg2_set.is_subset(&arg1_set)).into()),
                     (
-                        Value { value: ValueKind::Set(Set {authoritative: _, fast: Some(arg1_set)}), ..},
-                        Value { value: ValueKind::Set(Set {authoritative: _, fast: Some(arg2_set)}), ..},
-                        BinaryOp::ContainsAny
-                    ) =>
-                        Ok((arg2_set.is_disjoint(&arg1_set)).into()),
+                        Value {
+                            value:
+                                ValueKind::Set(Set {
+                                    authoritative: _,
+                                    fast: Some(arg1_set),
+                                }),
+                            ..
+                        },
+                        Value {
+                            value:
+                                ValueKind::Set(Set {
+                                    authoritative: _,
+                                    fast: Some(arg2_set),
+                                }),
+                            ..
+                        },
+                        BinaryOp::ContainsAny,
+                    ) => Ok((arg2_set.is_disjoint(&arg1_set)).into()),
                     (
-                        Value { value: ValueKind::Set(arg1_set), ..}, Value { value: ValueKind::Set(arg2_set), ..},
-                        BinaryOp::ContainsAll
-                    ) => {
-                        Ok(arg2_set
-                            .authoritative
-                            .iter()
-                            .all(|item| arg1_set.authoritative.contains(item)).into())
-                    }
-                    (
-                        Value { value: ValueKind::Set(arg1_set), ..}, Value { value: ValueKind::Set(arg2_set), ..}, BinaryOp::ContainsAny
-                    ) => {
-                        Ok(arg1_set
+                        Value {
+                            value: ValueKind::Set(arg1_set),
+                            ..
+                        },
+                        Value {
+                            value: ValueKind::Set(arg2_set),
+                            ..
+                        },
+                        BinaryOp::ContainsAll,
+                    ) => Ok(arg2_set
                         .authoritative
                         .iter()
-                        .any(|item| arg2_set.authoritative.contains(item)).into())
-                    },
+                        .all(|item| arg1_set.authoritative.contains(item))
+                        .into()),
+                    (
+                        Value {
+                            value: ValueKind::Set(arg1_set),
+                            ..
+                        },
+                        Value {
+                            value: ValueKind::Set(arg2_set),
+                            ..
+                        },
+                        BinaryOp::ContainsAny,
+                    ) => Ok(arg1_set
+                        .authoritative
+                        .iter()
+                        .any(|item| arg2_set.authoritative.contains(item))
+                        .into()),
                     (_, _, BinaryOp::ContainsAll) | (_, _, BinaryOp::ContainsAny) => {
-                        let culprit = if arg1.get_as_set().is_err() { arg1 } else { arg2 };
-                        Err(EvaluationError::type_error_with_advice(nonempty![Type::Set], &culprit, format!("operation `{op}` should have set operands")))
+                        let culprit = if arg1.get_as_set().is_err() {
+                            arg1
+                        } else {
+                            arg2
+                        };
+                        Err(EvaluationError::type_error_with_advice(
+                            nonempty![Type::Set],
+                            &culprit,
+                            format!("operation `{op}` should have set operands"),
+                        ))
                     }
                 }
             }
