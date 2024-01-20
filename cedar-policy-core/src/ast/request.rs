@@ -147,6 +147,22 @@ impl Request {
         Ok(req)
     }
 
+    /// Create a new `Request` with potentially unknown (for partial eval) variables/context
+    /// and without schema validation.
+    pub fn new_unchecked(
+        principal: EntityUIDEntry,
+        action: EntityUIDEntry,
+        resource: EntityUIDEntry,
+        context: Option<Context>,
+    ) -> Self {
+        Self {
+            principal,
+            action,
+            resource,
+            context,
+        }
+    }
+
     /// Get the principal associated with the request
     pub fn principal(&self) -> &EntityUIDEntry {
         &self.principal
