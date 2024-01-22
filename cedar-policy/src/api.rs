@@ -3281,31 +3281,35 @@ impl FromStr for RestrictedExpression {
 /// for partial evaluation.
 #[cfg(feature = "partial-eval")]
 #[derive(Debug)]
-pub struct RequestBuilder<'a> {
+pub struct RequestBuilder<S> {
     principal: ast::EntityUIDEntry,
     action: ast::EntityUIDEntry,
     resource: ast::EntityUIDEntry,
     /// Here, `None` means unknown
     context: Option<ast::Context>,
-    /// Here, `None` means no request validation is performed
-    schema: Option<&'a Schema>,
+    schema: S,
 }
 
+/// A marker type that indicates [`Schema`] is not set for a request
 #[cfg(feature = "partial-eval")]
-impl<'a> Default for RequestBuilder<'a> {
+#[derive(Debug)]
+pub struct UnsetSchema;
+
+#[cfg(feature = "partial-eval")]
+impl Default for RequestBuilder<UnsetSchema> {
     fn default() -> Self {
         Self {
             principal: ast::EntityUIDEntry::Unknown { loc: None },
             action: ast::EntityUIDEntry::Unknown { loc: None },
             resource: ast::EntityUIDEntry::Unknown { loc: None },
             context: None,
-            schema: None,
+            schema: UnsetSchema,
         }
     }
 }
 
 #[cfg(feature = "partial-eval")]
-impl<'a> RequestBuilder<'a> {
+impl<S> RequestBuilder<S> {
     /// Set the principal.
     ///
     /// Note that you can create the `EntityUid` using `.parse()` on any
@@ -3383,16 +3387,35 @@ impl<'a> RequestBuilder<'a> {
             ..self
         }
     }
+}
 
+#[cfg(feature = "partial-eval")]
+impl RequestBuilder<UnsetSchema> {
     /// Set the schema. If present, this will be used for request validation.
     #[must_use]
-    pub fn schema(self, schema: &'a Schema) -> Self {
-        Self {
-            schema: Some(schema),
-            ..self
+    pub fn schema(self, schema: &Schema) -> RequestBuilder<&Schema> {
+        RequestBuilder {
+            principal: self.principal,
+            action: self.action,
+            resource: self.resource,
+            context: self.context,
+            schema,
         }
     }
 
+    /// Create the [`Request`]
+    pub fn build(self) -> Request {
+        Request(ast::Request::new_unchecked(
+            self.principal,
+            self.action,
+            self.resource,
+            self.context,
+        ))
+    }
+}
+
+#[cfg(feature = "partial-eval")]
+impl RequestBuilder<&Schema> {
     /// Create the [`Request`]
     pub fn build(self) -> Result<Request, RequestValidationError> {
         Ok(Request(ast::Request::new_with_unknowns(
@@ -3400,7 +3423,7 @@ impl<'a> RequestBuilder<'a> {
             self.action,
             self.resource,
             self.context,
-            self.schema.map(|schema| &schema.0),
+            Some(&self.schema.0),
             Extensions::all_available(),
         )?))
     }
@@ -3421,7 +3444,7 @@ pub struct Request(pub(crate) ast::Request);
 impl Request {
     /// Create a [`RequestBuilder`]
     #[cfg(feature = "partial-eval")]
-    pub fn builder<'a>() -> RequestBuilder<'a> {
+    pub fn builder() -> RequestBuilder<UnsetSchema> {
         RequestBuilder::default()
     }
 
