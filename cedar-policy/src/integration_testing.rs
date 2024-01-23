@@ -101,7 +101,8 @@ pub struct JsonRequest {
     /// Expected decision for the request
     pub decision: Decision,
     /// Expected policies that led to the decision
-    pub reasons: Vec<PolicyId>,
+    #[serde(alias = "reasons")]
+    pub reason: Vec<PolicyId>,
     /// Expected policies that resulted in errors
     pub errors: Vec<PolicyId>,
 }
@@ -349,7 +350,7 @@ pub fn perform_integration_test_from_json_custom(
             let reasons: HashSet<PolicyId> = response.diagnostics().reason().cloned().collect();
             assert_eq!(
                 reasons,
-                json_request.reasons.into_iter().collect(),
+                json_request.reason.into_iter().collect(),
                 "test {} failed for request \"{}\": unexpected reasons",
                 jsonfile.display(),
                 &json_request.desc
@@ -369,7 +370,7 @@ pub fn perform_integration_test_from_json_custom(
             let reasons: HashSet<PolicyId> = response.diagnostics().reason().cloned().collect();
             assert_eq!(
                 reasons,
-                json_request.reasons.into_iter().collect(),
+                json_request.reason.into_iter().collect(),
                 "test {} failed for request \"{}\": unexpected reasons",
                 jsonfile.display(),
                 &json_request.desc

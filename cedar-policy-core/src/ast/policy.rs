@@ -662,7 +662,7 @@ impl StaticPolicy {
     }
 
     /// Clone this policy with a new `Id`.
-    pub fn new_id(&mut self, id: PolicyID) -> Self {
+    pub fn new_id(&self, id: PolicyID) -> Self {
         StaticPolicy(self.0.new_id(id))
     }
 
