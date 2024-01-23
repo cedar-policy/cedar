@@ -696,12 +696,12 @@ fn link_inner(args: &LinkArgs) -> Result<()> {
     let mut policies = args.policies.get_policy_set()?;
     let slotenv = create_slot_env(&args.arguments.data)?;
     policies.link(
-        PolicyId::from_str(&args.template_id)?,
-        PolicyId::from_str(&args.new_id)?,
+        PolicyId::new(&args.template_id),
+        PolicyId::new(&args.new_id),
         slotenv,
     )?;
     let linked = policies
-        .policy(&PolicyId::from_str(&args.new_id)?)
+        .policy(&PolicyId::new(&args.new_id))
         .ok_or_else(|| miette!("Failed to add template-linked policy"))?;
     println!("Template Linked Policy Added: {linked}");
     let linked = TemplateLinked {
@@ -775,8 +775,8 @@ fn add_template_links_to_set(path: impl AsRef<Path>, policy_set: &mut PolicySet)
     for template_linked in load_liked_file(path)? {
         let slot_env = create_slot_env(&template_linked.args)?;
         policy_set.link(
-            PolicyId::from_str(&template_linked.template_id)?,
-            PolicyId::from_str(&template_linked.link_id)?,
+            PolicyId::new(&template_linked.template_id),
+            PolicyId::new(&template_linked.link_id),
             slot_env,
         )?;
     }
@@ -911,7 +911,7 @@ fn rename_from_id_annotation(ps: PolicySet) -> Result<PolicySet> {
         Some(anno) => anno.parse().map(|a| t.new_id(a)),
     });
     for t in t_iter {
-        let template = t.wrap_err("failed to parse policy id annotation")?;
+        let template = t.unwrap_or_else(|never| match never {});
         new_ps
             .add_template(template)
             .wrap_err("failed to add template to policy set")?;
@@ -921,7 +921,7 @@ fn rename_from_id_annotation(ps: PolicySet) -> Result<PolicySet> {
         Some(anno) => anno.parse().map(|a| p.new_id(a)),
     });
     for p in p_iter {
-        let policy = p.wrap_err("failed to parse policy id annotation")?;
+        let policy = p.unwrap_or_else(|never| match never {});
         new_ps
             .add(policy)
             .wrap_err("failed to add template to policy set")?;

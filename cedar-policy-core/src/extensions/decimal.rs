@@ -20,7 +20,7 @@ use regex::Regex;
 
 use crate::ast::{
     CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue,
-    ExtensionValueWithArgs, Literal, Name, StaticallyTyped, Type, Value, ValueKind,
+    ExtensionValueWithArgs, Literal, Name, Type, Value, ValueKind,
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
@@ -170,6 +170,7 @@ fn extension_err(msg: impl Into<String>) -> evaluator::EvaluationError {
     evaluator::EvaluationError::failed_extension_function_application(
         names::DECIMAL_FROM_STR_NAME.clone(),
         msg.into(),
+        None, // source loc will be added by the evaluator
     )
 }
 
@@ -206,7 +207,7 @@ fn as_decimal(v: &Value) -> Result<&Decimal, evaluator::EvaluationError> {
                 Type::Extension {
                     name: Decimal::typename(),
                 },
-                v.type_of(),
+                v,
                 ADVICE_MSG.into(),
             ))
         }
@@ -214,7 +215,7 @@ fn as_decimal(v: &Value) -> Result<&Decimal, evaluator::EvaluationError> {
             Type::Extension {
                 name: Decimal::typename(),
             },
-            v.type_of(),
+            v,
         )),
     }
 }
@@ -305,10 +306,11 @@ mod tests {
     use super::*;
     use crate::ast::{Expr, Type, Value};
     use crate::evaluator::test::{basic_entities, basic_request};
-    use crate::evaluator::Evaluator;
+    use crate::evaluator::{EvaluationErrorKind, Evaluator};
     use crate::extensions::Extensions;
     use crate::parser::parse_expr;
     use cool_asserts::assert_matches;
+    use nonempty::nonempty;
 
     /// Asserts that a `Result` is an `Err::ExtensionErr` with our extension name
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
@@ -609,30 +611,37 @@ mod tests {
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
 
-        assert_eq!(
+        assert_matches!(
             eval.interpret_inline_policy(
                 &parse_expr(r#"decimal("1.23") < decimal("1.24")"#).expect("parsing error")
             ),
-            Err(evaluator::EvaluationError::type_error_single(
-                Type::Long,
-                Type::Extension {
-                    name: Name::parse_unqualified_name("decimal")
-                        .expect("should be a valid identifier")
-                },
-            ))
+            Err(e) => assert_eq!(e.error_kind(),
+                &EvaluationErrorKind::TypeError {
+                    expected: nonempty![Type::Long],
+                    actual: Type::Extension {
+                        name: Name::parse_unqualified_name("decimal")
+                            .expect("should be a valid identifier")
+                    },
+                }
+            )
         );
-        assert_eq!(
+        assert_matches!(
             eval.interpret_inline_policy(
                 &parse_expr(r#"decimal("-1.23").lessThan("1.23")"#).expect("parsing error")
             ),
-            Err(evaluator::EvaluationError::type_error_with_advice_single(
-                Type::Extension {
-                    name: Name::parse_unqualified_name("decimal")
-                        .expect("should be a valid identifier")
-                },
-                Type::String,
-                ADVICE_MSG.into(),
-            ))
+            Err(e) => {
+                assert_eq!(
+                    e.error_kind(),
+                    &EvaluationErrorKind::TypeError {
+                        expected: nonempty![Type::Extension {
+                            name: Name::parse_unqualified_name("decimal")
+                                .expect("should be a valid identifier")
+                        }],
+                        actual: Type::String,
+                    }
+                );
+                assert_eq!(e.advice(), Some(ADVICE_MSG));
+            }
         );
         // bad use of `lessThan` as function
         parse_expr(r#"lessThan(decimal("-1.23"), decimal("1.23"))"#).expect_err("should fail");

@@ -2129,7 +2129,7 @@ impl Node<Option<cst::Name>> {
             .iter()
             .filter_map(|i| i.to_valid_ident(errs))
             .collect();
-        if path.len() > 1 {
+        if path.len() > 0 {
             errs.push(self.to_ast_err(ToASTErrorKind::InvalidPath));
             return None;
         }
@@ -4603,6 +4603,12 @@ mod tests {
                 "must be one of `principal`, `action`, or `resource`"
             ));
         });
+        let p_src = "permit(foo::principal, action, resource);";
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error(
+                "unexpected token `::`",
+            ));
+        });
         let p_src = "permit(resource, action, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error("the variable `resource` is invalid in this policy scope clause, the variable `principal` is expected"));
@@ -4698,5 +4704,30 @@ mod tests {
                 "cannot chain more the 4 applications of a unary operator"
             ));
         });
+    }
+
+    #[test]
+    fn arbitrary_variables() {
+        #[track_caller]
+        fn expect_arbitrary_var(name: &str) {
+            assert_matches!(parse_expr(name), Err(e) => {
+                expect_err(name, &e, &ExpectedErrorMessage::error_and_help(
+                    "arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`",
+                    &format!("did you mean to enclose `{name}` in quotes to make a string?"),
+                ));
+            })
+        }
+        expect_arbitrary_var("foo::principal");
+        expect_arbitrary_var("bar::action");
+        expect_arbitrary_var("baz::resource");
+        expect_arbitrary_var("buz::context");
+        expect_arbitrary_var("foo::principal");
+        expect_arbitrary_var("foo::bar::principal");
+        expect_arbitrary_var("principal::foo");
+        expect_arbitrary_var("principal::foo::bar");
+        expect_arbitrary_var("foo::principal::bar");
+        expect_arbitrary_var("foo");
+        expect_arbitrary_var("foo::bar");
+        expect_arbitrary_var("foo::bar::baz");
     }
 }

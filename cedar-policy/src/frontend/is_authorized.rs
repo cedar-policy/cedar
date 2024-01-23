@@ -24,8 +24,8 @@ use crate::api::EntityTypeName;
 use crate::api::PartialResponse;
 use crate::PolicyId;
 use crate::{
-    Authorizer, Context, Decision, Entities, EntityUid, ParseErrors, Policy, PolicySet, Request,
-    Response, Schema, SlotId, Template,
+    Authorizer, Context, Decision, Entities, EntityUid, Policy, PolicySet, Request, Response,
+    Schema, SlotId, Template,
 };
 use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use itertools::Itertools;
@@ -367,13 +367,14 @@ impl AuthorizationCall {
         if resource.is_some() {
             b = b.resource(resource);
         }
-        if self.enable_request_validation {
-            b = match schema.as_ref() {
-                Some(schema_ref) => b.schema(schema_ref),
-                None => b,
+        let q = if self.enable_request_validation {
+            match schema.as_ref() {
+                Some(schema_ref) => b.schema(schema_ref).build().map_err(|e| [e.to_string()])?,
+                None => b.build(),
             }
-        }
-        let q = b.build().map_err(|e| [e.to_string()])?;
+        } else {
+            b.build()
+        };
         let (policies, entities) = self.slice.try_into(schema.as_ref())?;
         Ok((q, policies, entities.partial()))
     }
@@ -496,11 +497,7 @@ fn parse_instantiations(
     let template_id = PolicyId::from_str(instantiation.template_id.as_str());
     let instance_id = PolicyId::from_str(instantiation.result_policy_id.as_str());
     match (template_id, instance_id) {
-        (Ok(_), Err(e)) | (Err(e), Ok(_)) => Err(e.errors_as_strings()),
-        (Err(mut e1), Err(mut e2)) => {
-            e1.0.append(&mut e2.0);
-            Err(ParseErrors(e1.0).errors_as_strings())
-        }
+        (Err(never), _) | (_, Err(never)) => match never {},
         (Ok(template_id), Ok(instance_id)) => {
             let mut vals = HashMap::new();
             for i in instantiation.instantiations.0 {
