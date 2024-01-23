@@ -283,7 +283,7 @@ mod parser_tests {
     }
 }
 
-// PANIC CHECK: tests
+// PANIC SAFETY: tests
 #[allow(clippy::unreachable)]
 #[cfg(test)]
 mod translator_tests {

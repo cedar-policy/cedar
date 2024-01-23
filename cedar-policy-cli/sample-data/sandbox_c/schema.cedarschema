@@ -7,8 +7,6 @@ entity UserGroup;
 entity User in [UserGroup];
 entity Administrator;
 
-// Common type declarations
-
 
 // Action declarations
 action view, delete, edit

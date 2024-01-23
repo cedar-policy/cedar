@@ -4,8 +4,6 @@ entity User in [UserGroup] { score: __cedar::decimal };
 entity UserGroup;
 entity Photo in [Album] { owner: User };
 
-// Common type declarations
-
 
 // Action declarations
 action edit, view appliesTo { principal: [User], resource: [Photo] };

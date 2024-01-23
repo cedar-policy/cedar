@@ -23,6 +23,7 @@ use std::collections::HashMap;
 use cedar_policy::EvalResult;
 use cedar_policy::SlotId;
 use cedar_policy_cli::check_parse;
+use cedar_policy_cli::SchemaFormat;
 use cedar_policy_cli::{
     authorize, evaluate, link, validate, Arguments, AuthorizeArgs, CedarExitCode, CheckParseArgs,
     EvaluateArgs, LinkArgs, PoliciesArgs, PolicyFormat, RequestArgs, ValidateArgs,
@@ -82,6 +83,7 @@ fn run_authorize_test_with_linked_policies(
         },
         template_linked_file: links_file.map(|x| x.to_string()),
         schema_file: None,
+        schema_format: SchemaFormat::default(),
         entities_file: entities_file.into(),
         verbose: true,
         timing: false,
@@ -153,6 +155,7 @@ fn run_authorize_test_context(
         },
         template_linked_file: None,
         schema_file: None,
+        schema_format: SchemaFormat::default(),
         entities_file: entities_file.into(),
         verbose: true,
         timing: false,
@@ -182,6 +185,7 @@ fn run_authorize_test_json(
         },
         template_linked_file: None,
         schema_file: None,
+        schema_format: SchemaFormat::default(),
         entities_file: entities_file.into(),
         verbose: true,
         timing: false,
@@ -586,6 +590,7 @@ fn run_evaluate_test(
 ) {
     let cmd = EvaluateArgs {
         schema_file: None,
+        schema_format: SchemaFormat::default(),
         entities_file: Some(entities_file.into()),
         request: RequestArgs {
             principal: None,

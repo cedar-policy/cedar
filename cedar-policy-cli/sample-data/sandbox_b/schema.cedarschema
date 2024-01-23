@@ -11,8 +11,6 @@ entity UserGroup;
 entity Album in [Account] { account: Account, private: Bool };
 entity Account in [AccountGroup] { owner: User };
 
-// Common type declarations
-
 
 // Action declarations
 action view, delete, edit

@@ -4,8 +4,6 @@ entity UserGroup;
 entity Album in [Album];
 entity User in [UserGroup];
 
-// Common type declarations
-
 
 // Action declarations
 action view, edit appliesTo { principal: [User], resource: [Photo] };

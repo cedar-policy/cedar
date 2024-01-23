@@ -7,8 +7,6 @@ entity Photo in [Account, Album];
 entity Album in [Account];
 entity Account;
 
-// Common type declarations
-
 
 // Action declarations
 action listPhotos

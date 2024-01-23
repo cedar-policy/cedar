@@ -7,8 +7,6 @@ namespace PhotoFlash::Data {
   entity Account { age: Long };
   entity Photo in [Album] { owner: User };
   
-  // Common type declarations
-  
   
   // Action declarations
   action edit appliesTo { principal: [User], resource: [Photo] };
