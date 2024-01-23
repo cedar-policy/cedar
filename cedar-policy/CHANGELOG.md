@@ -54,6 +54,9 @@ method checks the request against the schema provided and the
   the transitive closure to be pre-computed. (#581, resolving #285)
 - Variables qualified by a namespace with a single element are correctly
   rejected. E.g., `foo::principal` is an error and is not parsed as `principal`.
+- The entity type tested for by an `is` expression may be an identifier shared
+  with a builtin variable. E.g., `... is principal` and `... is action` are now
+  accepted by the Cedar parser. (#558)
 
 ## [3.0.1] - 2023-12-21
 Cedar Language Version: 3.0.0
