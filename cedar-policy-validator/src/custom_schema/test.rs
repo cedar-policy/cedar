@@ -283,6 +283,8 @@ mod parser_tests {
     }
 }
 
+// PANIC CHECK: tests
+#[allow(clippy::unreachable)]
 #[cfg(test)]
 mod translator_tests {
     use cedar_policy_core::FromNormalizedStr;
@@ -503,14 +505,12 @@ mod translator_tests {
             .try_into()
             .expect("should be a valid schema");
         for (name, et) in validator_schema.entity_types() {
-            if name.to_string() == "A::C" {
+            if name.to_string() == "A::C" || name.to_string() == "X::Y" {
                 assert!(et
                     .descendants
                     .contains(&cedar_policy_core::ast::Name::from_normalized_str("A::B").unwrap()));
-            } else if name.to_string() == "X::Y" {
-                assert!(et
-                    .descendants
-                    .contains(&cedar_policy_core::ast::Name::from_normalized_str("A::B").unwrap()));
+            } else {
+                assert!(et.descendants.is_empty());
             }
         }
     }

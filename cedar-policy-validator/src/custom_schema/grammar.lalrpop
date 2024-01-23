@@ -101,9 +101,9 @@ Name: SName = {
 #[inline]
 PathInline: Node<SPath> = {
     <l:@L> <i:Ident> <r:@R>
-        => Node::with_source_loc(SPath {base: i, prefix: vec![]}, Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(SPath::new(i, vec![]), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <is:(<Ident> "::")+> <i:Ident> <r:@R>
-        => Node::with_source_loc(SPath {base: i, prefix: is}, Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(SPath::new(i, is), Loc::new(l..r, Arc::clone(src))),
 }
 
 // Idents := IDENT {',' IDENT}

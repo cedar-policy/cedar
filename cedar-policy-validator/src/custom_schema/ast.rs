@@ -7,6 +7,8 @@ use miette::SourceSpan;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
 
+use super::to_json_schema::PrimitiveType;
+
 const IPADDR_EXTENSION: &str = "ipaddr";
 const DECIMAL_EXTENSION: &str = "decimal";
 pub(super) const CEDAR_NAMESPACE: &str = "__cedar";
@@ -20,72 +22,75 @@ pub type Schema = Vec<Node<Namespace>>;
 pub struct Path {
     pub base: Ident,
     pub prefix: Vec<Ident>,
+    pub(super) kind: PathKind,
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum PathKind {
+    CedarBuiltin(Option<PrimOrExtension>),
+    Unqualified(Option<PrimOrExtension>),
+    Other,
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum PrimOrExtension {
+    IpAddr,
+    Decimal,
+    Prim(PrimitiveType),
 }
 
 impl From<Ident> for Path {
-    fn from(value: Ident) -> Self {
-        Path {
-            base: value,
-            prefix: vec![],
-        }
+    fn from(base: Ident) -> Self {
+        let prefix = vec![];
+        let kind = Self::path_kind(&prefix, &base);
+        Path { base, prefix, kind }
     }
 }
 
 impl Path {
-    pub fn is_ipaddr_extension(&self) -> bool {
-        self.is_cedar_builtin() && self.base.node.clone().to_smolstr() == IPADDR_EXTENSION
+    pub fn new(base: Ident, prefix: impl IntoIterator<Item = Node<Id>>) -> Self {
+        let prefix = prefix.into_iter().collect::<Vec<_>>();
+        let kind = Self::path_kind(&prefix, &base);
+        Path { base, prefix, kind }
     }
 
-    pub fn is_decimal_extension(&self) -> bool {
-        self.is_cedar_builtin() && self.base.node.clone().to_smolstr() == DECIMAL_EXTENSION
+    fn path_kind(prefix: &[Ident], base: &Ident) -> PathKind {
+        if Self::is_builtin(prefix) {
+            PathKind::CedarBuiltin(Self::parse_prim_or_ext(base))
+        } else if Self::is_unqualified(prefix) {
+            PathKind::Unqualified(Self::parse_prim_or_ext(base))
+        } else {
+            PathKind::Other
+        }
     }
 
-    pub fn is_builtin_bool(&self) -> bool {
-        self.is_cedar_builtin() && self.base.node.clone().to_smolstr() == "Bool"
+    fn parse_prim_or_ext(base: &Ident) -> Option<PrimOrExtension> {
+        match base.node.as_ref() {
+            IPADDR_EXTENSION => Some(PrimOrExtension::IpAddr),
+            DECIMAL_EXTENSION => Some(PrimOrExtension::Decimal),
+            _ => Self::parse_prim_type(base).map(PrimOrExtension::Prim),
+        }
     }
 
-    pub fn is_builtin_string(&self) -> bool {
-        self.is_cedar_builtin() && self.base.node.clone().to_smolstr() == "String"
+    fn parse_prim_type(base: &Ident) -> Option<PrimitiveType> {
+        match base.node.as_ref() {
+            "Bool" => Some(PrimitiveType::Bool),
+            "String" => Some(PrimitiveType::String),
+            "Long" => Some(PrimitiveType::Long),
+            _ => None,
+        }
     }
 
-    pub fn is_builtin_long(&self) -> bool {
-        self.is_cedar_builtin() && self.base.node.clone().to_smolstr() == "Long"
+    fn is_builtin(prefix: &[Ident]) -> bool {
+        matches!(prefix, [Node { node, loc: _ }] if node.as_ref() == CEDAR_NAMESPACE)
     }
 
-    pub fn to_smolstr(self) -> SmolStr {
-        <Path as Into<CName>>::into(self).to_string().into()
-    }
-
-    pub fn is_unqualified_bool(&self) -> bool {
-        self.prefix.is_empty() && self.base.node.clone().to_smolstr() == "Bool"
-    }
-
-    pub fn is_unqualified_string(&self) -> bool {
-        self.prefix.is_empty() && self.base.node.clone().to_smolstr() == "String"
-    }
-
-    pub fn is_unqualified_long(&self) -> bool {
-        self.prefix.is_empty() && self.base.node.clone().to_smolstr() == "Long"
-    }
-
-    pub fn is_unqualified_ipaddr(&self) -> bool {
-        self.prefix.is_empty() && self.base.node.clone().to_smolstr() == IPADDR_EXTENSION
-    }
-
-    pub fn is_unqualified_decimal(&self) -> bool {
-        self.prefix.is_empty() && self.base.node.clone().to_smolstr() == DECIMAL_EXTENSION
-    }
-
-    fn is_cedar_builtin(&self) -> bool {
-        matches!(self.prefix.as_slice(), [Node { node, loc: _ }] if node.as_ref() == CEDAR_NAMESPACE)
+    fn is_unqualified(prefix: &[Ident]) -> bool {
+        prefix.is_empty()
     }
 
     pub fn is_unqualified_builtin(&self) -> bool {
-        self.is_unqualified_bool()
-            || self.is_unqualified_decimal()
-            || self.is_unqualified_ipaddr()
-            || self.is_unqualified_long()
-            || self.is_unqualified_string()
+        matches!(self.kind, PathKind::Unqualified(Some(_)))
     }
 
     pub(super) fn get_loc(&self) -> Loc {
@@ -97,6 +102,12 @@ impl Path {
         } else {
             base_loc
         }
+    }
+}
+
+impl From<Path> for SmolStr {
+    fn from(p: Path) -> Self {
+        <Path as Into<CName>>::into(p).to_string().into()
     }
 }
 
@@ -144,7 +155,7 @@ pub struct AttrDecl {
     pub ty: Node<Type>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PR {
     Principal,
     Resource,

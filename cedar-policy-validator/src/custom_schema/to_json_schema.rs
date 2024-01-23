@@ -4,7 +4,7 @@ use cedar_policy_core::{
     ast::{Id, Name},
     parser::{Loc, Node},
 };
-use itertools::Either;
+use itertools::{Either, Itertools};
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
 
@@ -15,8 +15,8 @@ use crate::{
 
 use super::{
     ast::{
-        ActionDecl, AppDecl, AttrDecl, Declaration, EntityDecl, Namespace, PRAppDecl, Path, Ref,
-        Schema, Str, Type, CEDAR_NAMESPACE, PR,
+        ActionDecl, AppDecl, AttrDecl, Declaration, EntityDecl, Namespace, PRAppDecl, Path,
+        PathKind, PrimOrExtension, Ref, Schema, Str, Type, CEDAR_NAMESPACE, PR,
     },
     err::ToJsonSchemaError,
 };
@@ -42,19 +42,13 @@ impl Resolver {
             for decl in &ns_def.node.decls {
                 match &decl.node {
                     Declaration::Type(id, _) => {
-                        let path = Path {
-                            base: id.clone(),
-                            prefix: prefix.clone(),
-                        };
+                        let path = Path::new(id.clone(), prefix.clone());
                         common_tys
                             .insert(Node::with_source_loc(path.clone().into(), path.get_loc()));
                     }
                     Declaration::Entity(decl) => {
                         ets.extend(decl.names.iter().map(|id| {
-                            let path = Path {
-                                base: id.clone(),
-                                prefix: prefix.clone(),
-                            };
+                            let path = Path::new(id.clone(), prefix.clone());
                             Node::with_source_loc(path.clone().into(), path.get_loc())
                         }));
                     }
@@ -112,36 +106,60 @@ impl Resolver {
         (
             Box::new(move |node| {
                 let name = Node::with_source_loc(Name::from(node.clone()), node.get_loc());
-                if node.is_decimal_extension() || node.is_ipaddr_extension() {
-                    Some(NamedType::Extension(node.base.node.clone().to_smolstr()))
-                } else if node.is_builtin_bool() {
-                    Some(NamedType::Primitive(PrimitiveType::Bool))
-                } else if node.is_builtin_long() {
-                    Some(NamedType::Primitive(PrimitiveType::Long))
-                } else if node.is_builtin_string() {
-                    Some(NamedType::Primitive(PrimitiveType::String))
-                } else if common_types.contains(&name) || self.global_common_types.contains(&name) {
-                    // global common types maybe `Bool`, `Long`, `String`,
-                    // `ipaddr`, `decimal`? and entity types defined in this namespace
-                    Some(NamedType::Common(node.clone().to_smolstr()))
-                } else if entity_types.contains(&name) || self.global_entity_types.contains(&name) {
-                    // global common types maybe `Bool`, `Long`, `String`,
-                    // `ipaddr`, `decimal`?
-                    Some(NamedType::Entity(node.clone().to_smolstr()))
-                } else if node.is_unqualified_bool() {
-                    Some(NamedType::Primitive(PrimitiveType::Bool))
-                } else if node.is_unqualified_long() {
-                    Some(NamedType::Primitive(PrimitiveType::Long))
-                } else if node.is_unqualified_string() {
-                    Some(NamedType::Primitive(PrimitiveType::String))
-                } else if node.is_unqualified_decimal() || node.is_unqualified_ipaddr() {
-                    Some(NamedType::Extension(node.clone().to_smolstr()))
-                } else {
-                    None
+                // Resolve naming. See the spec here: https://github.com/cedar-policy/rfcs/blob/main/text/0024-schema-syntax.md
+                match &node.kind {
+                    // Resolve things in the builtin `__cedar` namespace, this includes primitives and extension functions
+                    PathKind::CedarBuiltin(Some(
+                        PrimOrExtension::Decimal | PrimOrExtension::IpAddr,
+                    )) => Some(NamedType::Extension(node.base.node.clone().to_smolstr())),
+                    PathKind::CedarBuiltin(Some(PrimOrExtension::Prim(prim))) => {
+                        Some(NamedType::Primitive(*prim))
+                    }
+                    // Anything else in the builtin `__cedar` namespace does not exist, so fail
+                    PathKind::CedarBuiltin(None) => None,
+                    // Next check for things in the unqualified namespace.
+                    // By default, this includes primitive types and extension functions,
+                    // but can be shadowed by entities and common types
+                    PathKind::Unqualified(Some(prim_or_ext)) => {
+                        // Check if shadowed by common type or entity types
+                        if let Some(typ) =
+                            self.lookup_common_or_entity(&name, node, &common_types, &entity_types)
+                        {
+                            Some(typ)
+                        } else {
+                            // Not shadowed, return the builtin type
+                            match prim_or_ext {
+                                PrimOrExtension::Decimal | PrimOrExtension::IpAddr => {
+                                    Some(NamedType::Extension(node.base.node.clone().to_smolstr()))
+                                }
+                                PrimOrExtension::Prim(prim) => Some(NamedType::Primitive(*prim)),
+                            }
+                        }
+                    }
+                    PathKind::Other | PathKind::Unqualified(None) => {
+                        self.lookup_common_or_entity(&name, node, &common_types, &entity_types)
+                    }
                 }
             }),
             collisions,
         )
+    }
+
+    /// Extract the type corresponding to [`name`] if it exists in the common types or entity types
+    fn lookup_common_or_entity(
+        &self,
+        name: &Node<Name>,
+        node: &Path,
+        common_types: &HashSet<Node<Name>>,
+        entity_types: &HashSet<Node<Name>>,
+    ) -> Option<NamedType> {
+        if common_types.contains(name) || self.global_common_types.contains(name) {
+            Some(NamedType::Common(node.clone().into()))
+        } else if entity_types.contains(name) || self.global_entity_types.contains(name) {
+            Some(NamedType::Entity(node.clone().into()))
+        } else {
+            None
+        }
     }
 }
 
@@ -153,7 +171,7 @@ pub enum TypeNameCollision {
     Builtin(Str),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(super) enum PrimitiveType {
     Bool,
     Long,
@@ -194,7 +212,7 @@ fn ref_to_action_euid(name: Ref) -> ActionEntityUID {
     let Ref { ty, id } = name;
     ActionEntityUID {
         id: name_to_str(id).node,
-        ty: ty.map(|p| p.to_smolstr()),
+        ty: ty.map(|p| p.into()),
     }
 }
 
@@ -229,7 +247,7 @@ impl TryFrom<Type> for SchemaType {
             Type::Ident(id) => match lookup_func(&id) {
                 Some(ty) => ty.into(),
                 None => Err(ToJsonSchemaError::UnknownTypeName(Node::with_source_loc(
-                    id.clone().to_smolstr(),
+                    id.clone().into(),
                     id.get_loc(),
                 )))?,
             },
@@ -245,9 +263,9 @@ impl TryFrom<EntityDecl> for EntityType {
     type Error = ToJsonSchemaError;
     fn try_from(value: EntityDecl, lookup_func: &LookupFn) -> Result<Self, Self::Error> {
         Ok(Self {
-            member_of_types: value.member_of_types.map_or(vec![], |ns| {
-                ns.into_iter().map(|n| n.node.to_smolstr()).collect()
-            }),
+            member_of_types: value
+                .member_of_types
+                .map_or(vec![], |ns| ns.into_iter().map(|n| n.node.into()).collect()),
             shape: AttributesOrContext(SchemaType::Type(TryInto::try_into(
                 value.attrs,
                 lookup_func,
@@ -290,68 +308,87 @@ impl TryFrom<NonEmpty<Node<AppDecl>>> for ApplySpec {
         value: NonEmpty<Node<AppDecl>>,
         lookup_func: &LookupFn,
     ) -> Result<Self, Self::Error> {
-        let mut resource_types: Option<(NonEmpty<SmolStr>, Loc)> = None;
-        let mut principal_types: Option<(NonEmpty<SmolStr>, Loc)> = None;
-        let mut attr_lookup_func: Option<(AttributesOrContext, Loc)> = None;
-        for decl in value {
-            match decl.node {
-                AppDecl::PR(PRAppDecl { ty, entity_tys }) => match ty.node {
-                    PR::Principal => {
-                        if let Some((_, existing_loc)) = principal_types {
-                            return Err(Self::Error::DuplicateKeys(
-                                "principal".into(),
-                                (existing_loc, decl.loc.clone()),
-                            ));
-                        } else {
-                            principal_types =
-                                Some((entity_tys.map(|et| et.node.to_smolstr()), decl.loc));
-                        }
-                    }
-                    PR::Resource => {
-                        if let Some((_, existing_loc)) = resource_types {
-                            return Err(Self::Error::DuplicateKeys(
-                                "resource".into(),
-                                (existing_loc, decl.loc.clone()),
-                            ));
-                        } else {
-                            resource_types =
-                                Some((entity_tys.map(|et| et.node.to_smolstr()), decl.loc));
-                        }
-                    }
-                },
-                AppDecl::Context(attrs) => {
-                    if let Some((_, existing_loc)) = attr_lookup_func {
-                        return Err(Self::Error::DuplicateKeys(
-                            "lookup_func".into(),
-                            (existing_loc, decl.loc.clone()),
-                        ));
-                    } else {
-                        attr_lookup_func = Some((
-                            AttributesOrContext(SchemaType::Type(TryInto::try_into(
-                                attrs,
-                                lookup_func,
-                            )?)),
-                            decl.loc,
-                        ));
-                    }
-                }
-            }
-        }
+        // Sort out the context decls from the principal/resource decls
+        let (prs, contexts): (Vec<_>, Vec<_>) =
+            value.into_iter().partition_map(|node| match node.node {
+                AppDecl::PR(pr) => Either::Left((pr, node.loc)),
+                AppDecl::Context(context) => Either::Right((context, node.loc)),
+            });
+
+        // Sort the principal decls from the resource decls
+        let (principals, resources): (Vec<_>, Vec<_>) =
+            prs.into_iter()
+                .partition_map(|(app_decl, loc)| match app_decl.ty.node {
+                    PR::Principal => Either::Left((app_decl, loc)),
+                    PR::Resource => Either::Right((app_decl, loc)),
+                });
+
+        let principal_types = process_pr_decls(principals, "principal")?;
+
+        let resource_types = process_pr_decls(resources, "resource")?;
+
+        let attr_lookup_func = match exactly_once(contexts, "lookup_func")? {
+            Some(attrs) => Some(AttributesOrContext(SchemaType::Type(TryInto::try_into(
+                attrs,
+                lookup_func,
+            )?))),
+            None => None,
+        };
+
         Ok(Self {
             // In JSON schema format, unspecified resource is represented by a None field
-            resource_types: if let Some((resource_types, _)) = resource_types {
+            resource_types: if let Some(resource_types) = resource_types {
                 Some(resource_types.into())
             } else {
                 None
             },
             // In JSON schema format, unspecified principal is represented by a None field
-            principal_types: if let Some((principal_types, _)) = principal_types {
+            principal_types: if let Some(principal_types) = principal_types {
                 Some(principal_types.into())
             } else {
                 None
             },
-            context: attr_lookup_func.map_or(AttributesOrContext::default(), |(attrs, _)| attrs),
+            context: attr_lookup_func.map_or(AttributesOrContext::default(), |attrs| attrs),
         })
+    }
+}
+
+/// If there is exactly one PRDecl here, map it to it's list of entity types
+fn process_pr_decls(
+    input: Vec<(PRAppDecl, Loc)>,
+    name: &'static str,
+) -> Result<Option<NonEmpty<SmolStr>>, ToJsonSchemaError> {
+    Ok(exactly_once(input, name)?.map(|decl| decl.entity_tys.map(|et| et.node.into())))
+}
+
+/// Fold over the list, producing the following:
+///
+/// * Err(_) -> if there is more than one element in the array
+/// * Ok(None) -> if there are no elements in the array
+/// * Ok(Some(_)) -> if there is exactly one element in the array
+fn exactly_once<A>(
+    input: Vec<(A, Loc)>,
+    name: &'static str,
+) -> Result<Option<A>, ToJsonSchemaError> {
+    Ok(input
+        .into_iter()
+        .fold(Ok(None), exactly_one(name))?
+        .map(|(a, _)| a))
+}
+
+fn exactly_one<X>(
+    name: &'static str,
+) -> impl Fn(
+    Result<Option<(X, Loc)>, ToJsonSchemaError>,
+    (X, Loc),
+) -> Result<Option<(X, Loc)>, ToJsonSchemaError> {
+    move |acc, (next_decl, next_loc)| match acc? {
+        // This our first find
+        None => Ok(Some((next_decl, next_loc))),
+        Some((_, exiting_loc)) => Err(ToJsonSchemaError::DuplicateKeys(
+            name.into(),
+            (exiting_loc, next_loc),
+        )),
     }
 }
 
@@ -454,7 +491,7 @@ fn deduplicate_ns(schema: Schema) -> Result<HashMap<SmolStr, Namespace>, ToJsonS
         let name: Str = Node::with_source_loc(
             ns.name
                 .clone()
-                .map_or(SmolStr::default(), |name| name.node.to_smolstr()),
+                .map_or(SmolStr::default(), |name| name.node.into()),
             ns_node.loc.clone(),
         );
         if name.node == CEDAR_NAMESPACE {
