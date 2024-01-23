@@ -545,17 +545,6 @@ impl Node<Option<cst::VariableDef>> {
 
         let var = vardef.variable.to_var(errs)?;
 
-        match vardef.variable.to_var(errs) {
-            Some(v) if v == var => Some(()),
-            Some(got) => {
-                errs.push(
-                    self.to_ast_err(ToASTErrorKind::IncorrectVariable { expected: var, got }),
-                );
-                None
-            }
-            None => None,
-        }?;
-
         if let Some(unused_typename) = vardef.unused_type_name.as_ref() {
             unused_typename.to_type_constraint(errs)?;
         }
