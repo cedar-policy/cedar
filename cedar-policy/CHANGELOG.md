@@ -52,6 +52,8 @@ method checks the request against the schema provided and the
 
 - Action entities in the store will pass schema-based validation without requiring
   the transitive closure to be pre-computed. (#581, resolving #285)
+- Variables qualified by a namespace with a single element are correctly
+  rejected. E.g., `foo::principal` is an error and is not parsed as `principal`.
 
 ## [3.0.1] - 2023-12-21
 Cedar Language Version: 3.0.0
