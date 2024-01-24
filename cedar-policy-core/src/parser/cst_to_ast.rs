@@ -726,17 +726,20 @@ impl Node<Option<cst::Cond>> {
         let maybe_expr = match &cond.expr {
             Some(expr) => expr.to_expr(errs),
             None => {
-                let ident = Some(if maybe_is_when {
-                    cst::Ident::Ident("when".into())
-                } else {
-                    cst::Ident::Ident("unless".into())
-                });
-                errs.push(match cond.cond.as_ref().node {
-                    Some(ident) => {
-                        self.to_ast_err(ToASTErrorKind::EmptyClause(Some(ident.clone())))
+                let ident = match cond.cond.as_inner() {
+                    Some(ident) => ident.clone(),
+                    None => {
+                        // `cond.cond.to_cond_is_when()` returned with `Some`,
+                        // so `cond.cond.as_inner()` must have been `Some`
+                        // inside that function call, making this unreachable.
+                        if maybe_is_when {
+                            cst::Ident::Ident("when".into())
+                        } else {
+                            cst::Ident::Ident("unless".into())
+                        }
                     }
-                    None => self.to_ast_err(ToASTErrorKind::EmptyClause(ident)),
-                });
+                };
+                errs.push(self.to_ast_err(ToASTErrorKind::EmptyClause(Some(ident))));
                 None
             }
         };
@@ -4729,5 +4732,36 @@ mod tests {
         expect_arbitrary_var("foo");
         expect_arbitrary_var("foo::bar");
         expect_arbitrary_var("foo::bar::baz");
+    }
+
+    #[test]
+    fn empty_clause() {
+        #[track_caller]
+        fn expect_empty_clause(policy: &str, clause: &str) {
+            assert_matches!(parse_policy_template(None, policy), Err(e) => {
+                expect_err(policy, &e, &ExpectedErrorMessage::error(
+                    &format!("`{clause}` condition clause cannot be empty")
+                ));
+            })
+        }
+
+        expect_empty_clause("permit(principal, action, resource) when {};", "when");
+        expect_empty_clause("permit(principal, action, resource) unless {};", "unless");
+        expect_empty_clause(
+            "permit(principal, action, resource) when { principal has foo } when {};",
+            "when",
+        );
+        expect_empty_clause(
+            "permit(principal, action, resource) when { principal has foo } unless {};",
+            "unless",
+        );
+        expect_empty_clause(
+            "permit(principal, action, resource) when {} unless { resource.bar };",
+            "when",
+        );
+        expect_empty_clause(
+            "permit(principal, action, resource) unless {} unless { resource.bar };",
+            "unless",
+        );
     }
 }
