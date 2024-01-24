@@ -545,17 +545,6 @@ impl Node<Option<cst::VariableDef>> {
 
         let var = vardef.variable.to_var(errs)?;
 
-        match vardef.variable.to_var(errs) {
-            Some(v) if v == var => Some(()),
-            Some(got) => {
-                errs.push(
-                    self.to_ast_err(ToASTErrorKind::IncorrectVariable { expected: var, got }),
-                );
-                None
-            }
-            None => None,
-        }?;
-
         if let Some(unused_typename) = vardef.unused_type_name.as_ref() {
             unused_typename.to_type_constraint(errs)?;
         }
@@ -726,17 +715,20 @@ impl Node<Option<cst::Cond>> {
         let maybe_expr = match &cond.expr {
             Some(expr) => expr.to_expr(errs),
             None => {
-                let ident = Some(if maybe_is_when {
-                    cst::Ident::Ident("when".into())
-                } else {
-                    cst::Ident::Ident("unless".into())
-                });
-                errs.push(match cond.cond.as_ref().node {
-                    Some(ident) => {
-                        self.to_ast_err(ToASTErrorKind::EmptyClause(Some(ident.clone())))
+                let ident = match cond.cond.as_inner() {
+                    Some(ident) => ident.clone(),
+                    None => {
+                        // `cond.cond.to_cond_is_when()` returned with `Some`,
+                        // so `cond.cond.as_inner()` must have been `Some`
+                        // inside that function call, making this unreachable.
+                        if maybe_is_when {
+                            cst::Ident::Ident("when".into())
+                        } else {
+                            cst::Ident::Ident("unless".into())
+                        }
                     }
-                    None => self.to_ast_err(ToASTErrorKind::EmptyClause(ident)),
-                });
+                };
+                errs.push(self.to_ast_err(ToASTErrorKind::EmptyClause(Some(ident))));
                 None
             }
         };
@@ -912,10 +904,7 @@ impl ExprOrSpecial<'_> {
                 errs.push(self.to_ast_err(ToASTErrorKind::IsInvalidName(lit.to_string())));
                 None
             }
-            Self::Var { var, .. } => {
-                errs.push(self.to_ast_err(ToASTErrorKind::IsInvalidName(var.to_string())));
-                None
-            }
+            Self::Var { var, .. } => Some(ast::Name::unqualified_name(var.into())),
             Self::Name { name, .. } => Some(name),
             Self::Expr { ref expr, .. } => {
                 errs.push(self.to_ast_err(ToASTErrorKind::IsInvalidName(expr.to_string())));
@@ -2124,12 +2113,13 @@ impl Node<Option<cst::Name>> {
         // signaled when the `Node` without data was created
         let name = self.as_inner()?;
 
-        let path: Vec<_> = name
-            .path
-            .iter()
-            .filter_map(|i| i.to_valid_ident(errs))
-            .collect();
-        if path.len() > 0 {
+        for id in &name.path {
+            // We don't need the actual ident, but we want to report an error
+            // if they're invalid.
+            id.to_valid_ident(errs);
+        }
+
+        if !name.path.is_empty() {
             errs.push(self.to_ast_err(ToASTErrorKind::InvalidPath));
             return None;
         }
@@ -4108,6 +4098,48 @@ mod tests {
                     Expr::val(2),
                 ),
             ),
+            (
+                r#"principal::"alice" is principal"#,
+                Expr::is_entity_type(
+                    Expr::val(r#"principal::"alice""#.parse::<EntityUID>().unwrap()),
+                    "principal".parse().unwrap(),
+                ),
+            ),
+            (
+                r#"foo::principal::"alice" is foo::principal"#,
+                Expr::is_entity_type(
+                    Expr::val(r#"foo::principal::"alice""#.parse::<EntityUID>().unwrap()),
+                    "foo::principal".parse().unwrap(),
+                ),
+            ),
+            (
+                r#"principal::foo::"alice" is principal::foo"#,
+                Expr::is_entity_type(
+                    Expr::val(r#"principal::foo::"alice""#.parse::<EntityUID>().unwrap()),
+                    "principal::foo".parse().unwrap(),
+                ),
+            ),
+            (
+                r#"resource::"thing" is resource"#,
+                Expr::is_entity_type(
+                    Expr::val(r#"resource::"thing""#.parse::<EntityUID>().unwrap()),
+                    "resource".parse().unwrap(),
+                ),
+            ),
+            (
+                r#"action::"do" is action"#,
+                Expr::is_entity_type(
+                    Expr::val(r#"action::"do""#.parse::<EntityUID>().unwrap()),
+                    "action".parse().unwrap(),
+                ),
+            ),
+            (
+                r#"context::"stuff" is context"#,
+                Expr::is_entity_type(
+                    Expr::val(r#"context::"stuff""#.parse::<EntityUID>().unwrap()),
+                    "context".parse().unwrap(),
+                ),
+            ),
         ] {
             let e = parse_expr(es).unwrap();
             assert!(
@@ -4129,6 +4161,12 @@ mod tests {
                 ResourceConstraint::any(),
             ),
             (
+                r#"permit(principal is principal, action, resource);"#,
+                PrincipalConstraint::is_entity_type("principal".parse().unwrap()),
+                ActionConstraint::any(),
+                ResourceConstraint::any(),
+            ),
+            (
                 r#"permit(principal is A::User, action, resource);"#,
                 PrincipalConstraint::is_entity_type("A::User".parse().unwrap()),
                 ActionConstraint::any(),
@@ -4138,6 +4176,15 @@ mod tests {
                 r#"permit(principal is User in Group::"thing", action, resource);"#,
                 PrincipalConstraint::is_entity_type_in(
                     "User".parse().unwrap(),
+                    r#"Group::"thing""#.parse().unwrap(),
+                ),
+                ActionConstraint::any(),
+                ResourceConstraint::any(),
+            ),
+            (
+                r#"permit(principal is principal in Group::"thing", action, resource);"#,
+                PrincipalConstraint::is_entity_type_in(
+                    "principal".parse().unwrap(),
                     r#"Group::"thing""#.parse().unwrap(),
                 ),
                 ActionConstraint::any(),
@@ -4485,6 +4532,25 @@ mod tests {
                 "bar([])",
                 ExpectedErrorMessage::error("`bar` is not a function"),
             ),
+            (
+                "principal()",
+                ExpectedErrorMessage::error_and_help(
+                    "`principal(...)` is not a valid function call",
+                    "variables cannot be called as functions",
+                ),
+            ),
+            (
+                "(1+1)()",
+                ExpectedErrorMessage::error(
+                    "function calls must be of the form: `<name>(arg1, arg2, ...)`",
+                ),
+            ),
+            (
+                "foo.bar()",
+                ExpectedErrorMessage::error(
+                    "attempted to call `foo.bar`, but `foo` does not have any methods",
+                ),
+            ),
         ];
         for (src, expected) in invalid_exprs {
             assert_matches!(parse_expr(src), Err(e) => {
@@ -4677,6 +4743,14 @@ mod tests {
     }
 
     #[test]
+    fn scope_action_in_set_set() {
+        let p_src = r#"permit(principal, action in [[Action::"view"]], resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error("expected single entity uid, got: set of entity uids"));
+        });
+    }
+
+    #[test]
     fn unsupported_ops() {
         let src = "1/2";
         assert_matches!(parse_expr(src), Err(e) => {
@@ -4729,5 +4803,79 @@ mod tests {
         expect_arbitrary_var("foo");
         expect_arbitrary_var("foo::bar");
         expect_arbitrary_var("foo::bar::baz");
+    }
+
+    #[test]
+    fn empty_clause() {
+        #[track_caller]
+        fn expect_empty_clause(policy: &str, clause: &str) {
+            assert_matches!(parse_policy_template(None, policy), Err(e) => {
+                expect_err(policy, &e, &ExpectedErrorMessage::error(
+                    &format!("`{clause}` condition clause cannot be empty")
+                ));
+            })
+        }
+
+        expect_empty_clause("permit(principal, action, resource) when {};", "when");
+        expect_empty_clause("permit(principal, action, resource) unless {};", "unless");
+        expect_empty_clause(
+            "permit(principal, action, resource) when { principal has foo } when {};",
+            "when",
+        );
+        expect_empty_clause(
+            "permit(principal, action, resource) when { principal has foo } unless {};",
+            "unless",
+        );
+        expect_empty_clause(
+            "permit(principal, action, resource) when {} unless { resource.bar };",
+            "when",
+        );
+        expect_empty_clause(
+            "permit(principal, action, resource) unless {} unless { resource.bar };",
+            "unless",
+        );
+    }
+
+    #[test]
+    fn namespaced_attr() {
+        #[track_caller]
+        fn expect_namespaced_attr(expr: &str, name: &str) {
+            assert_matches!(parse_expr(expr), Err(e) => {
+                expect_err(expr, &e, &ExpectedErrorMessage::error(
+                    &format!("`{name}` cannot be used as an attribute as it contains a namespace")
+                ));
+            })
+        }
+
+        expect_namespaced_attr("principal has foo::bar", "foo::bar");
+        expect_namespaced_attr("principal has foo::bar::baz", "foo::bar::baz");
+        expect_namespaced_attr("principal has foo::principal", "foo::principal");
+        expect_namespaced_attr("{foo::bar: 1}", "foo::bar");
+
+        let expr = "principal has if::foo";
+        assert_matches!(parse_expr(expr), Err(e) => {
+            expect_err(expr, &e, &ExpectedErrorMessage::error(
+                &format!("this identifier is reserved and cannot be used: `if`")
+            ));
+        })
+    }
+
+    #[test]
+    fn reserved_ident_var() {
+        #[track_caller]
+        fn expect_reserved_ident(name: &str, reserved: &str) {
+            assert_matches!(parse_expr(name), Err(e) => {
+                expect_err(name, &e, &ExpectedErrorMessage::error(
+                    &format!("this identifier is reserved and cannot be used: `{reserved}`"),
+                ));
+            })
+        }
+        expect_reserved_ident("if::principal", "if");
+        expect_reserved_ident("then::action", "then");
+        expect_reserved_ident("else::resource", "else");
+        expect_reserved_ident("true::context", "true");
+        expect_reserved_ident("false::bar::principal", "false");
+        expect_reserved_ident("foo::in::principal", "in");
+        expect_reserved_ident("foo::is::bar::principal", "is");
     }
 }
