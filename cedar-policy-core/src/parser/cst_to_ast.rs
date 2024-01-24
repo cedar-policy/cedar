@@ -2125,7 +2125,7 @@ impl Node<Option<cst::Name>> {
         let name = self.as_inner()?;
 
         for id in &name.path {
-            // We don't need the actual indent, but we want to report an error
+            // We don't need the actual ident, but we want to report an error
             // if they're invalid.
             id.to_valid_ident(errs);
         }
