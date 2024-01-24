@@ -545,17 +545,6 @@ impl Node<Option<cst::VariableDef>> {
 
         let var = vardef.variable.to_var(errs)?;
 
-        match vardef.variable.to_var(errs) {
-            Some(v) if v == var => Some(()),
-            Some(got) => {
-                errs.push(
-                    self.to_ast_err(ToASTErrorKind::IncorrectVariable { expected: var, got }),
-                );
-                None
-            }
-            None => None,
-        }?;
-
         if let Some(unused_typename) = vardef.unused_type_name.as_ref() {
             unused_typename.to_type_constraint(errs)?;
         }
@@ -2127,12 +2116,13 @@ impl Node<Option<cst::Name>> {
         // signaled when the `Node` without data was created
         let name = self.as_inner()?;
 
-        let path: Vec<_> = name
-            .path
-            .iter()
-            .filter_map(|i| i.to_valid_ident(errs))
-            .collect();
-        if path.len() > 0 {
+        for id in &name.path {
+            // We don't need the actual ident, but we want to report an error
+            // if they're invalid.
+            id.to_valid_ident(errs);
+        }
+
+        if !name.path.is_empty() {
             errs.push(self.to_ast_err(ToASTErrorKind::InvalidPath));
             return None;
         }
@@ -4814,5 +4804,24 @@ mod tests {
                 &format!("this identifier is reserved and cannot be used: `if`")
             ));
         })
+    }
+
+    #[test]
+    fn reserved_ident_var() {
+        #[track_caller]
+        fn expect_reserved_ident(name: &str, reserved: &str) {
+            assert_matches!(parse_expr(name), Err(e) => {
+                expect_err(name, &e, &ExpectedErrorMessage::error(
+                    &format!("this identifier is reserved and cannot be used: `{reserved}`"),
+                ));
+            })
+        }
+        expect_reserved_ident("if::principal", "if");
+        expect_reserved_ident("then::action", "then");
+        expect_reserved_ident("else::resource", "else");
+        expect_reserved_ident("true::context", "true");
+        expect_reserved_ident("false::bar::principal", "false");
+        expect_reserved_ident("foo::in::principal", "in");
+        expect_reserved_ident("foo::is::bar::principal", "is");
     }
 }
