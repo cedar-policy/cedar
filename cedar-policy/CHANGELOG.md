@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   template-linked policy. (#515, resolving #489)
 - Added `EntityId::new()` constructor (#583, resolving #553)
 - New feature for cedar-policy and cedar-policy core to allow targeting wasm
+- `AuthorizationError::id()` to get the id of the policy associated with an
+  authorization error. (#589)
 
 ### Changed
 

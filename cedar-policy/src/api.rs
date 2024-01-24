@@ -27,7 +27,6 @@ use cedar_policy_core::ast::{
     ContextCreationError, ExprConstructionError, Integer, RestrictedExprParseError,
 }; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
 use cedar_policy_core::authorizer;
-pub use cedar_policy_core::authorizer::AuthorizationError;
 use cedar_policy_core::entities::{
     self, ContextJsonDeserializationError, ContextSchema, Dereference, JsonDeserializationError,
     JsonDeserializationErrorContext,
@@ -735,6 +734,40 @@ impl Authorizer {
     }
 }
 
+/// Errors that can occur during authorization
+#[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
+pub enum AuthorizationError {
+    /// An error occurred when evaluating a policy.
+    #[error("while evaluating policy `{id}`: {error}")]
+    PolicyEvaluationError {
+        /// Id of the policy with an error
+        id: ast::PolicyID,
+        /// Underlying evaluation error
+        #[diagnostic(transparent)]
+        error: EvaluationError,
+    },
+}
+
+impl AuthorizationError {
+    /// Get the id of the erroring policy
+    pub fn id(&self) -> &PolicyId {
+        match self {
+            Self::PolicyEvaluationError { id, error: _ } => PolicyId::ref_cast(id),
+        }
+    }
+}
+
+#[doc(hidden)]
+impl From<authorizer::AuthorizationError> for AuthorizationError {
+    fn from(value: authorizer::AuthorizationError) -> Self {
+        match value {
+            authorizer::AuthorizationError::PolicyEvaluationError { id, error } => {
+                Self::PolicyEvaluationError { id, error }
+            }
+        }
+    }
+}
+
 /// Authorization response returned from the `Authorizer`
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Response {
@@ -780,7 +813,7 @@ impl From<authorizer::Diagnostics> for Diagnostics {
     fn from(diagnostics: authorizer::Diagnostics) -> Self {
         Self {
             reason: diagnostics.reason.into_iter().map(PolicyId).collect(),
-            errors: diagnostics.errors,
+            errors: diagnostics.errors.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -903,13 +936,6 @@ impl Diagnostics {
     /// ```
     pub fn errors(&self) -> impl Iterator<Item = &AuthorizationError> + '_ {
         self.errors.iter()
-    }
-
-    /// Get the `PolicyId`s of the policies where an error occurred during authorization.
-    pub fn error_policy_ids(&self) -> impl Iterator<Item = &PolicyId> {
-        self.errors.iter().map(|e| match e {
-            AuthorizationError::PolicyEvaluationError { id, error: _ } => PolicyId::ref_cast(id),
-        })
     }
 }
 
