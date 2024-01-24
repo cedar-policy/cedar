@@ -4488,6 +4488,22 @@ mod tests {
                 "bar([])",
                 ExpectedErrorMessage::error("`bar` is not a function"),
             ),
+            (
+                "principal()",
+                ExpectedErrorMessage::error("`principal(...)` is not a valid function call"),
+            ),
+            (
+                "(1+1)()",
+                ExpectedErrorMessage::error(
+                    "function calls must be of the form: `<name>(arg1, arg2, ...)`",
+                ),
+            ),
+            (
+                "foo.bar()",
+                ExpectedErrorMessage::error(
+                    "attempted to call `foo.bar`, but `foo` does not have any methods",
+                ),
+            ),
         ];
         for (src, expected) in invalid_exprs {
             assert_matches!(parse_expr(src), Err(e) => {
