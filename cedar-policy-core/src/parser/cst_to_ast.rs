@@ -715,17 +715,20 @@ impl Node<Option<cst::Cond>> {
         let maybe_expr = match &cond.expr {
             Some(expr) => expr.to_expr(errs),
             None => {
-                let ident = Some(if maybe_is_when {
-                    cst::Ident::Ident("when".into())
-                } else {
-                    cst::Ident::Ident("unless".into())
-                });
-                errs.push(match cond.cond.as_ref().node {
-                    Some(ident) => {
-                        self.to_ast_err(ToASTErrorKind::EmptyClause(Some(ident.clone())))
+                let ident = match cond.cond.as_inner() {
+                    Some(ident) => ident.clone(),
+                    None => {
+                        // `cond.cond.to_cond_is_when()` returned with `Some`,
+                        // so `cond.cond.as_inner()` must have been `Some`
+                        // inside that function call, making this unreachable.
+                        if maybe_is_when {
+                            cst::Ident::Ident("when".into())
+                        } else {
+                            cst::Ident::Ident("unless".into())
+                        }
                     }
-                    None => self.to_ast_err(ToASTErrorKind::EmptyClause(ident)),
-                });
+                };
+                errs.push(self.to_ast_err(ToASTErrorKind::EmptyClause(Some(ident))));
                 None
             }
         };
@@ -4475,6 +4478,25 @@ mod tests {
                 "bar([])",
                 ExpectedErrorMessage::error("`bar` is not a function"),
             ),
+            (
+                "principal()",
+                ExpectedErrorMessage::error_and_help(
+                    "`principal(...)` is not a valid function call",
+                    "variables cannot be called as functions",
+                ),
+            ),
+            (
+                "(1+1)()",
+                ExpectedErrorMessage::error(
+                    "function calls must be of the form: `<name>(arg1, arg2, ...)`",
+                ),
+            ),
+            (
+                "foo.bar()",
+                ExpectedErrorMessage::error(
+                    "attempted to call `foo.bar`, but `foo` does not have any methods",
+                ),
+            ),
         ];
         for (src, expected) in invalid_exprs {
             assert_matches!(parse_expr(src), Err(e) => {
@@ -4667,6 +4689,14 @@ mod tests {
     }
 
     #[test]
+    fn scope_action_in_set_set() {
+        let p_src = r#"permit(principal, action in [[Action::"view"]], resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error("expected single entity uid, got: set of entity uids"));
+        });
+    }
+
+    #[test]
     fn unsupported_ops() {
         let src = "1/2";
         assert_matches!(parse_expr(src), Err(e) => {
@@ -4719,6 +4749,61 @@ mod tests {
         expect_arbitrary_var("foo");
         expect_arbitrary_var("foo::bar");
         expect_arbitrary_var("foo::bar::baz");
+    }
+
+    #[test]
+    fn empty_clause() {
+        #[track_caller]
+        fn expect_empty_clause(policy: &str, clause: &str) {
+            assert_matches!(parse_policy_template(None, policy), Err(e) => {
+                expect_err(policy, &e, &ExpectedErrorMessage::error(
+                    &format!("`{clause}` condition clause cannot be empty")
+                ));
+            })
+        }
+
+        expect_empty_clause("permit(principal, action, resource) when {};", "when");
+        expect_empty_clause("permit(principal, action, resource) unless {};", "unless");
+        expect_empty_clause(
+            "permit(principal, action, resource) when { principal has foo } when {};",
+            "when",
+        );
+        expect_empty_clause(
+            "permit(principal, action, resource) when { principal has foo } unless {};",
+            "unless",
+        );
+        expect_empty_clause(
+            "permit(principal, action, resource) when {} unless { resource.bar };",
+            "when",
+        );
+        expect_empty_clause(
+            "permit(principal, action, resource) unless {} unless { resource.bar };",
+            "unless",
+        );
+    }
+
+    #[test]
+    fn namespaced_attr() {
+        #[track_caller]
+        fn expect_namespaced_attr(expr: &str, name: &str) {
+            assert_matches!(parse_expr(expr), Err(e) => {
+                expect_err(expr, &e, &ExpectedErrorMessage::error(
+                    &format!("`{name}` cannot be used as an attribute as it contains a namespace")
+                ));
+            })
+        }
+
+        expect_namespaced_attr("principal has foo::bar", "foo::bar");
+        expect_namespaced_attr("principal has foo::bar::baz", "foo::bar::baz");
+        expect_namespaced_attr("principal has foo::principal", "foo::principal");
+        expect_namespaced_attr("{foo::bar: 1}", "foo::bar");
+
+        let expr = "principal has if::foo";
+        assert_matches!(parse_expr(expr), Err(e) => {
+            expect_err(expr, &e, &ExpectedErrorMessage::error(
+                &format!("this identifier is reserved and cannot be used: `if`")
+            ));
+        })
     }
 
     #[test]
