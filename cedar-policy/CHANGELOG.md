@@ -57,6 +57,9 @@ method checks the request against the schema provided and the
   `principal`. Variables qualified by a namespace of any size comprised entirely
   of Cedar keywords are correctly rejected. E.g., `if::then::else::principal` is an error.
   (#594 and #596)
+- The entity type tested for by an `is` expression may be an identifier shared
+  with a builtin variable. E.g., `... is principal` and `... is action` are now
+  accepted by the Cedar parser. (#558)
 
 ## [3.0.1] - 2023-12-21
 Cedar Language Version: 3.0.0

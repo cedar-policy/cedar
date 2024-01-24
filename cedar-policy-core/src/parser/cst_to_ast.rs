@@ -904,10 +904,7 @@ impl ExprOrSpecial<'_> {
                 errs.push(self.to_ast_err(ToASTErrorKind::IsInvalidName(lit.to_string())));
                 None
             }
-            Self::Var { var, .. } => {
-                errs.push(self.to_ast_err(ToASTErrorKind::IsInvalidName(var.to_string())));
-                None
-            }
+            Self::Var { var, .. } => Some(ast::Name::unqualified_name(var.into())),
             Self::Name { name, .. } => Some(name),
             Self::Expr { ref expr, .. } => {
                 errs.push(self.to_ast_err(ToASTErrorKind::IsInvalidName(expr.to_string())));
@@ -4101,6 +4098,48 @@ mod tests {
                     Expr::val(2),
                 ),
             ),
+            (
+                r#"principal::"alice" is principal"#,
+                Expr::is_entity_type(
+                    Expr::val(r#"principal::"alice""#.parse::<EntityUID>().unwrap()),
+                    "principal".parse().unwrap(),
+                ),
+            ),
+            (
+                r#"foo::principal::"alice" is foo::principal"#,
+                Expr::is_entity_type(
+                    Expr::val(r#"foo::principal::"alice""#.parse::<EntityUID>().unwrap()),
+                    "foo::principal".parse().unwrap(),
+                ),
+            ),
+            (
+                r#"principal::foo::"alice" is principal::foo"#,
+                Expr::is_entity_type(
+                    Expr::val(r#"principal::foo::"alice""#.parse::<EntityUID>().unwrap()),
+                    "principal::foo".parse().unwrap(),
+                ),
+            ),
+            (
+                r#"resource::"thing" is resource"#,
+                Expr::is_entity_type(
+                    Expr::val(r#"resource::"thing""#.parse::<EntityUID>().unwrap()),
+                    "resource".parse().unwrap(),
+                ),
+            ),
+            (
+                r#"action::"do" is action"#,
+                Expr::is_entity_type(
+                    Expr::val(r#"action::"do""#.parse::<EntityUID>().unwrap()),
+                    "action".parse().unwrap(),
+                ),
+            ),
+            (
+                r#"context::"stuff" is context"#,
+                Expr::is_entity_type(
+                    Expr::val(r#"context::"stuff""#.parse::<EntityUID>().unwrap()),
+                    "context".parse().unwrap(),
+                ),
+            ),
         ] {
             let e = parse_expr(es).unwrap();
             assert!(
@@ -4122,6 +4161,12 @@ mod tests {
                 ResourceConstraint::any(),
             ),
             (
+                r#"permit(principal is principal, action, resource);"#,
+                PrincipalConstraint::is_entity_type("principal".parse().unwrap()),
+                ActionConstraint::any(),
+                ResourceConstraint::any(),
+            ),
+            (
                 r#"permit(principal is A::User, action, resource);"#,
                 PrincipalConstraint::is_entity_type("A::User".parse().unwrap()),
                 ActionConstraint::any(),
@@ -4131,6 +4176,15 @@ mod tests {
                 r#"permit(principal is User in Group::"thing", action, resource);"#,
                 PrincipalConstraint::is_entity_type_in(
                     "User".parse().unwrap(),
+                    r#"Group::"thing""#.parse().unwrap(),
+                ),
+                ActionConstraint::any(),
+                ResourceConstraint::any(),
+            ),
+            (
+                r#"permit(principal is principal in Group::"thing", action, resource);"#,
+                PrincipalConstraint::is_entity_type_in(
+                    "principal".parse().unwrap(),
                     r#"Group::"thing""#.parse().unwrap(),
                 ),
                 ActionConstraint::any(),
