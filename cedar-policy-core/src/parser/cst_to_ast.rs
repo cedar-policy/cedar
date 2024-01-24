@@ -4680,6 +4680,14 @@ mod tests {
     }
 
     #[test]
+    fn scope_action_in_set_set() {
+        let p_src = r#"permit(principal, action in [[Action::"view"]], resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error("expected single entity uid, got: set of entity uids"));
+        });
+    }
+
+    #[test]
     fn unsupported_ops() {
         let src = "1/2";
         assert_matches!(parse_expr(src), Err(e) => {
