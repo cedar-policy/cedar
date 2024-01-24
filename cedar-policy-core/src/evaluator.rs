@@ -258,7 +258,7 @@ impl<'e> Evaluator<'e> {
         // set the returned value's source location to the same source location
         // as the input expression had.
         // we do this here so that we don't have to set/propagate the source
-        // location in every arm of the big `match` in `partial_interpret_internal()`.
+        // location in every arm of the big `match` in `interpret_internal()`.
         // also, if there is an error, set its source location to the source
         // location of the input expression as well, unless it already had a
         // more specific location
@@ -270,14 +270,14 @@ impl<'e> Evaluator<'e> {
     }
 
     /// Internal function to interpret an `Expr`. (External callers, use
-    /// `interpret()` or `partial_interpret()`.)
+    /// `interpret()`.)
     ///
     /// Part of the reason this exists, instead of inlining this into
-    /// `partial_interpret()`, is so that we can use `?` inside this function
+    /// `interpret()`, is so that we can use `?` inside this function
     /// without immediately shortcircuiting into a return from
-    /// `partial_interpret()` -- ie, so we can make sure the source locations of
+    /// `interpret()` -- ie, so we can make sure the source locations of
     /// all errors are set properly before returning them from
-    /// `partial_interpret()`.
+    /// `interpret()`.
     fn interpret_internal(&self, expr: &Expr, slots: &SlotEnv) -> Result<Value> {
         let loc = expr.source_loc(); // the `loc` describing the location of the entire expression
         match expr.expr_kind() {
@@ -626,7 +626,6 @@ impl<'e> Evaluator<'e> {
                     .map(|(k, v)| Ok((k.clone(), self.interpret(v, slots)?)))
                     .collect::<Result<Vec<_>>>()?;
                 let (names, evalled): (Vec<SmolStr>, Vec<Value>) = map.into_iter().unzip();
-
                 Ok(Value::record(names.into_iter().zip(evalled), loc.cloned()))
             }
         }
@@ -1095,7 +1094,7 @@ impl<'e> Evaluator<'e> {
             Value {
                 value: ValueKind::Record(record),
                 ..
-            } => record.as_ref().get(attr).map(|v| v.clone()).ok_or_else(|| {
+            } => record.as_ref().get(attr).cloned().ok_or_else(|| {
                 EvaluationError::record_attr_does_not_exist(
                     attr.clone(),
                     record.iter().map(|(k, _)| k.clone()).collect(),
