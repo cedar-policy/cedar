@@ -4764,4 +4764,28 @@ mod tests {
             "unless",
         );
     }
+
+    #[test]
+    fn namespaced_attr() {
+        #[track_caller]
+        fn expect_empty_clause(expr: &str, name: &str) {
+            assert_matches!(parse_expr(expr), Err(e) => {
+                expect_err(expr, &e, &ExpectedErrorMessage::error(
+                    &format!("`{name}` cannot be used as an attribute as it contains a namespace")
+                ));
+            })
+        }
+
+        expect_empty_clause("principal has foo::bar", "foo::bar");
+        expect_empty_clause("principal has foo::bar::baz", "foo::bar::baz");
+        expect_empty_clause("principal has foo::principal", "foo::principal");
+        expect_empty_clause("{foo::bar: 1}", "foo::bar");
+
+        let expr = "principal has if::foo";
+        assert_matches!(parse_expr(expr), Err(e) => {
+            expect_err(expr, &e, &ExpectedErrorMessage::error(
+                &format!("this identifier is reserved and cannot be used: `if`")
+            ));
+        })
+    }
 }
