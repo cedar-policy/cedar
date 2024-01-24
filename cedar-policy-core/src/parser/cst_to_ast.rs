@@ -4490,7 +4490,10 @@ mod tests {
             ),
             (
                 "principal()",
-                ExpectedErrorMessage::error("`principal(...)` is not a valid function call"),
+                ExpectedErrorMessage::error_and_help(
+                    "`principal(...)` is not a valid function call",
+                    "variables cannot be called as functions",
+                ),
             ),
             (
                 "(1+1)()",
