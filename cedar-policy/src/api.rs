@@ -3936,6 +3936,8 @@ mod test {
         test_single_int(0);
         test_single_int(i64::MAX);
         test_single_int(i64::MIN);
+        test_single_int(7);
+        test_single_int(-7);
     }
 
     fn test_single_int(x: i64) {
@@ -3944,14 +3946,21 @@ mod test {
         }
     }
 
-    fn test_single_int_with_dashes(x: i64, dashes: usize) {
-        let dashes = vec!['-'; dashes].into_iter().collect::<String>();
+    fn test_single_int_with_dashes(x: i64, num_dashes: usize) {
+        let dashes = vec!['-'; num_dashes].into_iter().collect::<String>();
         let src = format!(r#"permit(principal, action, resource) when {{ {dashes}{x} }};"#);
         let p: Policy = src.parse().unwrap();
         let json = p.to_json().unwrap();
         let round_trip = Policy::from_json(None, json).unwrap();
         let pretty_print = format!("{round_trip}");
         assert!(pretty_print.contains(&x.to_string()));
+        if x != 0 {
+            let expected_dashes = if x < 0 { num_dashes + 1 } else { num_dashes };
+            assert_eq!(
+                pretty_print.chars().filter(|c| *c == '-').count(),
+                expected_dashes
+            );
+        }
     }
 
     // Serializing a valid 64-bit int that can't be represented in double precision float

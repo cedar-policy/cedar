@@ -1052,6 +1052,7 @@ impl TryFrom<&Node<Option<cst::Unary>>> for Expr {
                             .map(|y| y == InputInteger::MAX as u64)
                             .unwrap_or(false)) =>
                     {
+                        num_dashes -= 1;
                         Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(InputInteger::MIN)))
                     }
                     _ => (&u_node.item).try_into()?,
@@ -1074,15 +1075,11 @@ impl TryFrom<&Node<Option<cst::Unary>>> for Expr {
                         // not safe to collapse `--` to nothing
                         Ok(Expr::neg(Expr::neg(inner)))
                     }
-                    n => {
-                        if n % 2 == 0 {
-                            // safe to collapse to `--` but not to nothing
-                            Ok(Expr::neg(Expr::neg(inner)))
-                        } else {
-                            // safe to collapse to -
-                            Ok(Expr::neg(inner))
-                        }
-                    }
+                    3 => Ok(Expr::neg(Expr::neg(Expr::neg(inner)))),
+                    4 => Ok(Expr::neg(Expr::neg(Expr::neg(Expr::neg(inner))))),
+                    _ => Err(u
+                        .to_ast_err(ToASTErrorKind::UnaryOpLimit(ast::UnaryOp::Neg))
+                        .into()),
                 }
             }
             Some(cst::NegOp::OverBang) => Err(u
