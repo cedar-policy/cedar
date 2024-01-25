@@ -989,28 +989,38 @@ impl TryFrom<cst::Mult> for Expr {
 impl TryFrom<cst::Unary> for Expr {
     type Error = ParseErrors;
     fn try_from(u: cst::Unary) -> Result<Expr, ParseErrors> {
-        let inner = match u.item.node {
-            Some(m) => m.try_into(),
+        // We need to delay the conversion to where it's needed
+        let member_node_to_expr = |node: Option<cst::Member>| match node {
+            Some(member) => member.try_into(),
             None => Err(ParseError::ToAST("node should not be empty".to_string()).into()),
-        }?;
+        };
+
         match u.op {
-            Some(cst::NegOp::Bang(0)) => Ok(inner),
-            Some(cst::NegOp::Bang(1)) => Ok(Expr::not(inner)),
-            Some(cst::NegOp::Bang(2)) => {
-                // not safe to collapse !! to nothing
-                Ok(Expr::not(Expr::not(inner)))
-            }
-            Some(cst::NegOp::Bang(n)) => {
-                if n % 2 == 0 {
-                    // safe to collapse to !! but not to nothing
-                    Ok(Expr::not(Expr::not(inner)))
-                } else {
-                    // safe to collapse to !
-                    Ok(Expr::not(inner))
+            Some(cst::NegOp::Bang(num_bangs)) => {
+                let inner = member_node_to_expr(u.item.node)?;
+                match num_bangs {
+                    0 => Ok(inner),
+                    1 => Ok(Expr::not(inner)),
+                    2 => Ok(Expr::not(Expr::not(inner))),
+                    3 => Ok(Expr::not(Expr::not(Expr::not(inner)))),
+                    4 => Ok(Expr::not(Expr::not(Expr::not(Expr::not(inner))))),
+                    _ => Err(ParseError::ToAST("Too many !'s".to_string()).into()),
                 }
             }
-            Some(cst::NegOp::Dash(0)) => Ok(inner),
+            Some(cst::NegOp::Dash(0)) => member_node_to_expr(u.item.node),
             Some(cst::NegOp::Dash(mut num_dashes)) => {
+                let inner = match u.item.to_lit() {
+                    Some(cst::Literal::Num(num))
+                        if num
+                            .checked_sub(1)
+                            .map(|y| y == i64::MAX as u64)
+                            .unwrap_or(false) =>
+                    {
+                        num_dashes -= 1;
+                        Expr::ExprNoExt(ExprNoExt::Value(JSONValue::Long(i64::MIN)))
+                    }
+                    _ => member_node_to_expr(u.item.node)?,
+                };
                 let inner = match inner {
                     Expr::ExprNoExt(ExprNoExt::Value(JSONValue::Long(n))) if n != std::i64::MIN => {
                         // collapse the negated literal into a single negative literal.
@@ -1027,20 +1037,14 @@ impl TryFrom<cst::Unary> for Expr {
                         // not safe to collapse `--` to nothing
                         Ok(Expr::neg(Expr::neg(inner)))
                     }
-                    n => {
-                        if n % 2 == 0 {
-                            // safe to collapse to `--` but not to nothing
-                            Ok(Expr::neg(Expr::neg(inner)))
-                        } else {
-                            // safe to collapse to -
-                            Ok(Expr::neg(inner))
-                        }
-                    }
+                    3 => Ok(Expr::neg(Expr::neg(Expr::neg(inner)))),
+                    4 => Ok(Expr::neg(Expr::neg(Expr::neg(Expr::neg(inner))))),
+                    _ => Err(ParseError::ToAST("Too many -'s".to_string()).into()),
                 }
             }
             Some(cst::NegOp::OverBang) => Err(ParseError::ToAST("Too many !'s".to_string()).into()),
             Some(cst::NegOp::OverDash) => Err(ParseError::ToAST("Too many -'s".to_string()).into()),
-            None => Ok(inner),
+            None => member_node_to_expr(u.item.node),
         }
     }
 }

@@ -1363,11 +1363,11 @@ enum AstAccessor {
 }
 
 impl ASTNode<Option<cst::Member>> {
-    // Try to convert `cst::Member` into a `cst::Literal`, i.e.
-    // match `Member(Primary(Literal(_), []))`.
-    // It does not match the `Expr` arm of `Primary`, which means expressions
-    // like `(1)` are not considered as literals on the CST level.
-    fn to_lit(&self) -> Option<&cst::Literal> {
+    /// Try to convert `cst::Member` into a `cst::Literal`, i.e.
+    /// match `Member(Primary(Literal(_), []))`.
+    /// It does not match the `Expr` arm of `Primary`, which means expressions
+    /// like `(1)` are not considered as literals on the CST level.
+    pub(crate) fn to_lit(&self) -> Option<&cst::Literal> {
         let m = self.as_ref().node.as_ref()?;
         if !m.access.is_empty() {
             return None;
