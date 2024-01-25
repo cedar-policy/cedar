@@ -47,8 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `schema` functions `#[must_use]`. (#502)
 - For the `partial-eval` experimental feature: make `RequestBuilder::schema`
 return a `RequestBuilder<&Schema>` so the `RequestBuilder<&Schema>::build`
-method checks the request against the schema provided and the 
+method checks the request against the schema provided and the
 `RequestBuilder<UnsetSchema>::build` method becomes infallible. (#559)
+- Increase validator precision in some edge cases involving `Unspecified` (#603)
 
 ### Fixed
 

@@ -1970,74 +1970,79 @@ impl<'a> Typechecker<'a> {
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
     ) -> TypecheckAnswer<'c> {
-        if let Some(rhs) = Typechecker::euids_from_euid_literals_or_action(request_env, rhs_elems) {
-            let var_euid = if matches!(lhs_var, Var::Principal) {
-                request_env.principal_entity_type()
-            } else {
-                request_env.resource_entity_type()
-            };
-            match var_euid {
-                // We failed to get the principal/resource entity type because
-                // we are typechecking a request for some action which isn't
-                // declared in the schema.  We don't know if the euid would be
-                // in the descendants or not, so give it type boolean.
-                None => {
-                    let in_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                        .with_same_source_loc(in_expr)
-                        .is_in(lhs_expr, rhs_expr);
-                    if self.mode.is_partial() {
-                        TypecheckAnswer::success(in_expr)
-                    } else {
-                        // This should only happen when doing partial validation
-                        // since we never construct the undeclared action
-                        // request environment otherwise.
-                        TypecheckAnswer::fail(in_expr)
-                    }
+        let var_euid = if matches!(lhs_var, Var::Principal) {
+            request_env.principal_entity_type()
+        } else {
+            request_env.resource_entity_type()
+        };
+        match var_euid {
+            // We failed to get the principal/resource entity type because
+            // we are typechecking a request for some action which isn't
+            // declared in the schema.  We don't know if the euid would be
+            // in the descendants or not, so give it type boolean.
+            None => {
+                let in_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                    .with_same_source_loc(in_expr)
+                    .is_in(lhs_expr, rhs_expr);
+                if self.mode.is_partial() {
+                    TypecheckAnswer::success(in_expr)
+                } else {
+                    // This should only happen when doing partial validation
+                    // since we never construct the undeclared action
+                    // request environment otherwise.
+                    TypecheckAnswer::fail(in_expr)
                 }
-                Some(EntityType::Specified(var_name)) => {
-                    let all_rhs_known = rhs
-                        .iter()
-                        .all(|e| self.schema.euid_has_known_entity_type(e));
-                    if self.schema.is_known_entity_type(var_name) && all_rhs_known {
-                        let descendants = self.schema.get_entity_types_in_set(rhs.iter());
-                        Typechecker::entity_in_descendants(
-                            var_name,
-                            descendants,
-                            in_expr,
-                            lhs_expr,
-                            rhs_expr,
-                        )
-                    } else {
-                        let annotated_expr =
-                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                .with_same_source_loc(in_expr)
-                                .is_in(lhs_expr, rhs_expr);
-                        if self.mode.is_partial() {
-                            // In partial schema mode, undeclared entity types are
-                            // expected.
-                            TypecheckAnswer::success(annotated_expr)
+            }
+            Some(EntityType::Specified(var_name)) => {
+                match Typechecker::euids_from_euid_literals_or_action(request_env, rhs_elems) {
+                    Some(rhs) => {
+                        let all_rhs_known = rhs
+                            .iter()
+                            .all(|e| self.schema.euid_has_known_entity_type(e));
+                        if self.schema.is_known_entity_type(var_name) && all_rhs_known {
+                            let descendants = self.schema.get_entity_types_in_set(rhs.iter());
+                            Typechecker::entity_in_descendants(
+                                var_name,
+                                descendants,
+                                in_expr,
+                                lhs_expr,
+                                rhs_expr,
+                            )
                         } else {
-                            TypecheckAnswer::fail(annotated_expr)
+                            let annotated_expr =
+                                ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                    .with_same_source_loc(in_expr)
+                                    .is_in(lhs_expr, rhs_expr);
+                            if self.mode.is_partial() {
+                                // In partial schema mode, undeclared entity types are
+                                // expected.
+                                TypecheckAnswer::success(annotated_expr)
+                            } else {
+                                TypecheckAnswer::fail(annotated_expr)
+                            }
                         }
                     }
+                    None => {
+                        // One or more of the elements on the right is not an
+                        // entity literal. The `in` is still valid, so
+                        // typechecking succeeds with type Boolean.
+                        TypecheckAnswer::success(
+                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                .with_same_source_loc(in_expr)
+                                .is_in(lhs_expr, rhs_expr),
+                        )
+                    }
                 }
-                // Unspecified entities will be detected by a different part of the validator.
-                // Still return `TypecheckFail` so that typechecking is not considered successful.
-                Some(EntityType::Unspecified) => TypecheckAnswer::fail(
-                    ExprBuilder::with_data(Some(Type::primitive_boolean()))
+            }
+            Some(EntityType::Unspecified) => {
+                // It's perfectly valid for `principal` or `resource` to be `EntityType::Unspecified`.
+                // By definition, `<unspecified entity> in X` is always False for all X.
+                TypecheckAnswer::success(
+                    ExprBuilder::with_data(Some(Type::singleton_boolean(false)))
                         .with_same_source_loc(in_expr)
                         .is_in(lhs_expr, rhs_expr),
-                ),
+                )
             }
-        } else {
-            // One or more of the elements on the right is not an entity
-            // literal, so this does not apply. The `in` is still valid, so
-            // typechecking succeeds with type Boolean.
-            TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                    .with_same_source_loc(in_expr)
-                    .is_in(lhs_expr, rhs_expr),
-            )
         }
     }
 
@@ -2050,65 +2055,73 @@ impl<'a> Typechecker<'a> {
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
     ) -> TypecheckAnswer<'c> {
-        if let Some(rhs) = Typechecker::euids_from_euid_literals_or_action(request_env, rhs_elems) {
-            match lhs_euid.entity_type() {
-                EntityType::Specified(name) => {
-                    // We don't want to apply the action hierarchy check to
-                    // non-action entities, but now we have a set of entities.
-                    // We can apply the check as long as any are actions. The
-                    // non-actions are omitted from the check, but they can
-                    // never be an ancestor of `Action`.
-                    let lhs_is_action = is_action_entity_type(name);
-                    let (actions, non_actions): (Vec<_>, Vec<_>) =
-                        rhs.into_iter().partition(|e| match e.entity_type() {
-                            EntityType::Specified(e_name) => is_action_entity_type(e_name),
-                            EntityType::Unspecified => false,
-                        });
-                    if lhs_is_action && !actions.is_empty() {
-                        self.type_of_action_in_actions(
-                            lhs_euid,
-                            actions.iter(),
-                            in_expr,
-                            lhs_expr,
-                            rhs_expr,
-                        )
-                    } else if !lhs_is_action && !non_actions.is_empty() {
-                        self.type_of_non_action_in_entities(
-                            lhs_euid,
-                            &non_actions,
-                            in_expr,
-                            lhs_expr,
-                            rhs_expr,
-                        )
-                    } else {
-                        // This hard codes the assumption that `Action` can
-                        // never be a member of any other entity type, and no
-                        // other entity type can ever be a member of `Action`,
-                        // and by extension any particular action entity.
+        match lhs_euid.entity_type() {
+            EntityType::Specified(name) => {
+                // We don't want to apply the action hierarchy check to
+                // non-action entities, but now we have a set of entities.
+                // We can apply the check as long as any are actions. The
+                // non-actions are omitted from the check, but they can
+                // never be an ancestor of `Action`.
+                let lhs_is_action = is_action_entity_type(name);
+                match Typechecker::euids_from_euid_literals_or_action(request_env, rhs_elems) {
+                    Some(rhs) => {
+                        let (actions, non_actions): (Vec<_>, Vec<_>) =
+                            rhs.into_iter().partition(|e| match e.entity_type() {
+                                EntityType::Specified(e_name) => is_action_entity_type(e_name),
+                                EntityType::Unspecified => false,
+                            });
+                        if lhs_is_action && !actions.is_empty() {
+                            self.type_of_action_in_actions(
+                                lhs_euid,
+                                actions.iter(),
+                                in_expr,
+                                lhs_expr,
+                                rhs_expr,
+                            )
+                        } else if !lhs_is_action && !non_actions.is_empty() {
+                            self.type_of_non_action_in_entities(
+                                lhs_euid,
+                                &non_actions,
+                                in_expr,
+                                lhs_expr,
+                                rhs_expr,
+                            )
+                        } else {
+                            // This hard codes the assumption that `Action` can
+                            // never be a member of any other entity type, and no
+                            // other entity type can ever be a member of `Action`,
+                            // and by extension any particular action entity.
+                            TypecheckAnswer::success(
+                                ExprBuilder::with_data(Some(Type::False))
+                                    .with_same_source_loc(in_expr)
+                                    .is_in(lhs_expr, rhs_expr),
+                            )
+                        }
+                    }
+                    None => {
+                        // One or more of the elements on the right is not an
+                        // entity literal. The `in` is still valid, so
+                        // typechecking succeeds with type Boolean.
                         TypecheckAnswer::success(
-                            ExprBuilder::with_data(Some(Type::False))
+                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
                                 .with_same_source_loc(in_expr)
                                 .is_in(lhs_expr, rhs_expr),
                         )
                     }
                 }
-                // Unspecified entities will be detected by a different part of the validator.
-                // Still return `TypecheckFail` so that typechecking is not considered successful.
-                EntityType::Unspecified => TypecheckAnswer::fail(
+            }
+            EntityType::Unspecified => {
+                // This is a `TypecheckFail` because entity literals (`lhs_euid`
+                // in this case) are not allowed to have `Unspecified` type.
+                // Note that `Unspecified` entities will be detected by a
+                // different part of the validator, so all we need to do here is
+                // return `TypecheckFail`.
+                TypecheckAnswer::fail(
                     ExprBuilder::with_data(Some(Type::primitive_boolean()))
                         .with_same_source_loc(in_expr)
                         .is_in(lhs_expr, rhs_expr),
-                ),
+                )
             }
-        } else {
-            // One or more of the elements on the right is not an entity
-            // literal, so this does not apply. The `in` is still valid, so
-            // typechecking succeeds with type Boolean.
-            TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                    .with_same_source_loc(in_expr)
-                    .is_in(lhs_expr, rhs_expr),
-            )
         }
     }
 
