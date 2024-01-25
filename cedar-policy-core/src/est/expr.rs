@@ -1013,44 +1013,32 @@ impl TryFrom<&Node<Option<cst::Unary>>> for Expr {
         let u_node = u.ok_or_missing()?;
 
         match u_node.op {
-            Some(cst::NegOp::Bang(0)) => Ok((&u_node.item).try_into()?),
-            Some(cst::NegOp::Bang(1)) => Ok(Expr::not((&u_node.item).try_into()?)),
-            Some(cst::NegOp::Bang(2)) => {
-                // not safe to collapse !! to nothing
-                Ok(Expr::not(Expr::not((&u_node.item).try_into()?)))
-            }
-            Some(cst::NegOp::Bang(n)) => {
-                if n % 2 == 0 {
-                    // safe to collapse to !! but not to nothing
-                    Ok(Expr::not(Expr::not((&u_node.item).try_into()?)))
-                } else {
-                    // safe to collapse to !
-                    Ok(Expr::not((&u_node.item).try_into()?))
+            Some(cst::NegOp::Bang(num_bangs)) => {
+                let inner = (&u_node.item).try_into()?;
+                match num_bangs {
+                    0 => Ok(inner),
+                    1 => Ok(Expr::not(inner)),
+                    2 => Ok(Expr::not(Expr::not(inner))),
+                    3 => Ok(Expr::not(Expr::not(Expr::not(inner)))),
+                    4 => Ok(Expr::not(Expr::not(Expr::not(Expr::not(inner))))),
+                    _ => Err(u
+                        .to_ast_err(ToASTErrorKind::UnaryOpLimit(ast::UnaryOp::Neg))
+                        .into()),
                 }
             }
             Some(cst::NegOp::Dash(0)) => Ok((&u_node.item).try_into()?),
             Some(cst::NegOp::Dash(mut num_dashes)) => {
-                let inner = match &u_node.item {
-                    Node {
-                        node:
-                            Some(cst::Member {
-                                item:
-                                    Node {
-                                        node:
-                                            Some(cst::Primary::Literal(Node {
-                                                node: Some(cst::Literal::Num(x)),
-                                                ..
-                                            })),
-                                        ..
-                                    },
-                                access,
-                            }),
-                        ..
-                    } if access.is_empty()
-                        && (x
+                //
+                // && (x
+                //     .checked_sub(1)
+                //     .map(|y| y == InputInteger::MAX as u64)
+                //     .unwrap_or(false)) =>
+                let inner = match &u_node.item.to_lit() {
+                    Some(cst::Literal::Num(num))
+                        if num
                             .checked_sub(1)
                             .map(|y| y == InputInteger::MAX as u64)
-                            .unwrap_or(false)) =>
+                            .unwrap_or(false) =>
                     {
                         num_dashes -= 1;
                         Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(InputInteger::MIN)))
