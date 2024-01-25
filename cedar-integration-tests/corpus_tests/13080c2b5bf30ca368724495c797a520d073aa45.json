@@ -22,7 +22,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected set, got long"
+        "policy0"
       ]
     },
     {
@@ -43,7 +43,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected set, got long"
+        "policy0"
       ]
     },
     {
@@ -64,7 +64,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected set, got long"
+        "policy0"
       ]
     },
     {
@@ -85,7 +85,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected set, got long"
+        "policy0"
       ]
     },
     {
@@ -106,7 +106,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected set, got long"
+        "policy0"
       ]
     },
     {
@@ -127,7 +127,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected set, got long"
+        "policy0"
       ]
     },
     {
@@ -148,7 +148,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected set, got long"
+        "policy0"
       ]
     },
     {
@@ -169,7 +169,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected set, got long"
+        "policy0"
       ]
     }
   ]

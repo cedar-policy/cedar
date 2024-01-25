@@ -45,8 +45,8 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: cannot access attribute `department` of unspecified entity",
-        "while evaluating policy `policy2`: cannot access attribute `jobLevel` of unspecified entity"
+        "policy0",
+        "policy2"
       ]
     },
     {
@@ -90,7 +90,7 @@
         "policy1"
       ],
       "errors": [
-        "while evaluating policy `policy2`: cannot access attribute `jobLevel` of unspecified entity"
+        "policy2"
       ]
     },
     {

@@ -22,7 +22,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected bool, got string"
+        "policy0"
       ]
     },
     {
@@ -43,7 +43,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected bool, got string"
+        "policy0"
       ]
     },
     {
@@ -64,7 +64,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected bool, got string"
+        "policy0"
       ]
     },
     {

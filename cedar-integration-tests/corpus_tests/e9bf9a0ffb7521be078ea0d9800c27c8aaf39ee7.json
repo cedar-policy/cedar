@@ -22,7 +22,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected long, got bool"
+        "policy0"
       ]
     },
     {

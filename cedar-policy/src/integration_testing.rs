@@ -33,76 +33,78 @@
 #![allow(clippy::expect_used)]
 
 use crate::{
-    frontend::is_authorized::InterfaceResponse, Authorizer, Context, Decision, Entities, EntityUid,
-    Policy, PolicyId, PolicySet, Request, Schema, ValidationMode, Validator,
+    frontend::is_authorized::InterfaceResponse, AuthorizationError, Authorizer, Context, Decision,
+    Entities, EntityUid, Policy, PolicyId, PolicySet, Request, Schema, ValidationMode, Validator,
 };
 use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashSet,
     env,
     path::{Path, PathBuf},
     str::FromStr,
 };
 
 /// JSON representation of our integration test file format
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct JsonTest {
     /// Filename of the policies to use (in pure Cedar syntax)
-    policies: String,
+    pub policies: String,
     /// Filename of a JSON file representing the entity hierarchy
-    entities: String,
+    pub entities: String,
     /// Filename of a JSON file containing the schema.
-    schema: String,
+    pub schema: String,
     /// Whether the given policies are expected to pass the validator with this
     /// schema, or not
-    should_validate: bool,
+    pub should_validate: bool,
     /// Requests to perform on that data, along with their expected results
     /// Alias for backwards compatibility
     #[serde(alias = "queries")]
-    requests: Vec<JsonRequest>,
+    pub requests: Vec<JsonRequest>,
 }
 
 /// JSON representation of a single request, along with its expected result,
 /// in our integration test file format
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct JsonRequest {
     /// Description for the request
-    desc: String,
+    pub desc: String,
     /// Principal for the request, in either explicit or implicit `__entity` form
     ///
     /// Examples:
     /// * `{ "__entity": { "type": "User", "id": "123abc" } }`
     /// * `{ "type": "User", "id": "123abc" }`
     #[serde(default)]
-    principal: Option<JsonValueWithNoDuplicateKeys>,
+    pub principal: Option<JsonValueWithNoDuplicateKeys>,
     /// Action for the request, in either explicit or implicit `__entity` form
     ///
     /// Examples:
     /// * `{ "__entity": { "type": "Action", "id": "view" } }`
     /// * `{ "type": "Action", "id": "view" }`
     #[serde(default)]
-    action: Option<JsonValueWithNoDuplicateKeys>,
+    pub action: Option<JsonValueWithNoDuplicateKeys>,
     /// Resource for the request, in either explicit or implicit `__entity` form
     ///
     /// Examples:
     /// * `{ "__entity": { "type": "User", "id": "123abc" } }`
     /// * `{ "type": "User", "id": "123abc" }`
     #[serde(default)]
-    resource: Option<JsonValueWithNoDuplicateKeys>,
+    pub resource: Option<JsonValueWithNoDuplicateKeys>,
     /// Context for the request. This should be a JSON object, not any other kind
     /// of JSON value
-    context: JsonValueWithNoDuplicateKeys,
+    pub context: JsonValueWithNoDuplicateKeys,
     /// Whether to enable request validation for this request
     #[serde(default = "constant_true")]
-    enable_request_validation: bool,
+    pub enable_request_validation: bool,
     /// Expected decision for the request
-    decision: Decision,
-    /// Expected "reasons" for the request
-    reasons: Vec<String>,
-    /// Expected error/warning messages for the request
-    errors: Vec<String>,
+    pub decision: Decision,
+    /// Expected policies that led to the decision
+    #[serde(alias = "reasons")]
+    pub reason: Vec<PolicyId>,
+    /// Expected policies that resulted in errors
+    pub errors: Vec<PolicyId>,
 }
 
 fn constant_true() -> bool {
@@ -213,9 +215,8 @@ pub fn perform_integration_test_from_json_custom(
     // of the expected type.
     let policies_res = PolicySet::from_str(&policies_text);
     if let Err(parse_errs) = policies_res {
-        // We may see a `NotAFunction` parse error for auto-generated policies:
-        // See the comment in the `ExtensionFunctionApp` case of the `Display`
-        // implementation for `Expr` in ast/exprs.rs.
+        // We may see a `NotAFunction` parse error for programmatically generated
+        // policies, which are not guaranteed to be parsable
         for json_request in test.requests {
             assert_eq!(
                 json_request.decision,
@@ -334,41 +335,61 @@ pub fn perform_integration_test_from_json_custom(
                 jsonfile.display()
             )
         });
-        let response = if let Some(custom_impl) = custom_impl_opt {
-            custom_impl.is_authorized(&request.0, &policies.ast, &entities.0)
-        } else {
-            Authorizer::new()
-                .is_authorized(&request, &policies, &entities)
-                .into()
-        };
 
-        let expected_errors = if custom_impl_opt.is_some() {
-            // errors may not exactly match when using a custom implementation, so ignore
-            response
+        if let Some(custom_impl) = custom_impl_opt {
+            let response = custom_impl.is_authorized(&request.0, &policies.ast, &entities.0);
+            // check decision
+            assert_eq!(
+                response.decision(),
+                json_request.decision,
+                "test {} failed for request \"{}\": unexpected decision",
+                jsonfile.display(),
+                &json_request.desc
+            );
+            // check reasons
+            let reasons: HashSet<PolicyId> = response.diagnostics().reason().cloned().collect();
+            assert_eq!(
+                reasons,
+                json_request.reason.into_iter().collect(),
+                "test {} failed for request \"{}\": unexpected reasons",
+                jsonfile.display(),
+                &json_request.desc
+            );
+            // ignore errors (#586)
+        } else {
+            let response = Authorizer::new().is_authorized(&request, &policies, &entities);
+            // check decision
+            assert_eq!(
+                response.decision(),
+                json_request.decision,
+                "test {} failed for request \"{}\": unexpected decision",
+                jsonfile.display(),
+                &json_request.desc
+            );
+            // check reasons
+            let reasons: HashSet<PolicyId> = response.diagnostics().reason().cloned().collect();
+            assert_eq!(
+                reasons,
+                json_request.reason.into_iter().collect(),
+                "test {} failed for request \"{}\": unexpected reasons",
+                jsonfile.display(),
+                &json_request.desc
+            );
+            // check errors
+            let errors: HashSet<PolicyId> = response
                 .diagnostics()
                 .errors()
-                .map(std::string::ToString::to_string)
-                .collect()
-        } else {
-            json_request.errors.into_iter().collect()
+                .map(AuthorizationError::id)
+                .cloned()
+                .collect();
+            assert_eq!(
+                errors,
+                json_request.errors.into_iter().collect(),
+                "test {} failed for request \"{}\": unexpected errors",
+                jsonfile.display(),
+                &json_request.desc
+            );
         };
-        let expected_response = InterfaceResponse::new(
-            json_request.decision,
-            json_request
-                .reasons
-                .into_iter()
-                .map(|s| PolicyId::from_str(&s).unwrap())
-                .collect(),
-            expected_errors,
-        );
-
-        assert_eq!(
-            response,
-            expected_response,
-            "test {} failed for request \"{}\"",
-            jsonfile.display(),
-            &json_request.desc
-        );
 
         // test that EST roundtrip works for this policy set
         // we can't test that the roundtrip produces the same policies exactly
