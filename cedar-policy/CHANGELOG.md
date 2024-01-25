@@ -60,6 +60,7 @@ method checks the request against the schema provided and the
 - The entity type tested for by an `is` expression may be an identifier shared
   with a builtin variable. E.g., `... is principal` and `... is action` are now
   accepted by the Cedar parser. (#558)
+- Policies containing the literal `i64::MIN` can now be properly converted to JSON ESTs (#601, resolving #596)
 
 ## [3.0.1] - 2023-12-21
 Cedar Language Version: 3.0.0

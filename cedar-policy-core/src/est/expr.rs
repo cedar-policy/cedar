@@ -1011,25 +1011,35 @@ impl TryFrom<&Node<Option<cst::Unary>>> for Expr {
     type Error = ParseErrors;
     fn try_from(u: &Node<Option<cst::Unary>>) -> Result<Expr, ParseErrors> {
         let u_node = u.ok_or_missing()?;
-        let inner = (&u_node.item).try_into()?;
+
         match u_node.op {
-            Some(cst::NegOp::Bang(0)) => Ok(inner),
-            Some(cst::NegOp::Bang(1)) => Ok(Expr::not(inner)),
-            Some(cst::NegOp::Bang(2)) => {
-                // not safe to collapse !! to nothing
-                Ok(Expr::not(Expr::not(inner)))
-            }
-            Some(cst::NegOp::Bang(n)) => {
-                if n % 2 == 0 {
-                    // safe to collapse to !! but not to nothing
-                    Ok(Expr::not(Expr::not(inner)))
-                } else {
-                    // safe to collapse to !
-                    Ok(Expr::not(inner))
+            Some(cst::NegOp::Bang(num_bangs)) => {
+                let inner = (&u_node.item).try_into()?;
+                match num_bangs {
+                    0 => Ok(inner),
+                    1 => Ok(Expr::not(inner)),
+                    2 => Ok(Expr::not(Expr::not(inner))),
+                    3 => Ok(Expr::not(Expr::not(Expr::not(inner)))),
+                    4 => Ok(Expr::not(Expr::not(Expr::not(Expr::not(inner))))),
+                    _ => Err(u
+                        .to_ast_err(ToASTErrorKind::UnaryOpLimit(ast::UnaryOp::Not))
+                        .into()),
                 }
             }
-            Some(cst::NegOp::Dash(0)) => Ok(inner),
+            Some(cst::NegOp::Dash(0)) => Ok((&u_node.item).try_into()?),
             Some(cst::NegOp::Dash(mut num_dashes)) => {
+                let inner = match &u_node.item.to_lit() {
+                    Some(cst::Literal::Num(num))
+                        if num
+                            .checked_sub(1)
+                            .map(|y| y == InputInteger::MAX as u64)
+                            .unwrap_or(false) =>
+                    {
+                        num_dashes -= 1;
+                        Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(InputInteger::MIN)))
+                    }
+                    _ => (&u_node.item).try_into()?,
+                };
                 let inner = match inner {
                     Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(n)))
                         if n != InputInteger::MIN =>
@@ -1048,15 +1058,11 @@ impl TryFrom<&Node<Option<cst::Unary>>> for Expr {
                         // not safe to collapse `--` to nothing
                         Ok(Expr::neg(Expr::neg(inner)))
                     }
-                    n => {
-                        if n % 2 == 0 {
-                            // safe to collapse to `--` but not to nothing
-                            Ok(Expr::neg(Expr::neg(inner)))
-                        } else {
-                            // safe to collapse to -
-                            Ok(Expr::neg(inner))
-                        }
-                    }
+                    3 => Ok(Expr::neg(Expr::neg(Expr::neg(inner)))),
+                    4 => Ok(Expr::neg(Expr::neg(Expr::neg(Expr::neg(inner))))),
+                    _ => Err(u
+                        .to_ast_err(ToASTErrorKind::UnaryOpLimit(ast::UnaryOp::Neg))
+                        .into()),
                 }
             }
             Some(cst::NegOp::OverBang) => Err(u
@@ -1065,7 +1071,7 @@ impl TryFrom<&Node<Option<cst::Unary>>> for Expr {
             Some(cst::NegOp::OverDash) => Err(u
                 .to_ast_err(ToASTErrorKind::UnaryOpLimit(ast::UnaryOp::Neg))
                 .into()),
-            None => Ok(inner),
+            None => Ok((&u_node.item).try_into()?),
         }
     }
 }
