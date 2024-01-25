@@ -1022,17 +1022,12 @@ impl TryFrom<&Node<Option<cst::Unary>>> for Expr {
                     3 => Ok(Expr::not(Expr::not(Expr::not(inner)))),
                     4 => Ok(Expr::not(Expr::not(Expr::not(Expr::not(inner))))),
                     _ => Err(u
-                        .to_ast_err(ToASTErrorKind::UnaryOpLimit(ast::UnaryOp::Neg))
+                        .to_ast_err(ToASTErrorKind::UnaryOpLimit(ast::UnaryOp::Not))
                         .into()),
                 }
             }
             Some(cst::NegOp::Dash(0)) => Ok((&u_node.item).try_into()?),
             Some(cst::NegOp::Dash(mut num_dashes)) => {
-                //
-                // && (x
-                //     .checked_sub(1)
-                //     .map(|y| y == InputInteger::MAX as u64)
-                //     .unwrap_or(false)) =>
                 let inner = match &u_node.item.to_lit() {
                     Some(cst::Literal::Num(num))
                         if num
