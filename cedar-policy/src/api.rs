@@ -741,6 +741,7 @@ pub enum AuthorizationError {
     #[error("while evaluating policy `{id}`: {error}")]
     PolicyEvaluationError {
         /// Id of the policy with an error
+        #[doc(hidden)]
         id: ast::PolicyID,
         /// Underlying evaluation error
         #[diagnostic(transparent)]
