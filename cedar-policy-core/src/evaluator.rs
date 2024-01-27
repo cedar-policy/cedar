@@ -339,10 +339,11 @@ impl<'e> Evaluator<'e> {
             ExprKind::BinaryApp { op, arg1, arg2 } => {
                 let (arg1, arg2) = (self.interpret(arg1, slots)?, self.interpret(arg2, slots)?);
                 // Borrow from cedar-spec
-                match (&arg1, &arg2, op) {
-                    (arg1, arg2, BinaryOp::Eq) => Ok((arg1 == arg2).into()),
+                match (op, &arg1, &arg2) {
+                    (BinaryOp::Eq, arg1, arg2) => Ok((arg1 == arg2).into()),
                     // comparison and arithmetic operators, which only work on Longs
                     (
+                        BinaryOp::Less,
                         Value {
                             value: ValueKind::Lit(Literal::Long(i1)),
                             ..
@@ -351,9 +352,9 @@ impl<'e> Evaluator<'e> {
                             value: ValueKind::Lit(Literal::Long(i2)),
                             ..
                         },
-                        BinaryOp::Less,
                     ) => Ok((i1 < i2).into()),
                     (
+                        BinaryOp::LessEq,
                         Value {
                             value: ValueKind::Lit(Literal::Long(i1)),
                             ..
@@ -362,10 +363,10 @@ impl<'e> Evaluator<'e> {
                             value: ValueKind::Lit(Literal::Long(i2)),
                             ..
                         },
-                        BinaryOp::LessEq,
                     ) => Ok((i1 <= i2).into()),
                     // arithmetic
                     (
+                        BinaryOp::Add,
                         Value {
                             value: ValueKind::Lit(Literal::Long(i1)),
                             ..
@@ -374,7 +375,6 @@ impl<'e> Evaluator<'e> {
                             value: ValueKind::Lit(Literal::Long(i2)),
                             ..
                         },
-                        BinaryOp::Add,
                     ) => i1.checked_add(*i2).map(Value::from).ok_or_else(|| {
                         EvaluationError::integer_overflow(
                             IntegerOverflowError::BinaryOp {
@@ -386,6 +386,7 @@ impl<'e> Evaluator<'e> {
                         )
                     }),
                     (
+                        BinaryOp::Sub,
                         Value {
                             value: ValueKind::Lit(Literal::Long(i1)),
                             ..
@@ -394,7 +395,6 @@ impl<'e> Evaluator<'e> {
                             value: ValueKind::Lit(Literal::Long(i2)),
                             ..
                         },
-                        BinaryOp::Sub,
                     ) => i1.checked_sub(*i2).map(Value::from).ok_or_else(|| {
                         EvaluationError::integer_overflow(
                             IntegerOverflowError::BinaryOp {
@@ -406,10 +406,10 @@ impl<'e> Evaluator<'e> {
                         )
                     }),
                     // this pattern should match all type errors for integer binary ops
-                    (_, _, BinaryOp::Less)
-                    | (_, _, BinaryOp::LessEq)
-                    | (_, _, BinaryOp::Add)
-                    | (_, _, BinaryOp::Sub) => {
+                    (BinaryOp::Less, _, _)
+                    | (BinaryOp::LessEq, _, _)
+                    | (BinaryOp::Add, _, _)
+                    | (BinaryOp::Sub, _, _) => {
                         let culprit = if arg1.get_as_long().is_err() {
                             arg1
                         } else {
@@ -423,12 +423,12 @@ impl<'e> Evaluator<'e> {
                     }
                     // hierarchy membership operator; see note on `BinaryOp::In`
                     (
+                        BinaryOp::In,
                         Value {
                             value: ValueKind::Lit(Literal::EntityUID(uid1)),
                             ..
                         },
                         _,
-                        BinaryOp::In,
                     ) => {
                         match self.entities.entity(&uid1) {
                             Dereference::Residual(r) => Ok(PartialValue::Residual(
@@ -440,12 +440,12 @@ impl<'e> Evaluator<'e> {
                         }
                     }
                     (
+                        BinaryOp::In,
                         _,
                         Value {
                             value: ValueKind::Set(_),
                             ..
                         },
-                        BinaryOp::In,
                     ) => Err(EvaluationError::type_error_with_advice(
                         nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
                         &arg1,
@@ -455,12 +455,12 @@ impl<'e> Evaluator<'e> {
                             .into(),
                     )),
                     (
+                        BinaryOp::In,
                         _,
                         Value {
                             value: ValueKind::Record(_),
                             ..
                         },
-                        BinaryOp::In,
                     ) => Err(EvaluationError::type_error_with_advice(
                         nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
                         &arg1,
@@ -469,13 +469,13 @@ impl<'e> Evaluator<'e> {
                         use `has` to test if a record has a key"
                             .into(),
                     )),
-                    (_, _, BinaryOp::In) => Err(EvaluationError::type_error_with_advice(
+                    (BinaryOp::In, _, _) => Err(EvaluationError::type_error_with_advice(
                         nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
                         &arg1,
                         "the LHS of `in` should be an entity".into(),
                     )),
                     // contains, which works on Sets
-                    (_, _, BinaryOp::Contains) => match arg1.value {
+                    (BinaryOp::Contains, _, _) => match arg1.value {
                         ValueKind::Set(Set { fast: Some(h), .. }) => Ok(arg2
                             .try_as_lit()
                             .map_or(false, |lit| h.contains(lit))
@@ -488,6 +488,7 @@ impl<'e> Evaluator<'e> {
                     },
                     // ContainsAll and ContainsAny, which work on Sets
                     (
+                        BinaryOp::ContainsAll,
                         Value {
                             value:
                                 ValueKind::Set(Set {
@@ -504,9 +505,9 @@ impl<'e> Evaluator<'e> {
                                 }),
                             ..
                         },
-                        BinaryOp::ContainsAll,
                     ) => Ok((arg2_set.is_subset(&arg1_set)).into()),
                     (
+                        BinaryOp::ContainsAny,
                         Value {
                             value:
                                 ValueKind::Set(Set {
@@ -523,9 +524,9 @@ impl<'e> Evaluator<'e> {
                                 }),
                             ..
                         },
-                        BinaryOp::ContainsAny,
                     ) => Ok((arg2_set.is_disjoint(&arg1_set)).into()),
                     (
+                        BinaryOp::ContainsAll,
                         Value {
                             value: ValueKind::Set(arg1_set),
                             ..
@@ -534,13 +535,13 @@ impl<'e> Evaluator<'e> {
                             value: ValueKind::Set(arg2_set),
                             ..
                         },
-                        BinaryOp::ContainsAll,
                     ) => Ok(arg2_set
                         .authoritative
                         .iter()
                         .all(|item| arg1_set.authoritative.contains(item))
                         .into()),
                     (
+                        BinaryOp::ContainsAny,
                         Value {
                             value: ValueKind::Set(arg1_set),
                             ..
@@ -549,13 +550,12 @@ impl<'e> Evaluator<'e> {
                             value: ValueKind::Set(arg2_set),
                             ..
                         },
-                        BinaryOp::ContainsAny,
                     ) => Ok(arg1_set
                         .authoritative
                         .iter()
                         .any(|item| arg2_set.authoritative.contains(item))
                         .into()),
-                    (_, _, BinaryOp::ContainsAll) | (_, _, BinaryOp::ContainsAny) => {
+                    (BinaryOp::ContainsAll, _, _) | (BinaryOp::ContainsAny, _, _) => {
                         let culprit = if arg1.get_as_set().is_err() {
                             arg1
                         } else {
@@ -598,9 +598,7 @@ impl<'e> Evaluator<'e> {
             ExprKind::GetAttr { expr, attr } => {
                 self.get_attr(self.interpret(expr, slots)?, attr, loc)
             }
-            ExprKind::HasAttr { expr, attr } => {
-                self.has_attr(self.interpret(expr, slots)?, attr, loc)
-            }
+            ExprKind::HasAttr { expr, attr } => self.has_attr(self.interpret(expr, slots)?, attr),
             ExprKind::Like { expr, pattern } => {
                 let v = self.interpret(expr, slots)?.get_as_string()?.clone();
                 Ok((pattern.wildcard_match(&v)).into())
@@ -943,7 +941,7 @@ impl<'e> Evaluator<'e> {
                 self.get_attr_partial(expr.as_ref(), attr, slots, loc)
             }
             ExprKind::HasAttr { expr, attr } => match self.partial_interpret(expr, slots)? {
-                PartialValue::Value(val) => Ok(self.has_attr(val, attr, loc)?.into()),
+                PartialValue::Value(val) => Ok(self.has_attr(val, attr)?.into()),
                 PartialValue::Residual(r) => Ok(Expr::has_attr(r, attr.clone()).into()),
             },
             ExprKind::Like { expr, pattern } => {
@@ -1063,7 +1061,7 @@ impl<'e> Evaluator<'e> {
         }
     }
 
-    fn has_attr(&self, val: Value, attr: &SmolStr, source_loc: Option<&Loc>) -> Result<Value> {
+    fn has_attr(&self, val: Value, attr: &SmolStr) -> Result<Value> {
         match val {
             Value {
                 value: ValueKind::Record(record),
