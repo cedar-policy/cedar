@@ -732,6 +732,33 @@ impl Authorizer {
             authorizer::ResponseKind::Partial(p) => PartialResponse::Residual(p.into()),
         }
     }
+
+    /// Evaluate an authorization request and respond with results that always includes
+    /// residuals even if the [`Authorizer`] already reached a decision.
+    #[cfg(feature = "partial-eval")]
+    pub fn evaluate_policies_partial(
+        &self,
+        query: &Request,
+        policy_set: &PolicySet,
+        entities: &Entities,
+    ) -> EvaluationResponse {
+        let authorizer::EvaluationResponse {
+            satisfied_permits,
+            satisfied_forbids,
+            errors,
+            permit_residuals,
+            forbid_residuals,
+        } = self
+            .0
+            .evaluate_policies(&policy_set.ast, query.0.clone(), &entities.0);
+        EvaluationResponse {
+            satisfied_permits: satisfied_permits.into_iter().map(PolicyId).collect(),
+            satisfied_forbids: satisfied_forbids.into_iter().map(PolicyId).collect(),
+            errors,
+            permit_residuals: PolicySet::from_ast(permit_residuals),
+            forbid_residuals: PolicySet::from_ast(forbid_residuals),
+        }
+    }
 }
 
 /// Errors that can occur during authorization
@@ -797,6 +824,22 @@ pub struct ResidualResponse {
     residuals: PolicySet,
     /// Diagnostics
     diagnostics: Diagnostics,
+}
+
+/// A policy evaluation response obtained from `evaluate_policies_partial`.
+#[cfg(feature = "partial-eval")]
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct EvaluationResponse {
+    /// `PolicyId`s of fully evaluated policies with a permit [`Effect`]
+    satisfied_permits: HashSet<PolicyId>,
+    /// `PolicyId`s of fully evaluated policies with a forbid [`Effect`]
+    satisfied_forbids: HashSet<PolicyId>,
+    /// Errors that occurred during policy evaluation.
+    errors: Vec<AuthorizationError>,
+    /// Partially evaluated policies with a permit [`Effect`]
+    permit_residuals: PolicySet,
+    /// Partially evaluated policies with a forbid [`Effect`]
+    forbid_residuals: PolicySet,
 }
 
 /// Diagnostics providing more information on how a `Decision` was reached
@@ -1005,6 +1048,51 @@ impl From<authorizer::PartialResponse> for ResidualResponse {
             residuals: PolicySet::from_ast(p.residuals),
             diagnostics: p.diagnostics.into(),
         }
+    }
+}
+
+#[cfg(feature = "partial-eval")]
+impl EvaluationResponse {
+    /// Create a new `EvaluationResponse`.
+    pub fn new(
+        satisfied_permits: HashSet<PolicyId>,
+        satisfied_forbids: HashSet<PolicyId>,
+        errors: Vec<AuthorizationError>,
+        permit_residuals: PolicySet,
+        forbid_residuals: PolicySet,
+    ) -> Self {
+        Self {
+            satisfied_permits,
+            satisfied_forbids,
+            errors,
+            permit_residuals,
+            forbid_residuals,
+        }
+    }
+
+    /// Get the `PolicyId`s of fully evaluated policies with a permit [`Effect`].
+    pub fn satisfied_permits(&self) -> impl Iterator<Item = &PolicyId> {
+        self.satisfied_permits.iter()
+    }
+
+    /// Get the `PolicyId`s of fully evaluated policies with a forbid [`Effect`].
+    pub fn satisfied_forbids(&self) -> impl Iterator<Item = &PolicyId> {
+        self.satisfied_forbids.iter()
+    }
+
+    /// Get the redisual policies with a permit [`Effect`].
+    pub fn permit_residuals(&self) -> &PolicySet {
+        &self.permit_residuals
+    }
+
+    /// Get the redisual policies with a permit [`Effect`].
+    pub fn forbid_residuals(&self) -> &PolicySet {
+        &self.forbid_residuals
+    }
+
+    /// Get the evaluation errors.
+    pub fn errors(&self) -> impl Iterator<Item = &AuthorizationError> {
+        self.errors.iter()
     }
 }
 

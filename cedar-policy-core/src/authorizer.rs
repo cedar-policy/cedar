@@ -165,9 +165,7 @@ impl Authorizer {
         pset: &PolicySet,
         entities: &Entities,
     ) -> ResponseKind {
-        let eval = Evaluator::new(q, entities, &self.extensions);
-
-        let results = self.evaluate_policies(pset, eval);
+        let results = self.evaluate_policies_core(pset, q, entities);
 
         let errors = results
             .errors
@@ -273,11 +271,56 @@ impl Authorizer {
         }
     }
 
-    fn evaluate_policies<'a>(
+    /// Returns a policy evaluation response for `q`.
+    pub fn evaluate_policies(
+        &self,
+        pset: &PolicySet,
+        q: Request,
+        entities: &Entities,
+    ) -> EvaluationResponse {
+        let EvaluationResults {
+            satisfied_permits,
+            satisfied_forbids,
+            global_deny_policies: _,
+            errors,
+            permit_residuals,
+            forbid_residuals,
+        } = self.evaluate_policies_core(pset, q, entities);
+
+        let errors = errors
+            .into_iter()
+            .map(|(pid, err)| AuthorizationError::PolicyEvaluationError {
+                id: pid,
+                error: err,
+            })
+            .collect();
+
+        let satisfied_permits = satisfied_permits.iter().map(|p| p.id().clone()).collect();
+        let satisfied_forbids = satisfied_forbids.iter().map(|p| p.id().clone()).collect();
+
+        // PANIC SAFETY all policy IDs in the original policy are unique by construction
+        #[allow(clippy::unwrap_used)]
+        let permit_residuals = PolicySet::try_from_iter(permit_residuals).unwrap();
+        // PANIC SAFETY all policy IDs in the original policy are unique by construction
+        #[allow(clippy::unwrap_used)]
+        let forbid_residuals = PolicySet::try_from_iter(forbid_residuals).unwrap();
+
+        EvaluationResponse {
+            satisfied_permits,
+            satisfied_forbids,
+            errors,
+            permit_residuals,
+            forbid_residuals,
+        }
+    }
+
+    fn evaluate_policies_core<'a>(
         &'a self,
         pset: &'a PolicySet,
-        eval: Evaluator<'_>,
+        q: Request,
+        entities: &Entities,
     ) -> EvaluationResults<'a> {
+        let eval = Evaluator::new(q, entities, &self.extensions);
         let mut results = EvaluationResults::default();
         let mut satisfied_policies = vec![];
 
@@ -628,8 +671,18 @@ mod test {
         pset.add_static(parser::parse_policy(Some("3".to_string()), src3).unwrap())
             .unwrap();
 
-        let r = a.is_authorized_core(q, &pset, &es).decision();
+        let r = a.is_authorized_core(q.clone(), &pset, &es).decision();
         assert_eq!(r, Some(Decision::Allow));
+
+        let r = a.evaluate_policies(&pset, q, &es);
+        assert!(r.satisfied_permits.contains(&PolicyID::from_string("1")));
+        assert!(r.satisfied_forbids.is_empty());
+        assert!(r
+            .permit_residuals
+            .get(&PolicyID::from_string("3"))
+            .is_some());
+        assert!(r.forbid_residuals.is_empty());
+        assert!(r.errors.is_empty());
     }
 
     #[test]
@@ -687,10 +740,20 @@ mod test {
                     )
                 });
                 let pset = PolicySet::try_from_iter(new).unwrap();
-                let r = a.is_authorized(q, &pset, &es);
+                let r = a.is_authorized(q.clone(), &pset, &es);
                 assert_eq!(r.decision, Decision::Deny);
             }
         }
+
+        let r = a.evaluate_policies(&pset, q, &es);
+        assert!(r.satisfied_permits.contains(&PolicyID::from_string("1")));
+        assert!(r.satisfied_forbids.is_empty());
+        assert!(r.errors.is_empty());
+        assert!(r.permit_residuals.is_empty());
+        assert!(r
+            .forbid_residuals
+            .get(&PolicyID::from_string("2"))
+            .is_some());
     }
 
     #[test]
@@ -740,8 +803,18 @@ mod test {
             .unwrap();
         pset.add_static(parser::parse_policy(Some("4".into()), src4).unwrap())
             .unwrap();
-        let r = a.is_authorized_core(q, &pset, &es);
+        let r = a.is_authorized_core(q.clone(), &pset, &es);
         assert_eq!(r.decision(), Some(Decision::Deny));
+
+        let r = a.evaluate_policies(&pset, q, &es);
+        assert!(r.satisfied_permits.contains(&PolicyID::from_string("4")));
+        assert!(r.satisfied_forbids.contains(&PolicyID::from_string("3")));
+        assert!(r.errors.is_empty());
+        assert!(r.permit_residuals.is_empty());
+        assert!(r
+            .forbid_residuals
+            .get(&PolicyID::from_string("2"))
+            .is_some());
     }
 
     #[test]
@@ -808,8 +881,18 @@ mod test {
 
         pset.add_static(parser::parse_policy(Some("3".into()), src3).unwrap())
             .unwrap();
-        let r = a.is_authorized_core(q, &pset, &es);
+        let r = a.is_authorized_core(q.clone(), &pset, &es);
         assert_eq!(r.decision(), Some(Decision::Deny));
+
+        let r = a.evaluate_policies(&pset, q, &es);
+        assert!(r.satisfied_permits.is_empty());
+        assert!(r.satisfied_forbids.contains(&PolicyID::from_string("3")));
+        assert!(r.errors.is_empty());
+        assert!(r
+            .permit_residuals
+            .get(&PolicyID::from_string("2"))
+            .is_some());
+        assert!(r.forbid_residuals.is_empty());
     }
 }
 // by default, Coverlay does not track coverage for lines after a line
@@ -848,6 +931,21 @@ impl PartialResponse {
             diagnostics: Diagnostics { reason, errors },
         }
     }
+}
+
+/// Policy evaluation response returned from the `Authorizer`.
+#[derive(Debug, PartialEq, Clone)]
+pub struct EvaluationResponse {
+    /// `PolicyID`s of the fully evaluated policies with a permit [`Effect`].
+    pub satisfied_permits: HashSet<PolicyID>,
+    /// `PolicyID`s of the fully evaluated policies with a forbid [`Effect`].
+    pub satisfied_forbids: HashSet<PolicyID>,
+    /// List of errors that occurred
+    pub errors: Vec<AuthorizationError>,
+    /// Residual policies with a permit [`Effect`].
+    pub permit_residuals: PolicySet,
+    /// Residual policies with a forbid [`Effect`].
+    pub forbid_residuals: PolicySet,
 }
 
 /// Diagnostics providing more information on how a `Decision` was reached
