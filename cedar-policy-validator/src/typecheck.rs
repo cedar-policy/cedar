@@ -2030,6 +2030,16 @@ impl<'a> Typechecker<'a> {
                     }
                 }
             }
+            (Some(EntityType::Specified(_)), None) => {
+                // One or more of the elements on the right is not an entity
+                // literal. The `in` is still valid, so typechecking succeeds
+                // with type Boolean.
+                TypecheckAnswer::success(
+                    ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                        .with_same_source_loc(in_expr)
+                        .is_in(lhs_expr, rhs_expr),
+                )
+            }
             (Some(EntityType::Unspecified), Some(rhs)) => {
                 // It's perfectly valid for `principal` or `resource` to be `EntityType::Unspecified`
                 if rhs
@@ -2073,16 +2083,6 @@ impl<'a> Typechecker<'a> {
                             .is_in(lhs_expr, rhs_expr),
                     )
                 }
-            }
-            (Some(EntityType::Specified(_)), None) => {
-                // One or more of the elements on the right is not an entity
-                // literal. The `in` is still valid, so typechecking succeeds
-                // with type Boolean.
-                TypecheckAnswer::success(
-                    ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                        .with_same_source_loc(in_expr)
-                        .is_in(lhs_expr, rhs_expr),
-                )
             }
         }
     }
