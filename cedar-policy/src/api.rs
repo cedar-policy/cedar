@@ -754,7 +754,7 @@ impl Authorizer {
         EvaluationResponse {
             satisfied_permits: satisfied_permits.into_iter().map(PolicyId).collect(),
             satisfied_forbids: satisfied_forbids.into_iter().map(PolicyId).collect(),
-            errors,
+            errors: errors.into_iter().map(|e| e.into()).collect(),
             permit_residuals: PolicySet::from_ast(permit_residuals),
             forbid_residuals: PolicySet::from_ast(forbid_residuals),
         }
