@@ -1,6 +1,5 @@
 use super::{Expr, Unknown, Value};
 use crate::{evaluator::EvaluationError, parser::Loc};
-use itertools::Either;
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -83,46 +82,13 @@ impl std::fmt::Display for PartialValue {
     }
 }
 
-/// Collect an iterator of either residuals or values into one of the following
-///  a) An iterator over values, if everything evaluated to values
-///  b) An iterator over residuals expressions, if anything only evaluated to a residual
-/// Order is preserved.
-pub fn split<I>(i: I) -> Either<impl Iterator<Item = Value>, impl Iterator<Item = Expr>>
-where
-    I: IntoIterator<Item = PartialValue>,
-{
-    let mut values = vec![];
-    let mut residuals = vec![];
-
-    for item in i.into_iter() {
-        match item {
-            PartialValue::Value(a) => {
-                if residuals.is_empty() {
-                    values.push(a)
-                } else {
-                    residuals.push(a.into())
-                }
-            }
-            PartialValue::Residual(r) => {
-                residuals.push(r);
-            }
-        }
-    }
-
-    if residuals.is_empty() {
-        Either::Left(values.into_iter())
-    } else {
-        let mut exprs: Vec<Expr> = values.into_iter().map(|x| x.into()).collect();
-        exprs.append(&mut residuals);
-        Either::Right(exprs.into_iter())
-    }
-}
-
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::evaluator::split;
+    use itertools::Either;
 
     #[test]
     fn split_values() {
