@@ -511,6 +511,49 @@ impl Node<Option<cst::Ident>> {
             }
         }
     }
+
+    fn with_same_loc<T>(&self, t: T) -> Node<Option<T>> {
+        Node::with_source_loc(Some(t), self.loc.clone())
+    }
+
+    pub(crate) fn into_expr(self) -> Node<Option<cst::Expr>> {
+        let id1 = self.with_same_loc(cst::Name {
+            path: vec![],
+            name: self.clone(),
+        });
+        let id2 = self.with_same_loc(cst::Primary::Name(id1));
+        let id3 = self.with_same_loc(cst::Member {
+            item: id2,
+            access: vec![],
+        });
+        let id4 = self.with_same_loc(cst::Unary {
+            op: None,
+            item: id3,
+        });
+        let id5 = self.with_same_loc(cst::Mult {
+            initial: id4,
+            extended: vec![],
+        });
+        let id6 = self.with_same_loc(cst::Add {
+            initial: id5,
+            extended: vec![],
+        });
+        let id7 = self.with_same_loc(cst::Relation::Common {
+            initial: id6,
+            extended: vec![],
+        });
+        let id8 = self.with_same_loc(cst::And {
+            initial: id7,
+            extended: vec![],
+        });
+        let id9 = self.with_same_loc(cst::Or {
+            initial: id8,
+            extended: vec![],
+        });
+        self.with_same_loc(cst::Expr {
+            expr: Box::new(cst::ExprData::Or(id9)),
+        })
+    }
 }
 
 impl ast::Id {

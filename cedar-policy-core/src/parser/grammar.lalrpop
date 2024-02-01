@@ -348,18 +348,7 @@ RecInit: Node<Option<cst::RecInit>> = {
     <l:@L> IF ":" <e2:Expr> <r:@R>
         => {
             // Create an expression from this identifier
-            let id0 = Node::with_source_loc(Some(cst::Ident::If), Loc::new(l..r, Arc::clone(src)));
-            let id1 = Node::with_source_loc(Some(cst::Name{path: vec![], name: id0}), Loc::new(l..r, Arc::clone(src)));
-            let id2 = Node::with_source_loc(Some(cst::Primary::Name(id1)), Loc::new(l..r, Arc::clone(src)));
-            let id3 = Node::with_source_loc(Some(cst::Member{ item: id2, access: vec![] }), Loc::new(l..r, Arc::clone(src)));
-            let id4 = Node::with_source_loc(Some(cst::Unary{op: None, item:id3}), Loc::new(l..r, Arc::clone(src)));
-            let id5 = Node::with_source_loc(Some(cst::Mult{initial: id4, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
-            let id6 = Node::with_source_loc(Some(cst::Add{initial:id5, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
-            let id7 = Node::with_source_loc(Some(cst::Relation::Common{initial: id6, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
-            let id8 = Node::with_source_loc(Some(cst::And{initial: id7, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
-            let id9 = Node::with_source_loc(Some(cst::Or{initial: id8, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
-            let e1 = Node::with_source_loc(Some(cst::Expr{ expr: Box::new(cst::ExprData::Or(id9)) }), Loc::new(l..r, Arc::clone(src)));
-
+            let e1 = Node::with_source_loc(Some(cst::Ident::If), Loc::new(l..r, Arc::clone(src))).into_expr();
             Node::with_source_loc(Some(cst::RecInit(e1,e2)), Loc::new(l..r, Arc::clone(src)))
         },
     <l:@L> <e1:Expr> ":" <e2:Expr> <r:@R>

@@ -15,18 +15,35 @@
  */
 
 use smol_str::SmolStr;
+#[cfg(feature = "arbitrary")]
+use smol_str::ToSmolStr;
 
 // shortcut because we need CST nodes to potentially be empty,
 // for example, if part of it failed the parse, we can
 // still recover other parts
 type Node<N> = super::node::Node<Option<N>>;
 
+#[cfg(feature = "arbitrary")]
+impl<'a, T> arbitrary::Arbitrary<'a> for Node<T>
+where
+    T: arbitrary::Arbitrary<'a>,
+{
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Node {
+            node: Some(u.arbitrary()?),
+            loc: super::Loc::new(0..0, "".into()),
+        })
+    }
+}
+
 /// The set of policy statements that forms a policy set
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Policies(pub Vec<Node<Policy>>);
 
 /// Annotations: application-defined data, as a key-value pair
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Annotation {
     /// key
     pub key: Node<Ident>,
@@ -47,6 +64,13 @@ pub enum Str {
     Invalid(SmolStr),
 }
 
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Str {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self::String(String::arbitrary(u)?.into()))
+    }
+}
+
 /// Policy statement, the main building block of the language
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Policy {
@@ -58,6 +82,40 @@ pub struct Policy {
     pub variables: Vec<Node<VariableDef>>,
     /// Conditions
     pub conds: Vec<Node<Cond>>,
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Policy {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let effect = match u.int_in_range(1..=21)? {
+            1..=10 => Node {
+                node: Some(Ident::Permit),
+                loc: super::Loc::new(0..0, "".into()),
+            },
+            11..=20 => Node {
+                node: Some(Ident::Forbid),
+                loc: super::Loc::new(0..0, "".into()),
+            },
+            _ => u.arbitrary()?,
+        };
+
+        let variables = if u.int_in_range(1..=5)? == 5 {
+            u.arbitrary()?
+        } else {
+            let mut variables = Vec::with_capacity(3);
+            variables.push(u.arbitrary()?);
+            variables.push(u.arbitrary()?);
+            variables.push(u.arbitrary()?);
+            variables
+        };
+
+        Ok(Self {
+            annotations: u.arbitrary()?,
+            effect,
+            variables,
+            conds: u.arbitrary()?,
+        })
+    }
 }
 
 /// The variable part of one of the main item of a policy
@@ -73,6 +131,37 @@ pub struct VariableDef {
     pub entity_type: Option<Node<Add>>,
     /// hierarchy of entity
     pub ineq: Option<(RelOp, Node<Expr>)>,
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for VariableDef {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let variable: Ident = match u.int_in_range(1..=20)? {
+            20 => u.arbitrary()?,
+            _ => u
+                .choose(&[Ident::Principal, Ident::Action, Ident::Resource])?
+                .clone(),
+        };
+        let variable = Node {
+            node: Some(variable),
+            loc: super::Loc::new(0..0, "".into()),
+        };
+
+        let unused_type_name: Option<Node<Name>> = if u.int_in_range(1..=100)? == 100 {
+            u.arbitrary()?
+        } else {
+            None
+        };
+
+        let entity_type = u.arbitrary()?;
+        let ineq = u.arbitrary()?;
+        Ok(Self {
+            variable,
+            unused_type_name,
+            entity_type,
+            ineq,
+        })
+    }
 }
 
 /// Any identifier, including special ones
@@ -127,6 +216,43 @@ pub enum Ident {
     Invalid(String),
 }
 
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Ident {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(if u.int_in_range(1..=20)? == 20 {
+            // Reserved idents that tend to cause an error quickly. Don't
+            // use these often.
+            u.choose(&[
+                Self::If,
+                Self::True,
+                Self::False,
+                Self::Then,
+                Self::Else,
+                Self::In,
+                Self::Is,
+                Self::Has,
+                Self::Like,
+            ])?
+            .clone()
+        } else {
+            match u.choose(&[
+                Self::Principal,
+                Self::Resource,
+                Self::Action,
+                Self::Context,
+                Self::Permit,
+                Self::Forbid,
+                Self::When,
+                Self::Unless,
+                Self::Ident("".into()),
+            ])? {
+                Self::Ident(_) => Self::Ident(crate::ast::Id::arbitrary(u)?.to_smolstr()),
+                s => s.clone(),
+            }
+        })
+    }
+}
+
 /// Conditions: powerful extensions to a policy
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cond {
@@ -138,8 +264,29 @@ pub struct Cond {
     pub expr: Option<Node<Expr>>,
 }
 
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Cond {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let cond: Ident = match u.int_in_range(1..=20)? {
+            20 => u.arbitrary()?,
+            _ => u.choose(&[Ident::When, Ident::Unless])?.clone(),
+        };
+        let cond = Node {
+            node: Some(cond),
+            loc: super::Loc::new(0..0, "".into()),
+        };
+        let expr = if u.int_in_range(1..=10)? == 10 {
+            None
+        } else {
+            Some(u.arbitrary()?)
+        };
+        Ok(Self { cond, expr })
+    }
+}
+
 /// The main computation aspect of a policy, outer
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Expr {
     /// expression content
     pub expr: Box<ExprData>,
@@ -152,8 +299,19 @@ pub enum ExprData {
     /// if-then-else
     If(Node<Expr>, Node<Expr>, Node<Expr>),
 }
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for ExprData {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(match u.int_in_range(1..=10)? {
+            1 => Self::If(u.arbitrary()?, u.arbitrary()?, u.arbitrary()?),
+            _ => Self::Or(u.arbitrary()?),
+        })
+    }
+}
+
 /// Logical Or
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Or {
     /// a singleton is a wrapper for a higher-priority node
     pub initial: Node<And>,
@@ -162,6 +320,7 @@ pub struct Or {
 }
 /// Logical And
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct And {
     /// a singleton is a wrapper for a higher-priority node
     pub initial: Node<Relation>,
@@ -170,6 +329,7 @@ pub struct And {
 }
 /// Comparison relations
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Relation {
     /// Regular relations
     Common {
@@ -205,6 +365,7 @@ pub enum Relation {
 
 /// The operation involved in a comparision
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum RelOp {
     /// <
     Less,
@@ -228,6 +389,7 @@ pub enum RelOp {
 
 /// Allowed Ops for Add
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum AddOp {
     /// +
     Plus,
@@ -246,6 +408,17 @@ pub enum MultOp {
     Mod,
 }
 
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for MultOp {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(match u.int_in_range(0..=40)? {
+            40 => Self::Divide,
+            39 => Self::Mod,
+            _ => Self::Times,
+        })
+    }
+}
+
 /// Allowed Ops for Neg
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NegOp {
@@ -259,8 +432,30 @@ pub enum NegOp {
     OverDash,
 }
 
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for NegOp {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let n: u8 = u.int_in_range(0..=20)?;
+        Ok(if u.int_in_range(0..=1)? == 0 {
+            if n == 20 {
+                Self::OverBang
+            } else {
+                // Don't test other values because the parser won't construct them
+                Self::Bang(u.int_in_range(0..=4)?)
+            }
+        } else {
+            if n == 20 {
+                Self::OverDash
+            } else {
+                Self::Dash(u.int_in_range(0..=4)?)
+            }
+        })
+    }
+}
+
 /// Additive arithmetic
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Add {
     /// a singleton is a wrapper for a higher-priority node
     pub initial: Node<Mult>,
@@ -269,6 +464,7 @@ pub struct Add {
 }
 /// Multiplicative arithmetic
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Mult {
     /// a singleton is a wrapper for a higher-priority node
     pub initial: Node<Unary>,
@@ -277,6 +473,7 @@ pub struct Mult {
 }
 /// Unary negations
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Unary {
     /// the negation operation, if any
     pub op: Option<NegOp>,
@@ -285,6 +482,7 @@ pub struct Unary {
 }
 /// Members on a primary item, accessed with '.'
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Member {
     /// Main element
     pub item: Node<Primary>,
@@ -293,6 +491,7 @@ pub struct Member {
 }
 /// Forms of members and their accessors
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum MemAccess {
     /// field identifier
     Field(Node<Ident>),
@@ -303,6 +502,7 @@ pub enum MemAccess {
 }
 /// Low-level elements like literals
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Primary {
     /// Literal
     Literal(Node<Literal>),
@@ -322,6 +522,7 @@ pub enum Primary {
 
 /// UID and Type of named items
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Name {
     /// path, like: "name0::name1::name"
     pub path: Vec<Node<Ident>>,
@@ -330,6 +531,7 @@ pub struct Name {
 }
 /// Reference to an entity
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Ref {
     /// UID
     Uid {
@@ -348,13 +550,27 @@ pub enum Ref {
 }
 /// Elements in a ref: `field: data`
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct RefInit(pub Node<Ident>, pub Node<Literal>);
 /// Elements of records: `field_from_expr: data_from_expr`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecInit(pub Node<Expr>, pub Node<Expr>);
 
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for RecInit {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let ident = if u.int_in_range(1..=25)? == 25 {
+            u.arbitrary()?
+        } else {
+            u.arbitrary::<Node<Ident>>()?.into_expr()
+        };
+        Ok(Self(ident, u.arbitrary()?))
+    }
+}
+
 /// Raw values
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Literal {
     /// true
     True,
@@ -385,5 +601,17 @@ impl Slot {
             (Slot::Principal, crate::ast::Var::Principal)
                 | (Slot::Resource, crate::ast::Var::Resource)
         )
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Slot {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(match u.int_in_range(1..=11)? {
+            11 => Self::Other(crate::ast::Id::arbitrary(u)?.to_smolstr()),
+            1..=5 => Self::Principal,
+            6..=10 => Self::Resource,
+            _ => unreachable!(),
+        })
     }
 }
