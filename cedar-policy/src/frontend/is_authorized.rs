@@ -367,13 +367,14 @@ impl AuthorizationCall {
         if resource.is_some() {
             b = b.resource(resource);
         }
-        if self.enable_request_validation {
-            b = match schema.as_ref() {
-                Some(schema_ref) => b.schema(schema_ref),
-                None => b,
+        let q = if self.enable_request_validation {
+            match schema.as_ref() {
+                Some(schema_ref) => b.schema(schema_ref).build().map_err(|e| [e.to_string()])?,
+                None => b.build(),
             }
-        }
-        let q = b.build().map_err(|e| [e.to_string()])?;
+        } else {
+            b.build()
+        };
         let (policies, entities) = self.slice.try_into(schema.as_ref())?;
         Ok((q, policies, entities.partial()))
     }

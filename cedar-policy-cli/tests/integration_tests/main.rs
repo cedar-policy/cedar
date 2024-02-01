@@ -28,63 +28,13 @@ mod example_use_cases_doc;
 mod ip;
 mod multi;
 
+use cedar_policy::integration_testing::JsonTest;
 use cedar_policy::Decision;
 use cedar_policy::EntityUid;
 use cedar_policy::PolicySet;
-use serde::Deserialize;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-
-/// JSON representation of our integration test file format
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct JsonTest {
-    /// Filename of the policies to use (in pure Cedar syntax)
-    policies: String,
-    /// Filename of a JSON file representing the entity hierarchy
-    entities: String,
-    /// Filename of a JSON file containing the schema.
-    schema: String,
-    /// Whether the given policies are expected to pass the validator with this
-    /// schema, or not
-    should_validate: bool,
-    /// Queries to perform on that data, along with their expected results
-    queries: Vec<JsonRequest>,
-}
-
-/// JSON representation of a single request, along with its expected result,
-/// in our integration test file format
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct JsonRequest {
-    /// Description for the request
-    desc: String,
-    /// Principal for the request
-    #[serde(default)]
-    principal: Option<serde_json::Value>,
-    /// Action for the request
-    #[serde(default)]
-    action: Option<serde_json::Value>,
-    /// Resource for the request
-    #[serde(default)]
-    resource: Option<serde_json::Value>,
-    /// Context for the request
-    context: serde_json::Value,
-    /// Whether to enable request validation for this request
-    #[serde(default = "constant_true")]
-    enable_request_validation: bool,
-    /// Expected decision for the request
-    decision: Decision,
-    /// Expected "reasons" for the request
-    reasons: Vec<String>,
-    /// Expected error/warning messages for the request
-    errors: Vec<String>,
-}
-
-fn constant_true() -> bool {
-    true
-}
 
 fn value_to_euid_string(v: serde_json::Value) -> Result<String, impl miette::Diagnostic> {
     EntityUid::from_json(v).map(|euid| euid.to_string())
@@ -129,7 +79,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
     let entity_file = resolve_integration_test_path(&test.entities);
     let schema_file = resolve_integration_test_path(&test.schema);
 
-    for json_request in test.queries.into_iter() {
+    for json_request in test.requests.into_iter() {
         let policies_text = std::fs::read_to_string(policy_file.clone())
             .unwrap_or_else(|e| panic!("error loading policy file {}: {e}", &test.policies));
         let policies_res = PolicySet::from_str(&policies_text);
@@ -137,9 +87,8 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
         // check that the expected decision is "Deny" and that the parse error is
         // of the expected type (NotAFunction).
         if let Err(parse_errs) = policies_res {
-            // We may see a `NotAFunction` parse error for auto-generated policies:
-            // See the comment in the `ExtensionFunctionApp` case of the `Display`
-            // implementation for `Expr` in ast/exprs.rs.
+            // We may see a `NotAFunction` parse error for programmatically generated
+            // policies, which are not guaranteed to be parsable
             assert_eq!(
                 json_request.decision,
                 Decision::Deny,
@@ -183,15 +132,15 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
         let mut entity_args = Vec::new();
         if let Some(s) = json_request.principal {
             entity_args.push("--principal".to_string());
-            entity_args.push(value_to_euid_string(s).unwrap());
+            entity_args.push(value_to_euid_string(s.into()).unwrap());
         }
         if let Some(s) = json_request.resource {
             entity_args.push("--resource".to_string());
-            entity_args.push(value_to_euid_string(s).unwrap());
+            entity_args.push(value_to_euid_string(s.into()).unwrap());
         }
         if let Some(s) = json_request.action {
             entity_args.push("--action".to_string());
-            entity_args.push(value_to_euid_string(s).unwrap());
+            entity_args.push(value_to_euid_string(s.into()).unwrap());
         }
         if !json_request.enable_request_validation {
             entity_args.push("--request-validation=false".to_string());
@@ -221,9 +170,9 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
         let output = String::from_utf8(authorize_cmd.get_output().stdout.clone())
             .expect("output should be valid UTF-8");
 
-        for error in &json_request.errors {
+        for error in json_request.errors {
             assert!(
-                output.contains(error),
+                output.contains(&error.to_string()),
                 "test {} failed for request \"{}\": output does not contain expected error {error:?}.\noutput was: {output}\nstderr was: {}",
                 jsonfile.display(),
                 &json_request.desc,
@@ -231,7 +180,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             );
         }
 
-        if json_request.reasons.is_empty() {
+        if json_request.reason.is_empty() {
             assert!(
                 output.contains("no policies applied to this request"),
                 "test {} failed for request \"{}\": output does not contain the string \"no policies applied to this request\", as expected.\noutput was: {output}\nstderr was: {}",
@@ -241,9 +190,9 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             );
         } else {
             assert!(output.contains("this decision was due to the following policies"));
-            for reason in &json_request.reasons {
+            for reason in &json_request.reason {
                 assert!(
-                    output.contains(&reason.escape_debug().to_string()),
+                    output.contains(&reason.to_string()),
                     "test {} failed for request \"{}\": output does not contain the reason string {reason:?}.\noutput was: {output}\nstderr was: {}",
                     jsonfile.display(),
                     &json_request.desc,

@@ -27,7 +27,6 @@ use cedar_policy_core::ast::{
     ContextCreationError, ExprConstructionError, Integer, RestrictedExprParseError,
 }; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
 use cedar_policy_core::authorizer;
-pub use cedar_policy_core::authorizer::AuthorizationError;
 use cedar_policy_core::entities::{
     self, ContextJsonDeserializationError, ContextSchema, Dereference, JsonDeserializationError,
     JsonDeserializationErrorContext,
@@ -733,6 +732,68 @@ impl Authorizer {
             authorizer::ResponseKind::Partial(p) => PartialResponse::Residual(p.into()),
         }
     }
+
+    /// Evaluate an authorization request and respond with results that always includes
+    /// residuals even if the [`Authorizer`] already reached a decision.
+    #[cfg(feature = "partial-eval")]
+    pub fn evaluate_policies_partial(
+        &self,
+        query: &Request,
+        policy_set: &PolicySet,
+        entities: &Entities,
+    ) -> EvaluationResponse {
+        let authorizer::EvaluationResponse {
+            satisfied_permits,
+            satisfied_forbids,
+            errors,
+            permit_residuals,
+            forbid_residuals,
+        } = self
+            .0
+            .evaluate_policies(&policy_set.ast, query.0.clone(), &entities.0);
+        EvaluationResponse {
+            satisfied_permits: satisfied_permits.into_iter().map(PolicyId).collect(),
+            satisfied_forbids: satisfied_forbids.into_iter().map(PolicyId).collect(),
+            errors: errors.into_iter().map(|e| e.into()).collect(),
+            permit_residuals: PolicySet::from_ast(permit_residuals),
+            forbid_residuals: PolicySet::from_ast(forbid_residuals),
+        }
+    }
+}
+
+/// Errors that can occur during authorization
+#[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
+pub enum AuthorizationError {
+    /// An error occurred when evaluating a policy.
+    #[error("while evaluating policy `{id}`: {error}")]
+    PolicyEvaluationError {
+        /// Id of the policy with an error
+        #[doc(hidden)]
+        id: ast::PolicyID,
+        /// Underlying evaluation error
+        #[diagnostic(transparent)]
+        error: EvaluationError,
+    },
+}
+
+impl AuthorizationError {
+    /// Get the id of the erroring policy
+    pub fn id(&self) -> &PolicyId {
+        match self {
+            Self::PolicyEvaluationError { id, error: _ } => PolicyId::ref_cast(id),
+        }
+    }
+}
+
+#[doc(hidden)]
+impl From<authorizer::AuthorizationError> for AuthorizationError {
+    fn from(value: authorizer::AuthorizationError) -> Self {
+        match value {
+            authorizer::AuthorizationError::PolicyEvaluationError { id, error } => {
+                Self::PolicyEvaluationError { id, error }
+            }
+        }
+    }
 }
 
 /// Authorization response returned from the `Authorizer`
@@ -765,6 +826,22 @@ pub struct ResidualResponse {
     diagnostics: Diagnostics,
 }
 
+/// A policy evaluation response obtained from `evaluate_policies_partial`.
+#[cfg(feature = "partial-eval")]
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct EvaluationResponse {
+    /// `PolicyId`s of fully evaluated policies with a permit [`Effect`]
+    satisfied_permits: HashSet<PolicyId>,
+    /// `PolicyId`s of fully evaluated policies with a forbid [`Effect`]
+    satisfied_forbids: HashSet<PolicyId>,
+    /// Errors that occurred during policy evaluation.
+    errors: Vec<AuthorizationError>,
+    /// Partially evaluated policies with a permit [`Effect`]
+    permit_residuals: PolicySet,
+    /// Partially evaluated policies with a forbid [`Effect`]
+    forbid_residuals: PolicySet,
+}
+
 /// Diagnostics providing more information on how a `Decision` was reached
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Diagnostics {
@@ -780,7 +857,7 @@ impl From<authorizer::Diagnostics> for Diagnostics {
     fn from(diagnostics: authorizer::Diagnostics) -> Self {
         Self {
             reason: diagnostics.reason.into_iter().map(PolicyId).collect(),
-            errors: diagnostics.errors,
+            errors: diagnostics.errors.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -971,6 +1048,51 @@ impl From<authorizer::PartialResponse> for ResidualResponse {
             residuals: PolicySet::from_ast(p.residuals),
             diagnostics: p.diagnostics.into(),
         }
+    }
+}
+
+#[cfg(feature = "partial-eval")]
+impl EvaluationResponse {
+    /// Create a new `EvaluationResponse`.
+    pub fn new(
+        satisfied_permits: HashSet<PolicyId>,
+        satisfied_forbids: HashSet<PolicyId>,
+        errors: Vec<AuthorizationError>,
+        permit_residuals: PolicySet,
+        forbid_residuals: PolicySet,
+    ) -> Self {
+        Self {
+            satisfied_permits,
+            satisfied_forbids,
+            errors,
+            permit_residuals,
+            forbid_residuals,
+        }
+    }
+
+    /// Get the `PolicyId`s of fully evaluated policies with a permit [`Effect`].
+    pub fn satisfied_permits(&self) -> impl Iterator<Item = &PolicyId> {
+        self.satisfied_permits.iter()
+    }
+
+    /// Get the `PolicyId`s of fully evaluated policies with a forbid [`Effect`].
+    pub fn satisfied_forbids(&self) -> impl Iterator<Item = &PolicyId> {
+        self.satisfied_forbids.iter()
+    }
+
+    /// Get the redisual policies with a permit [`Effect`].
+    pub fn permit_residuals(&self) -> &PolicySet {
+        &self.permit_residuals
+    }
+
+    /// Get the redisual policies with a permit [`Effect`].
+    pub fn forbid_residuals(&self) -> &PolicySet {
+        &self.forbid_residuals
+    }
+
+    /// Get the evaluation errors.
+    pub fn errors(&self) -> impl Iterator<Item = &AuthorizationError> {
+        self.errors.iter()
     }
 }
 
@@ -3281,31 +3403,35 @@ impl FromStr for RestrictedExpression {
 /// for partial evaluation.
 #[cfg(feature = "partial-eval")]
 #[derive(Debug)]
-pub struct RequestBuilder<'a> {
+pub struct RequestBuilder<S> {
     principal: ast::EntityUIDEntry,
     action: ast::EntityUIDEntry,
     resource: ast::EntityUIDEntry,
     /// Here, `None` means unknown
     context: Option<ast::Context>,
-    /// Here, `None` means no request validation is performed
-    schema: Option<&'a Schema>,
+    schema: S,
 }
 
+/// A marker type that indicates [`Schema`] is not set for a request
 #[cfg(feature = "partial-eval")]
-impl<'a> Default for RequestBuilder<'a> {
+#[derive(Debug)]
+pub struct UnsetSchema;
+
+#[cfg(feature = "partial-eval")]
+impl Default for RequestBuilder<UnsetSchema> {
     fn default() -> Self {
         Self {
             principal: ast::EntityUIDEntry::Unknown { loc: None },
             action: ast::EntityUIDEntry::Unknown { loc: None },
             resource: ast::EntityUIDEntry::Unknown { loc: None },
             context: None,
-            schema: None,
+            schema: UnsetSchema,
         }
     }
 }
 
 #[cfg(feature = "partial-eval")]
-impl<'a> RequestBuilder<'a> {
+impl<S> RequestBuilder<S> {
     /// Set the principal.
     ///
     /// Note that you can create the `EntityUid` using `.parse()` on any
@@ -3383,16 +3509,35 @@ impl<'a> RequestBuilder<'a> {
             ..self
         }
     }
+}
 
+#[cfg(feature = "partial-eval")]
+impl RequestBuilder<UnsetSchema> {
     /// Set the schema. If present, this will be used for request validation.
     #[must_use]
-    pub fn schema(self, schema: &'a Schema) -> Self {
-        Self {
-            schema: Some(schema),
-            ..self
+    pub fn schema(self, schema: &Schema) -> RequestBuilder<&Schema> {
+        RequestBuilder {
+            principal: self.principal,
+            action: self.action,
+            resource: self.resource,
+            context: self.context,
+            schema,
         }
     }
 
+    /// Create the [`Request`]
+    pub fn build(self) -> Request {
+        Request(ast::Request::new_unchecked(
+            self.principal,
+            self.action,
+            self.resource,
+            self.context,
+        ))
+    }
+}
+
+#[cfg(feature = "partial-eval")]
+impl RequestBuilder<&Schema> {
     /// Create the [`Request`]
     pub fn build(self) -> Result<Request, RequestValidationError> {
         Ok(Request(ast::Request::new_with_unknowns(
@@ -3400,7 +3545,7 @@ impl<'a> RequestBuilder<'a> {
             self.action,
             self.resource,
             self.context,
-            self.schema.map(|schema| &schema.0),
+            Some(&self.schema.0),
             Extensions::all_available(),
         )?))
     }
@@ -3421,7 +3566,7 @@ pub struct Request(pub(crate) ast::Request);
 impl Request {
     /// Create a [`RequestBuilder`]
     #[cfg(feature = "partial-eval")]
-    pub fn builder<'a>() -> RequestBuilder<'a> {
+    pub fn builder() -> RequestBuilder<UnsetSchema> {
         RequestBuilder::default()
     }
 
@@ -3899,5 +4044,102 @@ mod partial_eval_test {
         assert_eq!(a.diagnostics().errors, errors);
         assert_eq!(a.diagnostics().reason, reason);
         assert_eq!(a.residuals(), &p);
+    }
+}
+
+#[cfg(test)]
+// PANIC SAFETY: unit tests
+#[allow(clippy::unwrap_used)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_all_ints() {
+        test_single_int(0);
+        test_single_int(i64::MAX);
+        test_single_int(i64::MIN);
+        test_single_int(7);
+        test_single_int(-7);
+    }
+
+    fn test_single_int(x: i64) {
+        for i in 0..4 {
+            test_single_int_with_dashes(x, i);
+        }
+    }
+
+    fn test_single_int_with_dashes(x: i64, num_dashes: usize) {
+        let dashes = vec!['-'; num_dashes].into_iter().collect::<String>();
+        let src = format!(r#"permit(principal, action, resource) when {{ {dashes}{x} }};"#);
+        let p: Policy = src.parse().unwrap();
+        let json = p.to_json().unwrap();
+        let round_trip = Policy::from_json(None, json).unwrap();
+        let pretty_print = format!("{round_trip}");
+        assert!(pretty_print.contains(&x.to_string()));
+        if x != 0 {
+            let expected_dashes = if x < 0 { num_dashes + 1 } else { num_dashes };
+            assert_eq!(
+                pretty_print.chars().filter(|c| *c == '-').count(),
+                expected_dashes
+            );
+        }
+    }
+
+    // Serializing a valid 64-bit int that can't be represented in double precision float
+    #[test]
+    fn json_bignum_1() {
+        let src = r#"
+        permit(
+            principal,
+            action == Action::"action",
+            resource
+          ) when {
+            -9223372036854775808
+          };"#;
+        let p: Policy = src.parse().unwrap();
+        p.to_json().unwrap();
+    }
+
+    #[test]
+    fn json_bignum_1a() {
+        let src = r#"
+        permit(principal, action, resource) when { 
+            (true && (-90071992547409921)) && principal
+        };"#;
+        let p: Policy = src.parse().unwrap();
+        let v = p.to_json().unwrap();
+        let s = serde_json::to_string(&v).unwrap();
+        assert!(s.contains("90071992547409921"));
+    }
+
+    // Deserializing a valid 64-bit int that can't be represented in double precision float
+    #[test]
+    fn json_bignum_2() {
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":90071992547409921}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let p = Policy::from_json(None, v).unwrap();
+        let pretty = format!("{p}");
+        // Ensure the number didn't get rounded
+        assert!(pretty.contains("90071992547409921"));
+    }
+
+    // Deserializing a valid 64-bit int that can't be represented in double precision float
+    #[test]
+    fn json_bignum_2a() {
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":-9223372036854775808}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let p = Policy::from_json(None, v).unwrap();
+        let pretty = format!("{p}");
+        // Ensure the number didn't get rounded
+        assert!(pretty.contains("-9223372036854775808"));
+    }
+
+    // Deserializing a number that doesn't fit in 64 bit integer
+    // This _should_ fail, as there's no way to do this w/out loss of precision
+    #[test]
+    fn json_bignum_3() {
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":9223372036854775808}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        assert!(Policy::from_json(None, v).is_err());
     }
 }
