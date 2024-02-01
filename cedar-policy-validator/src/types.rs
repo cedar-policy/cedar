@@ -482,14 +482,18 @@ impl Type {
     }
 
     /// Return true if we know that any value in this type must be a specified
-    /// entity. An unspecified entity has type `AnyEntity`, so `AnyEntity` might
-    /// not be specified. Other entity types must be specified.
+    /// entity.
     pub(crate) fn must_be_specified_entity(ty: &Type) -> bool {
         matches!(
             ty,
+            // An unspecified entity has type `AnyEntity`, so `AnyEntity` might
+            // not be specified. Other entity types must be specified.
             Type::EntityOrRecord(
                 EntityRecordKind::Entity(_) | EntityRecordKind::ActionEntity { .. }
             )
+            // It is vacuously true that any value in the type `Never` is a
+            // specified entity.
+            | Type::Never
         )
     }
 
