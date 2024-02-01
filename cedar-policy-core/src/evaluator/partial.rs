@@ -516,7 +516,7 @@ impl<'e> Evaluator<'e> {
 ///  a) An iterator over values, if everything evaluated to values
 ///  b) An iterator over residuals expressions, if anything only evaluated to a residual
 /// Order is preserved.
-pub(crate) fn split<I>(i: I) -> Either<impl Iterator<Item = Value>, impl Iterator<Item = Expr>>
+fn split<I>(i: I) -> Either<impl Iterator<Item = Value>, impl Iterator<Item = Expr>>
 where
     I: IntoIterator<Item = PartialValue>,
 {
@@ -544,5 +544,78 @@ where
         let mut exprs: Vec<Expr> = values.into_iter().map(|x| x.into()).collect();
         exprs.append(&mut residuals);
         Either::Right(exprs.into_iter())
+    }
+}
+
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::panic)]
+#[cfg(test)]
+mod test {
+    use super::*;
+    use itertools::Either;
+
+    #[test]
+    fn split_values() {
+        let vs = [
+            PartialValue::Value(Value::from(1)),
+            PartialValue::Value(Value::from(2)),
+        ];
+        match split(vs) {
+            Either::Right(_) => panic!("expected values, got residuals"),
+            Either::Left(vs) => {
+                assert_eq!(vs.collect::<Vec<_>>(), vec![Value::from(1), Value::from(2)])
+            }
+        };
+    }
+
+    #[test]
+    fn split_residuals() {
+        let rs = [
+            PartialValue::Value(Value::from(1)),
+            PartialValue::Residual(Expr::val(2)),
+            PartialValue::Value(Value::from(3)),
+            PartialValue::Residual(Expr::val(4)),
+        ];
+        let expected = vec![Expr::val(1), Expr::val(2), Expr::val(3), Expr::val(4)];
+        match split(rs) {
+            Either::Left(_) => panic!("expected residuals, got values"),
+            Either::Right(rs) => {
+                assert_eq!(rs.collect::<Vec<_>>(), expected);
+            }
+        };
+    }
+
+    #[test]
+    fn split_residuals2() {
+        let rs = [
+            PartialValue::Value(Value::from(1)),
+            PartialValue::Value(Value::from(2)),
+            PartialValue::Residual(Expr::val(3)),
+            PartialValue::Residual(Expr::val(4)),
+        ];
+        let expected = vec![Expr::val(1), Expr::val(2), Expr::val(3), Expr::val(4)];
+        match split(rs) {
+            Either::Left(_) => panic!("expected residuals, got values"),
+            Either::Right(rs) => {
+                assert_eq!(rs.collect::<Vec<_>>(), expected);
+            }
+        };
+    }
+
+    #[test]
+    fn split_residuals3() {
+        let rs = [
+            PartialValue::Residual(Expr::val(1)),
+            PartialValue::Residual(Expr::val(2)),
+            PartialValue::Value(Value::from(3)),
+            PartialValue::Value(Value::from(4)),
+        ];
+        let expected = vec![Expr::val(1), Expr::val(2), Expr::val(3), Expr::val(4)];
+        match split(rs) {
+            Either::Left(_) => panic!("expected residuals, got values"),
+            Either::Right(rs) => {
+                assert_eq!(rs.collect::<Vec<_>>(), expected);
+            }
+        };
     }
 }
