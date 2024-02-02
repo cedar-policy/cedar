@@ -46,38 +46,6 @@ mod names {
 }
 
 impl<'e> Evaluator<'e> {
-    fn eval_in(&self, uid1: &EntityUID, entity1: Option<&Entity>, arg2: Value) -> Result<Value> {
-        // `rhs` is a list of all the UIDs for which we need to
-        // check if `uid1` is a descendant of
-        let rhs = match arg2.value {
-            ValueKind::Lit(Literal::EntityUID(uid)) => vec![(*uid).clone()],
-            // we assume that iterating the `authoritative` BTreeSet is
-            // approximately the same cost as iterating the `fast` HashSet
-            ValueKind::Set(Set { authoritative, .. }) => authoritative
-                .iter()
-                .map(|val| Ok(val.get_as_entity()?.clone()))
-                .collect::<Result<Vec<EntityUID>>>()?,
-            _ => {
-                return Err(EvaluationError::type_error(
-                    nonempty![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
-                    &arg2,
-                ))
-            }
-        };
-        for uid2 in rhs {
-            if uid1 == &uid2
-                || entity1
-                    .map(|e1| e1.is_descendant_of(&uid2))
-                    .unwrap_or(false)
-            {
-                return Ok(true.into());
-            }
-        }
-        // if we get here, `uid1` is not a descendant of (or equal to)
-        // any UID in `rhs`
-        Ok(false.into())
-    }
-
     /// Evaluation of conditionals
     /// Must be sure to respect short-circuiting semantics
     fn eval_if_partial(
@@ -236,7 +204,59 @@ impl<'e> Evaluator<'e> {
                     _ => Ok(PartialValue::Residual(Expr::get_attr(res, attr.clone()))),
                 }
             }
-            PartialValue::Value(val) => Ok(self.get_attr(val, attr, source_loc)?.into()),
+            PartialValue::Value(Value {
+                value: ValueKind::Record(record),
+                ..
+            }) => record
+                .as_ref()
+                .get(attr)
+                .ok_or_else(|| {
+                    EvaluationError::record_attr_does_not_exist(
+                        attr.clone(),
+                        record.iter().map(|(k, _)| k.clone()).collect(),
+                        source_loc.cloned(),
+                    )
+                })
+                .map(|v| PartialValue::Value(v.clone())),
+            PartialValue::Value(Value {
+                value: ValueKind::Lit(Literal::EntityUID(uid)),
+                loc,
+            }) => match self.entities.entity(uid.as_ref()) {
+                Dereference::NoSuchEntity => Err(match *uid.entity_type() {
+                    EntityType::Unspecified => EvaluationError::unspecified_entity_access(
+                        attr.clone(),
+                        source_loc.cloned(),
+                    ),
+                    EntityType::Specified(_) => {
+                        // intentionally using the location of the euid (the LHS) and not the entire GetAttr expression
+                        EvaluationError::entity_does_not_exist(uid.clone(), loc)
+                    }
+                }),
+                Dereference::Residual(r) => {
+                    Ok(PartialValue::Residual(Expr::get_attr(r, attr.clone())))
+                }
+                Dereference::Data(entity) => entity
+                    .get(attr)
+                    .ok_or_else(|| {
+                        EvaluationError::entity_attr_does_not_exist(
+                            uid,
+                            attr.clone(),
+                            source_loc.cloned(),
+                        )
+                    })
+                    .cloned(),
+            },
+            PartialValue::Value(v) => {
+                // PANIC SAFETY Entity type name is fully static and a valid unqualified `Name`
+                #[allow(clippy::unwrap_used)]
+                Err(EvaluationError::type_error(
+                    nonempty![
+                        Type::Record,
+                        Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
+                    ],
+                    &v,
+                ))
+            }
         }
     }
 

@@ -1,10 +1,11 @@
 use either::Either;
+use nonempty::nonempty;
 
 use crate::entities::Dereference;
 
 use super::{
-    err, err::Result, stack_size_check, BinaryOp, BorrowedRestrictedExpr, EntityType,
-    EvaluationError, EvaluationErrorKind, Evaluator, Expr, ExprKind, IntegerOverflowError,
+    err, err::Result, names, stack_size_check, BinaryOp, BorrowedRestrictedExpr, EntityType,
+    EvaluationError, EvaluationErrorKind, Evaluator, Expr, ExprKind, IntegerOverflowError, Literal,
     PartialValue, Policy, RestrictedEvaluator, Set, SlotEnv, StaticallyTyped, Type, UnaryOp, Value,
     ValueKind, Var,
 };
@@ -452,7 +453,27 @@ impl<'e> Evaluator<'e> {
                 self.get_attr_partial(expr.as_ref(), attr, slots, loc)
             }
             ExprKind::HasAttr { expr, attr } => match self.partial_interpret(expr, slots)? {
-                PartialValue::Value(val) => Ok(self.has_attr(val, attr)?.into()),
+                PartialValue::Value(Value {
+                    value: ValueKind::Record(record),
+                    ..
+                }) => Ok(record.get(attr).is_some().into()),
+                PartialValue::Value(Value {
+                    value: ValueKind::Lit(Literal::EntityUID(uid)),
+                    ..
+                }) => match self.entities.entity(&uid) {
+                    Dereference::NoSuchEntity => Ok(false.into()),
+                    Dereference::Residual(r) => {
+                        Ok(PartialValue::Residual(Expr::has_attr(r, attr.clone())))
+                    }
+                    Dereference::Data(e) => Ok(e.get(attr).is_some().into()),
+                },
+                PartialValue::Value(val) => Err(err::EvaluationError::type_error(
+                    nonempty![
+                        Type::Record,
+                        Type::entity_type(names::ANY_ENTITY_TYPE.clone())
+                    ],
+                    &val,
+                )),
                 PartialValue::Residual(r) => Ok(Expr::has_attr(r, attr.clone()).into()),
             },
             ExprKind::Like { expr, pattern } => {
