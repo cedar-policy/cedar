@@ -1768,10 +1768,8 @@ impl<'a> Typechecker<'a> {
                 }
                 let lhs_ty = lhs_expr.data().clone();
                 let rhs_ty = rhs_expr.data().clone();
-                let lhs_as_euid_lit =
-                    Typechecker::replace_action_var_with_euid(request_env, lhs);
-                let rhs_as_euid_lit =
-                    Typechecker::replace_action_var_with_euid(request_env, rhs);
+                let lhs_as_euid_lit = Typechecker::replace_action_var_with_euid(request_env, lhs);
+                let rhs_as_euid_lit = Typechecker::replace_action_var_with_euid(request_env, rhs);
                 match (lhs_as_euid_lit.expr_kind(), rhs_as_euid_lit.expr_kind()) {
                     // var in EntityLiteral. Lookup the descendant types of the entity
                     // literals.  If the principal/resource type is not one of the
@@ -2023,20 +2021,23 @@ impl<'a> Typechecker<'a> {
                 }
                 Some(EntityType::Unspecified) => {
                     // It's perfectly valid for `principal` or `resource` to be `EntityType::Unspecified`
-                    if rhs.iter().any(|euid| matches!(euid.entity_type(), EntityType::Unspecified)) {
+                    if rhs
+                        .iter()
+                        .any(|euid| matches!(euid.entity_type(), EntityType::Unspecified))
+                    {
                         // something on the RHS is unspecified, so we have to type `unspecified in RHS` as Bool,
                         // because two unspecified entities are equal (and thus `in`) if they have the same `Eid`.
                         TypecheckAnswer::success(
                             ExprBuilder::with_data(Some(Type::primitive_boolean()))
                                 .with_same_source_loc(in_expr)
-                                .is_in(lhs_expr, rhs_expr)
+                                .is_in(lhs_expr, rhs_expr),
                         )
                     } else {
                         // nothing on the RHS is unspecified, so `unspecified in RHS` is always false
                         TypecheckAnswer::success(
                             ExprBuilder::with_data(Some(Type::singleton_boolean(false)))
                                 .with_same_source_loc(in_expr)
-                                .is_in(lhs_expr, rhs_expr)
+                                .is_in(lhs_expr, rhs_expr),
                         )
                     }
                 }
