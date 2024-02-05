@@ -245,6 +245,7 @@ impl Entities {
     /// Transform the store into a partial store, where
     /// attempting to dereference a non-existent `EntityUID` results in
     /// a residual instead of an error.
+    #[doc = include_str!("../experimental_warning.md")]
     #[must_use]
     #[cfg(feature = "partial-eval")]
     pub fn partial(self) -> Self {
@@ -717,6 +718,7 @@ impl Authorizer {
     /// The Authorizer will attempt to make as much progress as possible in the presence of unknowns.
     /// If the Authorizer can reach a response, it will return that response.
     /// Otherwise, it will return a list of residual policies that still need to be evaluated.
+    #[doc = include_str!("../experimental_warning.md")]
     #[cfg(feature = "partial-eval")]
     pub fn is_authorized_partial(
         &self,
@@ -735,6 +737,7 @@ impl Authorizer {
 
     /// Evaluate an authorization request and respond with results that always includes
     /// residuals even if the [`Authorizer`] already reached a decision.
+    #[doc = include_str!("../experimental_warning.md")]
     #[cfg(feature = "partial-eval")]
     pub fn evaluate_policies_partial(
         &self,
@@ -807,6 +810,7 @@ pub struct Response {
 
 /// Authorization response returned from `is_authorized_partial`.
 /// It can either be a full concrete response, or a residual response.
+#[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum PartialResponse {
@@ -817,6 +821,7 @@ pub enum PartialResponse {
 }
 
 /// A residual response obtained from `is_authorized_partial`.
+#[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ResidualResponse {
@@ -827,6 +832,7 @@ pub struct ResidualResponse {
 }
 
 /// A policy evaluation response obtained from `evaluate_policies_partial`.
+#[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct EvaluationResponse {
@@ -1104,10 +1110,12 @@ pub enum ValidationMode {
     /// have a restricted form which is amenable for analysis.
     #[default]
     Strict,
-    #[cfg(feature = "permissive-validate")]
     /// Validate that policies do not contain any type errors.
+    #[doc = include_str!("../experimental_warning.md")]
+    #[cfg(feature = "permissive-validate")]
     Permissive,
     /// Validate using a partial schema. Policies may contain type errors.
+    #[doc = include_str!("../experimental_warning.md")]
     #[cfg(feature = "partial-validate")]
     Partial,
 }
@@ -2428,6 +2436,7 @@ impl PolicySet {
     }
 
     /// Get all the unknown entities from the policy set
+    #[doc = include_str!("../experimental_warning.md")]
     #[cfg(feature = "partial-eval")]
     pub fn unknown_entities(&self) -> HashSet<EntityUid> {
         let mut entity_uids = HashSet::new();
@@ -3401,6 +3410,7 @@ impl FromStr for RestrictedExpression {
 ///
 /// The default for principal, action, resource, and context fields is Unknown
 /// for partial evaluation.
+#[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 #[derive(Debug)]
 pub struct RequestBuilder<S> {
@@ -3413,6 +3423,7 @@ pub struct RequestBuilder<S> {
 }
 
 /// A marker type that indicates [`Schema`] is not set for a request
+#[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 #[derive(Debug)]
 pub struct UnsetSchema;
@@ -3565,6 +3576,7 @@ pub struct Request(pub(crate) ast::Request);
 
 impl Request {
     /// Create a [`RequestBuilder`]
+    #[doc = include_str!("../experimental_warning.md")]
     #[cfg(feature = "partial-eval")]
     pub fn builder() -> RequestBuilder<UnsetSchema> {
         RequestBuilder::default()
