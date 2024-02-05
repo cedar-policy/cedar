@@ -21,7 +21,7 @@ itertools = "0.12"
 miette = "5.9.0"
 thiserror = "1.0"
 smol_str = { version = "0.2", features = ["serde"] }
-dhat = { version = "0.3.2", optional = true}
+dhat = { version = "0.3.2", optional = true }
 serde_with = "3.3.0"
 
 # wasm dependencies
@@ -64,7 +64,9 @@ crate_type = ["rlib", "cdylib"]
 # https://github.com/rust-lang/cargo/issues/2911#issuecomment-1483256987 for
 # more information. That issue also tracks a real solution to the problem that
 # could replace this hack.
-cedar-policy = { path = ".", default-features = false, features = ["integration_testing"] }
+cedar-policy = { path = ".", default-features = false, features = [
+    "integration_testing",
+] }
 cool_asserts = "2.0"
 criterion = "0.5"
 globset = "0.4"
@@ -74,3 +76,7 @@ proptest = "1.0.0"
 [[bench]]
 name = "cedar_benchmarks"
 harness = false
+
+[package.metadata.docs.rs]
+features = ["experimental"]
+rustdoc-args = ["--cfg", "docsrs"]
