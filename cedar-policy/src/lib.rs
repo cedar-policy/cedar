@@ -46,4 +46,7 @@ mod prop_test_policy_set;
 mod tests;
 
 #[cfg(feature = "integration_testing")]
+pub mod cedar_test_impl;
+
+#[cfg(feature = "integration_testing")]
 pub mod integration_testing;
