@@ -323,7 +323,7 @@ impl std::fmt::Display for Clause {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::parser;
+    use crate::parser::{self, parse_policy_or_template_to_est};
     use cool_asserts::assert_matches;
     use serde_json::json;
 
@@ -2254,6 +2254,26 @@ mod test {
 
         assert_eq!(ast_roundtrip(est.clone()), est);
         assert_eq!(circular_roundtrip(est.clone()), est);
+    }
+
+    #[test]
+    fn string_escapes() {
+        let est = parse_policy_or_template_to_est(
+            r#"permit(principal, action, resource) when { "\n" };"#,
+        )
+        .unwrap();
+        let new_est = text_roundtrip(&est);
+        assert_eq!(est, new_est);
+    }
+
+    #[test]
+    fn eid_escapes() {
+        let est = parse_policy_or_template_to_est(
+            r#"permit(principal, action, resource) when { Foo::"\n" };"#,
+        )
+        .unwrap();
+        let new_est = text_roundtrip(&est);
+        assert_eq!(est, new_est);
     }
 
     #[test]

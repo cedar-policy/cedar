@@ -24,6 +24,7 @@ use crate::entities::{
 use crate::extensions::Extensions;
 use crate::parser::cst::{self, Ident};
 use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
+use crate::parser::unescape::to_unescaped_string;
 use crate::parser::{unescape, Loc, Node};
 use crate::{ast, FromNormalizedStr};
 use either::Either;
@@ -1088,20 +1089,31 @@ fn interpret_primary(
     match p.ok_or_missing()? {
         cst::Primary::Literal(lit) => Ok(Either::Right(lit.try_into()?)),
         cst::Primary::Ref(node) => match node.ok_or_missing()? {
-            cst::Ref::Uid { path, eid } => {
+            cst::Ref::Uid {
+                path,
+                eid: eid_node,
+            } => {
                 let mut errs = ParseErrors::new();
                 let maybe_name = path.to_name(&mut errs);
-                let maybe_eid = eid.as_valid_string(&mut errs);
+                let maybe_eid = eid_node.as_valid_string(&mut errs);
 
                 match (maybe_name, maybe_eid) {
-                    (Some(name), Some(eid)) => {
-                        Ok(Either::Right(Expr::lit(CedarValueJson::EntityEscape {
+                    (Some(name), Some(eid)) => match to_unescaped_string(eid) {
+                        Ok(eid) => Ok(Either::Right(Expr::lit(CedarValueJson::EntityEscape {
                             __entity: TypeAndId::from(ast::EntityUID::from_components(
                                 name,
-                                ast::Eid::new(eid.clone()),
+                                ast::Eid::new(eid),
                             )),
-                        })))
-                    }
+                        }))),
+                        Err(unescape_errs) => {
+                            errs.extend(unescape_errs.into_iter().map(|err| {
+                                crate::parser::err::ParseError::from(
+                                    eid_node.to_ast_err(ToASTErrorKind::Unescape(err)),
+                                )
+                            }));
+                            Err(errs)
+                        }
+                    },
                     _ => Err(errs),
                 }
             }
@@ -1310,7 +1322,14 @@ impl TryFrom<&Node<Option<cst::Literal>>> for Expr {
                     .map_err(|_| lit.to_ast_err(ToASTErrorKind::IntegerLiteralTooLarge(*n)))?,
             ))),
             cst::Literal::Str(node) => match node.ok_or_missing()? {
-                cst::Str::String(s) => Ok(Expr::lit(CedarValueJson::String(s.clone()))),
+                cst::Str::String(s) => match to_unescaped_string(s) {
+                    Ok(s) => Ok(Expr::lit(CedarValueJson::String(s))),
+                    Err(errs) => Err(ParseErrors(
+                        errs.into_iter()
+                            .map(|err| node.to_ast_err(ToASTErrorKind::Unescape(err)).into())
+                            .collect(),
+                    )),
+                },
                 cst::Str::Invalid(invalid_str) => Err(node
                     .to_ast_err(ToASTErrorKind::InvalidString(invalid_str.to_string()))
                     .into()),
