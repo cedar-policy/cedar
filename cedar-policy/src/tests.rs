@@ -3258,3 +3258,31 @@ mod error_source_tests {
         }
     }
 }
+
+mod issue_618 {
+    use std::str::FromStr;
+
+    use crate::Policy;
+
+    #[test]
+    fn string_escapes() {
+        let policy_src = r#"permit(principal, action, resource) when { "\n" };"#;
+        let p1 = Policy::from_str(policy_src).unwrap();
+
+        let json = p1.to_json().unwrap();
+
+        let p2 = Policy::from_json(None, json).unwrap();
+        assert_eq!(p1.to_string(), p2.to_string());
+    }
+
+    #[test]
+    fn eid_escapes() {
+        let policy_src = r#"permit(principal, action, resource) when { Foo::"\n" };"#;
+        let p1 = Policy::from_str(policy_src).unwrap();
+
+        let json = p1.to_json().unwrap();
+
+        let p2 = Policy::from_json(None, json).unwrap();
+        assert_eq!(p1.to_string(), p2.to_string());
+    }
+}
