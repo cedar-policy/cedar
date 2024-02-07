@@ -244,10 +244,10 @@ impl Policy {
 
 impl Clause {
     fn filter_slots(e: ast::Expr, is_when: bool) -> Result<ast::Expr, FromJsonError> {
-        let slots = e.slots().copied();
-        if let Some(slot) = slots.next() {
+        let slots: Vec<_> = e.slots().copied().collect();
+        if let Some(slot) = slots.first().cloned() {
             Err(FromJsonError::SlotsInConditionClause {
-                slot: *slot,
+                slot,
                 clausetype: if is_when { "when" } else { "unless" },
             })
         } else {
