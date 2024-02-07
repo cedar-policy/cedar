@@ -975,7 +975,7 @@ fn read_policy_set(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Re
 /// or from stdin if `filename` is `None`.
 fn read_json_policy(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Result<PolicySet> {
     let context = "JSON policy";
-    let json = match filename.as_ref() {
+    let json: serde_json::Value = match filename.as_ref() {
         Some(path) => {
             let f = OpenOptions::new()
                 .read(true)
@@ -994,20 +994,28 @@ fn read_json_policy(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> R
             .into_diagnostic()
             .wrap_err_with(|| format!("failed to read {context} from stdin"))?,
     };
-    let policy = Policy::from_json(None, json)
-        // TODO: for pretty source annotations:
-        /*
-        .map_err(|err| {
-            let name = filename.map_or_else(
-                || "<stdin>".to_owned(),
-                |n| n.as_ref().display().to_string(),
-            );
-            Report::new(err).with_source_code(NamedSource::new(name, source))
-        })
-        */
-        .wrap_err_with(|| format!("failed to parse {context}"))?;
-    PolicySet::from_policies([policy])
-        .wrap_err_with(|| format!("failed to create policy set from {context}"))
+    match Policy::from_json(None, json.clone()) {
+        Ok(policy) => PolicySet::from_policies([policy])
+            .wrap_err_with(|| format!("failed to create policy set from {context}")),
+        Err(_) => match Template::from_json(None, json) {
+            Ok(template) => {
+                let mut ps = PolicySet::new();
+                let _ = ps.add_template(template)?;
+                Ok(ps)
+            }
+            Err(err) => Err(err).wrap_err_with(|| format!("failed to parse {context}")),
+        },
+    }
+    // TODO: for pretty source annotations:
+    /*
+    .map_err(|err| {
+        let name = filename.map_or_else(
+            || "<stdin>".to_owned(),
+            |n| n.as_ref().display().to_string(),
+        );
+        Report::new(err).with_source_code(NamedSource::new(name, source))
+    })
+    */
 }
 
 fn read_schema_file(filename: impl AsRef<Path> + std::marker::Copy) -> Result<Schema> {
