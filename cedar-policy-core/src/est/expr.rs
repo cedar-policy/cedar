@@ -30,7 +30,7 @@ use either::Either;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -861,16 +861,26 @@ impl TryFrom<&Node<Option<cst::Relation>>> for Expr {
             cst::Relation::Has { target, field } => {
                 let target_expr = target.try_into()?;
                 match Expr::try_from(field) {
-                    Ok(field_expr) => {
-                        let field_str = field_expr
-                            .into_string_literal()
-                            .map_err(|_| field.to_ast_err(ToASTErrorKind::HasNonLiteralRHS))?;
-                        Ok(Expr::has_attr(target_expr, field_str))
-                    }
-                    Err(_) => match is_add_name(field.ok_or_missing()?) {
-                        Some(name) => Ok(Expr::has_attr(target_expr, name.to_string().into())),
-                        None => Err(field.to_ast_err(ToASTErrorKind::HasNonLiteralRHS).into()),
+                    Ok(field_expr) => match field_expr {
+                        Expr::ExprNoExt(ExprNoExt::Var(id)) => {
+                            Ok(Expr::has_attr(target_expr, id.to_smolstr()))
+                        }
+                        Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::String(id))) => {
+                            Ok(Expr::has_attr(target_expr, id))
+                        }
+                        _ => Err(field.to_ast_err(ToASTErrorKind::HasNonLiteralRHS).into()),
                     },
+                    Err(_) => {
+                        let field_add = field.ok_or_missing()?;
+                        match is_add_valid_id(field_add) {
+                            Some(name) => Ok(Expr::has_attr(target_expr, name.to_smolstr())),
+                            None => Err(field
+                                .to_ast_err(ToASTErrorKind::InvalidAttribute(
+                                    field_add.to_smolstr(),
+                                ))
+                                .into()),
+                        }
+                    }
                 }
             }
             cst::Relation::Like { target, pattern } => {
@@ -920,6 +930,16 @@ impl TryFrom<&Node<Option<cst::Add>>> for Expr {
             }
         }
         Ok(expr)
+    }
+}
+
+fn is_add_valid_id(add: &cst::Add) -> Option<ast::Id> {
+    let cst::Name { path, name } = is_add_name(add)?;
+    if path.is_empty() {
+        let mut errs = ParseErrors::new();
+        name.to_valid_ident(&mut errs)
+    } else {
+        None
     }
 }
 
@@ -1189,23 +1209,38 @@ impl TryFrom<&Node<Option<cst::Member>>> for Expr {
         let mut item: Either<ast::Name, Expr> = interpret_primary(&m_node.item)?;
         for access in &m_node.access {
             match access.ok_or_missing()? {
-                cst::MemAccess::Field(node) => match node.ok_or_missing()? {
-                    cst::Ident::Ident(i) => {
-                        item = match item {
-                            Either::Left(name) => {
-                                return Err(node
-                                    .to_ast_err(ToASTErrorKind::InvalidAccess(name, i.clone()))
-                                    .into())
-                            }
-                            Either::Right(expr) => Either::Right(Expr::get_attr(expr, i.clone())),
-                        };
+                cst::MemAccess::Field(node) => {
+                    let mut errs = ParseErrors::new();
+                    let field = node.to_valid_ident(&mut errs);
+                    // rule out invalid identifiers (`Ident::Invalid` and reserved Ids)
+                    if !errs.is_empty() {
+                        return Err(errs);
                     }
-                    i => {
-                        return Err(node
-                            .to_ast_err(ToASTErrorKind::InvalidIdentifier(i.to_string()))
-                            .into())
+                    match field {
+                        Some(id) => {
+                            item = match item {
+                                Either::Left(name) => {
+                                    return Err(node
+                                        .to_ast_err(ToASTErrorKind::InvalidAccess(
+                                            name,
+                                            id.to_smolstr(),
+                                        ))
+                                        .into())
+                                }
+                                Either::Right(expr) => {
+                                    Either::Right(Expr::get_attr(expr, id.to_smolstr()))
+                                }
+                            };
+                        }
+                        None => {
+                            return Err(node
+                                .to_ast_err(ToASTErrorKind::InvalidIdentifier(
+                                    node.ok_or_missing()?.to_string(),
+                                ))
+                                .into())
+                        }
                     }
-                },
+                }
                 cst::MemAccess::Call(args) => {
                     // we have item(args).  We hope item is either:
                     //   - an `ast::Name`, in which case we have a standard function call

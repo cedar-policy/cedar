@@ -3258,3 +3258,56 @@ mod error_source_tests {
         }
     }
 }
+
+mod issue_604 {
+    use crate::Policy;
+    fn to_json_is_ok(text: &str) {
+        let policy = Policy::parse(None, text).unwrap();
+        let json = policy.to_json();
+        assert!(json.is_ok());
+    }
+
+    #[test]
+    fn var_as_attribute_name() {
+        to_json_is_ok(
+            r#"
+        permit(principal, action, resource) when { principal == resource.principal };
+        "#,
+        );
+        to_json_is_ok(
+            r#"
+        permit(principal, action, resource) when { resource has principal };
+        "#,
+        );
+        to_json_is_ok(
+            r#"
+        permit(principal, action, resource) when { principal == resource.action };
+        "#,
+        );
+        to_json_is_ok(
+            r#"
+        permit(principal, action, resource) when { resource has action };
+        "#,
+        );
+        to_json_is_ok(
+            r#"
+        permit(principal, action, resource) when { principal == resource.resource };
+        "#,
+        );
+        to_json_is_ok(
+            r#"
+        permit(principal, action, resource) when { resource has resource };
+        "#,
+        );
+        to_json_is_ok(
+            r#"
+        permit(principal, action, resource) when { principal == resource.context };
+        "#,
+        );
+        to_json_is_ok(
+            r#"
+        permit(principal, action, resource) when { resource has context };
+        "#,
+        );
+    }
+}
