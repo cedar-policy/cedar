@@ -3261,6 +3261,7 @@ mod error_source_tests {
 
 mod issue_604 {
     use crate::Policy;
+    #[track_caller]
     fn to_json_is_ok(text: &str) {
         let policy = Policy::parse(None, text).unwrap();
         let json = policy.to_json();
