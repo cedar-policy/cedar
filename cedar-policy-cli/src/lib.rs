@@ -971,33 +971,24 @@ fn read_policy_set(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Re
     rename_from_id_annotation(ps)
 }
 
-/// Read a policy, in Cedar JSON (EST) syntax, from the file given in `filename`,
-/// or from stdin if `filename` is `None`.
+/// Read a policy or template, in Cedar JSON (EST) syntax, from the file given
+/// in `filename`, or from stdin if `filename` is `None`.
 fn read_json_policy(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> Result<PolicySet> {
     let context = "JSON policy";
-    let json: serde_json::Value = match filename.as_ref() {
-        Some(path) => {
-            let f = OpenOptions::new()
-                .read(true)
-                .open(path)
-                .into_diagnostic()
-                .wrap_err_with(|| {
-                    format!("failed to open {context} file {}", path.as_ref().display())
-                })?;
-            serde_json::from_reader(f)
-                .into_diagnostic()
-                .wrap_err_with(|| {
-                    format!("failed to read {context} file {}", path.as_ref().display())
-                })?
-        }
-        None => serde_json::from_reader(std::io::stdin())
-            .into_diagnostic()
-            .wrap_err_with(|| format!("failed to read {context} from stdin"))?,
+    let json_source = read_from_file_or_stdin(filename, context)?;
+    let json: serde_json::Value = serde_json::from_str(&json_source).into_diagnostic()?;
+    let err_to_report = |err| {
+        let name = filename.map_or_else(
+            || "<stdin>".to_owned(),
+            |n| n.as_ref().display().to_string(),
+        );
+        Report::new(err).with_source_code(NamedSource::new(name, json_source.clone()))
     };
-    match Policy::from_json(None, json.clone()) {
+
+    match Policy::from_json(None, json.clone()).map_err(err_to_report) {
         Ok(policy) => PolicySet::from_policies([policy])
             .wrap_err_with(|| format!("failed to create policy set from {context}")),
-        Err(_) => match Template::from_json(None, json) {
+        Err(_) => match Template::from_json(None, json).map_err(err_to_report) {
             Ok(template) => {
                 let mut ps = PolicySet::new();
                 let _ = ps.add_template(template)?;
@@ -1006,16 +997,6 @@ fn read_json_policy(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> R
             Err(err) => Err(err).wrap_err_with(|| format!("failed to parse {context}")),
         },
     }
-    // TODO: for pretty source annotations:
-    /*
-    .map_err(|err| {
-        let name = filename.map_or_else(
-            || "<stdin>".to_owned(),
-            |n| n.as_ref().display().to_string(),
-        );
-        Report::new(err).with_source_code(NamedSource::new(name, source))
-    })
-    */
 }
 
 fn read_schema_file(filename: impl AsRef<Path> + std::marker::Copy) -> Result<Schema> {
