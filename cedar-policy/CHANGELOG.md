@@ -18,58 +18,50 @@ Cedar Language Version: 3.0.0
 
 ### Added
 
+- The `is` operation as described in
+  [RFC 5](https://github.com/cedar-policy/rfcs/blob/main/text/0005-is-operator.md).
+  (#396)
 - Marked the `Template::from_json` and `Template::to_json` apis as public (#458)
 - New APIs to `Entities` to make it easy to add a collection of entities to an
   existing `Entities` structure. (#276)
+- `PolicySet::remove_static`, `PolicySet::remove_template` and
+  `PolicySet::unlink` to remove policies from the policy set. (#337, resolving #328)
+- `PolicySet::get_linked_policies` to get the policies linked to a `Template`. (#337)
 - Export the `cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind}` and
   `cedar_policy_core::authorizer::AuthorizationError` error types. (#260, #271)
 - `ParseError::primary_source_span` to get the primary source span locating an
   error. (#324)
-- Experimental API `PolicySet::unknown_entities` to collect unknown entity UIDs
-  from a `PartialResponse`. (#353, resolving #321)
-- `PolicySet::remove_static`, `PolicySet::remove_template` and
-  `PolicySet::unlink` to remove policies from the policy set. (#337, resolving #328)
-- `PolicySet::get_linked_policies` to get the policies linked to a `Template`. (#337)
 - `ValidationResult::validation_warnings` to access non-fatal warnings returned
   by the validator and `ValidationResult::validation_passed_without_warnings`.
   The main validation entry point now checks for warnings previously only
   available through `confusable_string_checker`. (#404)
-- The `is` operation as described in
-  [RFC 5](https://github.com/cedar-policy/rfcs/blob/main/text/0005-is-operator.md).
-  (#396)
 - `Entity::new_no_attrs()` which provides an infallible constructor for `Entity`
   in the case that there are no attributes. (See changes to `Entity::new()`
   below.) (#430)
 - `RestrictedExpression::new_entity_uid()` (#442, resolving #350)
+- Experimental API `PolicySet::unknown_entities` to collect unknown entity UIDs
+  from a `PartialResponse`. (#353, resolving #321)
 
 ### Changed
 
-- Rename `cedar_policy_core::est::EstToAstError` to
-  `cedar_policy_core::est::FromJsonError`. (#197)
-- Rename `cedar_policy_core::entities::JsonDeserializationError::ExtensionsError`
-  to `cedar_policy_core::entities::JsonDeserializationError::ExtensionFunctionLookup`.
-  (#360)
-- Rename variants in `SchemaError`. (#231)
-- `SchemaError` has a new variant corresponding to errors evaluating action
-  attributes. (#430)
-- `Diagnostics::errors()` now returns an iterator over `AuthorizationError`s.
-  (#260)
-- `Response::new()` now expects a `Vec<AuthorizationError>` as its third
-  argument. (#260)
 - Implement [RFC 19](https://github.com/cedar-policy/rfcs/blob/main/text/0019-stricter-validation.md),
   making validation slightly more strict, but more explainable. (#282)
 - Implement [RFC 20](https://github.com/cedar-policy/rfcs/blob/main/text/0020-unique-record-keys.md),
   disallowing duplicate keys in record values (including record literals in
   policies, request `context`, and records in entity attributes). (#375)
+- `Request::new()` now takes an optional schema argument, and validates the request
+  against that schema. To signal validation errors, it now returns a `Result`.
+  (#393, resolving #191)
 - `Entities::from_*()` methods now automatically add action entities present in
   the `schema` to the constructed `Entities`, if a `schema` is provided. (#360)
 - `Entities::from_*()` methods now validate the entities against the `schema`,
   if a `schema` is provided. (#360)
 - `Entities::from_entities()` and `Entities::add_entities()` now take an
   optional schema argument. (#360)
-- `Request::new()` now takes an optional schema argument, and validates the request
-  against that schema. To signal validation errors, it now returns a `Result`.
-  (#393, resolving #191)
+- `Diagnostics::errors()` now returns an iterator over `AuthorizationError`s.
+  (#260)
+- `Response::new()` now expects a `Vec<AuthorizationError>` as its third
+  argument. (#260)
 - Change the semantics of equality for IP ranges. For example,
   `ip("192.168.0.1/24") == ip("192.168.0.3/24")` was previously `true` and is now
   `false`. The behavior of equality on single IP addresses is unchanged, and so is
@@ -87,6 +79,17 @@ Cedar Language Version: 3.0.0
   is stored in already-evaluated form), and its error type has changed. (#430)
 - `Context::from_*()` methods also now eagerly evaluate the `Context`, and as
   a result return errors when evaluation fails. (#430)
+- Rename `cedar_policy_core::est::EstToAstError` to
+  `cedar_policy_core::est::FromJsonError`. (#197)
+- Rename `cedar_policy_core::entities::JsonDeserializationError::ExtensionsError`
+  to `cedar_policy_core::entities::JsonDeserializationError::ExtensionFunctionLookup`.
+  (#360)
+- Rename variants in `SchemaError`. (#231)
+- `SchemaError` has a new variant corresponding to errors evaluating action
+  attributes. (#430)
+- Improve schema parsing error messages when a cycle exists in the action
+  hierarchy to includes an action which is part of the cycle (#436, resolving
+  #416).
 - `<EntityId as FromStr>::Error` is now `Infallible` instead of `ParseErrors`.
   (#372)
 - Improve the `Display` impls for `Policy` and `PolicySet`, and add a `Display`
@@ -98,9 +101,6 @@ Cedar Language Version: 3.0.0
   `ValidationError::location`. (#405)
 - `ValidationWarningKind` is now `non_exhaustive`, allowing future warnings to
   be added without a breaking change. (#404)
-- Improve schema parsing error messages when a cycle exists in the action
-  hierarchy to includes an action which is part of the cycle (#436, resolving
-  #416).
 
 ### Fixed
 
