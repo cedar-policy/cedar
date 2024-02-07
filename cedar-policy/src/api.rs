@@ -4862,3 +4862,44 @@ mod test {
         assert!(Policy::from_json(None, v).is_err());
     }
 }
+
+#[cfg(test)]
+mod issue_606 {
+    use std::str::FromStr;
+
+    use cedar_policy_core::est::EstToAstError;
+
+    use crate::{PolicyId, Template};
+
+    #[test]
+    fn est_template() {
+        let est_json = serde_json::json!({
+            "effect": "permit",
+            "principal": { "op": "All" },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [
+                {
+                    "kind": "when",
+                    "body": {
+                        "==": {
+                            "left": { "Var": "principal" },
+                            "right": { "Slot": "?principal" }
+                        }
+                    }
+                }
+            ]
+        });
+
+        let tid = PolicyId::from_str("t0").unwrap();
+        // We should get an error here after trying to construct a template with a slot in the condition
+        let template = Template::from_json(Some(tid.clone()), est_json);
+        assert!(matches!(
+            template,
+            Err(EstToAstError::SlotsInConditionClause {
+                slot: _,
+                clausetype: "when"
+            })
+        ));
+    }
+}

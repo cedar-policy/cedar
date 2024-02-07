@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::ast;
+use crate::ast::{self, SlotId};
 use crate::entities::JsonDeserializationError;
 use crate::parser::unescape;
 use smol_str::SmolStr;
@@ -36,6 +36,14 @@ pub enum EstToAstError {
     /// EST contained a template slot for `action`. This is not currently allowed
     #[error("specified a slot for `action`")]
     ActionSlot,
+    /// EST contained a template slot in policy condition
+    #[error("found template slot {slot} in a `{clausetype}` clause")]
+    SlotsInConditionClause {
+        /// Slot that was found in a when/unless clause
+        slot: SlotId,
+        /// Clause type, e.g. "when" or "unless"
+        clausetype: &'static str,
+    },
     /// EST contained the empty JSON object `{}` where a key (operator) was expected
     #[error("Missing operator, found empty object")]
     MissingOperator,
