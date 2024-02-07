@@ -3264,7 +3264,7 @@ mod issue_604 {
     fn to_json_is_ok(text: &str) {
         let policy = Policy::parse(None, text).unwrap();
         let json = policy.to_json();
-        assert!(json.is_ok());
+        assert_matches!(json, Ok(_));
     }
 
     #[test]
