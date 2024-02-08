@@ -860,27 +860,20 @@ impl TryFrom<&Node<Option<cst::Relation>>> for Expr {
             }
             cst::Relation::Has { target, field } => {
                 let target_expr = target.try_into()?;
-                match Expr::try_from(field) {
-                    Ok(field_expr) => match field_expr {
-                        Expr::ExprNoExt(ExprNoExt::Var(id)) => {
-                            Ok(Expr::has_attr(target_expr, id.to_smolstr()))
-                        }
-                        Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::String(id))) => {
-                            Ok(Expr::has_attr(target_expr, id))
-                        }
-                        _ => Err(field.to_ast_err(ToASTErrorKind::HasNonLiteralRHS).into()),
-                    },
-                    Err(_) => {
-                        let field_add = field.ok_or_missing()?;
-                        match is_add_valid_id(field_add) {
-                            Some(name) => Ok(Expr::has_attr(target_expr, name.to_smolstr())),
-                            None => Err(field
-                                .to_ast_err(ToASTErrorKind::InvalidAttribute(
-                                    field_add.to_smolstr(),
-                                ))
-                                .into()),
-                        }
+                let mut errs = ParseErrors::new();
+                if let Some(field_expr) = field.to_expr_or_special(&mut errs) {
+                    if let Some(attr) = field_expr.into_valid_attr(&mut errs) {
+                        return Ok(Expr::has_attr(target_expr, attr));
                     }
+                }
+                if errs.is_empty() {
+                    Err(field
+                        .to_ast_err(ToASTErrorKind::InvalidAttribute(
+                            field.ok_or_missing()?.to_smolstr(),
+                        ))
+                        .into())
+                } else {
+                    Err(errs)
                 }
             }
             cst::Relation::Like { target, pattern } => {
@@ -930,77 +923,6 @@ impl TryFrom<&Node<Option<cst::Add>>> for Expr {
             }
         }
         Ok(expr)
-    }
-}
-
-fn is_add_valid_id(add: &cst::Add) -> Option<ast::Id> {
-    let cst::Name { path, name } = is_add_name(add)?;
-    if path.is_empty() {
-        let mut errs = ParseErrors::new();
-        name.to_valid_ident(&mut errs)
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_add_name(add: &cst::Add) -> Option<&cst::Name> {
-    if add.extended.is_empty() {
-        match &add.initial.node {
-            Some(mult) => is_mult_name(mult),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_mult_name(mult: &cst::Mult) -> Option<&cst::Name> {
-    if mult.extended.is_empty() {
-        match &mult.initial.node {
-            Some(unary) => is_unary_name(unary),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_unary_name(unary: &cst::Unary) -> Option<&cst::Name> {
-    if unary.op.is_none() {
-        match &unary.item.node {
-            Some(mem) => is_mem_name(mem),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_mem_name(mem: &cst::Member) -> Option<&cst::Name> {
-    if mem.access.is_empty() {
-        match &mem.item.node {
-            Some(primary) => is_primary_name(primary),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_primary_name(primary: &cst::Primary) -> Option<&cst::Name> {
-    match primary {
-        cst::Primary::Name(node) => node.node.as_ref(),
-        _ => None,
     }
 }
 
