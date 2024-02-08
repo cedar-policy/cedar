@@ -22,7 +22,6 @@ mod expr;
 pub use expr::*;
 mod head_constraints;
 pub use head_constraints::*;
-mod utils;
 
 use crate::ast;
 use crate::entities::EntityUidJson;

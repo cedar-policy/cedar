@@ -15,8 +15,8 @@
  */
 
 use super::{
-    unwrap_or_clone, EntityUID, Expr, ExprConstructionError, ExprKind, Literal, Name, PartialValue,
-    Unknown, Value, ValueKind,
+    EntityUID, Expr, ExprConstructionError, ExprKind, Literal, Name, PartialValue, Unknown, Value,
+    ValueKind,
 };
 use crate::entities::JsonSerializationError;
 use crate::parser::err::ParseErrors;
@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
+use std::sync::Arc;
 use thiserror::Error;
 
 /// A few places in Core use these "restricted expressions" (for lack of a
@@ -254,13 +255,13 @@ impl From<ValueKind> for RestrictedExpr {
             // PANIC SAFETY: cannot have duplicate key because the input was already a BTreeMap
             #[allow(clippy::expect_used)]
             ValueKind::Record(record) => RestrictedExpr::record(
-                unwrap_or_clone(record)
+                Arc::unwrap_or_clone(record)
                     .into_iter()
                     .map(|(k, v)| (k, RestrictedExpr::from(v))),
             )
             .expect("can't have duplicate keys, because the input `map` was already a BTreeMap"),
             ValueKind::ExtensionValue(ev) => {
-                let ev = unwrap_or_clone(ev);
+                let ev = Arc::unwrap_or_clone(ev);
                 RestrictedExpr::call_extension_fn(ev.constructor, ev.args)
             }
         }

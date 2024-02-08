@@ -21,6 +21,7 @@ use crate::extensions::Extensions;
 use crate::transitive_closure::{compute_tc, enforce_tc_and_dag};
 use std::collections::{hash_map, HashMap};
 use std::fmt::Write;
+use std::sync::Arc;
 
 use serde::Serialize;
 use serde_with::serde_as;
@@ -197,7 +198,7 @@ impl Entities {
                 schema
                     .action_entities()
                     .into_iter()
-                    .map(|e| (e.uid(), unwrap_or_clone(e))),
+                    .map(|e| (e.uid(), Arc::unwrap_or_clone(e))),
             );
         }
         Ok(Self {
