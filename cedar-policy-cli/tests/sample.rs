@@ -457,7 +457,11 @@ fn test_authorize_samples() {
     );
 }
 
-fn run_validate_test(policies_file: impl Into<String>, schema_file: impl Into<String>, exit_code: CedarExitCode) {
+fn run_validate_test(
+    policies_file: impl Into<String>,
+    schema_file: impl Into<String>,
+    exit_code: CedarExitCode,
+) {
     let cmd = ValidateArgs {
         schema_file: schema_file.into(),
         policies: PoliciesArgs {
