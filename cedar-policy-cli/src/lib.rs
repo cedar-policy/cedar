@@ -274,15 +274,22 @@ pub struct PoliciesArgs {
     /// Format of policies in the `--policies` file
     #[arg(long = "policy-format", default_value_t, value_enum)]
     pub policy_format: PolicyFormat,
+    /// File containing template-linked policies
+    #[arg(short = 'k', long = "template-linked", value_name = "FILE")]
+    pub template_linked_file: Option<String>,
 }
 
 impl PoliciesArgs {
     /// Turn this `PoliciesArgs` into the appropriate `PolicySet` object
     fn get_policy_set(&self) -> Result<PolicySet> {
-        match self.policy_format {
+        let mut pset = match self.policy_format {
             PolicyFormat::Human => read_policy_set(self.policies_file.as_ref()),
             PolicyFormat::Json => read_json_policy(self.policies_file.as_ref()),
+        }?;
+        if let Some(links_filename) = self.template_linked_file.as_ref() {
+            add_template_links_to_set(links_filename, &mut pset)?;
         }
+        Ok(pset)
     }
 }
 
@@ -294,9 +301,6 @@ pub struct AuthorizeArgs {
     /// Policies args (incorporated by reference)
     #[command(flatten)]
     pub policies: PoliciesArgs,
-    /// File containing template linked policies
-    #[arg(short = 'k', long = "template-linked", value_name = "FILE")]
-    pub template_linked_file: Option<String>,
     /// File containing schema information
     ///
     /// Used to populate the store with action entities and for schema-based
@@ -328,9 +332,6 @@ pub struct LinkArgs {
     /// Policies args (incorporated by reference)
     #[command(flatten)]
     pub policies: PoliciesArgs,
-    /// File containing template-linked policies
-    #[arg(short = 'k', long = "template-linked", value_name = "FILE")]
-    pub template_linked_file: String,
     /// Id of the template to instantiate
     #[arg(long)]
     pub template_id: String,
@@ -702,15 +703,22 @@ fn link_inner(args: &LinkArgs) -> Result<()> {
     )?;
     let linked = policies
         .policy(&PolicyId::new(&args.new_id))
-        .ok_or_else(|| miette!("Failed to add template-linked policy"))?;
-    println!("Template Linked Policy Added: {linked}");
-    let linked = TemplateLinked {
-        template_id: args.template_id.clone(),
-        link_id: args.new_id.clone(),
-        args: args.arguments.data.clone(),
-    };
+        .ok_or_else(|| miette!("Failed to find newly-added template-linked policy"))?;
+    println!("Template-linked policy added: {linked}");
 
-    update_template_linked_file(&args.template_linked_file, linked)
+    // If a `--template-linked` / `-k` option was provided, update that file with the new link
+    if let Some(links_filename) = args.policies.template_linked_file.as_ref() {
+        update_template_linked_file(
+            links_filename,
+            TemplateLinked {
+                template_id: args.template_id.clone(),
+                link_id: args.new_id.clone(),
+                args: args.arguments.data.clone(),
+            },
+        )?;
+    }
+
+    Ok(())
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -772,7 +780,7 @@ impl From<TemplateLinked> for LiteralTemplateLinked {
 
 /// Iterate over links in the template-linked file and add them to the set
 fn add_template_links_to_set(path: impl AsRef<Path>, policy_set: &mut PolicySet) -> Result<()> {
-    for template_linked in load_liked_file(path)? {
+    for template_linked in load_links_from_file(path)? {
         let slot_env = create_slot_env(&template_linked.args)?;
         policy_set.link(
             PolicyId::new(&template_linked.template_id),
@@ -783,8 +791,8 @@ fn add_template_links_to_set(path: impl AsRef<Path>, policy_set: &mut PolicySet)
     Ok(())
 }
 
-/// Read template linked set to a Vec
-fn load_liked_file(path: impl AsRef<Path>) -> Result<Vec<TemplateLinked>> {
+/// Given a file containing template links, return a `Vec` of those links
+fn load_links_from_file(path: impl AsRef<Path>) -> Result<Vec<TemplateLinked>> {
     let f = match std::fs::File::open(path) {
         Ok(f) => f,
         Err(_) => {
@@ -810,7 +818,7 @@ fn load_liked_file(path: impl AsRef<Path>) -> Result<Vec<TemplateLinked>> {
 
 /// Add a single template-linked policy to the linked file
 fn update_template_linked_file(path: impl AsRef<Path>, new_linked: TemplateLinked) -> Result<()> {
-    let mut template_linked = load_liked_file(path.as_ref())?;
+    let mut template_linked = load_links_from_file(path.as_ref())?;
     template_linked.push(new_linked);
     write_template_linked_file(&template_linked, path.as_ref())
 }
@@ -831,7 +839,6 @@ pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {
     let ans = execute_request(
         &args.request,
         &args.policies,
-        args.template_linked_file.as_ref(),
         &args.entities_file,
         args.schema_file.as_ref(),
         args.timing,
@@ -1013,18 +1020,12 @@ fn read_schema_file(filename: impl AsRef<Path> + std::marker::Copy) -> Result<Sc
 fn execute_request(
     request: &RequestArgs,
     policies: &PoliciesArgs,
-    links_filename: Option<impl AsRef<Path>>,
     entities_filename: impl AsRef<Path>,
     schema_filename: Option<impl AsRef<Path> + std::marker::Copy>,
     compute_duration: bool,
 ) -> Result<Response, Vec<Report>> {
     let mut errs = vec![];
-    let policies = match policies.get_policy_set().and_then(|mut pset| {
-        if let Some(links_filename) = links_filename {
-            add_template_links_to_set(links_filename.as_ref(), &mut pset)?;
-        }
-        Ok(pset)
-    }) {
+    let policies = match policies.get_policy_set() {
         Ok(pset) => pset,
         Err(e) => {
             errs.push(e);
