@@ -818,37 +818,23 @@ impl TryFrom<cst::Relation> for Expr {
                 }
                 Ok(expr)
             }
-            cst::Relation::Has { target, field } => match (target, field) {
-                (
-                    ASTNode {
-                        node: Some(target), ..
-                    },
-                    ASTNode {
-                        node: Some(field), ..
-                    },
-                ) => {
-                    let target_expr = target.try_into()?;
-                    match Expr::try_from(field.clone()) {
-                        Ok(field_expr) => {
-                            let field_str = field_expr.into_string_literal().ok_or_else(|| {
-                                ParseError::ToAST(
-                                    "`has` RHS should be a string literal".to_string(),
-                                )
-                            })?;
-                            Ok(Expr::has_attr(target_expr, field_str))
-                        }
-                        Err(_) => match is_add_name(field) {
-                            Some(name) => Ok(Expr::has_attr(target_expr, name.to_string().into())),
-                            None => Err(ParseError::ToAST(
-                                "`has` RHS should be an attribute name or string literal"
-                                    .to_string(),
-                            )
-                            .into()),
-                        },
+            cst::Relation::Has { target, field } => {
+                let target_expr = match target.node {
+                    Some(add) => add.try_into(),
+                    None => Err(ParseError::ToAST("node should not be empty".to_string()).into()),
+                }?;
+                let mut errs = ParseErrors::new();
+                if let Some(field_expr) = field.to_expr_or_special(&mut errs) {
+                    if let Some(attr) = field_expr.into_valid_attr(&mut errs) {
+                        return Ok(Expr::has_attr(target_expr, attr));
                     }
                 }
-                (_, _) => Err(ParseError::ToAST("data should not be empty".to_string()).into()),
-            },
+                if errs.is_empty() {
+                    Err(ParseError::ToAST("invalid attribute".to_string()).into())
+                } else {
+                    Err(errs)
+                }
+            }
             cst::Relation::Like { target, pattern } => match (target, pattern) {
                 (
                     ASTNode {
@@ -894,67 +880,6 @@ impl TryFrom<cst::Add> for Expr {
             }
         }
         Ok(expr)
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_add_name(add: cst::Add) -> Option<cst::Name> {
-    if add.extended.is_empty() {
-        match add.initial.node {
-            Some(mult) => is_mult_name(mult),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_mult_name(mult: cst::Mult) -> Option<cst::Name> {
-    if mult.extended.is_empty() {
-        match mult.initial.node {
-            Some(unary) => is_unary_name(unary),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_unary_name(unary: cst::Unary) -> Option<cst::Name> {
-    if unary.op.is_none() {
-        match unary.item.node {
-            Some(mem) => is_mem_name(mem),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_mem_name(mem: cst::Member) -> Option<cst::Name> {
-    if mem.access.is_empty() {
-        match mem.item.node {
-            Some(primary) => is_primary_name(primary),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_primary_name(primary: cst::Primary) -> Option<cst::Name> {
-    match primary {
-        cst::Primary::Name(node) => node.node,
-        _ => None,
     }
 }
 
@@ -1169,31 +1094,39 @@ fn interpret_primary(p: cst::Primary) -> Result<Either<ast::Name, Expr>, ParseEr
 impl TryFrom<cst::Member> for Expr {
     type Error = ParseErrors;
     fn try_from(m: cst::Member) -> Result<Expr, ParseErrors> {
-        let mut item: Either<ast::Name, Expr> = match m.item.node {
-            Some(p) => interpret_primary(p),
+        let primary = match m.item.node {
+            Some(primary) => Ok::<cst::Primary, ParseErrors>(primary),
             None => Err(ParseError::ToAST("node should not be empty".to_string()).into()),
         }?;
+        let mut item: Either<ast::Name, Expr> = interpret_primary(primary)?;
         for access in m.access {
             match access.node {
-                Some(cst::MemAccess::Field(ASTNode { node, .. })) => match node {
-                    Some(cst::Ident::Ident(i)) => {
-                        item = match item {
-                            Either::Left(name) => {
-                                return Err(ParseError::ToAST(format!(
-                                    "{name}.{i} is not a valid expression"
-                                ))
-                                .into())
-                            }
-                            Either::Right(expr) => Either::Right(Expr::get_attr(expr, i)),
-                        };
+                Some(cst::MemAccess::Field(node)) => {
+                    let mut errs = ParseErrors::new();
+                    let field = node.to_valid_ident(&mut errs);
+                    // rule out invalid identifiers (`Ident::Invalid` and reserved Ids)
+                    if !errs.is_empty() {
+                        return Err(errs);
                     }
-                    Some(_i) => {
-                        return Err(ParseError::ToAST("Invalid Identifier".to_string()).into())
+                    match field {
+                        Some(id) => {
+                            item = match item {
+                                Either::Left(name) => {
+                                    return Err(ParseError::ToAST(format!(
+                                        "{name}.{id} is not a valid expression"
+                                    ))
+                                    .into())
+                                }
+                                Either::Right(expr) => {
+                                    Either::Right(Expr::get_attr(expr, id.to_smolstr()))
+                                }
+                            };
+                        }
+                        None => {
+                            return Err(ParseError::ToAST("invalid attribute".to_string()).into())
+                        }
                     }
-                    None => {
-                        return Err(ParseError::ToAST("node should not be empty".to_string()).into())
-                    }
-                },
+                }
                 Some(cst::MemAccess::Call(args)) => {
                     // we have item(args).  We hope item is either:
                     //   - an `ast::Name`, in which case we have a standard function call
