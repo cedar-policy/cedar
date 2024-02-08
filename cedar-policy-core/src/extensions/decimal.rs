@@ -53,6 +53,11 @@ mod names {
     }
 }
 
+// Global regex, initialized at first use
+lazy_static::lazy_static! {
+    static ref DECIMAL_REGEX : Regex = Regex::new(r"^(-?\d+)\.(\d+)$").unwrap();
+}
+
 /// Help message to display when a String was provided where a decimal value was expected.
 /// This error is likely due to confusion between "1.23" and decimal("1.23").
 const ADVICE_MSG: &str = "maybe you forgot to apply the `decimal` constructor?";
@@ -104,15 +109,14 @@ impl Decimal {
         // check that the string matches the regex
         // PANIC SAFETY: This regex does parse
         #[allow(clippy::unwrap_used)]
-        let re = Regex::new(r"^(-?\d+)\.(\d+)$").unwrap();
-        if !re.is_match(str.as_ref()) {
+        if !DECIMAL_REGEX.is_match(str.as_ref()) {
             return Err(Error::FailedParse(str.as_ref().to_owned()));
         }
 
         // pull out the components before and after the decimal point
         // (the check above should ensure that .captures() and .get() succeed,
         // but we include proper error handling for posterity)
-        let caps = re
+        let caps = DECIMAL_REGEX
             .captures(str.as_ref())
             .ok_or_else(|| Error::FailedParse(str.as_ref().to_owned()))?;
         let l = caps
