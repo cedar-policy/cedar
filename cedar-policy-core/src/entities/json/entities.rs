@@ -23,8 +23,8 @@ use crate::ast::{
     BorrowedRestrictedExpr, Entity, EntityType, EntityUID, PartialValue, RestrictedExpr,
 };
 use crate::entities::{
-    schematype_of_partialvalue, unwrap_or_clone, Entities, EntitiesError,
-    EntitySchemaConformanceError, GetSchemaTypeError, TCComputation, UnexpectedEntityTypeError,
+    schematype_of_partialvalue, Entities, EntitiesError, EntitySchemaConformanceError,
+    GetSchemaTypeError, TCComputation, UnexpectedEntityTypeError,
 };
 use crate::extensions::Extensions;
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
@@ -196,7 +196,12 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
             .map(|ejson| self.parse_ejson(ejson).map_err(EntitiesError::from))
             .collect::<Result<_, _>>()?;
         if let Some(schema) = &self.schema {
-            entities.extend(schema.action_entities().into_iter().map(unwrap_or_clone));
+            entities.extend(
+                schema
+                    .action_entities()
+                    .into_iter()
+                    .map(Arc::unwrap_or_clone),
+            );
         }
         Ok(entities.into_iter())
     }

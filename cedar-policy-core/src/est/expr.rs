@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-use super::utils::unwrap_or_clone;
 use super::FromJsonError;
 use crate::ast::InputInteger;
 use crate::entities::{
@@ -700,26 +699,28 @@ impl From<ast::Expr> for Expr {
                 then_expr,
                 else_expr,
             } => Expr::ite(
-                unwrap_or_clone(test_expr).into(),
-                unwrap_or_clone(then_expr).into(),
-                unwrap_or_clone(else_expr).into(),
+                Arc::unwrap_or_clone(test_expr).into(),
+                Arc::unwrap_or_clone(then_expr).into(),
+                Arc::unwrap_or_clone(else_expr).into(),
             ),
-            ast::ExprKind::And { left, right } => {
-                Expr::and(unwrap_or_clone(left).into(), unwrap_or_clone(right).into())
-            }
-            ast::ExprKind::Or { left, right } => {
-                Expr::or(unwrap_or_clone(left).into(), unwrap_or_clone(right).into())
-            }
+            ast::ExprKind::And { left, right } => Expr::and(
+                Arc::unwrap_or_clone(left).into(),
+                Arc::unwrap_or_clone(right).into(),
+            ),
+            ast::ExprKind::Or { left, right } => Expr::or(
+                Arc::unwrap_or_clone(left).into(),
+                Arc::unwrap_or_clone(right).into(),
+            ),
             ast::ExprKind::UnaryApp { op, arg } => {
-                let arg = unwrap_or_clone(arg).into();
+                let arg = Arc::unwrap_or_clone(arg).into();
                 match op {
                     ast::UnaryOp::Not => Expr::not(arg),
                     ast::UnaryOp::Neg => Expr::neg(arg),
                 }
             }
             ast::ExprKind::BinaryApp { op, arg1, arg2 } => {
-                let arg1 = unwrap_or_clone(arg1).into();
-                let arg2 = unwrap_or_clone(arg2).into();
+                let arg1 = Arc::unwrap_or_clone(arg1).into();
+                let arg2 = Arc::unwrap_or_clone(arg2).into();
                 match op {
                     ast::BinaryOp::Eq => Expr::eq(arg1, arg2),
                     ast::BinaryOp::In => Expr::_in(arg1, arg2),
@@ -733,30 +734,38 @@ impl From<ast::Expr> for Expr {
                 }
             }
             ast::ExprKind::MulByConst { arg, constant } => Expr::mul(
-                unwrap_or_clone(arg).into(),
+                Arc::unwrap_or_clone(arg).into(),
                 Expr::lit(CedarValueJson::Long(constant as InputInteger)),
             ),
             ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                let args = unwrap_or_clone(args).into_iter().map(Into::into).collect();
+                let args = Arc::unwrap_or_clone(args)
+                    .into_iter()
+                    .map(Into::into)
+                    .collect();
                 Expr::ext_call(fn_name.to_string().into(), args)
             }
             ast::ExprKind::GetAttr { expr, attr } => {
-                Expr::get_attr(unwrap_or_clone(expr).into(), attr)
+                Expr::get_attr(Arc::unwrap_or_clone(expr).into(), attr)
             }
             ast::ExprKind::HasAttr { expr, attr } => {
-                Expr::has_attr(unwrap_or_clone(expr).into(), attr)
+                Expr::has_attr(Arc::unwrap_or_clone(expr).into(), attr)
             }
-            ast::ExprKind::Like { expr, pattern } => {
-                Expr::like(unwrap_or_clone(expr).into(), pattern.to_string().into())
-            }
-            ast::ExprKind::Is { expr, entity_type } => {
-                Expr::is_entity_type(unwrap_or_clone(expr).into(), entity_type.to_string().into())
-            }
-            ast::ExprKind::Set(set) => {
-                Expr::set(unwrap_or_clone(set).into_iter().map(Into::into).collect())
-            }
+            ast::ExprKind::Like { expr, pattern } => Expr::like(
+                Arc::unwrap_or_clone(expr).into(),
+                pattern.to_string().into(),
+            ),
+            ast::ExprKind::Is { expr, entity_type } => Expr::is_entity_type(
+                Arc::unwrap_or_clone(expr).into(),
+                entity_type.to_string().into(),
+            ),
+            ast::ExprKind::Set(set) => Expr::set(
+                Arc::unwrap_or_clone(set)
+                    .into_iter()
+                    .map(Into::into)
+                    .collect(),
+            ),
             ast::ExprKind::Record(map) => Expr::record(
-                unwrap_or_clone(map)
+                Arc::unwrap_or_clone(map)
                     .into_iter()
                     .map(|(k, v)| (k, v.into()))
                     .collect(),
@@ -1246,7 +1255,7 @@ impl TryFrom<&Node<Option<cst::Member>>> for Expr {
                                     // have to add the "receiver" argument as
                                     // first in the list for the method call
                                     let mut args = args.collect::<Vec<_>>();
-                                    args.insert(0, unwrap_or_clone(left));
+                                    args.insert(0, Arc::unwrap_or_clone(left));
                                     Either::Right(Expr::ext_call(attr, args))
                                 }
                             }

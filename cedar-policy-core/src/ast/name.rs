@@ -25,11 +25,6 @@ use crate::FromNormalizedStr;
 
 use super::PrincipalOrResource;
 
-/// Arc::unwrap_or_clone() isn't stabilized as of this writing, but this is its implementation
-pub fn unwrap_or_clone<T: Clone>(arc: Arc<T>) -> T {
-    Arc::try_unwrap(arc).unwrap_or_else(|arc| (*arc).clone())
-}
-
 /// This is the `Name` type used to name types, functions, etc.
 /// The name can include namespaces.
 /// Clone is O(1).
@@ -71,7 +66,7 @@ impl Name {
     /// Given a type basename and a namespace (as a `Name` itself),
     /// return a `Name` representing the type's fully qualified name
     pub fn type_in_namespace(basename: Id, namespace: Name) -> Name {
-        let mut path = unwrap_or_clone(namespace.path);
+        let mut path = Arc::unwrap_or_clone(namespace.path);
         path.push(namespace.id);
         Name::new(basename, path)
     }
