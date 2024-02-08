@@ -99,6 +99,7 @@ fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAnswer 
 /// the `RecvdSlice`, you can either pass a `Map<String, String>` where the values are all single policies,
 /// or a single String which is a concatenation of multiple policies. If you choose the latter,
 /// policy id's will be auto-generated for you in the format `policyX` where X is a Natural Number (zero or a positive int)
+#[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 pub fn json_is_authorized_partial(input: &str) -> InterfaceResult {
     serde_json::from_str::<AuthorizationCall>(input).map_or_else(
@@ -199,6 +200,7 @@ impl InterfaceDiagnostics {
 }
 
 /// Integration version of a `PartialResponse` that uses `InterfaceDiagnistics` for simpler (de)serialization
+#[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct InterfaceResidualResponse {

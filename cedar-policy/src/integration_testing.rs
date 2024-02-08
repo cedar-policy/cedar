@@ -142,12 +142,13 @@ pub fn resolve_integration_test_path(path: impl AsRef<Path>) -> PathBuf {
 /// On failure to load or parse policies file.
 // PANIC SAFETY this is testing code
 #[allow(clippy::panic)]
-pub fn parse_policies_from_test(test: &JsonTest) -> PolicySet {
+pub fn parse_policies_from_test(test: &JsonTest) -> cedar_policy_core::ast::PolicySet {
     let policy_file = resolve_integration_test_path(&test.policies);
     let policies_text = std::fs::read_to_string(policy_file)
         .unwrap_or_else(|e| panic!("error loading policy file {}: {e}", test.policies));
-    PolicySet::from_str(&policies_text)
-        .unwrap_or_else(|e| panic!("error parsing policy in file {}: {e}", &test.policies))
+    let policies = PolicySet::from_str(&policies_text)
+        .unwrap_or_else(|e| panic!("error parsing policy in file {}: {e}", &test.policies));
+    policies.ast
 }
 
 /// Given a `JsonTest`, parse the provided schema file.
@@ -168,14 +169,18 @@ pub fn parse_schema_from_test(test: &JsonTest) -> Schema {
 /// On failure to load or parse entities file.
 // PANIC SAFETY this is testing code
 #[allow(clippy::panic)]
-pub fn parse_entities_from_test(test: &JsonTest, schema: &Schema) -> Entities {
+pub fn parse_entities_from_test(
+    test: &JsonTest,
+    schema: &Schema,
+) -> cedar_policy_core::entities::Entities {
     let entity_file = resolve_integration_test_path(&test.entities);
     let entities_json = std::fs::OpenOptions::new()
         .read(true)
         .open(entity_file)
         .unwrap_or_else(|e| panic!("error opening entity file {}: {e}", &test.entities));
-    Entities::from_json_file(&entities_json, Some(schema))
-        .unwrap_or_else(|e| panic!("error parsing entities in {}: {e}", &test.entities))
+    let entities = Entities::from_json_file(&entities_json, Some(schema))
+        .unwrap_or_else(|e| panic!("error parsing entities in {}: {e}", &test.entities));
+    entities.0
 }
 
 /// Given a `JsonRequest`, parse (and optionally validate) the provided request.
@@ -187,7 +192,7 @@ pub fn parse_request_from_test(
     json_request: &JsonRequest,
     schema: &Schema,
     test_name: &str,
-) -> Request {
+) -> cedar_policy_core::ast::Request {
     let principal = json_request.principal.clone().map(|json| {
         EntityUid::from_json(json.into()).unwrap_or_else(|e| {
             panic!(
@@ -220,7 +225,7 @@ pub fn parse_request_from_test(
                 json_request.desc, test_name
             )
         });
-    Request::new(
+    let request = Request::new(
         principal,
         action,
         resource,
@@ -236,7 +241,8 @@ pub fn parse_request_from_test(
             "error validating request \"{}\" in {}: {e}",
             json_request.desc, test_name
         )
-    })
+    });
+    request.0
 }
 
 /// Given the filename of a JSON file describing an integration test, perform
@@ -267,7 +273,7 @@ pub fn perform_integration_test_from_json_custom(
     let entities = parse_entities_from_test(&test, &schema);
 
     let validation_result = test_impl
-        .validate(&schema.0, &policies.ast, ValidationMode::default().into())
+        .validate(&schema.0, &policies, ValidationMode::default().into())
         .expect("Validation failed");
     if test.should_validate {
         assert!(
@@ -284,9 +290,8 @@ pub fn perform_integration_test_from_json_custom(
 
     for json_request in test.requests {
         let request = parse_request_from_test(&json_request, &schema, &test_name);
-
         let response = test_impl
-            .is_authorized(&request.0, &policies.ast, &entities.0)
+            .is_authorized(&request, &policies, &entities)
             .expect("Authorization failed");
         // check decision
         assert_eq!(

@@ -1,7 +1,0 @@
-permit(
-  principal,
-  action,
-  resource
-) when {
-  ((true && (isInRange())) && a::"") && principal
-};

@@ -182,7 +182,7 @@ impl CedarTestImplementation for RustEngine {
         );
         let response = TestResponse {
             response,
-            timing_info: HashMap::from([("authorization_time".into(), duration.as_micros())]),
+            timing_info: HashMap::from([("authorize".into(), duration.as_micros())]),
         };
         TestResult::Success(response)
     }
@@ -219,7 +219,7 @@ impl CedarTestImplementation for RustEngine {
                 .validation_errors()
                 .map(|err| format!("{err:?}"))
                 .collect(),
-            timing_info: HashMap::from([("validation_time".into(), duration.as_micros())]),
+            timing_info: HashMap::from([("validate".into(), duration.as_micros())]),
         };
         TestResult::Success(response)
     }

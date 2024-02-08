@@ -243,11 +243,24 @@ impl Policy {
 }
 
 impl Clause {
+    fn filter_slots(e: ast::Expr, is_when: bool) -> Result<ast::Expr, FromJsonError> {
+        let first_slot = e.slots().next().cloned();
+        if let Some(slot) = first_slot {
+            Err(FromJsonError::SlotsInConditionClause {
+                slot,
+                clausetype: if is_when { "when" } else { "unless" },
+            })
+        } else {
+            Ok(e)
+        }
+    }
     /// `id` is the ID of the policy the clause belongs to, used only for reporting errors
     fn try_into_ast(self, id: ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
         match self {
-            Clause::When(expr) => expr.try_into_ast(id),
-            Clause::Unless(expr) => Ok(ast::Expr::not(expr.try_into_ast(id)?)),
+            Clause::When(expr) => Self::filter_slots(expr.try_into_ast(id)?, true),
+            Clause::Unless(expr) => {
+                Self::filter_slots(ast::Expr::not(expr.try_into_ast(id)?), false)
+            }
         }
     }
 }
