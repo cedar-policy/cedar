@@ -29,7 +29,7 @@ use either::Either;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -869,17 +869,20 @@ impl TryFrom<&Node<Option<cst::Relation>>> for Expr {
             }
             cst::Relation::Has { target, field } => {
                 let target_expr = target.try_into()?;
-                match Expr::try_from(field) {
-                    Ok(field_expr) => {
-                        let field_str = field_expr
-                            .into_string_literal()
-                            .map_err(|_| field.to_ast_err(ToASTErrorKind::HasNonLiteralRHS))?;
-                        Ok(Expr::has_attr(target_expr, field_str))
+                let mut errs = ParseErrors::new();
+                if let Some(field_expr) = field.to_expr_or_special(&mut errs) {
+                    if let Some(attr) = field_expr.into_valid_attr(&mut errs) {
+                        return Ok(Expr::has_attr(target_expr, attr));
                     }
-                    Err(_) => match is_add_name(field.ok_or_missing()?) {
-                        Some(name) => Ok(Expr::has_attr(target_expr, name.to_string().into())),
-                        None => Err(field.to_ast_err(ToASTErrorKind::HasNonLiteralRHS).into()),
-                    },
+                }
+                if errs.is_empty() {
+                    Err(field
+                        .to_ast_err(ToASTErrorKind::InvalidAttribute(
+                            field.ok_or_missing()?.to_smolstr(),
+                        ))
+                        .into())
+                } else {
+                    Err(errs)
                 }
             }
             cst::Relation::Like { target, pattern } => {
@@ -929,67 +932,6 @@ impl TryFrom<&Node<Option<cst::Add>>> for Expr {
             }
         }
         Ok(expr)
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_add_name(add: &cst::Add) -> Option<&cst::Name> {
-    if add.extended.is_empty() {
-        match &add.initial.node {
-            Some(mult) => is_mult_name(mult),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_mult_name(mult: &cst::Mult) -> Option<&cst::Name> {
-    if mult.extended.is_empty() {
-        match &mult.initial.node {
-            Some(unary) => is_unary_name(unary),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_unary_name(unary: &cst::Unary) -> Option<&cst::Name> {
-    if unary.op.is_none() {
-        match &unary.item.node {
-            Some(mem) => is_mem_name(mem),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_mem_name(mem: &cst::Member) -> Option<&cst::Name> {
-    if mem.access.is_empty() {
-        match &mem.item.node {
-            Some(primary) => is_primary_name(primary),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_primary_name(primary: &cst::Primary) -> Option<&cst::Name> {
-    match primary {
-        cst::Primary::Name(node) => node.node.as_ref(),
-        _ => None,
     }
 }
 
@@ -1198,23 +1140,38 @@ impl TryFrom<&Node<Option<cst::Member>>> for Expr {
         let mut item: Either<ast::Name, Expr> = interpret_primary(&m_node.item)?;
         for access in &m_node.access {
             match access.ok_or_missing()? {
-                cst::MemAccess::Field(node) => match node.ok_or_missing()? {
-                    cst::Ident::Ident(i) => {
-                        item = match item {
-                            Either::Left(name) => {
-                                return Err(node
-                                    .to_ast_err(ToASTErrorKind::InvalidAccess(name, i.clone()))
-                                    .into())
-                            }
-                            Either::Right(expr) => Either::Right(Expr::get_attr(expr, i.clone())),
-                        };
+                cst::MemAccess::Field(node) => {
+                    let mut errs = ParseErrors::new();
+                    let field = node.to_valid_ident(&mut errs);
+                    // rule out invalid identifiers (`Ident::Invalid` and reserved Ids)
+                    if !errs.is_empty() {
+                        return Err(errs);
                     }
-                    i => {
-                        return Err(node
-                            .to_ast_err(ToASTErrorKind::InvalidIdentifier(i.to_string()))
-                            .into())
+                    match field {
+                        Some(id) => {
+                            item = match item {
+                                Either::Left(name) => {
+                                    return Err(node
+                                        .to_ast_err(ToASTErrorKind::InvalidAccess(
+                                            name,
+                                            id.to_smolstr(),
+                                        ))
+                                        .into())
+                                }
+                                Either::Right(expr) => {
+                                    Either::Right(Expr::get_attr(expr, id.to_smolstr()))
+                                }
+                            };
+                        }
+                        None => {
+                            return Err(node
+                                .to_ast_err(ToASTErrorKind::InvalidIdentifier(
+                                    node.ok_or_missing()?.to_string(),
+                                ))
+                                .into())
+                        }
                     }
-                },
+                }
                 cst::MemAccess::Call(args) => {
                     // we have item(args).  We hope item is either:
                     //   - an `ast::Name`, in which case we have a standard function call

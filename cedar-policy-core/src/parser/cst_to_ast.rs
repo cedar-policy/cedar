@@ -1334,7 +1334,7 @@ impl Node<Option<cst::Add>> {
     fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
-    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
+    pub(crate) fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         // if `self` doesn't have data, nothing we can do here, just propagate
         // the `None`; we don't need to signal an error, because one was already
         // signaled when the `Node` without data was created
