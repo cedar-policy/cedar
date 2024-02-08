@@ -33,6 +33,7 @@ fn run_check_parse_test(policies_file: impl Into<String>, expected_exit_code: Ce
         policies: PoliciesArgs {
             policies_file: Some(policies_file.into()),
             policy_format: PolicyFormat::Human,
+            template_linked_file: None,
         },
     };
     let output = check_parse(&cmd);
@@ -40,17 +41,17 @@ fn run_check_parse_test(policies_file: impl Into<String>, expected_exit_code: Ce
 }
 
 fn run_authorize_test(
-    policies_file: &str,
-    entities_file: &str,
-    principal: &str,
-    action: &str,
-    resource: &str,
+    policies_file: impl Into<String>,
+    entities_file: impl Into<String>,
+    principal: impl Into<String>,
+    action: impl Into<String>,
+    resource: impl Into<String>,
     exit_code: CedarExitCode,
 ) {
     run_authorize_test_with_linked_policies(
         policies_file,
         entities_file,
-        None,
+        None::<String>,
         principal,
         action,
         resource,
@@ -59,12 +60,12 @@ fn run_authorize_test(
 }
 
 fn run_authorize_test_with_linked_policies(
-    policies_file: &str,
-    entities_file: &str,
-    links_file: Option<&str>,
-    principal: &str,
-    action: &str,
-    resource: &str,
+    policies_file: impl Into<String>,
+    entities_file: impl Into<String>,
+    links_file: Option<impl Into<String>>,
+    principal: impl Into<String>,
+    action: impl Into<String>,
+    resource: impl Into<String>,
     exit_code: CedarExitCode,
 ) {
     let cmd = AuthorizeArgs {
@@ -79,8 +80,8 @@ fn run_authorize_test_with_linked_policies(
         policies: PoliciesArgs {
             policies_file: Some(policies_file.into()),
             policy_format: PolicyFormat::Human,
+            template_linked_file: links_file.map(Into::into),
         },
-        template_linked_file: links_file.map(|x| x.to_string()),
         schema_file: None,
         entities_file: entities_file.into(),
         verbose: true,
@@ -91,10 +92,10 @@ fn run_authorize_test_with_linked_policies(
 }
 
 fn run_link_test(
-    policies_file: &str,
-    links_file: &str,
-    template_id: &str,
-    linked_id: &str,
+    policies_file: impl Into<String>,
+    links_file: impl Into<String>,
+    template_id: impl Into<String>,
+    linked_id: impl Into<String>,
     env: HashMap<SlotId, String>,
     expected: CedarExitCode,
 ) {
@@ -102,8 +103,8 @@ fn run_link_test(
         policies: PoliciesArgs {
             policies_file: Some(policies_file.into()),
             policy_format: PolicyFormat::Human,
+            template_linked_file: Some(links_file.into()),
         },
-        template_linked_file: links_file.into(),
         template_id: template_id.into(),
         new_id: linked_id.into(),
         arguments: Arguments { data: env },
@@ -130,12 +131,12 @@ fn run_format_test(policies_file: &str) {
 }
 
 fn run_authorize_test_context(
-    policies_file: &str,
-    entities_file: &str,
-    principal: &str,
-    action: &str,
-    resource: &str,
-    context_file: &str,
+    policies_file: impl Into<String>,
+    entities_file: impl Into<String>,
+    principal: impl Into<String>,
+    action: impl Into<String>,
+    resource: impl Into<String>,
+    context_file: impl Into<String>,
     exit_code: CedarExitCode,
 ) {
     let cmd = AuthorizeArgs {
@@ -150,8 +151,8 @@ fn run_authorize_test_context(
         policies: PoliciesArgs {
             policies_file: Some(policies_file.into()),
             policy_format: PolicyFormat::Human,
+            template_linked_file: None,
         },
-        template_linked_file: None,
         schema_file: None,
         entities_file: entities_file.into(),
         verbose: true,
@@ -162,9 +163,9 @@ fn run_authorize_test_context(
 }
 
 fn run_authorize_test_json(
-    policies_file: &str,
-    entities_file: &str,
-    request_json: &str,
+    policies_file: impl Into<String>,
+    entities_file: impl Into<String>,
+    request_json_file: impl Into<String>,
     exit_code: CedarExitCode,
 ) {
     let cmd = AuthorizeArgs {
@@ -173,14 +174,14 @@ fn run_authorize_test_json(
             action: None,
             resource: None,
             context_json_file: None,
-            request_json_file: Some(request_json.into()),
+            request_json_file: Some(request_json_file.into()),
             request_validation: true,
         },
         policies: PoliciesArgs {
             policies_file: Some(policies_file.into()),
             policy_format: PolicyFormat::Human,
+            template_linked_file: None,
         },
-        template_linked_file: None,
         schema_file: None,
         entities_file: entities_file.into(),
         verbose: true,
@@ -456,12 +457,13 @@ fn test_authorize_samples() {
     );
 }
 
-fn run_validate_test(policies_file: &str, schema_file: &str, exit_code: CedarExitCode) {
+fn run_validate_test(policies_file: impl Into<String>, schema_file: impl Into<String>, exit_code: CedarExitCode) {
     let cmd = ValidateArgs {
         schema_file: schema_file.into(),
         policies: PoliciesArgs {
             policies_file: Some(policies_file.into()),
             policy_format: PolicyFormat::Human,
+            template_linked_file: None,
         },
         deny_warnings: false,
         partial_validate: false,
@@ -577,9 +579,9 @@ fn test_validate_samples() {
 }
 
 fn run_evaluate_test(
-    request_json_file: &str,
-    entities_file: &str,
-    expression: &str,
+    request_json_file: impl Into<String>,
+    entities_file: impl Into<String>,
+    expression: impl Into<String>,
     exit_code: CedarExitCode,
     expected: EvalResult,
 ) {
@@ -594,7 +596,7 @@ fn run_evaluate_test(
             request_json_file: Some(request_json_file.into()),
             request_validation: true,
         },
-        expression: expression.to_owned(),
+        expression: expression.into(),
     };
     let output = evaluate(&cmd);
     assert_eq!(exit_code, output.0, "{:#?}", cmd,);
