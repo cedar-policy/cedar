@@ -17,8 +17,15 @@
 use std::sync::Arc;
 
 use lalrpop_util::lalrpop_mod;
+use miette::Diagnostic;
+use thiserror::Error;
 
-use super::{ast::Schema, err};
+use crate::custom_schema::to_json_schema::custom_schema_to_json_schema;
+
+use super::{
+    ast::Schema,
+    err::{self, ParseError, ParseErrors, ToJsonSchemaError},
+};
 
 lalrpop_mod!(
     #[allow(warnings, unused)]
@@ -50,27 +57,42 @@ fn parse_collect_errors<'a, P, T>(
     let mut errs = Vec::new();
     let result = parse(parser, &mut errs, &Arc::from(text), text);
 
-    let mut errors: err::ParseErrors = errs
+    let mut errors = errs
         .into_iter()
-        .map(err::ParseError::from_raw_err_recovery)
-        .collect();
+        .map(Into::into)
+        .collect::<Vec<ParseError>>();
     let parsed = match result {
         Ok(parsed) => parsed,
         Err(e) => {
-            errors.push(err::ParseError::from_raw_parse_err(e));
-            return Err(errors);
+            return Err(ParseErrors::new(e.into(), errors));
         }
     };
-    if errors.is_empty() {
-        Ok(parsed)
-    } else {
-        Err(errors)
+    match ParseErrors::from_iter(errors) {
+        Some(errors) => Err(errors),
+        // No Errors: good to return parse
+        None => Ok(parsed),
     }
 }
 
 // Thread-safe "global" parsers, initialized at first use
 lazy_static::lazy_static! {
     static ref POLICIES_PARSER: grammar::SchemaParser = grammar::SchemaParser::new();
+}
+
+#[derive(Debug, Diagnostic, Error)]
+pub enum NaturalSyntaxParseErrors {
+    #[error("{0}")]
+    NaturalSyntaxError(#[from] err::ParseErrors),
+    #[error("{0}")]
+    JsonError(#[from] ToJsonSchemaError),
+}
+
+pub fn parse_natural_schema_fragment(
+    src: &str,
+) -> Result<crate::SchemaFragment, NaturalSyntaxParseErrors> {
+    let ast: Schema = parse_collect_errors(&*POLICIES_PARSER, grammar::SchemaParser::parse, src)?;
+    let (fragment, _) = custom_schema_to_json_schema(ast)?;
+    Ok(fragment)
 }
 
 /// Parse schema from text

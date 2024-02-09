@@ -76,7 +76,7 @@ pub struct VariableDef {
 }
 
 /// Any identifier, including special ones
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[allow(unused)] // definitional, or for later improvements
 pub enum Ident {
     // Variables
@@ -317,7 +317,7 @@ pub enum Primary {
 }
 
 /// UID and Type of named items
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Name {
     /// path, like: "name0::name1::name"
     pub path: Vec<Node<Ident>>,

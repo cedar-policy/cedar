@@ -19,9 +19,6 @@
 // omitted.
 #![allow(clippy::needless_return)]
 
-use cedar_policy_validator::custom_schema::{
-    json_schema_to_custom_schema_str, to_json_schema::custom_schema_to_json_schema,
-};
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use serde::{Deserialize, Serialize};
@@ -105,10 +102,24 @@ pub enum Commands {
 
 #[derive(Args, Debug)]
 pub struct TranslateSchemaArgs {
+    /// The direction of translation,
+    ///   JSON -> Natural
+    ///   Natural -> JSON
     #[arg(long)]
-    pub from_json: bool,
+    pub direction: TranslationDirection,
+    /// Filename to read the schema from.
+    /// If not provided, will default to reading stdin.
     #[arg(short, long = "schema", value_name = "FILE")]
     pub input_file: Option<String>,
+}
+
+/// The direction of translation
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum TranslationDirection {
+    /// JSON -> Natural schema syntax
+    JsonToNatural,
+    /// Natural schema syntax -> JSON
+    NaturalToJson,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -628,36 +639,24 @@ pub fn format_policies(args: &FormatArgs) -> CedarExitCode {
     }
 }
 
+fn translate_to_natural(json_src: impl AsRef<str>) -> Result<String> {
+    let fragment = SchemaFragment::from_str(json_src.as_ref())?;
+    let output = fragment.as_natural()?;
+    Ok(output)
+}
+
+fn translate_to_json(natural_src: impl AsRef<str>) -> Result<String> {
+    let fragment = SchemaFragment::from_str_natural(natural_src.as_ref())?;
+    let output = fragment.as_json_string()?;
+    Ok(output)
+}
+
 fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
-    let input_str = read_from_file_or_stdin(args.input_file.clone(), "translate schema")?;
-    if args.from_json {
-        let schema_fragment =
-            cedar_policy_validator::SchemaFragment::from_file(input_str.as_bytes())
-                .map_err(|err| miette!("failed to parse schema fragment: {err}"))?;
-        json_schema_to_custom_schema_str(&schema_fragment)
-            .map_err(|err| miette!("failed to convert json schema to custom schema: {err}"))
-    } else {
-        let new_schema = cedar_policy_validator::custom_schema::parser::parse_schema(&input_str)
-            .map_err(|err| {
-                let name = args
-                    .input_file
-                    .as_ref()
-                    .map_or_else(|| "<stdin>".to_owned(), |n| n.to_owned());
-                Report::new(err).with_source_code(NamedSource::new(name, input_str.clone()))
-            })
-            .wrap_err_with(|| "failed to parse custom schema".to_string())?;
-        let (ns, _) = custom_schema_to_json_schema(new_schema)
-            .map_err(|err| {
-                let name = args
-                    .input_file
-                    .as_ref()
-                    .map_or_else(|| "<stdin>".to_owned(), |n| n.to_owned());
-                Report::new(err).with_source_code(NamedSource::new(name, input_str))
-            })
-            .wrap_err_with(|| "failed to translate custom schema to json schema".to_string())?;
-        serde_json::to_string(&ns)
-            .map_err(|err| miette!("failed to serialize schema fragment: {err}"))
-    }
+    let translate = match args.direction {
+        TranslationDirection::JsonToNatural => translate_to_natural,
+        TranslationDirection::NaturalToJson => translate_to_json,
+    };
+    read_from_file_or_stdin(args.input_file.clone(), "translate schema").and_then(translate)
 }
 pub fn translate_schema(args: &TranslateSchemaArgs) -> CedarExitCode {
     match translate_schema_inner(args) {
@@ -1108,27 +1107,9 @@ fn read_schema_file(
             )
         }),
         SchemaFormat::Human => {
-            let custom_schema =
-                cedar_policy_validator::custom_schema::parser::parse_schema(&schema_src)
-                    .map_err(|err| {
-                        Report::new(err).with_source_code(NamedSource::new(
-                            filename.as_ref().to_string_lossy(),
-                            schema_src,
-                        ))
-                    })
-                    .wrap_err_with(|| {
-                        format!(
-                            "failed to parse schema from file {}",
-                            filename.as_ref().display()
-                        )
-                    })?;
-            let (json_schema, _) = custom_schema_to_json_schema(custom_schema)
-                .map_err(|err| miette!("failed to translate custom schema: {err:?}"))?;
-            Schema::from_str(
-                &serde_json::to_string(&json_schema)
-                    .map_err(|err| miette!("failed to serialize schema: {err}"))?,
-            )
-            .map_err(|err| miette!("failed to parse translated schema: {err}"))
+            let schema = SchemaFragment::from_str_natural(&schema_src)
+                .and_then(|fragment| fragment.try_into())?;
+            Ok(schema)
         }
     }
 }

@@ -252,7 +252,7 @@ pub fn perform_integration_test_from_json_custom(
         .unwrap_or_else(|e| panic!("error parsing entities in {}: {e}", &test.entities));
 
     let validation_result = if let Some(custom_impl) = custom_impl_opt {
-        custom_impl.validate(schema.clone().0, &policies.ast)
+        custom_impl.validate(schema.0.clone(), &policies.ast)
     } else {
         let validator = Validator::new(schema.clone());
         let api_result = validator.validate(&policies, ValidationMode::default());

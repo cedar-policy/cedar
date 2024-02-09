@@ -175,6 +175,22 @@ impl ValidatorSchema {
         )
     }
 
+    pub fn from_reader_natural(r: impl std::io::Read, extensions: Extensions<'_>) -> Result<Self> {
+        Self::from_schema_file(
+            SchemaFragment::from_reader_natural(r)?,
+            ActionBehavior::default(),
+            extensions,
+        )
+    }
+
+    pub fn from_str_natural(src: &str, extensions: Extensions<'_>) -> Result<Self> {
+        Self::from_schema_file(
+            SchemaFragment::from_str_natural(src)?,
+            ActionBehavior::default(),
+            extensions,
+        )
+    }
+
     pub fn from_schema_file(
         schema_file: SchemaFragment,
         action_behavior: ActionBehavior,

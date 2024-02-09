@@ -1,5 +1,6 @@
 use std::{collections::HashSet, fmt::Display};
 
+use itertools::Itertools;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -70,33 +71,23 @@ impl Display for SchemaType {
     }
 }
 
-fn fmt_vec<T: Display>(f: &mut std::fmt::Formatter<'_>, ets: &[T]) -> std::fmt::Result {
-    match ets.split_last() {
-        Some((tail, head)) => {
-            if head.is_empty() {
-                write!(f, "{tail}")
-            } else {
-                write!(f, "[")?;
-                for et in head {
-                    write!(f, "{et}, ")?
-                }
-                write!(f, "{tail}")?;
-                write!(f, "]")?;
-                Ok(())
-            }
-        }
-        // PANIC SAFETY: input should be non-empty a slice
-        #[allow(clippy::unreachable)]
-        None => unreachable!("input list must not be empty"),
-    }
+fn non_empty_slice<'a, T>(v: &'a Vec<T>) -> Option<NonEmpty<&'a T>> {
+    let vs: Vec<&T> = v.iter().collect();
+    NonEmpty::from_vec(vs)
 }
+
+fn fmt_vec<T: Display>(f: &mut std::fmt::Formatter<'_>, ets: NonEmpty<T>) -> std::fmt::Result {
+    let contents = ets.iter().map(T::to_string).join(", ");
+    write!(f, "[{contents}]")
+}
+
 impl Display for EntityType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ps = &self.member_of_types;
-        if !ps.is_empty() {
+        if let Some(non_empty) = non_empty_slice(&self.member_of_types) {
             write!(f, "in ")?;
-            fmt_vec(f, ps)?;
+            fmt_vec(f, non_empty)?;
         }
+
         let ty = &self.shape.0;
         write!(f, " = {ty}")?;
         Ok(())
@@ -105,25 +96,26 @@ impl Display for EntityType {
 
 impl Display for ActionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.member_of {
-            Some(ps) if !ps.is_empty() => {
+        match self.member_of.as_ref().and_then(non_empty_slice) {
+            Some(parents) => {
                 write!(f, "in ")?;
-                fmt_vec(f, ps)?;
+                fmt_vec(f, parents)?;
             }
-            _ => {}
-        }
+            None => {}
+        };
         match &self.applies_to {
             Some(spec) => {
-                match (&spec.principal_types, &spec.resource_types) {
-                    (Some(ps), _) if ps.is_empty() => {
-                        // "absurd" action
+                match (
+                    spec.principal_types.as_ref().map(non_empty_slice),
+                    spec.resource_types.as_ref().map(non_empty_slice),
+                ) {
+                    // One of lists is present but empty
+                    (Some(None), _) | (_, Some(None)) => {
+                        // "absurd" actions
                         write!(f, "")?;
                     }
-                    (_, Some(rs)) if rs.is_empty() => {
-                        // "absurd" action
-                        write!(f, "")?;
-                    }
-                    (Some(ps), Some(rs)) => {
+                    // Both list are present and non empty
+                    (Some(Some(ps)), Some(Some(rs))) => {
                         write!(f, "appliesTo {{")?;
                         write!(f, "  principal: ")?;
                         fmt_vec(f, ps)?;
@@ -132,20 +124,23 @@ impl Display for ActionType {
                         write!(f, ", \n  context: {}", &spec.context.0)?;
                         write!(f, "\n}}")?;
                     }
-                    (Some(ps), None) => {
+                    // Only parents are present
+                    (Some(Some(ps)), None) => {
                         write!(f, "appliesTo {{")?;
                         write!(f, "  principal: ")?;
                         fmt_vec(f, ps)?;
                         write!(f, ", \n  context: {}", &spec.context.0)?;
                         write!(f, "\n}}")?;
                     }
-                    (None, Some(rs)) => {
+                    // Only appliesTo is present
+                    (None, Some(Some(rs))) => {
                         write!(f, "appliesTo {{")?;
                         write!(f, "  resource: ")?;
                         fmt_vec(f, rs)?;
                         write!(f, ", \n  context: {}", &spec.context.0)?;
                         write!(f, "\n}}")?;
                     }
+                    // Neither are present
                     (None, None) => {
                         write!(f, "appliesTo {{")?;
                         write!(f, "  context: {}", &spec.context.0)?;
@@ -155,7 +150,7 @@ impl Display for ActionType {
             }
             // applies to unspecified principals and resources
             None => {
-                write!(f, " appliesTo {{ context: {{}}}}")?;
+                write!(f, "{}", "appliesTo { context : {} }")?;
             }
         }
         Ok(())
@@ -166,15 +161,12 @@ impl Display for ActionType {
 pub enum ToCustomSchemaStrError {
     #[error("There exist type name collisions: {:?}", .0)]
     NameCollisions(NonEmpty<SmolStr>),
-    #[error(transparent)]
-    Invalid(#[from] SchemaError),
 }
 
 pub fn json_schema_to_custom_schema_str(
     json_schema: &SchemaFragment,
 ) -> Result<String, ToCustomSchemaStrError> {
     let mut name_collisions: Vec<SmolStr> = Vec::new();
-    let _: ValidatorSchema = json_schema.clone().try_into()?;
     for (name, ns) in json_schema.0.iter().filter(|(name, _)| !name.is_empty()) {
         let entity_types: HashSet<SmolStr> = ns
             .entity_types

@@ -1,3 +1,6 @@
+// PANIC SAFETY: testing code
+#![allow(clippy::panic)]
+
 pub struct ExpectedErrorMessage<'a> {
     /// Expected contents of `Display`, or expected prefix of `Display` if `prefix` is `true`
     error: &'a str,
@@ -122,8 +125,6 @@ impl<'a> std::fmt::Display for OriginalInput<'a> {
 /// `src` is the original input text, just for better assertion-failure messages.
 /// This function accepts any `impl Into<OriginalInput>` for `src`,
 /// including `&str` and `&serde_json::Value`.
-/// PANIC SAFETY: testing code
-#[allow(clippy::panic)]
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub fn expect_err<'a>(
     src: impl Into<OriginalInput<'a>>,

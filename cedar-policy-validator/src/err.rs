@@ -25,6 +25,8 @@ use itertools::Itertools;
 use miette::Diagnostic;
 use thiserror::Error;
 
+use crate::custom_schema::{self, parser::NaturalSyntaxParseErrors};
+
 #[derive(Debug, Diagnostic, Error)]
 pub enum SchemaError {
     /// Error thrown by the `serde_json` crate during deserialization
@@ -128,6 +130,12 @@ pub enum SchemaError {
     #[error("the `__expr` escape is no longer supported")]
     #[diagnostic(help("to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly"))]
     ExprEscapeUsed,
+    #[error("{0}")]
+    NaturalSyntaxError(#[from] NaturalSyntaxParseErrors),
+    #[error("{0}")]
+    IOError(#[from] std::io::Error),
+    #[error("{0}")]
+    ToNaturalSyntaxError(#[from] custom_schema::ToCustomSchemaStrError),
 }
 
 impl From<transitive_closure::TcError<EntityUID>> for SchemaError {

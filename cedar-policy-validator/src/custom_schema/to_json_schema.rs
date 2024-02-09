@@ -1,12 +1,19 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    iter::once,
+    str::FromStr,
+};
 
 use cedar_policy_core::{
-    ast::{Id, Name},
+    parser::cst::{Name, Ref},
     parser::{Loc, Node},
 };
-use itertools::{Either, Itertools};
+use itertools::{chain, Either, Itertools};
+use miette::Diagnostic;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
+use std::collections::hash_map::Entry;
+use thiserror::Error;
 
 use crate::{
     ActionEntityUID, ActionType, ApplySpec, AttributesOrContext, EntityType, NamespaceDefinition,
@@ -15,168 +22,301 @@ use crate::{
 
 use super::{
     ast::{
-        ActionDecl, AppDecl, AttrDecl, Declaration, EntityDecl, Namespace, PRAppDecl, Path,
-        PathKind, PrimOrExtension, Ref, Schema, Str, Type, CEDAR_NAMESPACE, PR,
+        ActionDecl, AppDecl, AttrDecl, Declaration, EntityDecl, Namespace, PRAppDecl, Schema, Type,
+        CEDAR_NAMESPACE, PR,
     },
     err::ToJsonSchemaError,
 };
 
-#[derive(Debug, Clone)]
-pub(super) struct Resolver {
-    global_common_types: HashSet<Node<Name>>,
-    global_entity_types: HashSet<Node<Name>>,
+/// Convert a custom schema AST into the JSON representation
+/// This will let you subsequently decode that into the Validator AST for Schemas (`[ValidatorSchema]`)
+/// On success, this function returns a tuple containing:
+///     * The SchemaFragment
+///     * A vector of name collisions, that are essentially warnings
+pub fn custom_schema_to_json_schema(
+    schema: Schema,
+) -> Result<(SchemaFragment, TypeNameCollisions), ToJsonSchemaError> {
+    todo!()
+    // let mut collisions = vec![];
+    // let mut json_schema = HashMap::new();
+    // let (resolver, _) = Resolver::new(schema.clone());
+    // let deduplicated_ns = deduplicate_ns(schema)?;
+    // for (name, ns) in deduplicated_ns {
+    //     let (ns_def, ns_tn_collisions) = ns_to_ns_def(ns, &resolver)?;
+    //     json_schema.insert(name, ns_def);
+    //     collisions.extend(ns_tn_collisions);
+    // }
+    // Ok((SchemaFragment(json_schema), collisions))
 }
 
-pub(super) type LookupFn<'a> = Box<dyn Fn(&Path) -> Option<NamedType> + 'a>;
+pub struct TypeNameCollisions;
+
+/*
+
+type NamespaceRecord = HashMap<Name, Node<Either<EntityDecl, Type>>>;
+
+/// A `[Resolver]` is a structure that implements name resolution in schemas.
+/// For the full details of name resolution, please see https://github.com/cedar-policy/rfcs/blob/main/text/0024-schema-syntax.md#disambiguating-types-in-custom-syntax
+#[derive(Debug, Clone)]
+pub(super) struct Resolver {
+    /// Our global set of entity types and common types
+    namespaces: HashMap<Name, NamespaceRecord>,
+    unqualified_namespace: NamespaceRecord,
+    actions: HashMap<Name, Node<ActionDecl>>,
+}
+
+pub(super) type LookupFn<'a> = Box<dyn Fn(&Name) -> Option<NamedType> + 'a>;
 
 impl Resolver {
-    pub(super) fn new(schema: &Schema) -> Self {
-        let mut common_tys = HashSet::new();
-        let mut ets = HashSet::new();
-        for ns_def in schema {
-            let prefix: Vec<super::ast::Ident> = if let Some(ns) = ns_def.node.name.clone() {
-                [ns.node.prefix, vec![ns.node.base]].concat()
-            } else {
-                vec![]
+    /*
+        pub(super) fn new(schema: Schema) -> (Self, Vec<TypeNameCollision>) {
+            let global_names = HashMap::default();
+            let actions = HashMap::default();
+            let mut resolver = Self {
+                namespaces: global_names,
+                unqualified_namespace: HashMap::new(),
+                actions,
             };
-            for decl in &ns_def.node.decls {
+            let mut collisions = vec![];
+            for ns_def in schema.into_iter() {
+                let mut new_collisions = resolver.extract_names_from_namespace(ns_def.node);
+                collisions.append(&mut new_collisions);
+            }
+            (resolver, collisions)
+        }
+
+        fn get_namespace(&mut self, namespace_name: Option<Name>) -> &mut NamespaceRecord {
+            if let Some(namespace_name) = namespace_name {
+                match self.namespaces.entry(namespace_name) {
+                    Entry::Occupied(mut e) => e.get_mut(),
+                    Entry::Vacant(mut empty) => empty.insert(HashMap::new()),
+                }
+            } else {
+                &mut self.unqualified_namespace
+            }
+        }
+
+        fn extract_names_from_namespace(&mut self, namespace: Namespace) -> Vec<TypeNameCollision> {
+            let namespace_name = if let Some(namespace) = namespace.name.clone() {
+                Some(Name::new(
+                    namespace.node.base.node,
+                    namespace.node.prefix.into_iter().map(|node| node.node),
+                ))
+            } else {
+                None
+            };
+            let namespace_record = self.get_namespace(namespace_name.clone());
+            for decl in namespace.decls.into_iter() {
+                match decl.node {
+                    Declaration::Type(id, typ) => {
+                        let loc = typ.loc;
+                        self.check_name_overlap(
+                            namespace_name,
+                            namespace_record,
+                            Node::with_source_loc(Either::Right(typ.node), loc),
+                        );
+                    }
+                    _ => todo!(),
+                }
+            }
+            /*
+            for decl in &namespace.decls {
                 match &decl.node {
                     Declaration::Type(id, _) => {
                         let path = Path::new(id.clone(), prefix.clone());
-                        common_tys
-                            .insert(Node::with_source_loc(path.clone().into(), path.get_loc()));
-                    }
+                        let loc = path.get_loc();
+                        common_tys.insert(Node::with_source_loc(path.into(), loc));
+                    },
                     Declaration::Entity(decl) => {
-                        ets.extend(decl.names.iter().map(|id| {
+                        entity_tys.extend(decl.names.iter().map(|id| {
                             let path = Path::new(id.clone(), prefix.clone());
                             Node::with_source_loc(path.clone().into(), path.get_loc())
                         }));
                     }
+                    _ => ()
+                }
+            }
+            */
+            vec![]
+        }
+
+        fn check_name_overlap(
+            &mut self,
+            namespace: Option<Name>,
+            namespace_rec: &mut NamespaceRecord,
+            id: Node<Id>,
+            contents: Node<Either<EntityDecl, Type>>,
+        ) {
+            if namespace.is_none() {
+                // We're in the unqualified namespace, we need to check for overlapping w/ built in types
+                todo!()
+            }
+        }
+
+        pub(super) fn get_lookup_fn(&self, namespace: &Namespace) -> (LookupFn, TypeNameCollisions) {
+            /*
+            let mut collisions = Vec::new();
+            let mut common_types: HashSet<Node<Name>> = HashSet::new();
+            let mut entity_types: HashSet<Node<Name>> = HashSet::new();
+            for decl in &namespace.decls {
+                match &decl.node {
+                    Declaration::Entity(et_decl) => {
+                        et_decl.names.iter().for_each(|id| {
+                            let path: Path = id.clone().into();
+                            if path.is_unqualified_builtin() {
+                                collisions
+                                    .push(TypeNameCollision::Builtin(id.clone().map(Id::to_smolstr)));
+                            }
+                            entity_types.insert(id.clone().map(Name::unqualified_name));
+                        });
+                    }
+                    Declaration::Type(id, _) => {
+                        let path: Path = id.clone().into();
+                        if path.is_unqualified_builtin() {
+                            collisions.push(TypeNameCollision::Builtin(id.clone().map(Id::to_smolstr)));
+                        }
+                        common_types.insert(id.clone().map(Name::unqualified_name));
+                    }
                     _ => {}
                 }
             }
-        }
-        Resolver {
-            global_common_types: common_tys,
-            global_entity_types: ets,
-        }
-    }
 
-    pub(super) fn get_lookup_fn(&self, namespace: &Namespace) -> (LookupFn, TypeNameCollisions) {
-        let mut collisions = Vec::new();
-        let mut common_types: HashSet<Node<Name>> = HashSet::new();
-        let mut entity_types: HashSet<Node<Name>> = HashSet::new();
-        for decl in &namespace.decls {
-            match &decl.node {
-                Declaration::Entity(et_decl) => {
-                    et_decl.names.iter().for_each(|id| {
-                        let path: Path = id.clone().into();
-                        if path.is_unqualified_builtin() {
-                            collisions
-                                .push(TypeNameCollision::Builtin(id.clone().map(Id::to_smolstr)));
+            let (smaller_set, larger_set) = if common_types.len() < entity_types.len() {
+                (&common_types, &entity_types)
+            } else {
+                (&entity_types, &common_types)
+            };
+            for an in smaller_set {
+                if let Some(bn) = larger_set.get(an) {
+                    collisions.push(TypeNameCollision::CommonTypeAndEntityType(
+                        an.clone().map(|n| n.to_string().into()),
+                        bn.clone().map(|n| n.to_string().into()),
+                    ))
+                }
+            }
+
+            (
+                Box::new(move |node| {
+                    let name = Node::with_source_loc(Name::from(node.clone()), node.get_loc());
+                    // Resolve naming. See the spec here: https://github.com/cedar-policy/rfcs/blob/main/text/0024-schema-syntax.md
+                    match &node.kind {
+                        // Resolve things in the builtin `__cedar` namespace, this includes primitives and extension functions
+                        PathKind::CedarBuiltin(Some(
+                            PrimOrExtension::Decimal | PrimOrExtension::IpAddr,
+                        )) => Some(NamedType::Extension(node.base.node.clone().to_smolstr())),
+                        PathKind::CedarBuiltin(Some(PrimOrExtension::Prim(prim))) => {
+                            Some(NamedType::Primitive(*prim))
                         }
-                        entity_types.insert(id.clone().map(Name::unqualified_name));
-                    });
-                }
-                Declaration::Type(id, _) => {
-                    let path: Path = id.clone().into();
-                    if path.is_unqualified_builtin() {
-                        collisions.push(TypeNameCollision::Builtin(id.clone().map(Id::to_smolstr)));
-                    }
-                    common_types.insert(id.clone().map(Name::unqualified_name));
-                }
-                _ => {}
-            }
-        }
-
-        let (smaller_set, larger_set) = if common_types.len() < entity_types.len() {
-            (&common_types, &entity_types)
-        } else {
-            (&entity_types, &common_types)
-        };
-        for an in smaller_set {
-            if let Some(bn) = larger_set.get(an) {
-                collisions.push(TypeNameCollision::CommonTypeAndEntityType(
-                    an.clone().map(|n| n.to_string().into()),
-                    bn.clone().map(|n| n.to_string().into()),
-                ))
-            }
-        }
-
-        (
-            Box::new(move |node| {
-                let name = Node::with_source_loc(Name::from(node.clone()), node.get_loc());
-                // Resolve naming. See the spec here: https://github.com/cedar-policy/rfcs/blob/main/text/0024-schema-syntax.md
-                match &node.kind {
-                    // Resolve things in the builtin `__cedar` namespace, this includes primitives and extension functions
-                    PathKind::CedarBuiltin(Some(
-                        PrimOrExtension::Decimal | PrimOrExtension::IpAddr,
-                    )) => Some(NamedType::Extension(node.base.node.clone().to_smolstr())),
-                    PathKind::CedarBuiltin(Some(PrimOrExtension::Prim(prim))) => {
-                        Some(NamedType::Primitive(*prim))
-                    }
-                    // Anything else in the builtin `__cedar` namespace does not exist, so fail
-                    PathKind::CedarBuiltin(None) => None,
-                    // Next check for things in the unqualified namespace.
-                    // By default, this includes primitive types and extension functions,
-                    // but can be shadowed by entities and common types
-                    PathKind::Unqualified(Some(prim_or_ext)) => {
-                        // Check if shadowed by common type or entity types
-                        if let Some(typ) =
-                            self.lookup_common_or_entity(&name, node, &common_types, &entity_types)
-                        {
-                            Some(typ)
-                        } else {
-                            // Not shadowed, return the builtin type
-                            match prim_or_ext {
-                                PrimOrExtension::Decimal | PrimOrExtension::IpAddr => {
-                                    Some(NamedType::Extension(node.base.node.clone().to_smolstr()))
+                        // Anything else in the builtin `__cedar` namespace does not exist, so fail
+                        PathKind::CedarBuiltin(None) => None,
+                        // Next check for things in the unqualified namespace.
+                        // By default, this includes primitive types and extension functions,
+                        // but can be shadowed by entities and common types
+                        PathKind::Unqualified(Some(prim_or_ext)) => {
+                            // Check if shadowed by common type or entity types
+                            if let Some(typ) =
+                                self.lookup_common_or_entity(&name, node, &common_types, &entity_types)
+                            {
+                                Some(typ)
+                            } else {
+                                // Not shadowed, return the builtin type
+                                match prim_or_ext {
+                                    PrimOrExtension::Decimal | PrimOrExtension::IpAddr => {
+                                        Some(NamedType::Extension(node.base.node.clone().to_smolstr()))
+                                    }
+                                    PrimOrExtension::Prim(prim) => Some(NamedType::Primitive(*prim)),
                                 }
-                                PrimOrExtension::Prim(prim) => Some(NamedType::Primitive(*prim)),
                             }
                         }
+                        PathKind::Other | PathKind::Unqualified(None) => {
+                            self.lookup_common_or_entity(&name, node, &common_types, &entity_types)
+                        }
                     }
-                    PathKind::Other | PathKind::Unqualified(None) => {
-                        self.lookup_common_or_entity(&name, node, &common_types, &entity_types)
-                    }
-                }
-            }),
-            collisions,
-        )
-    }
-
-    /// Extract the type corresponding to [`name`] if it exists in the common types or entity types
-    fn lookup_common_or_entity(
-        &self,
-        name: &Node<Name>,
-        node: &Path,
-        common_types: &HashSet<Node<Name>>,
-        entity_types: &HashSet<Node<Name>>,
-    ) -> Option<NamedType> {
-        if common_types.contains(name) || self.global_common_types.contains(name) {
-            Some(NamedType::Common(node.clone().into()))
-        } else if entity_types.contains(name) || self.global_entity_types.contains(name) {
-            Some(NamedType::Entity(node.clone().into()))
-        } else {
-            None
+                }),
+                collisions,
+            )
+                */
+            todo!()
         }
+
+        /// Extract the type corresponding to [`name`] if it exists in the common types or entity types
+        fn lookup_common_or_entity(
+            &self,
+            name: &Node<Name>,
+            node: &Path,
+            common_types: &HashSet<Node<Name>>,
+            entity_types: &HashSet<Node<Name>>,
+        ) -> Option<NamedType> {
+            /*
+            if common_types.contains(name) || self.global_common_types.contains(name) {
+                Some(NamedType::Common(node.clone().into()))
+            } else if entity_types.contains(name) || self.global_entity_types.contains(name) {
+                Some(NamedType::Entity(node.clone().into()))
+            } else {
+                None
+            }*/
+            todo!()
+        }
+    */
+}
+
+fn make_namespace_path(id: Node<Id>, namespace: Option<Name>) -> Path {
+    match namespace {
+        Some(name) => Path::new(
+            id,
+            chain!(once(name.basename()), name.namespace_components()),
+        ),
+        None => todo!(),
+    }
+}
+
+fn names_of_contents(content: &Node<Either<EntityDecl, Type>>) -> &Vec<Node<Id>> {
+    match &content.node {
+        Either::Left(EntityDecl {
+            names,
+            member_of_types,
+            attrs,
+        }) => names,
+        Either::Right(t) => todo!(),
     }
 }
 
 pub type TypeNameCollisions = Vec<TypeNameCollision>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Error, Diagnostic)]
 pub enum TypeNameCollision {
-    CommonTypeAndEntityType(Str, Str),
-    Builtin(Str),
+    #[error("Name shadowing between {name}")]
+    CommonTypeAndEntityType { name: SmolStr, start: Loc, end: Loc },
+    #[error("Name {name} shadows a builtin a Cedar type")]
+    Builtin { name: Str, start: Loc, end: Loc },
 }
 
+/// One of the three primitives to Cedar
 #[derive(Debug, Clone, Copy)]
 pub(super) enum PrimitiveType {
     Bool,
     Long,
     String,
 }
+
+#[derive(Debug, Clone, Error)]
+pub enum NotAPrimType {
+    #[error("`{0}` is not a primitive type")]
+    NotAPrimType(String),
+}
+
+impl FromStr for PrimitiveType {
+    type Err = NotAPrimType;
+    fn from_str(src: &str) -> Result<Self, Self::Err> {
+        match src.as_ref() {
+            "Bool" => Ok(PrimitiveType::Bool),
+            "String" => Ok(PrimitiveType::String),
+            "Long" => Ok(PrimitiveType::Long),
+            _ => Err(NotAPrimType::NotAPrimType(src.to_string())),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(super) enum NamedType {
     Common(SmolStr),
@@ -195,24 +335,6 @@ impl From<NamedType> for SchemaType {
             NamedType::Primitive(PrimitiveType::Long) => Self::Type(SchemaTypeVariant::Long),
             NamedType::Primitive(PrimitiveType::String) => Self::Type(SchemaTypeVariant::String),
         }
-    }
-}
-
-fn name_to_str(name: super::ast::Name) -> Str {
-    match name {
-        Either::Left(id) => Node {
-            node: id.node.to_smolstr(),
-            loc: id.loc,
-        },
-        Either::Right(s) => s,
-    }
-}
-
-fn ref_to_action_euid(name: Ref) -> ActionEntityUID {
-    let Ref { ty, id } = name;
-    ActionEntityUID {
-        id: name_to_str(id).node,
-        ty: ty.map(|p| p.into()),
     }
 }
 
@@ -282,16 +404,17 @@ impl TryFrom<Vec<Node<AttrDecl>>> for SchemaTypeVariant {
             let attr_decl = n.node;
             let name_str = name_to_str(attr_decl.name);
             if let Some((ns, _)) = attrs.get_key_value(&name_str) {
-                return Err(ToJsonSchemaError::DuplicateKeys(
+                return Err(ToJsonSchemaError::duplicate_keys(
                     name_str.node,
-                    (name_str.loc, ns.loc.clone()),
+                    name_str.loc,
+                    ns.loc.clone(),
                 ));
             }
             attrs.insert(
                 name_str,
                 TypeOfAttribute {
                     ty: TryInto::try_into(attr_decl.ty.node, lookup_func)?,
-                    required: attr_decl.required.is_none(),
+                    required: attr_decl.required,
                 },
             );
         }
@@ -385,9 +508,10 @@ fn exactly_one<X>(
     move |acc, (next_decl, next_loc)| match acc? {
         // This our first find
         None => Ok(Some((next_decl, next_loc))),
-        Some((_, exiting_loc)) => Err(ToJsonSchemaError::DuplicateKeys(
+        Some((_, exiting_loc)) => Err(ToJsonSchemaError::duplicate_keys(
             name.into(),
-            (exiting_loc, next_loc),
+            exiting_loc,
+            next_loc,
         )),
     }
 }
@@ -405,7 +529,7 @@ impl TryFrom<ActionDecl> for ActionType {
         };
         let member_of = value
             .parents
-            .map(|ps| ps.iter().map(|n| ref_to_action_euid(n.clone())).collect());
+            .map(|ps| ps.into_iter().map(|parent| parent.into()).collect());
         Ok(ActionType {
             applies_to,
             // TODO: it should error instead!
@@ -430,9 +554,10 @@ fn ns_to_ns_def(
                 action_decl.names.iter().try_for_each(|id| {
                     let id_str = name_to_str(id.clone());
                     if let Some((existing_id, _)) = actions.get_key_value(&id_str) {
-                        return Err(ToJsonSchemaError::DuplicateDeclarations(
+                        return Err(ToJsonSchemaError::duplicate_decls(
                             id_str.node.clone(),
-                            (id_str.loc, existing_id.loc.clone()),
+                            id_str.loc,
+                            existing_id.loc.clone(),
                         ));
                     }
                     ids.insert(id_str);
@@ -445,9 +570,10 @@ fn ns_to_ns_def(
                 let mut names: HashSet<Node<Id>> = HashSet::new();
                 entity_decl.names.iter().try_for_each(|name| {
                     if let Some((existing_name, _)) = entity_types.get_key_value(name) {
-                        return Err(ToJsonSchemaError::DuplicateDeclarations(
+                        return Err(ToJsonSchemaError::duplicate_decls(
                             existing_name.node.clone().to_smolstr(),
-                            (existing_name.loc.clone(), name.loc.clone()),
+                            existing_name.loc.clone(),
+                            name.loc.clone(),
                         ));
                     }
                     names.insert(name.clone());
@@ -458,9 +584,10 @@ fn ns_to_ns_def(
             }
             Declaration::Type(id, ty) => {
                 if let Some((existing_id, _)) = common_types.get_key_value(&id) {
-                    return Err(ToJsonSchemaError::DuplicateDeclarations(
+                    return Err(ToJsonSchemaError::duplicate_decls(
                         id.node.to_smolstr(),
-                        (id.loc.clone(), existing_id.loc.clone()),
+                        id.loc.clone(),
+                        existing_id.loc.clone(),
                     ));
                 } else {
                     common_types.insert(id.clone(), TryInto::try_into(ty.node, &lookup_func)?);
@@ -509,9 +636,10 @@ fn deduplicate_ns(schema: Schema) -> Result<HashMap<SmolStr, Namespace>, ToJsonS
                     entry.get_mut().decls.extend(ns.decls);
                 } else {
                     // Duplicate `namespace` constructs are not allowed
-                    return Err(ToJsonSchemaError::DuplicateNSIds(
+                    return Err(ToJsonSchemaError::duplicate_namespace(
                         existing_name.node.clone(),
-                        (name.loc, existing_name.loc.clone()),
+                        name.loc,
+                        existing_name.loc.clone(),
                     ));
                 }
             }
@@ -526,17 +654,4 @@ fn deduplicate_ns(schema: Schema) -> Result<HashMap<SmolStr, Namespace>, ToJsonS
         .collect())
 }
 
-pub fn custom_schema_to_json_schema(
-    schema: Schema,
-) -> Result<(SchemaFragment, TypeNameCollisions), ToJsonSchemaError> {
-    let mut collisions = vec![];
-    let mut json_schema = HashMap::new();
-    let resolver = Resolver::new(&schema);
-    let deduplicated_ns = deduplicate_ns(schema)?;
-    for (name, ns) in deduplicated_ns {
-        let (ns_def, ns_tn_collisions) = ns_to_ns_def(ns, &resolver)?;
-        json_schema.insert(name, ns_def);
-        collisions.extend(ns_tn_collisions);
-    }
-    Ok((SchemaFragment(json_schema), collisions))
-}
+*/
