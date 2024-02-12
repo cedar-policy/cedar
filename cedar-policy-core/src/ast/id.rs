@@ -180,7 +180,10 @@ impl<'a> arbitrary::Arbitrary<'a> for AnyId {
                 .collect::<Result<Vec<&char>, _>>()?,
         );
         let s: String = cs.into_iter().collect();
-        crate::parser::parse_ident(&s).unwrap_or_else(|e| panic!("all strings constructed this way should be valid AnyIds, but this one is not: {s:?}\nerror: {e}"));
+        debug_assert!(
+            crate::parser::parse_ident(&s).is_ok(),
+            "all strings constructed this way should be valid AnyIds, but this one is not: {s:?}"
+        );
         Ok(Self::new_unchecked(s))
     }
 
