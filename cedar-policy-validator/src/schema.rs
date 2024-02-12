@@ -1879,7 +1879,7 @@ mod test {
         let schema: ValidatorSchema = schema_fragment.try_into().expect("Schema should construct");
         let view_photo = schema
             .action_entities_iter()
-            .find(|e| e.uid() == r#"ExampleCo::Personnel::Action::"viewPhoto""#.parse().unwrap())
+            .find(|e| e.uid() == &r#"ExampleCo::Personnel::Action::"viewPhoto""#.parse().unwrap())
             .unwrap();
         let ancestors = view_photo.ancestors().collect::<Vec<_>>();
         let read = ancestors[0];
@@ -1939,7 +1939,7 @@ mod test {
         let schema: ValidatorSchema = schema_fragment.try_into().unwrap();
         let view_photo = schema
             .action_entities_iter()
-            .find(|e| e.uid() == r#"ExampleCo::Personnel::Action::"viewPhoto""#.parse().unwrap())
+            .find(|e| e.uid() == &r#"ExampleCo::Personnel::Action::"viewPhoto""#.parse().unwrap())
             .unwrap();
         let ancestors = view_photo.ancestors().collect::<Vec<_>>();
         let read = ancestors[0];
