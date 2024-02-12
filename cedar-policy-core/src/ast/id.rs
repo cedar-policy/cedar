@@ -195,6 +195,8 @@ impl<'a> arbitrary::Arbitrary<'a> for AnyId {
     }
 }
 
+// PANIC SAFETY: unit-test code
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
     use super::*;

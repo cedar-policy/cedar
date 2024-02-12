@@ -404,7 +404,7 @@ impl Eq for ValueKind {}
 // The implementation of `PartialEq` for `Value` ignores the `Loc` of the values.
 impl PartialEq for Value {
     fn eq(&self, other: &Value) -> bool {
-        &self.value == &other.value
+        self.value == other.value
     }
 }
 
