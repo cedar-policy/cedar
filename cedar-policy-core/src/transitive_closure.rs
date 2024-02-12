@@ -615,7 +615,12 @@ mod tests {
         let mut c = Entity::with_uid(EntityUID::with_eid("C"));
         c.add_ancestor(EntityUID::with_eid("A"));
         let d = Entity::with_uid(EntityUID::with_eid("D"));
-        let mut entities = HashMap::from([(a.uid().clone(), a), (b.uid().clone(), b), (c.uid().clone(), c), (d.uid().clone(), d)]);
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+        ]);
         // computing TC should succeed without panicking, infinitely recursing, etc
         assert!(compute_tc_internal(&mut entities).is_ok());
         // fails cycle check
