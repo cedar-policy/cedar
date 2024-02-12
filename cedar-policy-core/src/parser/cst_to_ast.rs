@@ -400,11 +400,11 @@ impl Node<Option<cst::Ident>> {
         }
     }
 
-    /// Convert `cst::Ident` to `ast::Id`. This method does not fail for
-    /// reserved identifiers.
+    /// Convert [`cst::Ident`] to [`ast::AnyId`]. This method does not fail for
+    /// reserved identifiers; see notes on [`ast::AnyId`].
     /// (It does fail for invalid identifiers, but there are no invalid
     /// identifiers at the time of this writing; see notes on
-    /// `cst::Ident::Invalid`)
+    /// [`cst::Ident::Invalid`])
     pub fn to_any_ident(&self, errs: &mut ParseErrors) -> Option<ast::AnyId> {
         // if `self` doesn't have data, nothing we can do here, just propagate
         // the `None`; we don't need to signal an error, because one was already
