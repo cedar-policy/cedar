@@ -291,8 +291,8 @@ impl Entity {
     }
 
     /// Get the UID of this entity
-    pub fn uid(&self) -> EntityUID {
-        self.uid.clone()
+    pub fn uid(&self) -> &EntityUID {
+        &self.uid
     }
 
     /// Get the value for the given attribute, or `None` if not present
@@ -374,7 +374,7 @@ impl StaticallyTyped for Entity {
 
 impl TCNode<EntityUID> for Entity {
     fn get_key(&self) -> EntityUID {
-        self.uid()
+        self.uid().clone()
     }
 
     fn add_edge_to(&mut self, k: EntityUID) {

@@ -178,7 +178,7 @@ impl Entity {
     /// ```
     pub fn uid(&self) -> EntityUid {
         // INVARIANT: By invariant on self and `EntityUid`: Our Uid can't be unspecified
-        EntityUid(self.0.uid())
+        EntityUid(self.0.uid().clone())
     }
 
     /// Get the value for the given attribute, or `None` if not present.
@@ -4115,7 +4115,7 @@ mod test {
     #[test]
     fn json_bignum_1a() {
         let src = r#"
-        permit(principal, action, resource) when { 
+        permit(principal, action, resource) when {
             (true && (-90071992547409921)) && principal
         };"#;
         let p: Policy = src.parse().unwrap();
