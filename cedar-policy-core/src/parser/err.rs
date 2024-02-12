@@ -164,9 +164,9 @@ pub enum ToASTErrorKind {
         /// Slot that was found (which is not valid in a static policy)
         slot: cst::Slot,
     },
-    /// Returned when we attempt to parse a policy with malformed or conflicting annotations
-    #[error("this policy uses poorly formed or duplicate annotations")]
-    BadAnnotations,
+    /// Returned when we attempt to parse a policy or template with duplicate or conflicting annotations
+    #[error("duplicate annotation: @{0}")]
+    DuplicateAnnotation(ast::AnyId),
     /// Returned when a policy contains template slots in a when/unless clause. This is not currently supported. See RFC 3
     #[error("found template slot {slot} in a `{clausetype}` clause")]
     #[diagnostic(help("slots are currently unsupported in `{clausetype}` clauses"))]

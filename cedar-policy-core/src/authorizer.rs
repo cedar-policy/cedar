@@ -431,10 +431,8 @@ impl std::fmt::Debug for Authorizer {
 #[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
-    use std::collections::BTreeMap;
-
     use super::*;
-    use crate::ast::RequestSchemaAllPass;
+    use crate::ast::{Annotations, RequestSchemaAllPass};
     use crate::parser;
 
     /// Sanity unit test case for is_authorized.
@@ -517,7 +515,7 @@ mod test {
         let pid = PolicyID::from_string(id);
         StaticPolicy::new(
             pid,
-            BTreeMap::new(),
+            Annotations::new(),
             e,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -531,7 +529,7 @@ mod test {
         let pid = PolicyID::from_string(id);
         StaticPolicy::new(
             pid,
-            BTreeMap::new(),
+            Annotations::new(),
             effect,
             PrincipalConstraint::any(),
             ActionConstraint::any(),

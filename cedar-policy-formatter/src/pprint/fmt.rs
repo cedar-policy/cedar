@@ -53,8 +53,11 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
     for (f_p, p) in formatted_policies.into_iter().zip(policies.into_iter()) {
         let (f_anno, anno) = (
             f_p.annotations()
-                .collect::<std::collections::HashMap<_, _>>(),
-            p.annotations().collect::<std::collections::HashMap<_, _>>(),
+                .map(|(k, v)| (k, &v.val))
+                .collect::<std::collections::BTreeMap<_, _>>(),
+            p.annotations()
+                .map(|(k, v)| (k, &v.val))
+                .collect::<std::collections::BTreeMap<_, _>>(),
         );
         if !(f_anno == anno
             && f_p.effect() == p.effect()
@@ -66,9 +69,7 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
                 .eq_shape(p.non_head_constraints()))
         {
             return Err(miette!(
-                "policies differ:\nformatted: {}\ninput: {}",
-                f_p,
-                p
+                "policies differ in meaning or annotations:\noriginal: {p}\nformatted: {f_p}"
             ));
         }
     }

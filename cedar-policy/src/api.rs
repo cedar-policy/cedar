@@ -2351,15 +2351,19 @@ impl PolicySet {
         self.ast
             .get(&id.0)?
             .annotation(&key.as_ref().parse().ok()?)
-            .map(smol_str::SmolStr::as_str)
+            .map(AsRef::as_ref)
     }
 
     /// Extract annotation data from a `Template` by its `PolicyId` and annotation key.
+    //
+    // TODO: unfortunate that this method returns `Option<String>` and the corresponding method
+    // for policies (`.annotation()`) above returns `Option<&str>`, but this can't be changed
+    // without a semver break
     pub fn template_annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<String> {
         self.ast
             .get_template(&id.0)?
             .annotation(&key.as_ref().parse().ok()?)
-            .map(smol_str::SmolStr::to_string)
+            .map(|annot| annot.val.to_string())
     }
 
     /// Returns true iff the `PolicySet` is empty
@@ -2579,14 +2583,14 @@ impl Template {
     pub fn annotation(&self, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .annotation(&key.as_ref().parse().ok()?)
-            .map(smol_str::SmolStr::as_str)
+            .map(AsRef::as_ref)
     }
 
     /// Iterate through annotation data of this `Template` as key-value pairs
     pub fn annotations(&self) -> impl Iterator<Item = (&str, &str)> {
         self.ast
             .annotations()
-            .map(|(k, v)| (k.as_ref(), v.as_str()))
+            .map(|(k, v)| (k.as_ref(), v.as_ref()))
     }
 
     /// Iterate over the open slots in this `Template`
@@ -2924,14 +2928,14 @@ impl Policy {
     pub fn annotation(&self, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .annotation(&key.as_ref().parse().ok()?)
-            .map(smol_str::SmolStr::as_str)
+            .map(AsRef::as_ref)
     }
 
     /// Iterate through annotation data of this template-linked or static policy
     pub fn annotations(&self) -> impl Iterator<Item = (&str, &str)> {
         self.ast
             .annotations()
-            .map(|(k, v)| (k.as_ref(), v.as_str()))
+            .map(|(k, v)| (k.as_ref(), v.as_ref()))
     }
 
     /// Get the `PolicyId` for this template-linked or static policy

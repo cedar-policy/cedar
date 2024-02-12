@@ -231,14 +231,29 @@ impl Node<Option<cst::Policy>> {
         let maybe_effect = policy.effect.to_effect(errs);
 
         // convert annotatons
-        let annotations: BTreeMap<_, _> = policy
-            .annotations
-            .iter()
-            .filter_map(|a| a.to_kv_pair(errs))
-            .collect();
-        if annotations.len() != policy.annotations.len() {
-            failure = true;
-            errs.push(self.to_ast_err(ToASTErrorKind::BadAnnotations))
+        let mut annotations = BTreeMap::new();
+        for node in policy.annotations.iter() {
+            match node.to_kv_pair(errs) {
+                Some((k, v)) => {
+                    use std::collections::btree_map::Entry;
+                    match annotations.entry(k) {
+                        Entry::Occupied(oentry) => {
+                            failure = true;
+                            errs.push(ToASTError::new(
+                                ToASTErrorKind::DuplicateAnnotation(oentry.key().clone()),
+                                v.loc.expect(".to_kv_pair() always populates Loc"),
+                            ));
+                        }
+                        Entry::Vacant(ventry) => {
+                            ventry.insert(v);
+                        }
+                    }
+                }
+                None => {
+                    failure = true;
+                    // don't need to add anything to `errs` because `.to_kv_pair()` will already have done so
+                }
+            }
         }
 
         // convert head
@@ -275,7 +290,7 @@ impl Node<Option<cst::Policy>> {
 
         Some(construct_template_policy(
             id,
-            annotations,
+            annotations.into(),
             effect,
             principal,
             action,
@@ -348,7 +363,7 @@ impl cst::Policy {
 impl Node<Option<cst::Annotation>> {
     /// Get the (k, v) pair for the annotation. Critically, this checks validity
     /// for the strings and does unescaping
-    pub fn to_kv_pair(&self, errs: &mut ParseErrors) -> Option<(ast::AnyId, SmolStr)> {
+    pub fn to_kv_pair(&self, errs: &mut ParseErrors) -> Option<(ast::AnyId, ast::Annotation)> {
         // if `self` doesn't have data, nothing we can do here, just propagate
         // the `None`; we don't need to signal an error, because one was already
         // signaled when the `Node` without data was created
@@ -365,7 +380,13 @@ impl Node<Option<cst::Annotation>> {
         };
 
         match (maybe_key, maybe_value) {
-            (Some(k), Some(v)) => Some((k, v)),
+            (Some(k), Some(v)) => Some((
+                k,
+                ast::Annotation {
+                    val: v,
+                    loc: Some(self.loc.clone()), // self's loc, not the loc of the value alone; see comments on ast::Annotation
+                },
+            )),
             _ => None,
         }
     }
@@ -2307,7 +2328,7 @@ impl Node<Option<cst::RecInit>> {
 #[allow(clippy::too_many_arguments)]
 fn construct_template_policy(
     id: ast::PolicyID,
-    annotations: BTreeMap<ast::AnyId, SmolStr>,
+    annotations: ast::Annotations,
     effect: ast::Effect,
     principal: ast::PrincipalConstraint,
     action: ast::ActionConstraint,
@@ -2870,9 +2891,9 @@ mod tests {
         .expect("should parse")
         .to_policy(ast::PolicyID::from_string("id"), &mut errs)
         .expect("should be valid");
-        assert_eq!(
+        assert_matches!(
             policy.annotation(&ast::AnyId::new_unchecked("anno")),
-            Some(&"good annotation".into())
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "good annotation")
         );
 
         // duplication is error
@@ -2909,42 +2930,42 @@ mod tests {
         .expect("should parse")
         .to_policyset(&mut errs)
         .expect("should be valid");
-        assert_eq!(
+        assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy0"))
                 .expect("should be a policy")
                 .annotation(&ast::AnyId::new_unchecked("anno0")),
             None
         );
-        assert_eq!(
+        assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy0"))
                 .expect("should be a policy")
                 .annotation(&ast::AnyId::new_unchecked("anno1")),
-            Some(&"first".into())
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "first")
         );
-        assert_eq!(
+        assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy1"))
                 .expect("should be a policy")
                 .annotation(&ast::AnyId::new_unchecked("anno2")),
-            Some(&"second".into())
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "second")
         );
-        assert_eq!(
+        assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy2"))
                 .expect("should be a policy")
                 .annotation(&ast::AnyId::new_unchecked("anno3a")),
-            Some(&"third-a".into())
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "third-a")
         );
-        assert_eq!(
+        assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy2"))
                 .expect("should be a policy")
                 .annotation(&ast::AnyId::new_unchecked("anno3b")),
-            Some(&"third-b".into())
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "third-b")
         );
-        assert_eq!(
+        assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy2"))
                 .expect("should be a policy")
@@ -3002,45 +3023,45 @@ mod tests {
         let policy0 = policyset
             .get(&ast::PolicyID::from_string("policy0"))
             .expect("should be the right policy ID");
-        assert_eq!(
+        assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("if")),
-            Some(&"this is the annotation for `if`".into())
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `if`")
         );
-        assert_eq!(
+        assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("then")),
-            Some(&"this is the annotation for `then`".into())
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `then`")
         );
-        assert_eq!(
+        assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("else")),
-            Some(&"this is the annotation for `else`".into())
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `else`")
         );
-        assert_eq!(
+        assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("true")),
-            Some(&"this is the annotation for `true`".into())
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `true`")
         );
-        assert_eq!(
+        assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("false")),
-            Some(&"this is the annotation for `false`".into())
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `false`")
         );
-        assert_eq!(
+        assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("in")),
-            Some(&"this is the annotation for `in`".into())
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `in`")
         );
-        assert_eq!(
+        assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("is")),
-            Some(&"this is the annotation for `is`".into())
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `is`")
         );
-        assert_eq!(
+        assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("like")),
-            Some(&"this is the annotation for `like`".into())
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `like`")
         );
-        assert_eq!(
+        assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("has")),
-            Some(&"this is the annotation for `has`".into())
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `has`")
         );
-        assert_eq!(
+        assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("principal")),
-            Some(&"this is the annotation for `principal`".into())
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `principal`")
         );
     }
 

@@ -499,14 +499,14 @@ impl std::fmt::Display for PolicySet {
 #[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
-    use std::collections::{BTreeMap, HashMap};
-
+    use super::*;
     use crate::{
-        ast::{ActionConstraint, Effect, Expr, PrincipalConstraint, ResourceConstraint},
+        ast::{
+            ActionConstraint, Annotations, Effect, Expr, PrincipalConstraint, ResourceConstraint,
+        },
         parser,
     };
-
-    use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn link_conflicts() {
@@ -682,7 +682,7 @@ mod test {
         let lid = PolicyID::from_string("link");
         let t = Template::new(
             tid.clone(),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -710,7 +710,7 @@ mod test {
         let lid = PolicyID::from_string("link");
         let t = Template::new(
             tid.clone(),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq_slot(),
             ActionConstraint::any(),
@@ -745,7 +745,7 @@ mod test {
         let id = PolicyID::from_string("id");
         let p = StaticPolicy::new(
             id.clone(),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Forbid,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -773,7 +773,7 @@ mod test {
         let link_id = PolicyID::from_string("link");
         let t = Template::new(
             template_id.clone(),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Forbid,
             PrincipalConstraint::is_eq_slot(),
             ActionConstraint::any(),
@@ -807,7 +807,7 @@ mod test {
         let tid1 = PolicyID::from_string("template");
         let policy1 = StaticPolicy::new(
             id1.clone(),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -817,7 +817,7 @@ mod test {
         .expect("Policy Creation Failed");
         let template1 = Template::new(
             tid1.clone(),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -836,7 +836,7 @@ mod test {
         let id2 = PolicyID::from_string("id2");
         let policy2 = StaticPolicy::new(
             id2.clone(),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Forbid,
             PrincipalConstraint::is_eq(EntityUID::with_eid("jane")),
             ActionConstraint::any(),
@@ -850,7 +850,7 @@ mod test {
         let tid2 = PolicyID::from_string("template2");
         let template2 = Template::new(
             tid2.clone(),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq_slot(),
             ActionConstraint::any(),

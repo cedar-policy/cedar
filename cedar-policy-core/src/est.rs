@@ -110,49 +110,82 @@ impl TryFrom<cst::Policy> for Policy {
         let mut errs = ParseErrors::new();
         let effect = policy.effect.to_effect(&mut errs);
         let (principal, action, resource) = policy.extract_head(&mut errs);
-        if let (Some(effect), Some(principal), Some(action), Some(resource), true) =
-            (effect, principal, action, resource, errs.is_empty())
+        let conditions = match policy
+            .conds
+            .into_iter()
+            .map(|node| {
+                let (cond, loc) = node.into_inner();
+                let cond = cond.ok_or_else(|| {
+                    ParseErrors(vec![ToASTError::new(
+                        ToASTErrorKind::EmptyClause(None),
+                        loc,
+                    )
+                    .into()])
+                })?;
+                cond.try_into()
+            })
+            .collect::<Result<Vec<_>, ParseErrors>>()
         {
-            let conditions = policy
-                .conds
-                .into_iter()
-                .map(|node| {
-                    let (cond, loc) = node.into_inner();
-                    let cond = cond.ok_or_else(|| {
-                        ParseErrors(vec![ToASTError::new(
-                            ToASTErrorKind::EmptyClause(None),
-                            loc,
-                        )
-                        .into()])
-                    })?;
-                    cond.try_into()
-                })
-                .collect::<Result<Vec<_>, ParseErrors>>()?;
-            let annotations = policy
-                .annotations
-                .into_iter()
-                .map(|node| {
-                    let mut errs = ParseErrors::new();
-                    let kv = node.to_kv_pair(&mut errs);
-                    match (errs.is_empty(), kv) {
-                        (true, Some((k, v))) => Ok((k, v)),
-                        (false, _) => Err(errs),
-                        (true, None) => Err(node
-                            .to_ast_err(ToASTErrorKind::AnnotationInvariantViolation)
-                            .into()),
+            Ok(conds) => Some(conds),
+            Err(e) => {
+                errs.extend(e);
+                None
+            }
+        };
+        let mut annotations = HashMap::new();
+        let mut annotation_failed = false;
+        for node in policy.annotations.into_iter() {
+            match node.to_kv_pair(&mut errs) {
+                Some((k, v)) => {
+                    use std::collections::hash_map::Entry;
+                    match annotations.entry(k) {
+                        Entry::Occupied(oentry) => {
+                            errs.push(
+                                ToASTError::new(
+                                    ToASTErrorKind::DuplicateAnnotation(oentry.key().clone()),
+                                    v.loc.expect(".to_kv_pair() always populates Loc"),
+                                )
+                                .into(),
+                            );
+                        }
+                        Entry::Vacant(ventry) => {
+                            ventry.insert(v.val);
+                        }
                     }
-                })
-                .collect::<Result<_, ParseErrors>>()?;
-            Ok(Policy {
+                }
+                None => {
+                    annotation_failed = true;
+                    // assume that `.to_kv_pair()` already added an error to `errs`
+                }
+            }
+        }
+
+        match (
+            effect,
+            principal,
+            action,
+            resource,
+            conditions,
+            annotation_failed,
+            errs.is_empty(),
+        ) {
+            (
+                Some(effect),
+                Some(principal),
+                Some(action),
+                Some(resource),
+                Some(conditions),
+                false,
+                true,
+            ) => Ok(Policy {
                 effect,
                 principal: principal.into(),
                 action: action.into(),
                 resource: resource.into(),
                 conditions,
                 annotations,
-            })
-        } else {
-            Err(errs)
+            }),
+            _ => Err(errs),
         }
     }
 }
@@ -231,7 +264,10 @@ impl Policy {
         };
         Ok(ast::Template::new(
             id,
-            self.annotations.into_iter().collect(),
+            self.annotations
+                .into_iter()
+                .map(|(key, val)| (key, ast::Annotation { val, loc: None }))
+                .collect(),
             self.effect,
             self.principal.try_into()?,
             self.action.try_into()?,
@@ -275,7 +311,7 @@ impl From<ast::Policy> for Policy {
             conditions: vec![ast.non_head_constraints().clone().into()],
             annotations: ast
                 .annotations()
-                .map(|(k, v)| (k.clone(), v.clone()))
+                .map(|(k, v)| (k.clone(), v.val.clone()))
                 .collect(),
         }
     }
@@ -292,7 +328,7 @@ impl From<ast::Template> for Policy {
             conditions: vec![ast.non_head_constraints().clone().into()],
             annotations: ast
                 .annotations()
-                .map(|(k, v)| (k.clone(), v.clone()))
+                .map(|(k, v)| (k.clone(), v.val.clone()))
                 .collect(),
         }
     }
@@ -336,7 +372,9 @@ impl std::fmt::Display for Clause {
 mod test {
     use super::*;
     use crate::parser;
+    use crate::test_utils::ExpectedErrorMessage;
     use cool_asserts::assert_matches;
+    use miette::Diagnostic;
     use serde_json::json;
 
     /// helper function to just do EST data structure --> JSON --> EST data structure.
@@ -650,6 +688,94 @@ mod test {
 
         assert_eq!(ast_roundtrip(est.clone()), est);
         assert_eq!(circular_roundtrip(est.clone()), est);
+    }
+
+    #[test]
+    fn annotation_errors() {
+        let policy = r#"
+            @foo("1")
+            @foo("2")
+            permit(principal, action, resource);
+        "#;
+        let cst = parser::text_to_cst::parse_policy(policy)
+            .unwrap()
+            .node
+            .unwrap();
+        assert_matches!(Policy::try_from(cst), Err(e) => {
+            parser::test_utils::expect_exactly_one_error(policy, &e, &ExpectedErrorMessage::error("duplicate annotation: @foo"));
+            let expected_span = 35..44;
+            assert_eq!(&policy[expected_span.clone()], r#"@foo("2")"#);
+            itertools::assert_equal(e.labels().expect("should have labels"), [miette::LabeledSpan::underline(expected_span)]);
+        });
+
+        let policy = r#"
+            @foo("1")
+            @foo("1")
+            permit(principal, action, resource);
+        "#;
+        let cst = parser::text_to_cst::parse_policy(policy)
+            .unwrap()
+            .node
+            .unwrap();
+        assert_matches!(Policy::try_from(cst), Err(e) => {
+            parser::test_utils::expect_exactly_one_error(policy, &e, &ExpectedErrorMessage::error("duplicate annotation: @foo"));
+            let expected_span = 35..44;
+            assert_eq!(&policy[expected_span.clone()], r#"@foo("1")"#);
+            itertools::assert_equal(e.labels().expect("should have labels"), [miette::LabeledSpan::underline(expected_span)]);
+        });
+
+        let policy = r#"
+            @foo("1")
+            @bar("yellow")
+            @foo("abc")
+            @hello("goodbye")
+            @bar("123")
+            @foo("def")
+            permit(principal, action, resource);
+        "#;
+        let cst = parser::text_to_cst::parse_policy(policy)
+            .unwrap()
+            .node
+            .unwrap();
+        assert_matches!(Policy::try_from(cst), Err(e) => {
+            assert_eq!(e.len(), 3); // two errors for @foo and one for @bar
+            parser::test_utils::expect_some_error_matches(policy, &e, &ExpectedErrorMessage::error("duplicate annotation: @foo"));
+            parser::test_utils::expect_some_error_matches(policy, &e, &ExpectedErrorMessage::error("duplicate annotation: @bar"));
+            for ((err, expected_span), expected_snippet) in e.iter().zip([62..73, 116..127, 140..151]).zip([r#"@foo("abc")"#, r#"@bar("123")"#, r#"@foo("def")"#]) {
+                assert_eq!(&policy[expected_span.clone()], expected_snippet);
+                itertools::assert_equal(err.labels().expect("should have labels"), [miette::LabeledSpan::underline(expected_span)]);
+            }
+        });
+
+        // the above tests ensure that we give the correct errors for CSTs
+        // containing duplicate annotations.
+        // This test ensures that we give the correct errors for JSON text
+        // containing duplicate annotations.
+        // Note that we have to use a string here as input (and not
+        // serde_json::Value) because serde_json::Value would already remove
+        // duplicates
+        let est = r#"
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All"
+                },
+                "action": {
+                    "op": "All"
+                },
+                "resource": {
+                    "op": "All"
+                },
+                "conditions": [],
+                "annotations": {
+                    "foo": "1",
+                    "foo": "2"
+                }
+            }
+        "#;
+        assert_matches!(serde_json::from_str::<Policy>(est), Err(e) => {
+            assert_eq!(e.to_string(), "invalid entry: found duplicate key at line 17 column 17");
+        });
     }
 
     #[test]
