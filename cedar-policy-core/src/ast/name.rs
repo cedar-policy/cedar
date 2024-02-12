@@ -197,8 +197,10 @@ mod vars_test {
     }
 }
 
-/// Identifiers. Anything in `Id` should be a valid identifier (and not contain,
-/// for instance, spaces or characters like '+').
+/// Identifiers. Anything in `Id` should be a valid identifier, this means it
+/// does not contain, for instance, spaces or characters like '+'; and also is
+/// not one of the Cedar reserved identifiers (at time of writing,
+/// `true | false | if | then | else | in | is | like | has`).
 //
 // For now, internally, `Id`s are just owned `SmolString`s.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
@@ -223,7 +225,7 @@ impl Id {
     }
 
     /// Get the underlying string
-    pub fn to_smolstr(self) -> SmolStr {
+    pub fn into_smolstr(self) -> SmolStr {
         self.0
     }
 }
@@ -261,7 +263,7 @@ impl<'a> arbitrary::Arbitrary<'a> for Id {
         // identifier syntax:
         // IDENT     := ['_''a'-'z''A'-'Z']['_''a'-'z''A'-'Z''0'-'9']* - RESERVED
         // BOOL      := 'true' | 'false'
-        // RESERVED  := BOOL | 'if' | 'then' | 'else' | 'in' | 'like' | 'has'
+        // RESERVED  := BOOL | 'if' | 'then' | 'else' | 'in' | 'is' | 'like' | 'has'
 
         let construct_list = |s: &str| s.chars().collect::<Vec<char>>();
         let list_concat = |s1: &[char], s2: &[char]| [s1, s2].concat();

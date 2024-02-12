@@ -348,13 +348,13 @@ impl cst::Policy {
 impl Node<Option<cst::Annotation>> {
     /// Get the (k, v) pair for the annotation. Critically, this checks validity
     /// for the strings and does unescaping
-    pub fn to_kv_pair(&self, errs: &mut ParseErrors) -> Option<(ast::Id, SmolStr)> {
+    pub fn to_kv_pair(&self, errs: &mut ParseErrors) -> Option<(ast::AnyId, SmolStr)> {
         // if `self` doesn't have data, nothing we can do here, just propagate
         // the `None`; we don't need to signal an error, because one was already
         // signaled when the `Node` without data was created
         let anno = self.as_inner()?;
 
-        let maybe_key = anno.key.to_valid_ident(errs);
+        let maybe_key = anno.key.to_any_ident(errs);
         let maybe_value = anno.value.as_valid_string(errs);
         let maybe_value = match maybe_value.map(|s| to_unescaped_string(s)).transpose() {
             Ok(maybe_value) => maybe_value,
@@ -396,7 +396,27 @@ impl Node<Option<cst::Ident>> {
                 errs.push(self.to_ast_err(ToASTErrorKind::InvalidIdentifier(i.clone())));
                 None
             }
-            _ => Some(construct_id(format!("{ident}"))),
+            _ => Some(ast::Id::new_unchecked(format!("{ident}"))),
+        }
+    }
+
+    /// Convert `cst::Ident` to `ast::Id`. This method does not fail for
+    /// reserved identifiers.
+    /// (It does fail for invalid identifiers, but there are no invalid
+    /// identifiers at the time of this writing; see notes on
+    /// `cst::Ident::Invalid`)
+    pub fn to_any_ident(&self, errs: &mut ParseErrors) -> Option<ast::AnyId> {
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let ident = self.as_inner()?;
+
+        match ident {
+            cst::Ident::Invalid(i) => {
+                errs.push(self.to_ast_err(ToASTErrorKind::InvalidIdentifier(i.clone())));
+                None
+            }
+            _ => Some(ast::AnyId::new_unchecked(format!("{ident}"))),
         }
     }
 
@@ -1770,7 +1790,7 @@ impl Node<Option<cst::Member>> {
                     head = Some(Expr {
                         expr: construct_expr_attr(
                             construct_expr_var(var, var_loc.clone()),
-                            id.to_smolstr(),
+                            id.into_smolstr(),
                             self.loc.clone(),
                         ),
                         loc: self.loc.clone(),
@@ -1782,7 +1802,7 @@ impl Node<Option<cst::Member>> {
                     let expr = mem::replace(expr, ast::Expr::val(false));
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
                     head = Some(Expr {
-                        expr: construct_expr_attr(expr, id.to_smolstr(), self.loc.clone()),
+                        expr: construct_expr_attr(expr, id.into_smolstr(), self.loc.clone()),
                         loc: self.loc.clone(),
                     });
                     tail = rest;
@@ -1802,7 +1822,7 @@ impl Node<Option<cst::Member>> {
                         }
                     };
                     head = maybe_expr.map(|e| Expr {
-                        expr: construct_expr_attr(e, id.to_smolstr(), self.loc.clone()),
+                        expr: construct_expr_attr(e, id.into_smolstr(), self.loc.clone()),
                         loc: self.loc.clone(),
                     });
                     tail = rest;
@@ -2152,7 +2172,7 @@ impl ast::Name {
             ));
             None
         } else {
-            Some(self.id.to_smolstr())
+            Some(self.id.into_smolstr())
         }
     }
 
@@ -2287,7 +2307,7 @@ impl Node<Option<cst::RecInit>> {
 #[allow(clippy::too_many_arguments)]
 fn construct_template_policy(
     id: ast::PolicyID,
-    annotations: BTreeMap<ast::Id, SmolStr>,
+    annotations: BTreeMap<ast::AnyId, SmolStr>,
     effect: ast::Effect,
     principal: ast::PrincipalConstraint,
     action: ast::ActionConstraint,
@@ -2318,9 +2338,6 @@ fn construct_template_policy(
         // use `true` to mark the absence of non-head constraints
         construct_template(construct_expr_bool(true, loc.clone()))
     }
-}
-fn construct_id(s: String) -> ast::Id {
-    ast::Id::new_unchecked(s)
 }
 fn construct_string_from_var(v: ast::Var) -> SmolStr {
     match v {
@@ -2854,7 +2871,7 @@ mod tests {
         .to_policy(ast::PolicyID::from_string("id"), &mut errs)
         .expect("should be valid");
         assert_eq!(
-            policy.annotation(&ast::Id::new_unchecked("anno")),
+            policy.annotation(&ast::AnyId::new_unchecked("anno")),
             Some(&"good annotation".into())
         );
 
@@ -2896,42 +2913,42 @@ mod tests {
             policyset
                 .get(&ast::PolicyID::from_string("policy0"))
                 .expect("should be a policy")
-                .annotation(&ast::Id::new_unchecked("anno0")),
+                .annotation(&ast::AnyId::new_unchecked("anno0")),
             None
         );
         assert_eq!(
             policyset
                 .get(&ast::PolicyID::from_string("policy0"))
                 .expect("should be a policy")
-                .annotation(&ast::Id::new_unchecked("anno1")),
+                .annotation(&ast::AnyId::new_unchecked("anno1")),
             Some(&"first".into())
         );
         assert_eq!(
             policyset
                 .get(&ast::PolicyID::from_string("policy1"))
                 .expect("should be a policy")
-                .annotation(&ast::Id::new_unchecked("anno2")),
+                .annotation(&ast::AnyId::new_unchecked("anno2")),
             Some(&"second".into())
         );
         assert_eq!(
             policyset
                 .get(&ast::PolicyID::from_string("policy2"))
                 .expect("should be a policy")
-                .annotation(&ast::Id::new_unchecked("anno3a")),
+                .annotation(&ast::AnyId::new_unchecked("anno3a")),
             Some(&"third-a".into())
         );
         assert_eq!(
             policyset
                 .get(&ast::PolicyID::from_string("policy2"))
                 .expect("should be a policy")
-                .annotation(&ast::Id::new_unchecked("anno3b")),
+                .annotation(&ast::AnyId::new_unchecked("anno3b")),
             Some(&"third-b".into())
         );
         assert_eq!(
             policyset
                 .get(&ast::PolicyID::from_string("policy2"))
                 .expect("should be a policy")
-                .annotation(&ast::Id::new_unchecked("anno3c")),
+                .annotation(&ast::AnyId::new_unchecked("anno3c")),
             None
         );
         assert_eq!(
@@ -2941,6 +2958,89 @@ mod tests {
                 .annotations()
                 .count(),
             2
+        );
+
+        // can't have spaces or '+' in annotation keys
+        assert_matches!(
+            text_to_cst::parse_policy(
+                r#"
+            @hi mom("this should be invalid")
+            permit(principal, action, resource);
+            "#,
+            ),
+            Err(_)
+        );
+        assert_matches!(
+            text_to_cst::parse_policy(
+                r#"
+            @hi+mom("this should be invalid")
+            permit(principal, action, resource);
+            "#,
+            ),
+            Err(_)
+        );
+
+        // can have Cedar reserved words as annotation keys
+        let mut errs = ParseErrors::new();
+        let policyset = text_to_cst::parse_policies(
+            r#"
+            @if("this is the annotation for `if`")
+            @then("this is the annotation for `then`")
+            @else("this is the annotation for `else`")
+            @true("this is the annotation for `true`")
+            @false("this is the annotation for `false`")
+            @in("this is the annotation for `in`")
+            @is("this is the annotation for `is`")
+            @like("this is the annotation for `like`")
+            @has("this is the annotation for `has`")
+            @principal("this is the annotation for `principal`") // not reserved at time of this writing, but we test it anyway
+            permit(principal, action, resource);
+            "#,
+        ).expect("should parse")
+        .to_policyset(&mut errs)
+        .expect("should be valid");
+        let policy0 = policyset
+            .get(&ast::PolicyID::from_string("policy0"))
+            .expect("should be the right policy ID");
+        assert_eq!(
+            policy0.annotation(&ast::AnyId::new_unchecked("if")),
+            Some(&"this is the annotation for `if`".into())
+        );
+        assert_eq!(
+            policy0.annotation(&ast::AnyId::new_unchecked("then")),
+            Some(&"this is the annotation for `then`".into())
+        );
+        assert_eq!(
+            policy0.annotation(&ast::AnyId::new_unchecked("else")),
+            Some(&"this is the annotation for `else`".into())
+        );
+        assert_eq!(
+            policy0.annotation(&ast::AnyId::new_unchecked("true")),
+            Some(&"this is the annotation for `true`".into())
+        );
+        assert_eq!(
+            policy0.annotation(&ast::AnyId::new_unchecked("false")),
+            Some(&"this is the annotation for `false`".into())
+        );
+        assert_eq!(
+            policy0.annotation(&ast::AnyId::new_unchecked("in")),
+            Some(&"this is the annotation for `in`".into())
+        );
+        assert_eq!(
+            policy0.annotation(&ast::AnyId::new_unchecked("is")),
+            Some(&"this is the annotation for `is`".into())
+        );
+        assert_eq!(
+            policy0.annotation(&ast::AnyId::new_unchecked("like")),
+            Some(&"this is the annotation for `like`".into())
+        );
+        assert_eq!(
+            policy0.annotation(&ast::AnyId::new_unchecked("has")),
+            Some(&"this is the annotation for `has`".into())
+        );
+        assert_eq!(
+            policy0.annotation(&ast::AnyId::new_unchecked("principal")),
+            Some(&"this is the annotation for `principal`".into())
         );
     }
 

@@ -347,6 +347,23 @@ pub(crate) fn parse_ident(id: &str) -> Result<ast::Id, err::ParseErrors> {
     }
 }
 
+/// parse an `AnyId`
+///
+/// Private to this crate. Users outside Core should use `AnyId`'s `FromStr` impl
+/// or its constructors
+pub(crate) fn parse_anyid(id: &str) -> Result<ast::AnyId, err::ParseErrors> {
+    let mut errs = err::ParseErrors::new();
+    let cst = text_to_cst::parse_ident(id)?;
+    let Some(ast) = cst.to_any_ident(&mut errs) else {
+        return Err(errs);
+    };
+    if errs.is_empty() {
+        Ok(ast)
+    } else {
+        Err(errs)
+    }
+}
+
 /// Utilities used in tests in this file
 #[cfg(test)]
 mod test_utils {

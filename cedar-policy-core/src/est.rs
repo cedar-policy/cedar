@@ -51,7 +51,7 @@ pub struct Policy {
     #[serde(default)]
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
-    annotations: HashMap<ast::Id, SmolStr>,
+    annotations: HashMap<ast::AnyId, SmolStr>,
 }
 
 /// Serde JSON structure for a `when` or `unless` clause in the EST format
@@ -574,6 +574,82 @@ mod test {
             serde_json::to_string_pretty(&expected_json_after_roundtrip).unwrap(),
             serde_json::to_string_pretty(&roundtripped).unwrap()
         );
+    }
+
+    /// Test that we can use Cedar reserved words like `if` and `has` as annotation keys
+    #[test]
+    fn reserved_words_as_annotations() {
+        let policy = r#"
+            @if("this is the annotation for `if`")
+            @then("this is the annotation for `then`")
+            @else("this is the annotation for `else`")
+            @true("this is the annotation for `true`")
+            @false("this is the annotation for `false`")
+            @in("this is the annotation for `in`")
+            @is("this is the annotation for `is`")
+            @like("this is the annotation for `like`")
+            @has("this is the annotation for `has`")
+            @principal("this is the annotation for `principal`") // not reserved at time of this writing, but we test it anyway
+            permit(principal, action, resource) when { 2 == 2 };
+        "#;
+
+        let cst = parser::text_to_cst::parse_policy(policy)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let expected_json = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All",
+                },
+                "action": {
+                    "op": "All",
+                },
+                "resource": {
+                    "op": "All",
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "==": {
+                                "left": { "Value": 2 },
+                                "right": { "Value": 2 },
+                            }
+                        }
+                    }
+                ],
+                "annotations": {
+                    "if": "this is the annotation for `if`",
+                    "then": "this is the annotation for `then`",
+                    "else": "this is the annotation for `else`",
+                    "true": "this is the annotation for `true`",
+                    "false": "this is the annotation for `false`",
+                    "in": "this is the annotation for `in`",
+                    "is": "this is the annotation for `is`",
+                    "like": "this is the annotation for `like`",
+                    "has": "this is the annotation for `has`",
+                    "principal": "this is the annotation for `principal`",
+                }
+            }
+        );
+        assert_eq!(
+            serde_json::to_value(&est).unwrap(),
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&est).unwrap()
+        );
+        let old_est = est.clone();
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
+        assert_eq!(&old_est, &est);
+
+        assert_eq!(ast_roundtrip(est.clone()), est);
+        assert_eq!(circular_roundtrip(est.clone()), est);
     }
 
     #[test]

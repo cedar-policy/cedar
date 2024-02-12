@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   For more details, see `miette`'s
   [documentation](https://docs.rs/miette/latest/miette/index.html). (#477)
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
+- Cedar reserved words like `if`, `has`, and `true` are now allowed as policy
+  annotation keys. (#634, resolving #623)
 - Add hints suggesting how to fix some type errors. (#513)
 - The `ValidationResult` returned from `Validator::validate` now has a static
   lifetime, allowing it to be used in more contexts. The lifetime parameter
