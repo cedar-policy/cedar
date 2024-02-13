@@ -49,7 +49,7 @@ pub use namespace_def::ValidatorNamespaceDef;
 #[cfg(test)]
 pub(crate) use namespace_def::ACTION_ENTITY_TYPE;
 
-// We do not have a dafny model for action attributes, so we disable them by defualt.
+// We do not have a formal model for action attributes, so we disable them by default.
 #[derive(Eq, PartialEq, Copy, Clone, Default)]
 pub enum ActionBehavior {
     /// Action entities cannot have attributes. Attempting to declare attributes

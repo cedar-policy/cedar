@@ -20,11 +20,10 @@ use serde::{Deserialize, Serialize};
 
 /// Represent an element in a pattern literal (the RHS of the like operation)
 #[derive(Deserialize, Hash, Debug, Clone, Copy, PartialEq, Eq)]
-// We need special serialization implementation for CedarDRT because Rust's
-// unicode escape sequences (e.g., `\u{1234}`) can appear in serialized strings
-// and it's difficult to parse them into Dafny characters.
-// Instead we serialize the unicode values of Rust characters and leverage
-// Dafny's type conversion to retrieve the characters.
+// We need special serialization for patterns because Rust's unicode escape
+// sequences (e.g., `\u{1234}`) can appear in serialized strings and it's difficult
+// to parse these into characters in the formal model. Instead we serialize the
+// unicode values of Rust characters.
 #[cfg_attr(not(feature = "arbitrary"), derive(Serialize))]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum PatternElem {
@@ -42,13 +41,13 @@ impl Serialize for PatternElem {
     {
         // Helper enum for serialization
         #[derive(Debug, Serialize)]
-        enum PatternElemForDafny {
+        enum PatternElemU32 {
             Char(u32),
             Wildcard,
         }
         match self {
-            Self::Char(c) => PatternElemForDafny::Char(*c as u32).serialize(serializer),
-            Self::Wildcard => PatternElemForDafny::Wildcard.serialize(serializer),
+            Self::Char(c) => PatternElemU32::Char(*c as u32).serialize(serializer),
+            Self::Wildcard => PatternElemU32::Wildcard.serialize(serializer),
         }
     }
 }
