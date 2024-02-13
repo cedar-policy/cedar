@@ -241,7 +241,7 @@ impl Node<Option<cst::Policy>> {
                             failure = true;
                             errs.push(ToASTError::new(
                                 ToASTErrorKind::DuplicateAnnotation(oentry.key().clone()),
-                                v.loc.expect(".to_kv_pair() always populates Loc"),
+                                node.loc.clone(),
                             ));
                         }
                         Entry::Vacant(ventry) => {

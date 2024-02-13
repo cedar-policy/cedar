@@ -143,7 +143,7 @@ impl TryFrom<cst::Policy> for Policy {
                             errs.push(
                                 ToASTError::new(
                                     ToASTErrorKind::DuplicateAnnotation(oentry.key().clone()),
-                                    v.loc.expect(".to_kv_pair() always populates Loc"),
+                                    node.loc,
                                 )
                                 .into(),
                             );
