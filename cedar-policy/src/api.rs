@@ -660,7 +660,7 @@ impl Authorizer {
     /// Returns an authorization response for `r` with respect to the given
     /// `PolicySet` and `Entities`.
     ///
-    /// The language spec and Dafny model give a precise definition of how this
+    /// The language spec and formal model give a precise definition of how this
     /// is computed.
     /// ```
     /// # use cedar_policy::{Authorizer,Context,Decision,Entities,EntityId,EntityTypeName, EntityUid, Request,PolicySet};

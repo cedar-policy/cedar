@@ -91,7 +91,7 @@ impl Authorizer {
 
     /// Returns an authorization response for `q` with respect to the given `Slice`.
     ///
-    /// The language spec and Dafny model give a precise definition of how this is
+    /// The language spec and formal model give a precise definition of how this is
     /// computed.
     pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> Response {
         match self.is_authorized_core(q, pset, entities) {
@@ -157,7 +157,7 @@ impl Authorizer {
     /// Returns an authorization response for `q` with respect to the given `Slice`.
     /// Partial Evaluation of is_authorized
     ///
-    /// The language spec and Dafny model give a precise definition of how this is
+    /// The language spec and formal model give a precise definition of how this is
     /// computed.
     pub fn is_authorized_core(
         &self,
