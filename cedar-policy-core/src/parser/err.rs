@@ -208,8 +208,10 @@ pub enum ToASTErrorKind {
     /// Returned when a policy contains an invalid method name
     #[error("not a valid method name: `{0}`")]
     InvalidMethodName(String),
-    /// Returned when a policy scope clause contains the wrong variable. (`principal` must be in the first clause, etc...)
-    #[error("the variable `{got}` is invalid in this policy scope clause, the variable `{expected}` is expected")]
+    /// Returned when a policy scope clause contains the wrong variable.
+    /// (`principal` must be in the first clause, etc...)
+    #[error("found the variable `{got}` where the variable `{expected}` must be used")]
+    #[diagnostic(help("policy scopes must contain a `principal`, `action`, and `resource` element in that order"))]
     IncorrectVariable {
         /// The variable that is expected in this clause
         expected: Var,
