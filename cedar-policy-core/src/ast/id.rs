@@ -181,7 +181,7 @@ impl<'a> arbitrary::Arbitrary<'a> for AnyId {
         );
         let s: String = cs.into_iter().collect();
         debug_assert!(
-            crate::parser::parse_ident(&s).is_ok(),
+            crate::parser::parse_anyid(&s).is_ok(),
             "all strings constructed this way should be valid AnyIds, but this one is not: {s:?}"
         );
         Ok(Self::new_unchecked(s))
