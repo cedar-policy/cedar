@@ -182,16 +182,18 @@ pub fn expect_source_snippet(
     use itertools::Itertools;
     let src = src.as_ref();
     let snippet = snippet.as_ref();
-    let labels = err.labels().unwrap_or_else(|| panic!(
-        "for the following input:\n{src}\ndid not find a source location, but expected one"
-    ));
-    let label = labels.exactly_one().unwrap_or_else(|labels| panic!(
-        "for the following input:\n{src}\nexpected exactly one source location, but found {}",
-        labels.count(),
-    ));
+    let labels = err.labels().unwrap_or_else(|| {
+        panic!("for the following input:\n{src}\ndid not find a source location, but expected one")
+    });
+    let label = labels.exactly_one().unwrap_or_else(|labels| {
+        panic!(
+            "for the following input:\n{src}\nexpected exactly one source location, but found {}",
+            labels.count(),
+        )
+    });
     let actual_snippet = {
         let span = label.inner().clone();
-        &src[span.offset() .. span.offset() + span.len()]
+        &src[span.offset()..span.offset() + span.len()]
     };
     assert_eq!(
         actual_snippet,

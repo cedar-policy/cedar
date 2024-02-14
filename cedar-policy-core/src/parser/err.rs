@@ -211,7 +211,9 @@ pub enum ToASTErrorKind {
     /// Returned when a policy scope clause contains the wrong variable.
     /// (`principal` must be in the first clause, etc...)
     #[error("found the variable `{got}` where the variable `{expected}` must be used")]
-    #[diagnostic(help("policy scopes must contain a `principal`, `action`, and `resource` element in that order"))]
+    #[diagnostic(help(
+        "policy scopes must contain a `principal`, `action`, and `resource` element in that order"
+    ))]
     IncorrectVariable {
         /// The variable that is expected in this clause
         expected: Var,
