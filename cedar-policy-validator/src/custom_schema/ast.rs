@@ -1,11 +1,7 @@
 use cedar_policy_core::{
     ast::Id,
-    parser::{
-        cst::{Name, Ref},
-        Loc, Node,
-    },
+    parser::{Loc, Node},
 };
-use itertools::Either;
 use itertools::Itertools;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
@@ -19,7 +15,6 @@ pub const BUILTIN_TYPES: [&str; 3] = ["Long", "String", "Bool"];
 
 pub(super) const CEDAR_NAMESPACE: &str = "__cedar";
 
-pub type IdentOrString = Either<Node<Id>, Node<SmolStr>>;
 pub type Schema = Vec<Node<Namespace>>;
 
 /// A path is a non empty list of identifiers that forms a namespace + type
@@ -98,11 +93,6 @@ impl QualName {
     }
 }
 
-/// Is this string sharing a name with a Cedar extension?
-pub fn is_extension_name(s: impl AsRef<str>) -> bool {
-    EXTENSIONS.contains(&s.as_ref())
-}
-
 /// A [`Namespace`] has a name and a collection declaration
 /// A schema is made up of a series of fragments
 /// A fragment is a series of namespaces
@@ -132,11 +122,7 @@ impl Namespace {
     pub fn is_reserved_namespaces(&self) -> bool {
         self.name
             .as_ref()
-            .and_then(|path| {
-                path.iter()
-                    .next()
-                    .and_then(|id| Some(id.as_ref().starts_with("__")))
-            })
+            .and_then(|path| path.iter().next().map(|id| id.as_ref().starts_with("__")))
             .unwrap_or(false)
     }
 }

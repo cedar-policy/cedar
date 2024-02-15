@@ -20,11 +20,11 @@ use lalrpop_util::lalrpop_mod;
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::{custom_schema::to_json_schema::custom_schema_to_json_schema, SchemaFragment};
+use crate::custom_schema::to_json_schema::custom_schema_to_json_schema;
 
 use super::{
     ast::Schema,
-    err::{self, ParseError, ParseErrors, ToJsonSchemaError, ToJsonSchemaErrors},
+    err::{self, ParseError, ParseErrors, ToJsonSchemaErrors},
     to_json_schema::SchemaWarning,
 };
 
@@ -58,7 +58,7 @@ fn parse_collect_errors<'a, P, T>(
     let mut errs = Vec::new();
     let result = parse(parser, &mut errs, &Arc::from(text), text);
 
-    let mut errors = errs
+    let errors = errs
         .into_iter()
         .map(Into::into)
         .collect::<Vec<ParseError>>();

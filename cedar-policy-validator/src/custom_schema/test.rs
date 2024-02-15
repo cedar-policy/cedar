@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod demo_tests {
-    use cedar_policy_core::entities::SchemaType;
+
     use smol_str::ToSmolStr;
 
     use crate::{
@@ -9,7 +9,7 @@ mod demo_tests {
 
     #[test]
     fn test_github() {
-        let (fragment, warnings) = SchemaFragment::from_str_natural(
+        let (fragment, _warnings) = SchemaFragment::from_str_natural(
             r#"namespace GitHub {
             entity User in [UserGroup,Team];
             entity UserGroup in [UserGroup];
@@ -38,7 +38,7 @@ mod demo_tests {
             .expect("`Github` name space did not exist");
         // User
         let user = github.entity_types.get("User").expect("No `User`");
-        assert_empty_records(&user);
+        assert_empty_records(user);
         assert_eq!(
             &user.member_of_types,
             &vec!["UserGroup".to_smolstr(), "Team".to_smolstr()]
@@ -48,15 +48,15 @@ mod demo_tests {
             .entity_types
             .get("UserGroup")
             .expect("No `UserGroup`");
-        assert_empty_records(&usergroup);
+        assert_empty_records(usergroup);
         assert_eq!(&usergroup.member_of_types, &vec!["UserGroup".to_smolstr()]);
         // Repository
-        let repo = github
+        let _repo = github
             .entity_types
             .get("Repository")
             .expect("No `Repository`");
         let groups = ["readers", "writers", "triagers", "admins", "maintainers"];
-        for group in groups {}
+        for _group in groups {}
     }
 
     fn assert_empty_records(etyp: &EntityType) {
@@ -329,16 +329,10 @@ mod parser_tests {
 mod translator_tests {
     use cedar_policy_core::FromNormalizedStr;
 
-    use crate::{
-        custom_schema::{
-            err::ToJsonSchemaError, parser::parse_schema,
-            to_json_schema::custom_schema_to_json_schema,
-        },
-        SchemaError, ValidatorSchema,
-    };
+    use crate::{custom_schema::err::ToJsonSchemaError, SchemaError, ValidatorSchema};
 
     fn custom_schema_str_to_json_schema(
-        s: &str,
+        _s: &str,
     ) -> Result<crate::SchemaFragment, ToJsonSchemaError> {
         todo!()
         // custom_schema_to_json_schema(parse_schema(s).expect("parse error")).map(|(sf, _)| sf)

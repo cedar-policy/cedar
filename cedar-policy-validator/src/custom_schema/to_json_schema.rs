@@ -91,7 +91,7 @@ impl<'a> ConversionContext<'a> {
                 .map(|decl| self.convert_entity_decl(decl)),
         )?
         .collect::<Vec<_>>();
-        let entity_types = entity_types.into_iter().flat_map(|id| id).collect();
+        let entity_types = entity_types.into_iter().flatten().collect();
 
         // Convert entity type decls, collecting all errors
         let actions = collect_all_errors(
@@ -100,7 +100,7 @@ impl<'a> ConversionContext<'a> {
                 .map(|decl| self.convert_action_decl(decl)),
         )?
         .collect::<Vec<_>>();
-        let actions = actions.into_iter().flat_map(|id| id).collect();
+        let actions = actions.into_iter().flatten().collect();
 
         // Convert entity type decls, collecting all errors
         let common_types = collect_all_errors(
@@ -336,7 +336,7 @@ impl<'a> ConversionContext<'a> {
 
 /// Wrap [`ExactlyOneError`] for the purpose of converting PRDecls
 fn convert_pr_error(
-    e: ExactlyOneError<std::vec::IntoIter<Vec<SmolStr>>>,
+    _e: ExactlyOneError<std::vec::IntoIter<Vec<SmolStr>>>,
     kind: PR,
     loc: Loc,
 ) -> ToJsonSchemaErrors {
@@ -350,14 +350,13 @@ fn convert_pr_error(
 
 /// Wrap [`ExactlyOneError`] for the purpose of converting ContextDecls
 fn convert_context_error(
-    e: ExactlyOneError<std::vec::IntoIter<Vec<Node<AttrDecl>>>>,
+    _e: ExactlyOneError<std::vec::IntoIter<Vec<Node<AttrDecl>>>>,
     loc: Loc,
 ) -> ToJsonSchemaError {
     ToJsonSchemaError::DuplicateContext {
         start: loc.clone(),
         end: loc,
     }
-    .into()
 }
 
 /// Partition on whether or not this [`AppDecl`] is defining a context
@@ -490,9 +489,9 @@ impl NamespaceRecord {
     }
 }
 
-fn compute_namespace_warnings<'a>(
-    fragment: &'a HashMap<SmolStr, NamespaceRecord>,
-) -> impl Iterator<Item = SchemaWarning> + 'a {
+fn compute_namespace_warnings(
+    fragment: &HashMap<SmolStr, NamespaceRecord>,
+) -> impl Iterator<Item = SchemaWarning> + '_ {
     let unqual_warnings = if let Some(unqualified_namespace) = fragment.get("") {
         let entity_warnings = unqualified_namespace
             .entities
@@ -508,7 +507,7 @@ fn compute_namespace_warnings<'a>(
     };
     let warnings = fragment.values().flat_map(make_warning_for_shadowing);
 
-    warnings.chain(unqual_warnings.into_iter())
+    warnings.chain(unqual_warnings)
 }
 
 fn make_warning_for_shadowing(n: &NamespaceRecord) -> impl Iterator<Item = SchemaWarning> {
@@ -527,7 +526,7 @@ fn make_warning_for_shadowing(n: &NamespaceRecord) -> impl Iterator<Item = Schem
 }
 
 fn extract_name(n: Node<SmolStr>) -> (SmolStr, Node<()>) {
-    n.swap(())
+    (n.node.clone(), n.map(|_| ()))
 }
 
 fn shadows_builtin((name, node): (&SmolStr, &Node<()>)) -> Option<SchemaWarning> {
@@ -572,7 +571,7 @@ fn nonoverlapping_union(
     let mut errs = vec![];
     for (key, value) in rhs.into_iter() {
         match lhs.entry(key) {
-            Entry::Occupied(mut entry) => {
+            Entry::Occupied(entry) => {
                 let (k, _) = entry.remove_entry();
                 errs.push(ToJsonSchemaError::DuplicateDeclarations {
                     decl: k,
@@ -590,13 +589,6 @@ fn nonoverlapping_union(
     } else {
         Err(errs.into_iter().collect())
     }
-}
-
-fn get_namespace(
-    name: SmolStr,
-    fragment: &mut HashMap<SmolStr, NamespaceDefinition>,
-) -> &mut NamespaceDefinition {
-    todo!()
 }
 
 fn partition_decls(

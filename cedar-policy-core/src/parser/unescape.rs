@@ -39,7 +39,7 @@ pub fn to_unescaped_string(s: &str) -> Result<SmolStr, NonEmpty<UnescapeError>> 
     if let Some((head, tails)) = errs.split_first() {
         Err(NonEmpty {
             head: head.clone(),
-            tail: tails.into_iter().map(|err| err.clone()).collect_vec(),
+            tail: tails.iter().cloned().collect_vec(),
         })
     } else {
         Ok(unescaped_str.into())
@@ -68,7 +68,7 @@ pub(crate) fn to_pattern(s: &str) -> Result<Vec<PatternElem>, NonEmpty<UnescapeE
     if let Some((head, tails)) = errs.split_first() {
         Err(NonEmpty {
             head: head.clone(),
-            tail: tails.into_iter().map(|err| err.clone()).collect_vec(),
+            tail: tails.iter().cloned().collect_vec(),
         })
     } else {
         Ok(unescaped_str)

@@ -1,8 +1,4 @@
-use std::{
-    collections::HashMap,
-    fmt::Display,
-    ops::{Deref, DerefMut},
-};
+use std::{collections::HashMap, fmt::Display};
 
 use cedar_policy_core::parser::{err::expected_to_string, unescape::UnescapeError, Loc, Node};
 use lalrpop_util as lalr;

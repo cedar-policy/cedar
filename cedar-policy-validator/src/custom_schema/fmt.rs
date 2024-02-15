@@ -6,8 +6,7 @@ use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::{
-    ActionType, EntityType, NamespaceDefinition, SchemaError, SchemaFragment, SchemaType,
-    SchemaTypeVariant, ValidatorSchema,
+    ActionType, EntityType, NamespaceDefinition, SchemaFragment, SchemaType, SchemaTypeVariant,
 };
 
 impl Display for SchemaFragment {
@@ -71,7 +70,7 @@ impl Display for SchemaType {
     }
 }
 
-fn non_empty_slice<'a, T>(v: &'a Vec<T>) -> Option<NonEmpty<&'a T>> {
+fn non_empty_slice<T>(v: &Vec<T>) -> Option<NonEmpty<&T>> {
     let vs: Vec<&T> = v.iter().collect();
     NonEmpty::from_vec(vs)
 }
@@ -150,7 +149,7 @@ impl Display for ActionType {
             }
             // applies to unspecified principals and resources
             None => {
-                write!(f, "{}", "appliesTo { context : {} }")?;
+                write!(f, "appliesTo {{ context : {{}} }}")?;
             }
         }
         Ok(())
