@@ -10,9 +10,13 @@ use itertools::Itertools;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
 
+use crate::SchemaTypeVariant;
+
 const IPADDR_EXTENSION: &str = "ipaddr";
 const DECIMAL_EXTENSION: &str = "decimal";
-const EXTENSIONS: [&str; 2] = [IPADDR_EXTENSION, DECIMAL_EXTENSION];
+pub const EXTENSIONS: [&str; 2] = [IPADDR_EXTENSION, DECIMAL_EXTENSION];
+pub const BUILTIN_TYPES: [&str; 3] = ["Long", "String", "Bool"];
+
 pub(super) const CEDAR_NAMESPACE: &str = "__cedar";
 
 pub type IdentOrString = Either<Node<Id>, Node<SmolStr>>;
@@ -45,12 +49,52 @@ impl Path {
     }
 
     /// Consume the [`Path`] and get an owned iterator over the elements
-    pub fn into_inner(self) -> impl Iterator<Item = Node<Id>> {
+    pub fn into_iter(self) -> impl Iterator<Item = Node<Id>> {
         let loc = self.0.loc;
         self.0
             .node
             .into_iter()
             .map(move |x| Node::with_source_loc(x, loc.clone()))
+    }
+
+    /// Get the base type name as well as the (potentially empty) prefix
+    pub fn split_last(self) -> (Vec<Id>, Id) {
+        let ne = self.0.node;
+        let first = ne.head;
+        let mut rest = ne.tail;
+        match rest.pop() {
+            Some(last) => {
+                rest.insert(0, first);
+                (rest, last)
+            }
+            None => (rest, first),
+        }
+    }
+}
+
+impl std::fmt::Display for Path {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = self.0.node.iter().map(|id| id.as_ref()).join("::");
+        write!(f, "{s}")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct QualName {
+    pub path: Option<Path>,
+    pub id: SmolStr,
+}
+
+impl QualName {
+    pub fn unqualified(id: SmolStr) -> Self {
+        Self { path: None, id }
+    }
+
+    pub fn qualified(path: Path, id: SmolStr) -> Self {
+        Self {
+            path: Some(path),
+            id,
+        }
     }
 }
 
@@ -83,10 +127,26 @@ impl Namespace {
             None => false,
         }
     }
+
+    /// Does this [`Namespace`] start with `__`, the reserved pattern
+    pub fn is_reserved_namespaces(&self) -> bool {
+        self.name
+            .as_ref()
+            .and_then(|path| {
+                path.iter()
+                    .next()
+                    .and_then(|id| Some(id.as_ref().starts_with("__")))
+            })
+            .unwrap_or(false)
+    }
 }
 
 fn is_cedar(id: &Id) -> bool {
     id.as_ref() == CEDAR_NAMESPACE
+}
+
+pub trait Decl {
+    fn names(&self) -> Vec<Node<SmolStr>>;
 }
 
 /// Schema Declarations,
@@ -95,7 +155,29 @@ fn is_cedar(id: &Id) -> bool {
 pub enum Declaration {
     Entity(EntityDecl),
     Action(ActionDecl),
-    Type(Node<Id>, Node<Type>),
+    Type(TypeDecl),
+}
+
+impl Decl for Declaration {
+    fn names(&self) -> Vec<Node<SmolStr>> {
+        match self {
+            Declaration::Entity(e) => e.names(),
+            Declaration::Action(a) => a.names(),
+            Declaration::Type(t) => t.names(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeDecl {
+    pub name: Node<Id>,
+    pub def: Node<Type>,
+}
+
+impl Decl for TypeDecl {
+    fn names(&self) -> Vec<Node<SmolStr>> {
+        vec![self.name.clone().map(|id| id.to_smolstr())]
+    }
 }
 
 /// Declaration of an entity type
@@ -110,6 +192,15 @@ pub struct EntityDecl {
     pub attrs: Vec<Node<AttrDecl>>,
 }
 
+impl Decl for EntityDecl {
+    fn names(&self) -> Vec<Node<SmolStr>> {
+        self.names
+            .iter()
+            .map(|n| n.clone().map(|id| id.to_smolstr()))
+            .collect()
+    }
+}
+
 /// Type definitions
 #[derive(Debug, Clone)]
 pub enum Type {
@@ -119,8 +210,6 @@ pub enum Type {
     Ident(Path),
     /// A Record
     Record(Vec<Node<AttrDecl>>),
-    /// A primitive type
-    Prim(PrimitiveType),
 }
 
 /// Primitive Type Definitions
@@ -132,6 +221,16 @@ pub enum PrimitiveType {
     String,
     /// Cedar booleans
     Bool,
+}
+
+impl From<PrimitiveType> for SchemaTypeVariant {
+    fn from(value: PrimitiveType) -> Self {
+        match value {
+            PrimitiveType::Long => SchemaTypeVariant::Long,
+            PrimitiveType::String => SchemaTypeVariant::String,
+            PrimitiveType::Bool => SchemaTypeVariant::Boolean,
+        }
+    }
 }
 
 /// Attribute declarations , used in records and entity types
@@ -146,12 +245,21 @@ pub struct AttrDecl {
 }
 
 /// The target of a [`PRAppDecl`]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PR {
     /// Applies to the `principal` variable
     Principal,
     /// Applies to the `resource` variable
     Resource,
+}
+
+impl std::fmt::Display for PR {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PR::Principal => write!(f, "principal"),
+            PR::Resource => write!(f, "resource"),
+        }
+    }
 }
 
 /// A declaration that defines what kind of entities this action can be applied against
@@ -179,7 +287,13 @@ pub struct ActionDecl {
     /// More than one name can be bound if they have the same definition, for convenience
     pub names: Vec<Node<SmolStr>>,
     /// The parents of this action
-    pub parents: Option<Vec<Node<SmolStr>>>,
+    pub parents: Option<NonEmpty<Node<QualName>>>,
     /// The constraining clauses in this declarations
-    pub app_decls: Option<NonEmpty<Node<AppDecl>>>,
+    pub app_decls: Option<Node<NonEmpty<Node<AppDecl>>>>,
+}
+
+impl Decl for ActionDecl {
+    fn names(&self) -> Vec<Node<SmolStr>> {
+        self.names.clone()
+    }
 }

@@ -1,10 +1,15 @@
 #[cfg(test)]
 mod demo_tests {
-    use crate::custom_schema::parser::parse_schema;
+    use cedar_policy_core::entities::SchemaType;
+    use smol_str::ToSmolStr;
+
+    use crate::{
+        custom_schema::parser::parse_schema, EntityType, SchemaFragment, SchemaTypeVariant,
+    };
 
     #[test]
     fn test_github() {
-        let res = parse_schema(
+        let (fragment, warnings) = SchemaFragment::from_str_natural(
             r#"namespace GitHub {
             entity User in [UserGroup,Team];
             entity UserGroup in [UserGroup];
@@ -25,8 +30,43 @@ mod demo_tests {
                 memberOfTypes: UserGroup
             };
         }"#,
+        )
+        .expect("Schema should parse");
+        let github = fragment
+            .0
+            .get("GitHub")
+            .expect("`Github` name space did not exist");
+        // User
+        let user = github.entity_types.get("User").expect("No `User`");
+        assert_empty_records(&user);
+        assert_eq!(
+            &user.member_of_types,
+            &vec!["UserGroup".to_smolstr(), "Team".to_smolstr()]
         );
-        assert!(res.is_ok(), "{res:?}");
+        // UserGroup
+        let usergroup = github
+            .entity_types
+            .get("UserGroup")
+            .expect("No `UserGroup`");
+        assert_empty_records(&usergroup);
+        assert_eq!(&usergroup.member_of_types, &vec!["UserGroup".to_smolstr()]);
+        // Repository
+        let repo = github
+            .entity_types
+            .get("Repository")
+            .expect("No `Repository`");
+        let groups = ["readers", "writers", "triagers", "admins", "maintainers"];
+        for group in groups {}
+    }
+
+    fn assert_empty_records(etyp: &EntityType) {
+        match &etyp.shape.0 {
+            crate::SchemaType::Type(SchemaTypeVariant::Record {
+                attributes,
+                additional_attributes: false,
+            }) => assert!(attributes.is_empty(), "Record should be empty"),
+            _ => panic!("Should have an empty record"),
+        }
     }
 
     #[test]
@@ -300,7 +340,8 @@ mod translator_tests {
     fn custom_schema_str_to_json_schema(
         s: &str,
     ) -> Result<crate::SchemaFragment, ToJsonSchemaError> {
-        custom_schema_to_json_schema(parse_schema(s).expect("parse error")).map(|(sf, _)| sf)
+        todo!()
+        // custom_schema_to_json_schema(parse_schema(s).expect("parse error")).map(|(sf, _)| sf)
     }
 
     #[test]

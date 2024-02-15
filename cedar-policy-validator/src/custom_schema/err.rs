@@ -12,6 +12,8 @@ use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use thiserror::Error;
 
+use super::ast::PR;
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum UserError {
     #[error("An empty list was passed")]
@@ -207,6 +209,44 @@ impl Diagnostic for ParseErrors {
     }
 }
 
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+pub enum ToJsonSchemaErrors {
+    #[error("foo")]
+    Errs(Vec<ToJsonSchemaError>),
+}
+
+impl ToJsonSchemaErrors {
+    pub fn iter(&self) -> impl Iterator<Item = &ToJsonSchemaError> {
+        match self {
+            Self::Errs(v) => v.iter(),
+        }
+    }
+}
+
+impl IntoIterator for ToJsonSchemaErrors {
+    type Item = ToJsonSchemaError;
+
+    type IntoIter = std::vec::IntoIter<ToJsonSchemaError>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self {
+            Self::Errs(v) => v.into_iter(),
+        }
+    }
+}
+
+impl From<ToJsonSchemaError> for ToJsonSchemaErrors {
+    fn from(value: ToJsonSchemaError) -> Self {
+        Self::Errs(vec![value])
+    }
+}
+
+impl FromIterator<ToJsonSchemaError> for ToJsonSchemaErrors {
+    fn from_iter<T: IntoIterator<Item = ToJsonSchemaError>>(iter: T) -> Self {
+        Self::Errs(iter.into_iter().collect())
+    }
+}
+
 /// For errors during schema format conversion
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum ToJsonSchemaError {
@@ -216,6 +256,11 @@ pub enum ToJsonSchemaError {
     /// Error raised when there are duplicate declarations
     #[error("Duplicate declarations: `{decl}`")]
     DuplicateDeclarations { decl: SmolStr, start: Loc, end: Loc },
+    #[error("Duplicate context declaration. Action may have at most one context declaration")]
+    DuplicateContext { start: Loc, end: Loc },
+    #[error("Duplicate {kind} decleration. Action may have at most once {kind} declaration")]
+    DuplicatePR { kind: PR, start: Loc, end: Loc },
+
     /// Error raised when there are duplicate namespace IDs
     #[error("Duplicate namespace IDs: `{namespace_id}`")]
     DuplicateNameSpaces {
@@ -250,6 +295,8 @@ impl Diagnostic for ToJsonSchemaError {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         match self {
             ToJsonSchemaError::DuplicateDeclarations { start, end, .. }
+            | ToJsonSchemaError::DuplicateContext { start, end }
+            | ToJsonSchemaError::DuplicatePR { start, end, .. }
             | ToJsonSchemaError::DuplicateKeys { start, end, .. }
             | ToJsonSchemaError::DuplicateNameSpaces { start, end, .. } => Some(Box::new(
                 vec![

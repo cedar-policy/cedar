@@ -40,6 +40,7 @@ use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 pub use cedar_policy_core::parser::err::ParseErrors;
 use cedar_policy_core::FromNormalizedStr;
+pub use cedar_policy_validator::custom_schema::to_json_schema::SchemaWarning;
 use cedar_policy_validator::RequestValidationError; // this type is unsuitable for `pub use` because it contains internal types like `EntityUID` and `EntityType`
 pub use cedar_policy_validator::{
     TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
@@ -1060,21 +1061,31 @@ impl SchemaFragment {
     }
 
     /// Parse a [`SchemaFragment`] from a reader containing the natural schema syntax
-    pub fn from_reader_natural(r: impl std::io::Read) -> Result<Self, SchemaError> {
-        let lossless = cedar_policy_validator::SchemaFragment::from_reader_natural(r)?;
-        Ok(Self {
-            value: lossless.clone().try_into()?,
-            lossless,
-        })
+    pub fn from_file_natural(
+        r: impl std::io::Read,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), SchemaError> {
+        let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_file_natural(r)?;
+        Ok((
+            Self {
+                value: lossless.clone().try_into()?,
+                lossless,
+            },
+            warnings,
+        ))
     }
 
     /// Parse a [`SchemaFragment`] from a string containing the natural schema syntax
-    pub fn from_str_natural(src: &str) -> Result<Self, SchemaError> {
-        let lossless = cedar_policy_validator::SchemaFragment::from_str_natural(src)?;
-        Ok(Self {
-            value: lossless.clone().try_into()?,
-            lossless,
-        })
+    pub fn from_str_natural(
+        src: &str,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), SchemaError> {
+        let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_str_natural(src)?;
+        Ok((
+            Self {
+                value: lossless.clone().try_into()?,
+                lossless,
+            },
+            warnings,
+        ))
     }
 
     /// Create a `SchemaFragment` directly from a file.
@@ -1188,6 +1199,28 @@ impl Schema {
         )?))
     }
 
+    /// Parse the schema from a reader
+    pub fn from_file_natural(
+        file: impl std::io::Read,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), SchemaError> {
+        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_file_natural(
+            file,
+            Extensions::all_available(),
+        )?;
+        Ok((Self(schema), warnings))
+    }
+
+    /// Parse the schema from a string
+    pub fn from_str_natural(
+        src: &str,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), SchemaError> {
+        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_str_natural(
+            src,
+            Extensions::all_available(),
+        )?;
+        Ok((Self(schema), warnings))
+    }
+
     /// Extract from the schema an `Entities` containing the action entities
     /// declared in the schema.
     pub fn action_entities(&self) -> Result<Entities, EntitiesError> {
@@ -1295,7 +1328,7 @@ pub enum SchemaError {
 /// Errors serializing Schemas to the natural syntax
 #[derive(Debug, Error, Diagnostic)]
 pub enum ToNaturalSyntaxError {
-    /// Duplicate names were found in the schema 
+    /// Duplicate names were found in the schema
     #[error("There are type name collisions: [{}]", .0.iter().join(","))]
     NameCollisions(NonEmpty<SmolStr>),
 }

@@ -24,7 +24,7 @@ use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::{
-    custom_schema::{self, parser::parse_natural_schema_fragment},
+    custom_schema::{self, parser::parse_natural_schema_fragment, to_json_schema::SchemaWarning},
     Result,
 };
 
@@ -52,17 +52,22 @@ impl SchemaFragment {
         serde_json::from_reader(file).map_err(Into::into)
     }
 
-    pub fn from_str_natural(src: &str) -> Result<Self> {
-        let ast = parse_natural_schema_fragment(src)?;
-        Ok(ast)
+    /// Parse the schema format from a string
+    pub fn from_str_natural(src: &str) -> Result<(Self, impl Iterator<Item = SchemaWarning>)> {
+        let tup = parse_natural_schema_fragment(src)?;
+        Ok(tup)
     }
 
-    pub fn from_reader_natural(mut file: impl std::io::Read) -> Result<Self> {
+    /// Parse the schema format from a reader
+    pub fn from_file_natural(
+        mut file: impl std::io::Read,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>)> {
         let mut src = String::new();
         file.read_to_string(&mut src)?;
         Self::from_str_natural(&src)
     }
 
+    /// Pretty print this [`SchemaFragment`]
     pub fn as_natural_schema(&self) -> Result<String> {
         let src = custom_schema::json_schema_to_custom_schema_str(self)?;
         Ok(src)

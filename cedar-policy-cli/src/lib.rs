@@ -646,7 +646,10 @@ fn translate_to_natural(json_src: impl AsRef<str>) -> Result<String> {
 }
 
 fn translate_to_json(natural_src: impl AsRef<str>) -> Result<String> {
-    let fragment = SchemaFragment::from_str_natural(natural_src.as_ref())?;
+    let (fragment, warnings) = SchemaFragment::from_str_natural(natural_src.as_ref())?;
+    for warning in warnings {
+        eprintln!("{warning}");
+    }
     let output = fragment.as_json_string()?;
     Ok(output)
 }
@@ -1107,8 +1110,10 @@ fn read_schema_file(
             )
         }),
         SchemaFormat::Human => {
-            let schema = SchemaFragment::from_str_natural(&schema_src)
-                .and_then(|fragment| fragment.try_into())?;
+            let (schema, warnings) = Schema::from_str_natural(&schema_src)?;
+            for warning in warnings {
+                eprintln!("{warning}");
+            }
             Ok(schema)
         }
     }

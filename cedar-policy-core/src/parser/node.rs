@@ -72,6 +72,11 @@ impl<T> Node<T> {
     pub fn to_ast_err(&self, error_kind: impl Into<ToASTErrorKind>) -> ToASTError {
         ToASTError::new(error_kind.into(), self.loc.clone())
     }
+
+    pub fn swap<A>(self, a: A) -> (T, Node<A>) {
+        let (t, loc) = self.into_inner();
+        (t, Node::with_source_loc(a, loc))
+    }
 }
 
 impl<T: Clone> Node<&T> {

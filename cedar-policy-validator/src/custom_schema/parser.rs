@@ -20,11 +20,12 @@ use lalrpop_util::lalrpop_mod;
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::custom_schema::to_json_schema::custom_schema_to_json_schema;
+use crate::{custom_schema::to_json_schema::custom_schema_to_json_schema, SchemaFragment};
 
 use super::{
     ast::Schema,
-    err::{self, ParseError, ParseErrors, ToJsonSchemaError},
+    err::{self, ParseError, ParseErrors, ToJsonSchemaError, ToJsonSchemaErrors},
+    to_json_schema::SchemaWarning,
 };
 
 lalrpop_mod!(
@@ -84,15 +85,16 @@ pub enum NaturalSyntaxParseErrors {
     #[error("{0}")]
     NaturalSyntaxError(#[from] err::ParseErrors),
     #[error("{0}")]
-    JsonError(#[from] ToJsonSchemaError),
+    JsonError(#[from] ToJsonSchemaErrors),
 }
 
 pub fn parse_natural_schema_fragment(
     src: &str,
-) -> Result<crate::SchemaFragment, NaturalSyntaxParseErrors> {
+) -> Result<(crate::SchemaFragment, impl Iterator<Item = SchemaWarning>), NaturalSyntaxParseErrors>
+{
     let ast: Schema = parse_collect_errors(&*POLICIES_PARSER, grammar::SchemaParser::parse, src)?;
-    let (fragment, _) = custom_schema_to_json_schema(ast)?;
-    Ok(fragment)
+    let tuple = custom_schema_to_json_schema(ast)?;
+    Ok(tuple)
 }
 
 /// Parse schema from text

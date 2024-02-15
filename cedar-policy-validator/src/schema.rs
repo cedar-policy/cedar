@@ -33,6 +33,7 @@ use serde_with::serde_as;
 
 use super::NamespaceDefinition;
 use crate::{
+    custom_schema::to_json_schema::SchemaWarning,
     err::*,
     types::{Attributes, EntityRecordKind, OpenTag, Type},
     SchemaFragment,
@@ -175,20 +176,22 @@ impl ValidatorSchema {
         )
     }
 
-    pub fn from_reader_natural(r: impl std::io::Read, extensions: Extensions<'_>) -> Result<Self> {
-        Self::from_schema_file(
-            SchemaFragment::from_reader_natural(r)?,
-            ActionBehavior::default(),
-            extensions,
-        )
+    pub fn from_file_natural(
+        r: impl std::io::Read,
+        extensions: Extensions<'_>,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>)> {
+        let (fragment, warnings) = SchemaFragment::from_file_natural(r)?;
+        Self::from_schema_file(fragment, ActionBehavior::default(), extensions)
+            .map(|schema| (schema, warnings))
     }
 
-    pub fn from_str_natural(src: &str, extensions: Extensions<'_>) -> Result<Self> {
-        Self::from_schema_file(
-            SchemaFragment::from_str_natural(src)?,
-            ActionBehavior::default(),
-            extensions,
-        )
+    pub fn from_str_natural(
+        src: &str,
+        extensions: Extensions<'_>,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>)> {
+        let (fragment, warnings) = SchemaFragment::from_str_natural(src)?;
+        Self::from_schema_file(fragment, ActionBehavior::default(), extensions)
+            .map(|schema| (schema, warnings))
     }
 
     pub fn from_schema_file(
