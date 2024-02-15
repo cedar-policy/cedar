@@ -108,7 +108,7 @@ pub fn is_extension_name(s: impl AsRef<str>) -> bool {
 /// A fragment is a series of namespaces
 #[derive(Debug, Clone)]
 pub struct Namespace {
-    /// The name of this name. If [`None`], then this is the unqualified namespace
+    /// The name of this namespace. If [`None`], then this is the unqualified namespace
     pub name: Option<Path>,
     /// The [`Declaration`]s contained in this namespace
     pub decls: Vec<Node<Declaration>>,

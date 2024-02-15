@@ -94,7 +94,7 @@ pub enum Commands {
     Link(LinkArgs),
     /// Format a policy set
     Format(FormatArgs),
-    /// Translate JSON schema to custom schema syntax and vice versa (except comments)
+    /// Translate JSON schema to natural schema syntax and vice versa (except comments)
     TranslateSchema(TranslateSchemaArgs),
     /// Create a Cedar project
     New(NewArgs),
@@ -659,7 +659,7 @@ fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
         TranslationDirection::JsonToNatural => translate_to_natural,
         TranslationDirection::NaturalToJson => translate_to_json,
     };
-    read_from_file_or_stdin(args.input_file.clone(), "translate schema").and_then(translate)
+    read_from_file_or_stdin(args.input_file.clone(), "schema").and_then(translate)
 }
 pub fn translate_schema(args: &TranslateSchemaArgs) -> CedarExitCode {
     match translate_schema_inner(args) {
@@ -668,7 +668,7 @@ pub fn translate_schema(args: &TranslateSchemaArgs) -> CedarExitCode {
             CedarExitCode::Success
         }
         Err(err) => {
-            eprintln!("Error: {err:?}");
+            eprintln!("{err:?}");
             CedarExitCode::Failure
         }
     }

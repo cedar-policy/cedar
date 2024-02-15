@@ -1329,7 +1329,7 @@ pub enum SchemaError {
 #[derive(Debug, Error, Diagnostic)]
 pub enum ToNaturalSyntaxError {
     /// Duplicate names were found in the schema
-    #[error("There are type name collisions: [{}]", .0.iter().join(","))]
+    #[error("There are type name collisions: [{}]", .0.iter().join(", "))]
     NameCollisions(NonEmpty<SmolStr>),
 }
 
@@ -1346,7 +1346,7 @@ impl From<cedar_policy_validator::custom_schema::ToCustomSchemaStrError> for ToN
 /// Errors when parsing natural schema syntax
 #[derive(Debug, Diagnostic, Error)]
 pub enum NaturalSyntaxError {
-    /// Error Parsing a Schema in natural syntax
+    /// Error parsing a schema in natural syntax
     #[error("Error parsing schema: {0}")]
     #[diagnostic(transparent)]
     ParseError(cedar_policy_validator::custom_schema::parser::NaturalSyntaxParseErrors),

@@ -52,13 +52,13 @@ impl SchemaFragment {
         serde_json::from_reader(file).map_err(Into::into)
     }
 
-    /// Parse the schema format from a string
+    /// Parse the schema (in natural schema syntax) from a string
     pub fn from_str_natural(src: &str) -> Result<(Self, impl Iterator<Item = SchemaWarning>)> {
         let tup = parse_natural_schema_fragment(src)?;
         Ok(tup)
     }
 
-    /// Parse the schema format from a reader
+    /// Parse the schema (in natural schema syntax) from a reader
     pub fn from_file_natural(
         mut file: impl std::io::Read,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>)> {
