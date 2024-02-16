@@ -1274,10 +1274,12 @@ impl Node<Option<cst::Relation>> {
                     // error reported and result filtered out
                     (_, None, 1) => None,
                     (f, None, 0) => f,
-                    (Some(f), Some((op, s)), _) => f.into_expr(errs).map(|e| Some(ExprOrSpecial::Expr {
-                        expr: construct_expr_rel(e, *op, s, self.loc.clone(), errs)?,
-                        loc: self.loc.clone(),
-                    }))?,
+                    (Some(f), Some((op, s)), _) => f.into_expr(errs).map(|e| {
+                        Some(ExprOrSpecial::Expr {
+                            expr: construct_expr_rel(e, *op, s, self.loc.clone(), errs)?,
+                            loc: self.loc.clone(),
+                        })
+                    })?,
                     _ => None,
                 }
             }
@@ -1314,25 +1316,23 @@ impl Node<Option<cst::Relation>> {
                 entity_type.to_expr_or_special(errs)?.into_name(errs),
             ) {
                 (Some(t), Some(n)) => match in_entity {
-                    Some(in_entity) => {
-                        in_entity
-                            .to_expr(errs)
-                            .map(|in_entity| Some(ExprOrSpecial::Expr {
-                                expr: construct_expr_and(
-                                    construct_expr_is(t.clone(), n, self.loc.clone()),
-                                    construct_expr_rel(
-                                        t,
-                                        cst::RelOp::In,
-                                        in_entity,
-                                        self.loc.clone(),
-                                        errs,
-                                    )?,
-                                    std::iter::empty(),
-                                    &self.loc,
-                                ),
-                                loc: self.loc.clone(),
-                            }))?
-                    }
+                    Some(in_entity) => in_entity.to_expr(errs).map(|in_entity| {
+                        Some(ExprOrSpecial::Expr {
+                            expr: construct_expr_and(
+                                construct_expr_is(t.clone(), n, self.loc.clone()),
+                                construct_expr_rel(
+                                    t,
+                                    cst::RelOp::In,
+                                    in_entity,
+                                    self.loc.clone(),
+                                    errs,
+                                )?,
+                                std::iter::empty(),
+                                &self.loc,
+                            ),
+                            loc: self.loc.clone(),
+                        })
+                    })?,
                     None => Some(ExprOrSpecial::Expr {
                         expr: construct_expr_is(t, n, self.loc.clone()),
                         loc: self.loc.clone(),
@@ -2420,7 +2420,13 @@ fn construct_expr_and(
             .and(a, n)
     })
 }
-fn construct_expr_rel(f: ast::Expr, rel: cst::RelOp, s: ast::Expr, loc: Loc, errs: &mut ParseErrors) -> Option<ast::Expr> {
+fn construct_expr_rel(
+    f: ast::Expr,
+    rel: cst::RelOp,
+    s: ast::Expr,
+    loc: Loc,
+    errs: &mut ParseErrors,
+) -> Option<ast::Expr> {
     let builder = ast::ExprBuilder::new().with_source_loc(loc.clone());
     match rel {
         cst::RelOp::Less => Some(builder.less(f, s)),
@@ -4828,21 +4834,28 @@ mod tests {
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
                 "not a valid policy scope constraint: >",
-                "policy scope constraints must either `==`, `in`, `is`, or `_ is _ in _`"
+                "policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"
             ));
         });
         let p_src = r#"permit(principal, action != Action::"view", resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
                 "not a valid policy scope constraint: !=",
-                "policy scope constraints must either `==`, `in`, `is`, or `_ is _ in _`"
+                "policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"
             ));
         });
         let p_src = r#"permit(principal, action, resource <= Folder::"things");"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
                 "not a valid policy scope constraint: <=",
-                "policy scope constraints must either `==`, `in`, `is`, or `_ is _ in _`"
+                "policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"
+            ));
+        });
+        let p_src = r#"permit(principal = User::"alice", action, resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+                "'=' is not a valid operator in Cedar",
+                "try using '==' instead",
             ));
         });
     }

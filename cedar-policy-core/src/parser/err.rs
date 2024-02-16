@@ -223,7 +223,9 @@ pub enum ToASTErrorKind {
     },
     /// Returned when a policy scope clause uses an operator not allowed in scopes.
     #[error("not a valid policy scope constraint: {0}")]
-    #[diagnostic(help("policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"))]
+    #[diagnostic(help(
+        "policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"
+    ))]
     InvalidConstraintOperator(cst::RelOp),
     /// Returned when the right hand side of `==` in a policy scope clause is not a single Entity UID or a template slot.
     /// This is valid in Cedar conditions, but not in the Scope

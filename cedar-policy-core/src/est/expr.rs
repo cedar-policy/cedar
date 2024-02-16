@@ -864,7 +864,11 @@ impl TryFrom<&Node<Option<cst::Relation>>> for Expr {
                             expr = Expr::greatereq(expr, rhs);
                         }
                         cst::RelOp::InvalidSingleEq => {
-                            return Err(ToASTError::new(ToASTErrorKind::InvalidSingleEq, r.loc.clone()).into());
+                            return Err(ToASTError::new(
+                                ToASTErrorKind::InvalidSingleEq,
+                                r.loc.clone(),
+                            )
+                            .into());
                         }
                     }
                 }
