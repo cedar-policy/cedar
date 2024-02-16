@@ -1004,7 +1004,7 @@ fn rename_from_id_annotation(ps: PolicySet) -> Result<PolicySet> {
         Some(anno) => anno.parse().map(|a| t.new_id(a)),
     });
     for t in t_iter {
-        let template = t.unwrap_or_else(|never| match never {});
+        let template = t.wrap_err("failed to parse policy id annotation")?;
         new_ps
             .add_template(template)
             .wrap_err("failed to add template to policy set")?;
@@ -1014,7 +1014,7 @@ fn rename_from_id_annotation(ps: PolicySet) -> Result<PolicySet> {
         Some(anno) => anno.parse().map(|a| p.new_id(a)),
     });
     for p in p_iter {
-        let policy = p.unwrap_or_else(|never| match never {});
+        let policy = p.wrap_err("failed to parse policy id annotation")?;
         new_ps
             .add(policy)
             .wrap_err("failed to add template to policy set")?;

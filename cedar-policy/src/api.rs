@@ -2955,13 +2955,11 @@ impl TemplateResourceConstraint {
 /// Unique ids assigned to policies and templates.
 ///
 /// A [`PolicyId`] can can be constructed using [`PolicyId::from_str`] or by
-/// calling `parse()` on a string.
-/// This implementation is [`Infallible`], so the parsed [`EntityId`] can be extracted safely.
-/// Examples:
+/// calling `parse()` on a string. This currently always returns `Ok()`.
+///
 /// ```
 /// # use cedar_policy::PolicyId;
 /// let id = PolicyId::new("my-id");
-/// let id : PolicyId = "my-id".parse().unwrap_or_else(|never| match never {});
 /// # assert_eq!(id.as_ref(), "my-id");
 /// ```
 #[repr(transparent)]
@@ -2976,7 +2974,7 @@ impl PolicyId {
 }
 
 impl FromStr for PolicyId {
-    type Err = Infallible;
+    type Err = ParseErrors;
 
     /// Create a `PolicyId` from a string. Currently always returns `Ok()`.
     fn from_str(id: &str) -> Result<Self, Self::Err> {
