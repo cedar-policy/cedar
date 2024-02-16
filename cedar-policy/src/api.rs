@@ -1315,13 +1315,15 @@ pub enum SchemaError {
     #[error("schema contained the non-supported `__expr` escape")]
     ExprEscapeUsed,
     /// Errors parsing the natural schema syntax.
-    #[error("{0}")]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     NaturalSyntaxError(#[from] NaturalSyntaxError),
     /// IO errors when calling `from_reader`
-    #[error("I/O error while reading schmea: {0}")]
+    #[error(transparent)]
     IOError(#[from] std::io::Error),
-    /// Error converting a into natural syntax
-    #[error("{0}")]
+    /// Error converting a schema into natural syntax
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     ToNaturalSyntax(#[from] ToNaturalSyntaxError),
 }
 
