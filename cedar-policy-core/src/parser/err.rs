@@ -193,6 +193,11 @@ pub enum ToASTErrorKind {
     /// See [`cst::Ident::Invalid`]
     #[error("not a valid identifier: `{0}`")]
     InvalidIdentifier(String),
+    /// Returned when a policy uses '=' as a binary operator.
+    /// '=' is not an operator in Cedar; we can suggest '==' instead.
+    #[error("'=' is not a valid operator in Cedar")]
+    #[diagnostic(help("try using '==' instead"))]
+    InvalidSingleEq,
     /// Returned when a policy uses a effect keyword beyond `permit` or `forbid`
     #[error("not a valid policy effect: `{0}`")]
     #[diagnostic(help("effect must be either `permit` or `forbid`"))]
@@ -216,9 +221,9 @@ pub enum ToASTErrorKind {
         /// The variable that was present in this clause
         got: Var,
     },
-    /// Returned when a policy scope clauses uses an operator beyond `==` or `in`.
+    /// Returned when a policy scope clause uses an operator not allowed in scopes.
     #[error("not a valid policy scope constraint: {0}")]
-    #[diagnostic(help("policy scope constraints must either `==`, `in`, `is`, or `_ is _ in _`"))]
+    #[diagnostic(help("policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"))]
     InvalidConstraintOperator(cst::RelOp),
     /// Returned when the right hand side of `==` in a policy scope clause is not a single Entity UID or a template slot.
     /// This is valid in Cedar conditions, but not in the Scope

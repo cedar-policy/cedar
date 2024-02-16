@@ -584,6 +584,10 @@ impl Node<Option<cst::VariableDef>> {
                     entity_type.to_expr_or_special(errs)?.into_name(errs)?,
                     eref,
                 )),
+                (cst::RelOp::InvalidSingleEq, _) => {
+                    errs.push(self.to_ast_err(ToASTErrorKind::InvalidSingleEq));
+                    None
+                }
                 (op, _) => {
                     errs.push(self.to_ast_err(ToASTErrorKind::InvalidConstraintOperator(*op)));
                     None
@@ -649,6 +653,10 @@ impl Node<Option<cst::VariableDef>> {
                 }
                 (cst::RelOp::Eq, OneOrMultipleRefs::Multiple(_)) => {
                     errs.push(rel_expr.to_ast_err(ToASTErrorKind::InvalidScopeEqualityRHS));
+                    None
+                }
+                (cst::RelOp::InvalidSingleEq, _) => {
+                    errs.push(self.to_ast_err(ToASTErrorKind::InvalidSingleEq));
                     None
                 }
                 (op, _) => {
@@ -1266,10 +1274,10 @@ impl Node<Option<cst::Relation>> {
                     // error reported and result filtered out
                     (_, None, 1) => None,
                     (f, None, 0) => f,
-                    (Some(f), Some((op, s)), _) => f.into_expr(errs).map(|e| ExprOrSpecial::Expr {
-                        expr: construct_expr_rel(e, *op, s, self.loc.clone()),
+                    (Some(f), Some((op, s)), _) => f.into_expr(errs).map(|e| Some(ExprOrSpecial::Expr {
+                        expr: construct_expr_rel(e, *op, s, self.loc.clone(), errs)?,
                         loc: self.loc.clone(),
-                    }),
+                    }))?,
                     _ => None,
                 }
             }
@@ -1309,7 +1317,7 @@ impl Node<Option<cst::Relation>> {
                     Some(in_entity) => {
                         in_entity
                             .to_expr(errs)
-                            .map(|in_entity| ExprOrSpecial::Expr {
+                            .map(|in_entity| Some(ExprOrSpecial::Expr {
                                 expr: construct_expr_and(
                                     construct_expr_is(t.clone(), n, self.loc.clone()),
                                     construct_expr_rel(
@@ -1317,12 +1325,13 @@ impl Node<Option<cst::Relation>> {
                                         cst::RelOp::In,
                                         in_entity,
                                         self.loc.clone(),
-                                    ),
+                                        errs,
+                                    )?,
                                     std::iter::empty(),
                                     &self.loc,
                                 ),
                                 loc: self.loc.clone(),
-                            })
+                            }))?
                     }
                     None => Some(ExprOrSpecial::Expr {
                         expr: construct_expr_is(t, n, self.loc.clone()),
@@ -2411,16 +2420,20 @@ fn construct_expr_and(
             .and(a, n)
     })
 }
-fn construct_expr_rel(f: ast::Expr, rel: cst::RelOp, s: ast::Expr, loc: Loc) -> ast::Expr {
-    let builder = ast::ExprBuilder::new().with_source_loc(loc);
+fn construct_expr_rel(f: ast::Expr, rel: cst::RelOp, s: ast::Expr, loc: Loc, errs: &mut ParseErrors) -> Option<ast::Expr> {
+    let builder = ast::ExprBuilder::new().with_source_loc(loc.clone());
     match rel {
-        cst::RelOp::Less => builder.less(f, s),
-        cst::RelOp::LessEq => builder.lesseq(f, s),
-        cst::RelOp::GreaterEq => builder.greatereq(f, s),
-        cst::RelOp::Greater => builder.greater(f, s),
-        cst::RelOp::NotEq => builder.noteq(f, s),
-        cst::RelOp::Eq => builder.is_eq(f, s),
-        cst::RelOp::In => builder.is_in(f, s),
+        cst::RelOp::Less => Some(builder.less(f, s)),
+        cst::RelOp::LessEq => Some(builder.lesseq(f, s)),
+        cst::RelOp::GreaterEq => Some(builder.greatereq(f, s)),
+        cst::RelOp::Greater => Some(builder.greater(f, s)),
+        cst::RelOp::NotEq => Some(builder.noteq(f, s)),
+        cst::RelOp::Eq => Some(builder.is_eq(f, s)),
+        cst::RelOp::In => Some(builder.is_in(f, s)),
+        cst::RelOp::InvalidSingleEq => {
+            errs.push(ToASTError::new(ToASTErrorKind::InvalidSingleEq, loc));
+            None
+        }
     }
 }
 /// used for a chain of addition and/or subtraction

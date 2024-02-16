@@ -220,6 +220,10 @@ pub enum RelOp {
     Eq,
     /// in
     In,
+    /// =
+    ///
+    /// This is always invalid, but included so we can give a nice error suggesting '==' instead
+    InvalidSingleEq,
 }
 
 /// Allowed Ops for Add
