@@ -82,9 +82,11 @@ lazy_static::lazy_static! {
 
 #[derive(Debug, Diagnostic, Error)]
 pub enum NaturalSyntaxParseErrors {
-    #[error("{0}")]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     NaturalSyntaxError(#[from] err::ParseErrors),
-    #[error("{0}")]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     JsonError(#[from] ToJsonSchemaErrors),
 }
 

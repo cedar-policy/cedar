@@ -205,41 +205,96 @@ impl Diagnostic for ParseErrors {
     }
 }
 
-#[derive(Debug, Clone, Error, PartialEq, Eq)]
-pub enum ToJsonSchemaErrors {
-    #[error("foo")]
-    Errs(Vec<ToJsonSchemaError>),
-}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToJsonSchemaErrors(NonEmpty<ToJsonSchemaError>);
 
 impl ToJsonSchemaErrors {
+    pub fn new(errs: NonEmpty<ToJsonSchemaError>) -> Self {
+        Self(errs)
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &ToJsonSchemaError> {
-        match self {
-            Self::Errs(v) => v.iter(),
-        }
+        self.0.iter()
     }
 }
 
 impl IntoIterator for ToJsonSchemaErrors {
     type Item = ToJsonSchemaError;
-
-    type IntoIter = std::vec::IntoIter<ToJsonSchemaError>;
+    type IntoIter = <NonEmpty<ToJsonSchemaError> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        match self {
-            Self::Errs(v) => v.into_iter(),
-        }
+        self.0.into_iter()
     }
 }
 
 impl From<ToJsonSchemaError> for ToJsonSchemaErrors {
     fn from(value: ToJsonSchemaError) -> Self {
-        Self::Errs(vec![value])
+        Self(NonEmpty::singleton(value))
     }
 }
 
-impl FromIterator<ToJsonSchemaError> for ToJsonSchemaErrors {
-    fn from_iter<T: IntoIterator<Item = ToJsonSchemaError>>(iter: T) -> Self {
-        Self::Errs(iter.into_iter().collect())
+impl Display for ToJsonSchemaErrors {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.first()) // intentionally showing only the first error; see #326 for discussion on a similar error type
+    }
+}
+
+impl std::error::Error for ToJsonSchemaErrors {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.0.first().source()
+    }
+
+    #[allow(deprecated)]
+    fn description(&self) -> &str {
+        self.0.first().description()
+    }
+
+    #[allow(deprecated)]
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        self.0.first().cause()
+    }
+}
+
+// Except for `.related()`, everything else is forwarded to the first error, if it is present.
+// This ensures that users who only use `Display`, `.code()`, `.labels()` etc, still get rich
+// information for the first error, even if they don't realize there are multiple errors here.
+// See #326 for discussion on a similar error type.
+impl Diagnostic for ToJsonSchemaErrors {
+    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
+        // the .related() on the first error, and then the 2nd through Nth errors (but not their own .related())
+        let mut errs = self.iter().map(|err| err as &dyn Diagnostic);
+        errs.next().map(move |first_err| match first_err.related() {
+            Some(first_err_related) => Box::new(first_err_related.chain(errs)),
+            None => Box::new(errs) as Box<dyn Iterator<Item = _>>,
+        })
+    }
+
+    fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.0.first().code()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.0.first().severity()
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.0.first().help()
+    }
+
+    fn url<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.0.first().url()
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.0.first().source_code()
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        self.0.first().labels()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.0.first().diagnostic_source()
     }
 }
 

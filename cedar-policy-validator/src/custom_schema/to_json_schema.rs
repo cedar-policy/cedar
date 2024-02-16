@@ -384,7 +384,7 @@ fn partial_pr_decls(n: PRAppDecl) -> Either<Vec<SmolStr>, Vec<SmolStr>> {
 }
 
 /// Takes a collection of results returning multiple errors
-/// Behaves similarly to ``::collect()` over results, except instead of failing
+/// Behaves similarly to `::collect()` over results, except instead of failing
 /// on the first error, keeps going to ensure all of the errors are accumulated
 fn collect_all_errors<A, E>(
     iter: impl IntoIterator<Item = Result<A, E>>,
@@ -405,10 +405,9 @@ where
             }
         }
     }
-    if errs.is_empty() {
-        Ok(answers.into_iter())
-    } else {
-        Err(errs.into_iter().collect())
+    match NonEmpty::collect(errs.into_iter()) {
+        None => Ok(answers.into_iter()),
+        Some(errs) => Err(ToJsonSchemaErrors::new(errs)),
     }
 }
 
@@ -584,10 +583,9 @@ fn nonoverlapping_union(
             }
         }
     }
-    if errs.is_empty() {
-        Ok(())
-    } else {
-        Err(errs.into_iter().collect())
+    match NonEmpty::collect(errs.into_iter()) {
+        None => Ok(()),
+        Some(errs) => Err(ToJsonSchemaErrors::new(errs)),
     }
 }
 

@@ -130,11 +130,13 @@ pub enum SchemaError {
     #[error("the `__expr` escape is no longer supported")]
     #[diagnostic(help("to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly"))]
     ExprEscapeUsed,
-    #[error("{0}")]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     NaturalSyntaxError(#[from] NaturalSyntaxParseErrors),
-    #[error("{0}")]
+    #[error(transparent)]
     IOError(#[from] std::io::Error),
-    #[error("{0}")]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     ToNaturalSyntaxError(#[from] custom_schema::ToCustomSchemaStrError),
 }
 

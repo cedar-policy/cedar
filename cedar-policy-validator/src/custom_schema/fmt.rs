@@ -1,6 +1,7 @@
 use std::{collections::HashSet, fmt::Display};
 
 use itertools::Itertools;
+use miette::Diagnostic;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -156,7 +157,7 @@ impl Display for ActionType {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum ToCustomSchemaStrError {
     #[error("There exist type name collisions: {:?}", .0)]
     NameCollisions(NonEmpty<SmolStr>),
