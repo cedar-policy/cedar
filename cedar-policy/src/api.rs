@@ -1349,17 +1349,7 @@ pub enum NaturalSyntaxError {
     /// Error parsing a schema in natural syntax
     #[error("Error parsing schema: {0}")]
     #[diagnostic(transparent)]
-    ParseError(cedar_policy_validator::custom_schema::parser::NaturalSyntaxParseErrors),
-}
-
-impl From<cedar_policy_validator::custom_schema::parser::NaturalSyntaxParseErrors>
-    for NaturalSyntaxError
-{
-    fn from(
-        value: cedar_policy_validator::custom_schema::parser::NaturalSyntaxParseErrors,
-    ) -> Self {
-        Self::ParseError(value)
-    }
+    ParseError(#[from] cedar_policy_validator::custom_schema::parser::NaturalSyntaxParseErrors),
 }
 
 /// Error when evaluating an entity attribute
