@@ -102,19 +102,6 @@ impl NamespaceDefinition {
             actions: actions.into_iter().collect(),
         }
     }
-
-    pub fn merge_actions_by_type(&self) -> Vec<(&ActionType, HashSet<SmolStr>)> {
-        let mut actions_by_type: Vec<(&ActionType, HashSet<SmolStr>)> = Vec::new();
-        // Had to use the n^2 algorithm here to compute equivalent classes
-        for (name, ty) in self.actions.iter() {
-            if let Some((_, names)) = actions_by_type.iter_mut().find(|class| class.0 == ty) {
-                names.insert(name.clone());
-            } else {
-                actions_by_type.push((ty, HashSet::from_iter(std::iter::once(name.clone()))))
-            }
-        }
-        actions_by_type
-    }
 }
 
 /// Entity types describe the relationships in the entity store, including what
