@@ -203,7 +203,9 @@ pub enum ToASTErrorKind {
     InvalidCondition(cst::Ident),
     /// Returned when a policy uses a variable in the scope beyond `principal`, `action`, or `resource`
     #[error("expected a variable that is valid in the policy scope; found: `{0}`")]
-    #[diagnostic(help("must be one of `principal`, `action`, or `resource`"))]
+    #[diagnostic(help(
+        "policy scopes must contain a `principal`, `action`, and `resource` element in that order"
+    ))]
     InvalidScopeConstraintVariable(cst::Ident),
     /// Returned when a policy contains an invalid method name
     #[error("not a valid method name: `{0}`")]

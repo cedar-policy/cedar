@@ -4766,7 +4766,7 @@ mod tests {
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
                 "expected a variable that is valid in the policy scope; found: `foo`",
-                "must be one of `principal`, `action`, or `resource`"
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
             ));
             expect_source_snippet(p_src, &e, "foo");
         });
@@ -4798,7 +4798,7 @@ mod tests {
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
                 "expected a variable that is valid in the policy scope; found: `if`",
-                "must be one of `principal`, `action`, or `resource`"
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
             ));
             expect_source_snippet(p_src, &e, "if");
         });
@@ -4807,7 +4807,7 @@ mod tests {
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
                 "expected a variable that is valid in the policy scope; found: `like`",
-                "must be one of `principal`, `action`, or `resource`"
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
             ));
             expect_source_snippet(p_src, &e, "like");
         });
