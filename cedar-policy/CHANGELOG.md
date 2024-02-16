@@ -16,7 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   template-linked policy (#515, resolving #489)
 - `AuthorizationError::id()` to get the id of the policy associated with an
   authorization error (#589)
-- `wasm` Cargo feature for targeting Wasm
 - For the `partial-eval` experimental feature: added
 `Authorizer::evaluate_policies_partial()` (#474)
 
