@@ -103,8 +103,8 @@ pub enum Commands {
 #[derive(Args, Debug)]
 pub struct TranslateSchemaArgs {
     /// The direction of translation,
-    ///   JSON -> Natural
-    ///   Natural -> JSON
+    ///   JSON -> Human
+    ///   Human -> JSON
     #[arg(long)]
     pub direction: TranslationDirection,
     /// Filename to read the schema from.
@@ -116,15 +116,15 @@ pub struct TranslateSchemaArgs {
 /// The direction of translation
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum TranslationDirection {
-    /// JSON -> Natural schema syntax
-    JsonToNatural,
-    /// Natural schema syntax -> JSON
-    NaturalToJson,
+    /// JSON -> Human schema syntax
+    JsonToHuman,
+    /// Human schema syntax -> JSON
+    HumanToJson,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum SchemaFormat {
-    /// Default human-readable format
+    /// Human-readable format
     Human,
     /// JSON format
     Json,
@@ -132,7 +132,7 @@ pub enum SchemaFormat {
 
 impl Default for SchemaFormat {
     fn default() -> Self {
-        Self::Human
+        Self::Json
     }
 }
 
@@ -639,7 +639,7 @@ pub fn format_policies(args: &FormatArgs) -> CedarExitCode {
     }
 }
 
-fn translate_to_natural(json_src: impl AsRef<str>) -> Result<String> {
+fn translate_to_human(json_src: impl AsRef<str>) -> Result<String> {
     let fragment = SchemaFragment::from_str(json_src.as_ref())?;
     let output = fragment.as_natural()?;
     Ok(output)
@@ -648,7 +648,8 @@ fn translate_to_natural(json_src: impl AsRef<str>) -> Result<String> {
 fn translate_to_json(natural_src: impl AsRef<str>) -> Result<String> {
     let (fragment, warnings) = SchemaFragment::from_str_natural(natural_src.as_ref())?;
     for warning in warnings {
-        eprintln!("{warning}");
+        let report = miette::Report::new(warning);
+        eprintln!("{:?}", report);
     }
     let output = fragment.as_json_string()?;
     Ok(output)
@@ -656,8 +657,8 @@ fn translate_to_json(natural_src: impl AsRef<str>) -> Result<String> {
 
 fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
     let translate = match args.direction {
-        TranslationDirection::JsonToNatural => translate_to_natural,
-        TranslationDirection::NaturalToJson => translate_to_json,
+        TranslationDirection::JsonToHuman => translate_to_human,
+        TranslationDirection::HumanToJson => translate_to_json,
     };
     read_from_file_or_stdin(args.input_file.clone(), "schema").and_then(translate)
 }
@@ -1112,7 +1113,8 @@ fn read_schema_file(
         SchemaFormat::Human => {
             let (schema, warnings) = Schema::from_str_natural(&schema_src)?;
             for warning in warnings {
-                eprintln!("{warning}");
+                let report = miette::Report::new(warning);
+                eprintln!("{:?}", report);
             }
             Ok(schema)
         }

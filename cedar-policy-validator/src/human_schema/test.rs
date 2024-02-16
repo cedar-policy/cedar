@@ -339,11 +339,50 @@ mod demo_tests {
         let (_, warnings) = SchemaFragment::from_str_natural(src).unwrap();
         assert!(warnings.collect::<Vec<_>>().is_empty());
     }
+
+    #[test]
+    fn simple_cross() {
+        let src = r#"
+        namespace AWS {
+            type Tag = {
+                key: String,
+                value: String
+            };
+        }
+        
+        namespace Service {
+            entity Resource {
+                tag: AWS::Tag
+            };
+        }
+        "#;
+        let (fragment, warnings) = SchemaFragment::from_str_natural(src).unwrap();
+        assert!(warnings.collect::<Vec<_>>().is_empty());
+        let service = fragment.0.get("Service").unwrap();
+        let resource = service.entity_types.get("Resource").unwrap();
+        match &resource.shape.0 {
+            crate::SchemaType::Type(SchemaTypeVariant::Record {
+                attributes,
+                additional_attributes,
+            }) => {
+                assert!(!additional_attributes);
+                let TypeOfAttribute { ty, required } = attributes.get("tag").unwrap();
+                assert!(required);
+                match ty {
+                    crate::SchemaType::TypeDef { type_name } => {
+                        assert_eq!(type_name, &"AWS::Tag".to_smolstr())
+                    }
+                    _ => panic!("Wrong type for attribute"),
+                }
+            }
+            _ => panic!("Wrong type for shape"),
+        }
+    }
 }
 
 #[cfg(test)]
 mod parser_tests {
-    use crate::natural_schema::parser::parse_schema;
+    use crate::human_schema::parser::parse_schema;
 
     #[test]
     fn mixed_decls() {
@@ -582,6 +621,13 @@ mod translator_tests {
         let schema = SchemaFragment::from_str_natural(
             r#"
           namespace __cedar {}
+        "#,
+        );
+        assert!(schema.is_err(), "duplicate namespaces shouldn't be allowed");
+
+        let schema = SchemaFragment::from_str_natural(
+            r#"
+          namespace __cedar::Foo {}
         "#,
         );
         assert!(schema.is_err(), "duplicate namespaces shouldn't be allowed");

@@ -24,7 +24,7 @@ use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::{
-    natural_schema::{self, parser::parse_natural_schema_fragment, to_json_schema::SchemaWarning},
+    human_schema::{self, parser::parse_natural_schema_fragment, to_json_schema::SchemaWarning},
     Result,
 };
 
@@ -69,7 +69,7 @@ impl SchemaFragment {
 
     /// Pretty print this [`SchemaFragment`]
     pub fn as_natural_schema(&self) -> Result<String> {
-        let src = natural_schema::json_schema_to_custom_schema_str(self)?;
+        let src = human_schema::json_schema_to_custom_schema_str(self)?;
         Ok(src)
     }
 }

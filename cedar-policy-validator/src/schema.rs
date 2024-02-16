@@ -34,7 +34,7 @@ use serde_with::serde_as;
 use super::NamespaceDefinition;
 use crate::{
     err::*,
-    natural_schema::to_json_schema::SchemaWarning,
+    human_schema::to_json_schema::SchemaWarning,
     types::{Attributes, EntityRecordKind, OpenTag, Type},
     SchemaFragment,
 };

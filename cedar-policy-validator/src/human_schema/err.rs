@@ -320,7 +320,7 @@ pub enum ToJsonSchemaError {
         end: Option<Loc>,
     },
     /// Invalid type name
-    #[error("Unknown type name: `{0:?}`")]
+    #[error("Unknown type name: `{}`", .0.node)]
     UnknownTypeName(Node<SmolStr>),
     #[error("Use reserved namespace `__cedar`")]
     UseReservedNamespace(Loc),

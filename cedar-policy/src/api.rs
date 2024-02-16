@@ -40,7 +40,7 @@ use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 pub use cedar_policy_core::parser::err::ParseErrors;
 use cedar_policy_core::FromNormalizedStr;
-pub use cedar_policy_validator::custom_schema::to_json_schema::SchemaWarning;
+pub use cedar_policy_validator::human_schema::to_json_schema::SchemaWarning;
 use cedar_policy_validator::RequestValidationError; // this type is unsuitable for `pub use` because it contains internal types like `EntityUID` and `EntityType`
 pub use cedar_policy_validator::{
     TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
@@ -1335,10 +1335,10 @@ pub enum ToNaturalSyntaxError {
     NameCollisions(NonEmpty<SmolStr>),
 }
 
-impl From<cedar_policy_validator::custom_schema::ToCustomSchemaStrError> for ToNaturalSyntaxError {
-    fn from(value: cedar_policy_validator::custom_schema::ToCustomSchemaStrError) -> Self {
+impl From<cedar_policy_validator::human_schema::ToCustomSchemaStrError> for ToNaturalSyntaxError {
+    fn from(value: cedar_policy_validator::human_schema::ToCustomSchemaStrError) -> Self {
         match value {
-            cedar_policy_validator::custom_schema::ToCustomSchemaStrError::NameCollisions(
+            cedar_policy_validator::human_schema::ToCustomSchemaStrError::NameCollisions(
                 collisions,
             ) => Self::NameCollisions(collisions),
         }
@@ -1351,7 +1351,7 @@ pub enum NaturalSyntaxError {
     /// Error parsing a schema in natural syntax
     #[error("Error parsing schema: {0}")]
     #[diagnostic(transparent)]
-    ParseError(#[from] cedar_policy_validator::custom_schema::parser::NaturalSyntaxParseErrors),
+    ParseError(#[from] cedar_policy_validator::human_schema::parser::NaturalSyntaxParseErrors),
 }
 
 /// Error when evaluating an entity attribute

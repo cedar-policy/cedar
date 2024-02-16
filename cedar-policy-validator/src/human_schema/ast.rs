@@ -138,21 +138,22 @@ impl std::fmt::Display for PathInternal {
     }
 }
 
+/// This struct represents Entity Uids in the Schema Syntax
 #[derive(Debug, Clone)]
 pub struct QualName {
     pub path: Option<Path>,
-    pub id: SmolStr,
+    pub eid: SmolStr,
 }
 
 impl QualName {
-    pub fn unqualified(id: SmolStr) -> Self {
-        Self { path: None, id }
+    pub fn unqualified(eid: SmolStr) -> Self {
+        Self { path: None, eid }
     }
 
-    pub fn qualified(path: Path, id: SmolStr) -> Self {
+    pub fn qualified(path: Path, eid: SmolStr) -> Self {
         Self {
             path: Some(path),
-            id,
+            eid,
         }
     }
 }

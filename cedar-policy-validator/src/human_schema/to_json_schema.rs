@@ -9,7 +9,7 @@ use std::collections::hash_map::Entry;
 use thiserror::Error;
 
 use crate::{
-    natural_schema::ast::Path, ActionEntityUID, ActionType, ApplySpec, AttributesOrContext,
+    human_schema::ast::Path, ActionEntityUID, ActionType, ApplySpec, AttributesOrContext,
     EntityType, NamespaceDefinition, SchemaFragment, SchemaType, SchemaTypeVariant,
     TypeOfAttribute,
 };
@@ -37,8 +37,6 @@ pub fn custom_schema_to_json_schema(
     let all_namespaces = qualified_namespaces
         .chain(once(unqualified_namespace))
         .collect::<Vec<_>>();
-
-    println!("{:?}", all_namespaces);
 
     let names = build_namespace_bindings(all_namespaces.iter())?;
     let warnings = compute_namespace_warnings(&names).collect::<Vec<_>>();
@@ -107,7 +105,7 @@ impl<'a> ConversionContext<'a> {
     fn convert_namespace(&self, n: Namespace) -> Result<NamespaceDefinition, ToJsonSchemaErrors> {
         // Ensure we aren't using a reserved namespace
         match n.name.as_ref() {
-            Some(name) if name.node.is_cedar() => {
+            Some(name) if name.node.is_cedar() || name.node.is_in_cedar() => {
                 Err(ToJsonSchemaError::UseReservedNamespace(name.loc.clone()))
             }
             _ => Ok(()),
@@ -189,7 +187,7 @@ impl<'a> ConversionContext<'a> {
     fn convert_qual_name(qn: Node<QualName>) -> ActionEntityUID {
         let qn = qn.node;
         ActionEntityUID {
-            id: qn.id,
+            id: qn.eid,
             ty: qn.path.map(|p| p.to_smolstr()),
         }
     }
@@ -202,7 +200,6 @@ impl<'a> ConversionContext<'a> {
         // Split AppDecl's into context/principal/resource decls
         let (decls, loc) = decls.into_inner();
         let (contexts, rest): (Vec<_>, Vec<_>) = decls.into_iter().partition_map(is_context_decl);
-        println!("PRDecls: {:?}", rest);
         let (principals, resources): (Vec<_>, Vec<_>) =
             rest.into_iter().partition_map(partial_pr_decls);
         // Ensure we have at most one context decl, then convert it
@@ -214,14 +211,12 @@ impl<'a> ConversionContext<'a> {
             .transpose()?
             .unwrap_or_default();
 
-        println!("principals: {:?}", principals);
         // Ensure we have at most one principal decl, then convert it
         let principal_types = principals
             .into_iter()
             .at_most_one()
             .map_err(|e| convert_pr_error(e, PR::Principal, loc.clone()))?;
         // Ensure we have at most one resource decl, then convert it
-        println!("resources : {:?}", resources);
         let resource_types = resources
             .into_iter()
             .at_most_one()
@@ -544,27 +539,13 @@ fn collect_decls(
 fn compute_namespace_warnings(
     fragment: &HashMap<SmolStr, NamespaceRecord>,
 ) -> impl Iterator<Item = SchemaWarning> + '_ {
-    let unqual_warnings = if let Some(unqualified_namespace) = fragment.get("") {
-        let entity_warnings = unqualified_namespace
-            .entities
-            .iter()
-            .filter_map(shadows_builtin);
-        let common_type_warnings = unqualified_namespace
-            .entities
-            .iter()
-            .filter_map(shadows_builtin);
-        entity_warnings.chain(common_type_warnings).collect()
-    } else {
-        vec![]
-    };
-    let warnings = fragment.values().flat_map(make_warning_for_shadowing);
-
-    warnings.chain(unqual_warnings)
+    fragment.values().flat_map(make_warning_for_shadowing)
 }
 
 fn make_warning_for_shadowing(n: &NamespaceRecord) -> impl Iterator<Item = SchemaWarning> {
     let mut warnings = vec![];
     for (common_name, common_src_node) in n.common_types.iter() {
+        // Check if it shadows a entity name in the same namespace
         if let Some(entity_src_node) = n.entities.get(common_name) {
             let warning = SchemaWarning::ShadowsEntity {
                 name: common_name.clone(),
@@ -573,8 +554,17 @@ fn make_warning_for_shadowing(n: &NamespaceRecord) -> impl Iterator<Item = Schem
             };
             warnings.push(warning);
         }
+        // Check if it shadows a bultin
+        if let Some(warning) = shadows_builtin((common_name, common_src_node)) {
+            warnings.push(warning);
+        }
     }
-    warnings.into_iter()
+    let entity_shadows = n.entities.iter().filter_map(shadows_builtin);
+    warnings
+        .into_iter()
+        .chain(entity_shadows)
+        .collect::<Vec<_>>()
+        .into_iter()
 }
 
 fn extract_name(n: Node<SmolStr>) -> (SmolStr, Node<()>) {
@@ -582,6 +572,7 @@ fn extract_name(n: Node<SmolStr>) -> (SmolStr, Node<()>) {
 }
 
 fn shadows_builtin((name, node): (&SmolStr, &Node<()>)) -> Option<SchemaWarning> {
+    println!("Name: `{name}`");
     if EXTENSIONS.contains(&name.as_ref()) || BUILTIN_TYPES.contains(&name.as_ref()) {
         Some(SchemaWarning::ShadowsBuiltin {
             name: name.clone(),
