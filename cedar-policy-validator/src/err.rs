@@ -25,7 +25,7 @@ use itertools::Itertools;
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::custom_schema::{self, parser::NaturalSyntaxParseErrors};
+use crate::natural_schema::{self, parser::NaturalSyntaxParseErrors};
 
 #[derive(Debug, Diagnostic, Error)]
 pub enum SchemaError {
@@ -137,7 +137,7 @@ pub enum SchemaError {
     IOError(#[from] std::io::Error),
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ToNaturalSyntaxError(#[from] custom_schema::ToCustomSchemaStrError),
+    ToNaturalSyntaxError(#[from] natural_schema::ToCustomSchemaStrError),
 }
 
 impl From<transitive_closure::TcError<EntityUID>> for SchemaError {

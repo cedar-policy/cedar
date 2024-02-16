@@ -9,7 +9,7 @@ use std::collections::hash_map::Entry;
 use thiserror::Error;
 
 use crate::{
-    custom_schema::ast::Path, ActionEntityUID, ActionType, ApplySpec, AttributesOrContext,
+    natural_schema::ast::Path, ActionEntityUID, ActionType, ApplySpec, AttributesOrContext,
     EntityType, NamespaceDefinition, SchemaFragment, SchemaType, SchemaTypeVariant,
     TypeOfAttribute,
 };
@@ -281,15 +281,14 @@ impl<'a> ConversionContext<'a> {
         &self,
         attr: Node<AttrDecl>,
     ) -> Result<(SmolStr, TypeOfAttribute), ToJsonSchemaErrors> {
-        Ok(match attr.node {
-            AttrDecl { name, required, ty } => (
-                name.node,
-                TypeOfAttribute {
-                    ty: self.convert_type(ty)?,
-                    required,
-                },
-            ),
-        })
+        let AttrDecl { name, required, ty } = attr.node;
+        Ok((
+            name.node,
+            TypeOfAttribute {
+                ty: self.convert_type(ty)?,
+                required,
+            },
+        ))
     }
 
     /// Convert a type recursively
@@ -408,17 +407,14 @@ fn is_context_decl(n: Node<AppDecl>) -> Either<Vec<Node<AttrDecl>>, PRAppDecl> {
 
 /// Partition on whether or this [`PRAppDecl`] is referring to [`PR::Principal`] or [`PR::Resource`]
 fn partial_pr_decls(n: PRAppDecl) -> Either<Vec<SmolStr>, Vec<SmolStr>> {
-    match n {
-        PRAppDecl { kind, entity_tys } => {
-            let entity_tys = entity_tys
-                .into_iter()
-                .map(|path| path.to_smolstr())
-                .collect();
-            match kind.node {
-                PR::Principal => Either::Right(entity_tys),
-                PR::Resource => Either::Left(entity_tys),
-            }
-        }
+    let PRAppDecl { kind, entity_tys } = n;
+    let entity_tys = entity_tys
+        .into_iter()
+        .map(|path| path.to_smolstr())
+        .collect();
+    match kind.node {
+        PR::Principal => Either::Right(entity_tys),
+        PR::Resource => Either::Left(entity_tys),
     }
 }
 
@@ -444,7 +440,7 @@ where
             }
         }
     }
-    match NonEmpty::collect(errs.into_iter()) {
+    match NonEmpty::collect(errs) {
         None => Ok(answers.into_iter()),
         Some(errs) => Err(ToJsonSchemaErrors::new(errs)),
     }

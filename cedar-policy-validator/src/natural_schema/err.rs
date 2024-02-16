@@ -130,19 +130,19 @@ impl Diagnostic for ParseError {
 
 /// Multiple parse errors.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ParseErrors(pub NonEmpty<ParseError>);
+pub struct ParseErrors(Box<NonEmpty<ParseError>>);
 
 impl ParseErrors {
     pub fn new(first: ParseError, rest: impl IntoIterator<Item = ParseError>) -> Self {
         let mut nv = NonEmpty::singleton(first);
         let mut v = rest.into_iter().collect::<Vec<_>>();
         nv.append(&mut v);
-        Self(nv)
+        Self(Box::new(nv))
     }
 
     pub fn from_iter(i: impl IntoIterator<Item = ParseError>) -> Option<Self> {
         let v = i.into_iter().collect::<Vec<_>>();
-        Some(Self(NonEmpty::from_vec(v)?))
+        Some(Self(Box::new(NonEmpty::from_vec(v)?)))
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &ParseError> {

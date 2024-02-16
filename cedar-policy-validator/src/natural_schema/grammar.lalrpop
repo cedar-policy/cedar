@@ -1,10 +1,10 @@
 use std::str::FromStr;
 use std::sync::Arc;
-use crate::custom_schema::err::{RawErrorRecovery, RawUserError, UserError};
+use crate::natural_schema::err::{RawErrorRecovery, RawUserError, UserError};
 use cedar_policy_core::parser::{Node, Loc, unescape::to_unescaped_string, cst::Ref};
 use cedar_policy_core::ast::Id;
 use smol_str::SmolStr;
-use crate::custom_schema::ast::{ 
+use crate::natural_schema::ast::{ 
     Path, 
     EntityDecl, 
     Declaration, 

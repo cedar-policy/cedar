@@ -109,9 +109,9 @@ impl PathInternal {
 
     /// Is this referring to a name _in__ the __cedar namespace: ex: __cedar::Bool
     fn is_in_cedar(&self) -> bool {
+        // `0` is the position of the most significant namespace
         self.namespace
-            .iter()
-            .exactly_one()
+            .get(0)
             .map(|id| id.as_ref() == CEDAR_NAMESPACE)
             .unwrap_or(false)
     }

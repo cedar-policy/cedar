@@ -20,7 +20,7 @@ use lalrpop_util::lalrpop_mod;
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::custom_schema::to_json_schema::custom_schema_to_json_schema;
+use crate::natural_schema::to_json_schema::custom_schema_to_json_schema;
 
 use super::{
     ast::Schema,
@@ -39,7 +39,7 @@ lalrpop_mod!(
     //PANIC SAFETY: lalrpop uses panic, and we are trusting lalrpop to generate correct code
     #[allow(clippy::panic)]
     pub grammar,
-    "/src/custom_schema/grammar.rs"
+    "/src/natural_schema/grammar.rs"
 );
 
 /// This helper function calls a generated parser, collects errors that could be

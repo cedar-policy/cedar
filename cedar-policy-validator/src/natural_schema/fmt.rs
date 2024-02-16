@@ -71,7 +71,7 @@ impl Display for SchemaType {
     }
 }
 
-fn non_empty_slice<T>(v: &Vec<T>) -> Option<NonEmpty<&T>> {
+fn non_empty_slice<T>(v: &[T]) -> Option<NonEmpty<&T>> {
     let vs: Vec<&T> = v.iter().collect();
     NonEmpty::from_vec(vs)
 }
@@ -96,18 +96,23 @@ impl Display for EntityType {
 
 impl Display for ActionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.member_of.as_ref().and_then(non_empty_slice) {
-            Some(parents) => {
-                write!(f, "in ")?;
-                fmt_vec(f, parents)?;
-            }
-            None => {}
-        };
+        if let Some(parents) = self
+            .member_of
+            .as_ref()
+            .and_then(|refs| non_empty_slice(refs.as_slice()))
+        {
+            write!(f, "in ")?;
+            fmt_vec(f, parents)?;
+        }
         match &self.applies_to {
             Some(spec) => {
                 match (
-                    spec.principal_types.as_ref().map(non_empty_slice),
-                    spec.resource_types.as_ref().map(non_empty_slice),
+                    spec.principal_types
+                        .as_ref()
+                        .map(|refs| non_empty_slice(refs.as_slice())),
+                    spec.resource_types
+                        .as_ref()
+                        .map(|refs| non_empty_slice(refs.as_slice())),
                 ) {
                     // One of lists is present but empty
                     (Some(None), _) | (_, Some(None)) => {

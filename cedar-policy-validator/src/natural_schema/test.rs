@@ -1,3 +1,5 @@
+// PANIC SAFETY: unit tests
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod demo_tests {
 
@@ -265,7 +267,8 @@ mod demo_tests {
         entity B;
         action Foo appliesTo { principal : A, resource : B  };
         "#;
-        SchemaFragment::from_str_natural(src).unwrap();
+        let (_, warnings) = SchemaFragment::from_str_natural(src).unwrap();
+        assert!(warnings.collect::<Vec<_>>().is_empty());
     }
 
     #[test]
@@ -330,17 +333,17 @@ mod demo_tests {
             principal : User,
             resource : List
         };
-    };
+        }
         "#;
 
-        let (schema, warnings) = SchemaFragment::from_str_natural(src).unwrap();
+        let (_, warnings) = SchemaFragment::from_str_natural(src).unwrap();
         assert!(warnings.collect::<Vec<_>>().is_empty());
     }
 }
 
 #[cfg(test)]
 mod parser_tests {
-    use crate::custom_schema::parser::parse_schema;
+    use crate::natural_schema::parser::parse_schema;
 
     #[test]
     fn mixed_decls() {
@@ -566,6 +569,8 @@ mod parser_tests {
 
 // PANIC SAFETY: tests
 #[allow(clippy::unreachable)]
+// PANIC SAFETY: tests
+#[allow(clippy::panic)]
 #[cfg(test)]
 mod translator_tests {
     use cedar_policy_core::FromNormalizedStr;
@@ -705,7 +710,7 @@ mod translator_tests {
           }
         "#,
         )
-        .expect("should be a valid custom schema");
+        .expect("should be a valid natural schema");
         let validator_schema: ValidatorSchema =
             schema.try_into().expect("should be a valid schema");
         for (name, ety) in validator_schema.entity_types() {
@@ -809,23 +814,21 @@ mod translator_tests {
                 additional_attributes,
             }) => {
                 assert!(!additional_attributes);
-                match attributes.get("name").unwrap() {
-                    TypeOfAttribute { ty, required } => {
-                        assert!(required);
-                        let expected = crate::SchemaType::TypeDef {
-                            type_name: "id".into(),
-                        };
-                        assert_eq!(ty, &expected);
-                    }
+                let TypeOfAttribute { ty, required } = attributes.get("name").unwrap();
+                {
+                    assert!(required);
+                    let expected = crate::SchemaType::TypeDef {
+                        type_name: "id".into(),
+                    };
+                    assert_eq!(ty, &expected);
                 }
-                match attributes.get("email").unwrap() {
-                    TypeOfAttribute { ty, required } => {
-                        assert!(required);
-                        let expected = crate::SchemaType::Type(SchemaTypeVariant::Entity {
-                            name: "email_address".into(),
-                        });
-                        assert_eq!(ty, &expected);
-                    }
+                let TypeOfAttribute { ty, required } = attributes.get("email").unwrap();
+                {
+                    assert!(required);
+                    let expected = crate::SchemaType::Type(SchemaTypeVariant::Entity {
+                        name: "email_address".into(),
+                    });
+                    assert_eq!(ty, &expected);
                 }
             }
             _ => panic!("Wrong type"),
