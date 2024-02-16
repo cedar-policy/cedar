@@ -1,3 +1,5 @@
+use std::iter::once;
+
 use cedar_policy_core::{
     ast::Id,
     parser::{Loc, Node},
@@ -19,18 +21,29 @@ pub type Schema = Vec<Node<Namespace>>;
 
 /// A path is a non empty list of identifiers that forms a namespace + type
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Path(pub Node<NonEmpty<Id>>);
-
+pub struct Path(Node<PathInternal>);
 impl Path {
     /// Create a [`Path`] with a single entry
-    pub fn single(node: Id, loc: Loc) -> Self {
-        Self(Node::with_source_loc(NonEmpty::new(node), loc))
+    pub fn single(basename: Id, loc: Loc) -> Self {
+        Self(Node::with_source_loc(
+            PathInternal {
+                basename,
+                namespace: vec![],
+            },
+            loc,
+        ))
     }
 
     /// Create [`Path`] with a head and an iterator
-    pub fn new(head: Id, rest: impl IntoIterator<Item = Id>, loc: Loc) -> Self {
-        let tail = rest.into_iter().collect();
-        Self(Node::with_source_loc(NonEmpty { head, tail }, loc))
+    pub fn new(basename: Id, namespace: impl IntoIterator<Item = Id>, loc: Loc) -> Self {
+        let namespace = namespace.into_iter().collect();
+        Self(Node::with_source_loc(
+            PathInternal {
+                basename,
+                namespace,
+            },
+            loc,
+        ))
     }
 
     /// Borrowed iteration of the [`Path`]'s elements
@@ -54,23 +67,54 @@ impl Path {
 
     /// Get the base type name as well as the (potentially empty) prefix
     pub fn split_last(self) -> (Vec<Id>, Id) {
-        let ne = self.0.node;
-        let first = ne.head;
-        let mut rest = ne.tail;
-        match rest.pop() {
-            Some(last) => {
-                rest.insert(0, first);
-                (rest, last)
-            }
-            None => (rest, first),
-        }
+        (self.0.node.namespace, self.0.node.basename)
+    }
+
+    pub fn is_unqualified_or_cedar(&self) -> bool {
+        self.0.node.is_unqualified_or_cedar()
     }
 }
 
 impl std::fmt::Display for Path {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = self.0.node.iter().map(|id| id.as_ref()).join("::");
-        write!(f, "{s}")
+        write!(f, "{}", self.0.node)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct PathInternal {
+    basename: Id,
+    namespace: Vec<Id>,
+}
+
+impl PathInternal {
+    fn iter(&self) -> impl Iterator<Item = &Id> {
+        self.namespace.iter().chain(once(&self.basename))
+    }
+
+    fn into_iter(self) -> impl Iterator<Item = Id> {
+        self.namespace.into_iter().chain(once(self.basename))
+    }
+
+    fn is_unqualified_or_cedar(&self) -> bool {
+        self.namespace.is_empty()
+            || self
+                .namespace
+                .iter()
+                .exactly_one()
+                .map(|id| id.as_ref() == CEDAR_NAMESPACE)
+                .unwrap_or(false)
+    }
+}
+
+impl std::fmt::Display for PathInternal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.namespace.is_empty() {
+            write!(f, "{}", self.basename)
+        } else {
+            let namespace = self.namespace.iter().map(|id| id.as_ref()).join("::");
+            write!(f, "{namespace}::{}", self.basename)
+        }
     }
 }
 

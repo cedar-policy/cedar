@@ -10,7 +10,7 @@ mod demo_tests {
 
     #[test]
     fn test_github() {
-        let (fragment, _warnings) = SchemaFragment::from_str_natural(
+        let (fragment, warnings) = SchemaFragment::from_str_natural(
             r#"namespace GitHub {
             entity User in [UserGroup,Team];
             entity UserGroup in [UserGroup];
@@ -53,7 +53,7 @@ mod demo_tests {
         assert_empty_records(usergroup);
         assert_eq!(&usergroup.member_of_types, &vec!["UserGroup".to_smolstr()]);
         // Repository
-        let _repo = github
+        let repo = github
             .entity_types
             .get("Repository")
             .expect("No `Repository`");
@@ -499,7 +499,7 @@ mod translator_tests {
             err::ToJsonSchemaError, parser::parse_schema,
             to_json_schema::custom_schema_to_json_schema,
         },
-        SchemaError, SchemaFragment, ValidatorSchema,
+        SchemaError, SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema,
     };
 
     #[test]
@@ -688,7 +688,8 @@ mod translator_tests {
     #[test]
     fn type_name_resolution_empty_namespace() {
         let (schema, _) = SchemaFragment::from_str_natural(
-            r#"type id = {
+            r#"
+          type id = {
             group: String,
             name: String,
           };
@@ -710,8 +711,37 @@ mod translator_tests {
           }"#,
         )
         .unwrap();
+        let demo = schema.0.get("Demo").unwrap();
+        let user = demo.entity_types.get("User").unwrap();
+        match &user.shape.0 {
+            crate::SchemaType::Type(SchemaTypeVariant::Record {
+                attributes,
+                additional_attributes,
+            }) => {
+                assert!(!additional_attributes);
+                match attributes.get("name").unwrap() {
+                    TypeOfAttribute { ty, required } => {
+                        assert!(required);
+                        let expected = crate::SchemaType::TypeDef {
+                            type_name: "id".into(),
+                        };
+                        assert_eq!(ty, &expected);
+                    }
+                }
+                match attributes.get("email").unwrap() {
+                    TypeOfAttribute { ty, required } => {
+                        assert!(required);
+                        let expected = crate::SchemaType::Type(SchemaTypeVariant::Entity {
+                            name: "email_address".into(),
+                        });
+                        assert_eq!(ty, &expected);
+                    }
+                }
+            }
+            _ => panic!("Wrong type"),
+        }
         let validator_schema: Result<ValidatorSchema, _> = schema.try_into();
-        assert!(validator_schema.is_err());
+        assert!(validator_schema.is_ok());
     }
 
     #[test]

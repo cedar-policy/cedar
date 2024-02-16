@@ -17,7 +17,7 @@ use crate::{
 use super::{
     ast::{
         ActionDecl, AppDecl, AttrDecl, Decl, Declaration, EntityDecl, Namespace, PRAppDecl,
-        QualName, Schema, Type, TypeDecl, BUILTIN_TYPES, EXTENSIONS, PR,
+        QualName, Schema, Type, TypeDecl, BUILTIN_TYPES, CEDAR_NAMESPACE, EXTENSIONS, PR,
     },
     err::{ToJsonSchemaError, ToJsonSchemaErrors},
 };
@@ -55,6 +55,7 @@ fn convert_namespace(
 struct ConversionContext<'a> {
     names: &'a HashMap<SmolStr, NamespaceRecord>,
     current_namespace_name: SmolStr,
+    cedar_namespace: NamespaceRecord,
 }
 
 impl<'a> ConversionContext<'a> {
@@ -68,6 +69,7 @@ impl<'a> ConversionContext<'a> {
         Self {
             names,
             current_namespace_name,
+            cedar_namespace: NamespaceRecord::default(), // The `__cedar` namespace is empty (besides primitives)
         }
     }
 
@@ -285,10 +287,10 @@ impl<'a> ConversionContext<'a> {
     fn dereference_name(&self, p: Path) -> Result<SchemaType, ToJsonSchemaError> {
         // First determine what namespace we are searching
         let name = p.clone().to_string().into();
+        let is_unqualified_or_cedar = p.is_unqualified_or_cedar();
         let loc = p.loc().clone();
         let (prefix, base) = p.split_last();
         let base = base.to_smolstr();
-        let is_unqualified = prefix.is_empty();
         let namespace_to_search = if prefix.is_empty() {
             // We search the current namespace
             self.lookup_namespace(loc.clone(), &self.current_namespace_name)
@@ -311,8 +313,8 @@ impl<'a> ConversionContext<'a> {
             Ok(SchemaType::TypeDef { type_name: name })
         } else if namespace_to_search.entities.contains_key(&base) {
             Ok(SchemaType::Type(SchemaTypeVariant::Entity { name }))
-        } else if is_unqualified {
-            search_unqualified_namespace(base, loc)
+        } else if is_unqualified_or_cedar {
+            search_cedar_namespace(base, loc)
         } else {
             Err(ToJsonSchemaError::UnknownTypeName(Node::with_source_loc(
                 name, loc,
@@ -325,12 +327,16 @@ impl<'a> ConversionContext<'a> {
         loc: Loc,
         name: &SmolStr,
     ) -> Result<&NamespaceRecord, ToJsonSchemaError> {
-        self.names.get(name).ok_or_else(|| {
-            ToJsonSchemaError::UnknownTypeName(Node::with_source_loc(
-                self.current_namespace_name.clone(),
-                loc,
-            ))
-        })
+        if name == CEDAR_NAMESPACE {
+            Ok(&self.cedar_namespace)
+        } else {
+            self.names.get(name).ok_or_else(|| {
+                ToJsonSchemaError::UnknownTypeName(Node::with_source_loc(
+                    self.current_namespace_name.clone(),
+                    loc,
+                ))
+            })
+        }
     }
 }
 
@@ -411,8 +417,8 @@ where
     }
 }
 
-/// Search the unqualified namespace, the things that live here are cedar builtins, unless overridden within a context.
-fn search_unqualified_namespace(name: SmolStr, loc: Loc) -> Result<SchemaType, ToJsonSchemaError> {
+/// Search the cedar namespace, the things that live here are cedar builtins, unless overridden within a context.
+fn search_cedar_namespace(name: SmolStr, loc: Loc) -> Result<SchemaType, ToJsonSchemaError> {
     match name.as_ref() {
         "Long" => Ok(SchemaType::Type(SchemaTypeVariant::Long)),
         "String" => Ok(SchemaType::Type(SchemaTypeVariant::String)),
@@ -440,6 +446,7 @@ pub enum SchemaWarning {
     UsesBuiltinNamespace { name: SmolStr, loc: Loc },
 }
 
+#[derive(Default)]
 struct NamespaceRecord {
     entities: HashMap<SmolStr, Node<()>>,
     actions: HashMap<SmolStr, Node<()>>,
