@@ -28,7 +28,7 @@
 
 use crate::{
     frontend::is_authorized::InterfaceResponse, AuthorizationError, Authorizer, Context, Decision,
-    Entities, EntityUid, Policy, PolicyId, PolicySet, Request, Schema, ValidationMode, Validator,
+    Entities, EntityUid, PolicyId, PolicySet, Request, Schema, ValidationMode, Validator,
 };
 use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use serde::{Deserialize, Serialize};
