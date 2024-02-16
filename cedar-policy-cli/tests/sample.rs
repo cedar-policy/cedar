@@ -117,16 +117,20 @@ fn run_link_test(
 #[allow(clippy::expect_used)]
 // PANIC SAFETY: this is all test code
 #[allow(clippy::unwrap_used)]
+#[track_caller]
 fn run_format_test(policies_file: &str) {
+    let original = std::fs::read_to_string(policies_file).unwrap();
     let format_cmd = assert_cmd::Command::cargo_bin("cedar")
         .expect("bin exists")
         .arg("format")
         .arg("-p")
         .arg(policies_file)
         .assert();
+    let formatted =
+        std::str::from_utf8(&format_cmd.get_output().stdout).expect("output should be decodable");
     assert_eq!(
-        std::str::from_utf8(&format_cmd.get_output().stdout).expect("output should be decodable"),
-        std::fs::read_to_string(policies_file).unwrap()
+        original, formatted,
+        "\noriginal:\n{original}\n\nformatted:\n{formatted}",
     );
 }
 
