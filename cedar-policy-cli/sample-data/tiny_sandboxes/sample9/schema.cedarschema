@@ -1,9 +1,6 @@
-// Entity type declarations
 entity User;
 entity ScreenTime;
 entity Photo { owner: User };
 
-
-// Action declarations
 action edit appliesTo { principal: [User], resource: [Photo] };
 action view appliesTo { principal: [User], resource: [Photo, ScreenTime] };

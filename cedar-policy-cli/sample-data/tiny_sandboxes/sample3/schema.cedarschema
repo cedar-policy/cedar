@@ -1,9 +1,6 @@
-// Entity type declarations
 entity Album in [Album];
 entity User in [UserGroup];
 entity Photo in [Album] { owner: User };
 entity UserGroup;
 
-
-// Action declarations
 action view, edit appliesTo { principal: [User], resource: [Photo] };

@@ -1,4 +1,3 @@
-// Entity type declarations
 entity Photo in [Account, Album] {
   account: Account,
   admins: Set<User>,
@@ -11,8 +10,6 @@ entity UserGroup;
 entity Album in [Account] { account: Account, private: Bool };
 entity Account in [AccountGroup] { owner: User };
 
-
-// Action declarations
 action view, delete, edit
   appliesTo {
     principal: [User],

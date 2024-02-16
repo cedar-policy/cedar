@@ -1,4 +1,3 @@
-// Entity type declarations
 entity Photo in [Account, Album];
 entity Video in [Account, Album];
 entity Account;
@@ -7,8 +6,6 @@ entity UserGroup;
 entity User in [UserGroup];
 entity Administrator;
 
-
-// Action declarations
 action view, delete, edit
   appliesTo { principal: [User], resource: [Photo, Video, Album] };
 action listPhotos

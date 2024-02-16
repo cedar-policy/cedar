@@ -1,4 +1,3 @@
-// Entity type declarations
 entity ScreenTime;
 entity UserGroup;
 entity Album in [Album];
@@ -6,7 +5,5 @@ entity Photo in [Album] { owner: User };
 entity User in [UserGroup] { account: Account };
 entity Account { age: Long };
 
-
-// Action declarations
 action edit appliesTo { principal: [User], resource: [Photo] };
 action view appliesTo { principal: [User], resource: [Photo, ScreenTime] };
