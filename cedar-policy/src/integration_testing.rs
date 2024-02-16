@@ -179,6 +179,111 @@ pub trait CustomCedarImpl {
     ) -> IntegrationTestValidationResult;
 }
 
+/// Given a `JsonTest`, parse the provided policies file.
+/// # Panics
+/// On failure to load or parse policies file.
+// PANIC SAFETY this is testing code
+#[allow(clippy::panic)]
+pub fn parse_policies_from_test(test: &JsonTest) -> PolicySet {
+    let policy_file = resolve_integration_test_path(&test.policies);
+    let policies_text = std::fs::read_to_string(policy_file)
+        .unwrap_or_else(|e| panic!("error loading policy file {}: {e}", test.policies));
+    let policies = PolicySet::from_str(&policies_text)
+        .unwrap_or_else(|e| panic!("error parsing policy in file {}: {e}", &test.policies));
+    policies
+}
+
+/// Given a `JsonTest`, parse the provided schema file.
+/// # Panics
+/// On failure to load or parse schema file.
+// PANIC SAFETY this is testing code
+#[allow(clippy::panic)]
+pub fn parse_schema_from_test(test: &JsonTest) -> Schema {
+    let schema_file = resolve_integration_test_path(&test.schema);
+    let schema_text = std::fs::read_to_string(schema_file)
+        .unwrap_or_else(|e| panic!("error loading schema file {}: {e}", &test.schema));
+    Schema::from_str(&schema_text)
+        .unwrap_or_else(|e| panic!("error parsing schema in {}: {e}", &test.schema))
+}
+
+/// Given a `JsonTest`, parse (and validate) the provided entities file.
+/// # Panics
+/// On failure to load or parse entities file.
+// PANIC SAFETY this is testing code
+#[allow(clippy::panic)]
+pub fn parse_entities_from_test(test: &JsonTest, schema: &Schema) -> Entities {
+    let entity_file = resolve_integration_test_path(&test.entities);
+    let entities_json = std::fs::OpenOptions::new()
+        .read(true)
+        .open(entity_file)
+        .unwrap_or_else(|e| panic!("error opening entity file {}: {e}", &test.entities));
+    let entities = Entities::from_json_file(&entities_json, Some(schema))
+        .unwrap_or_else(|e| panic!("error parsing entities in {}: {e}", &test.entities));
+    entities
+}
+
+/// Given a `JsonRequest`, parse (and optionally validate) the provided request.
+/// # Panics
+/// On failure to parse or validate request.
+// PANIC SAFETY this is testing code
+#[allow(clippy::panic)]
+pub fn parse_request_from_test(
+    json_request: &JsonRequest,
+    schema: &Schema,
+    test_name: &str,
+) -> Request {
+    let principal = json_request.principal.clone().map(|json| {
+        EntityUid::from_json(json.into()).unwrap_or_else(|e| {
+            panic!(
+                "Failed to parse principal for request \"{}\" in {}: {e}",
+                json_request.desc, test_name
+            )
+        })
+    });
+    let action = json_request.action.clone().map(|json| {
+        EntityUid::from_json(json.into()).unwrap_or_else(|e| {
+            panic!(
+                "Failed to parse action for request \"{}\" in {}: {e}",
+                json_request.desc, test_name
+            )
+        })
+    });
+    let resource = json_request.resource.clone().map(|json| {
+        EntityUid::from_json(json.into()).unwrap_or_else(|e| {
+            panic!(
+                "Failed to parse resource for request \"{}\" in {}: {e}",
+                json_request.desc, test_name
+            )
+        })
+    });
+    let context_schema = action.as_ref().map(|a| (schema, a));
+    let context = Context::from_json_value(json_request.context.clone().into(), context_schema)
+        .unwrap_or_else(|e| {
+            panic!(
+                "error parsing context for request \"{}\" in {}: {e}",
+                json_request.desc, test_name
+            )
+        });
+    let request = Request::new(
+        principal,
+        action,
+        resource,
+        context,
+        if json_request.enable_request_validation {
+            Some(schema)
+        } else {
+            None
+        },
+    )
+    .unwrap_or_else(|e| {
+        panic!(
+            "error validating request \"{}\" in {}: {e}",
+            json_request.desc, test_name
+        )
+    });
+    request
+}
+
 /// Given the filename of a JSON file describing an integration test, perform
 /// the test. If a custom Cedar implementation is provided, then use it for the
 /// test, otherwise perform the test on the `Cedar` API.
@@ -187,7 +292,7 @@ pub trait CustomCedarImpl {
 /// cedar-integration-tests folder.
 /// Absolute paths are handled without modification.
 /// # Panics
-/// When integration test data cannot be found
+/// When integration test data cannot be found or the test otherwise fails.
 #[allow(clippy::too_many_lines)]
 // PANIC SAFETY this is testing code
 #[allow(clippy::panic)]
@@ -202,23 +307,9 @@ pub fn perform_integration_test_from_json_custom(
         .unwrap_or_else(|e| panic!("error reading from file {test_name}: {e}"));
     let test: JsonTest =
         serde_json::from_str(&jsonstr).unwrap_or_else(|e| panic!("error parsing {test_name}: {e}"));
-    let policy_file = resolve_integration_test_path(&test.policies);
-    let policies_text = std::fs::read_to_string(policy_file)
-        .unwrap_or_else(|e| panic!("error loading policy file {}: {e}", &test.policies));
-    let policies = PolicySet::from_str(&policies_text)
-        .unwrap_or_else(|e| panic!("error parsing policy in file {}: {e}", &test.policies));
-    let schema_file = resolve_integration_test_path(&test.schema);
-    let schema_text = std::fs::read_to_string(schema_file)
-        .unwrap_or_else(|e| panic!("error loading schema file {}: {e}", &test.schema));
-    let schema = Schema::from_str(&schema_text)
-        .unwrap_or_else(|e| panic!("error parsing schema in {}: {e}", &test.schema));
-    let entity_file = resolve_integration_test_path(&test.entities);
-    let entities_json = std::fs::OpenOptions::new()
-        .read(true)
-        .open(entity_file)
-        .unwrap_or_else(|e| panic!("error opening entity file {}: {e}", &test.entities));
-    let entities = Entities::from_json_file(&entities_json, Some(&schema))
-        .unwrap_or_else(|e| panic!("error parsing entities in {}: {e}", &test.entities));
+    let policies = parse_policies_from_test(&test);
+    let schema = parse_schema_from_test(&test);
+    let entities = parse_entities_from_test(&test, &schema);
 
     let validation_result = if let Some(custom_impl) = custom_impl_opt {
         custom_impl.validate(schema.clone().0, &policies.ast)
@@ -247,56 +338,7 @@ pub fn perform_integration_test_from_json_custom(
     }
 
     for json_request in test.requests {
-        let principal = json_request.principal.map(|json| {
-            EntityUid::from_json(json.into()).unwrap_or_else(|e| {
-                panic!(
-                    "Failed to parse principal for request \"{}\" in {test_name}: {e}",
-                    json_request.desc,
-                )
-            })
-        });
-        let action = json_request.action.map(|json| {
-            EntityUid::from_json(json.into()).unwrap_or_else(|e| {
-                panic!(
-                    "Failed to parse action for request \"{}\" in {test_name}: {e}",
-                    json_request.desc,
-                )
-            })
-        });
-        let resource = json_request.resource.map(|json| {
-            EntityUid::from_json(json.into()).unwrap_or_else(|e| {
-                panic!(
-                    "Failed to parse resource for request \"{}\" in {test_name}: {e}",
-                    json_request.desc,
-                )
-            })
-        });
-        let context_schema = action.as_ref().map(|a| (&schema, a));
-        let context = Context::from_json_value(json_request.context.into(), context_schema)
-            .unwrap_or_else(|e| {
-                panic!(
-                    "error parsing context for request \"{}\" in {test_name}: {e}",
-                    json_request.desc,
-                )
-            });
-        let request = Request::new(
-            principal,
-            action,
-            resource,
-            context,
-            if json_request.enable_request_validation {
-                Some(&schema)
-            } else {
-                None
-            },
-        )
-        .unwrap_or_else(|e| {
-            panic!(
-                "error validating request \"{}\" in {test_name}: {e}",
-                json_request.desc,
-            )
-        });
-
+        let request = parse_request_from_test(&json_request, &schema, &test_name);
         if let Some(custom_impl) = custom_impl_opt {
             let response = custom_impl.is_authorized(&request.0, &policies.ast, &entities.0);
             // check decision
