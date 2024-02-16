@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, iter::once};
 
 use cedar_policy_core::parser::{Loc, Node};
 use itertools::{Either, ExactlyOneError, Itertools};
@@ -31,21 +31,51 @@ pub fn custom_schema_to_json_schema(
     schema: Schema,
 ) -> Result<(SchemaFragment, impl Iterator<Item = SchemaWarning>), ToJsonSchemaErrors> {
     // First pass, figure out what each name is bound to
-    let names = build_namespace_bindings(schema.iter().map(|n| &n.node))?;
+
+    let (qualified_namespaces, unqualified_namespace) =
+        split_unqualified_namespace(schema.into_iter().map(|n| n.node));
+    let all_namespaces = qualified_namespaces
+        .chain(once(unqualified_namespace))
+        .collect::<Vec<_>>();
+
+    println!("{:?}", all_namespaces);
+
+    let names = build_namespace_bindings(all_namespaces.iter())?;
     let warnings = compute_namespace_warnings(&names).collect::<Vec<_>>();
-    let fragment =
-        collect_all_errors(schema.into_iter().map(|ns| convert_namespace(&names, ns)))?.collect();
+    let fragment = collect_all_errors(
+        all_namespaces
+            .into_iter()
+            .map(|ns| convert_namespace(&names, ns)),
+    )?
+    .collect();
     Ok((SchemaFragment(fragment), warnings.into_iter()))
+}
+
+fn split_unqualified_namespace(
+    namespaces: impl IntoIterator<Item = Namespace>,
+) -> (impl Iterator<Item = Namespace>, Namespace) {
+    let (qualified, unqualified): (Vec<_>, Vec<_>) =
+        namespaces.into_iter().partition(|n| n.name.is_some());
+    let mut unqualified_decls = vec![];
+    for mut unqualified_namespace in unqualified.into_iter() {
+        unqualified_decls.append(&mut unqualified_namespace.decls);
+    }
+
+    let unqual = Namespace {
+        name: None,
+        decls: unqualified_decls,
+    };
+
+    (qualified.into_iter(), unqual)
 }
 
 /// Converts a CST namespace to the JSON namespace
 fn convert_namespace(
     names: &HashMap<SmolStr, NamespaceRecord>,
-    namespace: Node<Namespace>,
+    namespace: Namespace,
 ) -> Result<(SmolStr, NamespaceDefinition), ToJsonSchemaErrors> {
-    let (namespace, loc) = namespace.into_inner();
     let r = ConversionContext::new(names, &namespace);
-    let def = r.convert_namespace(namespace, loc)?;
+    let def = r.convert_namespace(namespace)?;
     Ok((r.current_namespace_name, def))
 }
 
@@ -74,15 +104,14 @@ impl<'a> ConversionContext<'a> {
     }
 
     /// Convert a cst namespace
-    fn convert_namespace(
-        &self,
-        n: Namespace,
-        loc: Loc,
-    ) -> Result<NamespaceDefinition, ToJsonSchemaErrors> {
+    fn convert_namespace(&self, n: Namespace) -> Result<NamespaceDefinition, ToJsonSchemaErrors> {
         // Ensure we aren't using a reserved namespace
-        if n.is_cedar_namespace() {
-            return Err(ToJsonSchemaError::UseReservedNamespace(loc).into());
-        }
+        match n.name.as_ref() {
+            Some(name) if name.node.is_cedar() => {
+                Err(ToJsonSchemaError::UseReservedNamespace(name.loc.clone()))
+            }
+            _ => Ok(()),
+        }?;
 
         // Partition the decls into entities, actions, and common types
         let (entity_types, action, common_types) = into_partition_decls(n.decls);
@@ -173,6 +202,7 @@ impl<'a> ConversionContext<'a> {
         // Split AppDecl's into context/principal/resource decls
         let (decls, loc) = decls.into_inner();
         let (contexts, rest): (Vec<_>, Vec<_>) = decls.into_iter().partition_map(is_context_decl);
+        println!("PRDecls: {:?}", rest);
         let (principals, resources): (Vec<_>, Vec<_>) =
             rest.into_iter().partition_map(partial_pr_decls);
         // Ensure we have at most one context decl, then convert it
@@ -183,12 +213,15 @@ impl<'a> ConversionContext<'a> {
             .map(|attrs| self.convert_attr_decls(attrs))
             .transpose()?
             .unwrap_or_default();
+
+        println!("principals: {:?}", principals);
         // Ensure we have at most one principal decl, then convert it
         let principal_types = principals
             .into_iter()
             .at_most_one()
             .map_err(|e| convert_pr_error(e, PR::Principal, loc.clone()))?;
         // Ensure we have at most one resource decl, then convert it
+        println!("resources : {:?}", resources);
         let resource_types = resources
             .into_iter()
             .at_most_one()
@@ -287,7 +320,7 @@ impl<'a> ConversionContext<'a> {
     fn dereference_name(&self, p: Path) -> Result<SchemaType, ToJsonSchemaError> {
         // First determine what namespace we are searching
         let name = p.clone().to_string().into();
-        let is_unqualified_or_cedar = p.is_unqualified_or_cedar();
+        let is_unqualified_or_cedar = p.is_in_unqualified_or_cedar();
         let loc = p.loc().clone();
         let (prefix, base) = p.split_last();
         let base = base.to_smolstr();
@@ -383,7 +416,7 @@ fn partial_pr_decls(n: PRAppDecl) -> Either<Vec<SmolStr>, Vec<SmolStr>> {
                 .collect();
             match kind.node {
                 PR::Principal => Either::Right(entity_tys),
-                PR::Resource => Either::Right(entity_tys),
+                PR::Resource => Either::Left(entity_tys),
             }
         }
     }
@@ -449,50 +482,67 @@ pub enum SchemaWarning {
 #[derive(Default)]
 struct NamespaceRecord {
     entities: HashMap<SmolStr, Node<()>>,
-    actions: HashMap<SmolStr, Node<()>>,
     common_types: HashMap<SmolStr, Node<()>>,
+    loc: Option<Loc>,
 }
 
 impl NamespaceRecord {
-    fn new(namespace: &Namespace) -> (SmolStr, Self) {
+    fn new(namespace: &Namespace) -> Result<(SmolStr, Self), ToJsonSchemaErrors> {
         let (entities, actions, types) = partition_decls(&namespace.decls);
         let name = namespace
             .name
             .as_ref()
-            .map(Path::to_string)
+            .map(|n| n.node.to_smolstr())
             .unwrap_or_default();
 
-        let entities = entities
-            .into_iter()
-            .flat_map(EntityDecl::names)
-            .map(extract_name)
-            .collect();
-        let actions = actions
-            .into_iter()
-            .flat_map(ActionDecl::names)
-            .map(extract_name)
-            .collect();
-        let common_types = types
-            .into_iter()
-            .flat_map(TypeDecl::names)
-            .map(extract_name)
-            .collect();
+        let entities = collect_decls(
+            entities
+                .into_iter()
+                .flat_map(EntityDecl::names)
+                .map(extract_name),
+        )?;
+        // Ensure no duplicate actions
+        collect_decls(
+            actions
+                .into_iter()
+                .flat_map(ActionDecl::names)
+                .map(extract_name),
+        )?;
+        let common_types = collect_decls(
+            types
+                .into_iter()
+                .flat_map(TypeDecl::names)
+                .map(extract_name),
+        )?;
 
         let record = NamespaceRecord {
             entities,
-            actions,
             common_types,
+            loc: namespace.name.as_ref().map(|n| n.loc.clone()),
         };
 
-        (name.into(), record)
+        Ok((name, record))
     }
+}
 
-    fn merge_in(&mut self, rhs: NamespaceRecord) -> Result<(), ToJsonSchemaErrors> {
-        nonoverlapping_union(&mut self.actions, rhs.actions)?;
-        nonoverlapping_union(&mut self.entities, rhs.entities)?;
-        nonoverlapping_union(&mut self.common_types, rhs.common_types)?;
-        Ok(())
+fn collect_decls(
+    i: impl Iterator<Item = (SmolStr, Node<()>)>,
+) -> Result<HashMap<SmolStr, Node<()>>, ToJsonSchemaErrors> {
+    let mut map: HashMap<SmolStr, Node<()>> = HashMap::new();
+    for (key, node) in i {
+        match map.entry(key.clone()) {
+            Entry::Occupied(entry) => Err(ToJsonSchemaError::DuplicateDeclarations {
+                decl: key,
+                start: entry.get().loc.clone(),
+                end: node.loc,
+            }),
+            Entry::Vacant(entry) => {
+                entry.insert(node);
+                Ok(())
+            }
+        }?;
     }
+    Ok(map)
 }
 
 fn compute_namespace_warnings(
@@ -550,7 +600,7 @@ fn build_namespace_bindings<'a>(
     namespaces: impl Iterator<Item = &'a Namespace>,
 ) -> Result<HashMap<SmolStr, NamespaceRecord>, ToJsonSchemaErrors> {
     let mut map = HashMap::new();
-    for (name, record) in namespaces.map(NamespaceRecord::new) {
+    for (name, record) in collect_all_errors(namespaces.map(NamespaceRecord::new))? {
         update_namespace_record(&mut map, name, record)?;
     }
     Ok(map)
@@ -561,38 +611,17 @@ fn update_namespace_record(
     name: SmolStr,
     record: NamespaceRecord,
 ) -> Result<(), ToJsonSchemaErrors> {
-    match map.entry(name) {
-        Entry::Occupied(mut entry) => entry.get_mut().merge_in(record),
+    match map.entry(name.clone()) {
+        Entry::Occupied(entry) => Err(ToJsonSchemaError::DuplicateNameSpaces {
+            namespace_id: name,
+            start: record.loc,
+            end: entry.get().loc.clone(),
+        }
+        .into()),
         Entry::Vacant(entry) => {
             entry.insert(record);
             Ok(())
         }
-    }
-}
-
-fn nonoverlapping_union(
-    lhs: &mut HashMap<SmolStr, Node<()>>,
-    rhs: HashMap<SmolStr, Node<()>>,
-) -> Result<(), ToJsonSchemaErrors> {
-    let mut errs = vec![];
-    for (key, value) in rhs.into_iter() {
-        match lhs.entry(key) {
-            Entry::Occupied(entry) => {
-                let (k, _) = entry.remove_entry();
-                errs.push(ToJsonSchemaError::DuplicateDeclarations {
-                    decl: k,
-                    start: value.loc.clone(),
-                    end: value.loc,
-                });
-            }
-            Entry::Vacant(entry) => {
-                entry.insert(value);
-            }
-        }
-    }
-    match NonEmpty::collect(errs.into_iter()) {
-        None => Ok(()),
-        Some(errs) => Err(ToJsonSchemaErrors::new(errs)),
     }
 }
 

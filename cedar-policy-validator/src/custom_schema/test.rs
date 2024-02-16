@@ -3,10 +3,7 @@ mod demo_tests {
 
     use smol_str::ToSmolStr;
 
-    use crate::{
-        custom_schema::parser::parse_schema, EntityType, SchemaFragment, SchemaTypeVariant,
-        TypeOfAttribute,
-    };
+    use crate::{EntityType, SchemaFragment, SchemaTypeVariant, TypeOfAttribute};
 
     #[test]
     fn test_github() {
@@ -260,6 +257,85 @@ mod demo_tests {
         assert!(drive.member_of_types.is_empty());
         assert_empty_records(drive);
     }
+
+    #[test]
+    fn simple_action() {
+        let src = r#"
+        entity A;
+        entity B;
+        action Foo appliesTo { principal : A, resource : B  };
+        "#;
+        SchemaFragment::from_str_natural(src).unwrap();
+    }
+
+    #[test]
+    fn tinytodo() {
+        let src = r#"
+        namespace TinyTodo {
+        entity Application {};
+        entity User in [Team, Application] {
+            location : String,
+            joblevel : Long
+        };
+        entity Team in [Team, Application];
+        entity List in [Application] {
+            owner : User,
+            name : String,
+            readers : Team,
+            editors : Team,
+            Tasks : Set<{ name : String, id : Long, state : String }>
+        };
+        
+        action CreateList appliesTo {
+            principal : User,
+            resource : Application
+        };
+
+        action GetList appliesTo {
+            principal : User,
+            resource : Application
+        };
+
+        action UpdateList appliesTo {
+            principal : User,
+            resource : List
+        };
+
+        action DeleteList appliesTo {
+            principal : User,
+            resource : List
+        };
+
+        action GetLists appliesTo {
+            principal : User,
+            resource : Application
+        };
+
+        action CreateTask appliesTo {
+            principal : User,
+            resource : List
+        };
+
+        action UpdateTask appliesTo {
+            principal : User,
+            resource : List
+        };
+
+        action DeleteTask appliesTo {
+            principal : User,
+            resource : List
+        };
+
+        action EditShare appliesTo {
+            principal : User,
+            resource : List
+        };
+    };
+        "#;
+
+        let (schema, warnings) = SchemaFragment::from_str_natural(src).unwrap();
+        assert!(warnings.collect::<Vec<_>>().is_empty());
+    }
 }
 
 #[cfg(test)]
@@ -494,13 +570,7 @@ mod parser_tests {
 mod translator_tests {
     use cedar_policy_core::FromNormalizedStr;
 
-    use crate::{
-        custom_schema::{
-            err::ToJsonSchemaError, parser::parse_schema,
-            to_json_schema::custom_schema_to_json_schema,
-        },
-        SchemaError, SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema,
-    };
+    use crate::{SchemaError, SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema};
 
     #[test]
     fn use_reserved_namespace() {
@@ -545,6 +615,20 @@ mod translator_tests {
             schema.is_err(),
             "duplicate action type names shouldn't be allowed"
         );
+
+        let schema = SchemaFragment::from_str_natural(
+            r#"
+            namespace Foo {
+          action A;
+          action "A";
+            };
+        "#,
+        );
+        assert!(
+            schema.is_err(),
+            "duplicate action type names shouldn't be allowed"
+        );
+
         let schema = SchemaFragment::from_str_natural(
             r#"
           namespace X { action A; }
@@ -568,8 +652,14 @@ mod translator_tests {
         );
         assert!(SchemaFragment::from_str_natural(
             r#"
+          entity A,A {};
+        "#,
+        )
+        .is_err());
+        assert!(SchemaFragment::from_str_natural(
+            r#"
           namespace X { entity A; }
-          entity A, A {};
+          entity A {};
         "#,
         )
         .is_ok());

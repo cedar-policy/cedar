@@ -34,7 +34,7 @@ impl Path {
         ))
     }
 
-    /// Create [`Path`] with a head and an iterator
+    /// Create [`Path`] with a head and an iterator. Most significant name first.
     pub fn new(basename: Id, namespace: impl IntoIterator<Item = Id>, loc: Loc) -> Self {
         let namespace = namespace.into_iter().collect();
         Self(Node::with_source_loc(
@@ -46,7 +46,7 @@ impl Path {
         ))
     }
 
-    /// Borrowed iteration of the [`Path`]'s elements
+    /// Borrowed iteration of the [`Path`]'s elements. Most significant name first
     pub fn iter(&self) -> impl Iterator<Item = &Id> {
         self.0.node.iter()
     }
@@ -56,7 +56,7 @@ impl Path {
         &self.0.loc
     }
 
-    /// Consume the [`Path`] and get an owned iterator over the elements
+    /// Consume the [`Path`] and get an owned iterator over the elements. Most significant name first
     pub fn into_iter(self) -> impl Iterator<Item = Node<Id>> {
         let loc = self.0.loc;
         self.0
@@ -70,8 +70,19 @@ impl Path {
         (self.0.node.namespace, self.0.node.basename)
     }
 
-    pub fn is_unqualified_or_cedar(&self) -> bool {
-        self.0.node.is_unqualified_or_cedar()
+    /// Is this referring to a name _in__ the __cedar namespace: ex: __cedar::Bool or the unqualified namespace
+    pub fn is_in_unqualified_or_cedar(&self) -> bool {
+        self.0.node.is_in_unqualified_or_cedar()
+    }
+
+    /// Is this referring to a name _in__ the __cedar namespace: ex: __cedar::Bool
+    pub fn is_in_cedar(&self) -> bool {
+        self.0.node.is_in_cedar()
+    }
+
+    /// Is this name exactly the cedar namespace?
+    pub fn is_cedar(&self) -> bool {
+        self.0.node.is_cedar()
     }
 }
 
@@ -96,14 +107,23 @@ impl PathInternal {
         self.namespace.into_iter().chain(once(self.basename))
     }
 
-    fn is_unqualified_or_cedar(&self) -> bool {
-        self.namespace.is_empty()
-            || self
-                .namespace
-                .iter()
-                .exactly_one()
-                .map(|id| id.as_ref() == CEDAR_NAMESPACE)
-                .unwrap_or(false)
+    /// Is this referring to a name _in__ the __cedar namespace: ex: __cedar::Bool
+    fn is_in_cedar(&self) -> bool {
+        self.namespace
+            .iter()
+            .exactly_one()
+            .map(|id| id.as_ref() == CEDAR_NAMESPACE)
+            .unwrap_or(false)
+    }
+
+    /// Is this name exactly the cedar namespace?
+    fn is_cedar(&self) -> bool {
+        self.namespace.is_empty() && self.basename.as_ref() == CEDAR_NAMESPACE
+    }
+
+    /// Is this referring to a name _in__ the __cedar namespace: ex: __cedar::Bool or the unqualified namespace
+    fn is_in_unqualified_or_cedar(&self) -> bool {
+        self.namespace.is_empty() || self.is_in_cedar()
     }
 }
 
@@ -143,7 +163,7 @@ impl QualName {
 #[derive(Debug, Clone)]
 pub struct Namespace {
     /// The name of this namespace. If [`None`], then this is the unqualified namespace
-    pub name: Option<Path>,
+    pub name: Option<Node<Path>>,
     /// The [`Declaration`]s contained in this namespace
     pub decls: Vec<Node<Declaration>>,
 }
@@ -154,25 +174,18 @@ impl Namespace {
         self.name.is_none()
     }
 
-    /// Is this [`Namespace`] the builtin `__cedar` namespace?
-    pub fn is_cedar_namespace(&self) -> bool {
-        match &self.name {
-            Some(path) => path.iter().exactly_one().map(is_cedar).unwrap_or(false),
-            None => false,
-        }
-    }
-
     /// Does this [`Namespace`] start with `__`, the reserved pattern
     pub fn is_reserved_namespaces(&self) -> bool {
         self.name
             .as_ref()
-            .and_then(|path| path.iter().next().map(|id| id.as_ref().starts_with("__")))
+            .and_then(|path| {
+                path.node
+                    .iter()
+                    .next()
+                    .map(|id| id.as_ref().starts_with("__"))
+            })
             .unwrap_or(false)
     }
-}
-
-fn is_cedar(id: &Id) -> bool {
-    id.as_ref() == CEDAR_NAMESPACE
 }
 
 pub trait Decl {
@@ -325,5 +338,103 @@ pub struct ActionDecl {
 impl Decl for ActionDecl {
     fn names(&self) -> Vec<Node<SmolStr>> {
         self.names.clone()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::sync::Arc;
+
+    use super::*;
+
+    fn loc() -> Loc {
+        Loc::new((1, 1), Arc::from("foo"))
+    }
+
+    #[test]
+    fn in_unqual() {
+        let p = Path::single("foo".parse().unwrap(), loc());
+        assert!(!p.is_cedar());
+        assert!(!p.is_in_cedar());
+        assert!(p.is_in_unqualified_or_cedar());
+    }
+
+    #[test]
+    fn qual() {
+        let p = Path::new("foo".parse().unwrap(), ["bar".parse().unwrap()], loc());
+        assert!(!p.is_cedar());
+        assert!(!p.is_in_cedar());
+        assert!(!p.is_in_unqualified_or_cedar());
+    }
+
+    #[test]
+    fn in_cedar() {
+        let p = Path::new("foo".parse().unwrap(), ["__cedar".parse().unwrap()], loc());
+        assert!(!p.is_cedar());
+        assert!(p.is_in_cedar());
+        assert!(p.is_in_unqualified_or_cedar());
+    }
+
+    #[test]
+    fn in_cedar2() {
+        let p = Path::new(
+            "foo".parse().unwrap(),
+            ["__cedar".parse().unwrap(), "bar".parse().unwrap()],
+            loc(),
+        );
+        assert!(!p.is_cedar());
+        assert!(p.is_in_cedar());
+        assert!(p.is_in_unqualified_or_cedar());
+    }
+
+    #[test]
+    fn in_cedar3() {
+        let p = Path::new(
+            "foo".parse().unwrap(),
+            ["bar".parse().unwrap(), "__cedar".parse().unwrap()],
+            loc(),
+        );
+        assert!(!p.is_cedar());
+        assert!(!p.is_in_cedar());
+        assert!(!p.is_in_unqualified_or_cedar());
+    }
+
+    #[test]
+    fn is_cedar() {
+        let p = Path::new("__cedar".parse().unwrap(), [], loc());
+        assert!(p.is_cedar());
+        assert!(!p.is_in_cedar());
+        assert!(p.is_in_unqualified_or_cedar());
+    }
+
+    #[test]
+    fn is_cedar2() {
+        let p = Path::new("__cedar".parse().unwrap(), ["foo".parse().unwrap()], loc());
+        assert!(!p.is_cedar());
+        assert!(!p.is_in_cedar());
+        assert!(!p.is_in_unqualified_or_cedar());
+    }
+
+    // Ensure the iterators over [`Path`]s return most significant names first
+    #[test]
+    fn path_iter() {
+        let p = Path::new(
+            "baz".parse().unwrap(),
+            ["foo".parse().unwrap(), "bar".parse().unwrap()],
+            loc(),
+        );
+
+        let expected: Vec<Id> = vec![
+            "foo".parse().unwrap(),
+            "bar".parse().unwrap(),
+            "baz".parse().unwrap(),
+        ];
+
+        let expected_borrowed = expected.iter().collect::<Vec<_>>();
+
+        let borrowed = p.iter().collect::<Vec<_>>();
+        assert_eq!(borrowed, expected_borrowed);
+        let moved = p.into_iter().map(|n| n.node).collect::<Vec<_>>();
+        assert_eq!(moved, expected);
     }
 }

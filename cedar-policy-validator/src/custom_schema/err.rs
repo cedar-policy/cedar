@@ -316,8 +316,8 @@ pub enum ToJsonSchemaError {
     #[error("Duplicate namespace IDs: `{namespace_id}`")]
     DuplicateNameSpaces {
         namespace_id: SmolStr,
-        start: Loc,
-        end: Loc,
+        start: Option<Loc>,
+        end: Option<Loc>,
     },
     /// Invalid type name
     #[error("Unknown type name: `{0:?}`")]
@@ -336,8 +336,8 @@ impl ToJsonSchemaError {
     pub fn duplicate_namespace(namespace_id: SmolStr, start: Loc, end: Loc) -> Self {
         Self::DuplicateNameSpaces {
             namespace_id,
-            start,
-            end,
+            start: Some(start),
+            end: Some(end),
         }
     }
 }
@@ -348,14 +348,18 @@ impl Diagnostic for ToJsonSchemaError {
             ToJsonSchemaError::DuplicateDeclarations { start, end, .. }
             | ToJsonSchemaError::DuplicateContext { start, end }
             | ToJsonSchemaError::DuplicatePR { start, end, .. }
-            | ToJsonSchemaError::DuplicateKeys { start, end, .. }
-            | ToJsonSchemaError::DuplicateNameSpaces { start, end, .. } => Some(Box::new(
+            | ToJsonSchemaError::DuplicateKeys { start, end, .. } => Some(Box::new(
                 vec![
                     LabeledSpan::underline(start.span),
                     LabeledSpan::underline(end.span),
                 ]
                 .into_iter(),
             )),
+            ToJsonSchemaError::DuplicateNameSpaces { start, end, .. } => {
+                Some(Box::new([start, end].into_iter().filter_map(|loc| {
+                    Some(LabeledSpan::underline(loc.as_ref()?.span))
+                })))
+            }
             ToJsonSchemaError::UnknownTypeName(node) => Some(Box::new(std::iter::once(
                 LabeledSpan::underline(node.loc.span),
             ))),
