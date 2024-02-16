@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Display, Write};
 use std::iter;
 use std::ops::{Deref, DerefMut};
@@ -593,10 +593,18 @@ lazy_static! {
         ("CONTEXT", "`context`"),
         ("PRINCIPAL_SLOT", "`?principal`"),
         ("RESOURCE_SLOT", "`?resource`"),
-        ("OTHER_SLOT", "template slot"),
         ("IDENTIFIER", "identifier"),
         ("NUMBER", "number"),
         ("STRINGLIT", "string literal"),
+    ]);
+
+    /// Some tokens defined in our grammar always cause conversion to CST to
+    /// fail, so they can never occur in any policy. E.g., Our grammar defines a
+    /// token for the mod operator `%`, but we reject any CST that uses the
+    /// operator. To reduce confusion we filter these from the list of expected
+    /// tokens in an error message.
+    static ref IMPOSSIBLE_TOKEN_NAMES: HashSet<&'static str> = HashSet::from([
+        "\"=\"", "\"%\"", "\"/\"", "OTHER_SLOT",
     ]);
 }
 
@@ -605,7 +613,11 @@ pub fn expected_to_string(
     expected: &[String],
     token_map: &HashMap<&'static str, &'static str>,
 ) -> Option<String> {
-    if expected.is_empty() {
+    let mut expected = expected
+        .iter()
+        .filter(|e| !IMPOSSIBLE_TOKEN_NAMES.contains(e.as_str()))
+        .peekable();
+    if expected.peek().is_none() {
         return None;
     }
 
