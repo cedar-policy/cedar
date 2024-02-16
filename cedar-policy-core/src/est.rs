@@ -30,7 +30,7 @@ use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// Serde JSON structure for policies and templates in the EST format
 #[serde_as]
@@ -49,9 +49,9 @@ pub struct Policy {
     conditions: Vec<Clause>,
     /// annotations
     #[serde(default)]
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
-    annotations: HashMap<ast::AnyId, SmolStr>,
+    annotations: BTreeMap<ast::AnyId, SmolStr>,
 }
 
 /// Serde JSON structure for a `when` or `unless` clause in the EST format
@@ -110,6 +110,7 @@ impl TryFrom<cst::Policy> for Policy {
         let mut errs = ParseErrors::new();
         let effect = policy.effect.to_effect(&mut errs);
         let (principal, action, resource) = policy.extract_head(&mut errs);
+        let (annot_success, annotations) = policy.get_ast_annotations(&mut errs);
         let conditions = match policy
             .conds
             .into_iter()
@@ -132,33 +133,6 @@ impl TryFrom<cst::Policy> for Policy {
                 None
             }
         };
-        let mut annotations = HashMap::new();
-        let mut annotation_failed = false;
-        for node in policy.annotations.into_iter() {
-            match node.to_kv_pair(&mut errs) {
-                Some((k, v)) => {
-                    use std::collections::hash_map::Entry;
-                    match annotations.entry(k) {
-                        Entry::Occupied(oentry) => {
-                            errs.push(
-                                ToASTError::new(
-                                    ToASTErrorKind::DuplicateAnnotation(oentry.key().clone()),
-                                    node.loc,
-                                )
-                                .into(),
-                            );
-                        }
-                        Entry::Vacant(ventry) => {
-                            ventry.insert(v.val);
-                        }
-                    }
-                }
-                None => {
-                    annotation_failed = true;
-                    // assume that `.to_kv_pair()` already added an error to `errs`
-                }
-            }
-        }
 
         match (
             effect,
@@ -166,7 +140,7 @@ impl TryFrom<cst::Policy> for Policy {
             action,
             resource,
             conditions,
-            annotation_failed,
+            annot_success,
             errs.is_empty(),
         ) {
             (
@@ -175,7 +149,7 @@ impl TryFrom<cst::Policy> for Policy {
                 Some(action),
                 Some(resource),
                 Some(conditions),
-                false,
+                true,
                 true,
             ) => Ok(Policy {
                 effect,
@@ -183,7 +157,7 @@ impl TryFrom<cst::Policy> for Policy {
                 action: action.into(),
                 resource: resource.into(),
                 conditions,
-                annotations,
+                annotations: annotations.into_iter().map(|(k, v)| (k, v.val)).collect(),
             }),
             _ => Err(errs),
         }

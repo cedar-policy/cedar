@@ -225,36 +225,12 @@ impl Node<Option<cst::Policy>> {
         // signaled when the `Node` without data was created
         let policy = self.as_inner()?;
 
-        let mut failure = false;
-
         // convert effect
         let maybe_effect = policy.effect.to_effect(errs);
 
         // convert annotatons
-        let mut annotations = BTreeMap::new();
-        for node in policy.annotations.iter() {
-            match node.to_kv_pair(errs) {
-                Some((k, v)) => {
-                    use std::collections::btree_map::Entry;
-                    match annotations.entry(k) {
-                        Entry::Occupied(oentry) => {
-                            failure = true;
-                            errs.push(ToASTError::new(
-                                ToASTErrorKind::DuplicateAnnotation(oentry.key().clone()),
-                                node.loc.clone(),
-                            ));
-                        }
-                        Entry::Vacant(ventry) => {
-                            ventry.insert(v);
-                        }
-                    }
-                }
-                None => {
-                    failure = true;
-                    // don't need to add anything to `errs` because `.to_kv_pair()` will already have done so
-                }
-            }
-        }
+        let (annot_success, annotations) = policy.get_ast_annotations(errs);
+        let mut failure = !annot_success;
 
         // convert head
         let (maybe_principal, maybe_action, maybe_resource) = policy.extract_head(errs);
@@ -290,7 +266,7 @@ impl Node<Option<cst::Policy>> {
 
         Some(construct_template_policy(
             id,
-            annotations.into(),
+            annotations,
             effect,
             principal,
             action,
@@ -357,6 +333,42 @@ impl cst::Policy {
             }
         }
         (principal, action, resource)
+    }
+
+    /// Get the annotations on the `cst::Policy` as an `ast::Annotations`.
+    /// This returns a `bool` indicating whether conversion was successful for
+    /// all encountered annotations (`true`) or not (`false`), and also the
+    /// `ast::Annotations` object. Note that a partial `ast::Annotations`
+    /// object, containing only the valid annotations, may be returned even in
+    /// failure cases.  In all failure cases, `false` will be returned and
+    /// errors will be added to `errs`.
+    pub fn get_ast_annotations(&self, errs: &mut ParseErrors) -> (bool, ast::Annotations) {
+        let mut failure = false;
+        let mut annotations = BTreeMap::new();
+        for node in self.annotations.iter() {
+            match node.to_kv_pair(errs) {
+                Some((k, v)) => {
+                    use std::collections::btree_map::Entry;
+                    match annotations.entry(k) {
+                        Entry::Occupied(oentry) => {
+                            failure = true;
+                            errs.push(ToASTError::new(
+                                ToASTErrorKind::DuplicateAnnotation(oentry.key().clone()),
+                                node.loc.clone(),
+                            ));
+                        }
+                        Entry::Vacant(ventry) => {
+                            ventry.insert(v);
+                        }
+                    }
+                }
+                None => {
+                    failure = true;
+                    // don't need to add anything to `errs` because `.to_kv_pair()` will already have done so
+                }
+            }
+        }
+        (!failure, annotations.into())
     }
 }
 

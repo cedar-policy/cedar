@@ -975,6 +975,11 @@ impl Annotations {
     pub fn iter(&self) -> impl Iterator<Item = (&AnyId, &Annotation)> {
         self.0.iter()
     }
+
+    /// Consume this `Annotations`, iterating over all the annotations
+    pub fn into_iter(self) -> impl Iterator<Item = (AnyId, Annotation)> {
+        self.0.into_iter()
+    }
 }
 
 impl Default for Annotations {
