@@ -4,7 +4,8 @@ mod demo_tests {
     use smol_str::ToSmolStr;
 
     use crate::{
-        custom_schema::parser::parse_schema, EntityType, SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
+        custom_schema::parser::parse_schema, EntityType, SchemaFragment, SchemaTypeVariant,
+        TypeOfAttribute,
     };
 
     #[test]
@@ -58,15 +59,15 @@ mod demo_tests {
             .expect("No `Repository`");
         assert!(repo.member_of_types.is_empty());
         let groups = ["readers", "writers", "triagers", "admins", "maintainers"];
-<<<<<<< HEAD
-        for _group in groups {}
-=======
         for group in groups {
-            match &repo.shape.0 { 
-                crate::SchemaType::Type(SchemaTypeVariant::Record { 
-                    attributes, additional_attributes : false,
-                }) => { 
-                    let expected = SchemaTypeVariant::Entity { name : "UserGroup".into() };
+            match &repo.shape.0 {
+                crate::SchemaType::Type(SchemaTypeVariant::Record {
+                    attributes,
+                    additional_attributes: false,
+                }) => {
+                    let expected = SchemaTypeVariant::Entity {
+                        name: "UserGroup".into(),
+                    };
                     let attribute = attributes.get(group).expect("No attribute `{group}`");
                     assert_has_type(attribute, expected);
                 }
@@ -76,25 +77,39 @@ mod demo_tests {
         let issue = github.entity_types.get("Issue").expect("No `Issue`");
         assert!(issue.member_of_types.is_empty());
         match &issue.shape.0 {
-            crate::SchemaType::Type(SchemaTypeVariant::Record { 
-                attributes, additional_attributes : false
-            }) => { 
+            crate::SchemaType::Type(SchemaTypeVariant::Record {
+                attributes,
+                additional_attributes: false,
+            }) => {
                 let attribute = attributes.get("repo").expect("No `repo`");
-                assert_has_type(attribute, SchemaTypeVariant::Entity { name : "Repository".into() });
+                assert_has_type(
+                    attribute,
+                    SchemaTypeVariant::Entity {
+                        name: "Repository".into(),
+                    },
+                );
                 let attribute = attributes.get("reporter").expect("No `repo`");
-                assert_has_type(attribute, SchemaTypeVariant::Entity { name : "User".into() });
+                assert_has_type(
+                    attribute,
+                    SchemaTypeVariant::Entity {
+                        name: "User".into(),
+                    },
+                );
             }
             _ => panic!("bad type on `Issue`"),
         }
         let org = github.entity_types.get("Org").expect("No `Org`");
         assert!(org.member_of_types.is_empty());
-        let groups = ["members", "owners", "memberOfTypes" ];
+        let groups = ["members", "owners", "memberOfTypes"];
         for group in groups {
-            match &org.shape.0 { 
-                crate::SchemaType::Type(SchemaTypeVariant::Record { 
-                    attributes, additional_attributes : false,
-                }) => { 
-                    let expected = SchemaTypeVariant::Entity { name : "UserGroup".into() };
+            match &org.shape.0 {
+                crate::SchemaType::Type(SchemaTypeVariant::Record {
+                    attributes,
+                    additional_attributes: false,
+                }) => {
+                    let expected = SchemaTypeVariant::Entity {
+                        name: "UserGroup".into(),
+                    };
                     let attribute = attributes.get(group).expect("No attribute `{group}`");
                     assert_has_type(attribute, expected);
                 }
@@ -103,13 +118,12 @@ mod demo_tests {
         }
     }
 
-    fn assert_has_type(e : &TypeOfAttribute, expected : SchemaTypeVariant) {
+    fn assert_has_type(e: &TypeOfAttribute, expected: SchemaTypeVariant) {
         assert!(e.required, "Attribute was not required");
-        match &e.ty { 
+        match &e.ty {
             crate::SchemaType::Type(t) => assert_eq!(t, &expected),
             _ => panic!("Wrong type"),
         }
->>>>>>> 6bba1881 (WIP)
     }
 
     fn assert_empty_records(etyp: &EntityType) {
@@ -145,60 +159,106 @@ mod demo_tests {
             entity Public in [DocumentShare];
             entity Drive;
         }"#,
-        ).expect("failed to parse");
+        )
+        .expect("failed to parse");
         assert!(warnings.collect::<Vec<_>>().is_empty());
         let doccloud = fragment.0.get("DocCloud").expect("No `DocCloud` namespace");
         let user = doccloud.entity_types.get("User").expect("No `User`");
-        assert_eq!(&user.member_of_types,&vec!["Group".to_smolstr()]);
-        match &user.shape.0 { 
-            crate::SchemaType::Type(SchemaTypeVariant::Record { attributes, additional_attributes : false }) => { 
+        assert_eq!(&user.member_of_types, &vec!["Group".to_smolstr()]);
+        match &user.shape.0 {
+            crate::SchemaType::Type(SchemaTypeVariant::Record {
+                attributes,
+                additional_attributes: false,
+            }) => {
                 assert_has_type(
-                    attributes.get("personalGroup").unwrap(), SchemaTypeVariant::Entity { name : "Group".into() });
+                    attributes.get("personalGroup").unwrap(),
+                    SchemaTypeVariant::Entity {
+                        name: "Group".into(),
+                    },
+                );
                 assert_has_type(
-                    attributes.get("blocked").unwrap(), SchemaTypeVariant::Set { element : Box::new(crate::SchemaType::Type(SchemaTypeVariant::Entity { name : "User".into() })) });
-            }, 
+                    attributes.get("blocked").unwrap(),
+                    SchemaTypeVariant::Set {
+                        element: Box::new(crate::SchemaType::Type(SchemaTypeVariant::Entity {
+                            name: "User".into(),
+                        })),
+                    },
+                );
+            }
             _ => panic!("Wrong type"),
         }
         let group = doccloud.entity_types.get("Group").expect("No `Group`");
-        assert_eq!(&group.member_of_types,&vec!["DocumentShare".to_smolstr()]);
-        match &group.shape.0 { 
-            crate::SchemaType::Type(SchemaTypeVariant::Record { attributes, additional_attributes : false }) => { 
+        assert_eq!(&group.member_of_types, &vec!["DocumentShare".to_smolstr()]);
+        match &group.shape.0 {
+            crate::SchemaType::Type(SchemaTypeVariant::Record {
+                attributes,
+                additional_attributes: false,
+            }) => {
                 assert_has_type(
-                    attributes.get("owner").unwrap(), SchemaTypeVariant::Entity { name : "User".into() });
-            }, 
+                    attributes.get("owner").unwrap(),
+                    SchemaTypeVariant::Entity {
+                        name: "User".into(),
+                    },
+                );
+            }
             _ => panic!("Wrong type"),
         }
         let document = doccloud.entity_types.get("Document").expect("No `Group`");
         assert!(document.member_of_types.is_empty());
-        match &document.shape.0 { 
-            crate::SchemaType::Type(SchemaTypeVariant::Record { attributes, additional_attributes : false }) => { 
+        match &document.shape.0 {
+            crate::SchemaType::Type(SchemaTypeVariant::Record {
+                attributes,
+                additional_attributes: false,
+            }) => {
                 assert_has_type(
-                    attributes.get("owner").unwrap(), SchemaTypeVariant::Entity { name : "User".into() });
+                    attributes.get("owner").unwrap(),
+                    SchemaTypeVariant::Entity {
+                        name: "User".into(),
+                    },
+                );
                 assert_has_type(
-                    attributes.get("isPrivate").unwrap(), SchemaTypeVariant::Boolean);
+                    attributes.get("isPrivate").unwrap(),
+                    SchemaTypeVariant::Boolean,
+                );
                 assert_has_type(
-                    attributes.get("publicAccess").unwrap(), SchemaTypeVariant::String);
+                    attributes.get("publicAccess").unwrap(),
+                    SchemaTypeVariant::String,
+                );
                 assert_has_type(
-                    attributes.get("viewACL").unwrap(), SchemaTypeVariant::Entity { name : "DocumentShare".into() });
+                    attributes.get("viewACL").unwrap(),
+                    SchemaTypeVariant::Entity {
+                        name: "DocumentShare".into(),
+                    },
+                );
                 assert_has_type(
-                    attributes.get("modifyACL").unwrap(), SchemaTypeVariant::Entity { name : "DocumentShare".into() });
+                    attributes.get("modifyACL").unwrap(),
+                    SchemaTypeVariant::Entity {
+                        name: "DocumentShare".into(),
+                    },
+                );
                 assert_has_type(
-                    attributes.get("manageACL").unwrap(), SchemaTypeVariant::Entity { name : "DocumentShare".into() });
-            }, 
+                    attributes.get("manageACL").unwrap(),
+                    SchemaTypeVariant::Entity {
+                        name: "DocumentShare".into(),
+                    },
+                );
+            }
             _ => panic!("Wrong type"),
         }
-        let document_share = doccloud.entity_types.get("DocumentShare").expect("No `DocumentShare`");
+        let document_share = doccloud
+            .entity_types
+            .get("DocumentShare")
+            .expect("No `DocumentShare`");
         assert!(document_share.member_of_types.is_empty());
         assert_empty_records(document_share);
 
         let public = doccloud.entity_types.get("Public").expect("No `Public`");
-        assert_eq!(&public.member_of_types,&vec!["DocumentShare".to_smolstr()]);
+        assert_eq!(&public.member_of_types, &vec!["DocumentShare".to_smolstr()]);
         assert_empty_records(public);
 
         let drive = doccloud.entity_types.get("Drive").expect("No `Drive`");
         assert!(drive.member_of_types.is_empty());
         assert_empty_records(drive);
-
     }
 }
 
@@ -434,26 +494,13 @@ mod parser_tests {
 mod translator_tests {
     use cedar_policy_core::FromNormalizedStr;
 
-<<<<<<< HEAD
-    use crate::{custom_schema::err::ToJsonSchemaError, SchemaError, ValidatorSchema};
-
-    fn custom_schema_str_to_json_schema(
-        _s: &str,
-    ) -> Result<crate::SchemaFragment, ToJsonSchemaError> {
-        todo!()
-        // custom_schema_to_json_schema(parse_schema(s).expect("parse error")).map(|(sf, _)| sf)
-    }
-=======
     use crate::{
-        SchemaFragment,
         custom_schema::{
             err::ToJsonSchemaError, parser::parse_schema,
             to_json_schema::custom_schema_to_json_schema,
         },
-        SchemaError, ValidatorSchema,
+        SchemaError, SchemaFragment, ValidatorSchema,
     };
-
->>>>>>> 6bba1881 (WIP)
 
     #[test]
     fn use_reserved_namespace() {
@@ -462,10 +509,7 @@ mod translator_tests {
           namespace __cedar {}
         "#,
         );
-        assert!(
-            schema.is_err(),
-            "duplicate namespaces shouldn't be allowed"
-        );
+        assert!(schema.is_err(), "duplicate namespaces shouldn't be allowed");
     }
 
     #[test]
@@ -476,10 +520,7 @@ mod translator_tests {
           namespace A {}
         "#,
         );
-        assert!(
-            schema.is_err(),
-            "duplicate namespaces shouldn't be allowed"
-        );
+        assert!(schema.is_err(), "duplicate namespaces shouldn't be allowed");
     }
 
     #[test]
@@ -530,7 +571,8 @@ mod translator_tests {
           namespace X { entity A; }
           entity A, A {};
         "#,
-        ).is_ok());
+        )
+        .is_ok());
     }
 
     #[test]
@@ -550,7 +592,8 @@ mod translator_tests {
           namespace X { type A = Bool; }
           type A = Long;
         "#,
-        ).is_ok());
+        )
+        .is_ok());
     }
 
     #[test]
@@ -572,10 +615,9 @@ mod translator_tests {
           }
         "#,
         )
-            .expect("should be a valid custom schema");
-        let validator_schema: ValidatorSchema = schema
-            .try_into()
-            .expect("should be a valid schema");
+        .expect("should be a valid custom schema");
+        let validator_schema: ValidatorSchema =
+            schema.try_into().expect("should be a valid schema");
         for (name, ety) in validator_schema.entity_types() {
             match name.to_string().as_ref() {
                 "Demo::Host" => {
@@ -628,10 +670,10 @@ mod translator_tests {
                 entity Y;
             }
             "#,
-        ).unwrap();
-        let validator_schema: ValidatorSchema = schema
-            .try_into()
-            .expect("should be a valid schema");
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema =
+            schema.try_into().expect("should be a valid schema");
         for (name, et) in validator_schema.entity_types() {
             if name.to_string() == "A::C" || name.to_string() == "X::Y" {
                 assert!(et
@@ -666,9 +708,9 @@ mod translator_tests {
             };
             type id = String;
           }"#,
-        ).unwrap();
-        let validator_schema: Result<ValidatorSchema, _> =
-            schema.try_into();
+        )
+        .unwrap();
+        let validator_schema: Result<ValidatorSchema, _> = schema.try_into();
         assert!(validator_schema.is_err());
     }
 
@@ -686,10 +728,10 @@ mod translator_tests {
                 entity Y;
             }
             "#,
-        ).unwrap();
-        let validator_schema: ValidatorSchema = schema
-            .try_into()
-            .expect("should be a valid schema");
+        )
+        .unwrap();
+        let validator_schema: ValidatorSchema =
+            schema.try_into().expect("should be a valid schema");
         let et = validator_schema
             .get_entity_type(&cedar_policy_core::ast::Name::from_normalized_str("A::B").unwrap())
             .unwrap();
@@ -710,9 +752,9 @@ mod translator_tests {
                 entity Y;
             }
             "#,
-        ).unwrap();
-        let validator_schema: Result<ValidatorSchema, _> =
-            schema.try_into();
+        )
+        .unwrap();
+        let validator_schema: Result<ValidatorSchema, _> = schema.try_into();
         assert!(
             validator_schema.is_err()
                 && matches!(
