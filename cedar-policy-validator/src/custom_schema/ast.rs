@@ -175,7 +175,7 @@ impl Namespace {
     }
 
     /// Does this [`Namespace`] start with `__`, the reserved pattern
-    pub fn is_reserved_namespaces(&self) -> bool {
+    pub fn is_reserved_namespace(&self) -> bool {
         self.name
             .as_ref()
             .and_then(|path| {
