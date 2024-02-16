@@ -193,6 +193,11 @@ pub fn parse_policies_from_test(test: &JsonTest) -> PolicySet {
     policies
 }
 
+/// Same as `parse_policies_from_test`, but returns `cedar_policy_core::ast::PolicySet`
+pub fn parse_policies_from_test_internal(test: &JsonTest) -> cedar_policy_core::ast::PolicySet {
+    parse_policies_from_test(test).ast
+}
+
 /// Given a `JsonTest`, parse the provided schema file.
 /// # Panics
 /// On failure to load or parse schema file.
@@ -204,6 +209,11 @@ pub fn parse_schema_from_test(test: &JsonTest) -> Schema {
         .unwrap_or_else(|e| panic!("error loading schema file {}: {e}", &test.schema));
     Schema::from_str(&schema_text)
         .unwrap_or_else(|e| panic!("error parsing schema in {}: {e}", &test.schema))
+}
+
+/// Same as `parse_schema_from_test`, but returns `cedar_policy_validator::ValidatorSchema`
+pub fn parse_schema_from_test_internal(test: &JsonTest) -> cedar_policy_validator::ValidatorSchema {
+    parse_schema_from_test(test).0
 }
 
 /// Given a `JsonTest`, parse (and validate) the provided entities file.
@@ -220,6 +230,14 @@ pub fn parse_entities_from_test(test: &JsonTest, schema: &Schema) -> Entities {
     let entities = Entities::from_json_file(&entities_json, Some(schema))
         .unwrap_or_else(|e| panic!("error parsing entities in {}: {e}", &test.entities));
     entities
+}
+
+/// Same as `parse_entities_from_test`, but returns `cedar_policy_core::entities::Entities`
+pub fn parse_entities_from_test_internal(
+    test: &JsonTest,
+    schema: &Schema,
+) -> cedar_policy_core::entities::Entities {
+    parse_entities_from_test(test, schema).0
 }
 
 /// Given a `JsonRequest`, parse (and optionally validate) the provided request.
@@ -282,6 +300,15 @@ pub fn parse_request_from_test(
         )
     });
     request
+}
+
+/// Same as `parse_request_from_test`, but returns `cedar_policy_core::ast::Request`
+pub fn parse_request_from_test_internal(
+    request: &JsonRequest,
+    schema: &Schema,
+    test_name: &str,
+) -> cedar_policy_core::ast::Request {
+    parse_request_from_test(request, schema, test_name).0
 }
 
 /// Given the filename of a JSON file describing an integration test, perform
