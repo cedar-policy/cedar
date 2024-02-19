@@ -468,7 +468,7 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
     let mode = if args.partial_validate {
         #[cfg(not(feature = "partial-validate"))]
         {
-            println!("Error: arguments include the experimental option `--partial-validate`, but this executable was not built with `partial-validate` experimental feature enabled");
+            eprintln!("Error: arguments include the experimental option `--partial-validate`, but this executable was not built with `partial-validate` experimental feature enabled");
             return CedarExitCode::Failure;
         }
         #[cfg(feature = "partial-validate")]

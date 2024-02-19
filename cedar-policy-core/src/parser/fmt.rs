@@ -224,6 +224,7 @@ impl fmt::Display for RelOp {
             RelOp::NotEq => write!(f, "!="),
             RelOp::Eq => write!(f, "=="),
             RelOp::In => write!(f, "in"),
+            RelOp::InvalidSingleEq => write!(f, "="),
         }
     }
 }
