@@ -152,7 +152,7 @@ pub struct ValidateArgs {
     /// experimental `partial-validate` feature enabled.
     #[arg(long = "partial-validate")]
     pub partial_validate: bool,
-    /// Schema format (Human-readable or yes)
+    /// Schema format (Human-readable or json)
     #[arg(long, value_enum, default_value_t = SchemaFormat::Json)]
     pub schema_format: SchemaFormat,
 }
