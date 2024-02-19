@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::{self, Display, Write};
 use std::iter;
 use std::ops::{Deref, DerefMut};
@@ -606,7 +606,31 @@ lazy_static! {
     static ref IMPOSSIBLE_TOKEN_NAMES: HashSet<&'static str> = HashSet::from([
         "\"=\"", "\"%\"", "\"/\"", "OTHER_SLOT",
     ]);
+
+    /// Tokens for (most of) our identifiers. Used to remove these from the
+    /// expected tokens list when they're not useful.
+    static ref IDENTIFIER_TOKEN_NAMES: HashSet<&'static str> = HashSet::from([
+        "PERMIT", "FORBID", "WHEN", "UNLESS", "IN", "HAS", "LIKE", "IS", "THEN",
+        "ELSE", "PRINCIPAL", "ACTION", "RESOURCE", "CONTEXT",
+    ]);
+
+    /// Tokens for the remaining identifiers. These will be parsed as something
+    /// other than an identifier when they occur at the start of an expression,
+    /// so we want to keep these in the error message if the parser was looking
+    /// for the first token of an expression.
+    static ref EXPR_FIRST_SET_IDENTIFIER_TOKEN_NAMES: HashSet<&'static str> =
+    HashSet::from([
+        "TRUE", "FALSE", "IF",
+    ]);
 }
+
+// If this token is expected, then the parser expected a generic identifier, so
+// we omit the specific identifiers favor of saying we expect an "identifier".
+static IDENTIFIER_SENTINEL: &'static str = "IDENTIFIER";
+
+// If this token is expected, then the parser was looking to start parsing an
+// expression.
+static EXPR_FIRST_SET_SENTINEL: &'static str = "\"!\"";
 
 /// Format lalrpop expected error messages
 pub fn expected_to_string(
@@ -616,8 +640,19 @@ pub fn expected_to_string(
     let mut expected = expected
         .iter()
         .filter(|e| !IMPOSSIBLE_TOKEN_NAMES.contains(e.as_str()))
-        .peekable();
-    if expected.peek().is_none() {
+        .map(|e| e.as_str())
+        .collect::<BTreeSet<_>>();
+    if expected.contains(IDENTIFIER_SENTINEL) {
+        for token in IDENTIFIER_TOKEN_NAMES.iter() {
+            expected.remove(*token);
+        }
+        if !expected.contains(EXPR_FIRST_SET_SENTINEL) {
+            for token in EXPR_FIRST_SET_IDENTIFIER_TOKEN_NAMES.iter() {
+                expected.remove(*token);
+            }
+        }
+    }
+    if expected.is_empty() {
         return None;
     }
 
@@ -628,7 +663,7 @@ pub fn expected_to_string(
         &mut expected_string,
         "or",
         expected,
-        |f, token| match token_map.get(token.as_str()) {
+        |f, token| match token_map.get(token) {
             Some(friendly_token_name) => write!(f, "{}", friendly_token_name),
             None => write!(f, "{}", token.replace('"', "`")),
         },
