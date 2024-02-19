@@ -213,7 +213,7 @@ STR: Node<SmolStr> = {
 
 // Name := IDENT | STR
 Name: Node<SmolStr> = {
-   <id: Ident> => id.map(Id::to_smolstr),
+   <id: Ident> => id.map(|id| id.to_smolstr()),
    <s: STR> => s,
 }
 
