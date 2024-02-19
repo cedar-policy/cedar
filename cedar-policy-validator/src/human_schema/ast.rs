@@ -7,6 +7,9 @@ use cedar_policy_core::{
 use itertools::Itertools;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
+// We don't need this import on macOS but CI fails without it
+#[allow(unused_imports)]
+use smol_str::ToSmolStr;
 
 use crate::SchemaTypeVariant;
 
