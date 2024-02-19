@@ -2,11 +2,9 @@ use std::{collections::HashMap, iter::once};
 
 use cedar_policy_core::parser::{Loc, Node};
 use itertools::{Either, ExactlyOneError, Itertools};
-use miette::Diagnostic;
 use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::hash_map::Entry;
-use thiserror::Error;
 
 use crate::{
     human_schema::ast::Path, ActionEntityUID, ActionType, ApplySpec, AttributesOrContext,
@@ -19,7 +17,7 @@ use super::{
         ActionDecl, AppDecl, AttrDecl, Decl, Declaration, EntityDecl, Namespace, PRAppDecl,
         QualName, Schema, Type, TypeDecl, BUILTIN_TYPES, CEDAR_NAMESPACE, EXTENSIONS, PR,
     },
-    err::{ToJsonSchemaError, ToJsonSchemaErrors},
+    err::{SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors},
 };
 
 /// Convert a custom schema AST into the JSON representation
@@ -454,20 +452,6 @@ fn search_cedar_namespace(name: SmolStr, loc: Loc) -> Result<SchemaType, ToJsonS
             name, loc,
         ))),
     }
-}
-
-#[derive(Debug, Clone, Error, Diagnostic)]
-pub enum SchemaWarning {
-    #[error("The name `{name}` shadows a builtin Cedar name. You'll have to refer to the builtin as `__cedar::{name}`.")]
-    ShadowsBuiltin { name: SmolStr, loc: Loc },
-    #[error("The common type name {name} shadows an entity name")]
-    ShadowsEntity {
-        name: SmolStr,
-        entity_loc: Loc,
-        common_loc: Loc,
-    },
-    #[error("The namespace {name} uses a name that will be reserved in the future. All namespaces beginning with `__` will be reserved in a future version.")]
-    UsesBuiltinNamespace { name: SmolStr, loc: Loc },
 }
 
 #[derive(Default)]

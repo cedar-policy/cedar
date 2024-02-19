@@ -40,7 +40,7 @@ use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 pub use cedar_policy_core::parser::err::ParseErrors;
 use cedar_policy_core::FromNormalizedStr;
-pub use cedar_policy_validator::human_schema::to_json_schema::SchemaWarning;
+pub use cedar_policy_validator::human_schema::SchemaWarning;
 use cedar_policy_validator::RequestValidationError; // this type is unsuitable for `pub use` because it contains internal types like `EntityUID` and `EntityType`
 pub use cedar_policy_validator::{
     TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
@@ -1063,7 +1063,7 @@ impl SchemaFragment {
     /// Parse a [`SchemaFragment`] from a reader containing the natural schema syntax
     pub fn from_file_natural(
         r: impl std::io::Read,
-    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), SchemaError> {
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
         let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_file_natural(r)?;
         Ok((
             Self {
@@ -1077,7 +1077,7 @@ impl SchemaFragment {
     /// Parse a [`SchemaFragment`] from a string containing the natural schema syntax
     pub fn from_str_natural(
         src: &str,
-    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), SchemaError> {
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
         let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_str_natural(src)?;
         Ok((
             Self {
@@ -1110,7 +1110,7 @@ impl SchemaFragment {
     }
 
     /// Serialize this [`SchemaFragment`] into the natural syntax
-    pub fn as_natural(&self) -> Result<String, SchemaError> {
+    pub fn as_natural(&self) -> Result<String, ToHumanSyntaxError> {
         let str = self.lossless.as_natural_schema()?;
         Ok(str)
     }
@@ -1202,7 +1202,7 @@ impl Schema {
     /// Parse the schema from a reader
     pub fn from_file_natural(
         file: impl std::io::Read,
-    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), SchemaError> {
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
         let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_file_natural(
             file,
             Extensions::all_available(),
@@ -1213,7 +1213,7 @@ impl Schema {
     /// Parse the schema from a string
     pub fn from_str_natural(
         src: &str,
-    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), SchemaError> {
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
         let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_str_natural(
             src,
             Extensions::all_available(),
@@ -1314,44 +1314,57 @@ pub enum SchemaError {
     /// Support for this escape form has been dropped.
     #[error("schema contained the non-supported `__expr` escape")]
     ExprEscapeUsed,
-    /// Errors parsing the natural schema syntax.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    NaturalSyntaxError(#[from] NaturalSyntaxError),
-    /// IO errors when calling `from_reader`
-    #[error(transparent)]
-    IOError(#[from] std::io::Error),
-    /// Error converting a schema into natural syntax
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ToNaturalSyntax(#[from] ToNaturalSyntaxError),
 }
 
 /// Errors serializing Schemas to the natural syntax
 #[derive(Debug, Error, Diagnostic)]
-pub enum ToNaturalSyntaxError {
+pub enum ToHumanSyntaxError {
     /// Duplicate names were found in the schema
     #[error("There are type name collisions: [{}]", .0.iter().join(", "))]
     NameCollisions(NonEmpty<SmolStr>),
 }
 
-impl From<cedar_policy_validator::human_schema::ToCustomSchemaStrError> for ToNaturalSyntaxError {
-    fn from(value: cedar_policy_validator::human_schema::ToCustomSchemaStrError) -> Self {
+impl From<cedar_policy_validator::human_schema::ToHumanSchemaStrError> for ToHumanSyntaxError {
+    fn from(value: cedar_policy_validator::human_schema::ToHumanSchemaStrError) -> Self {
         match value {
-            cedar_policy_validator::human_schema::ToCustomSchemaStrError::NameCollisions(
+            cedar_policy_validator::human_schema::ToHumanSchemaStrError::NameCollisions(
                 collisions,
             ) => Self::NameCollisions(collisions),
         }
     }
 }
 
-/// Errors when parsing natural schema syntax
+/// Errors when parsing schemas
 #[derive(Debug, Diagnostic, Error)]
-pub enum NaturalSyntaxError {
+pub enum HumanSchemaError {
     /// Error parsing a schema in natural syntax
     #[error("Error parsing schema: {0}")]
     #[diagnostic(transparent)]
-    ParseError(#[from] cedar_policy_validator::human_schema::parser::NaturalSyntaxParseErrors),
+    ParseError(#[from] cedar_policy_validator::human_schema::parser::HumanSyntaxParseErrors),
+    /// Errors combining fragments into full schemas
+    #[error("{0}")]
+    #[diagnostic(transparent)]
+    Core(#[from] SchemaError),
+    /// IO errors while parsing
+    #[error("{0}")]
+    Io(#[from] std::io::Error),
+}
+
+#[doc(hidden)]
+impl From<cedar_policy_validator::HumanSchemaError> for HumanSchemaError {
+    fn from(value: cedar_policy_validator::HumanSchemaError) -> Self {
+        match value {
+            cedar_policy_validator::HumanSchemaError::Core(core) => Self::Core(core.into()),
+            cedar_policy_validator::HumanSchemaError::IO(io_err) => Self::Io(io_err),
+            cedar_policy_validator::HumanSchemaError::Parsing(e) => Self::ParseError(e),
+        }
+    }
+}
+
+impl From<cedar_policy_validator::SchemaError> for HumanSchemaError {
+    fn from(value: cedar_policy_validator::SchemaError) -> Self {
+        Self::Core(value.into())
+    }
 }
 
 /// Error when evaluating an entity attribute
@@ -1466,13 +1479,6 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
                 Self::ActionAttrEval(err.into())
             }
             cedar_policy_validator::SchemaError::ExprEscapeUsed => Self::ExprEscapeUsed,
-            cedar_policy_validator::SchemaError::NaturalSyntaxError(err) => {
-                Self::NaturalSyntaxError(err.into())
-            }
-            cedar_policy_validator::SchemaError::IOError(err) => Self::IOError(err),
-            cedar_policy_validator::SchemaError::ToNaturalSyntaxError(err) => {
-                Self::ToNaturalSyntax(err.into())
-            }
         }
     }
 }

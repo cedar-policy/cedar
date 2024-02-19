@@ -103,8 +103,6 @@ pub enum Commands {
 #[derive(Args, Debug)]
 pub struct TranslateSchemaArgs {
     /// The direction of translation,
-    ///   JSON -> Human
-    ///   Human -> JSON
     #[arg(long)]
     pub direction: TranslationDirection,
     /// Filename to read the schema from.

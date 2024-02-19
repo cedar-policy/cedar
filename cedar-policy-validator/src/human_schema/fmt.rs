@@ -163,14 +163,14 @@ impl Display for ActionType {
 }
 
 #[derive(Debug, Diagnostic, Error)]
-pub enum ToCustomSchemaStrError {
+pub enum ToHumanSchemaStrError {
     #[error("There exist type name collisions: {:?}", .0)]
     NameCollisions(NonEmpty<SmolStr>),
 }
 
 pub fn json_schema_to_custom_schema_str(
     json_schema: &SchemaFragment,
-) -> Result<String, ToCustomSchemaStrError> {
+) -> Result<String, ToHumanSchemaStrError> {
     let mut name_collisions: Vec<SmolStr> = Vec::new();
     for (name, ns) in json_schema.0.iter().filter(|(name, _)| !name.is_empty()) {
         let entity_types: HashSet<SmolStr> = ns
@@ -186,7 +186,7 @@ pub fn json_schema_to_custom_schema_str(
         name_collisions.extend(entity_types.intersection(&common_types).cloned());
     }
     if let Some((head, tail)) = name_collisions.split_first() {
-        return Err(ToCustomSchemaStrError::NameCollisions(NonEmpty {
+        return Err(ToHumanSchemaStrError::NameCollisions(NonEmpty {
             head: head.clone(),
             tail: tail.to_vec(),
         }));

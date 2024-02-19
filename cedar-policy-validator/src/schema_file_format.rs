@@ -24,8 +24,10 @@ use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::{
-    human_schema::{self, parser::parse_natural_schema_fragment, to_json_schema::SchemaWarning},
-    Result,
+    human_schema::{
+        self, parser::parse_natural_schema_fragment, SchemaWarning, ToHumanSchemaStrError,
+    },
+    HumanSchemaError, Result,
 };
 
 /// A SchemaFragment describe the types for a given instance of Cedar.
@@ -53,7 +55,9 @@ impl SchemaFragment {
     }
 
     /// Parse the schema (in natural schema syntax) from a string
-    pub fn from_str_natural(src: &str) -> Result<(Self, impl Iterator<Item = SchemaWarning>)> {
+    pub fn from_str_natural(
+        src: &str,
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
         let tup = parse_natural_schema_fragment(src)?;
         Ok(tup)
     }
@@ -61,14 +65,14 @@ impl SchemaFragment {
     /// Parse the schema (in natural schema syntax) from a reader
     pub fn from_file_natural(
         mut file: impl std::io::Read,
-    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>)> {
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
         let mut src = String::new();
         file.read_to_string(&mut src)?;
         Self::from_str_natural(&src)
     }
 
     /// Pretty print this [`SchemaFragment`]
-    pub fn as_natural_schema(&self) -> Result<String> {
+    pub fn as_natural_schema(&self) -> std::result::Result<String, ToHumanSchemaStrError> {
         let src = human_schema::json_schema_to_custom_schema_str(self)?;
         Ok(src)
     }

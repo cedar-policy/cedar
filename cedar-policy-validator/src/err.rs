@@ -25,7 +25,18 @@ use itertools::Itertools;
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::human_schema::{self, parser::NaturalSyntaxParseErrors};
+use crate::human_schema::parser::HumanSyntaxParseErrors;
+
+#[derive(Debug, Error, Diagnostic)]
+pub enum HumanSchemaError {
+    #[error("{0}")]
+    #[diagnostic(transparent)]
+    Core(#[from] SchemaError),
+    #[error("{0}")]
+    IO(#[from] std::io::Error),
+    #[error("{0}")]
+    Parsing(#[from] HumanSyntaxParseErrors),
+}
 
 #[derive(Debug, Diagnostic, Error)]
 pub enum SchemaError {
@@ -130,14 +141,6 @@ pub enum SchemaError {
     #[error("the `__expr` escape is no longer supported")]
     #[diagnostic(help("to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly"))]
     ExprEscapeUsed,
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    NaturalSyntaxError(#[from] NaturalSyntaxParseErrors),
-    #[error(transparent)]
-    IOError(#[from] std::io::Error),
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ToNaturalSyntaxError(#[from] human_schema::ToCustomSchemaStrError),
 }
 
 impl From<transitive_closure::TcError<EntityUID>> for SchemaError {

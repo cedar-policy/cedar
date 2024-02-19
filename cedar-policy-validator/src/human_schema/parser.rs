@@ -24,8 +24,7 @@ use crate::human_schema::to_json_schema::custom_schema_to_json_schema;
 
 use super::{
     ast::Schema,
-    err::{self, ParseError, ParseErrors, ToJsonSchemaErrors},
-    to_json_schema::SchemaWarning,
+    err::{self, ParseError, ParseErrors, SchemaWarning, ToJsonSchemaErrors},
 };
 
 lalrpop_mod!(
@@ -81,7 +80,7 @@ lazy_static::lazy_static! {
 }
 
 #[derive(Debug, Diagnostic, Error)]
-pub enum NaturalSyntaxParseErrors {
+pub enum HumanSyntaxParseErrors {
     #[error(transparent)]
     #[diagnostic(transparent)]
     NaturalSyntaxError(#[from] err::ParseErrors),
@@ -92,8 +91,7 @@ pub enum NaturalSyntaxParseErrors {
 
 pub fn parse_natural_schema_fragment(
     src: &str,
-) -> Result<(crate::SchemaFragment, impl Iterator<Item = SchemaWarning>), NaturalSyntaxParseErrors>
-{
+) -> Result<(crate::SchemaFragment, impl Iterator<Item = SchemaWarning>), HumanSyntaxParseErrors> {
     let ast: Schema = parse_collect_errors(&*POLICIES_PARSER, grammar::SchemaParser::parse, src)?;
     let tuple = custom_schema_to_json_schema(ast)?;
     Ok(tuple)

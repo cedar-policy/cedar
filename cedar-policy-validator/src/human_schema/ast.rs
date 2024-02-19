@@ -174,19 +174,6 @@ impl Namespace {
     pub fn is_unqualified(&self) -> bool {
         self.name.is_none()
     }
-
-    /// Does this [`Namespace`] start with `__`, the reserved pattern
-    pub fn is_reserved_namespace(&self) -> bool {
-        self.name
-            .as_ref()
-            .and_then(|path| {
-                path.node
-                    .iter()
-                    .next()
-                    .map(|id| id.as_ref().starts_with("__"))
-            })
-            .unwrap_or(false)
-    }
 }
 
 pub trait Decl {
