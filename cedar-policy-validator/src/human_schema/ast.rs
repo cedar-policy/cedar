@@ -7,6 +7,7 @@ use cedar_policy_core::{
 use itertools::Itertools;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
+use smol_str::ToSmolStr;
 
 use crate::SchemaTypeVariant;
 
