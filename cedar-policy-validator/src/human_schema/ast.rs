@@ -70,7 +70,7 @@ impl Path {
         (self.0.node.namespace, self.0.node.basename)
     }
 
-    /// Is this referring to a name _in__ the __cedar namespace: ex: __cedar::Bool or the unqualified namespace
+    /// Is this referring to a name in the `__cedar` namespace (eg: `__cedar::Bool`) or the unqualified namespace
     pub fn is_in_unqualified_or_cedar(&self) -> bool {
         self.0.node.is_in_unqualified_or_cedar()
     }
