@@ -25,6 +25,19 @@ use itertools::Itertools;
 use miette::Diagnostic;
 use thiserror::Error;
 
+use crate::human_schema::parser::HumanSyntaxParseErrors;
+
+#[derive(Debug, Error, Diagnostic)]
+pub enum HumanSchemaError {
+    #[error("{0}")]
+    #[diagnostic(transparent)]
+    Core(#[from] SchemaError),
+    #[error("{0}")]
+    IO(#[from] std::io::Error),
+    #[error("{0}")]
+    Parsing(#[from] HumanSyntaxParseErrors),
+}
+
 #[derive(Debug, Diagnostic, Error)]
 pub enum SchemaError {
     /// Error thrown by the `serde_json` crate during deserialization

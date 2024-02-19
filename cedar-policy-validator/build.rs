@@ -14,26 +14,15 @@
  * limitations under the License.
  */
 
-use super::token::WrappedToken;
-
-/// Configuraton struct that specifies line width and indentation width
-#[derive(Debug, Clone)]
-pub struct Config {
-    pub line_width: usize,
-    pub indent_width: isize,
+fn main() {
+    generate_parsers();
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            line_width: 80,
-            indent_width: 2,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct Context<'a> {
-    pub config: &'a Config,
-    pub tokens: Vec<WrappedToken>,
+/// Reads parser grammar files (.lalrpop) and generates Rust modules
+fn generate_parsers() {
+    // PANIC SAFETY: panicking inside our build script on a build dependency error is acceptable
+    #[allow(clippy::expect_used)]
+    lalrpop::Configuration::new()
+        .process_dir("src/human_schema/")
+        .expect("parser synth");
 }

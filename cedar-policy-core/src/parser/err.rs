@@ -555,12 +555,14 @@ impl Diagnostic for ToCSTError {
         let primary_source_span = self.primary_source_span();
         let labeled_span = match &self.err {
             OwnedRawParseError::InvalidToken { .. } => LabeledSpan::underline(primary_source_span),
-            OwnedRawParseError::UnrecognizedEof { expected, .. } => {
-                LabeledSpan::new_with_span(expected_to_string(expected), primary_source_span)
-            }
-            OwnedRawParseError::UnrecognizedToken { expected, .. } => {
-                LabeledSpan::new_with_span(expected_to_string(expected), primary_source_span)
-            }
+            OwnedRawParseError::UnrecognizedEof { expected, .. } => LabeledSpan::new_with_span(
+                expected_to_string(expected, &FRIENDLY_TOKEN_NAMES),
+                primary_source_span,
+            ),
+            OwnedRawParseError::UnrecognizedToken { expected, .. } => LabeledSpan::new_with_span(
+                expected_to_string(expected, &FRIENDLY_TOKEN_NAMES),
+                primary_source_span,
+            ),
             OwnedRawParseError::ExtraToken { .. } => LabeledSpan::underline(primary_source_span),
             OwnedRawParseError::User { .. } => LabeledSpan::underline(primary_source_span),
         };
@@ -598,7 +600,11 @@ lazy_static! {
     ]);
 }
 
-fn expected_to_string(expected: &[String]) -> Option<String> {
+/// Format lalrpop expected error messages
+pub fn expected_to_string(
+    expected: &[String],
+    token_map: &HashMap<&'static str, &'static str>,
+) -> Option<String> {
     if expected.is_empty() {
         return None;
     }
@@ -606,12 +612,15 @@ fn expected_to_string(expected: &[String]) -> Option<String> {
     let mut expected_string = "expected ".to_owned();
     // PANIC SAFETY Shouldn't be `Err` since we're writing strings to a string
     #[allow(clippy::expect_used)]
-    join_with_conjunction(&mut expected_string, "or", expected, |f, token| {
-        match FRIENDLY_TOKEN_NAMES.get(token.as_str()) {
+    join_with_conjunction(
+        &mut expected_string,
+        "or",
+        expected,
+        |f, token| match token_map.get(token.as_str()) {
             Some(friendly_token_name) => write!(f, "{}", friendly_token_name),
             None => write!(f, "{}", token.replace('"', "`")),
-        }
-    })
+        },
+    )
     .expect("failed to format expected tokens");
     Some(expected_string)
 }

@@ -2570,6 +2570,8 @@ fn construct_expr_record(
 
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,3 +1,6 @@
+// PANIC SAFETY: testing code
+#![allow(clippy::panic)]
+
 pub struct ExpectedErrorMessage<'a> {
     /// Expected contents of `Display`, or expected prefix of `Display` if `prefix` is `true`
     error: &'a str,

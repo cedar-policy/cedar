@@ -339,7 +339,7 @@ pub fn perform_integration_test_from_json_custom(
     let entities = parse_entities_from_test(&test, &schema);
 
     let validation_result = if let Some(custom_impl) = custom_impl_opt {
-        custom_impl.validate(schema.clone().0, &policies.ast)
+        custom_impl.validate(schema.0.clone(), &policies.ast)
     } else {
         let validator = Validator::new(schema.clone());
         let api_result = validator.validate(&policies, ValidationMode::default());

@@ -39,12 +39,14 @@ use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 pub use cedar_policy_core::parser::err::ParseErrors;
 use cedar_policy_core::FromNormalizedStr;
+pub use cedar_policy_validator::human_schema::SchemaWarning;
 use cedar_policy_validator::RequestValidationError; // this type is unsuitable for `pub use` because it contains internal types like `EntityUID` and `EntityType`
 pub use cedar_policy_validator::{
     TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
 };
 use itertools::Itertools;
 use miette::Diagnostic;
+use nonempty::NonEmpty;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -1163,14 +1165,17 @@ impl Validator {
 /// Contains all the type information used to construct a `Schema` that can be
 /// used to validate a policy.
 #[derive(Debug)]
-pub struct SchemaFragment(cedar_policy_validator::ValidatorSchemaFragment);
+pub struct SchemaFragment {
+    value: cedar_policy_validator::ValidatorSchemaFragment,
+    lossless: cedar_policy_validator::SchemaFragment,
+}
 
 impl SchemaFragment {
     /// Extract namespaces defined in this `SchemaFragment`. Each namespace
     /// entry defines the name of the namespace and the entity types and actions
     /// that exist in the namespace.
     pub fn namespaces(&self) -> impl Iterator<Item = Option<EntityNamespace>> + '_ {
-        self.0
+        self.value
             .namespaces()
             .map(|ns| ns.as_ref().map(|ns| EntityNamespace(ns.clone())))
     }
@@ -1178,16 +1183,66 @@ impl SchemaFragment {
     /// Create an `SchemaFragment` from a JSON value (which should be an
     /// object of the shape required for Cedar schemas).
     pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
-        Ok(Self(
-            cedar_policy_validator::SchemaFragment::from_json_value(json)?.try_into()?,
+        let lossless = cedar_policy_validator::SchemaFragment::from_json_value(json)?;
+        Ok(Self {
+            value: lossless.clone().try_into()?,
+            lossless,
+        })
+    }
+
+    /// Parse a [`SchemaFragment`] from a reader containing the natural schema syntax
+    pub fn from_file_natural(
+        r: impl std::io::Read,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
+        let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_file_natural(r)?;
+        Ok((
+            Self {
+                value: lossless.clone().try_into()?,
+                lossless,
+            },
+            warnings,
+        ))
+    }
+
+    /// Parse a [`SchemaFragment`] from a string containing the natural schema syntax
+    pub fn from_str_natural(
+        src: &str,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
+        let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_str_natural(src)?;
+        Ok((
+            Self {
+                value: lossless.clone().try_into()?,
+                lossless,
+            },
+            warnings,
         ))
     }
 
     /// Create a `SchemaFragment` directly from a file.
     pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
-        Ok(Self(
-            cedar_policy_validator::SchemaFragment::from_file(file)?.try_into()?,
-        ))
+        let lossless = cedar_policy_validator::SchemaFragment::from_file(file)?;
+        Ok(Self {
+            value: lossless.clone().try_into()?,
+            lossless,
+        })
+    }
+
+    /// Serialize this [`SchemaFragment`] as a json value
+    pub fn to_json_value(self) -> Result<serde_json::Value, SchemaError> {
+        let v = serde_json::to_value(self.lossless)?;
+        Ok(v)
+    }
+
+    /// Serialize this [`SchemaFragment`] as a json value
+    pub fn as_json_string(&self) -> Result<String, SchemaError> {
+        let str = serde_json::to_string(&self.lossless)?;
+        Ok(str)
+    }
+
+    /// Serialize this [`SchemaFragment`] into the natural syntax
+    pub fn as_natural(&self) -> Result<String, ToHumanSyntaxError> {
+        let str = self.lossless.as_natural_schema()?;
+        Ok(str)
     }
 }
 
@@ -1199,7 +1254,7 @@ impl TryInto<Schema> for SchemaFragment {
     /// any undeclared entity types are referenced in the schema fragment.
     fn try_into(self) -> Result<Schema, Self::Error> {
         Ok(Schema(
-            cedar_policy_validator::ValidatorSchema::from_schema_fragments([self.0])?,
+            cedar_policy_validator::ValidatorSchema::from_schema_fragments([self.value])?,
         ))
     }
 }
@@ -1213,11 +1268,11 @@ impl FromStr for SchemaFragment {
     /// to undefined entities) because this is not required until a `Schema` is
     /// constructed.
     fn from_str(src: &str) -> Result<Self, Self::Err> {
-        Ok(Self(
-            serde_json::from_str::<cedar_policy_validator::SchemaFragment>(src)
-                .map_err(cedar_policy_validator::SchemaError::from)?
-                .try_into()?,
-        ))
+        let lossless = serde_json::from_str::<cedar_policy_validator::SchemaFragment>(src)?;
+        Ok(Self {
+            value: lossless.clone().try_into()?,
+            lossless,
+        })
     }
 }
 
@@ -1250,7 +1305,7 @@ impl Schema {
     ) -> Result<Self, SchemaError> {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_schema_fragments(
-                fragments.into_iter().map(|f| f.0),
+                fragments.into_iter().map(|f| f.value),
             )?,
         ))
     }
@@ -1272,6 +1327,28 @@ impl Schema {
             file,
             Extensions::all_available(),
         )?))
+    }
+
+    /// Parse the schema from a reader
+    pub fn from_file_natural(
+        file: impl std::io::Read,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
+        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_file_natural(
+            file,
+            Extensions::all_available(),
+        )?;
+        Ok((Self(schema), warnings))
+    }
+
+    /// Parse the schema from a string
+    pub fn from_str_natural(
+        src: &str,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
+        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_str_natural(
+            src,
+            Extensions::all_available(),
+        )?;
+        Ok((Self(schema), warnings))
     }
 
     /// Extract from the schema an `Entities` containing the action entities
@@ -1367,6 +1444,57 @@ pub enum SchemaError {
     /// Support for this escape form has been dropped.
     #[error("schema contained the non-supported `__expr` escape")]
     ExprEscapeUsed,
+}
+
+/// Errors serializing Schemas to the natural syntax
+#[derive(Debug, Error, Diagnostic)]
+pub enum ToHumanSyntaxError {
+    /// Duplicate names were found in the schema
+    #[error("There are type name collisions: [{}]", .0.iter().join(", "))]
+    NameCollisions(NonEmpty<SmolStr>),
+}
+
+impl From<cedar_policy_validator::human_schema::ToHumanSchemaStrError> for ToHumanSyntaxError {
+    fn from(value: cedar_policy_validator::human_schema::ToHumanSchemaStrError) -> Self {
+        match value {
+            cedar_policy_validator::human_schema::ToHumanSchemaStrError::NameCollisions(
+                collisions,
+            ) => Self::NameCollisions(collisions),
+        }
+    }
+}
+
+/// Errors when parsing schemas
+#[derive(Debug, Diagnostic, Error)]
+pub enum HumanSchemaError {
+    /// Error parsing a schema in natural syntax
+    #[error("Error parsing schema: {0}")]
+    #[diagnostic(transparent)]
+    ParseError(#[from] cedar_policy_validator::human_schema::parser::HumanSyntaxParseErrors),
+    /// Errors combining fragments into full schemas
+    #[error("{0}")]
+    #[diagnostic(transparent)]
+    Core(#[from] SchemaError),
+    /// IO errors while parsing
+    #[error("{0}")]
+    Io(#[from] std::io::Error),
+}
+
+#[doc(hidden)]
+impl From<cedar_policy_validator::HumanSchemaError> for HumanSchemaError {
+    fn from(value: cedar_policy_validator::HumanSchemaError) -> Self {
+        match value {
+            cedar_policy_validator::HumanSchemaError::Core(core) => Self::Core(core.into()),
+            cedar_policy_validator::HumanSchemaError::IO(io_err) => Self::Io(io_err),
+            cedar_policy_validator::HumanSchemaError::Parsing(e) => Self::ParseError(e),
+        }
+    }
+}
+
+impl From<cedar_policy_validator::SchemaError> for HumanSchemaError {
+    fn from(value: cedar_policy_validator::SchemaError) -> Self {
+        Self::Core(value.into())
+    }
 }
 
 /// Error when evaluating an entity attribute
