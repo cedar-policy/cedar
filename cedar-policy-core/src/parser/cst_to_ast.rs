@@ -4799,46 +4799,66 @@ mod tests {
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
                 "expected a variable that is valid in the policy scope; found: `foo`",
-                "must be one of `principal`, `action`, or `resource`"
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
             ));
+            expect_source_snippet(p_src, &e, "foo");
         });
         let p_src = "permit(foo::principal, action, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error(
                 "unexpected token `::`",
             ));
+            expect_source_snippet(p_src, &e, "::");
         });
         let p_src = "permit(resource, action, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error("the variable `resource` is invalid in this policy scope clause, the variable `principal` is expected"));
+            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+                "found the variable `resource` where the variable `principal` must be used",
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
+            ));
+            expect_source_snippet(p_src, &e, "resource");
         });
 
         let p_src = "permit(principal, principal, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error("the variable `principal` is invalid in this policy scope clause, the variable `action` is expected"));
+            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+                "found the variable `principal` where the variable `action` must be used",
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
+            ));
+            expect_source_snippet(p_src, &e, "principal");
         });
         let p_src = "permit(principal, if, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
                 "expected a variable that is valid in the policy scope; found: `if`",
-                "must be one of `principal`, `action`, or `resource`"
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
             ));
+            expect_source_snippet(p_src, &e, "if");
         });
 
         let p_src = "permit(principal, action, like);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
                 "expected a variable that is valid in the policy scope; found: `like`",
-                "must be one of `principal`, `action`, or `resource`"
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
             ));
+            expect_source_snippet(p_src, &e, "like");
         });
         let p_src = "permit(principal, action, principal);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error("the variable `principal` is invalid in this policy scope clause, the variable `resource` is expected"));
+            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+                "found the variable `principal` where the variable `resource` must be used",
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
+            ));
+            expect_source_snippet(p_src, &e, "principal");
         });
         let p_src = "permit(principal, action, action);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error("the variable `action` is invalid in this policy scope clause, the variable `resource` is expected"));
+            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+                "found the variable `action` where the variable `resource` must be used",
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
+            ));
+            expect_source_snippet(p_src, &e, "action");
         });
     }
 
