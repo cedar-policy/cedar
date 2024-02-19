@@ -30,11 +30,6 @@ nonempty = "0.9.0"
 # decimal extension requires regex
 regex = { version = "1.8", features = ["unicode"], optional = true }
 
-# wasm dependencies
-serde-wasm-bindgen = { version = "0.4", optional = true }
-tsify = { version = "0.4.5", optional = true }
-wasm-bindgen = { version = "0.2.82", optional = true }
-
 [features]
 # by default, enable all Cedar extensions
 default = ["ipaddr", "decimal"]
@@ -46,7 +41,6 @@ arbitrary = ["dep:arbitrary"]
 
 # Experimental features.
 partial-eval = []
-wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
 [build-dependencies]
 lalrpop = "0.20.0"

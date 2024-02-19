@@ -33,7 +33,7 @@ pub use node::Node;
 /// Step one: Convert text to CST
 pub mod text_to_cst;
 /// Utility functions to unescape string literals
-pub(crate) mod unescape;
+pub mod unescape;
 
 use smol_str::SmolStr;
 use std::collections::HashMap;

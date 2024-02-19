@@ -94,8 +94,44 @@ pub enum Commands {
     Link(LinkArgs),
     /// Format a policy set
     Format(FormatArgs),
+    /// Translate JSON schema to natural schema syntax and vice versa (except comments)
+    TranslateSchema(TranslateSchemaArgs),
     /// Create a Cedar project
     New(NewArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct TranslateSchemaArgs {
+    /// The direction of translation,
+    #[arg(long)]
+    pub direction: TranslationDirection,
+    /// Filename to read the schema from.
+    /// If not provided, will default to reading stdin.
+    #[arg(short, long = "schema", value_name = "FILE")]
+    pub input_file: Option<String>,
+}
+
+/// The direction of translation
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum TranslationDirection {
+    /// JSON -> Human schema syntax
+    JsonToHuman,
+    /// Human schema syntax -> JSON
+    HumanToJson,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum SchemaFormat {
+    /// Human-readable format
+    Human,
+    /// JSON format
+    Json,
+}
+
+impl Default for SchemaFormat {
+    fn default() -> Self {
+        Self::Json
+    }
 }
 
 #[derive(Args, Debug)]
@@ -114,6 +150,9 @@ pub struct ValidateArgs {
     /// experimental `partial-validate` feature enabled.
     #[arg(long = "partial-validate")]
     pub partial_validate: bool,
+    /// Schema format (Human-readable or json)
+    #[arg(long, value_enum, default_value_t = SchemaFormat::Json)]
+    pub schema_format: SchemaFormat,
 }
 
 #[derive(Args, Debug)]
@@ -307,6 +346,9 @@ pub struct AuthorizeArgs {
     /// parsing of entity hierarchy, if present
     #[arg(short, long = "schema", value_name = "FILE")]
     pub schema_file: Option<String>,
+    /// Schema format (Human-readable or JSON)
+    #[arg(long, value_enum, default_value_t = SchemaFormat::Json)]
+    pub schema_format: SchemaFormat,
     /// File containing JSON representation of the Cedar entity hierarchy
     #[arg(long = "entities", value_name = "FILE")]
     pub entities_file: String,
@@ -419,6 +461,9 @@ pub struct EvaluateArgs {
     /// parsing of entity hierarchy, if present
     #[arg(short, long = "schema", value_name = "FILE")]
     pub schema_file: Option<String>,
+    /// Schema format (Human-readable or JSON)
+    #[arg(long, value_enum, default_value_t = SchemaFormat::Json)]
+    pub schema_format: SchemaFormat,
     /// File containing JSON representation of the Cedar entity hierarchy.
     /// This is optional; if not present, we'll just use an empty hierarchy.
     #[arg(long = "entities", value_name = "FILE")]
@@ -468,7 +513,7 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
     let mode = if args.partial_validate {
         #[cfg(not(feature = "partial-validate"))]
         {
-            println!("Error: arguments include the experimental option `--partial-validate`, but this executable was not built with `partial-validate` experimental feature enabled");
+            eprintln!("Error: arguments include the experimental option `--partial-validate`, but this executable was not built with `partial-validate` experimental feature enabled");
             return CedarExitCode::Failure;
         }
         #[cfg(feature = "partial-validate")]
@@ -485,7 +530,7 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
         }
     };
 
-    let schema = match read_schema_file(&args.schema_file) {
+    let schema = match read_schema_file(&args.schema_file, args.schema_format) {
         Ok(schema) => schema,
         Err(e) => {
             println!("{e:?}");
@@ -515,7 +560,11 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
 
 pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
     println!();
-    let schema = match args.schema_file.as_ref().map(read_schema_file) {
+    let schema = match args
+        .schema_file
+        .as_ref()
+        .map(|f| read_schema_file(f, args.schema_format))
+    {
         None => None,
         Some(Ok(schema)) => Some(schema),
         Some(Err(e)) => {
@@ -586,6 +635,42 @@ pub fn format_policies(args: &FormatArgs) -> CedarExitCode {
         CedarExitCode::Failure
     } else {
         CedarExitCode::Success
+    }
+}
+
+fn translate_to_human(json_src: impl AsRef<str>) -> Result<String> {
+    let fragment = SchemaFragment::from_str(json_src.as_ref())?;
+    let output = fragment.as_natural()?;
+    Ok(output)
+}
+
+fn translate_to_json(natural_src: impl AsRef<str>) -> Result<String> {
+    let (fragment, warnings) = SchemaFragment::from_str_natural(natural_src.as_ref())?;
+    for warning in warnings {
+        let report = miette::Report::new(warning);
+        eprintln!("{:?}", report);
+    }
+    let output = fragment.as_json_string()?;
+    Ok(output)
+}
+
+fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
+    let translate = match args.direction {
+        TranslationDirection::JsonToHuman => translate_to_human,
+        TranslationDirection::HumanToJson => translate_to_json,
+    };
+    read_from_file_or_stdin(args.input_file.clone(), "schema").and_then(translate)
+}
+pub fn translate_schema(args: &TranslateSchemaArgs) -> CedarExitCode {
+    match translate_schema_inner(args) {
+        Ok(sf) => {
+            println!("{sf}");
+            CedarExitCode::Success
+        }
+        Err(err) => {
+            eprintln!("{err:?}");
+            CedarExitCode::Failure
+        }
     }
 }
 
@@ -841,6 +926,7 @@ pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {
         &args.policies,
         &args.entities_file,
         args.schema_file.as_ref(),
+        args.schema_format,
         args.timing,
     );
     match ans {
@@ -918,7 +1004,7 @@ fn rename_from_id_annotation(ps: PolicySet) -> Result<PolicySet> {
         Some(anno) => anno.parse().map(|a| t.new_id(a)),
     });
     for t in t_iter {
-        let template = t.unwrap_or_else(|never| match never {});
+        let template = t.wrap_err("failed to parse policy id annotation")?;
         new_ps
             .add_template(template)
             .wrap_err("failed to add template to policy set")?;
@@ -928,7 +1014,7 @@ fn rename_from_id_annotation(ps: PolicySet) -> Result<PolicySet> {
         Some(anno) => anno.parse().map(|a| p.new_id(a)),
     });
     for p in p_iter {
-        let policy = p.unwrap_or_else(|never| match never {});
+        let policy = p.wrap_err("failed to parse policy id annotation")?;
         new_ps
             .add(policy)
             .wrap_err("failed to add template to policy set")?;
@@ -1006,14 +1092,27 @@ fn read_json_policy(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> R
     }
 }
 
-fn read_schema_file(filename: impl AsRef<Path> + std::marker::Copy) -> Result<Schema> {
+fn read_schema_file(
+    filename: impl AsRef<Path> + std::marker::Copy,
+    format: SchemaFormat,
+) -> Result<Schema> {
     let schema_src = read_from_file(filename, "schema")?;
-    Schema::from_str(&schema_src).wrap_err_with(|| {
-        format!(
-            "failed to parse schema from file {}",
-            filename.as_ref().display()
-        )
-    })
+    match format {
+        SchemaFormat::Json => Schema::from_str(&schema_src).wrap_err_with(|| {
+            format!(
+                "failed to parse schema from file {}",
+                filename.as_ref().display()
+            )
+        }),
+        SchemaFormat::Human => {
+            let (schema, warnings) = Schema::from_str_natural(&schema_src)?;
+            for warning in warnings {
+                let report = miette::Report::new(warning);
+                eprintln!("{:?}", report);
+            }
+            Ok(schema)
+        }
+    }
 }
 
 /// This uses the Cedar API to call the authorization engine.
@@ -1022,6 +1121,7 @@ fn execute_request(
     policies: &PoliciesArgs,
     entities_filename: impl AsRef<Path>,
     schema_filename: Option<impl AsRef<Path> + std::marker::Copy>,
+    schema_format: SchemaFormat,
     compute_duration: bool,
 ) -> Result<Response, Vec<Report>> {
     let mut errs = vec![];
@@ -1032,7 +1132,7 @@ fn execute_request(
             PolicySet::new()
         }
     };
-    let schema = match schema_filename.map(read_schema_file) {
+    let schema = match schema_filename.map(|f| read_schema_file(f, schema_format)) {
         None => None,
         Some(Ok(schema)) => Some(schema),
         Some(Err(e)) => {
