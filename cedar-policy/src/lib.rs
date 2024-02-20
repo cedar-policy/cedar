@@ -34,9 +34,12 @@
     clippy::doc_markdown
 )]
 #![allow(clippy::must_use_candidate, clippy::missing_const_for_fn)]
+// enable doc_auto_cfg feature if docsrs cfg is present
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 /// Rust public API
 mod api;
+
 pub use api::*;
 
 /// Frontend utilities, see comments in the module itself

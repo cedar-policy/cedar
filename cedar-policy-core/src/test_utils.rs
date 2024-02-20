@@ -1,3 +1,6 @@
+// PANIC SAFETY: testing code
+#![allow(clippy::panic)]
+
 pub struct ExpectedErrorMessage<'a> {
     /// Expected contents of `Display`, or expected prefix of `Display` if `prefix` is `true`
     error: &'a str,
@@ -62,7 +65,7 @@ impl<'a> ExpectedErrorMessage<'a> {
                     _ => false,
                 }
         } else {
-            &e_string == self.error && h_string.as_deref() == self.help
+            e_string == self.error && h_string.as_deref() == self.help
         }
     }
 }
@@ -166,4 +169,40 @@ pub fn expect_err<'a>(
             src.into()
         );
     }
+}
+
+/// Expect that the given `err` has a (single) source location, where the
+/// contents of that source location are `snippet`.
+///
+/// `src` is the original input text, used both for assertion-failure messages
+/// but also as the source we assume the error's source location indexes into.
+#[track_caller]
+// PANIC SAFETY: testing
+#[allow(clippy::indexing_slicing)]
+pub fn expect_source_snippet(
+    src: impl AsRef<str>,
+    err: &impl miette::Diagnostic,
+    snippet: impl AsRef<str>,
+) {
+    use itertools::Itertools;
+    let src = src.as_ref();
+    let snippet = snippet.as_ref();
+    let labels = err.labels().unwrap_or_else(|| {
+        panic!("for the following input:\n{src}\ndid not find a source location, but expected one")
+    });
+    let label = labels.exactly_one().unwrap_or_else(|labels| {
+        panic!(
+            "for the following input:\n{src}\nexpected exactly one source location, but found {}",
+            labels.count(),
+        )
+    });
+    let actual_snippet = {
+        let span = label.inner();
+        &src[span.offset()..span.offset() + span.len()]
+    };
+    assert_eq!(
+        actual_snippet,
+        snippet,
+        "for the following input:\n{src}\nexpected source snippet to be:\n  {snippet}\nbut it was:\n  {actual_snippet}\n",
+    );
 }

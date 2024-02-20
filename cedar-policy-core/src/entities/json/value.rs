@@ -22,8 +22,8 @@ use crate::ast::{
     RestrictedExpr, Unknown, Value, ValueKind,
 };
 use crate::entities::{
-    schematype_of_restricted_expr, unwrap_or_clone, EntitySchemaConformanceError, EscapeKind,
-    GetSchemaTypeError, TypeMismatchError,
+    schematype_of_restricted_expr, EntitySchemaConformanceError, EscapeKind, GetSchemaTypeError,
+    TypeMismatchError,
 };
 use crate::extensions::Extensions;
 use crate::FromNormalizedStr;
@@ -32,6 +32,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashSet};
+use std::sync::Arc;
 
 /// The canonical JSON representation of a Cedar value.
 /// Many Cedar values have a natural one-to-one mapping to and from JSON values.
@@ -371,7 +372,7 @@ impl CedarValueJson {
             Literal::Long(i) => Self::Long(i),
             Literal::String(s) => Self::String(s),
             Literal::EntityUID(euid) => Self::EntityEscape {
-                __entity: unwrap_or_clone(euid).into(),
+                __entity: Arc::unwrap_or_clone(euid).into(),
             },
         }
     }

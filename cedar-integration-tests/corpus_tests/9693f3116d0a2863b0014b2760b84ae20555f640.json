@@ -24,7 +24,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
+        "policy0"
       ]
     },
     {
@@ -47,7 +47,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
+        "policy0"
       ]
     },
     {
@@ -70,7 +70,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
+        "policy0"
       ]
     },
     {
@@ -93,7 +93,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
+        "policy0"
       ]
     },
     {
@@ -116,7 +116,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
+        "policy0"
       ]
     },
     {
@@ -139,7 +139,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
+        "policy0"
       ]
     },
     {
@@ -162,7 +162,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
+        "policy0"
       ]
     },
     {
@@ -185,7 +185,7 @@
       "decision": "Deny",
       "reasons": [],
       "errors": [
-        "while evaluating policy `policy0`: type error: expected bool, got (entity of type `a`)"
+        "policy0"
       ]
     }
   ]

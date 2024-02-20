@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-use super::utils::unwrap_or_clone;
 use super::FromJsonError;
 use crate::ast::InputInteger;
 use crate::entities::{
@@ -30,7 +29,7 @@ use either::Either;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -700,26 +699,28 @@ impl From<ast::Expr> for Expr {
                 then_expr,
                 else_expr,
             } => Expr::ite(
-                unwrap_or_clone(test_expr).into(),
-                unwrap_or_clone(then_expr).into(),
-                unwrap_or_clone(else_expr).into(),
+                Arc::unwrap_or_clone(test_expr).into(),
+                Arc::unwrap_or_clone(then_expr).into(),
+                Arc::unwrap_or_clone(else_expr).into(),
             ),
-            ast::ExprKind::And { left, right } => {
-                Expr::and(unwrap_or_clone(left).into(), unwrap_or_clone(right).into())
-            }
-            ast::ExprKind::Or { left, right } => {
-                Expr::or(unwrap_or_clone(left).into(), unwrap_or_clone(right).into())
-            }
+            ast::ExprKind::And { left, right } => Expr::and(
+                Arc::unwrap_or_clone(left).into(),
+                Arc::unwrap_or_clone(right).into(),
+            ),
+            ast::ExprKind::Or { left, right } => Expr::or(
+                Arc::unwrap_or_clone(left).into(),
+                Arc::unwrap_or_clone(right).into(),
+            ),
             ast::ExprKind::UnaryApp { op, arg } => {
-                let arg = unwrap_or_clone(arg).into();
+                let arg = Arc::unwrap_or_clone(arg).into();
                 match op {
                     ast::UnaryOp::Not => Expr::not(arg),
                     ast::UnaryOp::Neg => Expr::neg(arg),
                 }
             }
             ast::ExprKind::BinaryApp { op, arg1, arg2 } => {
-                let arg1 = unwrap_or_clone(arg1).into();
-                let arg2 = unwrap_or_clone(arg2).into();
+                let arg1 = Arc::unwrap_or_clone(arg1).into();
+                let arg2 = Arc::unwrap_or_clone(arg2).into();
                 match op {
                     ast::BinaryOp::Eq => Expr::eq(arg1, arg2),
                     ast::BinaryOp::In => Expr::_in(arg1, arg2),
@@ -733,30 +734,38 @@ impl From<ast::Expr> for Expr {
                 }
             }
             ast::ExprKind::MulByConst { arg, constant } => Expr::mul(
-                unwrap_or_clone(arg).into(),
+                Arc::unwrap_or_clone(arg).into(),
                 Expr::lit(CedarValueJson::Long(constant as InputInteger)),
             ),
             ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                let args = unwrap_or_clone(args).into_iter().map(Into::into).collect();
+                let args = Arc::unwrap_or_clone(args)
+                    .into_iter()
+                    .map(Into::into)
+                    .collect();
                 Expr::ext_call(fn_name.to_string().into(), args)
             }
             ast::ExprKind::GetAttr { expr, attr } => {
-                Expr::get_attr(unwrap_or_clone(expr).into(), attr)
+                Expr::get_attr(Arc::unwrap_or_clone(expr).into(), attr)
             }
             ast::ExprKind::HasAttr { expr, attr } => {
-                Expr::has_attr(unwrap_or_clone(expr).into(), attr)
+                Expr::has_attr(Arc::unwrap_or_clone(expr).into(), attr)
             }
-            ast::ExprKind::Like { expr, pattern } => {
-                Expr::like(unwrap_or_clone(expr).into(), pattern.to_string().into())
-            }
-            ast::ExprKind::Is { expr, entity_type } => {
-                Expr::is_entity_type(unwrap_or_clone(expr).into(), entity_type.to_string().into())
-            }
-            ast::ExprKind::Set(set) => {
-                Expr::set(unwrap_or_clone(set).into_iter().map(Into::into).collect())
-            }
+            ast::ExprKind::Like { expr, pattern } => Expr::like(
+                Arc::unwrap_or_clone(expr).into(),
+                pattern.to_string().into(),
+            ),
+            ast::ExprKind::Is { expr, entity_type } => Expr::is_entity_type(
+                Arc::unwrap_or_clone(expr).into(),
+                entity_type.to_string().into(),
+            ),
+            ast::ExprKind::Set(set) => Expr::set(
+                Arc::unwrap_or_clone(set)
+                    .into_iter()
+                    .map(Into::into)
+                    .collect(),
+            ),
             ast::ExprKind::Record(map) => Expr::record(
-                unwrap_or_clone(map)
+                Arc::unwrap_or_clone(map)
                     .into_iter()
                     .map(|(k, v)| (k, v.into()))
                     .collect(),
@@ -854,23 +863,33 @@ impl TryFrom<&Node<Option<cst::Relation>>> for Expr {
                         cst::RelOp::GreaterEq => {
                             expr = Expr::greatereq(expr, rhs);
                         }
+                        cst::RelOp::InvalidSingleEq => {
+                            return Err(ToASTError::new(
+                                ToASTErrorKind::InvalidSingleEq,
+                                r.loc.clone(),
+                            )
+                            .into());
+                        }
                     }
                 }
                 Ok(expr)
             }
             cst::Relation::Has { target, field } => {
                 let target_expr = target.try_into()?;
-                match Expr::try_from(field) {
-                    Ok(field_expr) => {
-                        let field_str = field_expr
-                            .into_string_literal()
-                            .map_err(|_| field.to_ast_err(ToASTErrorKind::HasNonLiteralRHS))?;
-                        Ok(Expr::has_attr(target_expr, field_str))
+                let mut errs = ParseErrors::new();
+                if let Some(field_expr) = field.to_expr_or_special(&mut errs) {
+                    if let Some(attr) = field_expr.into_valid_attr(&mut errs) {
+                        return Ok(Expr::has_attr(target_expr, attr));
                     }
-                    Err(_) => match is_add_name(field.ok_or_missing()?) {
-                        Some(name) => Ok(Expr::has_attr(target_expr, name.to_string().into())),
-                        None => Err(field.to_ast_err(ToASTErrorKind::HasNonLiteralRHS).into()),
-                    },
+                }
+                if errs.is_empty() {
+                    Err(field
+                        .to_ast_err(ToASTErrorKind::InvalidAttribute(
+                            field.ok_or_missing()?.to_smolstr(),
+                        ))
+                        .into())
+                } else {
+                    Err(errs)
                 }
             }
             cst::Relation::Like { target, pattern } => {
@@ -923,67 +942,6 @@ impl TryFrom<&Node<Option<cst::Add>>> for Expr {
     }
 }
 
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_add_name(add: &cst::Add) -> Option<&cst::Name> {
-    if add.extended.is_empty() {
-        match &add.initial.node {
-            Some(mult) => is_mult_name(mult),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_mult_name(mult: &cst::Mult) -> Option<&cst::Name> {
-    if mult.extended.is_empty() {
-        match &mult.initial.node {
-            Some(unary) => is_unary_name(unary),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_unary_name(unary: &cst::Unary) -> Option<&cst::Name> {
-    if unary.op.is_none() {
-        match &unary.item.node {
-            Some(mem) => is_mem_name(mem),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_mem_name(mem: &cst::Member) -> Option<&cst::Name> {
-    if mem.access.is_empty() {
-        match &mem.item.node {
-            Some(primary) => is_primary_name(primary),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_primary_name(primary: &cst::Primary) -> Option<&cst::Name> {
-    match primary {
-        cst::Primary::Name(node) => node.node.as_ref(),
-        _ => None,
-    }
-}
-
 impl TryFrom<&Node<Option<cst::Mult>>> for Expr {
     type Error = ParseErrors;
     fn try_from(m: &Node<Option<cst::Mult>>) -> Result<Expr, ParseErrors> {
@@ -1011,25 +969,35 @@ impl TryFrom<&Node<Option<cst::Unary>>> for Expr {
     type Error = ParseErrors;
     fn try_from(u: &Node<Option<cst::Unary>>) -> Result<Expr, ParseErrors> {
         let u_node = u.ok_or_missing()?;
-        let inner = (&u_node.item).try_into()?;
+
         match u_node.op {
-            Some(cst::NegOp::Bang(0)) => Ok(inner),
-            Some(cst::NegOp::Bang(1)) => Ok(Expr::not(inner)),
-            Some(cst::NegOp::Bang(2)) => {
-                // not safe to collapse !! to nothing
-                Ok(Expr::not(Expr::not(inner)))
-            }
-            Some(cst::NegOp::Bang(n)) => {
-                if n % 2 == 0 {
-                    // safe to collapse to !! but not to nothing
-                    Ok(Expr::not(Expr::not(inner)))
-                } else {
-                    // safe to collapse to !
-                    Ok(Expr::not(inner))
+            Some(cst::NegOp::Bang(num_bangs)) => {
+                let inner = (&u_node.item).try_into()?;
+                match num_bangs {
+                    0 => Ok(inner),
+                    1 => Ok(Expr::not(inner)),
+                    2 => Ok(Expr::not(Expr::not(inner))),
+                    3 => Ok(Expr::not(Expr::not(Expr::not(inner)))),
+                    4 => Ok(Expr::not(Expr::not(Expr::not(Expr::not(inner))))),
+                    _ => Err(u
+                        .to_ast_err(ToASTErrorKind::UnaryOpLimit(ast::UnaryOp::Not))
+                        .into()),
                 }
             }
-            Some(cst::NegOp::Dash(0)) => Ok(inner),
+            Some(cst::NegOp::Dash(0)) => Ok((&u_node.item).try_into()?),
             Some(cst::NegOp::Dash(mut num_dashes)) => {
+                let inner = match &u_node.item.to_lit() {
+                    Some(cst::Literal::Num(num))
+                        if num
+                            .checked_sub(1)
+                            .map(|y| y == InputInteger::MAX as u64)
+                            .unwrap_or(false) =>
+                    {
+                        num_dashes -= 1;
+                        Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(InputInteger::MIN)))
+                    }
+                    _ => (&u_node.item).try_into()?,
+                };
                 let inner = match inner {
                     Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(n)))
                         if n != InputInteger::MIN =>
@@ -1048,15 +1016,11 @@ impl TryFrom<&Node<Option<cst::Unary>>> for Expr {
                         // not safe to collapse `--` to nothing
                         Ok(Expr::neg(Expr::neg(inner)))
                     }
-                    n => {
-                        if n % 2 == 0 {
-                            // safe to collapse to `--` but not to nothing
-                            Ok(Expr::neg(Expr::neg(inner)))
-                        } else {
-                            // safe to collapse to -
-                            Ok(Expr::neg(inner))
-                        }
-                    }
+                    3 => Ok(Expr::neg(Expr::neg(Expr::neg(inner)))),
+                    4 => Ok(Expr::neg(Expr::neg(Expr::neg(Expr::neg(inner))))),
+                    _ => Err(u
+                        .to_ast_err(ToASTErrorKind::UnaryOpLimit(ast::UnaryOp::Neg))
+                        .into()),
                 }
             }
             Some(cst::NegOp::OverBang) => Err(u
@@ -1065,7 +1029,7 @@ impl TryFrom<&Node<Option<cst::Unary>>> for Expr {
             Some(cst::NegOp::OverDash) => Err(u
                 .to_ast_err(ToASTErrorKind::UnaryOpLimit(ast::UnaryOp::Neg))
                 .into()),
-            None => Ok(inner),
+            None => Ok((&u_node.item).try_into()?),
         }
     }
 }
@@ -1183,23 +1147,38 @@ impl TryFrom<&Node<Option<cst::Member>>> for Expr {
         let mut item: Either<ast::Name, Expr> = interpret_primary(&m_node.item)?;
         for access in &m_node.access {
             match access.ok_or_missing()? {
-                cst::MemAccess::Field(node) => match node.ok_or_missing()? {
-                    cst::Ident::Ident(i) => {
-                        item = match item {
-                            Either::Left(name) => {
-                                return Err(node
-                                    .to_ast_err(ToASTErrorKind::InvalidAccess(name, i.clone()))
-                                    .into())
-                            }
-                            Either::Right(expr) => Either::Right(Expr::get_attr(expr, i.clone())),
-                        };
+                cst::MemAccess::Field(node) => {
+                    let mut errs = ParseErrors::new();
+                    let field = node.to_valid_ident(&mut errs);
+                    // rule out invalid identifiers (`Ident::Invalid` and reserved Ids)
+                    if !errs.is_empty() {
+                        return Err(errs);
                     }
-                    i => {
-                        return Err(node
-                            .to_ast_err(ToASTErrorKind::InvalidIdentifier(i.to_string()))
-                            .into())
+                    match field {
+                        Some(id) => {
+                            item = match item {
+                                Either::Left(name) => {
+                                    return Err(node
+                                        .to_ast_err(ToASTErrorKind::InvalidAccess(
+                                            name,
+                                            id.to_smolstr(),
+                                        ))
+                                        .into())
+                                }
+                                Either::Right(expr) => {
+                                    Either::Right(Expr::get_attr(expr, id.to_smolstr()))
+                                }
+                            };
+                        }
+                        None => {
+                            return Err(node
+                                .to_ast_err(ToASTErrorKind::InvalidIdentifier(
+                                    node.ok_or_missing()?.to_string(),
+                                ))
+                                .into())
+                        }
                     }
-                },
+                }
                 cst::MemAccess::Call(args) => {
                     // we have item(args).  We hope item is either:
                     //   - an `ast::Name`, in which case we have a standard function call
@@ -1240,7 +1219,7 @@ impl TryFrom<&Node<Option<cst::Member>>> for Expr {
                                     // have to add the "receiver" argument as
                                     // first in the list for the method call
                                     let mut args = args.collect::<Vec<_>>();
-                                    args.insert(0, unwrap_or_clone(left));
+                                    args.insert(0, Arc::unwrap_or_clone(left));
                                     Either::Right(Expr::ext_call(attr, args))
                                 }
                             }

@@ -22,6 +22,9 @@ unicode-security = "0.1.0"
 smol_str = { version = "0.2", features = ["serde"] }
 stacker = "0.1.15"
 arbitrary = { version = "1", features = ["derive"], optional = true }
+lalrpop-util = { version = "0.20.0", features = ["lexer", "unicode"] }
+lazy_static = "1.4.0"
+nonempty = "0.9.0"
 
 [features]
 # by default, enable all Cedar extensions
@@ -38,3 +41,6 @@ partial-validate = []
 
 [dev-dependencies]
 cool_asserts = "2.0"
+
+[build-dependencies]
+lalrpop = "0.20.0"

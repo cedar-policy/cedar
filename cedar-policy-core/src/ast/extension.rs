@@ -160,6 +160,7 @@ impl ExtensionFunction {
                         name.clone(),
                         0,
                         args.len(),
+                        None, // evaluator will add the source location later
                     ))
                 }
             }),
@@ -184,6 +185,7 @@ impl ExtensionFunction {
                     name.clone(),
                     1,
                     args.len(),
+                    None, // evaluator will add the source location later
                 )),
             }),
             None,
@@ -208,6 +210,7 @@ impl ExtensionFunction {
                     name.clone(),
                     1,
                     args.len(),
+                    None, // evaluator will add the source location later
                 )),
             }),
             Some(return_type),
@@ -234,6 +237,7 @@ impl ExtensionFunction {
                     name.clone(),
                     2,
                     args.len(),
+                    None, // evaluator will add the source location later
                 )),
             }),
             Some(return_type),
@@ -263,6 +267,7 @@ impl ExtensionFunction {
                     name.clone(),
                     3,
                     args.len(),
+                    None, // evaluator will add the source location later
                 )),
             }),
             Some(return_type),

@@ -14,11 +14,12 @@
  * limitations under the License.
  */
 
-use crate::ast;
+use crate::ast::{self, SlotId};
 use crate::entities::JsonDeserializationError;
 use crate::parser::err::ParseErrors;
 use crate::parser::unescape;
 use miette::Diagnostic;
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use thiserror::Error;
 
@@ -43,6 +44,15 @@ pub enum FromJsonError {
     /// EST contained a template slot for `action`. This is not currently allowed
     #[error("slots are not allowed for actions")]
     ActionSlot,
+    /// EST contained a template slot in policy condition
+    #[error("found template slot {slot} in a `{clausetype}` clause")]
+    #[diagnostic(help("slots are currently unsupported in `{clausetype}` clauses"))]
+    SlotsInConditionClause {
+        /// Slot that was found in a when/unless clause
+        slot: SlotId,
+        /// Clause type, e.g. "when" or "unless"
+        clausetype: &'static str,
+    },
     /// EST contained the empty JSON object `{}` where a key (operator) was expected
     #[error("missing operator, found empty object")]
     MissingOperator,
@@ -64,8 +74,8 @@ pub enum FromJsonError {
     },
     /// Error thrown while processing string escapes
     // show just the first error in the main error message, like in [`ParseErrors`]; see #326 and discussion on #477
-    #[error("{}", match .0.first() { Some(err) => format!("{err}"), None => "invalid escape".into() })]
-    UnescapeError(#[related] Vec<unescape::UnescapeError>),
+    #[error("{}", .0.first())]
+    UnescapeError(#[related] NonEmpty<unescape::UnescapeError>),
     /// Error reported when the entity type tested by an `is` expression cannot be parsed.
     #[error("invalid entity type: {0}")]
     #[diagnostic(transparent)]

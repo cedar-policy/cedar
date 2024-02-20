@@ -15,13 +15,16 @@
  */
 
 use crate::ast::PatternElem;
+use itertools::Itertools;
 use miette::Diagnostic;
+use nonempty::NonEmpty;
 use rustc_lexer::unescape::{unescape_str, EscapeError};
 use smol_str::SmolStr;
 use std::ops::Range;
 use thiserror::Error;
 
-pub(crate) fn to_unescaped_string(s: &str) -> Result<SmolStr, Vec<UnescapeError>> {
+/// Unescape a string following Cedar's string escape rules
+pub fn to_unescaped_string(s: &str) -> Result<SmolStr, NonEmpty<UnescapeError>> {
     let mut unescaped_str = String::new();
     let mut errs = Vec::new();
     let mut callback = |range, r| match r {
@@ -33,14 +36,17 @@ pub(crate) fn to_unescaped_string(s: &str) -> Result<SmolStr, Vec<UnescapeError>
         }),
     };
     unescape_str(s, &mut callback);
-    if errs.is_empty() {
-        Ok(unescaped_str.into())
+    if let Some((head, tails)) = errs.split_first() {
+        Err(NonEmpty {
+            head: head.clone(),
+            tail: tails.iter().cloned().collect_vec(),
+        })
     } else {
-        Err(errs)
+        Ok(unescaped_str.into())
     }
 }
 
-pub(crate) fn to_pattern(s: &str) -> Result<Vec<PatternElem>, Vec<UnescapeError>> {
+pub(crate) fn to_pattern(s: &str) -> Result<Vec<PatternElem>, NonEmpty<UnescapeError>> {
     let mut unescaped_str = Vec::new();
     let mut errs = Vec::new();
     let bytes = s.as_bytes(); // to inspect string element in O(1) time
@@ -59,10 +65,13 @@ pub(crate) fn to_pattern(s: &str) -> Result<Vec<PatternElem>, Vec<UnescapeError>
         Err(err) => errs.push(UnescapeError { err, input: s.to_owned(), range }),
     };
     unescape_str(s, &mut callback);
-    if errs.is_empty() {
-        Ok(unescaped_str)
+    if let Some((head, tails)) = errs.split_first() {
+        Err(NonEmpty {
+            head: head.clone(),
+            tail: tails.iter().cloned().collect_vec(),
+        })
     } else {
-        Err(errs)
+        Ok(unescaped_str)
     }
 }
 

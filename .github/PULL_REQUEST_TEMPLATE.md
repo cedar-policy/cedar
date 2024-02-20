@@ -19,7 +19,7 @@ I confirm that this PR (choose one, and delete the other options):
 
 I confirm that [`cedar-spec`](https://github.com/cedar-policy/cedar-spec) (choose one, and delete the other options):
 
-- [ ] Does not require updates because my change does not impact the Cedar Dafny model or DRT infrastructure.
+- [ ] Does not require updates because my change does not impact the Cedar formal model or DRT infrastructure.
 - [ ] Requires updates, and I have made / will make these updates myself. (Please include in your description a timeline or link to the relevant PR in `cedar-spec`, and how you have tested that your updates are correct.)
 - [ ] Requires updates, but I do not plan to make them in the near future. (Make sure that your changes are hidden behind a feature flag to mark them as experimental.)
 - [ ] I'm not sure how my change impacts `cedar-spec`. (Post your PR anyways, and we'll discuss in the comments.)

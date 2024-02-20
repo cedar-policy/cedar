@@ -25,8 +25,8 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use super::{
-    unwrap_or_clone, BorrowedRestrictedExpr, EntityUID, Expr, ExprConstructionError, ExprKind,
-    PartialValue, PartialValueSerializedAsExpr, RestrictedExpr, Unknown, Value, ValueKind, Var,
+    BorrowedRestrictedExpr, EntityUID, Expr, ExprConstructionError, ExprKind, PartialValue,
+    PartialValueSerializedAsExpr, RestrictedExpr, Unknown, Value, ValueKind, Var,
 };
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
@@ -72,7 +72,7 @@ impl EntityUIDEntry {
     pub fn evaluate(&self, var: Var) -> PartialValue {
         match self {
             EntityUIDEntry::Known { euid, loc } => {
-                Value::new(unwrap_or_clone(Arc::clone(euid)), loc.clone()).into()
+                Value::new(Arc::unwrap_or_clone(Arc::clone(euid)), loc.clone()).into()
             }
             EntityUIDEntry::Unknown { loc } => Expr::unknown(Unknown::new_untyped(var.to_string()))
                 .with_maybe_source_loc(loc.clone())
@@ -145,6 +145,22 @@ impl Request {
             schema.validate_request(&req, extensions)?;
         }
         Ok(req)
+    }
+
+    /// Create a new `Request` with potentially unknown (for partial eval) variables/context
+    /// and without schema validation.
+    pub fn new_unchecked(
+        principal: EntityUIDEntry,
+        action: EntityUIDEntry,
+        resource: EntityUIDEntry,
+        context: Option<Context>,
+    ) -> Self {
+        Self {
+            principal,
+            action,
+            resource,
+            context,
+        }
     }
 
     /// Get the principal associated with the request

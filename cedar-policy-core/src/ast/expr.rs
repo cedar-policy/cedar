@@ -169,7 +169,7 @@ impl From<ValueKind> for Expr {
             // PANIC SAFETY: cannot have duplicate key because the input was already a BTreeMap
             #[allow(clippy::expect_used)]
             ValueKind::Record(record) => Expr::record(
-                unwrap_or_clone(record)
+                Arc::unwrap_or_clone(record)
                     .into_iter()
                     .map(|(k, v)| (k, Expr::from(v))),
             )

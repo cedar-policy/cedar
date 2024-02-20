@@ -20,10 +20,12 @@
 use super::utils::{InterfaceResult, PolicySpecification};
 use crate::api::EntityId;
 use crate::api::EntityTypeName;
+#[cfg(feature = "partial-eval")]
+use crate::api::PartialResponse;
 use crate::PolicyId;
 use crate::{
-    Authorizer, Context, Decision, Entities, EntityUid, ParseErrors, Policy, PolicySet, Request,
-    Response, Schema, SlotId, Template,
+    Authorizer, Context, Decision, Entities, EntityUid, Policy, PolicySet, Request, Response,
+    Schema, SlotId, Template,
 };
 use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use itertools::Itertools;
@@ -57,13 +59,55 @@ fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
 /// public string-based JSON interfaced to be invoked by FFIs. In the policies portion of
 /// the `RecvdSlice`, you can either pass a `Map<String, String>` where the values are all single policies,
 /// or a single String which is a concatenation of multiple policies. If you choose the latter,
-/// policy id's will be auto-generated for you in the format `policyX` where X is a Whole Number (zero or a positive int)
+/// policy id's will be auto-generated for you in the format `policyX` where X is a Natural Number (zero or a positive int)
 pub fn json_is_authorized(input: &str) -> InterfaceResult {
     serde_json::from_str::<AuthorizationCall>(input).map_or_else(
         |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
         |call| match is_authorized(call) {
             answer @ AuthorizationAnswer::Success { .. } => InterfaceResult::succeed(answer),
             AuthorizationAnswer::ParseFailed { errors } => {
+                InterfaceResult::fail_bad_request(errors)
+            }
+        },
+    )
+}
+
+#[cfg(feature = "partial-eval")]
+fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAnswer {
+    match call.get_components_partial() {
+        Ok((request, policies, entities)) => AUTHORIZER.with(|authorizer| {
+            match authorizer.is_authorized_partial(&request, &policies, &entities) {
+                concrete_response @ PartialResponse::Concrete(_) => {
+                    match concrete_response.try_into() {
+                        Ok(response) => PartialAuthorizationAnswer::Concrete { response },
+                        Err(errors) => PartialAuthorizationAnswer::ParseFailed { errors },
+                    }
+                }
+                residual_response @ PartialResponse::Residual(_) => {
+                    match residual_response.try_into() {
+                        Ok(response) => PartialAuthorizationAnswer::Residuals { response },
+                        Err(errors) => PartialAuthorizationAnswer::ParseFailed { errors },
+                    }
+                }
+            }
+        }),
+        Err(errors) => PartialAuthorizationAnswer::ParseFailed { errors },
+    }
+}
+
+/// public string-based JSON interfaced to be invoked by FFIs. In the policies portion of
+/// the `RecvdSlice`, you can either pass a `Map<String, String>` where the values are all single policies,
+/// or a single String which is a concatenation of multiple policies. If you choose the latter,
+/// policy id's will be auto-generated for you in the format `policyX` where X is a Natural Number (zero or a positive int)
+#[doc = include_str!("../../experimental_warning.md")]
+#[cfg(feature = "partial-eval")]
+pub fn json_is_authorized_partial(input: &str) -> InterfaceResult {
+    serde_json::from_str::<AuthorizationCall>(input).map_or_else(
+        |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
+        |call| match is_authorized_partial(call) {
+            answer @ (PartialAuthorizationAnswer::Concrete { .. }
+            | PartialAuthorizationAnswer::Residuals { .. }) => InterfaceResult::succeed(answer),
+            PartialAuthorizationAnswer::ParseFailed { errors } => {
                 InterfaceResult::fail_bad_request(errors)
             }
         },
@@ -123,6 +167,26 @@ impl From<Response> for InterfaceResponse {
     }
 }
 
+#[cfg(feature = "partial-eval")]
+impl TryFrom<PartialResponse> for InterfaceResponse {
+    type Error = Vec<String>;
+
+    fn try_from(partial_response: PartialResponse) -> Result<Self, Self::Error> {
+        match partial_response {
+            PartialResponse::Concrete(concrete) => Ok(Self::new(
+                concrete.decision(),
+                concrete.diagnostics().reason().cloned().collect(),
+                concrete
+                    .diagnostics()
+                    .errors()
+                    .map(ToString::to_string)
+                    .collect(),
+            )),
+            PartialResponse::Residual(_) => Err(vec!["unsupported".into()]),
+        }
+    }
+}
+
 impl InterfaceDiagnostics {
     /// Get the policies that contributed to the decision
     pub fn reason(&self) -> impl Iterator<Item = &PolicyId> {
@@ -135,11 +199,75 @@ impl InterfaceDiagnostics {
     }
 }
 
+/// Integration version of a `PartialResponse` that uses `InterfaceDiagnistics` for simpler (de)serialization
+#[doc = include_str!("../../experimental_warning.md")]
+#[cfg(feature = "partial-eval")]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct InterfaceResidualResponse {
+    /// A residual set of policies. Determining the concrete response requires further processing.
+    residuals: HashMap<PolicyId, serde_json::Value>,
+    /// Diagnostics providing more information on how this decision was reached
+    diagnostics: InterfaceDiagnostics,
+}
+
+#[cfg(feature = "partial-eval")]
+impl InterfaceResidualResponse {
+    /// Construct an `InterfaceResidualResponse`
+    pub fn new(
+        residuals: HashMap<PolicyId, serde_json::Value>,
+        reason: HashSet<PolicyId>,
+        errors: HashSet<String>,
+    ) -> Self {
+        Self {
+            residuals,
+            diagnostics: InterfaceDiagnostics { reason, errors },
+        }
+    }
+}
+
+#[cfg(feature = "partial-eval")]
+impl TryFrom<PartialResponse> for InterfaceResidualResponse {
+    type Error = Vec<String>;
+
+    fn try_from(partial_response: PartialResponse) -> Result<Self, Self::Error> {
+        match partial_response {
+            PartialResponse::Residual(residual) => Ok(Self::new(
+                residual
+                    .residuals()
+                    .policies()
+                    .map(|policy| match policy.to_json() {
+                        Ok(json) => Ok((policy.id().clone(), json)),
+                        Err(errors) => Err(vec![errors.to_string()]),
+                    })
+                    .collect::<Result<Vec<(PolicyId, serde_json::Value)>, Self::Error>>()?
+                    .into_iter()
+                    .collect(),
+                residual.diagnostics().reason().cloned().collect(),
+                residual
+                    .diagnostics()
+                    .errors()
+                    .map(ToString::to_string)
+                    .collect(),
+            )),
+            PartialResponse::Concrete(_) => Err(vec!["unsupported".into()]),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 enum AuthorizationAnswer {
     ParseFailed { errors: Vec<String> },
     Success { response: InterfaceResponse },
+}
+
+#[cfg(feature = "partial-eval")]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+enum PartialAuthorizationAnswer {
+    ParseFailed { errors: Vec<String> },
+    Concrete { response: InterfaceResponse },
+    Residuals { response: InterfaceResidualResponse },
 }
 
 #[serde_as]
@@ -169,34 +297,48 @@ fn constant_true() -> bool {
     true
 }
 
+fn parse_schema(
+    schema_json: Option<JsonValueWithNoDuplicateKeys>,
+) -> Result<Option<Schema>, Vec<String>> {
+    schema_json
+        .map(|v| Schema::from_json_value(v.into()))
+        .transpose()
+        .map_err(|e| vec![e.to_string()])
+}
+
+fn parse_entity_uid(
+    entity_uid_json: Option<JsonValueWithNoDuplicateKeys>,
+    category: &str,
+) -> Result<Option<EntityUid>, Vec<String>> {
+    entity_uid_json
+        .map(|v| EntityUid::from_json(v.into()))
+        .transpose()
+        .map_err(|e| vec![format!("Failed to parse {category}"), e.to_string()])
+}
+
+fn parse_action(entity_uid_json: JsonValueWithNoDuplicateKeys) -> Result<EntityUid, Vec<String>> {
+    parse_entity_uid(Some(entity_uid_json), "action")?
+        .map_or_else(|| Err(vec!["parsing action return none".into()]), Ok)
+}
+
+fn parse_context(
+    context_map: HashMap<String, JsonValueWithNoDuplicateKeys>,
+    schema_ref: Option<&Schema>,
+    action_ref: &EntityUid,
+) -> Result<Context, Vec<String>> {
+    let context = serde_json::to_value(context_map)
+        .map_err(|e| vec!["Failed to parse context".into(), e.to_string()])?;
+    Context::from_json_value(context, schema_ref.map(|s| (s, action_ref)))
+        .map_err(|e| vec![e.to_string()])
+}
+
 impl AuthorizationCall {
     fn get_components(self) -> Result<(Request, PolicySet, Entities), Vec<String>> {
-        let schema = self
-            .schema
-            .map(|v| Schema::from_json_value(v.into()))
-            .transpose()
-            .map_err(|e| [e.to_string()])?;
-        let principal = match self.principal {
-            Some(p) => Some(
-                EntityUid::from_json(p.into())
-                    .map_err(|e| ["Failed to parse principal".into(), e.to_string()])?,
-            ),
-            None => None,
-        };
-        let action = EntityUid::from_json(self.action.into())
-            .map_err(|e| ["Failed to parse action".into(), e.to_string()])?;
-        let resource = match self.resource {
-            Some(r) => Some(
-                EntityUid::from_json(r.into())
-                    .map_err(|e| ["Failed to parse resource".into(), e.to_string()])?,
-            ),
-            None => None,
-        };
-
-        let context = serde_json::to_value(self.context)
-            .map_err(|e| [format!("Error encoding the context as JSON: {e}")])?;
-        let context = Context::from_json_value(context, schema.as_ref().map(|s| (s, &action)))
-            .map_err(|e| [e.to_string()])?;
+        let schema = parse_schema(self.schema)?;
+        let principal = parse_entity_uid(self.principal, "principal")?;
+        let action = parse_action(self.action)?;
+        let resource = parse_entity_uid(self.resource, "resource")?;
+        let context = parse_context(self.context, schema.as_ref(), &action)?;
         let q = Request::new(
             principal,
             Some(action),
@@ -211,6 +353,32 @@ impl AuthorizationCall {
         .map_err(|e| [e.to_string()])?;
         let (policies, entities) = self.slice.try_into(schema.as_ref())?;
         Ok((q, policies, entities))
+    }
+
+    #[cfg(feature = "partial-eval")]
+    fn get_components_partial(self) -> Result<(Request, PolicySet, Entities), Vec<String>> {
+        let schema = parse_schema(self.schema)?;
+        let principal = parse_entity_uid(self.principal, "principal")?;
+        let action = parse_action(self.action)?;
+        let resource = parse_entity_uid(self.resource, "resource")?;
+        let context = parse_context(self.context, schema.as_ref(), &action)?;
+        let mut b = Request::builder().action(Some(action)).context(context);
+        if principal.is_some() {
+            b = b.principal(principal);
+        }
+        if resource.is_some() {
+            b = b.resource(resource);
+        }
+        let q = if self.enable_request_validation {
+            match schema.as_ref() {
+                Some(schema_ref) => b.schema(schema_ref).build().map_err(|e| [e.to_string()])?,
+                None => b.build(),
+            }
+        } else {
+            b.build()
+        };
+        let (policies, entities) = self.slice.try_into(schema.as_ref())?;
+        Ok((q, policies, entities.partial()))
     }
 }
 
@@ -331,11 +499,7 @@ fn parse_instantiations(
     let template_id = PolicyId::from_str(instantiation.template_id.as_str());
     let instance_id = PolicyId::from_str(instantiation.result_policy_id.as_str());
     match (template_id, instance_id) {
-        (Ok(_), Err(e)) | (Err(e), Ok(_)) => Err(e.errors_as_strings()),
-        (Err(mut e1), Err(mut e2)) => {
-            e1.0.append(&mut e2.0);
-            Err(ParseErrors(e1.0).errors_as_strings())
-        }
+        (Err(never), _) | (_, Err(never)) => match never {},
         (Ok(template_id), Ok(instance_id)) => {
             let mut vals = HashMap::new();
             for i in instantiation.instantiations.0 {
@@ -551,6 +715,32 @@ mod test {
             "context": {},
             "slice": {
              "policies": {},
+             "entities": []
+            }
+           }
+        "#;
+
+        assert_is_not_authorized(json_is_authorized(call));
+    }
+
+    #[test]
+    fn test_not_authorized_on_unspecified() {
+        let call = r#"
+        {
+            "principal": null,
+            "action": {
+             "type": "Photo",
+             "id": "view"
+            },
+            "resource": {
+             "type": "Photo",
+             "id": "door"
+            },
+            "context": {},
+            "slice": {
+             "policies": {
+              "ID1": "permit(principal == User::\"alice\", action, resource);"
+             },
              "entities": []
             }
            }
@@ -1145,8 +1335,8 @@ mod test {
             let parsed_result: AuthorizationAnswer =
                 serde_json::from_str(result.as_str()).unwrap();
             assert_matches!(parsed_result, AuthorizationAnswer::Success { response } => {
-                assert_eq!(response.decision, Decision::Allow);
-                assert_eq!(response.diagnostics.errors.len(), 0);
+                assert_eq!(response.decision(), Decision::Allow);
+                assert_eq!(response.diagnostics().errors.len(), 0);
             });
         });
     }
@@ -1157,8 +1347,8 @@ mod test {
             let parsed_result: AuthorizationAnswer =
                 serde_json::from_str(result.as_str()).unwrap();
             assert_matches!(parsed_result, AuthorizationAnswer::Success { response } => {
-                assert_eq!(response.decision, Decision::Deny);
-                assert_eq!(response.diagnostics.errors.len(), 0);
+                assert_eq!(response.decision(), Decision::Deny);
+                assert_eq!(response.diagnostics().errors.len(), 0);
             });
         });
     }
@@ -1397,5 +1587,183 @@ mod test {
             }
         }"#;
         assert_is_failure(&json_is_authorized(call), true, "found duplicate key");
+    }
+
+    #[cfg(feature = "partial-eval")]
+    mod partial {
+        use super::super::PartialAuthorizationAnswer;
+        use crate::frontend::is_authorized::json_is_authorized_partial;
+        use crate::frontend::utils::InterfaceResult;
+        use crate::Decision;
+        use crate::PolicyId;
+        use cool_asserts::assert_matches;
+        use std::collections::HashSet;
+        use std::str::FromStr;
+
+        #[test]
+        fn test_authorized_partial_no_resource() {
+            let call = r#"
+              {
+                "principal": {
+                 "type": "User",
+                 "id": "alice"
+                },
+                "action": {
+                 "type": "Photo",
+                 "id": "view"
+                },
+                "context": {},
+                "slice": {
+                 "policies": {
+                  "ID1": "permit(principal == User::\"alice\", action, resource);"
+                 },
+                 "entities": []
+                },
+                "partial_evaluation": true
+              }
+            "#;
+            assert_is_authorized(json_is_authorized_partial(call));
+        }
+
+        #[test]
+        fn test_authorized_partial_not_authorized_no_resource() {
+            let call = r#"
+              {
+                "principal": {
+                 "type": "User",
+                 "id": "john"
+                },
+                "action": {
+                 "type": "Photo",
+                 "id": "view"
+                },
+                "context": {},
+                "slice": {
+                 "policies": {
+                  "ID1": "permit(principal == User::\"alice\", action, resource);"
+                 },
+                 "entities": []
+                },
+                "partial_evaluation": true
+              }
+            "#;
+            assert_is_not_authorized(json_is_authorized_partial(call));
+        }
+
+        #[test]
+        fn test_authorized_partial_residual_no_principal_scope() {
+            let call = r#"
+              {
+                "action": {
+                 "type": "Photo",
+                 "id": "view"
+                },
+                "resource" : {
+                    "type" : "Photo",
+                    "id" : "door"
+                },
+                "context": {},
+                "slice": {
+                 "policies": {
+                  "ID1": "permit(principal == User::\"alice\", action, resource);"
+                 },
+                 "entities": []
+                },
+                "partial_evaluation": true
+              }
+            "#;
+            assert_is_residual(json_is_authorized_partial(call), HashSet::from(["ID1"]));
+        }
+
+        #[test]
+        fn test_authorized_partial_residual_no_principal_when() {
+            let call = r#"
+              {
+                "action": {
+                 "type": "Photo",
+                 "id": "view"
+                },
+                "resource" : {
+                    "type" : "Photo",
+                    "id" : "door"
+                },
+                "context": {},
+                "slice": {
+                 "policies": {
+                  "ID1": "permit(principal, action, resource) when { principal == User::\"alice\" };"
+                 },
+                 "entities": []
+                },
+                "partial_evaluation": true
+              }
+            "#;
+            assert_is_residual(json_is_authorized_partial(call), HashSet::from(["ID1"]));
+        }
+
+        #[test]
+        fn test_authorized_partial_residual_no_principal_ignored_forbid() {
+            let call = r#"
+              {
+                "action": {
+                 "type": "Photo",
+                 "id": "view"
+                },
+                "resource" : {
+                    "type" : "Photo",
+                    "id" : "door"
+                },
+                "context": {},
+                "slice": {
+                 "policies": {
+                  "ID1": "permit(principal, action, resource) when { principal == User::\"alice\" };",
+                  "ID2": "forbid(principal, action, resource) unless { resource == Photo::\"door\" };"
+                 },
+                 "entities": []
+                },
+                "partial_evaluation": true
+              }
+            "#;
+            assert_is_residual(json_is_authorized_partial(call), HashSet::from(["ID1"]));
+        }
+
+        #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+        fn assert_is_authorized(result: InterfaceResult) {
+            assert_matches!(result, InterfaceResult::Success { result } => {
+                let parsed_result: PartialAuthorizationAnswer = serde_json::from_str(result.as_str()).unwrap();
+                assert_matches!(parsed_result, PartialAuthorizationAnswer::Concrete { response } => {
+                    assert_eq!(response.decision(), Decision::Allow);
+                    assert_eq!(response.diagnostics().errors.len(), 0);
+                });
+            });
+        }
+
+        #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+        fn assert_is_not_authorized(result: InterfaceResult) {
+            assert_matches!(result, InterfaceResult::Success { result } => {
+                let parsed_result: PartialAuthorizationAnswer = serde_json::from_str(result.as_str()).unwrap();
+                assert_matches!(parsed_result, PartialAuthorizationAnswer::Concrete { response } => {
+                    assert_eq!(response.decision(), Decision::Deny);
+                    assert_eq!(response.diagnostics().errors.len(), 0);
+                });
+            });
+        }
+
+        #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+        fn assert_is_residual(result: InterfaceResult, residual_ids: HashSet<&str>) {
+            assert_matches!(result, InterfaceResult::Success { result } => {
+                let parsed_result: PartialAuthorizationAnswer = serde_json::from_str(result.as_str()).unwrap();
+                assert_matches!(parsed_result, PartialAuthorizationAnswer::Residuals { response } => {
+                    let num_errors = response.diagnostics.errors().count();
+                    assert_eq!(num_errors, 0, "got {num_errors} errors");
+                    let residuals = response.residuals;
+                    for id in &residual_ids {
+                        assert!(residuals.contains_key(&PolicyId::from_str(id).ok().unwrap()), "expected residual for {id}, but it's missing")
+                    }
+                    for key in residuals.keys() {
+                        assert!(residual_ids.contains(key.to_string().as_str()),"found unexpected residual for {key}")
+                    }
+                })
+            })
+        }
     }
 }

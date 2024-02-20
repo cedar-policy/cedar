@@ -15,8 +15,9 @@
  */
 
 use crate::ast::*;
+use crate::parser::Loc;
 use itertools::Itertools;
-use miette::Diagnostic;
+use miette::{Diagnostic, LabeledSpan};
 use nonempty::{nonempty, NonEmpty};
 use smol_str::SmolStr;
 use std::sync::Arc;
@@ -30,10 +31,13 @@ pub struct EvaluationError {
     error_kind: EvaluationErrorKind,
     /// Optional advice on how to fix the error
     advice: Option<String>,
+    /// Source location of the error. (This overrides other sources if present,
+    /// but if this is `None`, we'll check for location info in the
+    /// `.error_kind`.)
+    source_loc: Option<Loc>,
 }
 
-// custom impl of `Diagnostic`: non-trivial implementation of `help()`,
-// everything else forwarded to `.error_kind`
+// custom impl of `Diagnostic`
 impl Diagnostic for EvaluationError {
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match (self.error_kind.help(), self.advice.as_ref()) {
@@ -42,6 +46,23 @@ impl Diagnostic for EvaluationError {
             (Some(help), Some(advice)) => Some(Box::new(format!("{help}; {advice}"))),
             (None, None) => None,
         }
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.source_loc
+            .as_ref()
+            .map(|loc| &loc.src as &dyn miette::SourceCode)
+            .or_else(|| self.error_kind.source_code())
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        self.source_loc
+            .as_ref()
+            .map(|loc| {
+                Box::new(std::iter::once(LabeledSpan::underline(loc.span)))
+                    as Box<dyn Iterator<Item = _>>
+            })
+            .or_else(|| self.error_kind.labels())
     }
 
     fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
@@ -54,14 +75,6 @@ impl Diagnostic for EvaluationError {
 
     fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         self.error_kind.url()
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        self.error_kind.source_code()
-    }
-
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        self.error_kind.labels()
     }
 
     fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
@@ -79,77 +92,117 @@ impl EvaluationError {
         &self.error_kind
     }
 
+    /// Extract the source location of the error, if one is attached
+    pub fn source_loc(&self) -> Option<&Loc> {
+        self.source_loc.as_ref()
+    }
+
+    /// Extract the advice attached to the error, if any
+    pub fn advice(&self) -> Option<&str> {
+        self.advice.as_deref()
+    }
+
     /// Set the advice field of an error
     pub fn set_advice(&mut self, advice: String) {
         self.advice = Some(advice);
     }
 
+    /// Return the `EvaluationError`, but with the new `source_loc` (or `None`).
+    pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+        Self { source_loc, ..self }
+    }
+
     /// Construct a [`EntityDoesNotExist`] error
-    pub(crate) fn entity_does_not_exist(euid: Arc<EntityUID>) -> Self {
+    pub(crate) fn entity_does_not_exist(euid: Arc<EntityUID>, source_loc: Option<Loc>) -> Self {
         Self {
             error_kind: EvaluationErrorKind::EntityDoesNotExist(euid),
             advice: None,
+            source_loc,
         }
     }
 
     /// Construct a [`EntityAttrDoesNotExist`] error
-    pub(crate) fn entity_attr_does_not_exist(entity: Arc<EntityUID>, attr: SmolStr) -> Self {
+    pub(crate) fn entity_attr_does_not_exist(
+        entity: Arc<EntityUID>,
+        attr: SmolStr,
+        source_loc: Option<Loc>,
+    ) -> Self {
         Self {
             error_kind: EvaluationErrorKind::EntityAttrDoesNotExist { entity, attr },
             advice: None,
+            source_loc,
         }
     }
 
     /// Construct a [`UnspecifiedEntityAccess`] error
-    pub(crate) fn unspecified_entity_access(attr: SmolStr) -> Self {
+    pub(crate) fn unspecified_entity_access(attr: SmolStr, source_loc: Option<Loc>) -> Self {
         Self {
             error_kind: EvaluationErrorKind::UnspecifiedEntityAccess(attr),
             advice: None,
+            source_loc,
         }
     }
 
     /// Construct a [`RecordAttrDoesNotExist`] error
-    pub(crate) fn record_attr_does_not_exist(attr: SmolStr, alternatives: Vec<SmolStr>) -> Self {
+    pub(crate) fn record_attr_does_not_exist(
+        attr: SmolStr,
+        alternatives: Vec<SmolStr>,
+        source_loc: Option<Loc>,
+    ) -> Self {
         Self {
             error_kind: EvaluationErrorKind::RecordAttrDoesNotExist(attr, alternatives),
             advice: None,
+            source_loc,
         }
     }
 
     /// Construct a [`TypeError`] error
-    pub(crate) fn type_error(expected: NonEmpty<Type>, actual: Type) -> Self {
+    pub(crate) fn type_error(expected: NonEmpty<Type>, actual: &Value) -> Self {
         Self {
-            error_kind: EvaluationErrorKind::TypeError { expected, actual },
+            error_kind: EvaluationErrorKind::TypeError {
+                expected,
+                actual: actual.type_of(),
+            },
             advice: None,
+            source_loc: actual.source_loc().cloned(),
         }
     }
 
-    pub(crate) fn type_error_single(expected: Type, actual: Type) -> Self {
+    pub(crate) fn type_error_single(expected: Type, actual: &Value) -> Self {
         Self::type_error(nonempty![expected], actual)
     }
 
     /// Construct a [`TypeError`] error with the advice field set
     pub(crate) fn type_error_with_advice(
         expected: NonEmpty<Type>,
-        actual: Type,
+        actual: &Value,
         advice: String,
     ) -> Self {
         Self {
-            error_kind: EvaluationErrorKind::TypeError { expected, actual },
+            error_kind: EvaluationErrorKind::TypeError {
+                expected,
+                actual: actual.type_of(),
+            },
             advice: Some(advice),
+            source_loc: actual.source_loc().cloned(),
         }
     }
 
     pub(crate) fn type_error_with_advice_single(
         expected: Type,
-        actual: Type,
+        actual: &Value,
         advice: String,
     ) -> Self {
         Self::type_error_with_advice(nonempty![expected], actual, advice)
     }
 
     /// Construct a [`WrongNumArguments`] error
-    pub(crate) fn wrong_num_arguments(function_name: Name, expected: usize, actual: usize) -> Self {
+    pub(crate) fn wrong_num_arguments(
+        function_name: Name,
+        expected: usize,
+        actual: usize,
+        source_loc: Option<Loc>,
+    ) -> Self {
         Self {
             error_kind: EvaluationErrorKind::WrongNumArguments {
                 function_name,
@@ -157,59 +210,70 @@ impl EvaluationError {
                 actual,
             },
             advice: None,
+            source_loc,
         }
     }
 
     /// Construct a [`UnlinkedSlot`] error
-    pub(crate) fn unlinked_slot(id: SlotId) -> Self {
+    pub(crate) fn unlinked_slot(id: SlotId, source_loc: Option<Loc>) -> Self {
         Self {
             error_kind: EvaluationErrorKind::UnlinkedSlot(id),
             advice: None,
+            source_loc,
         }
     }
 
     /// Construct a [`FailedExtensionFunctionApplication`] error
-    pub(crate) fn failed_extension_function_application(extension_name: Name, msg: String) -> Self {
+    pub(crate) fn failed_extension_function_application(
+        extension_name: Name,
+        msg: String,
+        source_loc: Option<Loc>,
+    ) -> Self {
         Self {
             error_kind: EvaluationErrorKind::FailedExtensionFunctionApplication {
                 extension_name,
                 msg,
             },
             advice: None,
+            source_loc,
         }
     }
 
     /// Construct a [`NonValue`] error
     pub(crate) fn non_value(e: Expr) -> Self {
+        let source_loc = e.source_loc().cloned();
         Self {
             error_kind: EvaluationErrorKind::NonValue(e),
             advice: Some("consider using the partial evaluation APIs".into()),
+            source_loc,
         }
     }
 
     /// Construct a [`RecursionLimit`] error
-    pub(crate) fn recursion_limit() -> Self {
+    pub(crate) fn recursion_limit(source_loc: Option<Loc>) -> Self {
         Self {
             error_kind: EvaluationErrorKind::RecursionLimit,
             advice: None,
+            source_loc,
         }
     }
-}
 
-impl From<crate::extensions::ExtensionFunctionLookupError> for EvaluationError {
-    fn from(err: crate::extensions::ExtensionFunctionLookupError) -> Self {
+    pub(crate) fn extension_function_lookup(
+        err: crate::extensions::ExtensionFunctionLookupError,
+        source_loc: Option<Loc>,
+    ) -> Self {
         Self {
             error_kind: err.into(),
             advice: None,
+            source_loc,
         }
     }
-}
 
-impl From<IntegerOverflowError> for EvaluationError {
-    fn from(err: IntegerOverflowError) -> Self {
+    pub(crate) fn integer_overflow(err: IntegerOverflowError, source_loc: Option<Loc>) -> Self {
         Self {
             error_kind: err.into(),
             advice: None,
+            source_loc,
         }
     }
 }
@@ -219,6 +283,7 @@ impl From<RestrictedExprError> for EvaluationError {
         Self {
             error_kind: err.into(),
             advice: None,
+            source_loc: None, // defer to the source information embedded in the `RestrictedExprError` and thus stored in `error_kind`
         }
     }
 }

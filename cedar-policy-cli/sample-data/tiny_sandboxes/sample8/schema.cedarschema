@@ -1,0 +1,6 @@
+entity Album in [Album];
+entity User in [UserGroup] { score: __cedar::decimal };
+entity UserGroup;
+entity Photo in [Album] { owner: User };
+
+action edit, view appliesTo { principal: [User], resource: [Photo] };

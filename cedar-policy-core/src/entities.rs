@@ -21,6 +21,7 @@ use crate::extensions::Extensions;
 use crate::transitive_closure::{compute_tc, enforce_tc_and_dag};
 use std::collections::{hash_map, HashMap};
 use std::fmt::Write;
+use std::sync::Arc;
 
 use serde::Serialize;
 use serde_with::serde_as;
@@ -126,8 +127,10 @@ impl Entities {
             if let Some(checker) = checker.as_ref() {
                 checker.validate_entity(&entity)?;
             }
-            match self.entities.entry(entity.uid()) {
-                hash_map::Entry::Occupied(_) => return Err(EntitiesError::Duplicate(entity.uid())),
+            match self.entities.entry(entity.uid().clone()) {
+                hash_map::Entry::Occupied(_) => {
+                    return Err(EntitiesError::Duplicate(entity.uid().clone()))
+                }
                 hash_map::Entry::Vacant(vacant_entry) => {
                     vacant_entry.insert(entity);
                 }
@@ -160,21 +163,16 @@ impl Entities {
     ) -> Result<Self> {
         let mut entity_map = create_entity_map(entities.into_iter())?;
         if let Some(schema) = schema {
-            // validate entities against schema.
-            // we do this before adding the actions, because we trust the
+            // Validate non-action entities against schema.
+            // We do this before adding the actions, because we trust the
             // actions were already validated as part of constructing the
             // `Schema`
             let checker = EntitySchemaConformanceChecker::new(schema, extensions);
             for entity in entity_map.values() {
-                checker.validate_entity(entity)?;
+                if !entity.uid().entity_type().is_action() {
+                    checker.validate_entity(entity)?;
+                }
             }
-            // now add the action entities from the schema
-            entity_map.extend(
-                schema
-                    .action_entities()
-                    .into_iter()
-                    .map(|e| (e.uid(), unwrap_or_clone(e))),
-            );
         }
         match tc_computation {
             TCComputation::AssumeAlreadyComputed => {}
@@ -184,6 +182,26 @@ impl Entities {
             TCComputation::ComputeNow => {
                 compute_tc(&mut entity_map, true).map_err(Box::new)?;
             }
+        }
+        // Now that TC has been enforced, we can check action entities for
+        // conformance with the schema and add action entities to the store.
+        // This is fine to do after TC because the action hierarchy in the
+        // schema already satisfies TC, and action and non-action entities
+        // can never be in the same hierarchy when using schema-based parsing.
+        if let Some(schema) = schema {
+            let checker = EntitySchemaConformanceChecker::new(schema, extensions);
+            for entity in entity_map.values() {
+                if entity.uid().entity_type().is_action() {
+                    checker.validate_entity(entity)?;
+                }
+            }
+            // Add the action entities from the schema
+            entity_map.extend(
+                schema
+                    .action_entities()
+                    .into_iter()
+                    .map(|e| (e.uid().clone(), Arc::unwrap_or_clone(e))),
+            );
         }
         Ok(Self {
             entities: entity_map,
@@ -294,8 +312,8 @@ impl Entities {
 fn create_entity_map(es: impl Iterator<Item = Entity>) -> Result<HashMap<EntityUID, Entity>> {
     let mut map = HashMap::new();
     for e in es {
-        match map.entry(e.uid()) {
-            hash_map::Entry::Occupied(_) => return Err(EntitiesError::Duplicate(e.uid())),
+        match map.entry(e.uid().clone()) {
+            hash_map::Entry::Occupied(_) => return Err(EntitiesError::Duplicate(e.uid().clone())),
             hash_map::Entry::Vacant(v) => {
                 v.insert(e);
             }
@@ -2548,7 +2566,7 @@ mod schema_based_parsing_tests {
             Dereference::Data(e) => e,
             _ => panic!("expected entity to exist and be concrete"),
         };
-        assert_eq!(parsed_entity.uid(), expected_uid);
+        assert_eq!(parsed_entity.uid(), &expected_uid);
     }
 
     /// Test that involves an action also declared in the schema, but an attribute has a different value (of the same type)

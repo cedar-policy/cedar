@@ -15,8 +15,8 @@
  */
 
 use super::{
-    unwrap_or_clone, EntityUID, Expr, ExprConstructionError, ExprKind, Literal, Name, PartialValue,
-    Unknown, Value, ValueKind,
+    EntityUID, Expr, ExprConstructionError, ExprKind, Literal, Name, PartialValue, Unknown, Value,
+    ValueKind,
 };
 use crate::entities::JsonSerializationError;
 use crate::parser::err::ParseErrors;
@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
+use std::sync::Arc;
 use thiserror::Error;
 
 /// A few places in Core use these "restricted expressions" (for lack of a
@@ -254,13 +255,13 @@ impl From<ValueKind> for RestrictedExpr {
             // PANIC SAFETY: cannot have duplicate key because the input was already a BTreeMap
             #[allow(clippy::expect_used)]
             ValueKind::Record(record) => RestrictedExpr::record(
-                unwrap_or_clone(record)
+                Arc::unwrap_or_clone(record)
                     .into_iter()
                     .map(|(k, v)| (k, RestrictedExpr::from(v))),
             )
             .expect("can't have duplicate keys, because the input `map` was already a BTreeMap"),
             ValueKind::ExtensionValue(ev) => {
-                let ev = unwrap_or_clone(ev);
+                let ev = Arc::unwrap_or_clone(ev);
                 RestrictedExpr::call_extension_fn(ev.constructor, ev.args)
             }
         }
@@ -600,7 +601,7 @@ impl<'a> Hash for RestrictedExprShapeOnly<'a> {
 
 /// Error when constructing a restricted expression from unrestricted
 
-#[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum RestrictedExprError {
     /// An expression was expected to be a "restricted" expression, but contained
     /// a feature that is not allowed in restricted expressions. The `feature`
@@ -614,6 +615,26 @@ pub enum RestrictedExprError {
         /// the (sub-)expression that uses the disallowed feature
         expr: Expr,
     },
+}
+
+// custom impl of `Diagnostic`: take location info from the embedded subexpression
+impl Diagnostic for RestrictedExprError {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        match self {
+            Self::InvalidRestrictedExpression { expr, .. } => expr.source_loc().map(|loc| {
+                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span)))
+                    as Box<dyn Iterator<Item = _>>
+            }),
+        }
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        match self {
+            Self::InvalidRestrictedExpression { expr, .. } => expr
+                .source_loc()
+                .map(|loc| &loc.src as &dyn miette::SourceCode),
+        }
+    }
 }
 
 /// Errors possible from `RestrictedExpr::from_str()`

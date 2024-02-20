@@ -33,7 +33,7 @@ pub use node::Node;
 /// Step one: Convert text to CST
 pub mod text_to_cst;
 /// Utility functions to unescape string literals
-pub(crate) mod unescape;
+pub mod unescape;
 
 use smol_str::SmolStr;
 use std::collections::HashMap;
@@ -347,9 +347,28 @@ pub(crate) fn parse_ident(id: &str) -> Result<ast::Id, err::ParseErrors> {
     }
 }
 
-/// Utilities used in tests in this file
+/// parse an `AnyId`
+///
+/// Private to this crate. Users outside Core should use `AnyId`'s `FromStr` impl
+/// or its constructors
+pub(crate) fn parse_anyid(id: &str) -> Result<ast::AnyId, err::ParseErrors> {
+    let mut errs = err::ParseErrors::new();
+    let cst = text_to_cst::parse_ident(id)?;
+    let Some(ast) = cst.to_any_ident(&mut errs) else {
+        return Err(errs);
+    };
+    if errs.is_empty() {
+        Ok(ast)
+    } else {
+        Err(errs)
+    }
+}
+
+/// Utilities used in tests in this file (and maybe other files in this crate)
 #[cfg(test)]
-mod test_utils {
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
+pub(crate) mod test_utils {
     use super::err::ParseErrors;
     use crate::test_utils::*;
 
@@ -371,6 +390,28 @@ mod test_utils {
             "for the following input:\n{src}\nexpected some error to match the following:\n{msg}\nbut actual errors were:\n{:?}", // the Debug representation of `miette::Report` is the pretty one, for some reason
             miette::Report::new(errs.clone()),
         );
+    }
+
+    /// Expect that the given `ParseErrors` contains exactly one error, and that it matches the given `ExpectedErrorMessage`.
+    ///
+    /// `src` is the original input text, just for better assertion-failure messages
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+    pub fn expect_exactly_one_error(src: &str, errs: &ParseErrors, msg: &ExpectedErrorMessage<'_>) {
+        match errs.len() {
+            0 => panic!("for the following input:\n{src}\nexpected an error, but the `ParseErrors` was empty"),
+            1 => {
+                let err = errs.iter().next().expect("already checked that len was 1");
+                assert!(
+                    msg.matches(err),
+                    "for the following input:\n{src}\nexpected the error to match the following:\n{msg}\nbut actual error was:\n{:?}", // the Debug representation of `miette::Report` is the pretty one, for some reason
+                    miette::Report::new(err.clone()),
+                )
+            }
+            n => panic!(
+                "for the following input:\n{src}\nexpected only one error, but got {n}. Expected to match the following:\n{msg}\nbut actual errors were:\n{:?}", // the Debug representation of `miette::Report` is the pretty one, for some reason
+                miette::Report::new(errs.clone()),
+            )
+        }
     }
 }
 
@@ -641,11 +682,14 @@ mod eval_tests {
 }
 
 #[cfg(test)]
+// PANIC SAFETY tests
+#[allow(clippy::indexing_slicing)]
 mod parse_tests {
     use super::test_utils::*;
     use super::*;
     use crate::test_utils::*;
     use cool_asserts::assert_matches;
+    use miette::Diagnostic;
 
     #[test]
     fn parse_exists() {
@@ -966,8 +1010,53 @@ mod parse_tests {
         // duplicate key
         let src = r#"permit(principal, action, resource) when { context.foo == { "spam": -341, foo: 2, "🦀": true, foo: "baz" } };"#;
         assert_matches!(parse_policy(None, src), Err(e) => {
-            assert_eq!(e.len(), 1);
-            expect_some_error_matches(src, &e, &ExpectedErrorMessage::error("duplicate key `foo` in record literal"));
+            expect_exactly_one_error(src, &e, &ExpectedErrorMessage::error("duplicate key `foo` in record literal"));
         });
+    }
+
+    #[test]
+    fn annotation_errors() {
+        let src = r#"
+            @foo("1")
+            @foo("2")
+            permit(principal, action, resource);
+        "#;
+        assert_matches!(parse_policy(None, src), Err(e) => {
+            expect_exactly_one_error(src, &e, &ExpectedErrorMessage::error("duplicate annotation: @foo"));
+            let expected_span = 35..44;
+            assert_eq!(&src[expected_span.clone()], r#"@foo("2")"#);
+            itertools::assert_equal(e.labels().expect("should have labels"), [miette::LabeledSpan::underline(expected_span)]);
+        });
+
+        let src = r#"
+            @foo("1")
+            @foo("1")
+            permit(principal, action, resource);
+        "#;
+        assert_matches!(parse_policy(None, src), Err(e) => {
+            expect_exactly_one_error(src, &e, &ExpectedErrorMessage::error("duplicate annotation: @foo"));
+            let expected_span = 35..44;
+            assert_eq!(&src[expected_span.clone()], r#"@foo("1")"#);
+            itertools::assert_equal(e.labels().expect("should have labels"), [miette::LabeledSpan::underline(expected_span)]);
+        });
+
+        let src = r#"
+            @foo("1")
+            @bar("yellow")
+            @foo("abc")
+            @hello("goodbye")
+            @bar("123")
+            @foo("def")
+            permit(principal, action, resource);
+        "#;
+        assert_matches!(parse_policy(None, src), Err(e) => {
+            assert_eq!(e.len(), 3); // two errors for @foo and one for @bar
+            expect_some_error_matches(src, &e, &ExpectedErrorMessage::error("duplicate annotation: @foo"));
+            expect_some_error_matches(src, &e, &ExpectedErrorMessage::error("duplicate annotation: @bar"));
+            for ((err, expected_span), expected_snippet) in e.iter().zip([62..73, 116..127, 140..151]).zip([r#"@foo("abc")"#, r#"@bar("123")"#, r#"@foo("def")"#]) {
+                assert_eq!(&src[expected_span.clone()], expected_snippet);
+                itertools::assert_equal(err.labels().expect("should have labels"), [miette::LabeledSpan::underline(expected_span)]);
+            }
+        })
     }
 }

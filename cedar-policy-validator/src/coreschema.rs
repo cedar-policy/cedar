@@ -25,7 +25,7 @@ impl<'a> CoreSchema<'a> {
         Self {
             actions: schema
                 .action_entities_iter()
-                .map(|e| (e.uid(), Arc::new(e)))
+                .map(|e| (e.uid().clone(), Arc::new(e)))
                 .collect(),
             schema,
         }

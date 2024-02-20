@@ -1,7 +1,0 @@
-forbid(
-  principal in a::"",
-  action == Action::"action",
-  resource
-) when {
-  true && (-(isIpv6()))
-};

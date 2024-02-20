@@ -34,6 +34,7 @@ use serde_with::serde_as;
 use super::NamespaceDefinition;
 use crate::{
     err::*,
+    human_schema::SchemaWarning,
     types::{Attributes, EntityRecordKind, OpenTag, Type},
     SchemaFragment,
 };
@@ -49,7 +50,7 @@ pub use namespace_def::ValidatorNamespaceDef;
 #[cfg(test)]
 pub(crate) use namespace_def::ACTION_ENTITY_TYPE;
 
-// We do not have a dafny model for action attributes, so we disable them by defualt.
+// We do not have a formal model for action attributes, so we disable them by default.
 #[derive(Eq, PartialEq, Copy, Clone, Default)]
 pub enum ActionBehavior {
     /// Action entities cannot have attributes. Attempting to declare attributes
@@ -173,6 +174,28 @@ impl ValidatorSchema {
             ActionBehavior::default(),
             extensions,
         )
+    }
+
+    pub fn from_file_natural(
+        r: impl std::io::Read,
+        extensions: Extensions<'_>,
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
+        let (fragment, warnings) = SchemaFragment::from_file_natural(r)?;
+        let schema_and_warnings =
+            Self::from_schema_file(fragment, ActionBehavior::default(), extensions)
+                .map(|schema| (schema, warnings))?;
+        Ok(schema_and_warnings)
+    }
+
+    pub fn from_str_natural(
+        src: &str,
+        extensions: Extensions<'_>,
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
+        let (fragment, warnings) = SchemaFragment::from_str_natural(src)?;
+        let schema_and_warnings =
+            Self::from_schema_file(fragment, ActionBehavior::default(), extensions)
+                .map(|schema| (schema, warnings))?;
+        Ok(schema_and_warnings)
     }
 
     pub fn from_schema_file(
@@ -1879,7 +1902,7 @@ mod test {
         let schema: ValidatorSchema = schema_fragment.try_into().expect("Schema should construct");
         let view_photo = schema
             .action_entities_iter()
-            .find(|e| e.uid() == r#"ExampleCo::Personnel::Action::"viewPhoto""#.parse().unwrap())
+            .find(|e| e.uid() == &r#"ExampleCo::Personnel::Action::"viewPhoto""#.parse().unwrap())
             .unwrap();
         let ancestors = view_photo.ancestors().collect::<Vec<_>>();
         let read = ancestors[0];
@@ -1939,7 +1962,7 @@ mod test {
         let schema: ValidatorSchema = schema_fragment.try_into().unwrap();
         let view_photo = schema
             .action_entities_iter()
-            .find(|e| e.uid() == r#"ExampleCo::Personnel::Action::"viewPhoto""#.parse().unwrap())
+            .find(|e| e.uid() == &r#"ExampleCo::Personnel::Action::"viewPhoto""#.parse().unwrap())
             .unwrap();
         let ancestors = view_photo.ancestors().collect::<Vec<_>>();
         let read = ancestors[0];
@@ -1948,5 +1971,73 @@ mod test {
             read.entity_type().to_string(),
             "ExampleCo::Personnel::Action"
         );
+    }
+
+    #[test]
+    fn qualified_undeclared_common_types() {
+        let src = json!(
+            {
+                "Demo": {
+                  "entityTypes": {
+                    "User": {
+                      "memberOfTypes": [],
+                      "shape": {
+                        "type": "Record",
+                        "attributes": {
+                          "id": { "type": "id" },
+                        }
+                      }
+                    }
+                  },
+                  "actions": {}
+                },
+                "": {
+                  "commonTypes": {
+                    "id": {
+                      "type": "String"
+                    },
+                  },
+                  "entityTypes": {},
+                  "actions": {}
+                }
+              }
+        );
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::UndeclaredCommonTypes(types)) =>
+            assert_eq!(types, HashSet::from(["Demo::id".to_string()])));
+    }
+
+    #[test]
+    fn qualified_undeclared_common_types2() {
+        let src = json!(
+            {
+                "Demo": {
+                  "entityTypes": {
+                    "User": {
+                      "memberOfTypes": [],
+                      "shape": {
+                        "type": "Record",
+                        "attributes": {
+                          "id": { "type": "Demo::id" },
+                        }
+                      }
+                    }
+                  },
+                  "actions": {}
+                },
+                "": {
+                  "commonTypes": {
+                    "id": {
+                      "type": "String"
+                    },
+                  },
+                  "entityTypes": {},
+                  "actions": {}
+                }
+              }
+        );
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::UndeclaredCommonTypes(types)) =>
+            assert_eq!(types, HashSet::from(["Demo::id".to_string()])));
     }
 }

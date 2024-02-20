@@ -417,10 +417,13 @@ impl Validator {
 #[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
-    use std::collections::{BTreeMap, HashMap, HashSet};
+    use std::collections::{HashMap, HashSet};
 
     use cedar_policy_core::{
-        ast::{Effect, Eid, EntityUID, Expr, PolicyID, PrincipalConstraint, ResourceConstraint},
+        ast::{
+            Annotations, Effect, Eid, EntityUID, Expr, PolicyID, PrincipalConstraint,
+            ResourceConstraint,
+        },
         parser::{parse_policy, parse_policy_template},
     };
 
@@ -437,7 +440,7 @@ mod test {
     fn validate_entity_type_empty_schema() -> Result<()> {
         let policy = Template::new(
             PolicyID::from_string("policy0"),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -565,7 +568,7 @@ mod test {
         let singleton_schema = schema_file.try_into().unwrap();
         let policy = Template::new(
             PolicyID::from_string("policy0"),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -600,7 +603,7 @@ mod test {
         let singleton_schema = schema_file.try_into().unwrap();
         let policy = Template::new(
             PolicyID::from_string("policy0"),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq(
                 EntityUID::with_eid_and_type("bar_type", "bar_name")
@@ -640,7 +643,7 @@ mod test {
             .expect("should be a valid identifier");
         let policy = Template::new(
             PolicyID::from_string("policy0"),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::is_eq(entity),
@@ -688,7 +691,7 @@ mod test {
             EntityUID::with_eid_and_type("Action", foo_name).expect("should be a valid identifier");
         let policy = Template::new(
             PolicyID::from_string("policy0"),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::is_eq(entity),
@@ -815,7 +818,7 @@ mod test {
             .expect("Should be a valid identifier");
         let policy = Template::new(
             PolicyID::from_string("policy0"),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::is_eq(entity),
@@ -864,7 +867,7 @@ mod test {
             .expect("Expected entity parse.");
         let policy = Template::new(
             PolicyID::from_string("policy0"),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::is_eq(entity),
@@ -896,7 +899,7 @@ mod test {
             .expect("Expected entity parse.");
         let policy = Template::new(
             PolicyID::from_string("policy0"),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::is_eq(entity),
@@ -932,7 +935,7 @@ mod test {
         let entity_type: Name = "NS::Foo".parse().expect("Expected entity type parse.");
         let policy = Template::new(
             PolicyID::from_string("policy0"),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq(EntityUID::from_components(entity_type, Eid::new("bar"))),
             ActionConstraint::any(),
@@ -962,7 +965,7 @@ mod test {
         let entity_type: Name = "Bogus::Foo".parse().expect("Expected entity type parse.");
         let policy = Template::new(
             PolicyID::from_string("policy0"),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq(EntityUID::from_components(entity_type, Eid::new("bar"))),
             ActionConstraint::any(),
@@ -1152,7 +1155,7 @@ mod test {
 
         let policy = Template::new(
             PolicyID::from_string("policy0"),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq(principal),
             ActionConstraint::is_eq(action),
@@ -1252,7 +1255,7 @@ mod test {
         let (principal, action, resource, schema) = schema_with_single_principal_action_resource();
         let policy = Template::new(
             PolicyID::from_string("policy0"),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq(principal),
             ActionConstraint::is_eq(action),
@@ -1590,7 +1593,7 @@ mod test {
 
         let policy = Template::new(
             PolicyID::from_string("policy0"),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::is_in([action_grandparent_euid]),
@@ -1621,7 +1624,7 @@ mod test {
         // resource == Unspecified::"foo"
         let policy = Template::new(
             PolicyID::from_string("policy0"),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -1639,7 +1642,7 @@ mod test {
         // principal in Unspecified::"foo"
         let policy = Template::new(
             PolicyID::from_string("policy0"),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_in(EntityUID::unspecified_from_eid(Eid::new("foo"))),
             ActionConstraint::any(),
@@ -1664,7 +1667,7 @@ mod test {
         // resource == Unspecified::"foo"
         let policy = Template::new(
             PolicyID::from_string("policy0"),
-            BTreeMap::new(),
+            Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::any(),

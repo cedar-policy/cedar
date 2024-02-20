@@ -27,7 +27,6 @@ use cedar_policy_core::ast::{
     ContextCreationError, ExprConstructionError, Integer, RestrictedExprParseError,
 }; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
 use cedar_policy_core::authorizer;
-pub use cedar_policy_core::authorizer::AuthorizationError;
 use cedar_policy_core::entities::{
     self, ContextJsonDeserializationError, ContextSchema, Dereference, JsonDeserializationError,
     JsonDeserializationErrorContext,
@@ -40,12 +39,14 @@ use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 pub use cedar_policy_core::parser::err::ParseErrors;
 use cedar_policy_core::FromNormalizedStr;
+pub use cedar_policy_validator::human_schema::SchemaWarning;
 use cedar_policy_validator::RequestValidationError; // this type is unsuitable for `pub use` because it contains internal types like `EntityUID` and `EntityType`
 pub use cedar_policy_validator::{
     TypeErrorKind, UnsupportedFeature, ValidationErrorKind, ValidationWarningKind,
 };
 use itertools::Itertools;
 use miette::Diagnostic;
+use nonempty::NonEmpty;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -179,7 +180,7 @@ impl Entity {
     /// ```
     pub fn uid(&self) -> EntityUid {
         // INVARIANT: By invariant on self and `EntityUid`: Our Uid can't be unspecified
-        EntityUid(self.0.uid())
+        EntityUid(self.0.uid().clone())
     }
 
     /// Get the value for the given attribute, or `None` if not present.
@@ -246,6 +247,7 @@ impl Entities {
     /// Transform the store into a partial store, where
     /// attempting to dereference a non-existent `EntityUID` results in
     /// a residual instead of an error.
+    #[doc = include_str!("../experimental_warning.md")]
     #[must_use]
     #[cfg(feature = "partial-eval")]
     pub fn partial(self) -> Self {
@@ -660,7 +662,7 @@ impl Authorizer {
     /// Returns an authorization response for `r` with respect to the given
     /// `PolicySet` and `Entities`.
     ///
-    /// The language spec and Dafny model give a precise definition of how this
+    /// The language spec and formal model give a precise definition of how this
     /// is computed.
     /// ```
     /// # use cedar_policy::{Authorizer,Context,Decision,Entities,EntityId,EntityTypeName, EntityUid, Request,PolicySet};
@@ -718,6 +720,7 @@ impl Authorizer {
     /// The Authorizer will attempt to make as much progress as possible in the presence of unknowns.
     /// If the Authorizer can reach a response, it will return that response.
     /// Otherwise, it will return a list of residual policies that still need to be evaluated.
+    #[doc = include_str!("../experimental_warning.md")]
     #[cfg(feature = "partial-eval")]
     pub fn is_authorized_partial(
         &self,
@@ -733,6 +736,69 @@ impl Authorizer {
             authorizer::ResponseKind::Partial(p) => PartialResponse::Residual(p.into()),
         }
     }
+
+    /// Evaluate an authorization request and respond with results that always includes
+    /// residuals even if the [`Authorizer`] already reached a decision.
+    #[doc = include_str!("../experimental_warning.md")]
+    #[cfg(feature = "partial-eval")]
+    pub fn evaluate_policies_partial(
+        &self,
+        query: &Request,
+        policy_set: &PolicySet,
+        entities: &Entities,
+    ) -> EvaluationResponse {
+        let authorizer::EvaluationResponse {
+            satisfied_permits,
+            satisfied_forbids,
+            errors,
+            permit_residuals,
+            forbid_residuals,
+        } = self
+            .0
+            .evaluate_policies(&policy_set.ast, query.0.clone(), &entities.0);
+        EvaluationResponse {
+            satisfied_permits: satisfied_permits.into_iter().map(PolicyId).collect(),
+            satisfied_forbids: satisfied_forbids.into_iter().map(PolicyId).collect(),
+            errors: errors.into_iter().map(|e| e.into()).collect(),
+            permit_residuals: PolicySet::from_ast(permit_residuals),
+            forbid_residuals: PolicySet::from_ast(forbid_residuals),
+        }
+    }
+}
+
+/// Errors that can occur during authorization
+#[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
+pub enum AuthorizationError {
+    /// An error occurred when evaluating a policy.
+    #[error("while evaluating policy `{id}`: {error}")]
+    PolicyEvaluationError {
+        /// Id of the policy with an error
+        #[doc(hidden)]
+        id: ast::PolicyID,
+        /// Underlying evaluation error
+        #[diagnostic(transparent)]
+        error: EvaluationError,
+    },
+}
+
+impl AuthorizationError {
+    /// Get the id of the erroring policy
+    pub fn id(&self) -> &PolicyId {
+        match self {
+            Self::PolicyEvaluationError { id, error: _ } => PolicyId::ref_cast(id),
+        }
+    }
+}
+
+#[doc(hidden)]
+impl From<authorizer::AuthorizationError> for AuthorizationError {
+    fn from(value: authorizer::AuthorizationError) -> Self {
+        match value {
+            authorizer::AuthorizationError::PolicyEvaluationError { id, error } => {
+                Self::PolicyEvaluationError { id, error }
+            }
+        }
+    }
 }
 
 /// Authorization response returned from the `Authorizer`
@@ -746,6 +812,7 @@ pub struct Response {
 
 /// Authorization response returned from `is_authorized_partial`.
 /// It can either be a full concrete response, or a residual response.
+#[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum PartialResponse {
@@ -756,6 +823,7 @@ pub enum PartialResponse {
 }
 
 /// A residual response obtained from `is_authorized_partial`.
+#[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ResidualResponse {
@@ -763,6 +831,23 @@ pub struct ResidualResponse {
     residuals: PolicySet,
     /// Diagnostics
     diagnostics: Diagnostics,
+}
+
+/// A policy evaluation response obtained from `evaluate_policies_partial`.
+#[doc = include_str!("../experimental_warning.md")]
+#[cfg(feature = "partial-eval")]
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct EvaluationResponse {
+    /// `PolicyId`s of fully evaluated policies with a permit [`Effect`]
+    satisfied_permits: HashSet<PolicyId>,
+    /// `PolicyId`s of fully evaluated policies with a forbid [`Effect`]
+    satisfied_forbids: HashSet<PolicyId>,
+    /// Errors that occurred during policy evaluation.
+    errors: Vec<AuthorizationError>,
+    /// Partially evaluated policies with a permit [`Effect`]
+    permit_residuals: PolicySet,
+    /// Partially evaluated policies with a forbid [`Effect`]
+    forbid_residuals: PolicySet,
 }
 
 /// Diagnostics providing more information on how a `Decision` was reached
@@ -780,7 +865,7 @@ impl From<authorizer::Diagnostics> for Diagnostics {
     fn from(diagnostics: authorizer::Diagnostics) -> Self {
         Self {
             reason: diagnostics.reason.into_iter().map(PolicyId).collect(),
-            errors: diagnostics.errors,
+            errors: diagnostics.errors.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -974,6 +1059,51 @@ impl From<authorizer::PartialResponse> for ResidualResponse {
     }
 }
 
+#[cfg(feature = "partial-eval")]
+impl EvaluationResponse {
+    /// Create a new `EvaluationResponse`.
+    pub fn new(
+        satisfied_permits: HashSet<PolicyId>,
+        satisfied_forbids: HashSet<PolicyId>,
+        errors: Vec<AuthorizationError>,
+        permit_residuals: PolicySet,
+        forbid_residuals: PolicySet,
+    ) -> Self {
+        Self {
+            satisfied_permits,
+            satisfied_forbids,
+            errors,
+            permit_residuals,
+            forbid_residuals,
+        }
+    }
+
+    /// Get the `PolicyId`s of fully evaluated policies with a permit [`Effect`].
+    pub fn satisfied_permits(&self) -> impl Iterator<Item = &PolicyId> {
+        self.satisfied_permits.iter()
+    }
+
+    /// Get the `PolicyId`s of fully evaluated policies with a forbid [`Effect`].
+    pub fn satisfied_forbids(&self) -> impl Iterator<Item = &PolicyId> {
+        self.satisfied_forbids.iter()
+    }
+
+    /// Get the redisual policies with a permit [`Effect`].
+    pub fn permit_residuals(&self) -> &PolicySet {
+        &self.permit_residuals
+    }
+
+    /// Get the redisual policies with a permit [`Effect`].
+    pub fn forbid_residuals(&self) -> &PolicySet {
+        &self.forbid_residuals
+    }
+
+    /// Get the evaluation errors.
+    pub fn errors(&self) -> impl Iterator<Item = &AuthorizationError> {
+        self.errors.iter()
+    }
+}
+
 /// Used to select how a policy will be validated.
 #[derive(Default, Eq, PartialEq, Copy, Clone, Debug)]
 #[non_exhaustive]
@@ -982,10 +1112,12 @@ pub enum ValidationMode {
     /// have a restricted form which is amenable for analysis.
     #[default]
     Strict,
-    #[cfg(feature = "permissive-validate")]
     /// Validate that policies do not contain any type errors.
+    #[doc = include_str!("../experimental_warning.md")]
+    #[cfg(feature = "permissive-validate")]
     Permissive,
     /// Validate using a partial schema. Policies may contain type errors.
+    #[doc = include_str!("../experimental_warning.md")]
     #[cfg(feature = "partial-validate")]
     Partial,
 }
@@ -1033,14 +1165,17 @@ impl Validator {
 /// Contains all the type information used to construct a `Schema` that can be
 /// used to validate a policy.
 #[derive(Debug)]
-pub struct SchemaFragment(cedar_policy_validator::ValidatorSchemaFragment);
+pub struct SchemaFragment {
+    value: cedar_policy_validator::ValidatorSchemaFragment,
+    lossless: cedar_policy_validator::SchemaFragment,
+}
 
 impl SchemaFragment {
     /// Extract namespaces defined in this `SchemaFragment`. Each namespace
     /// entry defines the name of the namespace and the entity types and actions
     /// that exist in the namespace.
     pub fn namespaces(&self) -> impl Iterator<Item = Option<EntityNamespace>> + '_ {
-        self.0
+        self.value
             .namespaces()
             .map(|ns| ns.as_ref().map(|ns| EntityNamespace(ns.clone())))
     }
@@ -1048,16 +1183,66 @@ impl SchemaFragment {
     /// Create an `SchemaFragment` from a JSON value (which should be an
     /// object of the shape required for Cedar schemas).
     pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
-        Ok(Self(
-            cedar_policy_validator::SchemaFragment::from_json_value(json)?.try_into()?,
+        let lossless = cedar_policy_validator::SchemaFragment::from_json_value(json)?;
+        Ok(Self {
+            value: lossless.clone().try_into()?,
+            lossless,
+        })
+    }
+
+    /// Parse a [`SchemaFragment`] from a reader containing the natural schema syntax
+    pub fn from_file_natural(
+        r: impl std::io::Read,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
+        let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_file_natural(r)?;
+        Ok((
+            Self {
+                value: lossless.clone().try_into()?,
+                lossless,
+            },
+            warnings,
+        ))
+    }
+
+    /// Parse a [`SchemaFragment`] from a string containing the natural schema syntax
+    pub fn from_str_natural(
+        src: &str,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
+        let (lossless, warnings) = cedar_policy_validator::SchemaFragment::from_str_natural(src)?;
+        Ok((
+            Self {
+                value: lossless.clone().try_into()?,
+                lossless,
+            },
+            warnings,
         ))
     }
 
     /// Create a `SchemaFragment` directly from a file.
     pub fn from_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
-        Ok(Self(
-            cedar_policy_validator::SchemaFragment::from_file(file)?.try_into()?,
-        ))
+        let lossless = cedar_policy_validator::SchemaFragment::from_file(file)?;
+        Ok(Self {
+            value: lossless.clone().try_into()?,
+            lossless,
+        })
+    }
+
+    /// Serialize this [`SchemaFragment`] as a json value
+    pub fn to_json_value(self) -> Result<serde_json::Value, SchemaError> {
+        let v = serde_json::to_value(self.lossless)?;
+        Ok(v)
+    }
+
+    /// Serialize this [`SchemaFragment`] as a json value
+    pub fn as_json_string(&self) -> Result<String, SchemaError> {
+        let str = serde_json::to_string(&self.lossless)?;
+        Ok(str)
+    }
+
+    /// Serialize this [`SchemaFragment`] into the natural syntax
+    pub fn as_natural(&self) -> Result<String, ToHumanSyntaxError> {
+        let str = self.lossless.as_natural_schema()?;
+        Ok(str)
     }
 }
 
@@ -1069,7 +1254,7 @@ impl TryInto<Schema> for SchemaFragment {
     /// any undeclared entity types are referenced in the schema fragment.
     fn try_into(self) -> Result<Schema, Self::Error> {
         Ok(Schema(
-            cedar_policy_validator::ValidatorSchema::from_schema_fragments([self.0])?,
+            cedar_policy_validator::ValidatorSchema::from_schema_fragments([self.value])?,
         ))
     }
 }
@@ -1083,11 +1268,11 @@ impl FromStr for SchemaFragment {
     /// to undefined entities) because this is not required until a `Schema` is
     /// constructed.
     fn from_str(src: &str) -> Result<Self, Self::Err> {
-        Ok(Self(
-            serde_json::from_str::<cedar_policy_validator::SchemaFragment>(src)
-                .map_err(cedar_policy_validator::SchemaError::from)?
-                .try_into()?,
-        ))
+        let lossless = serde_json::from_str::<cedar_policy_validator::SchemaFragment>(src)?;
+        Ok(Self {
+            value: lossless.clone().try_into()?,
+            lossless,
+        })
     }
 }
 
@@ -1120,7 +1305,7 @@ impl Schema {
     ) -> Result<Self, SchemaError> {
         Ok(Self(
             cedar_policy_validator::ValidatorSchema::from_schema_fragments(
-                fragments.into_iter().map(|f| f.0),
+                fragments.into_iter().map(|f| f.value),
             )?,
         ))
     }
@@ -1142,6 +1327,28 @@ impl Schema {
             file,
             Extensions::all_available(),
         )?))
+    }
+
+    /// Parse the schema from a reader
+    pub fn from_file_natural(
+        file: impl std::io::Read,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
+        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_file_natural(
+            file,
+            Extensions::all_available(),
+        )?;
+        Ok((Self(schema), warnings))
+    }
+
+    /// Parse the schema from a string
+    pub fn from_str_natural(
+        src: &str,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), HumanSchemaError> {
+        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_str_natural(
+            src,
+            Extensions::all_available(),
+        )?;
+        Ok((Self(schema), warnings))
     }
 
     /// Extract from the schema an `Entities` containing the action entities
@@ -1237,6 +1444,57 @@ pub enum SchemaError {
     /// Support for this escape form has been dropped.
     #[error("schema contained the non-supported `__expr` escape")]
     ExprEscapeUsed,
+}
+
+/// Errors serializing Schemas to the natural syntax
+#[derive(Debug, Error, Diagnostic)]
+pub enum ToHumanSyntaxError {
+    /// Duplicate names were found in the schema
+    #[error("There are type name collisions: [{}]", .0.iter().join(", "))]
+    NameCollisions(NonEmpty<SmolStr>),
+}
+
+impl From<cedar_policy_validator::human_schema::ToHumanSchemaStrError> for ToHumanSyntaxError {
+    fn from(value: cedar_policy_validator::human_schema::ToHumanSchemaStrError) -> Self {
+        match value {
+            cedar_policy_validator::human_schema::ToHumanSchemaStrError::NameCollisions(
+                collisions,
+            ) => Self::NameCollisions(collisions),
+        }
+    }
+}
+
+/// Errors when parsing schemas
+#[derive(Debug, Diagnostic, Error)]
+pub enum HumanSchemaError {
+    /// Error parsing a schema in natural syntax
+    #[error("Error parsing schema: {0}")]
+    #[diagnostic(transparent)]
+    ParseError(#[from] cedar_policy_validator::human_schema::parser::HumanSyntaxParseErrors),
+    /// Errors combining fragments into full schemas
+    #[error("{0}")]
+    #[diagnostic(transparent)]
+    Core(#[from] SchemaError),
+    /// IO errors while parsing
+    #[error("{0}")]
+    Io(#[from] std::io::Error),
+}
+
+#[doc(hidden)]
+impl From<cedar_policy_validator::HumanSchemaError> for HumanSchemaError {
+    fn from(value: cedar_policy_validator::HumanSchemaError) -> Self {
+        match value {
+            cedar_policy_validator::HumanSchemaError::Core(core) => Self::Core(core.into()),
+            cedar_policy_validator::HumanSchemaError::IO(io_err) => Self::Io(io_err),
+            cedar_policy_validator::HumanSchemaError::Parsing(e) => Self::ParseError(e),
+        }
+    }
+}
+
+impl From<cedar_policy_validator::SchemaError> for HumanSchemaError {
+    fn from(value: cedar_policy_validator::SchemaError) -> Self {
+        Self::Core(value.into())
+    }
 }
 
 /// Error when evaluating an entity attribute
@@ -1701,9 +1959,10 @@ impl<'a> Diagnostic for ValidationWarning<'a> {
 
 /// Identifier portion of the [`EntityUid`] type.
 ///
-/// An `EntityId` can can be constructed using [`EntityId::from_str`] or by
-/// calling `parse()` on a string. This implementation is `Infallible`, so the
-/// parsed `EntityId` can be extracted safely.
+/// All strings are valid [`EntityId`]s, and can be
+/// constructed either using [`EntityId::new`]
+/// or by using the implementation of [`FromStr`]. This implementation is [`Infallible`], so the
+/// parsed [`EntityId`] can be extracted safely.
 ///
 /// ```
 /// # use cedar_policy::EntityId;
@@ -1713,6 +1972,16 @@ impl<'a> Diagnostic for ValidationWarning<'a> {
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
 pub struct EntityId(ast::Eid);
+
+impl EntityId {
+    /// Construct an [`EntityId`] from a source string
+    pub fn new(src: impl AsRef<str>) -> Self {
+        match src.as_ref().parse() {
+            Ok(eid) => eid,
+            Err(infallible) => match infallible {},
+        }
+    }
+}
 
 impl FromStr for EntityId {
     type Err = Infallible;
@@ -2210,15 +2479,19 @@ impl PolicySet {
         self.ast
             .get(&id.0)?
             .annotation(&key.as_ref().parse().ok()?)
-            .map(smol_str::SmolStr::as_str)
+            .map(AsRef::as_ref)
     }
 
     /// Extract annotation data from a `Template` by its `PolicyId` and annotation key.
+    //
+    // TODO: unfortunate that this method returns `Option<String>` and the corresponding method
+    // for policies (`.annotation()`) above returns `Option<&str>`, but this can't be changed
+    // without a semver break
     pub fn template_annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<String> {
         self.ast
             .get_template(&id.0)?
             .annotation(&key.as_ref().parse().ok()?)
-            .map(smol_str::SmolStr::to_string)
+            .map(|annot| annot.val.to_string())
     }
 
     /// Returns true iff the `PolicySet` is empty
@@ -2295,6 +2568,7 @@ impl PolicySet {
     }
 
     /// Get all the unknown entities from the policy set
+    #[doc = include_str!("../experimental_warning.md")]
     #[cfg(feature = "partial-eval")]
     pub fn unknown_entities(&self) -> HashSet<EntityUid> {
         let mut entity_uids = HashSet::new();
@@ -2437,14 +2711,14 @@ impl Template {
     pub fn annotation(&self, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .annotation(&key.as_ref().parse().ok()?)
-            .map(smol_str::SmolStr::as_str)
+            .map(AsRef::as_ref)
     }
 
     /// Iterate through annotation data of this `Template` as key-value pairs
     pub fn annotations(&self) -> impl Iterator<Item = (&str, &str)> {
         self.ast
             .annotations()
-            .map(|(k, v)| (k.as_ref(), v.as_str()))
+            .map(|(k, v)| (k.as_ref(), v.as_ref()))
     }
 
     /// Iterate over the open slots in this `Template`
@@ -2680,20 +2954,29 @@ impl TemplateResourceConstraint {
 
 /// Unique ids assigned to policies and templates.
 ///
-/// A `PolicyId` can can be constructed using [`PolicyId::from_str`] or by
-/// calling `parse()` on a string. This currently always returns `Ok()`.
-///
+/// A [`PolicyId`] can can be constructed using [`PolicyId::from_str`] or by
+/// calling `parse()` on a string.
+/// This implementation is [`Infallible`], so the parsed [`EntityId`] can be extracted safely.
+/// Examples:
 /// ```
 /// # use cedar_policy::PolicyId;
-/// let id : PolicyId = "my-id".parse().unwrap();
+/// let id = PolicyId::new("my-id");
+/// let id : PolicyId = "my-id".parse().unwrap_or_else(|never| match never {});
 /// # assert_eq!(id.as_ref(), "my-id");
 /// ```
 #[repr(transparent)]
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize, Deserialize, RefCast)]
 pub struct PolicyId(ast::PolicyID);
 
+impl PolicyId {
+    /// Construct a [`PolicyId`] from a source string
+    pub fn new(id: impl AsRef<str>) -> Self {
+        Self(ast::PolicyID::from_string(id.as_ref()))
+    }
+}
+
 impl FromStr for PolicyId {
-    type Err = ParseErrors;
+    type Err = Infallible;
 
     /// Create a `PolicyId` from a string. Currently always returns `Ok()`.
     fn from_str(id: &str) -> Result<Self, Self::Err> {
@@ -2773,14 +3056,14 @@ impl Policy {
     pub fn annotation(&self, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .annotation(&key.as_ref().parse().ok()?)
-            .map(smol_str::SmolStr::as_str)
+            .map(AsRef::as_ref)
     }
 
     /// Iterate through annotation data of this template-linked or static policy
     pub fn annotations(&self) -> impl Iterator<Item = (&str, &str)> {
         self.ast
             .annotations()
-            .map(|(k, v)| (k.as_ref(), v.as_str()))
+            .map(|(k, v)| (k.as_ref(), v.as_ref()))
     }
 
     /// Get the `PolicyId` for this template-linked or static policy
@@ -3259,33 +3542,39 @@ impl FromStr for RestrictedExpression {
 ///
 /// The default for principal, action, resource, and context fields is Unknown
 /// for partial evaluation.
+#[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 #[derive(Debug)]
-pub struct RequestBuilder<'a> {
+pub struct RequestBuilder<S> {
     principal: ast::EntityUIDEntry,
     action: ast::EntityUIDEntry,
     resource: ast::EntityUIDEntry,
     /// Here, `None` means unknown
     context: Option<ast::Context>,
-    /// Here, `None` means no request validation is performed
-    schema: Option<&'a Schema>,
+    schema: S,
 }
 
+/// A marker type that indicates [`Schema`] is not set for a request
+#[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-impl<'a> Default for RequestBuilder<'a> {
+#[derive(Debug)]
+pub struct UnsetSchema;
+
+#[cfg(feature = "partial-eval")]
+impl Default for RequestBuilder<UnsetSchema> {
     fn default() -> Self {
         Self {
             principal: ast::EntityUIDEntry::Unknown { loc: None },
             action: ast::EntityUIDEntry::Unknown { loc: None },
             resource: ast::EntityUIDEntry::Unknown { loc: None },
             context: None,
-            schema: None,
+            schema: UnsetSchema,
         }
     }
 }
 
 #[cfg(feature = "partial-eval")]
-impl<'a> RequestBuilder<'a> {
+impl<S> RequestBuilder<S> {
     /// Set the principal.
     ///
     /// Note that you can create the `EntityUid` using `.parse()` on any
@@ -3363,16 +3652,35 @@ impl<'a> RequestBuilder<'a> {
             ..self
         }
     }
+}
 
+#[cfg(feature = "partial-eval")]
+impl RequestBuilder<UnsetSchema> {
     /// Set the schema. If present, this will be used for request validation.
     #[must_use]
-    pub fn schema(self, schema: &'a Schema) -> Self {
-        Self {
-            schema: Some(schema),
-            ..self
+    pub fn schema(self, schema: &Schema) -> RequestBuilder<&Schema> {
+        RequestBuilder {
+            principal: self.principal,
+            action: self.action,
+            resource: self.resource,
+            context: self.context,
+            schema,
         }
     }
 
+    /// Create the [`Request`]
+    pub fn build(self) -> Request {
+        Request(ast::Request::new_unchecked(
+            self.principal,
+            self.action,
+            self.resource,
+            self.context,
+        ))
+    }
+}
+
+#[cfg(feature = "partial-eval")]
+impl RequestBuilder<&Schema> {
     /// Create the [`Request`]
     pub fn build(self) -> Result<Request, RequestValidationError> {
         Ok(Request(ast::Request::new_with_unknowns(
@@ -3380,7 +3688,7 @@ impl<'a> RequestBuilder<'a> {
             self.action,
             self.resource,
             self.context,
-            self.schema.map(|schema| &schema.0),
+            Some(&self.schema.0),
             Extensions::all_available(),
         )?))
     }
@@ -3400,8 +3708,9 @@ pub struct Request(pub(crate) ast::Request);
 
 impl Request {
     /// Create a [`RequestBuilder`]
+    #[doc = include_str!("../experimental_warning.md")]
     #[cfg(feature = "partial-eval")]
-    pub fn builder<'a>() -> RequestBuilder<'a> {
+    pub fn builder() -> RequestBuilder<UnsetSchema> {
         RequestBuilder::default()
     }
 
@@ -3879,5 +4188,102 @@ mod partial_eval_test {
         assert_eq!(a.diagnostics().errors, errors);
         assert_eq!(a.diagnostics().reason, reason);
         assert_eq!(a.residuals(), &p);
+    }
+}
+
+#[cfg(test)]
+// PANIC SAFETY: unit tests
+#[allow(clippy::unwrap_used)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_all_ints() {
+        test_single_int(0);
+        test_single_int(i64::MAX);
+        test_single_int(i64::MIN);
+        test_single_int(7);
+        test_single_int(-7);
+    }
+
+    fn test_single_int(x: i64) {
+        for i in 0..4 {
+            test_single_int_with_dashes(x, i);
+        }
+    }
+
+    fn test_single_int_with_dashes(x: i64, num_dashes: usize) {
+        let dashes = vec!['-'; num_dashes].into_iter().collect::<String>();
+        let src = format!(r#"permit(principal, action, resource) when {{ {dashes}{x} }};"#);
+        let p: Policy = src.parse().unwrap();
+        let json = p.to_json().unwrap();
+        let round_trip = Policy::from_json(None, json).unwrap();
+        let pretty_print = format!("{round_trip}");
+        assert!(pretty_print.contains(&x.to_string()));
+        if x != 0 {
+            let expected_dashes = if x < 0 { num_dashes + 1 } else { num_dashes };
+            assert_eq!(
+                pretty_print.chars().filter(|c| *c == '-').count(),
+                expected_dashes
+            );
+        }
+    }
+
+    // Serializing a valid 64-bit int that can't be represented in double precision float
+    #[test]
+    fn json_bignum_1() {
+        let src = r#"
+        permit(
+            principal,
+            action == Action::"action",
+            resource
+          ) when {
+            -9223372036854775808
+          };"#;
+        let p: Policy = src.parse().unwrap();
+        p.to_json().unwrap();
+    }
+
+    #[test]
+    fn json_bignum_1a() {
+        let src = r"
+        permit(principal, action, resource) when {
+            (true && (-90071992547409921)) && principal
+        };";
+        let p: Policy = src.parse().unwrap();
+        let v = p.to_json().unwrap();
+        let s = serde_json::to_string(&v).unwrap();
+        assert!(s.contains("90071992547409921"));
+    }
+
+    // Deserializing a valid 64-bit int that can't be represented in double precision float
+    #[test]
+    fn json_bignum_2() {
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":90071992547409921}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let p = Policy::from_json(None, v).unwrap();
+        let pretty = format!("{p}");
+        // Ensure the number didn't get rounded
+        assert!(pretty.contains("90071992547409921"));
+    }
+
+    // Deserializing a valid 64-bit int that can't be represented in double precision float
+    #[test]
+    fn json_bignum_2a() {
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":-9223372036854775808}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let p = Policy::from_json(None, v).unwrap();
+        let pretty = format!("{p}");
+        // Ensure the number didn't get rounded
+        assert!(pretty.contains("-9223372036854775808"));
+    }
+
+    // Deserializing a number that doesn't fit in 64 bit integer
+    // This _should_ fail, as there's no way to do this w/out loss of precision
+    #[test]
+    fn json_bignum_3() {
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":9223372036854775808}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        assert!(Policy::from_json(None, v).is_err());
     }
 }

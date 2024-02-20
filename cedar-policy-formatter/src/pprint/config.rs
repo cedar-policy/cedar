@@ -23,6 +23,15 @@ pub struct Config {
     pub indent_width: isize,
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            line_width: 80,
+            indent_width: 2,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Context<'a> {
     pub config: &'a Config,
