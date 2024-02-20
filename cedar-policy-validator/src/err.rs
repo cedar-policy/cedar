@@ -192,3 +192,53 @@ pub enum UnsupportedFeature {
     #[error("action declared with attributes: [{}]", .0.iter().join(", "))]
     ActionAttributes(Vec<String>),
 }
+
+// PANIC SAFETY testing code
+#[allow(clippy::panic)]
+#[cfg(test)]
+mod test {
+    use crate::ValidatorSchema;
+
+    use super::*;
+    use cedar_policy_core::extensions::Extensions;
+    use serde_json::json;
+    #[test]
+    fn qualified_undeclared_common_types() {
+        let src = json!(
+            {
+                "Demo": {
+                  "entityTypes": {
+                    "User": {
+                      "memberOfTypes": [],
+                      "shape": {
+                        "type": "Record",
+                        "attributes": {
+                          "id": { "type": "id" },
+                        }
+                      }
+                    }
+                  },
+                  "actions": {}
+                },
+                "": {
+                  "commonTypes": {
+                    "id": {
+                      "type": "String"
+                    },
+                  },
+                  "entityTypes": {},
+                  "actions": {}
+                }
+              }
+        );
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
+        assert!(schema.is_err(), "This schema should not parse");
+        match schema.unwrap_err() {
+            SchemaError::UndeclaredCommonTypes(types) => {
+                assert_eq!(types.len(), 1);
+                assert!(types.contains("Demo::id"));
+            }
+            other => panic!("Wrong error: {:?}", other),
+        }
+    }
+}
