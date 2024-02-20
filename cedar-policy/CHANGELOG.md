@@ -22,6 +22,8 @@ Cedar Language Version: 3.1.0
 
 ### Changed
 
+- Changed error message on `SchemaError::UndeclaredCommonTypes` to report
+  fully qualified type names. (#652, resolving #580)
 - Better integration with `miette` for various error types. If you have
   previously been just using the `Display` trait to get the error message from a
   Cedar error type, you may want to consider also examining other data provided
