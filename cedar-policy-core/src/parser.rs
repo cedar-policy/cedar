@@ -366,6 +366,8 @@ pub(crate) fn parse_anyid(id: &str) -> Result<ast::AnyId, err::ParseErrors> {
 
 /// Utilities used in tests in this file (and maybe other files in this crate)
 #[cfg(test)]
+// PANIC SAFETY unit tests
+#[allow(clippy::panic)]
 pub(crate) mod test_utils {
     use super::err::ParseErrors;
     use crate::test_utils::*;
@@ -680,6 +682,8 @@ mod eval_tests {
 }
 
 #[cfg(test)]
+// PANIC SAFETY tests
+#[allow(clippy::indexing_slicing)]
 mod parse_tests {
     use super::test_utils::*;
     use super::*;

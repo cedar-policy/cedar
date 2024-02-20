@@ -135,7 +135,7 @@ impl PolicySetModel {
             assert!(!self
                 .link_to_template_map
                 .iter()
-                .any(|(_, v)| v == &template_name));
+                .any(|(_, v)| v == template_name));
             //Remove from `template_to_link_map`, `template_names` and the PolicySet
             self.template_to_link_map
                 .remove(template_name)
@@ -161,7 +161,7 @@ impl PolicySetModel {
                         let v = e.into_mut();
                         let idx = v
                             .iter()
-                            .position(|r| r == &policy_id)
+                            .position(|r| r == policy_id)
                             .expect("Should find index for link");
                         v.remove(idx);
                     }

@@ -114,7 +114,7 @@ impl PathInternal {
     fn is_in_cedar(&self) -> bool {
         // `0` is the position of the most significant namespace
         self.namespace
-            .get(0)
+            .first()
             .map(|id| id.as_ref() == CEDAR_NAMESPACE)
             .unwrap_or(false)
     }

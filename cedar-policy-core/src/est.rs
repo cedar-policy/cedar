@@ -349,6 +349,8 @@ impl std::fmt::Display for Clause {
 
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
     use super::*;
