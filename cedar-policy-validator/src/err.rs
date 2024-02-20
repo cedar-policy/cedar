@@ -192,14 +192,3 @@ pub enum UnsupportedFeature {
     #[error("action declared with attributes: [{}]", .0.iter().join(", "))]
     ActionAttributes(Vec<String>),
 }
-
-// PANIC SAFETY testing code
-#[allow(clippy::panic)]
-#[cfg(test)]
-mod test {
-    use crate::ValidatorSchema;
-
-    use super::*;
-    use cedar_policy_core::extensions::Extensions;
-    use serde_json::json;
-}
