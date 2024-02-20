@@ -1972,4 +1972,72 @@ mod test {
             "ExampleCo::Personnel::Action"
         );
     }
+
+    #[test]
+    fn qualified_undeclared_common_types() {
+        let src = json!(
+            {
+                "Demo": {
+                  "entityTypes": {
+                    "User": {
+                      "memberOfTypes": [],
+                      "shape": {
+                        "type": "Record",
+                        "attributes": {
+                          "id": { "type": "id" },
+                        }
+                      }
+                    }
+                  },
+                  "actions": {}
+                },
+                "": {
+                  "commonTypes": {
+                    "id": {
+                      "type": "String"
+                    },
+                  },
+                  "entityTypes": {},
+                  "actions": {}
+                }
+              }
+        );
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::UndeclaredCommonTypes(types)) =>
+            assert_eq!(types, HashSet::from(["Demo::id".to_string()])));
+    }
+
+    #[test]
+    fn qualified_undeclared_common_types2() {
+        let src = json!(
+            {
+                "Demo": {
+                  "entityTypes": {
+                    "User": {
+                      "memberOfTypes": [],
+                      "shape": {
+                        "type": "Record",
+                        "attributes": {
+                          "id": { "type": "Demo::id" },
+                        }
+                      }
+                    }
+                  },
+                  "actions": {}
+                },
+                "": {
+                  "commonTypes": {
+                    "id": {
+                      "type": "String"
+                    },
+                  },
+                  "entityTypes": {},
+                  "actions": {}
+                }
+              }
+        );
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
+        assert_matches!(schema, Err(SchemaError::UndeclaredCommonTypes(types)) =>
+            assert_eq!(types, HashSet::from(["Demo::id".to_string()])));
+    }
 }
