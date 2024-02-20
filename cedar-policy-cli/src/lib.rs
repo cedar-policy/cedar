@@ -1084,7 +1084,7 @@ fn read_json_policy(filename: Option<impl AsRef<Path> + std::marker::Copy>) -> R
         Err(_) => match Template::from_json(None, json).map_err(err_to_report) {
             Ok(template) => {
                 let mut ps = PolicySet::new();
-                let _ = ps.add_template(template)?;
+                ps.add_template(template)?;
                 Ok(ps)
             }
             Err(err) => Err(err).wrap_err_with(|| format!("failed to parse {context}")),

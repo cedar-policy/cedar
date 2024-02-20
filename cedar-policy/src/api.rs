@@ -4246,10 +4246,10 @@ mod test {
 
     #[test]
     fn json_bignum_1a() {
-        let src = r#"
+        let src = r"
         permit(principal, action, resource) when {
             (true && (-90071992547409921)) && principal
-        };"#;
+        };";
         let p: Policy = src.parse().unwrap();
         let v = p.to_json().unwrap();
         let s = serde_json::to_string(&v).unwrap();
