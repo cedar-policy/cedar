@@ -65,7 +65,7 @@ impl<'a> ExpectedErrorMessage<'a> {
                     _ => false,
                 }
         } else {
-            &e_string == self.error && h_string.as_deref() == self.help
+            e_string == self.error && h_string.as_deref() == self.help
         }
     }
 }
@@ -177,6 +177,8 @@ pub fn expect_err<'a>(
 /// `src` is the original input text, used both for assertion-failure messages
 /// but also as the source we assume the error's source location indexes into.
 #[track_caller]
+// PANIC SAFETY: testing
+#[allow(clippy::indexing_slicing)]
 pub fn expect_source_snippet(
     src: impl AsRef<str>,
     err: &impl miette::Diagnostic,
@@ -195,7 +197,7 @@ pub fn expect_source_snippet(
         )
     });
     let actual_snippet = {
-        let span = label.inner().clone();
+        let span = label.inner();
         &src[span.offset()..span.offset() + span.len()]
     };
     assert_eq!(

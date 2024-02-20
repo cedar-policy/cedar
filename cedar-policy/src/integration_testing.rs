@@ -188,9 +188,8 @@ pub fn parse_policies_from_test(test: &JsonTest) -> PolicySet {
     let policy_file = resolve_integration_test_path(&test.policies);
     let policies_text = std::fs::read_to_string(policy_file)
         .unwrap_or_else(|e| panic!("error loading policy file {}: {e}", test.policies));
-    let policies = PolicySet::from_str(&policies_text)
-        .unwrap_or_else(|e| panic!("error parsing policy in file {}: {e}", &test.policies));
-    policies
+    PolicySet::from_str(&policies_text)
+        .unwrap_or_else(|e| panic!("error parsing policy in file {}: {e}", &test.policies))
 }
 
 /// Same as `parse_policies_from_test`, but returns `cedar_policy_core::ast::PolicySet`
@@ -227,9 +226,8 @@ pub fn parse_entities_from_test(test: &JsonTest, schema: &Schema) -> Entities {
         .read(true)
         .open(entity_file)
         .unwrap_or_else(|e| panic!("error opening entity file {}: {e}", &test.entities));
-    let entities = Entities::from_json_file(&entities_json, Some(schema))
-        .unwrap_or_else(|e| panic!("error parsing entities in {}: {e}", &test.entities));
-    entities
+    Entities::from_json_file(&entities_json, Some(schema))
+        .unwrap_or_else(|e| panic!("error parsing entities in {}: {e}", &test.entities))
 }
 
 /// Same as `parse_entities_from_test`, but returns `cedar_policy_core::entities::Entities`
@@ -282,7 +280,7 @@ pub fn parse_request_from_test(
                 json_request.desc, test_name
             )
         });
-    let request = Request::new(
+    Request::new(
         principal,
         action,
         resource,
@@ -298,8 +296,7 @@ pub fn parse_request_from_test(
             "error validating request \"{}\" in {}: {e}",
             json_request.desc, test_name
         )
-    });
-    request
+    })
 }
 
 /// Same as `parse_request_from_test`, but returns `cedar_policy_core::ast::Request`

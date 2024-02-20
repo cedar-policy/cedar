@@ -5036,7 +5036,7 @@ mod tests {
         let expr = "principal has if::foo";
         assert_matches!(parse_expr(expr), Err(e) => {
             expect_err(expr, &e, &ExpectedErrorMessage::error(
-                &format!("this identifier is reserved and cannot be used: `if`")
+                "this identifier is reserved and cannot be used: `if`"
             ));
         })
     }
