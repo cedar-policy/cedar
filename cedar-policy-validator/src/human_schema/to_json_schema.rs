@@ -556,7 +556,6 @@ fn extract_name(n: Node<SmolStr>) -> (SmolStr, Node<()>) {
 }
 
 fn shadows_builtin((name, node): (&SmolStr, &Node<()>)) -> Option<SchemaWarning> {
-    println!("Name: `{name}`");
     if EXTENSIONS.contains(&name.as_ref()) || BUILTIN_TYPES.contains(&name.as_ref()) {
         Some(SchemaWarning::ShadowsBuiltin {
             name: name.clone(),
