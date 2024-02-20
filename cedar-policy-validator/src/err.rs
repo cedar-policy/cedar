@@ -241,4 +241,44 @@ mod test {
             other => panic!("Wrong error: {:?}", other),
         }
     }
+
+    #[test]
+    fn qualified_undeclared_common_types2() {
+        let src = json!(
+            {
+                "Demo": {
+                  "entityTypes": {
+                    "User": {
+                      "memberOfTypes": [],
+                      "shape": {
+                        "type": "Record",
+                        "attributes": {
+                          "id": { "type": "Demo::id" },
+                        }
+                      }
+                    }
+                  },
+                  "actions": {}
+                },
+                "": {
+                  "commonTypes": {
+                    "id": {
+                      "type": "String"
+                    },
+                  },
+                  "entityTypes": {},
+                  "actions": {}
+                }
+              }
+        );
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
+        assert!(schema.is_err(), "This schema should not parse");
+        match schema.unwrap_err() {
+            SchemaError::UndeclaredCommonTypes(types) => {
+                assert_eq!(types.len(), 1);
+                assert!(types.contains("Demo::id"));
+            }
+            other => panic!("Wrong error: {:?}", other),
+        }
+    }
 }
