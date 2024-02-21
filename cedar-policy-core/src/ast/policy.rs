@@ -975,10 +975,27 @@ impl Annotations {
     pub fn iter(&self) -> impl Iterator<Item = (&AnyId, &Annotation)> {
         self.0.iter()
     }
+}
 
-    /// Consume this `Annotations`, iterating over all the annotations
-    pub fn into_iter(self) -> impl Iterator<Item = (AnyId, Annotation)> {
-        self.0.into_iter()
+/// Wraps the [`BTreeMap`]` into an opaque type so we can change it later if need be
+#[derive(Debug)]
+pub struct IntoIter(std::collections::btree_map::IntoIter<AnyId, Annotation>);
+
+impl Iterator for IntoIter {
+    type Item = (AnyId, Annotation);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
+}
+
+impl IntoIterator for Annotations {
+    type Item = (AnyId, Annotation);
+
+    type IntoIter = IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter(self.0.into_iter())
     }
 }
 

@@ -115,6 +115,10 @@ pub fn parse_ident(text: &str) -> Result<Node<Option<cst::Ident>>, err::ParseErr
     parse_collect_errors(&*IDENT_PARSER, grammar::IdentParser::parse, text)
 }
 
+// PANIC SAFETY unit test code
+#[allow(clippy::panic)]
+// PANIC SAFETY unit test code
+#[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
     use super::*;
