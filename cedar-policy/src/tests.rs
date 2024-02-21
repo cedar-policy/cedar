@@ -114,9 +114,8 @@ mod entity_uid_tests {
             r#"permit(principal == A ::   B::C :: " hi there are spaces ", action, resource);"#,
         )
         .expect("should succeed, see RFC 9");
-        let euid = match policy.principal_constraint() {
-            PrincipalConstraint::Eq(euid) => euid,
-            _ => panic!("expected Eq constraint"),
+        let PrincipalConstraint::Eq(euid) = policy.principal_constraint() else {
+            panic!("expected `Eq` constraint");
         };
         assert_eq!(euid.id().as_ref(), " hi there are spaces ");
         assert_eq!(euid.type_name().to_string(), "A::B::C"); // expect to have been normalized
@@ -134,9 +133,8 @@ permit(principal ==  A :: B
     newlines ", action, resource);"#,
         )
         .expect("should succeed, see RFC 9");
-        let euid = match policy.principal_constraint() {
-            PrincipalConstraint::Eq(euid) => euid,
-            _ => panic!("expected Eq constraint"),
+        let PrincipalConstraint::Eq(euid) = policy.principal_constraint() else {
+            panic!("expected `Eq` constraint")
         };
         assert_eq!(
             euid.id().as_ref(),
@@ -3284,5 +3282,108 @@ mod issue_618 {
 
         let p2 = Policy::from_json(None, json).unwrap();
         assert_eq!(p1.to_string(), p2.to_string());
+    }
+}
+mod issue_604 {
+    use crate::Policy;
+    use cedar_policy_core::parser::parse_policy_or_template_to_est;
+    use cool_asserts::assert_matches;
+    #[track_caller]
+    fn to_json_is_ok(text: &str) {
+        let policy = Policy::parse(None, text).unwrap();
+        let json = policy.to_json();
+        assert_matches!(json, Ok(_));
+    }
+
+    #[track_caller]
+    fn make_policy_with_get_attr(attr: &str) -> String {
+        format!(
+            r#"
+        permit(principal, action, resource) when {{ principal == resource.{attr} }};
+        "#
+        )
+    }
+
+    #[track_caller]
+    fn make_policy_with_has_attr(attr: &str) -> String {
+        format!(
+            r#"
+        permit(principal, action, resource) when {{ resource has {attr} }};
+        "#
+        )
+    }
+
+    #[test]
+    fn var_as_attribute_name() {
+        for attr in ["principal", "action", "resource", "context"] {
+            to_json_is_ok(&make_policy_with_get_attr(attr));
+            to_json_is_ok(&make_policy_with_has_attr(attr));
+        }
+    }
+
+    #[track_caller]
+    fn is_valid_est(text: &str) {
+        let est = parse_policy_or_template_to_est(text);
+        assert_matches!(est, Ok(_));
+    }
+
+    #[track_caller]
+    fn is_invalid_est(text: &str) {
+        let est = parse_policy_or_template_to_est(text);
+        assert_matches!(est, Err(_));
+    }
+
+    #[test]
+    fn keyword_as_attribute_name_err() {
+        for attr in ["true", "false", "if", "then", "else", "in", "like", "has"] {
+            is_invalid_est(&make_policy_with_get_attr(attr));
+            is_invalid_est(&make_policy_with_has_attr(attr));
+        }
+    }
+
+    #[test]
+    fn keyword_as_attribute_name_ok() {
+        for attr in ["permit", "forbid", "when", "unless", "_"] {
+            is_valid_est(&make_policy_with_get_attr(attr));
+            is_valid_est(&make_policy_with_has_attr(attr));
+        }
+    }
+}
+
+mod issue_606 {
+    use cedar_policy_core::est::FromJsonError;
+
+    use crate::{PolicyId, Template};
+
+    #[test]
+    fn est_template() {
+        let est_json = serde_json::json!({
+            "effect": "permit",
+            "principal": { "op": "All" },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [
+                {
+                    "kind": "when",
+                    "body": {
+                        "==": {
+                            "left": { "Var": "principal" },
+                            "right": { "Slot": "?principal" }
+                        }
+                    }
+                }
+            ]
+        });
+
+        let tid = PolicyId::new("t0");
+        // We should get an error here after trying to construct a template with a slot in the condition
+        let template = Template::from_json(Some(tid.clone()), est_json);
+        assert!(matches!(
+            template,
+            Err(FromJsonError::SlotsInConditionClause {
+                slot: _,
+                clausetype: "when"
+            })
+        ));
     }
 }

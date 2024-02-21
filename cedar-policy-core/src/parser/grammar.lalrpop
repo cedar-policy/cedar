@@ -57,7 +57,7 @@ match {
     r"[0-9]+" => NUMBER,
     r#""(\\.|[^"\\])*""# => STRINGLIT,
 
-    // other tokens used
+    // other tokens used (or not currently used, in the case of e.g. % and =)
     "@",
     ".", ",", ";", ":", "::",
     "(", ")", "{", "}", "[", "]",
@@ -65,6 +65,7 @@ match {
     "||", "&&",
     "+", "-", "*", "/", "%",
     "!",
+    "=",
 }
 
 Comma<E>: Vec<E> = {
@@ -208,7 +209,7 @@ Relation: Node<Option<cst::Relation>> = {
     <l:@L> <t:Add> IS <n:Add> <e: (IN <Add>)?> <r:@R>
         => Node::with_source_loc(Some(cst::Relation::IsIn{target: t, entity_type: n, in_entity: e}), Loc::new(l..r, Arc::clone(src))),
 }
-// RelOp     := '<' | '<=' | '>=' | '>' | '!=' | '==' | 'in'
+// RelOp     := '<' | '<=' | '>=' | '>' | '!=' | '==' | 'in' | '=' (the '=' is just to provide an error suggesting '==' instead)
 RelOp: cst::RelOp = {
     "<" => cst::RelOp::Less,
     "<=" => cst::RelOp::LessEq,
@@ -216,6 +217,7 @@ RelOp: cst::RelOp = {
     ">" => cst::RelOp::Greater,
     "!=" => cst::RelOp::NotEq,
     "==" => cst::RelOp::Eq,
+    "=" => cst::RelOp::InvalidSingleEq,
     IN => cst::RelOp::In,
 }
 AddOp: cst::AddOp = {

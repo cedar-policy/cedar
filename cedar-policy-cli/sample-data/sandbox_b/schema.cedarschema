@@ -1,0 +1,24 @@
+entity Photo in [Account, Album] {
+  account: Account,
+  admins: Set<User>,
+  private: Bool
+};
+entity User in [UserGroup] { department: String, jobLevel: Long };
+entity AccountGroup;
+entity Administrator;
+entity UserGroup;
+entity Album in [Account] { account: Account, private: Bool };
+entity Account in [AccountGroup] { owner: User };
+
+action view, delete, edit
+  appliesTo {
+    principal: [User],
+    resource: [Photo, Album],
+    context: { source_ip: __cedar::ipaddr }
+  };
+action listPhotos
+  appliesTo {
+    principal: [User],
+    resource: [Album, Photo],
+    context: { source_ip: __cedar::ipaddr }
+  };

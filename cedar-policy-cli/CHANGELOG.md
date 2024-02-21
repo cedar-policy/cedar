@@ -8,6 +8,14 @@
   is present. If the flag is omitted, policies will be read from `stdin`.
 - `--policy-format` flag to many subcommands, allowing you to pass policies in
   JSON format. The default remains `human` format.
+- The `validate` command now takes a `--template-linked` / `-k` optional argument,
+  allowing you to validate template-linked policies.
+- The `check-parse` command also now takes a `--template-linked` / `-k` optional
+  argument, allowing you to check whether a template-linked-policies file parses.
+- The `--template-linked` / `-k` argument is now also optional to `link`
+  (previously required). If not provided, the linked policy will only be shown on
+  stdout; if it is provided, the indicated file will be updated with the new link
+  (as before).
 
 ## 3.0.1
 

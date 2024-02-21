@@ -91,7 +91,7 @@ impl Authorizer {
 
     /// Returns an authorization response for `q` with respect to the given `Slice`.
     ///
-    /// The language spec and Dafny model give a precise definition of how this is
+    /// The language spec and formal model give a precise definition of how this is
     /// computed.
     pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> Response {
         match self.is_authorized_core(q, pset, entities) {
@@ -157,7 +157,7 @@ impl Authorizer {
     /// Returns an authorization response for `q` with respect to the given `Slice`.
     /// Partial Evaluation of is_authorized
     ///
-    /// The language spec and Dafny model give a precise definition of how this is
+    /// The language spec and formal model give a precise definition of how this is
     /// computed.
     pub fn is_authorized_core(
         &self,
@@ -431,10 +431,8 @@ impl std::fmt::Debug for Authorizer {
 #[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
-    use std::collections::BTreeMap;
-
     use super::*;
-    use crate::ast::RequestSchemaAllPass;
+    use crate::ast::{Annotations, RequestSchemaAllPass};
     use crate::parser;
 
     /// Sanity unit test case for is_authorized.
@@ -517,7 +515,7 @@ mod test {
         let pid = PolicyID::from_string(id);
         StaticPolicy::new(
             pid,
-            BTreeMap::new(),
+            Annotations::new(),
             e,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -531,7 +529,7 @@ mod test {
         let pid = PolicyID::from_string(id);
         StaticPolicy::new(
             pid,
-            BTreeMap::new(),
+            Annotations::new(),
             effect,
             PrincipalConstraint::any(),
             ActionConstraint::any(),

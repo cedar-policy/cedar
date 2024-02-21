@@ -225,21 +225,12 @@ impl Node<Option<cst::Policy>> {
         // signaled when the `Node` without data was created
         let policy = self.as_inner()?;
 
-        let mut failure = false;
-
         // convert effect
         let maybe_effect = policy.effect.to_effect(errs);
 
         // convert annotatons
-        let annotations: BTreeMap<_, _> = policy
-            .annotations
-            .iter()
-            .filter_map(|a| a.to_kv_pair(errs))
-            .collect();
-        if annotations.len() != policy.annotations.len() {
-            failure = true;
-            errs.push(self.to_ast_err(ToASTErrorKind::BadAnnotations))
-        }
+        let (annot_success, annotations) = policy.get_ast_annotations(errs);
+        let mut failure = !annot_success;
 
         // convert head
         let (maybe_principal, maybe_action, maybe_resource) = policy.extract_head(errs);
@@ -343,18 +334,54 @@ impl cst::Policy {
         }
         (principal, action, resource)
     }
+
+    /// Get the annotations on the `cst::Policy` as an `ast::Annotations`.
+    /// This returns a `bool` indicating whether conversion was successful for
+    /// all encountered annotations (`true`) or not (`false`), and also the
+    /// `ast::Annotations` object. Note that a partial `ast::Annotations`
+    /// object, containing only the valid annotations, may be returned even in
+    /// failure cases.  In all failure cases, `false` will be returned and
+    /// errors will be added to `errs`.
+    pub fn get_ast_annotations(&self, errs: &mut ParseErrors) -> (bool, ast::Annotations) {
+        let mut failure = false;
+        let mut annotations = BTreeMap::new();
+        for node in self.annotations.iter() {
+            match node.to_kv_pair(errs) {
+                Some((k, v)) => {
+                    use std::collections::btree_map::Entry;
+                    match annotations.entry(k) {
+                        Entry::Occupied(oentry) => {
+                            failure = true;
+                            errs.push(ToASTError::new(
+                                ToASTErrorKind::DuplicateAnnotation(oentry.key().clone()),
+                                node.loc.clone(),
+                            ));
+                        }
+                        Entry::Vacant(ventry) => {
+                            ventry.insert(v);
+                        }
+                    }
+                }
+                None => {
+                    failure = true;
+                    // don't need to add anything to `errs` because `.to_kv_pair()` will already have done so
+                }
+            }
+        }
+        (!failure, annotations.into())
+    }
 }
 
 impl Node<Option<cst::Annotation>> {
     /// Get the (k, v) pair for the annotation. Critically, this checks validity
     /// for the strings and does unescaping
-    pub fn to_kv_pair(&self, errs: &mut ParseErrors) -> Option<(ast::Id, SmolStr)> {
+    pub fn to_kv_pair(&self, errs: &mut ParseErrors) -> Option<(ast::AnyId, ast::Annotation)> {
         // if `self` doesn't have data, nothing we can do here, just propagate
         // the `None`; we don't need to signal an error, because one was already
         // signaled when the `Node` without data was created
         let anno = self.as_inner()?;
 
-        let maybe_key = anno.key.to_valid_ident(errs);
+        let maybe_key = anno.key.to_any_ident(errs);
         let maybe_value = anno.value.as_valid_string(errs);
         let maybe_value = match maybe_value.map(|s| to_unescaped_string(s)).transpose() {
             Ok(maybe_value) => maybe_value,
@@ -365,7 +392,13 @@ impl Node<Option<cst::Annotation>> {
         };
 
         match (maybe_key, maybe_value) {
-            (Some(k), Some(v)) => Some((k, v)),
+            (Some(k), Some(v)) => Some((
+                k,
+                ast::Annotation {
+                    val: v,
+                    loc: Some(self.loc.clone()), // self's loc, not the loc of the value alone; see comments on ast::Annotation
+                },
+            )),
             _ => None,
         }
     }
@@ -396,7 +429,27 @@ impl Node<Option<cst::Ident>> {
                 errs.push(self.to_ast_err(ToASTErrorKind::InvalidIdentifier(i.clone())));
                 None
             }
-            _ => Some(construct_id(format!("{ident}"))),
+            _ => Some(ast::Id::new_unchecked(format!("{ident}"))),
+        }
+    }
+
+    /// Convert [`cst::Ident`] to [`ast::AnyId`]. This method does not fail for
+    /// reserved identifiers; see notes on [`ast::AnyId`].
+    /// (It does fail for invalid identifiers, but there are no invalid
+    /// identifiers at the time of this writing; see notes on
+    /// [`cst::Ident::Invalid`])
+    pub fn to_any_ident(&self, errs: &mut ParseErrors) -> Option<ast::AnyId> {
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let ident = self.as_inner()?;
+
+        match ident {
+            cst::Ident::Invalid(i) => {
+                errs.push(self.to_ast_err(ToASTErrorKind::InvalidIdentifier(i.clone())));
+                None
+            }
+            _ => Some(ast::AnyId::new_unchecked(format!("{ident}"))),
         }
     }
 
@@ -564,6 +617,10 @@ impl Node<Option<cst::VariableDef>> {
                     entity_type.to_expr_or_special(errs)?.into_name(errs)?,
                     eref,
                 )),
+                (cst::RelOp::InvalidSingleEq, _) => {
+                    errs.push(self.to_ast_err(ToASTErrorKind::InvalidSingleEq));
+                    None
+                }
                 (op, _) => {
                     errs.push(self.to_ast_err(ToASTErrorKind::InvalidConstraintOperator(*op)));
                     None
@@ -629,6 +686,10 @@ impl Node<Option<cst::VariableDef>> {
                 }
                 (cst::RelOp::Eq, OneOrMultipleRefs::Multiple(_)) => {
                     errs.push(rel_expr.to_ast_err(ToASTErrorKind::InvalidScopeEqualityRHS));
+                    None
+                }
+                (cst::RelOp::InvalidSingleEq, _) => {
+                    errs.push(self.to_ast_err(ToASTErrorKind::InvalidSingleEq));
                     None
                 }
                 (op, _) => {
@@ -1246,10 +1307,12 @@ impl Node<Option<cst::Relation>> {
                     // error reported and result filtered out
                     (_, None, 1) => None,
                     (f, None, 0) => f,
-                    (Some(f), Some((op, s)), _) => f.into_expr(errs).map(|e| ExprOrSpecial::Expr {
-                        expr: construct_expr_rel(e, *op, s, self.loc.clone()),
-                        loc: self.loc.clone(),
-                    }),
+                    (Some(f), Some((op, s)), _) => f.into_expr(errs).map(|e| {
+                        Some(ExprOrSpecial::Expr {
+                            expr: construct_expr_rel(e, *op, s, self.loc.clone(), errs)?,
+                            loc: self.loc.clone(),
+                        })
+                    })?,
                     _ => None,
                 }
             }
@@ -1286,24 +1349,23 @@ impl Node<Option<cst::Relation>> {
                 entity_type.to_expr_or_special(errs)?.into_name(errs),
             ) {
                 (Some(t), Some(n)) => match in_entity {
-                    Some(in_entity) => {
-                        in_entity
-                            .to_expr(errs)
-                            .map(|in_entity| ExprOrSpecial::Expr {
-                                expr: construct_expr_and(
-                                    construct_expr_is(t.clone(), n, self.loc.clone()),
-                                    construct_expr_rel(
-                                        t,
-                                        cst::RelOp::In,
-                                        in_entity,
-                                        self.loc.clone(),
-                                    ),
-                                    std::iter::empty(),
-                                    &self.loc,
-                                ),
-                                loc: self.loc.clone(),
-                            })
-                    }
+                    Some(in_entity) => in_entity.to_expr(errs).map(|in_entity| {
+                        Some(ExprOrSpecial::Expr {
+                            expr: construct_expr_and(
+                                construct_expr_is(t.clone(), n, self.loc.clone()),
+                                construct_expr_rel(
+                                    t,
+                                    cst::RelOp::In,
+                                    in_entity,
+                                    self.loc.clone(),
+                                    errs,
+                                )?,
+                                std::iter::empty(),
+                                &self.loc,
+                            ),
+                            loc: self.loc.clone(),
+                        })
+                    })?,
                     None => Some(ExprOrSpecial::Expr {
                         expr: construct_expr_is(t, n, self.loc.clone()),
                         loc: self.loc.clone(),
@@ -1334,7 +1396,7 @@ impl Node<Option<cst::Add>> {
     fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
-    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
+    pub(crate) fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
         // if `self` doesn't have data, nothing we can do here, just propagate
         // the `None`; we don't need to signal an error, because one was already
         // signaled when the `Node` without data was created
@@ -1770,7 +1832,7 @@ impl Node<Option<cst::Member>> {
                     head = Some(Expr {
                         expr: construct_expr_attr(
                             construct_expr_var(var, var_loc.clone()),
-                            id.to_smolstr(),
+                            id.into_smolstr(),
                             self.loc.clone(),
                         ),
                         loc: self.loc.clone(),
@@ -1782,7 +1844,7 @@ impl Node<Option<cst::Member>> {
                     let expr = mem::replace(expr, ast::Expr::val(false));
                     let id = mem::replace(i, ast::Id::new_unchecked(""));
                     head = Some(Expr {
-                        expr: construct_expr_attr(expr, id.to_smolstr(), self.loc.clone()),
+                        expr: construct_expr_attr(expr, id.into_smolstr(), self.loc.clone()),
                         loc: self.loc.clone(),
                     });
                     tail = rest;
@@ -1802,7 +1864,7 @@ impl Node<Option<cst::Member>> {
                         }
                     };
                     head = maybe_expr.map(|e| Expr {
-                        expr: construct_expr_attr(e, id.to_smolstr(), self.loc.clone()),
+                        expr: construct_expr_attr(e, id.into_smolstr(), self.loc.clone()),
                         loc: self.loc.clone(),
                     });
                     tail = rest;
@@ -2152,7 +2214,7 @@ impl ast::Name {
             ));
             None
         } else {
-            Some(self.id.to_smolstr())
+            Some(self.id.into_smolstr())
         }
     }
 
@@ -2287,7 +2349,7 @@ impl Node<Option<cst::RecInit>> {
 #[allow(clippy::too_many_arguments)]
 fn construct_template_policy(
     id: ast::PolicyID,
-    annotations: BTreeMap<ast::Id, SmolStr>,
+    annotations: ast::Annotations,
     effect: ast::Effect,
     principal: ast::PrincipalConstraint,
     action: ast::ActionConstraint,
@@ -2318,9 +2380,6 @@ fn construct_template_policy(
         // use `true` to mark the absence of non-head constraints
         construct_template(construct_expr_bool(true, loc.clone()))
     }
-}
-fn construct_id(s: String) -> ast::Id {
-    ast::Id::new_unchecked(s)
 }
 fn construct_string_from_var(v: ast::Var) -> SmolStr {
     match v {
@@ -2394,16 +2453,26 @@ fn construct_expr_and(
             .and(a, n)
     })
 }
-fn construct_expr_rel(f: ast::Expr, rel: cst::RelOp, s: ast::Expr, loc: Loc) -> ast::Expr {
-    let builder = ast::ExprBuilder::new().with_source_loc(loc);
+fn construct_expr_rel(
+    f: ast::Expr,
+    rel: cst::RelOp,
+    s: ast::Expr,
+    loc: Loc,
+    errs: &mut ParseErrors,
+) -> Option<ast::Expr> {
+    let builder = ast::ExprBuilder::new().with_source_loc(loc.clone());
     match rel {
-        cst::RelOp::Less => builder.less(f, s),
-        cst::RelOp::LessEq => builder.lesseq(f, s),
-        cst::RelOp::GreaterEq => builder.greatereq(f, s),
-        cst::RelOp::Greater => builder.greater(f, s),
-        cst::RelOp::NotEq => builder.noteq(f, s),
-        cst::RelOp::Eq => builder.is_eq(f, s),
-        cst::RelOp::In => builder.is_in(f, s),
+        cst::RelOp::Less => Some(builder.less(f, s)),
+        cst::RelOp::LessEq => Some(builder.lesseq(f, s)),
+        cst::RelOp::GreaterEq => Some(builder.greatereq(f, s)),
+        cst::RelOp::Greater => Some(builder.greater(f, s)),
+        cst::RelOp::NotEq => Some(builder.noteq(f, s)),
+        cst::RelOp::Eq => Some(builder.is_eq(f, s)),
+        cst::RelOp::In => Some(builder.is_in(f, s)),
+        cst::RelOp::InvalidSingleEq => {
+            errs.push(ToASTError::new(ToASTErrorKind::InvalidSingleEq, loc));
+            None
+        }
     }
 }
 /// used for a chain of addition and/or subtraction
@@ -2501,6 +2570,8 @@ fn construct_expr_record(
 
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
+// PANIC SAFETY: Unit Test Code
+#[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2853,9 +2924,9 @@ mod tests {
         .expect("should parse")
         .to_policy(ast::PolicyID::from_string("id"), &mut errs)
         .expect("should be valid");
-        assert_eq!(
-            policy.annotation(&ast::Id::new_unchecked("anno")),
-            Some(&"good annotation".into())
+        assert_matches!(
+            policy.annotation(&ast::AnyId::new_unchecked("anno")),
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "good annotation")
         );
 
         // duplication is error
@@ -2892,46 +2963,46 @@ mod tests {
         .expect("should parse")
         .to_policyset(&mut errs)
         .expect("should be valid");
-        assert_eq!(
+        assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy0"))
                 .expect("should be a policy")
-                .annotation(&ast::Id::new_unchecked("anno0")),
+                .annotation(&ast::AnyId::new_unchecked("anno0")),
             None
         );
-        assert_eq!(
+        assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy0"))
                 .expect("should be a policy")
-                .annotation(&ast::Id::new_unchecked("anno1")),
-            Some(&"first".into())
+                .annotation(&ast::AnyId::new_unchecked("anno1")),
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "first")
         );
-        assert_eq!(
+        assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy1"))
                 .expect("should be a policy")
-                .annotation(&ast::Id::new_unchecked("anno2")),
-            Some(&"second".into())
+                .annotation(&ast::AnyId::new_unchecked("anno2")),
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "second")
         );
-        assert_eq!(
+        assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy2"))
                 .expect("should be a policy")
-                .annotation(&ast::Id::new_unchecked("anno3a")),
-            Some(&"third-a".into())
+                .annotation(&ast::AnyId::new_unchecked("anno3a")),
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "third-a")
         );
-        assert_eq!(
+        assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy2"))
                 .expect("should be a policy")
-                .annotation(&ast::Id::new_unchecked("anno3b")),
-            Some(&"third-b".into())
+                .annotation(&ast::AnyId::new_unchecked("anno3b")),
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "third-b")
         );
-        assert_eq!(
+        assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy2"))
                 .expect("should be a policy")
-                .annotation(&ast::Id::new_unchecked("anno3c")),
+                .annotation(&ast::AnyId::new_unchecked("anno3c")),
             None
         );
         assert_eq!(
@@ -2941,6 +3012,89 @@ mod tests {
                 .annotations()
                 .count(),
             2
+        );
+
+        // can't have spaces or '+' in annotation keys
+        assert_matches!(
+            text_to_cst::parse_policy(
+                r#"
+            @hi mom("this should be invalid")
+            permit(principal, action, resource);
+            "#,
+            ),
+            Err(_)
+        );
+        assert_matches!(
+            text_to_cst::parse_policy(
+                r#"
+            @hi+mom("this should be invalid")
+            permit(principal, action, resource);
+            "#,
+            ),
+            Err(_)
+        );
+
+        // can have Cedar reserved words as annotation keys
+        let mut errs = ParseErrors::new();
+        let policyset = text_to_cst::parse_policies(
+            r#"
+            @if("this is the annotation for `if`")
+            @then("this is the annotation for `then`")
+            @else("this is the annotation for `else`")
+            @true("this is the annotation for `true`")
+            @false("this is the annotation for `false`")
+            @in("this is the annotation for `in`")
+            @is("this is the annotation for `is`")
+            @like("this is the annotation for `like`")
+            @has("this is the annotation for `has`")
+            @principal("this is the annotation for `principal`") // not reserved at time of this writing, but we test it anyway
+            permit(principal, action, resource);
+            "#,
+        ).expect("should parse")
+        .to_policyset(&mut errs)
+        .expect("should be valid");
+        let policy0 = policyset
+            .get(&ast::PolicyID::from_string("policy0"))
+            .expect("should be the right policy ID");
+        assert_matches!(
+            policy0.annotation(&ast::AnyId::new_unchecked("if")),
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `if`")
+        );
+        assert_matches!(
+            policy0.annotation(&ast::AnyId::new_unchecked("then")),
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `then`")
+        );
+        assert_matches!(
+            policy0.annotation(&ast::AnyId::new_unchecked("else")),
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `else`")
+        );
+        assert_matches!(
+            policy0.annotation(&ast::AnyId::new_unchecked("true")),
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `true`")
+        );
+        assert_matches!(
+            policy0.annotation(&ast::AnyId::new_unchecked("false")),
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `false`")
+        );
+        assert_matches!(
+            policy0.annotation(&ast::AnyId::new_unchecked("in")),
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `in`")
+        );
+        assert_matches!(
+            policy0.annotation(&ast::AnyId::new_unchecked("is")),
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `is`")
+        );
+        assert_matches!(
+            policy0.annotation(&ast::AnyId::new_unchecked("like")),
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `like`")
+        );
+        assert_matches!(
+            policy0.annotation(&ast::AnyId::new_unchecked("has")),
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `has`")
+        );
+        assert_matches!(
+            policy0.annotation(&ast::AnyId::new_unchecked("principal")),
+            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `principal`")
         );
     }
 
@@ -4666,46 +4820,66 @@ mod tests {
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
                 "expected a variable that is valid in the policy scope; found: `foo`",
-                "must be one of `principal`, `action`, or `resource`"
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
             ));
+            expect_source_snippet(p_src, &e, "foo");
         });
         let p_src = "permit(foo::principal, action, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error(
                 "unexpected token `::`",
             ));
+            expect_source_snippet(p_src, &e, "::");
         });
         let p_src = "permit(resource, action, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error("the variable `resource` is invalid in this policy scope clause, the variable `principal` is expected"));
+            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+                "found the variable `resource` where the variable `principal` must be used",
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
+            ));
+            expect_source_snippet(p_src, &e, "resource");
         });
 
         let p_src = "permit(principal, principal, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error("the variable `principal` is invalid in this policy scope clause, the variable `action` is expected"));
+            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+                "found the variable `principal` where the variable `action` must be used",
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
+            ));
+            expect_source_snippet(p_src, &e, "principal");
         });
         let p_src = "permit(principal, if, resource);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
                 "expected a variable that is valid in the policy scope; found: `if`",
-                "must be one of `principal`, `action`, or `resource`"
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
             ));
+            expect_source_snippet(p_src, &e, "if");
         });
 
         let p_src = "permit(principal, action, like);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
                 "expected a variable that is valid in the policy scope; found: `like`",
-                "must be one of `principal`, `action`, or `resource`"
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
             ));
+            expect_source_snippet(p_src, &e, "like");
         });
         let p_src = "permit(principal, action, principal);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error("the variable `principal` is invalid in this policy scope clause, the variable `resource` is expected"));
+            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+                "found the variable `principal` where the variable `resource` must be used",
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
+            ));
+            expect_source_snippet(p_src, &e, "principal");
         });
         let p_src = "permit(principal, action, action);";
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
-            expect_err(p_src, &e, &ExpectedErrorMessage::error("the variable `action` is invalid in this policy scope clause, the variable `resource` is expected"));
+            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+                "found the variable `action` where the variable `resource` must be used",
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
+            ));
+            expect_source_snippet(p_src, &e, "action");
         });
     }
 
@@ -4715,21 +4889,28 @@ mod tests {
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
                 "not a valid policy scope constraint: >",
-                "policy scope constraints must either `==`, `in`, `is`, or `_ is _ in _`"
+                "policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"
             ));
         });
         let p_src = r#"permit(principal, action != Action::"view", resource);"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
                 "not a valid policy scope constraint: !=",
-                "policy scope constraints must either `==`, `in`, `is`, or `_ is _ in _`"
+                "policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"
             ));
         });
         let p_src = r#"permit(principal, action, resource <= Folder::"things");"#;
         assert_matches!(parse_policy_template(None, p_src), Err(e) => {
             expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
                 "not a valid policy scope constraint: <=",
-                "policy scope constraints must either `==`, `in`, `is`, or `_ is _ in _`"
+                "policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"
+            ));
+        });
+        let p_src = r#"permit(principal = User::"alice", action, resource);"#;
+        assert_matches!(parse_policy_template(None, p_src), Err(e) => {
+            expect_err(p_src, &e, &ExpectedErrorMessage::error_and_help(
+                "'=' is not a valid operator in Cedar",
+                "try using '==' instead",
             ));
         });
     }
@@ -4855,7 +5036,7 @@ mod tests {
         let expr = "principal has if::foo";
         assert_matches!(parse_expr(expr), Err(e) => {
             expect_err(expr, &e, &ExpectedErrorMessage::error(
-                &format!("this identifier is reserved and cannot be used: `if`")
+                "this identifier is reserved and cannot be used: `if`"
             ));
         })
     }

@@ -76,7 +76,7 @@ pub struct VariableDef {
 }
 
 /// Any identifier, including special ones
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[allow(unused)] // definitional, or for later improvements
 pub enum Ident {
     // Variables
@@ -220,6 +220,10 @@ pub enum RelOp {
     Eq,
     /// in
     In,
+    /// =
+    ///
+    /// This is always invalid, but included so we can give a nice error suggesting '==' instead
+    InvalidSingleEq,
 }
 
 /// Allowed Ops for Add
@@ -317,7 +321,7 @@ pub enum Primary {
 }
 
 /// UID and Type of named items
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Name {
     /// path, like: "name0::name1::name"
     pub path: Vec<Node<Ident>>,

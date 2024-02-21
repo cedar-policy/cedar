@@ -34,21 +34,11 @@
     clippy::doc_markdown
 )]
 #![allow(clippy::must_use_candidate, clippy::missing_const_for_fn)]
-// enable doc_auto_cfg feature is docs rs cfg is set and present
+// enable doc_auto_cfg feature if docsrs cfg is present
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 /// Rust public API
 mod api;
-
-// import feature gated enum and struct so top level module show cfg attr.
-#[cfg(feature = "partial-eval")]
-pub use api::PartialResponse;
-#[cfg(feature = "partial-eval")]
-pub use api::RequestBuilder;
-#[cfg(feature = "partial-eval")]
-pub use api::ResidualResponse;
-#[cfg(feature = "partial-eval")]
-pub use api::UnsetSchema;
 
 pub use api::*;
 

@@ -201,7 +201,11 @@ mod tests {
         let mut b = Entity::with_uid(EntityUID::with_eid("B"));
         b.add_ancestor(EntityUID::with_eid("C"));
         let c = Entity::with_uid(EntityUID::with_eid("C"));
-        let mut entities = HashMap::from([(a.uid(), a), (b.uid(), b), (c.uid(), c)]);
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+        ]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
         // compute TC
@@ -229,7 +233,11 @@ mod tests {
         let mut b = Entity::with_uid(EntityUID::with_eid("B"));
         b.add_ancestor(EntityUID::with_eid("C"));
         let c = Entity::with_uid(EntityUID::with_eid("C"));
-        let mut entities = HashMap::from([(c.uid(), c), (b.uid(), b), (a.uid(), a)]);
+        let mut entities = HashMap::from([
+            (c.uid().clone(), c),
+            (b.uid().clone(), b),
+            (a.uid().clone(), a),
+        ]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
         // compute TC
@@ -261,11 +269,11 @@ mod tests {
         d.add_ancestor(EntityUID::with_eid("E"));
         let e = Entity::with_uid(EntityUID::with_eid("E"));
         let mut entities = HashMap::from([
-            (a.uid(), a),
-            (b.uid(), b),
-            (c.uid(), c),
-            (d.uid(), d),
-            (e.uid(), e),
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
         ]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
@@ -304,11 +312,11 @@ mod tests {
         ham.add_ancestor(EntityUID::with_eid("eggs"));
         let eggs = Entity::with_uid(EntityUID::with_eid("eggs"));
         let mut entities = HashMap::from([
-            (ham.uid(), ham),
-            (bar.uid(), bar),
-            (foo.uid(), foo),
-            (eggs.uid(), eggs),
-            (baz.uid(), baz),
+            (ham.uid().clone(), ham),
+            (bar.uid().clone(), bar),
+            (foo.uid().clone(), foo),
+            (eggs.uid().clone(), eggs),
+            (baz.uid().clone(), baz),
         ]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
@@ -348,11 +356,11 @@ mod tests {
         d.add_ancestor(EntityUID::with_eid("E"));
         let e = Entity::with_uid(EntityUID::with_eid("E"));
         let mut entities = HashMap::from([
-            (a.uid(), a),
-            (b.uid(), b),
-            (c.uid(), c),
-            (d.uid(), d),
-            (e.uid(), e),
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
         ]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
@@ -400,14 +408,14 @@ mod tests {
         g.add_ancestor(EntityUID::with_eid("E"));
         let h = Entity::with_uid(EntityUID::with_eid("H"));
         let mut entities = HashMap::from([
-            (a.uid(), a),
-            (b.uid(), b),
-            (c.uid(), c),
-            (d.uid(), d),
-            (e.uid(), e),
-            (f.uid(), f),
-            (g.uid(), g),
-            (h.uid(), h),
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
+            (f.uid().clone(), f),
+            (g.uid().clone(), g),
+            (h.uid().clone(), h),
         ]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
@@ -462,12 +470,12 @@ mod tests {
         let e = Entity::with_uid(EntityUID::with_eid("E"));
         let f = Entity::with_uid(EntityUID::with_eid("F"));
         let mut entities = HashMap::from([
-            (a.uid(), a),
-            (b.uid(), b),
-            (c.uid(), c),
-            (d.uid(), d),
-            (e.uid(), e),
-            (f.uid(), f),
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
+            (f.uid().clone(), f),
         ]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
@@ -512,14 +520,14 @@ mod tests {
         let g = Entity::with_uid(EntityUID::with_eid("G"));
         let h = Entity::with_uid(EntityUID::with_eid("H"));
         let mut entities = HashMap::from([
-            (a.uid(), a),
-            (b.uid(), b),
-            (c.uid(), c),
-            (d.uid(), d),
-            (e.uid(), e),
-            (f.uid(), f),
-            (g.uid(), g),
-            (h.uid(), h),
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
+            (f.uid().clone(), f),
+            (g.uid().clone(), g),
+            (h.uid().clone(), h),
         ]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
@@ -561,7 +569,7 @@ mod tests {
         a.add_ancestor(EntityUID::with_eid("B"));
         let mut b = Entity::with_uid(EntityUID::with_eid("B"));
         b.add_ancestor(EntityUID::with_eid("B"));
-        let mut entities = HashMap::from([(a.uid(), a), (b.uid(), b)]);
+        let mut entities = HashMap::from([(a.uid().clone(), a), (b.uid().clone(), b)]);
         // computing TC should succeed without panicking, infinitely recursing, etc
         assert!(compute_tc_internal(&mut entities).is_ok());
         // fails cycle check
@@ -607,7 +615,12 @@ mod tests {
         let mut c = Entity::with_uid(EntityUID::with_eid("C"));
         c.add_ancestor(EntityUID::with_eid("A"));
         let d = Entity::with_uid(EntityUID::with_eid("D"));
-        let mut entities = HashMap::from([(a.uid(), a), (b.uid(), b), (c.uid(), c), (d.uid(), d)]);
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+        ]);
         // computing TC should succeed without panicking, infinitely recursing, etc
         assert!(compute_tc_internal(&mut entities).is_ok());
         // fails cycle check
@@ -671,14 +684,14 @@ mod tests {
         let mut h = Entity::with_uid(EntityUID::with_eid("H"));
         h.add_ancestor(EntityUID::with_eid("D"));
         let mut entities = HashMap::from([
-            (a.uid(), a),
-            (b.uid(), b),
-            (c.uid(), c),
-            (d.uid(), d),
-            (e.uid(), e),
-            (f.uid(), f),
-            (g.uid(), g),
-            (h.uid(), h),
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
+            (f.uid().clone(), f),
+            (g.uid().clone(), g),
+            (h.uid().clone(), h),
         ]);
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
@@ -729,12 +742,12 @@ mod tests {
         let mut f = Entity::with_uid(EntityUID::with_eid("F"));
         f.add_ancestor(EntityUID::with_eid("E"));
         let mut entities = HashMap::from([
-            (a.uid(), a),
-            (b.uid(), b),
-            (c.uid(), c),
-            (d.uid(), d),
-            (e.uid(), e),
-            (f.uid(), f),
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+            (d.uid().clone(), d),
+            (e.uid().clone(), e),
+            (f.uid().clone(), f),
         ]);
         // fails TC enforcement
         assert!(enforce_tc(&entities).is_err());

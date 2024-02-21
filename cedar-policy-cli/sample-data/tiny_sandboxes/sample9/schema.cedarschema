@@ -1,0 +1,6 @@
+entity User;
+entity ScreenTime;
+entity Photo { owner: User };
+
+action edit appliesTo { principal: [User], resource: [Photo] };
+action view appliesTo { principal: [User], resource: [Photo, ScreenTime] };

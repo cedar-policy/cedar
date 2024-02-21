@@ -722,7 +722,9 @@ impl ValidatorNamespaceDef {
                 .map_err(SchemaError::ParseCommonType)?;
                 Ok(WithUnresolvedTypeDefs::new(move |typ_defs| {
                     typ_defs.get(&defined_type_name).cloned().ok_or(
-                        SchemaError::UndeclaredCommonTypes(HashSet::from([type_name.to_string()])),
+                        SchemaError::UndeclaredCommonTypes(HashSet::from([
+                            defined_type_name.to_string()
+                        ])),
                     )
                 }))
             }

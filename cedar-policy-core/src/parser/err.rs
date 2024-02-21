@@ -164,9 +164,9 @@ pub enum ToASTErrorKind {
         /// Slot that was found (which is not valid in a static policy)
         slot: cst::Slot,
     },
-    /// Returned when we attempt to parse a policy with malformed or conflicting annotations
-    #[error("this policy uses poorly formed or duplicate annotations")]
-    BadAnnotations,
+    /// Returned when we attempt to parse a policy or template with duplicate or conflicting annotations
+    #[error("duplicate annotation: @{0}")]
+    DuplicateAnnotation(ast::AnyId),
     /// Returned when a policy contains template slots in a when/unless clause. This is not currently supported. See RFC 3
     #[error("found template slot {slot} in a `{clausetype}` clause")]
     #[diagnostic(help("slots are currently unsupported in `{clausetype}` clauses"))]
@@ -193,6 +193,11 @@ pub enum ToASTErrorKind {
     /// See [`cst::Ident::Invalid`]
     #[error("not a valid identifier: `{0}`")]
     InvalidIdentifier(String),
+    /// Returned when a policy uses '=' as a binary operator.
+    /// '=' is not an operator in Cedar; we can suggest '==' instead.
+    #[error("'=' is not a valid operator in Cedar")]
+    #[diagnostic(help("try using '==' instead"))]
+    InvalidSingleEq,
     /// Returned when a policy uses a effect keyword beyond `permit` or `forbid`
     #[error("not a valid policy effect: `{0}`")]
     #[diagnostic(help("effect must be either `permit` or `forbid`"))]
@@ -203,22 +208,30 @@ pub enum ToASTErrorKind {
     InvalidCondition(cst::Ident),
     /// Returned when a policy uses a variable in the scope beyond `principal`, `action`, or `resource`
     #[error("expected a variable that is valid in the policy scope; found: `{0}`")]
-    #[diagnostic(help("must be one of `principal`, `action`, or `resource`"))]
+    #[diagnostic(help(
+        "policy scopes must contain a `principal`, `action`, and `resource` element in that order"
+    ))]
     InvalidScopeConstraintVariable(cst::Ident),
     /// Returned when a policy contains an invalid method name
     #[error("not a valid method name: `{0}`")]
     InvalidMethodName(String),
-    /// Returned when a policy scope clause contains the wrong variable. (`principal` must be in the first clause, etc...)
-    #[error("the variable `{got}` is invalid in this policy scope clause, the variable `{expected}` is expected")]
+    /// Returned when a policy scope clause contains the wrong variable.
+    /// (`principal` must be in the first clause, etc...)
+    #[error("found the variable `{got}` where the variable `{expected}` must be used")]
+    #[diagnostic(help(
+        "policy scopes must contain a `principal`, `action`, and `resource` element in that order"
+    ))]
     IncorrectVariable {
         /// The variable that is expected in this clause
         expected: Var,
         /// The variable that was present in this clause
         got: Var,
     },
-    /// Returned when a policy scope clauses uses an operator beyond `==` or `in`.
+    /// Returned when a policy scope clause uses an operator not allowed in scopes.
     #[error("not a valid policy scope constraint: {0}")]
-    #[diagnostic(help("policy scope constraints must either `==`, `in`, `is`, or `_ is _ in _`"))]
+    #[diagnostic(help(
+        "policy scope constraints must be either `==`, `in`, `is`, or `_ is _ in _`"
+    ))]
     InvalidConstraintOperator(cst::RelOp),
     /// Returned when the right hand side of `==` in a policy scope clause is not a single Entity UID or a template slot.
     /// This is valid in Cedar conditions, but not in the Scope
@@ -542,12 +555,14 @@ impl Diagnostic for ToCSTError {
         let primary_source_span = self.primary_source_span();
         let labeled_span = match &self.err {
             OwnedRawParseError::InvalidToken { .. } => LabeledSpan::underline(primary_source_span),
-            OwnedRawParseError::UnrecognizedEof { expected, .. } => {
-                LabeledSpan::new_with_span(expected_to_string(expected), primary_source_span)
-            }
-            OwnedRawParseError::UnrecognizedToken { expected, .. } => {
-                LabeledSpan::new_with_span(expected_to_string(expected), primary_source_span)
-            }
+            OwnedRawParseError::UnrecognizedEof { expected, .. } => LabeledSpan::new_with_span(
+                expected_to_string(expected, &FRIENDLY_TOKEN_NAMES),
+                primary_source_span,
+            ),
+            OwnedRawParseError::UnrecognizedToken { expected, .. } => LabeledSpan::new_with_span(
+                expected_to_string(expected, &FRIENDLY_TOKEN_NAMES),
+                primary_source_span,
+            ),
             OwnedRawParseError::ExtraToken { .. } => LabeledSpan::underline(primary_source_span),
             OwnedRawParseError::User { .. } => LabeledSpan::underline(primary_source_span),
         };
@@ -585,7 +600,11 @@ lazy_static! {
     ]);
 }
 
-fn expected_to_string(expected: &[String]) -> Option<String> {
+/// Format lalrpop expected error messages
+pub fn expected_to_string(
+    expected: &[String],
+    token_map: &HashMap<&'static str, &'static str>,
+) -> Option<String> {
     if expected.is_empty() {
         return None;
     }
@@ -593,12 +612,15 @@ fn expected_to_string(expected: &[String]) -> Option<String> {
     let mut expected_string = "expected ".to_owned();
     // PANIC SAFETY Shouldn't be `Err` since we're writing strings to a string
     #[allow(clippy::expect_used)]
-    join_with_conjunction(&mut expected_string, "or", expected, |f, token| {
-        match FRIENDLY_TOKEN_NAMES.get(token.as_str()) {
+    join_with_conjunction(
+        &mut expected_string,
+        "or",
+        expected,
+        |f, token| match token_map.get(token.as_str()) {
             Some(friendly_token_name) => write!(f, "{}", friendly_token_name),
             None => write!(f, "{}", token.replace('"', "`")),
-        }
-    })
+        },
+    )
     .expect("failed to format expected tokens");
     Some(expected_string)
 }

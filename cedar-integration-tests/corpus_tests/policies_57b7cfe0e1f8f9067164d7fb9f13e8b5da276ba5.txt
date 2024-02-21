@@ -1,7 +1,0 @@
-permit(
-  principal,
-  action,
-  resource
-) when {
-  ((true && (isMulticast())) && a::"") && (((ip(principal)) == principal) in principal)
-};
