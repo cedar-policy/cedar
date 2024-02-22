@@ -35,7 +35,7 @@ use crate::{
 /// schema fragment is split into multiple namespace definitions, eac including
 /// a namespace name which is applied to all entity types (and the implicit
 /// `Action` entity type for all actions) in the schema.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SchemaFragment(
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
