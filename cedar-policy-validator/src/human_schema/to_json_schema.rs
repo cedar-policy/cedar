@@ -1,4 +1,4 @@
-use std::{collections::HashMap, iter::once};
+use std::collections::HashMap;
 
 use cedar_policy_core::parser::{Loc, Node};
 use itertools::{Either, ExactlyOneError, Itertools};
@@ -33,7 +33,7 @@ pub fn custom_schema_to_json_schema(
     let (qualified_namespaces, unqualified_namespace) =
         split_unqualified_namespace(schema.into_iter().map(|n| n.node));
     let all_namespaces = qualified_namespaces
-        .chain(once(unqualified_namespace))
+        .chain(unqualified_namespace)
         .collect::<Vec<_>>();
 
     let names = build_namespace_bindings(all_namespaces.iter())?;
@@ -49,7 +49,7 @@ pub fn custom_schema_to_json_schema(
 
 fn split_unqualified_namespace(
     namespaces: impl IntoIterator<Item = Namespace>,
-) -> (impl Iterator<Item = Namespace>, Namespace) {
+) -> (impl Iterator<Item = Namespace>, Option<Namespace>) {
     let (qualified, unqualified): (Vec<_>, Vec<_>) =
         namespaces.into_iter().partition(|n| n.name.is_some());
     let mut unqualified_decls = vec![];
@@ -57,12 +57,15 @@ fn split_unqualified_namespace(
         unqualified_decls.append(&mut unqualified_namespace.decls);
     }
 
-    let unqual = Namespace {
-        name: None,
-        decls: unqualified_decls,
-    };
-
-    (qualified.into_iter(), unqual)
+    if unqualified_decls.is_empty() {
+        (qualified.into_iter(), None)
+    } else {
+        let unqual = Namespace {
+            name: None,
+            decls: unqualified_decls,
+        };
+        (qualified.into_iter(), Some(unqual))
+    }
 }
 
 /// Converts a CST namespace to the JSON namespace
@@ -167,11 +170,16 @@ impl<'a> ConversionContext<'a> {
         // Create the internal type from the 'applies_to' clause and 'member_of'
         let applies_to = app_decls
             .map(|decls| self.convert_app_decls(decls))
-            .transpose()?;
+            .transpose()?
+            .unwrap_or_else(|| ApplySpec {
+                resource_types: Some(vec![]),
+                principal_types: Some(vec![]),
+                context: AttributesOrContext::default(),
+            });
         let member_of = parents.map(|parents| self.convert_parents(parents));
         let ty = ActionType {
             attributes: None, // Action attributes are currently unsupported in the natural schema
-            applies_to,
+            applies_to: Some(applies_to),
             member_of,
         };
         // Then map that type across all of the bound names
@@ -199,7 +207,7 @@ impl<'a> ConversionContext<'a> {
         let (decls, loc) = decls.into_inner();
         let (contexts, rest): (Vec<_>, Vec<_>) = decls.into_iter().partition_map(is_context_decl);
         let (principals, resources): (Vec<_>, Vec<_>) =
-            rest.into_iter().partition_map(partial_pr_decls);
+            rest.into_iter().partition_map(partition_pr_decls);
         // Ensure we have at most one context decl, then convert it
         let context = contexts
             .into_iter()
@@ -399,15 +407,16 @@ fn is_context_decl(n: Node<AppDecl>) -> Either<Vec<Node<AttrDecl>>, PRAppDecl> {
 }
 
 /// Partition on whether or this [`PRAppDecl`] is referring to [`PR::Principal`] or [`PR::Resource`]
-fn partial_pr_decls(n: PRAppDecl) -> Either<Vec<SmolStr>, Vec<SmolStr>> {
+/// Returns a tuple of (principals, resources)
+fn partition_pr_decls(n: PRAppDecl) -> Either<Vec<SmolStr>, Vec<SmolStr>> {
     let PRAppDecl { kind, entity_tys } = n;
     let entity_tys = entity_tys
         .into_iter()
         .map(|path| path.to_smolstr())
         .collect();
     match kind.node {
-        PR::Principal => Either::Right(entity_tys),
-        PR::Resource => Either::Left(entity_tys),
+        PR::Principal => Either::Left(entity_tys),
+        PR::Resource => Either::Right(entity_tys),
     }
 }
 
@@ -629,4 +638,37 @@ fn into_partition_decls(
     }
 
     (entities, actions, types)
+}
+
+#[cfg(test)]
+mod test {
+    use std::sync::Arc;
+
+    use cool_asserts::assert_matches;
+
+    use super::*;
+
+    fn dummy_loc() -> Loc {
+        Loc::new(1, Arc::from("foo"))
+    }
+
+    #[test]
+    fn partition_entity_decl_principal() {
+        let entity_tys = NonEmpty::singleton(Path::single("Foo".parse().unwrap(), dummy_loc()));
+        let pr = PRAppDecl {
+            kind: Node::with_source_loc(PR::Principal, dummy_loc()),
+            entity_tys,
+        };
+        assert_matches!(partition_pr_decls(pr), Either::Left(path) => path == vec!["Foo".to_smolstr()]);
+    }
+
+    #[test]
+    fn partition_entity_decl_resource() {
+        let entity_tys = NonEmpty::singleton(Path::single("Foo".parse().unwrap(), dummy_loc()));
+        let pr = PRAppDecl {
+            kind: Node::with_source_loc(PR::Resource, dummy_loc()),
+            entity_tys,
+        };
+        assert_matches!(partition_pr_decls(pr), Either::Right(path) => path == vec!["Foo".to_smolstr()]);
+    }
 }

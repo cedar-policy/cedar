@@ -71,6 +71,7 @@ impl Display for SchemaType {
     }
 }
 
+/// Create a non-empty with borrowed contents from a slice
 fn non_empty_slice<T>(v: &[T]) -> Option<NonEmpty<&T>> {
     let vs: Vec<&T> = v.iter().collect();
     NonEmpty::from_vec(vs)
@@ -104,58 +105,53 @@ impl Display for ActionType {
             write!(f, "in ")?;
             fmt_vec(f, parents)?;
         }
-        match &self.applies_to {
-            Some(spec) => {
-                match (
-                    spec.principal_types
-                        .as_ref()
-                        .map(|refs| non_empty_slice(refs.as_slice())),
-                    spec.resource_types
-                        .as_ref()
-                        .map(|refs| non_empty_slice(refs.as_slice())),
-                ) {
-                    // One of lists is present but empty
-                    (Some(None), _) | (_, Some(None)) => {
-                        // "absurd" actions
-                        write!(f, "")?;
-                    }
-                    // Both list are present and non empty
-                    (Some(Some(ps)), Some(Some(rs))) => {
-                        write!(f, "appliesTo {{")?;
-                        write!(f, "  principal: ")?;
-                        fmt_vec(f, ps)?;
-                        write!(f, ", \n  resource: ")?;
-                        fmt_vec(f, rs)?;
-                        write!(f, ", \n  context: {}", &spec.context.0)?;
-                        write!(f, "\n}}")?;
-                    }
-                    // Only parents are present
-                    (Some(Some(ps)), None) => {
-                        write!(f, "appliesTo {{")?;
-                        write!(f, "  principal: ")?;
-                        fmt_vec(f, ps)?;
-                        write!(f, ", \n  context: {}", &spec.context.0)?;
-                        write!(f, "\n}}")?;
-                    }
-                    // Only appliesTo is present
-                    (None, Some(Some(rs))) => {
-                        write!(f, "appliesTo {{")?;
-                        write!(f, "  resource: ")?;
-                        fmt_vec(f, rs)?;
-                        write!(f, ", \n  context: {}", &spec.context.0)?;
-                        write!(f, "\n}}")?;
-                    }
-                    // Neither are present
-                    (None, None) => {
-                        write!(f, "appliesTo {{")?;
-                        write!(f, "  context: {}", &spec.context.0)?;
-                        write!(f, "\n}}")?;
-                    }
+        if let Some(spec) = &self.applies_to {
+            match (
+                spec.principal_types
+                    .as_ref()
+                    .map(|refs| non_empty_slice(refs.as_slice())),
+                spec.resource_types
+                    .as_ref()
+                    .map(|refs| non_empty_slice(refs.as_slice())),
+            ) {
+                // One of the lists is empty
+                // This can only be represented by the empty action
+                // This implies an action group
+                (Some(None), _) | (_, Some(None)) => {
+                    write!(f, "")?;
                 }
-            }
-            // applies to unspecified principals and resources
-            None => {
-                write!(f, "appliesTo {{ context : {{}} }}")?;
+                // Both list are present and non empty
+                (Some(Some(ps)), Some(Some(rs))) => {
+                    write!(f, "appliesTo {{")?;
+                    write!(f, "  principal: ")?;
+                    fmt_vec(f, ps)?;
+                    write!(f, ", \n  resource: ")?;
+                    fmt_vec(f, rs)?;
+                    write!(f, ", \n  context: {}", &spec.context.0)?;
+                    write!(f, "\n}}")?;
+                }
+                // Only principals are present, resource is unspecified
+                (Some(Some(ps)), None) => {
+                    write!(f, "appliesTo {{")?;
+                    write!(f, "  principal: ")?;
+                    fmt_vec(f, ps)?;
+                    write!(f, ", \n  context: {}", &spec.context.0)?;
+                    write!(f, "\n}}")?;
+                }
+                // Only resources is present, principal is unspecified
+                (None, Some(Some(rs))) => {
+                    write!(f, "appliesTo {{")?;
+                    write!(f, "  resource: ")?;
+                    fmt_vec(f, rs)?;
+                    write!(f, ", \n  context: {}", &spec.context.0)?;
+                    write!(f, "\n}}")?;
+                }
+                // Neither are present, both principal and resource are unspecified
+                (None, None) => {
+                    write!(f, "appliesTo {{")?;
+                    write!(f, "  context: {}", &spec.context.0)?;
+                    write!(f, "\n}}")?;
+                }
             }
         }
         Ok(())
