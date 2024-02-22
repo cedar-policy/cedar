@@ -3,9 +3,344 @@
 #[cfg(test)]
 mod demo_tests {
 
+    use std::{
+        collections::HashMap,
+        iter::{empty, once},
+    };
+
+    use cool_asserts::assert_matches;
     use smol_str::ToSmolStr;
 
-    use crate::{EntityType, SchemaFragment, SchemaTypeVariant, TypeOfAttribute};
+    use crate::{
+        human_schema::{self, ast::PR, err::ToJsonSchemaError},
+        ActionType, ApplySpec, AttributesOrContext, EntityType, NamespaceDefinition,
+        SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
+    };
+
+    #[test]
+    fn no_applies_to() {
+        let src = r#"
+            action "Foo";
+        "#;
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let foo = schema.0.get("").unwrap().actions.get("Foo").unwrap();
+        assert_matches!(foo,
+            ActionType { applies_to : Some(ApplySpec { resource_types : Some(resources), principal_types : Some(principals), ..}), .. } => assert!(resources.is_empty() && principals.is_empty())
+        );
+    }
+
+    #[test]
+    fn just_context() {
+        let src = r#"
+        action "Foo" appliesTo { context: {} };
+        "#;
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let foo = schema.0.get("").unwrap().actions.get("Foo").unwrap();
+        assert_matches!(
+            foo,
+            ActionType {
+                applies_to: Some(ApplySpec {
+                    resource_types: None,
+                    principal_types: None,
+                    ..
+                }),
+                ..
+            }
+        );
+    }
+
+    #[test]
+    fn just_principal() {
+        let src = r#"
+        entity a;
+        action "Foo" appliesTo { principal: a, context: {}  };
+        "#;
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let foo = schema.0.get("").unwrap().actions.get("Foo").unwrap();
+        assert_matches!(foo,
+            ActionType { applies_to : Some(ApplySpec { resource_types : None, principal_types : Some(principals), ..}), .. } =>
+                {
+                    match principals.as_slice() {
+                        [a] if a == &"a".to_smolstr() => (),
+                        _ => panic!("Bad principals")
+                    }
+                }
+        );
+    }
+
+    #[test]
+    fn just_resource() {
+        let src = r#"
+        entity a;
+        action "Foo" appliesTo { resource: a, context: {}  };
+        "#;
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let foo = schema.0.get("").unwrap().actions.get("Foo").unwrap();
+        assert_matches!(foo,
+            ActionType { applies_to : Some(ApplySpec { resource_types : Some(resources), principal_types : None, ..}), .. } =>
+                {
+                    match resources.as_slice() {
+                        [a] if a == &"a".to_smolstr() => (),
+                        _ => panic!("Bad principals")
+                    }
+                }
+        );
+    }
+
+    #[test]
+    fn resource_only() {
+        let src = r#"
+            entity a;
+            action "Foo" appliesTo {
+                resource : [a]
+            };
+        "#;
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let unqual = schema.0.get("").unwrap();
+        let foo = unqual.actions.get("Foo").unwrap();
+        assert_matches!(foo,
+                ActionType { applies_to : Some(ApplySpec { resource_types : Some(resources), principal_types : None, .. }  ), ..} =>
+                    assert_matches!(resources.as_slice(), [a] => assert_eq!(a.as_ref(), "a"))
+            ,
+        );
+    }
+
+    #[test]
+    fn resources_only() {
+        let src = r#"
+            entity a;
+            entity b;
+            action "Foo" appliesTo {
+                resource : [a, b]
+            };
+        "#;
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let unqual = schema.0.get("").unwrap();
+        let foo = unqual.actions.get("Foo").unwrap();
+        assert_matches!(foo,
+                ActionType { applies_to : Some(ApplySpec { resource_types : Some(resources), principal_types : None, .. }  ), ..} =>
+                    assert_matches!(resources.as_slice(), [a, b] => {
+                        assert_eq!(a.as_ref(), "a");
+                        assert_eq!(b.as_ref(), "b")
+                    })
+            ,
+        );
+    }
+
+    #[test]
+    fn principal_only() {
+        let src = r#"
+            entity a;
+            action "Foo" appliesTo {
+                principal: [a]
+            };
+        "#;
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let unqual = schema.0.get("").unwrap();
+        let foo = unqual.actions.get("Foo").unwrap();
+        assert_matches!(foo,
+                ActionType { applies_to : Some(ApplySpec { resource_types : None, principal_types : Some(principals), .. }  ), ..} =>
+                    assert_matches!(principals.as_slice(), [a] => assert_eq!(a.as_ref(), "a"))
+            ,
+        );
+    }
+
+    #[test]
+    fn principals_only() {
+        let src = r#"
+            entity a;
+            entity b;
+            action "Foo" appliesTo {
+                principal: [a, b]
+            };
+        "#;
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let unqual = schema.0.get("").unwrap();
+        let foo = unqual.actions.get("Foo").unwrap();
+        assert_matches!(foo,
+                ActionType { applies_to : Some(ApplySpec { resource_types : None, principal_types : Some(principals), .. }  ), ..} =>
+                    assert_matches!(principals.as_slice(), [a,b] => {
+                        assert_eq!(a.as_ref(), "a");
+                        assert_eq!(b.as_ref(), "b");
+                })
+            ,
+        );
+    }
+
+    #[test]
+    fn both_targets() {
+        let src = r#"
+            entity a;
+            entity b;
+            entity c;
+            entity d;
+            action "Foo" appliesTo {
+                principal: [a, b],
+                resource: [c, d]
+            };
+        "#;
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let unqual = schema.0.get("").unwrap();
+        let foo = unqual.actions.get("Foo").unwrap();
+        assert_matches!(foo,
+                ActionType { applies_to : Some(ApplySpec { resource_types : Some(resources), principal_types : Some(principals), .. }  ), ..} =>
+                {
+                    assert_matches!(principals.as_slice(), [a,b] => {
+                        assert_eq!(a.as_ref(), "a");
+                        assert_eq!(b.as_ref(), "b");
+                });
+                assert_matches!(resources.as_slice(), [c,d] =>  {
+                        assert_eq!(c.as_ref(), "c");
+                        assert_eq!(d.as_ref(), "d");
+
+                })
+            }
+            ,
+        );
+    }
+
+    #[test]
+    fn both_targets_flipped() {
+        let src = r#"
+            entity a;
+            entity b;
+            entity c;
+            entity d;
+            action "Foo" appliesTo {
+                resource: [c, d],
+                principal: [a, b]
+            };
+        "#;
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let unqual = schema.0.get("").unwrap();
+        let foo = unqual.actions.get("Foo").unwrap();
+        assert_matches!(foo,
+                ActionType { applies_to : Some(ApplySpec { resource_types : Some(resources), principal_types : Some(principals), .. }  ), ..} =>
+                {
+                    assert_matches!(principals.as_slice(), [a,b] => {
+                        assert_eq!(a.as_ref(), "a");
+                        assert_eq!(b.as_ref(), "b");
+                });
+                assert_matches!(resources.as_slice(), [c,d] =>  {
+                        assert_eq!(c.as_ref(), "c");
+                        assert_eq!(d.as_ref(), "d");
+
+                })
+            }
+            ,
+        );
+    }
+
+    #[test]
+    fn duplicate_principal() {
+        let src = r#"
+            entity a;
+            entity b;
+            entity c;
+            entity d;
+            action "Foo" appliesTo {
+                principal: [a, b],
+                principal : [c]
+            };
+        "#;
+        // Can't unwrap here as impl iter doesn't implement debug
+        let err = match SchemaFragment::from_str_natural(src) {
+            Err(e) => e,
+            _ => panic!("Should have failed to parse"),
+        };
+        assert_matches!(err,
+        crate::HumanSchemaError::Parsing(err) => assert_matches!(err,
+            human_schema::parser::HumanSyntaxParseErrors::JsonError(json_errs) => {
+                assert!(json_errs
+                    .into_iter()
+                    .any(|err| {
+                        matches!(
+                            err,
+                            ToJsonSchemaError::DuplicatePR {
+                                kind: PR::Principal,
+                                ..
+                            }
+                        )
+                    }));
+            }));
+    }
+
+    #[test]
+    fn duplicate_resource() {
+        let src = r#"
+            entity a;
+            entity b;
+            entity c;
+            entity d;
+            action "Foo" appliesTo {
+                resource: [a, b],
+                resource: [c]
+            };
+        "#;
+        // Can't unwrap here as impl iter doesn't implement debug
+        let err = match SchemaFragment::from_str_natural(src) {
+            Err(e) => e,
+            _ => panic!("Should have failed to parse"),
+        };
+        assert_matches!(err,
+        crate::HumanSchemaError::Parsing(err) => assert_matches!(err,
+            human_schema::parser::HumanSyntaxParseErrors::JsonError(json_errs) => {
+                assert!(json_errs
+                    .into_iter()
+                    .any(|err| {
+                        matches!(
+                            err,
+                            ToJsonSchemaError::DuplicatePR {
+                                kind: PR::Resource,
+                                ..
+                            }
+                        )
+                    }));
+            }));
+    }
+
+    #[test]
+    fn empty_appliesto() {
+        let action = ActionType {
+            attributes: None,
+            applies_to: None,
+            member_of: None,
+        };
+        let namespace = NamespaceDefinition::new(empty(), once(("foo".to_smolstr(), action)));
+        let fragment = SchemaFragment(HashMap::from([("bar".to_smolstr(), namespace)]));
+        let as_src = fragment.as_natural_schema().unwrap();
+        let expected = r#"action "foo" ;"#;
+        assert!(as_src.contains(expected), "src was:\n`{as_src}`");
+    }
+
+    #[test]
+    fn print_actions() {
+        let namespace = NamespaceDefinition {
+            common_types: HashMap::new(),
+            entity_types: HashMap::from([(
+                "a".to_smolstr(),
+                EntityType {
+                    member_of_types: vec![],
+                    shape: AttributesOrContext::default(),
+                },
+            )]),
+            actions: HashMap::from([(
+                "j".to_smolstr(),
+                ActionType {
+                    attributes: None,
+                    applies_to: Some(ApplySpec {
+                        resource_types: Some(vec![]),
+                        principal_types: Some(vec!["a".to_smolstr()]),
+                        context: AttributesOrContext::default(),
+                    }),
+                    member_of: None,
+                },
+            )]),
+        };
+        let fragment = SchemaFragment(HashMap::from([("".to_smolstr(), namespace)]));
+        let src = fragment.as_natural_schema().unwrap();
+        assert!(src.contains(r#"action "j" ;"#), "schema was: `{src}`")
+    }
 
     #[test]
     fn test_github() {
