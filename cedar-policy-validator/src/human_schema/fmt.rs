@@ -138,7 +138,7 @@ impl Display for ActionType {
                     write!(f, ", \n  context: {}", &spec.context.0)?;
                     write!(f, "\n}}")?;
                 }
-                // Only resources is present, resource is unspecified
+                // Only resources is present, principal is unspecified
                 (None, Some(Some(rs))) => {
                     write!(f, "appliesTo {{")?;
                     write!(f, "  resource: ")?;
