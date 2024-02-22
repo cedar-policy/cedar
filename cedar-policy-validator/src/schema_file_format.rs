@@ -21,7 +21,10 @@ use serde::{
 };
 use serde_with::serde_as;
 use smol_str::SmolStr;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    fmt::Display,
+};
 
 use crate::{
     human_schema::{
@@ -95,6 +98,13 @@ impl<T> Node<T> {
     pub fn no_loc(data: T) -> Self {
         Node { data, loc: None }
     }
+
+    pub fn with_loc(data: T, loc: Loc) -> Self {
+        Node {
+            data,
+            loc: Some(loc),
+        }
+    }
 }
 
 impl<T> PartialEq for Node<T>
@@ -125,6 +135,24 @@ where
 }
 
 impl<T> Eq for Node<T> where T: Eq {}
+
+impl<T> Display for Node<T>
+where
+    T: Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.data.fmt(f)
+    }
+}
+
+impl<T> From<cedar_policy_core::parser::Node<T>> for Node<T> {
+    fn from(value: cedar_policy_core::parser::Node<T>) -> Self {
+        Self {
+            data: value.node,
+            loc: Some(value.loc),
+        }
+    }
+}
 
 #[cfg(feature = "arbitrary")]
 impl<'a, T> arbitrary::Arbitrary<'a> for Node<T>

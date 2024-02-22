@@ -20,6 +20,8 @@ use super::{
     err::{SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors},
 };
 
+use crate::Node as INode;
+
 /// Convert a custom schema AST into the JSON representation
 /// This will let you subsequently decode that into the Validator AST for Schemas (`[ValidatorSchema]`)
 /// On success, this function returns a tuple containing:
@@ -151,10 +153,10 @@ impl<'a> ConversionContext<'a> {
     fn convert_common_types(
         &self,
         decl: TypeDecl,
-    ) -> Result<(SmolStr, SchemaType), ToJsonSchemaErrors> {
+    ) -> Result<(SmolStr, INode<SchemaType>), ToJsonSchemaErrors> {
         let TypeDecl { name, def } = decl;
-        let ty = self.convert_type(def)?;
-        Ok((name.node.to_smolstr(), ty))
+        let ty = self.convert_type(def.clone())?;
+        Ok((name.node.to_smolstr(), INode::with_loc(ty, def.loc)))
     }
 
     /// Converts action type decls
@@ -221,12 +223,12 @@ impl<'a> ConversionContext<'a> {
         let principal_types = principals
             .into_iter()
             .at_most_one()
-            .map_err(|e| convert_pr_error(e, PR::Principal, loc.clone()))?;
+            .map_err(|_| convert_pr_error(PR::Principal, loc.clone()))?;
         // Ensure we have at most one resource decl, then convert it
         let resource_types = resources
             .into_iter()
             .at_most_one()
-            .map_err(|e| convert_pr_error(e, PR::Resource, loc.clone()))?;
+            .map_err(|_| convert_pr_error(PR::Resource, loc.clone()))?;
         Ok(ApplySpec {
             resource_types,
             principal_types,
@@ -247,7 +249,7 @@ impl<'a> ConversionContext<'a> {
         // First build up the defined entity type
         let member_of_types = member_of_types
             .into_iter()
-            .map(|p| p.to_string().into())
+            .map(|p| INode::with_loc(p.to_smolstr(), p.loc().to_owned()))
             .collect();
         let shape = self.convert_attr_decls(attrs)?;
         let etype = EntityType {
@@ -266,7 +268,7 @@ impl<'a> ConversionContext<'a> {
         &self,
         attrs: Vec<Node<AttrDecl>>,
     ) -> Result<AttributesOrContext, ToJsonSchemaErrors> {
-        Ok(AttributesOrContext(SchemaType::Type(
+        Ok(AttributesOrContext(INode::no_loc(SchemaType::Type(
             SchemaTypeVariant::Record {
                 attributes: collect_all_errors(
                     attrs.into_iter().map(|attr| self.convert_attr_decl(attr)),
@@ -274,7 +276,7 @@ impl<'a> ConversionContext<'a> {
                 .collect(),
                 additional_attributes: false,
             },
-        )))
+        ))))
     }
 
     /// Convert an attribute type from an AttrDecl
@@ -286,7 +288,7 @@ impl<'a> ConversionContext<'a> {
         Ok((
             name.node,
             TypeOfAttribute {
-                ty: self.convert_type(ty)?,
+                ty: INode::with_loc(self.convert_type(ty.clone())?, ty.loc),
                 required,
             },
         ))
@@ -296,7 +298,7 @@ impl<'a> ConversionContext<'a> {
     fn convert_type(&self, ty: Node<Type>) -> Result<SchemaType, ToJsonSchemaErrors> {
         match ty.node {
             Type::Set(t) => Ok(SchemaType::Type(SchemaTypeVariant::Set {
-                element: Box::new(self.convert_type(*t)?),
+                element: Box::new(INode::with_loc(self.convert_type(*t.clone())?, t.loc)),
             })),
             Type::Ident(p) => self.dereference_name(p).map_err(|e| e.into()),
             Type::Record(fields) => {
@@ -374,11 +376,7 @@ impl<'a> ConversionContext<'a> {
 }
 
 /// Wrap [`ExactlyOneError`] for the purpose of converting PRDecls
-fn convert_pr_error(
-    _e: ExactlyOneError<std::vec::IntoIter<Vec<SmolStr>>>,
-    kind: PR,
-    loc: Loc,
-) -> ToJsonSchemaErrors {
+fn convert_pr_error(kind: PR, loc: Loc) -> ToJsonSchemaErrors {
     ToJsonSchemaError::DuplicatePR {
         kind,
         start: loc.clone(),
@@ -408,11 +406,11 @@ fn is_context_decl(n: Node<AppDecl>) -> Either<Vec<Node<AttrDecl>>, PRAppDecl> {
 
 /// Partition on whether or this [`PRAppDecl`] is referring to [`PR::Principal`] or [`PR::Resource`]
 /// Returns a tuple of (principals, resources)
-fn partition_pr_decls(n: PRAppDecl) -> Either<Vec<SmolStr>, Vec<SmolStr>> {
+fn partition_pr_decls(n: PRAppDecl) -> Either<Vec<INode<SmolStr>>, Vec<INode<SmolStr>>> {
     let PRAppDecl { kind, entity_tys } = n;
     let entity_tys = entity_tys
         .into_iter()
-        .map(|path| path.to_smolstr())
+        .map(|path| INode::from(Node::with_source_loc(path.to_smolstr(), path.loc().clone())))
         .collect();
     match kind.node {
         PR::Principal => Either::Left(entity_tys),
@@ -659,7 +657,7 @@ mod test {
             kind: Node::with_source_loc(PR::Principal, dummy_loc()),
             entity_tys,
         };
-        assert_matches!(partition_pr_decls(pr), Either::Left(path) => path == vec!["Foo".to_smolstr()]);
+        assert_matches!(partition_pr_decls(pr), Either::Left(path) => path.into_iter().map(|p| p.to_smolstr()).collect_vec() == vec!["Foo".to_smolstr()]);
     }
 
     #[test]
@@ -669,6 +667,6 @@ mod test {
             kind: Node::with_source_loc(PR::Resource, dummy_loc()),
             entity_tys,
         };
-        assert_matches!(partition_pr_decls(pr), Either::Right(path) => path == vec!["Foo".to_smolstr()]);
+        assert_matches!(partition_pr_decls(pr), Either::Right(path) => path.into_iter().map(|p| p.to_smolstr()).collect_vec() == vec!["Foo".to_smolstr()]);
     }
 }
