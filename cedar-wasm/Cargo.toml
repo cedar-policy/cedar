@@ -32,7 +32,7 @@ wasm-bindgen-test = "0.3.13"
 
 [build-dependencies]
 cargo-lock = "9.0.0"
-itertools = "0.10.4"
+itertools = "0.12.1"
 
 [profile.release]
 overflow-checks = true
