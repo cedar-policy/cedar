@@ -31,7 +31,7 @@ crate_type = ["cdylib", "rlib"]
 wasm-bindgen-test = "0.3.13"
 
 [build-dependencies]
-cargo-lock = "8.0.2"
+cargo-lock = "9.0.0"
 itertools = "0.10.4"
 
 [profile.release]
