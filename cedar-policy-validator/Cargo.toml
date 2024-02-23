@@ -15,7 +15,7 @@ cedar-policy-core = { version = "=3.1.0", path = "../cedar-policy-core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_with = "3.0"
-miette = "5.9.0"
+miette = "7.1.0"
 thiserror = "1.0"
 itertools = "0.12"
 unicode-security = "0.1.0"
