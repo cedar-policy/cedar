@@ -3461,6 +3461,28 @@ impl Expression {
     pub fn new_set(values: impl IntoIterator<Item = Self>) -> Self {
         Self(ast::Expr::set(values.into_iter().map(|v| v.0)))
     }
+
+    /// Create an expression representing an ip address
+    /// This function does not perform error checking on the source string,
+    /// it creates an expression that calls the `ip` constructor.
+    pub fn new_ip(src: impl AsRef<str>) -> Self {
+        let src_expr = ast::Expr::val(src.as_ref());
+        Self(ast::Expr::call_extension_fn(
+            ip_extension_name(),
+            vec![src_expr],
+        ))
+    }
+
+    /// Create an expression representing a fixed precision decimal number.
+    /// This function does not perform error checking on the source string,
+    /// it creates an expression that calls the `decimal` constructor.
+    pub fn new_decimal(src: impl AsRef<str>) -> Self {
+        let src_expr = ast::Expr::val(src.as_ref());
+        Self(ast::Expr::call_extension_fn(
+            decimal_extension_name(),
+            vec![src_expr],
+        ))
+    }
 }
 
 impl FromStr for Expression {
@@ -3527,6 +3549,40 @@ impl RestrictedExpression {
     pub fn new_set(values: impl IntoIterator<Item = Self>) -> Self {
         Self(ast::RestrictedExpr::set(values.into_iter().map(|v| v.0)))
     }
+
+    /// Create an expression representing an ip address
+    /// This function does not perform error checking on the source string,
+    /// it creates an expression that calls the `ip` constructor.
+    pub fn new_ip(src: impl AsRef<str>) -> Self {
+        let src_expr = ast::RestrictedExpr::val(src.as_ref());
+        Self(ast::RestrictedExpr::call_extension_fn(
+            ip_extension_name(),
+            [src_expr],
+        ))
+    }
+
+    /// Create an expression representing a fixed precision decimal number.
+    /// This function does not perform error checking on the source string,
+    /// it creates an expression that calls the `decimal` constructor.
+    pub fn new_decimal(src: impl AsRef<str>) -> Self {
+        let src_expr = ast::RestrictedExpr::val(src.as_ref());
+        Self(ast::RestrictedExpr::call_extension_fn(
+            decimal_extension_name(),
+            [src_expr],
+        ))
+    }
+}
+
+fn decimal_extension_name() -> ast::Name {
+    // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
+    #[allow(clippy::unwrap_used)]
+    ast::Name::unqualified_name("decimal".parse().unwrap())
+}
+
+fn ip_extension_name() -> ast::Name {
+    // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
+    #[allow(clippy::unwrap_used)]
+    ast::Name::unqualified_name("ip".parse().unwrap())
 }
 
 impl FromStr for RestrictedExpression {
@@ -4195,6 +4251,8 @@ mod partial_eval_test {
 // PANIC SAFETY: unit tests
 #[allow(clippy::unwrap_used)]
 mod test {
+    use cool_asserts::assert_matches;
+
     use super::*;
 
     #[test]
@@ -4285,5 +4343,151 @@ mod test {
         let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":9223372036854775808}}}}]}"#;
         let v: serde_json::Value = serde_json::from_str(src).unwrap();
         assert!(Policy::from_json(None, v).is_err());
+    }
+
+    #[test]
+    fn ip_name_correct() {
+        assert_eq!(ip_extension_name(), ast::Name::from_str("ip").unwrap());
+    }
+
+    #[test]
+    fn expr_ip_constructor() {
+        let ip = Expression::new_ip("10.10.10.10");
+        assert_matches!(ip.0.expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("ip".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(arg.expr_kind(),
+                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "10.10.10.10");
+            }
+        );
+    }
+
+    #[test]
+    fn expr_ip() {
+        let ip = Expression::new_ip("10.10.10.10");
+        assert_matches!(evaluate_empty(&ip),
+                Ok(EvalResult::ExtensionValue(o)) => assert_eq!(&o, "10.10.10.10/32")
+        );
+    }
+
+    #[test]
+    fn expr_ip_network() {
+        let ip = Expression::new_ip("10.10.10.10/16");
+        assert_matches!(evaluate_empty(&ip),
+            Ok(EvalResult::ExtensionValue(o)) => assert_eq!(&o, "10.10.10.10/16")
+        );
+    }
+
+    #[test]
+    fn expr_bad_ip() {
+        let ip = Expression::new_ip("192.168.312.3");
+        assert_matches!(evaluate_empty(&ip),
+                Err(e) => assert_matches!(e.error_kind(),
+                    EvaluationErrorKind::FailedExtensionFunctionApplication {
+                        extension_name, ..
+                    } => assert_eq!(extension_name, &("ipaddr".parse().unwrap()))
+                )
+        );
+    }
+
+    #[test]
+    fn expr_bad_cidr() {
+        let ip = Expression::new_ip("192.168.0.3/100");
+        assert_matches!(evaluate_empty(&ip),
+                Err(e) => assert_matches!(e.error_kind(),
+                    EvaluationErrorKind::FailedExtensionFunctionApplication {
+                        extension_name, ..
+                    } => assert_eq!(extension_name, &("ipaddr".parse().unwrap()))
+                )
+        );
+    }
+
+    #[test]
+    fn expr_nonsense_ip() {
+        let ip = Expression::new_ip("foobar");
+        assert_matches!(evaluate_empty(&ip),
+                Err(e) => assert_matches!(e.error_kind(),
+                    EvaluationErrorKind::FailedExtensionFunctionApplication {
+                        extension_name, ..
+                    } => assert_eq!(extension_name, &("ipaddr".parse().unwrap()))
+                )
+        );
+    }
+
+    fn evaluate_empty(expr: &Expression) -> Result<EvalResult, EvaluationError> {
+        let r = Request::new(None, None, None, Context::empty(), None).unwrap();
+        let e = Entities::empty();
+        eval_expression(&r, &e, expr)
+    }
+
+    #[test]
+    fn rexpr_ip_constructor() {
+        let ip = RestrictedExpression::new_ip("10.10.10.10");
+        assert_matches!(ip.0.expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("ip".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(arg.expr_kind(),
+                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "10.10.10.10");
+            }
+        );
+    }
+
+    #[test]
+    fn decimal_name_correct() {
+        assert_eq!(
+            decimal_extension_name(),
+            ast::Name::from_str("decimal").unwrap()
+        );
+    }
+
+    #[test]
+    fn expr_decimal_constructor() {
+        let decimal = Expression::new_decimal("1234.1234");
+        assert_matches!(decimal.0.expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("decimal".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(arg.expr_kind(),
+                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "1234.1234");
+            }
+        );
+    }
+
+    #[test]
+    fn rexpr_decimal_constructor() {
+        let decimal = RestrictedExpression::new_decimal("1234.1234");
+        assert_matches!(decimal.0.expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("decimal".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(arg.expr_kind(),
+                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "1234.1234");
+            }
+        );
+    }
+
+    #[test]
+    fn valid_decimal() {
+        let decimal = Expression::new_decimal("1234.1234");
+        assert_matches!(evaluate_empty(&decimal),
+         Ok(EvalResult::ExtensionValue(s)) => s == "1234.1234");
+    }
+
+    #[test]
+    fn invalid_decimal() {
+        let decimal = Expression::new_decimal("1234.12345");
+        assert_matches!(evaluate_empty(&decimal),
+                Err(e) => assert_matches!(e.error_kind(),
+                    EvaluationErrorKind::FailedExtensionFunctionApplication {
+                        extension_name, ..
+                    } => assert_eq!(extension_name, &("decimal".parse().unwrap()))
+                )
+        );
     }
 }

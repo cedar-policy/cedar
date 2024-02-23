@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Expression::new_ip`, `Expression::new_decimal`, `RestrictedExpression::new_ip`, `RestrctedExpression::new_decimal`, (TDB, resolving #659)
 - `PolicyId::new()` (#587, resolving #551)
 - `EntityId::new()` (#583, resolving #553)
 - `AsRef<str>` implementation for `PolicyId` (#504, resolving #503)
