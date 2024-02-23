@@ -3462,7 +3462,7 @@ impl Expression {
         Self(ast::Expr::set(values.into_iter().map(|v| v.0)))
     }
 
-    /// Create an expression representing an ip address
+    /// Create an expression representing an ip address.
     /// This function does not perform error checking on the source string,
     /// it creates an expression that calls the `ip` constructor.
     pub fn new_ip(src: impl AsRef<str>) -> Self {
