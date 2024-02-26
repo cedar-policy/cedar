@@ -1985,7 +1985,7 @@ pub struct PolicyId(ast::PolicyID);
 impl FromStr for PolicyId {
     type Err = ParseErrors;
 
-    /// Create a `PolicyId` from a string. Currently always returns Ok().
+    /// Create a `PolicyId` from a string. Currently always returns `Ok()`.
     fn from_str(id: &str) -> Result<Self, Self::Err> {
         Ok(Self(ast::PolicyID::from_string(id)))
     }
