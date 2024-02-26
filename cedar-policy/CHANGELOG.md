@@ -22,8 +22,6 @@ Cedar Language Version: 3.1.0
 
 ### Changed
 
-- Changed error message on `SchemaError::UndeclaredCommonTypes` to report
-  fully qualified type names. (#652, resolving #580)
 - Better integration with `miette` for various error types. If you have
   previously been just using the `Display` trait to get the error message from a
   Cedar error type, you may want to consider also examining other data provided
@@ -32,7 +30,6 @@ Cedar Language Version: 3.1.0
   and all associated information in a pretty human-readable format or as JSON.
   For more details, see `miette`'s
   [documentation](https://docs.rs/miette/latest/miette/index.html). (#477)
-- Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
 - Cedar reserved words like `if`, `has`, and `true` are now allowed as policy
   annotation keys. (#634, resolving #623)
 - Add hints suggesting how to fix some type errors. (#513)
@@ -48,6 +45,8 @@ Cedar Language Version: 3.1.0
   using the wrong call style. (#482)
 - Include source spans on more parse error messages. (#471, resolving #465)
 - Include source spans on more evaluation error messages. (#582)
+- Changed error message on `SchemaError::UndeclaredCommonTypes` to report
+  fully qualified type names. (#652, resolving #580)
 - For the `partial-eval` experimental feature: make the return values of
   `RequestBuilder`'s `principal`, `action`, `resource`, `context` and
   `schema` functions `#[must_use]`. (#502)
