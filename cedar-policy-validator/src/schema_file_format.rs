@@ -24,6 +24,7 @@ use smol_str::SmolStr;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
+    hash::Hash,
 };
 
 use crate::{
@@ -105,6 +106,13 @@ impl<T> Node<T> {
             loc: Some(loc),
         }
     }
+
+    pub fn map<R>(self, f: impl FnOnce(T) -> R) -> Node<R> {
+        Node {
+            data: f(self.data),
+            loc: self.loc,
+        }
+    }
 }
 
 impl<T> PartialEq for Node<T>
@@ -151,6 +159,15 @@ impl<T> From<cedar_policy_core::parser::Node<T>> for Node<T> {
             data: value.node,
             loc: Some(value.loc),
         }
+    }
+}
+
+impl<T> Hash for Node<T>
+where
+    T: Hash,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.data.hash(state)
     }
 }
 

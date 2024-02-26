@@ -25,7 +25,7 @@ use itertools::Itertools;
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::human_schema::parser::HumanSyntaxParseErrors;
+use crate::{human_schema::parser::HumanSyntaxParseErrors, Node};
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum HumanSchemaError {
@@ -65,7 +65,7 @@ pub enum SchemaError {
     #[diagnostic(help(
         "any entity types appearing anywhere in a schema need to be declared in `entityTypes`"
     ))]
-    UndeclaredEntityTypes(HashSet<String>),
+    UndeclaredEntityTypes(HashSet<Node<Name>>),
     /// Undeclared action(s) used in the `memberOf` field of an action.
     #[error("undeclared action(s): {0:?}")]
     #[diagnostic(help("any actions appearing in `memberOf` need to be declared in `actions`"))]
@@ -75,7 +75,7 @@ pub enum SchemaError {
     ///     - common type(s) (declared or not) appearing in declarations of other common types
     #[error("undeclared common type(s), or common type(s) used in the declaration of another common type: {0:?}")]
     #[diagnostic(help("any common types used in entity or context attributes need to be declared in `commonTypes`, and currently, common types may not reference other common types"))]
-    UndeclaredCommonTypes(HashSet<String>),
+    UndeclaredCommonTypes(HashSet<Node<String>>),
     /// Duplicate specifications for an entity type. Argument is the name of
     /// the duplicate entity type.
     #[error("duplicate entity type `{0}`")]

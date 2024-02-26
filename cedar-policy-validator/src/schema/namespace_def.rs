@@ -21,7 +21,7 @@ use crate::{
     err::*,
     schema_file_format,
     types::{AttributeType, Attributes, Type},
-    ActionBehavior, ActionEntityUID, ActionType, NamespaceDefinition, SchemaType,
+    ActionBehavior, ActionEntityUID, ActionType, NamespaceDefinition, Node, SchemaType,
     SchemaTypeVariant, TypeOfAttribute, SCHEMA_TYPE_VARIANT_TAGS,
 };
 use crate::{types::OpenTag, StrNode, TypeNode};
@@ -72,7 +72,7 @@ pub struct ValidatorNamespaceDef {
 /// `Type`.
 #[derive(Debug)]
 pub struct TypeDefs {
-    pub(super) type_defs: HashMap<Name, Type>,
+    pub(super) type_defs: HashMap<Name, Node<Type>>,
 }
 
 /// Entity type declarations held in a `ValidatorNamespaceDef`. Entity type
@@ -91,12 +91,12 @@ pub struct EntityTypeFragment {
     /// a `WithUnresolvedTypeDefs` because it may contain typedefs which are not
     /// defined in this schema fragment. All entity type `Name` keys in this map
     /// are declared in this schema fragment.
-    pub(super) attributes: WithUnresolvedTypeDefs<Type>,
+    pub(super) attributes: Node<WithUnresolvedTypeDefs<Type>>,
     /// The direct parent entity types for this entity type come from the
     /// `memberOfTypes` list. These types might be declared in a different
     /// namespace, so we will check if they are declared in any fragment when
     /// constructing a `ValidatorSchema`.
-    pub(super) parents: HashSet<Name>,
+    pub(super) parents: HashSet<Node<Name>>,
 }
 
 /// Action declarations held in a `ValidatorNamespaceDef`. Entity types
@@ -111,7 +111,7 @@ pub struct ActionFragment {
     /// The type of the context record for this actions. The types is wrapped in
     /// a `WithUnresolvedTypeDefs` because it may refer to common types which
     /// are not defined in this fragment.
-    pub(super) context: WithUnresolvedTypeDefs<Type>,
+    pub(super) context: Node<WithUnresolvedTypeDefs<Type>>,
     /// The principals and resources that an action can be applied to.
     pub(super) applies_to: ValidatorApplySpec,
     /// The direct parent action entities for this action.
@@ -260,9 +260,13 @@ impl ValidatorNamespaceDef {
                     schema_namespace.cloned(),
                 )
                 .map_err(SchemaError::ParseCommonType)?;
-                let ty =
-                    Self::try_schema_type_into_validator_type(schema_namespace, schema_ty.data)?
-                        .resolve_type_defs(&HashMap::new())?;
+                let ty = {
+                    let ty_node =
+                        Self::try_schema_type_into_validator_type(schema_namespace, schema_ty)?;
+                    let loc = ty_node.loc.clone();
+                    let ty = ty_node.data.resolve_type_defs(&HashMap::new())?;
+                    Node { data: ty, loc }
+                };
                 Ok((name, ty))
             })
             .collect::<Result<HashMap<_, _>>>()?;
@@ -294,13 +298,14 @@ impl ValidatorNamespaceDef {
                                 &parent.data,
                                 schema_namespace,
                             )
+                            .map(|name| parent.clone().map(|_| name))
                             .map_err(SchemaError::ParseEntityType)
                         })
                         .collect::<Result<HashSet<_>>>()?;
 
                     let attributes = Self::try_schema_type_into_validator_type(
                         schema_namespace,
-                        entity_type.shape.into_inner(),
+                        entity_type.shape.0,
                     )?;
 
                     Ok((
@@ -456,10 +461,8 @@ impl ValidatorNamespaceDef {
                         Self::parse_apply_spec_type_list(resource_types, schema_namespace)?,
                     );
 
-                    let context = Self::try_schema_type_into_validator_type(
-                        schema_namespace,
-                        context.into_inner(),
-                    )?;
+                    let context =
+                        Self::try_schema_type_into_validator_type(schema_namespace, context.0)?;
 
                     let parents = action_type
                         .member_of
@@ -542,7 +545,7 @@ impl ValidatorNamespaceDef {
                 Ok((
                     attr,
                     (
-                        Self::try_schema_type_into_validator_type(schema_namespace, ty.ty.data)?,
+                        Self::try_schema_type_into_validator_type(schema_namespace, ty.ty)?,
                         ty.required,
                     ),
                 ))
@@ -553,6 +556,7 @@ impl ValidatorNamespaceDef {
                 .into_iter()
                 .map(|(s, (attr_ty, is_req))| {
                     attr_ty
+                        .data
                         .resolve_type_defs(typ_defs)
                         .map(|ty| (s, AttributeType::new(ty, is_req)))
                 })
@@ -668,15 +672,22 @@ impl ValidatorNamespaceDef {
     /// logic.
     pub(crate) fn try_schema_type_into_validator_type(
         default_namespace: Option<&Name>,
-        schema_ty: SchemaType,
-    ) -> Result<WithUnresolvedTypeDefs<Type>> {
-        match schema_ty {
-            SchemaType::Type(SchemaTypeVariant::String) => Ok(Type::primitive_string().into()),
-            SchemaType::Type(SchemaTypeVariant::Long) => Ok(Type::primitive_long().into()),
-            SchemaType::Type(SchemaTypeVariant::Boolean) => Ok(Type::primitive_boolean().into()),
+        schema_ty: Node<SchemaType>,
+    ) -> Result<Node<WithUnresolvedTypeDefs<Type>>> {
+        let loc = schema_ty.loc.clone();
+        match schema_ty.data {
+            SchemaType::Type(SchemaTypeVariant::String) => {
+                Ok(schema_ty.map(|_| Type::primitive_string().into()))
+            }
+            SchemaType::Type(SchemaTypeVariant::Long) => {
+                Ok(schema_ty.map(|_| Type::primitive_long().into()))
+            }
+            SchemaType::Type(SchemaTypeVariant::Boolean) => {
+                Ok(schema_ty.map(|_| Type::primitive_boolean().into()))
+            }
             SchemaType::Type(SchemaTypeVariant::Set { element }) => Ok(
-                Self::try_schema_type_into_validator_type(default_namespace, element.data)?
-                    .map(Type::set),
+                Self::try_schema_type_into_validator_type(default_namespace, *element)?
+                    .map(|n| n.map(Type::set)),
             ),
             SchemaType::Type(SchemaTypeVariant::Record {
                 attributes,
@@ -687,7 +698,8 @@ impl ValidatorNamespaceDef {
                         UnsupportedFeature::OpenRecordsAndEntities,
                     ))
                 } else {
-                    Ok(
+                    // We lose source info here
+                    Ok(Node::no_loc(
                         Self::parse_record_attributes(default_namespace, attributes)?.map(
                             move |attrs| {
                                 Type::record_with_attributes(
@@ -700,7 +712,7 @@ impl ValidatorNamespaceDef {
                                 )
                             },
                         ),
-                    )
+                    ))
                 }
             }
             SchemaType::Type(SchemaTypeVariant::Entity { name }) => {
@@ -709,12 +721,18 @@ impl ValidatorNamespaceDef {
                     default_namespace,
                 )
                 .map_err(SchemaError::ParseEntityType)?;
-                Ok(Type::named_entity_reference(entity_type_name).into())
+                Ok(Node {
+                    data: Type::named_entity_reference(entity_type_name).into(),
+                    loc,
+                })
             }
             SchemaType::Type(SchemaTypeVariant::Extension { name }) => {
                 let extension_type_name =
                     Name::from_normalized_str(&name).map_err(SchemaError::ParseExtensionType)?;
-                Ok(Type::extension(extension_type_name).into())
+                Ok(Node {
+                    data: Type::extension(extension_type_name).into(),
+                    loc,
+                })
             }
             SchemaType::TypeDef { type_name } => {
                 let defined_type_name = Self::parse_possibly_qualified_name_with_default_namespace(
@@ -722,13 +740,18 @@ impl ValidatorNamespaceDef {
                     default_namespace,
                 )
                 .map_err(SchemaError::ParseCommonType)?;
-                Ok(WithUnresolvedTypeDefs::new(move |typ_defs| {
-                    typ_defs.get(&defined_type_name).cloned().ok_or(
-                        SchemaError::UndeclaredCommonTypes(HashSet::from([
-                            defined_type_name.to_string()
-                        ])),
-                    )
-                }))
+                let copied_loc = loc.clone();
+                Ok(Node {
+                    data: WithUnresolvedTypeDefs::new(move |typ_defs| {
+                        typ_defs.get(&defined_type_name).cloned().ok_or(
+                            SchemaError::UndeclaredCommonTypes(HashSet::from([Node {
+                                data: defined_type_name.to_string(),
+                                loc,
+                            }])),
+                        )
+                    }),
+                    loc: copied_loc,
+                })
             }
         }
     }

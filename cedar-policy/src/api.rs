@@ -1571,11 +1571,11 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
                 Self::UnsupportedFeature(e.to_string())
             }
             cedar_policy_validator::SchemaError::UndeclaredEntityTypes(e) => {
-                Self::UndeclaredEntityTypes(e)
+                Self::UndeclaredEntityTypes(e.into_iter().map(|n| format!("{n:?}")).collect())
             }
             cedar_policy_validator::SchemaError::UndeclaredActions(e) => Self::UndeclaredActions(e),
             cedar_policy_validator::SchemaError::UndeclaredCommonTypes(c) => {
-                Self::UndeclaredCommonTypes(c)
+                Self::UndeclaredCommonTypes(c.into_iter().map(|n| format!("{n:?}")).collect())
             }
             cedar_policy_validator::SchemaError::DuplicateEntityType(e) => {
                 Self::DuplicateEntityType(e)
