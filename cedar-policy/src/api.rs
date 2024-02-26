@@ -1985,7 +1985,7 @@ pub struct PolicyId(ast::PolicyID);
 impl FromStr for PolicyId {
     type Err = ParseErrors;
 
-    /// Create a `PolicyId` from a string. Currently always returns `Ok()`.
+    /// Create a `PolicyId` from a string. Currently always returns Ok().
     fn from_str(id: &str) -> Result<Self, Self::Err> {
         Ok(Self(ast::PolicyID::from_string(id)))
     }
@@ -3110,14 +3110,14 @@ mod entity_uid_tests {
     #[test]
     fn entity_uid_with_escape() {
         // EntityId contains some things that look like escapes
-        let entity_id = EntityId::from_str(r"bobby\'s sister:\nVeronica")
+        let entity_id = EntityId::from_str(r#"bobby\'s sister:\nVeronica"#)
             .expect("failed at constructing EntityId");
         let entity_type_name = EntityTypeName::from_str("Hockey::Master")
             .expect("failed at constructing EntityTypeName");
         let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
         // these are passed through (no escape interpretation):
         //   the EntityId has the literal backslash characters in it
-        assert_eq!(euid.id().as_ref(), r"bobby\'s sister:\nVeronica");
+        assert_eq!(euid.id().as_ref(), r#"bobby\'s sister:\nVeronica"#);
         assert_eq!(euid.type_name().to_string(), "Hockey::Master");
         assert_eq!(euid.type_name().basename(), "Master");
         assert_eq!(euid.type_name().namespace(), "Hockey");
@@ -3148,7 +3148,7 @@ mod entity_uid_tests {
         // EntityId is passed through (no escape interpretation):
         //   the EntityId has all the same literal characters in it
         assert_eq!(euid.id().as_ref(), r#"b'ob"by\'s sis\"ter"#);
-        assert_eq!(euid.type_name().to_string(), r"Test::User");
+        assert_eq!(euid.type_name().to_string(), r#"Test::User"#);
     }
 
     /// building an `EntityUid` from components, including whitespace in various places
@@ -3209,8 +3209,8 @@ permit(principal ==  A :: B
     #[test]
     fn parse_euid() {
         let parsed_eid: EntityUid = r#"Test::User::"bobby""#.parse().expect("Failed to parse");
-        assert_eq!(parsed_eid.id().as_ref(), r"bobby");
-        assert_eq!(parsed_eid.type_name().to_string(), r"Test::User");
+        assert_eq!(parsed_eid.id().as_ref(), r#"bobby"#);
+        assert_eq!(parsed_eid.type_name().to_string(), r#"Test::User"#);
     }
 
     /// parsing an `EntityUid` from string, including escapes
@@ -3221,7 +3221,7 @@ permit(principal ==  A :: B
         // the escapes were interpreted:
         //   the EntityId has single-quote and double-quote characters (but no backslash characters)
         assert_eq!(parsed_eid.id().as_ref(), r#"b'ob"by"#);
-        assert_eq!(parsed_eid.type_name().to_string(), r"Test::User");
+        assert_eq!(parsed_eid.type_name().to_string(), r#"Test::User"#);
     }
 
     /// parsing an `EntityUid` from string, including both escaped and unescaped single-quotes
@@ -3239,8 +3239,8 @@ permit(principal ==  A :: B
         };
         // the escape was interpreted:
         //   the EntityId has both single-quote characters (but no backslash characters)
-        assert_eq!(parsed_euid.id().as_ref(), r"b'obby's sister");
-        assert_eq!(parsed_euid.type_name().to_string(), r"Test::User");
+        assert_eq!(parsed_euid.id().as_ref(), r#"b'obby's sister"#);
+        assert_eq!(parsed_euid.type_name().to_string(), r#"Test::User"#);
     }
 
     /// parsing an `EntityUid` from string, including whitespace
@@ -3266,11 +3266,11 @@ permit(principal ==  A :: B
     #[test]
     fn euid_roundtrip() {
         let parsed_euid: EntityUid = r#"Test::User::"b\'ob""#.parse().expect("Failed to parse");
-        assert_eq!(parsed_euid.id().as_ref(), r"b'ob");
+        assert_eq!(parsed_euid.id().as_ref(), r#"b'ob"#);
         let reparsed: EntityUid = format!("{parsed_euid}")
             .parse()
             .expect("failed to roundtrip");
-        assert_eq!(reparsed.id().as_ref(), r"b'ob");
+        assert_eq!(reparsed.id().as_ref(), r#"b'ob"#);
     }
 
     #[test]
@@ -3484,7 +3484,7 @@ mod policy_set_tests {
         );
 
         match r {
-            Ok(()) => panic!("Should have failed due to conflict"),
+            Ok(_) => panic!("Should have failed due to conflict"),
             Err(PolicySetError::LinkingError(LinkingError::PolicyIdConflict)) => (),
             Err(e) => panic!("Incorrect error: {e}"),
         };
@@ -4501,15 +4501,15 @@ mod schema_based_parsing_tests {
 
     #[test]
     fn template_principal_constraints() {
-        let src = r"
+        let src = r#"
             permit(principal, action, resource);
-        ";
+        "#;
         let t = Template::parse(None, src).unwrap();
         assert_eq!(t.principal_constraint(), TemplatePrincipalConstraint::Any);
 
-        let src = r"
+        let src = r#"
             permit(principal == ?principal, action, resource);
-        ";
+        "#;
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.principal_constraint(),
@@ -4525,9 +4525,9 @@ mod schema_based_parsing_tests {
             TemplatePrincipalConstraint::Eq(Some(EntityUid::from_strs("A", "a")))
         );
 
-        let src = r"
+        let src = r#"
             permit(principal in ?principal, action, resource);
-        ";
+        "#;
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.principal_constraint(),
@@ -4546,9 +4546,9 @@ mod schema_based_parsing_tests {
 
     #[test]
     fn template_action_constraints() {
-        let src = r"
+        let src = r#"
             permit(principal, action, resource);
-        ";
+        "#;
         let t = Template::parse(None, src).unwrap();
         assert_eq!(t.action_constraint(), ActionConstraint::Any);
 
@@ -4576,15 +4576,15 @@ mod schema_based_parsing_tests {
 
     #[test]
     fn template_resource_constraints() {
-        let src = r"
+        let src = r#"
             permit(principal, action, resource);
-        ";
+        "#;
         let t = Template::parse(None, src).unwrap();
         assert_eq!(t.resource_constraint(), TemplateResourceConstraint::Any);
 
-        let src = r"
+        let src = r#"
             permit(principal, action, resource == ?resource);
-        ";
+        "#;
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.resource_constraint(),
@@ -4600,9 +4600,9 @@ mod schema_based_parsing_tests {
             TemplateResourceConstraint::Eq(Some(EntityUid::from_strs("A", "a")))
         );
 
-        let src = r"
+        let src = r#"
             permit(principal, action, resource in ?resource);
-        ";
+        "#;
         let t = Template::parse(None, src).unwrap();
         assert_eq!(
             t.resource_constraint(),
