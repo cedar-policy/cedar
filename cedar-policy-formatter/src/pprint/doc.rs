@@ -433,7 +433,7 @@ impl Doc for ASTNode<Option<Name>> {
                 path.get(1..)?
                     .iter()
                     .fold(
-                        Some((path.get(0)?.to_doc(context)?, path.get(0)?)),
+                        Some((path.first()?.to_doc(context)?, path.first()?)),
                         |pair, p| {
                             let (d, e) = pair?;
                             Some((
@@ -537,7 +537,7 @@ impl Doc for ASTNode<Option<Primary>> {
                     el.get(1..)?
                         .iter()
                         .fold(
-                            Some((el.get(0)?.to_doc(context)?, el.get(0)?)),
+                            Some((el.first()?.to_doc(context)?, el.first()?)),
                             |pair, v| {
                                 let (d, e) = pair?;
                                 Some((
@@ -572,7 +572,7 @@ impl Doc for ASTNode<Option<Primary>> {
                     ri.get(1..)?
                         .iter()
                         .fold(
-                            Some((ri.get(0)?.to_doc(context)?, ri.get(0)?)),
+                            Some((ri.first()?.to_doc(context)?, ri.first()?)),
                             |pair, v| {
                                 let (d, e) = pair?;
                                 Some((
@@ -630,7 +630,7 @@ impl Doc for ASTNode<Option<MemAccess>> {
                     args.get(1..)?
                         .iter()
                         .fold(
-                            Some((args.get(0)?.to_doc(context)?, args.get(0)?)),
+                            Some((args.first()?.to_doc(context)?, args.first()?)),
                             |pair, arg| {
                                 let (d, e) = pair?;
                                 Some((
@@ -726,7 +726,7 @@ impl Doc for ASTNode<Option<Policy>> {
             get_leading_comment_at_start(policy.effect.info.0.start, &mut context.tokens)?;
         let eff_doc = policy.effect.to_doc(context)?;
         let vars = &policy.variables;
-        let principal_doc = vars.get(0)?.to_doc(context)?;
+        let principal_doc = vars.first()?.to_doc(context)?;
         let action_doc = vars.get(1)?.to_doc(context)?;
         let resource_doc = vars.get(2)?.to_doc(context)?;
         let vars_doc = if vars.get(0..3)?.iter().all(|v| {
@@ -739,7 +739,7 @@ impl Doc for ASTNode<Option<Policy>> {
             principal_doc
                 .append(add_comment(
                     RcDoc::text(","),
-                    get_comment_after_end(vars.get(0)?.info.0.end, &mut context.tokens)?,
+                    get_comment_after_end(vars.first()?.info.0.end, &mut context.tokens)?,
                     RcDoc::space(),
                 ))
                 .append(action_doc)
@@ -757,7 +757,7 @@ impl Doc for ASTNode<Option<Policy>> {
                     principal_doc
                         .append(add_comment(
                             RcDoc::text(","),
-                            get_comment_after_end(vars.get(0)?.info.0.end, &mut context.tokens)?,
+                            get_comment_after_end(vars.first()?.info.0.end, &mut context.tokens)?,
                             RcDoc::hardline(),
                         ))
                         .append(action_doc)
