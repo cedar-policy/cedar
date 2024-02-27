@@ -57,6 +57,7 @@ exist to the `RecordAttrDoesNotExist` error message.
 Now it will not, since we know `{"foo": 5} has bar` is `False`, and the
 validator will return an error for a policy that can never fire.
 - Removed deprecated `__expr` escapes from integration tests.
+- Calling `add_template` with a `PolicyId` that is an existing link will now error.
 
 ## 2.3.3
 
