@@ -818,37 +818,23 @@ impl TryFrom<cst::Relation> for Expr {
                 }
                 Ok(expr)
             }
-            cst::Relation::Has { target, field } => match (target, field) {
-                (
-                    ASTNode {
-                        node: Some(target), ..
-                    },
-                    ASTNode {
-                        node: Some(field), ..
-                    },
-                ) => {
-                    let target_expr = target.try_into()?;
-                    match Expr::try_from(field.clone()) {
-                        Ok(field_expr) => {
-                            let field_str = field_expr.into_string_literal().ok_or_else(|| {
-                                ParseError::ToAST(
-                                    "`has` RHS should be a string literal".to_string(),
-                                )
-                            })?;
-                            Ok(Expr::has_attr(target_expr, field_str))
-                        }
-                        Err(_) => match is_add_name(field) {
-                            Some(name) => Ok(Expr::has_attr(target_expr, name.to_string().into())),
-                            None => Err(ParseError::ToAST(
-                                "`has` RHS should be an attribute name or string literal"
-                                    .to_string(),
-                            )
-                            .into()),
-                        },
+            cst::Relation::Has { target, field } => {
+                let target_expr = match target.node {
+                    Some(add) => add.try_into(),
+                    None => Err(ParseError::ToAST("node should not be empty".to_string()).into()),
+                }?;
+                let mut errs = ParseErrors::new();
+                if let Some(field_expr) = field.to_expr_or_special(&mut errs) {
+                    if let Some(attr) = field_expr.into_valid_attr(&mut errs) {
+                        return Ok(Expr::has_attr(target_expr, attr));
                     }
                 }
-                (_, _) => Err(ParseError::ToAST("data should not be empty".to_string()).into()),
-            },
+                if errs.is_empty() {
+                    Err(ParseError::ToAST("invalid attribute".to_string()).into())
+                } else {
+                    Err(errs)
+                }
+            }
             cst::Relation::Like { target, pattern } => match (target, pattern) {
                 (
                     ASTNode {
@@ -897,67 +883,6 @@ impl TryFrom<cst::Add> for Expr {
     }
 }
 
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_add_name(add: cst::Add) -> Option<cst::Name> {
-    if add.extended.is_empty() {
-        match add.initial.node {
-            Some(mult) => is_mult_name(mult),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_mult_name(mult: cst::Mult) -> Option<cst::Name> {
-    if mult.extended.is_empty() {
-        match mult.initial.node {
-            Some(unary) => is_unary_name(unary),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_unary_name(unary: cst::Unary) -> Option<cst::Name> {
-    if unary.op.is_none() {
-        match unary.item.node {
-            Some(mem) => is_mem_name(mem),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_mem_name(mem: cst::Member) -> Option<cst::Name> {
-    if mem.access.is_empty() {
-        match mem.item.node {
-            Some(primary) => is_primary_name(primary),
-            None => None,
-        }
-    } else {
-        None
-    }
-}
-
-/// Returns `Some` if this is just a cst::Name. For example the
-/// `foobar` in `context has foobar`
-fn is_primary_name(primary: cst::Primary) -> Option<cst::Name> {
-    match primary {
-        cst::Primary::Name(node) => node.node,
-        _ => None,
-    }
-}
-
 impl TryFrom<cst::Mult> for Expr {
     type Error = ParseErrors;
     fn try_from(m: cst::Mult) -> Result<Expr, ParseErrors> {
@@ -989,28 +914,38 @@ impl TryFrom<cst::Mult> for Expr {
 impl TryFrom<cst::Unary> for Expr {
     type Error = ParseErrors;
     fn try_from(u: cst::Unary) -> Result<Expr, ParseErrors> {
-        let inner = match u.item.node {
-            Some(m) => m.try_into(),
+        // We need to delay the conversion to where it's needed
+        let member_node_to_expr = |node: Option<cst::Member>| match node {
+            Some(member) => member.try_into(),
             None => Err(ParseError::ToAST("node should not be empty".to_string()).into()),
-        }?;
+        };
+
         match u.op {
-            Some(cst::NegOp::Bang(0)) => Ok(inner),
-            Some(cst::NegOp::Bang(1)) => Ok(Expr::not(inner)),
-            Some(cst::NegOp::Bang(2)) => {
-                // not safe to collapse !! to nothing
-                Ok(Expr::not(Expr::not(inner)))
-            }
-            Some(cst::NegOp::Bang(n)) => {
-                if n % 2 == 0 {
-                    // safe to collapse to !! but not to nothing
-                    Ok(Expr::not(Expr::not(inner)))
-                } else {
-                    // safe to collapse to !
-                    Ok(Expr::not(inner))
+            Some(cst::NegOp::Bang(num_bangs)) => {
+                let inner = member_node_to_expr(u.item.node)?;
+                match num_bangs {
+                    0 => Ok(inner),
+                    1 => Ok(Expr::not(inner)),
+                    2 => Ok(Expr::not(Expr::not(inner))),
+                    3 => Ok(Expr::not(Expr::not(Expr::not(inner)))),
+                    4 => Ok(Expr::not(Expr::not(Expr::not(Expr::not(inner))))),
+                    _ => Err(ParseError::ToAST("Too many !'s".to_string()).into()),
                 }
             }
-            Some(cst::NegOp::Dash(0)) => Ok(inner),
+            Some(cst::NegOp::Dash(0)) => member_node_to_expr(u.item.node),
             Some(cst::NegOp::Dash(mut num_dashes)) => {
+                let inner = match u.item.to_lit() {
+                    Some(cst::Literal::Num(num))
+                        if num
+                            .checked_sub(1)
+                            .map(|y| y == i64::MAX as u64)
+                            .unwrap_or(false) =>
+                    {
+                        num_dashes -= 1;
+                        Expr::ExprNoExt(ExprNoExt::Value(JSONValue::Long(i64::MIN)))
+                    }
+                    _ => member_node_to_expr(u.item.node)?,
+                };
                 let inner = match inner {
                     Expr::ExprNoExt(ExprNoExt::Value(JSONValue::Long(n))) if n != std::i64::MIN => {
                         // collapse the negated literal into a single negative literal.
@@ -1027,20 +962,14 @@ impl TryFrom<cst::Unary> for Expr {
                         // not safe to collapse `--` to nothing
                         Ok(Expr::neg(Expr::neg(inner)))
                     }
-                    n => {
-                        if n % 2 == 0 {
-                            // safe to collapse to `--` but not to nothing
-                            Ok(Expr::neg(Expr::neg(inner)))
-                        } else {
-                            // safe to collapse to -
-                            Ok(Expr::neg(inner))
-                        }
-                    }
+                    3 => Ok(Expr::neg(Expr::neg(Expr::neg(inner)))),
+                    4 => Ok(Expr::neg(Expr::neg(Expr::neg(Expr::neg(inner))))),
+                    _ => Err(ParseError::ToAST("Too many -'s".to_string()).into()),
                 }
             }
             Some(cst::NegOp::OverBang) => Err(ParseError::ToAST("Too many !'s".to_string()).into()),
             Some(cst::NegOp::OverDash) => Err(ParseError::ToAST("Too many -'s".to_string()).into()),
-            None => Ok(inner),
+            None => member_node_to_expr(u.item.node),
         }
     }
 }
@@ -1165,31 +1094,39 @@ fn interpret_primary(p: cst::Primary) -> Result<Either<ast::Name, Expr>, ParseEr
 impl TryFrom<cst::Member> for Expr {
     type Error = ParseErrors;
     fn try_from(m: cst::Member) -> Result<Expr, ParseErrors> {
-        let mut item: Either<ast::Name, Expr> = match m.item.node {
-            Some(p) => interpret_primary(p),
+        let primary = match m.item.node {
+            Some(primary) => Ok::<cst::Primary, ParseErrors>(primary),
             None => Err(ParseError::ToAST("node should not be empty".to_string()).into()),
         }?;
+        let mut item: Either<ast::Name, Expr> = interpret_primary(primary)?;
         for access in m.access {
             match access.node {
-                Some(cst::MemAccess::Field(ASTNode { node, .. })) => match node {
-                    Some(cst::Ident::Ident(i)) => {
-                        item = match item {
-                            Either::Left(name) => {
-                                return Err(ParseError::ToAST(format!(
-                                    "{name}.{i} is not a valid expression"
-                                ))
-                                .into())
-                            }
-                            Either::Right(expr) => Either::Right(Expr::get_attr(expr, i)),
-                        };
+                Some(cst::MemAccess::Field(node)) => {
+                    let mut errs = ParseErrors::new();
+                    let field = node.to_valid_ident(&mut errs);
+                    // rule out invalid identifiers (`Ident::Invalid` and reserved Ids)
+                    if !errs.is_empty() {
+                        return Err(errs);
                     }
-                    Some(_i) => {
-                        return Err(ParseError::ToAST("Invalid Identifier".to_string()).into())
+                    match field {
+                        Some(id) => {
+                            item = match item {
+                                Either::Left(name) => {
+                                    return Err(ParseError::ToAST(format!(
+                                        "{name}.{id} is not a valid expression"
+                                    ))
+                                    .into())
+                                }
+                                Either::Right(expr) => {
+                                    Either::Right(Expr::get_attr(expr, id.to_smolstr()))
+                                }
+                            };
+                        }
+                        None => {
+                            return Err(ParseError::ToAST("invalid attribute".to_string()).into())
+                        }
                     }
-                    None => {
-                        return Err(ParseError::ToAST("node should not be empty".to_string()).into())
-                    }
-                },
+                }
                 Some(cst::MemAccess::Call(args)) => {
                     // we have item(args).  We hope item is either:
                     //   - an `ast::Name`, in which case we have a standard function call

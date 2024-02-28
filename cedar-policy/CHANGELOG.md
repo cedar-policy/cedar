@@ -19,6 +19,7 @@ Cedar Language Version: 2.1.3
   policy. With this fix it is possible to create a link with a policy id
   after previously failing to create that link with the same id from a static
   policy.
+- Fixes an issue where certain cedar policies couldn't be converted to JSON (#601)
 
 ## 2.4.2
 

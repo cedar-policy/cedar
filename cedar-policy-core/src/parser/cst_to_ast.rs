@@ -1139,10 +1139,11 @@ impl ASTNode<Option<cst::Add>> {
     fn to_expr(&self, errs: &mut ParseErrors) -> Option<ast::Expr> {
         self.to_expr_or_special(errs)?.into_expr(errs)
     }
-    fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
-        let (src, maybe_add) = self.as_inner_pair();
-        // return right away if there's no data, parse provided error
-        let add = maybe_add?;
+    pub(crate) fn to_expr_or_special(&self, errs: &mut ParseErrors) -> Option<ExprOrSpecial<'_>> {
+        // if `self` doesn't have data, nothing we can do here, just propagate
+        // the `None`; we don't need to signal an error, because one was already
+        // signaled when the `Node` without data was created
+        let add = self.as_inner()?;
 
         let maybe_first = add.initial.to_expr_or_special(errs);
         // collect() performs all the conversions, generating any errors
@@ -1155,7 +1156,7 @@ impl ASTNode<Option<cst::Add>> {
             Some(ExprOrSpecial::Expr(construct_expr_add(
                 maybe_first?.into_expr(errs)?,
                 more,
-                src.clone(),
+                self.info.clone(),
             )))
         } else {
             maybe_first
@@ -1363,11 +1364,11 @@ enum AstAccessor {
 }
 
 impl ASTNode<Option<cst::Member>> {
-    // Try to convert `cst::Member` into a `cst::Literal`, i.e.
-    // match `Member(Primary(Literal(_), []))`.
-    // It does not match the `Expr` arm of `Primary`, which means expressions
-    // like `(1)` are not considered as literals on the CST level.
-    fn to_lit(&self) -> Option<&cst::Literal> {
+    /// Try to convert `cst::Member` into a `cst::Literal`, i.e.
+    /// match `Member(Primary(Literal(_), []))`.
+    /// It does not match the `Expr` arm of `Primary`, which means expressions
+    /// like `(1)` are not considered as literals on the CST level.
+    pub(crate) fn to_lit(&self) -> Option<&cst::Literal> {
         let m = self.as_ref().node.as_ref()?;
         if !m.access.is_empty() {
             return None;

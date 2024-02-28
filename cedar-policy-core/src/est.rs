@@ -232,8 +232,22 @@ impl TryFrom<Clause> for ast::Expr {
     type Error = EstToAstError;
     fn try_from(clause: Clause) -> Result<ast::Expr, EstToAstError> {
         match clause {
-            Clause::When(expr) => expr.try_into(),
-            Clause::Unless(expr) => Ok(ast::Expr::not(expr.try_into()?)),
+            Clause::When(expr) => Clause::filter_slots(expr.try_into()?, true),
+            Clause::Unless(expr) => Clause::filter_slots(ast::Expr::not(expr.try_into()?), false),
+        }
+    }
+}
+
+impl Clause {
+    fn filter_slots(e: ast::Expr, is_when: bool) -> Result<ast::Expr, EstToAstError> {
+        let first_slot = e.slots().next().cloned();
+        if let Some(slot) = first_slot {
+            Err(EstToAstError::SlotsInConditionClause {
+                slot,
+                clausetype: if is_when { "when" } else { "unless" },
+            })
+        } else {
+            Ok(e)
         }
     }
 }

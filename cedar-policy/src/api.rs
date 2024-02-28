@@ -4926,3 +4926,207 @@ mod schema_based_parsing_tests {
         );
     }
 }
+#[cfg(test)]
+// PANIC SAFETY: unit tests
+#[allow(clippy::unwrap_used)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_all_ints() {
+        test_single_int(0);
+        test_single_int(i64::MAX);
+        test_single_int(i64::MIN);
+        test_single_int(7);
+        test_single_int(-7);
+    }
+
+    fn test_single_int(x: i64) {
+        for i in 0..4 {
+            test_single_int_with_dashes(x, i);
+        }
+    }
+
+    fn test_single_int_with_dashes(x: i64, num_dashes: usize) {
+        let dashes = vec!['-'; num_dashes].into_iter().collect::<String>();
+        let src = format!(r#"permit(principal, action, resource) when {{ {dashes}{x} }};"#);
+        let p: Policy = src.parse().unwrap();
+        let json = p.to_json().unwrap();
+        let round_trip = Policy::from_json(None, json).unwrap();
+        let pretty_print = format!("{round_trip}");
+        assert!(pretty_print.contains(&x.to_string()));
+        if x != 0 {
+            let expected_dashes = if x < 0 { num_dashes + 1 } else { num_dashes };
+            assert_eq!(
+                pretty_print.chars().filter(|c| *c == '-').count(),
+                expected_dashes
+            );
+        }
+    }
+
+    // Serializing a valid 64-bit int that can't be represented in double precision float
+    #[test]
+    fn json_bignum_1() {
+        let src = r#"
+        permit(
+            principal,
+            action == Action::"action",
+            resource
+          ) when {
+            -9223372036854775808
+          };"#;
+        let p: Policy = src.parse().unwrap();
+        p.to_json().unwrap();
+    }
+
+    #[test]
+    fn json_bignum_1a() {
+        let src = r#"
+        permit(principal, action, resource) when { 
+            (true && (-90071992547409921)) && principal
+        };"#;
+        let p: Policy = src.parse().unwrap();
+        let v = p.to_json().unwrap();
+        let s = serde_json::to_string(&v).unwrap();
+        assert!(s.contains("90071992547409921"));
+    }
+
+    // Deserializing a valid 64-bit int that can't be represented in double precision float
+    #[test]
+    fn json_bignum_2() {
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":90071992547409921}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let p = Policy::from_json(None, v).unwrap();
+        let pretty = format!("{p}");
+        // Ensure the number didn't get rounded
+        assert!(pretty.contains("90071992547409921"));
+    }
+
+    // Deserializing a valid 64-bit int that can't be represented in double precision float
+    #[test]
+    fn json_bignum_2a() {
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":-9223372036854775808}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let p = Policy::from_json(None, v).unwrap();
+        let pretty = format!("{p}");
+        // Ensure the number didn't get rounded
+        assert!(pretty.contains("-9223372036854775808"));
+    }
+
+    // Deserializing a number that doesn't fit in 64 bit integer
+    // This _should_ fail, as there's no way to do this w/out loss of precision
+    #[test]
+    fn json_bignum_3() {
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":9223372036854775808}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        assert!(Policy::from_json(None, v).is_err());
+    }
+}
+
+#[cfg(test)]
+mod issue_606 {
+    use std::str::FromStr;
+
+    use cedar_policy_core::est::EstToAstError;
+
+    use crate::{PolicyId, Template};
+
+    #[test]
+    fn est_template() {
+        let est_json = serde_json::json!({
+            "effect": "permit",
+            "principal": { "op": "All" },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [
+                {
+                    "kind": "when",
+                    "body": {
+                        "==": {
+                            "left": { "Var": "principal" },
+                            "right": { "Slot": "?principal" }
+                        }
+                    }
+                }
+            ]
+        });
+
+        let tid = PolicyId::from_str("t0").unwrap();
+        // We should get an error here after trying to construct a template with a slot in the condition
+        let template = Template::from_json(Some(tid.clone()), est_json);
+        assert!(matches!(
+            template,
+            Err(EstToAstError::SlotsInConditionClause {
+                slot: _,
+                clausetype: "when"
+            })
+        ));
+    }
+}
+
+#[cfg(test)]
+mod issue_604 {
+    use crate::Policy;
+    use cedar_policy_core::parser::parse_policy_or_template_to_est;
+    use cool_asserts::assert_matches;
+    #[track_caller]
+    fn to_json_is_ok(text: &str) {
+        let policy = Policy::parse(None, text).unwrap();
+        let json = policy.to_json();
+        assert_matches!(json, Ok(_));
+    }
+
+    #[track_caller]
+    fn make_policy_with_get_attr(attr: &str) -> String {
+        format!(
+            r#"
+        permit(principal, action, resource) when {{ principal == resource.{attr} }};
+        "#
+        )
+    }
+
+    #[track_caller]
+    fn make_policy_with_has_attr(attr: &str) -> String {
+        format!(
+            r#"
+        permit(principal, action, resource) when {{ resource has {attr} }};
+        "#
+        )
+    }
+
+    #[test]
+    fn var_as_attribute_name() {
+        for attr in ["principal", "action", "resource", "context"] {
+            to_json_is_ok(&make_policy_with_get_attr(attr));
+            to_json_is_ok(&make_policy_with_has_attr(attr));
+        }
+    }
+
+    #[track_caller]
+    fn is_valid_est(text: &str) {
+        let est = parse_policy_or_template_to_est(text);
+        assert_matches!(est, Ok(_));
+    }
+
+    #[track_caller]
+    fn is_invalid_est(text: &str) {
+        let est = parse_policy_or_template_to_est(text);
+        assert_matches!(est, Err(_));
+    }
+
+    #[test]
+    fn keyword_as_attribute_name_err() {
+        for attr in ["true", "false", "if", "then", "else", "in", "like", "has"] {
+            is_invalid_est(&make_policy_with_get_attr(attr));
+            is_invalid_est(&make_policy_with_has_attr(attr));
+        }
+    }
+
+    #[test]
+    fn keyword_as_attribute_name_ok() {
+        for attr in ["permit", "forbid", "when", "unless", "_"] {
+            is_valid_est(&make_policy_with_get_attr(attr));
+            is_valid_est(&make_policy_with_has_attr(attr));
+        }
+    }
+}
