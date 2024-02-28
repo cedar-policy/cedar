@@ -178,10 +178,8 @@ Ident: Node<Id> = {
         => Node::with_source_loc("namespace".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> ENTITY <r:@R>
         => Node::with_source_loc("entity".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
-    <l:@L> IN <r:@R>
-        => Node::with_source_loc("in".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> SET <r:@R>
-        => Node::with_source_loc("set".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc("Set".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> APPLIESTO <r:@R>
         => Node::with_source_loc("appliesTo".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> PRINCIPAL <r:@R>
