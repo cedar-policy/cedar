@@ -1423,6 +1423,7 @@ mod translator_tests {
         assert_eq!(foo.member_of_types, vec!["String".to_smolstr()]);
     }
 
+
     #[test]
     fn entity_named_if() {
         let src = r#"
@@ -1472,4 +1473,5 @@ mod translator_tests {
 
         assert!(SchemaFragment::from_str_natural(src).is_err());
     }
+
 }
