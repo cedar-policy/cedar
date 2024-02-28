@@ -1422,4 +1422,54 @@ mod translator_tests {
         let foo = ns.entity_types.get("Foo").unwrap();
         assert_eq!(foo.member_of_types, vec!["String".to_smolstr()]);
     }
+
+    #[test]
+    fn entity_named_if() {
+        let src = r#"
+        entity if = {};
+        entity Foo in [if] = {};
+        "#;
+
+        assert!(SchemaFragment::from_str_natural(src).is_err());
+    }
+
+    #[test]
+    fn entity_named_like() {
+        let src = r#"
+        entity like = {};
+        entity Foo in [like] = {};
+        "#;
+
+        assert!(SchemaFragment::from_str_natural(src).is_err());
+    }
+
+    #[test]
+    fn entity_named_true() {
+        let src = r#"
+        entity true = {};
+        entity Foo in [true] = {};
+        "#;
+
+        assert!(SchemaFragment::from_str_natural(src).is_err());
+    }
+
+    #[test]
+    fn entity_named_false() {
+        let src = r#"
+        entity false = {};
+        entity Foo in [false] = {};
+        "#;
+
+        assert!(SchemaFragment::from_str_natural(src).is_err());
+    }
+
+    #[test]
+    fn entity_named_has() {
+        let src = r#"
+        entity has = {};
+        entity Foo in [has] = {};
+        "#;
+
+        assert!(SchemaFragment::from_str_natural(src).is_err());
+    }
 }
