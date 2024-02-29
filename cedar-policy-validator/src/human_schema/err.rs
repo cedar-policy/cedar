@@ -16,6 +16,8 @@ pub enum UserError {
     EmptyList,
     #[error("Invalid escape codes")]
     StringEscape(NonEmpty<UnescapeError>),
+    #[error("`{0}` is a reserved identifier")]
+    ReservedIdentifierUsed(SmolStr),
 }
 
 pub(crate) type RawLocation = usize;
@@ -99,10 +101,7 @@ impl Display for ParseError {
             } => write!(f, "extra token `{token}`"),
             OwnedRawParseError::User {
                 error: Node { node, .. },
-            } => match node {
-                UserError::EmptyList => write!(f, "expected a non-empty list"),
-                UserError::StringEscape(unescape_errs) => write!(f, "{}", unescape_errs.first()),
-            },
+            } => write!(f, "{node}"),
         }
     }
 }

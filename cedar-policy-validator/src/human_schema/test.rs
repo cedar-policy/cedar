@@ -948,6 +948,7 @@ mod parser_tests {
 #[cfg(test)]
 mod translator_tests {
     use cedar_policy_core::FromNormalizedStr;
+    use smol_str::ToSmolStr;
 
     use crate::{SchemaError, SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema};
 
@@ -1266,5 +1267,209 @@ mod translator_tests {
                     SchemaError::UndeclaredCommonTypes(_)
                 )
         );
+    }
+
+    #[test]
+    fn entity_named_namespace() {
+        let src = r#"
+        entity namespace = {};
+        entity Foo in [namespace] = {};
+        "#;
+
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let ns = schema.0.get("").unwrap();
+        let foo = ns.entity_types.get("Foo").unwrap();
+        assert_eq!(foo.member_of_types, vec!["namespace".to_smolstr()]);
+    }
+
+    #[test]
+    fn entity_named_in() {
+        // This fails because `in` is reserved
+        let src = r#"
+        entity in = {};
+        entity Foo in [in] = {};
+        "#;
+
+        assert!(SchemaFragment::from_str_natural(src).is_err());
+    }
+
+    #[test]
+    fn entity_named_set() {
+        let src = r#"
+        entity Set = {};
+        entity Foo in [Set] = {};
+        "#;
+
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let ns = schema.0.get("").unwrap();
+        let foo = ns.entity_types.get("Foo").unwrap();
+        assert_eq!(foo.member_of_types, vec!["Set".to_smolstr()]);
+    }
+
+    #[test]
+    fn entity_named_applies_to() {
+        let src = r#"
+        entity appliesTo = {};
+        entity Foo in [appliesTo] = {};
+        "#;
+
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let ns = schema.0.get("").unwrap();
+        let foo = ns.entity_types.get("Foo").unwrap();
+        assert_eq!(foo.member_of_types, vec!["appliesTo".to_smolstr()]);
+    }
+
+    #[test]
+    fn entity_named_principal() {
+        let src = r#"
+        entity principal = {};
+        entity Foo in [principal ] = {};
+        "#;
+
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let ns = schema.0.get("").unwrap();
+        let foo = ns.entity_types.get("Foo").unwrap();
+        assert_eq!(foo.member_of_types, vec!["principal".to_smolstr()]);
+    }
+
+    #[test]
+    fn entity_named_resource() {
+        let src = r#"
+        entity resource= {};
+        entity Foo in [resource] = {};
+        "#;
+
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let ns = schema.0.get("").unwrap();
+        let foo = ns.entity_types.get("Foo").unwrap();
+        assert_eq!(foo.member_of_types, vec!["resource".to_smolstr()]);
+    }
+
+    #[test]
+    fn entity_named_action() {
+        let src = r#"
+        entity action= {};
+        entity Foo in [action] = {};
+        "#;
+
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let ns = schema.0.get("").unwrap();
+        let foo = ns.entity_types.get("Foo").unwrap();
+        assert_eq!(foo.member_of_types, vec!["action".to_smolstr()]);
+    }
+
+    #[test]
+    fn entity_named_context() {
+        let src = r#"
+        entity context= {};
+        entity Foo in [context] = {};
+        "#;
+
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let ns = schema.0.get("").unwrap();
+        let foo = ns.entity_types.get("Foo").unwrap();
+        assert_eq!(foo.member_of_types, vec!["context".to_smolstr()]);
+    }
+
+    #[test]
+    fn entity_named_attributes() {
+        let src = r#"
+        entity attributes= {};
+        entity Foo in [attributes] = {};
+        "#;
+
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let ns = schema.0.get("").unwrap();
+        let foo = ns.entity_types.get("Foo").unwrap();
+        assert_eq!(foo.member_of_types, vec!["attributes".to_smolstr()]);
+    }
+
+    #[test]
+    fn entity_named_bool() {
+        let src = r#"
+        entity Bool= {};
+        entity Foo in [Bool] = {};
+        "#;
+
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let ns = schema.0.get("").unwrap();
+        let foo = ns.entity_types.get("Foo").unwrap();
+        assert_eq!(foo.member_of_types, vec!["Bool".to_smolstr()]);
+    }
+
+    #[test]
+    fn entity_named_long() {
+        let src = r#"
+        entity Long= {};
+        entity Foo in [Long] = {};
+        "#;
+
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let ns = schema.0.get("").unwrap();
+        let foo = ns.entity_types.get("Foo").unwrap();
+        assert_eq!(foo.member_of_types, vec!["Long".to_smolstr()]);
+    }
+
+    #[test]
+    fn entity_named_string() {
+        let src = r#"
+        entity String= {};
+        entity Foo in [String] = {};
+        "#;
+
+        let (schema, _) = SchemaFragment::from_str_natural(src).unwrap();
+        let ns = schema.0.get("").unwrap();
+        let foo = ns.entity_types.get("Foo").unwrap();
+        assert_eq!(foo.member_of_types, vec!["String".to_smolstr()]);
+    }
+
+    #[test]
+    fn entity_named_if() {
+        let src = r#"
+        entity if = {};
+        entity Foo in [if] = {};
+        "#;
+
+        assert!(SchemaFragment::from_str_natural(src).is_err());
+    }
+
+    #[test]
+    fn entity_named_like() {
+        let src = r#"
+        entity like = {};
+        entity Foo in [like] = {};
+        "#;
+
+        assert!(SchemaFragment::from_str_natural(src).is_err());
+    }
+
+    #[test]
+    fn entity_named_true() {
+        let src = r#"
+        entity true = {};
+        entity Foo in [true] = {};
+        "#;
+
+        assert!(SchemaFragment::from_str_natural(src).is_err());
+    }
+
+    #[test]
+    fn entity_named_false() {
+        let src = r#"
+        entity false = {};
+        entity Foo in [false] = {};
+        "#;
+
+        assert!(SchemaFragment::from_str_natural(src).is_err());
+    }
+
+    #[test]
+    fn entity_named_has() {
+        let src = r#"
+        entity has = {};
+        entity Foo in [has] = {};
+        "#;
+
+        assert!(SchemaFragment::from_str_natural(src).is_err());
     }
 }
