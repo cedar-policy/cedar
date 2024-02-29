@@ -37,6 +37,9 @@ use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use thiserror::Error;
 
+#[cfg(feature = "wasm")]
+extern crate tsify;
+
 thread_local!(
     /// Per-thread authorizer instance, initialized on first use
     static AUTHORIZER: Authorizer = Authorizer::new();
@@ -116,6 +119,8 @@ pub fn json_is_authorized_partial(input: &str) -> InterfaceResult {
 
 /// Interface version of a `Response` that uses `InterfaceDiagnostics` for simpler (de)serialization
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct InterfaceResponse {
     /// Authorization decision
     decision: Decision,
@@ -125,9 +130,12 @@ pub struct InterfaceResponse {
 
 /// Interface version of `Diagnostics` that stores error messages as strings for simpler (de)serialization
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct InterfaceDiagnostics {
     /// `PolicyId`s of the policies that contributed to the decision.
     /// If no policies applied to the request, this set will be empty.
+    #[cfg_attr(feature = "wasm", tsify(type = "Set<String>"))]
     reason: HashSet<PolicyId>,
     /// Set of error messages that occurred
     errors: HashSet<String>,
@@ -256,6 +264,8 @@ impl TryFrom<PartialResponse> for InterfaceResidualResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 enum AuthorizationAnswer {
     ParseFailed { errors: Vec<String> },
     Success { response: InterfaceResponse },
@@ -272,17 +282,24 @@ enum PartialAuthorizationAnswer {
 
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 struct AuthorizationCall {
+    #[cfg_attr(feature = "wasm", tsify(type = "string|{type: string, id: string}"))]
     principal: Option<JsonValueWithNoDuplicateKeys>,
+    #[cfg_attr(feature = "wasm", tsify(type = "string|{type: string, id: string}"))]
     action: JsonValueWithNoDuplicateKeys,
+    #[cfg_attr(feature = "wasm", tsify(type = "string|{type: string, id: string}"))]
     resource: Option<JsonValueWithNoDuplicateKeys>,
     #[serde_as(as = "MapPreventDuplicates<_, _>")]
+    #[cfg_attr(feature = "wasm", tsify(optional, type = "Record<string, any>"))]
     context: HashMap<String, JsonValueWithNoDuplicateKeys>,
     /// Optional schema in JSON format.
     /// If present, this will inform the parsing: for instance, it will allow
     /// `__entity` and `__extn` escapes to be implicit, and it will error if
     /// attributes have the wrong types (e.g., string instead of integer).
     #[serde(rename = "schema")]
+    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, any>"))]
     schema: Option<JsonValueWithNoDuplicateKeys>,
     /// If this is `true` and a schema is provided, perform request validation.
     /// If this is `false`, the schema will only be used for schema-based
@@ -386,18 +403,24 @@ impl AuthorizationCall {
 /// Entity UID as strings.
 ///
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 struct EntityUIDStrings {
     ty: String,
     eid: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 struct Link {
     slot: String,
     value: EntityUIDStrings,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 struct TemplateLink {
     /// Template ID to fill in
     template_id: String,
@@ -413,6 +436,8 @@ struct TemplateLink {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "Vec<Link>")]
 #[serde(into = "Vec<Link>")]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 struct Links(Vec<Link>);
 
 /// Error returned for duplicate link ids in a template instantiation
@@ -452,10 +477,13 @@ impl From<Links> for Vec<Link> {
 /// policies must either be a single policy per entry, or only one entry with more than one policy
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 struct RecvdSlice {
     policies: PolicySpecification,
     /// JSON object containing the entities data, in "natural JSON" form -- same
     /// format as expected by EntityJsonParser
+    #[cfg_attr(feature = "wasm", tsify(type = "Array<EntityJson>"))]
     entities: JsonValueWithNoDuplicateKeys,
 
     /// Optional template policies.
