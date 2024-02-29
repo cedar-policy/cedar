@@ -24,7 +24,7 @@ use crate::extensions::Extensions;
 use crate::parser::cst::{self, Ident};
 use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::unescape::to_unescaped_string;
-use crate::parser::{unescape, Loc, Node};
+use crate::parser::{Loc, Node};
 use crate::{ast, FromNormalizedStr};
 use either::Either;
 use itertools::Itertools;
@@ -45,6 +45,47 @@ pub enum Expr {
     /// `ExprNoExt`), we assume we have an extension function call, where the
     /// key is the name of an extension function or method.
     ExtFuncCall(ExtFuncCall),
+}
+
+/// Represent an element of a pattern literal
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum PatternElem {
+    /// The wildcard asterisk
+    Wildcard,
+    /// A string without any wildcards
+    Literal(SmolStr),
+}
+
+impl From<Vec<PatternElem>> for crate::ast::Pattern {
+    fn from(value: Vec<PatternElem>) -> Self {
+        let mut elems = Vec::new();
+        for elem in value {
+            match elem {
+                PatternElem::Wildcard => {
+                    elems.push(crate::ast::PatternElem::Wildcard);
+                }
+                PatternElem::Literal(s) => {
+                    elems.extend(s.chars().map(|c| crate::ast::PatternElem::Char(c)));
+                }
+            }
+        }
+        Self::new(elems)
+    }
+}
+
+impl From<crate::ast::PatternElem> for PatternElem {
+    fn from(value: crate::ast::PatternElem) -> Self {
+        match value {
+            crate::ast::PatternElem::Wildcard => Self::Wildcard,
+            crate::ast::PatternElem::Char(c) => Self::Literal(c.to_smolstr()),
+        }
+    }
+}
+
+impl From<crate::ast::Pattern> for Vec<PatternElem> {
+    fn from(value: crate::ast::Pattern) -> Self {
+        value.iter().map(|elem| elem.clone().into()).collect()
+    }
 }
 
 /// Serde JSON structure for [any Cedar expression other than an extension
@@ -219,7 +260,7 @@ pub enum ExprNoExt {
         /// Left-hand argument
         left: Arc<Expr>,
         /// Pattern
-        pattern: SmolStr,
+        pattern: Vec<PatternElem>,
     },
     /// `<entity> is <entity_type> in <entity_or_entity_set> `
     #[serde(rename = "is")]
@@ -442,10 +483,10 @@ impl Expr {
     }
 
     /// `left like pattern`
-    pub fn like(left: Expr, pattern: SmolStr) -> Self {
+    pub fn like(left: Expr, pattern: impl IntoIterator<Item = PatternElem>) -> Self {
         Expr::ExprNoExt(ExprNoExt::Like {
             left: Arc::new(left),
-            pattern,
+            pattern: pattern.into_iter().collect(),
         })
     }
 
@@ -605,12 +646,10 @@ impl Expr {
             Expr::ExprNoExt(ExprNoExt::HasAttr { left, attr }) => {
                 Ok(ast::Expr::has_attr((*left).clone().try_into_ast(id)?, attr))
             }
-            Expr::ExprNoExt(ExprNoExt::Like { left, pattern }) => {
-                match unescape::to_pattern(&pattern) {
-                    Ok(pattern) => Ok(ast::Expr::like((*left).clone().try_into_ast(id)?, pattern)),
-                    Err(errs) => Err(FromJsonError::UnescapeError(errs)),
-                }
-            }
+            Expr::ExprNoExt(ExprNoExt::Like { left, pattern }) => Ok(ast::Expr::like(
+                (*left).clone().try_into_ast(id)?,
+                crate::ast::Pattern::from(pattern).iter().cloned(),
+            )),
             Expr::ExprNoExt(ExprNoExt::Is {
                 left,
                 entity_type,
@@ -753,7 +792,7 @@ impl From<ast::Expr> for Expr {
             }
             ast::ExprKind::Like { expr, pattern } => Expr::like(
                 Arc::unwrap_or_clone(expr).into(),
-                pattern.to_string().into(),
+                Vec::<PatternElem>::from(pattern),
             ),
             ast::ExprKind::Is { expr, entity_type } => Expr::is_entity_type(
                 Arc::unwrap_or_clone(expr).into(),
@@ -895,13 +934,27 @@ impl TryFrom<&Node<Option<cst::Relation>>> for Expr {
             }
             cst::Relation::Like { target, pattern } => {
                 let target_expr = target.try_into()?;
-                let pat_expr: Expr = pattern.try_into()?;
-                let pat_str = pat_expr.into_string_literal().map_err(|e| {
-                    pattern.to_ast_err(ToASTErrorKind::InvalidPattern(
-                        serde_json::to_string(&e).unwrap_or_else(|_| "<malformed est>".to_string()),
-                    ))
-                })?;
-                Ok(Expr::like(target_expr, pat_str))
+                let mut errs = ParseErrors::new();
+                match pattern
+                    .to_expr_or_special(&mut errs)
+                    .map(|expr| expr.into_pattern(&mut errs))
+                {
+                    Some(Some(pat)) => Ok(Expr::like(
+                        target_expr,
+                        pat.into_iter().map(PatternElem::from),
+                    )),
+                    _ => {
+                        if errs.is_empty() {
+                            Err(pattern
+                                .to_ast_err(ToASTErrorKind::InvalidPattern(
+                                    pattern.ok_or_missing()?.to_string(),
+                                ))
+                                .into())
+                        } else {
+                            Err(errs)
+                        }
+                    }
+                }
             }
             cst::Relation::IsIn {
                 target,
@@ -1551,7 +1604,12 @@ impl std::fmt::Display for ExprNoExt {
                 attr.escape_debug()
             ),
             ExprNoExt::Like { left, pattern } => {
-                write!(f, "{} like \"{}\"", maybe_with_parens(left), pattern) // intentionally not using .escape_debug() for pattern
+                write!(
+                    f,
+                    "{} like \"{}\"",
+                    maybe_with_parens(left),
+                    crate::ast::Pattern::from(pattern.clone())
+                ) // intentionally not using .escape_debug() for pattern
             }
             ExprNoExt::Is {
                 left,

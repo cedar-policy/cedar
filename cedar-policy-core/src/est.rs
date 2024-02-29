@@ -2284,7 +2284,42 @@ mod test {
                                                 "attr": "email"
                                             }
                                         },
-                                        "pattern": "*@amazon.com"
+                                        "pattern": [
+                                            "Wildcard",
+                                            {
+                                              "Literal": "@"
+                                            },
+                                            {
+                                              "Literal": "a"
+                                            },
+                                            {
+                                              "Literal": "m"
+                                            },
+                                            {
+                                              "Literal": "a"
+                                            },
+                                            {
+                                              "Literal": "z"
+                                            },
+                                            {
+                                              "Literal": "o"
+                                            },
+                                            {
+                                              "Literal": "n"
+                                            },
+                                            {
+                                              "Literal": "."
+                                            },
+                                            {
+                                              "Literal": "c"
+                                            },
+                                            {
+                                              "Literal": "o"
+                                            },
+                                            {
+                                              "Literal": "m"
+                                            }
+                                          ]
                                     }
                                 }
                             }
