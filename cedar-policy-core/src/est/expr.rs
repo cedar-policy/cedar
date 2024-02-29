@@ -987,27 +987,29 @@ impl TryFrom<&Node<Option<cst::Unary>>> for Expr {
             Some(cst::NegOp::Dash(0)) => Ok((&u_node.item).try_into()?),
             Some(cst::NegOp::Dash(mut num_dashes)) => {
                 let inner = match &u_node.item.to_lit() {
-                    Some(cst::Literal::Num(num))
-                        if num
-                            .checked_sub(1)
-                            .map(|y| y == InputInteger::MAX as u64)
-                            .unwrap_or(false) =>
-                    {
-                        num_dashes -= 1;
-                        Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(InputInteger::MIN)))
+                    Some(cst::Literal::Num(num)) => {
+                        match num.cmp(&(InputInteger::MAX as u64 + 1)) {
+                            std::cmp::Ordering::Less => {
+                                num_dashes -= 1;
+                                Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(
+                                    -(*num as InputInteger),
+                                )))
+                            }
+                            std::cmp::Ordering::Equal => {
+                                num_dashes -= 1;
+                                Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(
+                                    InputInteger::MIN,
+                                )))
+                            }
+                            std::cmp::Ordering::Greater => {
+                                return Err(u_node
+                                    .item
+                                    .to_ast_err(ToASTErrorKind::IntegerLiteralTooLarge(*num))
+                                    .into());
+                            }
+                        }
                     }
                     _ => (&u_node.item).try_into()?,
-                };
-                let inner = match inner {
-                    Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::Long(n)))
-                        if n != InputInteger::MIN =>
-                    {
-                        // collapse the negated literal into a single negative literal.
-                        // Important for multiplication-by-constant to allow multiplication by negative constants.
-                        num_dashes -= 1;
-                        Expr::lit(CedarValueJson::Long(-n))
-                    }
-                    _ => inner,
                 };
                 match num_dashes {
                     0 => Ok(inner),
