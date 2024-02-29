@@ -19,6 +19,7 @@ Cedar Language Version: 3.1.0
   authorization error (#589)
 - For the `partial-eval` experimental feature: added
 `Authorizer::evaluate_policies_partial()` (#474)
+- Implementation of the human-readable schema format: `SchemaFragment::from_*_natural`, `SchemaFragment::as_natural`, and `Schema::from_*_natural` (#557, implement [RFC #24](https://github.com/cedar-policy/rfcs/blob/main/text/0024-schema-syntax.md))
 
 ### Changed
 

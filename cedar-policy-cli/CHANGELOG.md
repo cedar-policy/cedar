@@ -16,6 +16,8 @@
   (previously required). If not provided, the linked policy will only be shown on
   stdout; if it is provided, the indicated file will be updated with the new link
   (as before).
+- Added support for the human-readable schema format (`--schema-format human` when a schema is needed).
+- Added command `translate-schema` that translates a schema in the JSON format to it human-readable format and vice versa (except comments).
 
 ## 3.0.1
 
