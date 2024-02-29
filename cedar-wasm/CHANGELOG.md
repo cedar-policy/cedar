@@ -11,3 +11,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Exposed cedar-wasm functionality for policies and templates: `check_parse_policy_set`,
   `policy_text_to_json`, and `policy_text_from_json`. (#616)
+- Exposed cedar-wasm functionality for authorization and validation: `wasm_is_authorized`
+  and `wasm_validate`. (#657)
