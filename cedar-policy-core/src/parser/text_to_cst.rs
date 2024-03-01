@@ -32,7 +32,6 @@ lalrpop_mod!(
 );
 
 use super::*;
-use node::Node;
 use std::sync::Arc;
 
 /// This helper function calls a generated parser, collects errors that could be
