@@ -1,8 +1,0 @@
-@f1w("\u{6}")
-permit(
-  principal,
-  action in [Action::"action"],
-  resource == a::"\0"
-) when {
-  (true && a::"\0") && ""
-};

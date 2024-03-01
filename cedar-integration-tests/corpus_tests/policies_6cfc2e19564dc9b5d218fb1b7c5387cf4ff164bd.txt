@@ -1,7 +1,0 @@
-permit(
-  principal,
-  action,
-  resource in a::"FFFA\0\u{6}"
-) when {
-  (true && resource) && (((A::"".contains(principal)) == principal).contains(principal))
-};

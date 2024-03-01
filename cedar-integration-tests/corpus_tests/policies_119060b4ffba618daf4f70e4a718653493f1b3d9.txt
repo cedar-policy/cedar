@@ -1,9 +1,0 @@
-@C("")
-@p("\u{1}\0\0H\u{7f}")
-permit(
-  principal,
-  action in [],
-  resource
-) when {
-  true
-};

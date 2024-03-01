@@ -1,7 +1,0 @@
-forbid(
-  principal,
-  action,
-  resource == a::"ꗗ"
-) when {
-  ((true && "") && ((principal like "") == principal)) && principal
-};

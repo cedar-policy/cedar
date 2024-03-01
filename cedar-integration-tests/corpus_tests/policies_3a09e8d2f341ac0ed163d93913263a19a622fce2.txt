@@ -1,7 +1,0 @@
-permit(
-  principal == a::"v\u{2}\u{2}\u{2}\u{2}\u{2}\u{2}\u{2}\u{2}",
-  action in [],
-  resource in a::"v\u{2}\u{2}\u{2}\u{2}\u{2}\u{2}\u{2}\u{2}"
-) when {
-  true
-};
