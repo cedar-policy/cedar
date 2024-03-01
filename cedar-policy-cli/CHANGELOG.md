@@ -18,6 +18,10 @@
   (previously required). If not provided, the linked policy will only be shown on
   stdout; if it is provided, the indicated file will be updated with the new link
   (as before).
+- The `evaluate` command now shows source spans on parse errors.
+
+### Fixed
+- The `link` command now accepts templates in the Cedar JSON (EST) syntax.
 
 ## 3.0.1
 

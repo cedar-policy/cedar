@@ -19,7 +19,9 @@ Cedar Language Version: 3.1.0
 - `AuthorizationError::id()` to get the id of the policy associated with an
   authorization error (#589)
 - For the `partial-eval` experimental feature: added
-`Authorizer::evaluate_policies_partial()` (#474)
+`Authorizer::evaluate_policies_partial()` (#593, resolving #474)
+- For the `partial-eval` experimental feature: added
+`json_is_authorized_partial()` (#571, resolving #570)
 
 ### Changed
 
@@ -46,6 +48,7 @@ Cedar Language Version: 3.1.0
   using the wrong call style. (#482)
 - Include source spans on more parse error messages. (#471, resolving #465)
 - Include source spans on more evaluation error messages. (#582)
+- Moved `(PolicyId as FromStr)::Err` to `Infallible` (#588 resolving #551)
 - Changed error message on `SchemaError::UndeclaredCommonTypes` to report
   fully qualified type names. (#652, resolving #580)
 - For the `partial-eval` experimental feature: make the return values of
@@ -54,7 +57,8 @@ Cedar Language Version: 3.1.0
 - For the `partial-eval` experimental feature: make `RequestBuilder::schema`
 return a `RequestBuilder<&Schema>` so the `RequestBuilder<&Schema>::build`
 method checks the request against the schema provided and the
-`RequestBuilder<UnsetSchema>::build` method becomes infallible. (#559)
+`RequestBuilder<UnsetSchema>::build` method becomes infallible. (#591, resolving #559)
+- For the `permissive-validate` experimental feature: `X in []` is typed `False` for all `X`, including unspecified `X`. (#615)
 
 ### Fixed
 
@@ -64,11 +68,13 @@ method checks the request against the schema provided and the
   rejected. E.g., `foo::principal` is an error and is not parsed as
   `principal`. Variables qualified by a namespace of any size comprised entirely
   of Cedar keywords are correctly rejected. E.g., `if::then::else::principal` is an error.
-  (#594 and #596)
+  (#594 and #597)
 - The entity type tested for by an `is` expression may be an identifier shared
   with a builtin variable. E.g., `... is principal` and `... is action` are now
-  accepted by the Cedar parser. (#558)
-- Policies containing the literal `i64::MIN` can now be properly converted to JSON ESTs (#601, resolving #596)
+  accepted by the Cedar parser. (#595, resolving #558)
+- Policies containing the literal `i64::MIN` can now be properly converted to JSON ESTs. (#601, resolving #596)
+- EST attributes can be special identifiers such as `principal`, `then`, and `true`. (#628, resolving #604)
+- EST to AST conversion errors when there are slots in template conditions. (#626, resolving #606)
 
 ## [3.0.1] - 2023-12-21
 Cedar Language Version: 3.0.0
