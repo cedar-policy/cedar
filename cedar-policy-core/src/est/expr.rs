@@ -944,14 +944,11 @@ impl TryFrom<&Node<Option<cst::Relation>>> for Expr {
                         pat.into_iter().map(PatternElem::from),
                     )),
                     _ => {
-                        if errs.is_empty() {
-                            Err(pattern
-                                .to_ast_err(ToASTErrorKind::InvalidPattern(
-                                    pattern.ok_or_missing()?.to_string(),
-                                ))
-                                .into())
-                        } else {
-                            Err(errs)
+                        match pattern.ok_or_missing() {
+                            // We got real errors (i.e., non-`MissingNodeData`)
+                            Ok(_) => Err(errs),
+                            // We got `MissingNodeData` and forward it to upstream user
+                            Err(err) => Err(err.into()),
                         }
                     }
                 }
@@ -1609,7 +1606,7 @@ impl std::fmt::Display for ExprNoExt {
                     "{} like \"{}\"",
                     maybe_with_parens(left),
                     crate::ast::Pattern::from(pattern.clone())
-                ) // intentionally not using .escape_debug() for pattern
+                )
             }
             ExprNoExt::Is {
                 left,
