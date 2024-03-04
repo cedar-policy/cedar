@@ -415,7 +415,6 @@ mod tests {
     use crate::extensions::Extensions;
     use crate::parser::parse_expr;
     use cool_asserts::assert_matches;
-    use nonempty::nonempty;
 
     /// This helper function asserts that a `Result` is actually an
     /// `Err::ExtensionErr` with our extension name
@@ -564,7 +563,7 @@ mod tests {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::String],
+                    expected: vec![Type::String],
                     actual: Type::Set,
                 }
             )
@@ -575,7 +574,7 @@ mod tests {
             eval.interpret_inline_policy(&Expr::less(ip("127.0.0.1"), ip("10.0.0.10"))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::Extension {
                         name: Name::parse_unqualified_name("ipaddr")
                             .expect("should be a valid identifier")
@@ -593,7 +592,7 @@ mod tests {
                 assert_eq!(
                     e.error_kind(),
                     &EvaluationErrorKind::TypeError {
-                        expected: nonempty![Type::Extension {
+                        expected: vec![Type::Extension {
                             name: Name::parse_unqualified_name("ipaddr")
                                 .expect("should be a valid identifier")
                         }],

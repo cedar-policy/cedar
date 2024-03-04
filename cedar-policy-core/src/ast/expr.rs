@@ -1521,7 +1521,7 @@ mod test {
         let e = Expr::has_attr(Expr::val("a"), "\0".into());
         assert_eq!(format!("{e}"), r#""a" has "\0""#);
         // `\`'s escaped form is `\\`
-        let e = Expr::has_attr(Expr::val("a"), r"\".into());
+        let e = Expr::has_attr(Expr::val("a"), r#"\"#.into());
         assert_eq!(format!("{e}"), r#""a" has "\\""#);
     }
 

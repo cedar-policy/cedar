@@ -313,7 +313,6 @@ mod tests {
     use crate::extensions::Extensions;
     use crate::parser::parse_expr;
     use cool_asserts::assert_matches;
-    use nonempty::nonempty;
 
     /// Asserts that a `Result` is an `Err::ExtensionErr` with our extension name
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
@@ -620,7 +619,7 @@ mod tests {
             ),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::Extension {
                         name: Name::parse_unqualified_name("decimal")
                             .expect("should be a valid identifier")
@@ -636,7 +635,7 @@ mod tests {
                 assert_eq!(
                     e.error_kind(),
                     &EvaluationErrorKind::TypeError {
-                        expected: nonempty![Type::Extension {
+                        expected: vec![Type::Extension {
                             name: Name::parse_unqualified_name("decimal")
                                 .expect("should be a valid identifier")
                         }],
