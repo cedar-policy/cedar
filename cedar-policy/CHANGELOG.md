@@ -48,7 +48,6 @@ Cedar Language Version: 3.1.0
   using the wrong call style. (#482)
 - Include source spans on more parse error messages. (#471, resolving #465)
 - Include source spans on more evaluation error messages. (#582)
-- Moved `(PolicyId as FromStr)::Err` to `Infallible` (#588 resolving #551)
 - Changed error message on `SchemaError::UndeclaredCommonTypes` to report
   fully qualified type names. (#652, resolving #580)
 - For the `partial-eval` experimental feature: make the return values of
@@ -72,9 +71,9 @@ method checks the request against the schema provided and the
 - The entity type tested for by an `is` expression may be an identifier shared
   with a builtin variable. E.g., `... is principal` and `... is action` are now
   accepted by the Cedar parser. (#595, resolving #558)
-- Policies containing the literal `i64::MIN` can now be properly converted to JSON ESTs. (#601, resolving #596)
-- EST attributes can be special identifiers such as `principal`, `then`, and `true`. (#628, resolving #604)
-- EST to AST conversion errors when there are slots in template conditions. (#626, resolving #606)
+- Policies containing the literal `i64::MIN` can now be properly converted to the JSON policy format. (#601, resolving #596)
+- `Policy::to_json` does not error on policies containing special identifiers such as `principal`, `then`, and `true`. (#628, resolving #604)
+- `Template::from_json` errors when there are slots in template conditions. (#626, resolving #606)
 
 ## [3.0.1] - 2023-12-21
 Cedar Language Version: 3.0.0
