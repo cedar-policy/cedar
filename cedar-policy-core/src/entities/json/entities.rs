@@ -24,7 +24,7 @@ use crate::entities::{Entities, EntitiesError, TCComputation};
 use crate::extensions::Extensions;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 /// Serde JSON format for a single entity
@@ -122,11 +122,23 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
         &self,
         ejsons: impl IntoIterator<Item = EntityJSON>,
     ) -> Result<Entities, EntitiesError> {
+        // Convert all `EntityJSON`s to `Entity`s. Perform validation against the schema,
+        // but ignore action hierarchy restrictions.
         let entities = ejsons
             .into_iter()
             .map(|ejson| self.parse_ejson(ejson))
             .collect::<Result<Vec<Entity>, _>>()?;
-        Entities::from_entities(entities, self.tc_computation)
+        // Construct the entity store, computing TC depending on `self.tc_computation`
+        let entities = Entities::from_entities(entities, self.tc_computation)?;
+        // Finally, check the action entity hierarchy.
+        // This is fine to do after TC because the action hierarchy in the
+        // schema already satisfies TC, and action and non-action entities
+        // can never be in the same hierarchy when using schema-based parsing.
+        entities
+            .iter()
+            .map(|e| self.check_action_hierarchy(e))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(entities)
     }
 
     /// internal function that parses an `EntityJSON` into an `Entity`
@@ -306,15 +318,9 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                         Ok(()) // all parents are allowed
                     }
                 }
-                EntitySchemaInfo::Action(action) => {
-                    // allowed iff the schema's copy also has this parent edge
-                    if action.is_descendant_of(parent_euid) {
-                        Ok(())
-                    } else {
-                        Err(JsonDeserializationError::ActionDeclarationMismatch {
-                            uid: uid.clone(),
-                        })
-                    }
+                EntitySchemaInfo::Action(_) => {
+                    // check later in `check_action_hierarchy`
+                    Ok(())
                 }
                 EntitySchemaInfo::NonAction(desc) => {
                     let parent_type = parent_euid.entity_type();
@@ -347,18 +353,29 @@ impl<'e, S: Schema> EntityJsonParser<'e, S> {
                 })
             })
             .collect::<Result<_, JsonDeserializationError>>()?;
-        match &entity_schema_info {
-            EntitySchemaInfo::NoSchema => {}     // no checks to do
-            EntitySchemaInfo::NonAction(_) => {} // no checks to do
-            EntitySchemaInfo::Action(action) => {
-                // check that the json entity and the schema declaration
-                // fully agree on parents
-                if parents != *action.ancestors_set() {
-                    return Err(JsonDeserializationError::ActionDeclarationMismatch { uid });
+        Ok(Entity::new(uid, attrs, parents))
+    }
+
+    /// Internal function to check if the action hierarchy is consistent with the schema
+    fn check_action_hierarchy(&self, entity: &Entity) -> Result<(), JsonDeserializationError> {
+        let uid = entity.uid();
+        let ancestors: HashSet<EntityUID> = entity.ancestors().cloned().collect();
+        // If the schema is `None` or the input entity is not an action, this function is a no-op
+        match &self.schema {
+            None => {}
+            Some(schema) => {
+                if uid.is_action() {
+                    // Check that the entity's ancestors exactly match the schema
+                    let schema_action = schema
+                        .action(&uid)
+                        .ok_or(JsonDeserializationError::UndeclaredAction { uid: uid.clone() })?;
+                    if ancestors != *schema_action.ancestors_set() {
+                        return Err(JsonDeserializationError::ActionDeclarationMismatch { uid });
+                    }
                 }
             }
-        }
-        Ok(Entity::new(uid, attrs, parents))
+        };
+        Ok(())
     }
 }
 
