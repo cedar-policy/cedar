@@ -607,7 +607,7 @@ impl Expr {
             Expr::ExprNoExt(ExprNoExt::Like { left, pattern }) => {
                 match unescape::to_pattern(&pattern) {
                     Ok(pattern) => Ok(ast::Expr::like((*left).clone().try_into_ast(id)?, pattern)),
-                    Err(errs) => Err(FromJsonError::UnescapeError(errs)),
+                    Err(errs) => Err(FromJsonError::UnescapeError(errs.into())),
                 }
             }
             Expr::ExprNoExt(ExprNoExt::Is {
