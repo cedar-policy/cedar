@@ -28,7 +28,6 @@ mod err;
 pub(crate) use err::*;
 pub use err::{EvaluationError, EvaluationErrorKind};
 use itertools::Either;
-use nonempty::nonempty;
 use smol_str::SmolStr;
 
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
@@ -581,9 +580,9 @@ impl<'e> Evaluator<'e> {
                     Dereference::Data(e) => Ok(e.get(attr).is_some().into()),
                 },
                 PartialValue::Value(val) => Err(err::EvaluationError::type_error(
-                    nonempty![
+                    vec![
                         Type::Record,
-                        Type::entity_type(names::ANY_ENTITY_TYPE.clone())
+                        Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
                     ],
                     &val,
                 )),
@@ -663,7 +662,7 @@ impl<'e> Evaluator<'e> {
                 .collect::<Result<Vec<EntityUID>>>()?,
             _ => {
                 return Err(EvaluationError::type_error(
-                    nonempty![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
+                    vec![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
                     &arg2,
                 ))
             }
@@ -806,7 +805,7 @@ impl<'e> Evaluator<'e> {
                 // PANIC SAFETY Entity type name is fully static and a valid unqualified `Name`
                 #[allow(clippy::unwrap_used)]
                 Err(EvaluationError::type_error(
-                    nonempty![
+                    vec![
                         Type::Record,
                         Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
                     ],
@@ -1445,7 +1444,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Bool],
+                    expected: vec![Type::Bool],
                     actual: Type::String,
                 },
             )
@@ -1459,7 +1458,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Bool],
+                    expected: vec![Type::Bool],
                     actual: Type::Entity {
                         ty: EntityUID::test_entity_type(),
                     },
@@ -1649,7 +1648,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
+                    expected: vec![
                         Type::Record,
                         Type::entity_type(
                             Name::parse_unqualified_name("any_entity_type")
@@ -1665,7 +1664,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::get_attr(Expr::set(vec![]), "hello".into())),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
+                    expected: vec![
                         Type::Record,
                         Type::entity_type(
                             Name::parse_unqualified_name("any_entity_type")
@@ -1714,7 +1713,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::get_attr(mixed_set, "hello".into())),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
+                    expected: vec![
                         Type::Record,
                         Type::entity_type(
                             Name::parse_unqualified_name("any_entity_type")
@@ -1777,7 +1776,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::get_attr(set_of_sets.clone(), "hello".into())),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
+                    expected: vec![
                         Type::Record,
                         Type::entity_type(
                             Name::parse_unqualified_name("any_entity_type")
@@ -1796,7 +1795,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
+                    expected: vec![
                         Type::Record,
                         Type::entity_type(
                             Name::parse_unqualified_name("any_entity_type")
@@ -2065,7 +2064,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::get_attr(Expr::val(1010122), "hello".into())),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
+                    expected: vec![
                         Type::Record,
                         Type::entity_type(
                             Name::parse_unqualified_name("any_entity_type")
@@ -2081,7 +2080,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::get_attr(Expr::val("hello"), "eggs".into())),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
+                    expected: vec![
                         Type::Record,
                         Type::entity_type(
                             Name::parse_unqualified_name("any_entity_type")
@@ -2097,7 +2096,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::has_attr(Expr::val(1010122), "hello".into())),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
+                    expected: vec![
                         Type::Record,
                         Type::entity_type(
                             Name::parse_unqualified_name("any_entity_type")
@@ -2113,7 +2112,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::has_attr(Expr::val("hello"), "eggs".into())),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
+                    expected: vec![
                         Type::Record,
                         Type::entity_type(
                             Name::parse_unqualified_name("any_entity_type")
@@ -2147,7 +2146,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::not(Expr::val(8))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Bool],
+                    expected: vec![Type::Bool],
                     actual: Type::Long,
                 }
             )
@@ -2157,7 +2156,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::not(Expr::var(Var::Action))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Bool],
+                    expected: vec![Type::Bool],
                     actual: Type::Entity {
                         ty: EntityUID::test_entity_type(),
                     },
@@ -2240,7 +2239,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::neg(Expr::val(false))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::Bool
                 }
             )
@@ -2254,7 +2253,7 @@ pub mod test {
             ]))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::Set
                 }
             )
@@ -2563,7 +2562,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(true))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::Bool
                 }
             )
@@ -2573,7 +2572,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(false))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::Bool
                 }
             )
@@ -2583,7 +2582,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val(true), Expr::val(false))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::Bool
                 }
             )
@@ -2593,7 +2592,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val(false), Expr::val(false))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::Bool
                 }
             )
@@ -2603,7 +2602,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::greater(Expr::val(false), Expr::val(true))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::Bool
                 }
             )
@@ -2613,7 +2612,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::greater(Expr::val(true), Expr::val(true))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::Bool
                 }
             )
@@ -2623,7 +2622,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(true), Expr::val(false))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::Bool
                 }
             )
@@ -2633,7 +2632,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(true), Expr::val(true))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::Bool
                 }
             )
@@ -2643,7 +2642,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val("bc"), Expr::val("zzz"))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2653,7 +2652,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val("banana"), Expr::val("zzz"))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2663,7 +2662,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val(""), Expr::val("zzz"))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2673,7 +2672,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val("a"), Expr::val("1"))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2683,7 +2682,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val("a"), Expr::val("A"))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2693,7 +2692,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val("A"), Expr::val("A"))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2703,7 +2702,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val("zebra"), Expr::val("zebras"))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2713,7 +2712,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebra"), Expr::val("zebras"))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2723,7 +2722,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebras"), Expr::val("zebras"))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2733,7 +2732,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebras"), Expr::val("Zebras"))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2743,7 +2742,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::greater(Expr::val("123"), Expr::val("78"))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2756,7 +2755,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2766,7 +2765,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(""), Expr::val(""))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2776,7 +2775,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val(""), Expr::val("_hi"))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2786,7 +2785,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::greatereq(Expr::val("🦀"), Expr::val("_hi"))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2796,7 +2795,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val(2), Expr::val("4"))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2806,7 +2805,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val("4"), Expr::val(2))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2816,7 +2815,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(1))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::Bool
                 }
             )
@@ -2826,7 +2825,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::less(Expr::val(1), Expr::val(false))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::Bool
                 }
             )
@@ -2839,7 +2838,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::Set
                 }
             )
@@ -2863,7 +2862,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2876,7 +2875,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2889,7 +2888,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2902,7 +2901,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2947,7 +2946,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::add(Expr::val(7), Expr::val("3"))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2979,7 +2978,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::sub(Expr::val("ham"), Expr::val("ha"))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -2999,7 +2998,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::mul(Expr::val("5"), 0)),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Long],
+                    expected: vec![Type::Long],
                     actual: Type::String
                 }
             )
@@ -3164,7 +3163,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::contains(Expr::val(3), Expr::val(7))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Set],
+                    expected: vec![Type::Set],
                     actual: Type::Long
                 }
             )
@@ -3177,7 +3176,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Set],
+                    expected: vec![Type::Set],
                     actual: Type::Record
                 }
             )
@@ -3190,7 +3189,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Set],
+                    expected: vec![Type::Set],
                     actual: Type::Long
                 }
             )
@@ -3387,7 +3386,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::entity_type(
+                    expected: vec![Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     )],
@@ -3444,7 +3443,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::is_in(Expr::val("foo"), Expr::val("foobar"))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::entity_type(
+                    expected: vec![Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     )],
@@ -3460,7 +3459,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::entity_type(
+                    expected: vec![Type::entity_type(
                         Name::parse_unqualified_name("any_entity_type")
                             .expect("should be a valid identifier")
                     )],
@@ -3478,7 +3477,7 @@ pub mod test {
                 assert_eq!(
                     e.error_kind(),
                     &EvaluationErrorKind::TypeError {
-                        expected: nonempty![Type::entity_type(
+                        expected: vec![Type::entity_type(
                             Name::parse_unqualified_name("any_entity_type")
                                 .expect("should be a valid identifier")
                         )],
@@ -3504,7 +3503,7 @@ pub mod test {
                 assert_eq!(
                     e.error_kind(),
                     &EvaluationErrorKind::TypeError {
-                        expected: nonempty![Type::entity_type(
+                        expected: vec![Type::entity_type(
                             Name::parse_unqualified_name("any_entity_type")
                                 .expect("should be a valid identifier")
                         )],
@@ -3529,7 +3528,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![
+                    expected: vec![
                         Type::Set,
                         Type::entity_type(
                             Name::parse_unqualified_name("any_entity_type")
@@ -3752,7 +3751,7 @@ pub mod test {
             eval.interpret_inline_policy(&Expr::like(Expr::val(354), vec![])),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::String],
+                    expected: vec![Type::String],
                     actual: Type::Long
                 }
             )
@@ -3765,7 +3764,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Set],
+                    expected: vec![Type::Set],
                     actual: Type::String
                 }
             )
@@ -3888,7 +3887,7 @@ pub mod test {
             eval.interpret_inline_policy(&parse_expr(r#"1 is Group"#).expect("parsing error")),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
+                    expected: vec![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
                     actual: Type::Long,
                 }
             )
@@ -4016,7 +4015,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Set],
+                    expected: vec![Type::Set],
                     actual: Type::String
                 }
             )
@@ -4033,7 +4032,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Set],
+                    expected: vec![Type::Set],
                     actual: Type::Record
                 }
             )
@@ -4140,7 +4139,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Set],
+                    expected: vec![Type::Set],
                     actual: Type::String
                 }
             )
@@ -4157,7 +4156,7 @@ pub mod test {
             )),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
-                    expected: nonempty![Type::Set],
+                    expected: vec![Type::Set],
                     actual: Type::Record
                 }
             )
