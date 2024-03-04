@@ -16,9 +16,7 @@
 
 use crate::ast::*;
 use crate::parser::Loc;
-use itertools::Itertools;
 use miette::{Diagnostic, LabeledSpan};
-use nonempty::{nonempty, NonEmpty};
 use smol_str::SmolStr;
 use std::sync::Arc;
 use thiserror::Error;
@@ -157,7 +155,7 @@ impl EvaluationError {
     }
 
     /// Construct a [`TypeError`] error
-    pub(crate) fn type_error(expected: NonEmpty<Type>, actual: &Value) -> Self {
+    pub(crate) fn type_error(expected: Vec<Type>, actual: &Value) -> Self {
         Self {
             error_kind: EvaluationErrorKind::TypeError {
                 expected,
@@ -169,12 +167,12 @@ impl EvaluationError {
     }
 
     pub(crate) fn type_error_single(expected: Type, actual: &Value) -> Self {
-        Self::type_error(nonempty![expected], actual)
+        Self::type_error(vec![expected], actual)
     }
 
     /// Construct a [`TypeError`] error with the advice field set
     pub(crate) fn type_error_with_advice(
-        expected: NonEmpty<Type>,
+        expected: Vec<Type>,
         actual: &Value,
         advice: String,
     ) -> Self {
@@ -193,7 +191,7 @@ impl EvaluationError {
         actual: &Value,
         advice: String,
     ) -> Self {
-        Self::type_error_with_advice(nonempty![expected], actual, advice)
+        Self::type_error_with_advice(vec![expected], actual, advice)
     }
 
     /// Construct a [`WrongNumArguments`] error
@@ -323,10 +321,11 @@ pub enum EvaluationErrorKind {
 
     /// Tried to evaluate an operation on values with incorrect types for that
     /// operation
+    // INVARIANT `expected` must be non-empty
     #[error("{}", pretty_type_error(expected, actual))]
     TypeError {
-        /// Expected one of these types
-        expected: NonEmpty<Type>,
+        /// Expected (one of) these types
+        expected: Vec<Type>,
         /// Encountered this type instead
         actual: Type,
     },
@@ -378,14 +377,22 @@ pub enum EvaluationErrorKind {
 }
 
 /// helper function for pretty-printing type errors
-fn pretty_type_error(expected: &NonEmpty<Type>, actual: &Type) -> String {
-    if expected.len() == 1 {
-        format!("type error: expected {}, got {}", expected.first(), actual)
-    } else {
-        format!(
-            "type error: expected one of [{}], got {actual}",
-            expected.iter().join(", ")
-        )
+/// INVARIANT: `expected` must have at least one value
+fn pretty_type_error(expected: &[Type], actual: &Type) -> String {
+    match expected.len() {
+        // PANIC SAFETY, `expected` is non-empty by invariant
+        #[allow(clippy::unreachable)]
+        0 => unreachable!("should expect at least one type"),
+        // PANIC SAFETY. `len` is 1 in this branch
+        #[allow(clippy::indexing_slicing)]
+        1 => format!("type error: expected {}, got {}", expected[0], actual),
+        _ => {
+            use itertools::Itertools;
+            format!(
+                "type error: expected one of [{}], got {actual}",
+                expected.iter().join(", ")
+            )
+        }
     }
 }
 
