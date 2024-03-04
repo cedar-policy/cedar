@@ -16,9 +16,9 @@ Cedar Language Version: 2.1.3
   policy. (#669, backport of #412)
 - Action entities in the store will pass schema-based validation without requiring
   the transitive closure to be pre-computed. (#688, backport of #581)
-- Policies containing the literal `i64::MIN` can now be properly converted to JSON ESTs. (#672, backport of #601)
-- EST to AST conversion errors when there are slots in template conditions. (#672, backport of #626)
-- EST attributes can be special identifiers such as `principal`, `then`, and `true`. (#672, backport of #628)
+- Policies containing the literal `i64::MIN` can now be properly converted to the JSON policy format. (#672, backport of #601)
+- `Template::from_json` errors when there are slots in template conditions. (#672, backport of #626)
+- `Policy::to_json` does not error on policies containing special identifiers such as `principal`, `then`, and `true`. (#672, backport of #628)
 
 ## 2.4.3
 
