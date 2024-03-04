@@ -47,14 +47,10 @@ Cedar Language Version: 3.1.0
 
 ### Added
 
-<<<<<<< HEAD
 - Implementation of the human-readable schema format proposed in
   [RFC 24](https://github.com/cedar-policy/rfcs/blob/main/text/0024-schema-syntax.md).
   New public APIs `SchemaFragment::from_*_natural`,
   `SchemaFragment::as_natural`, and `Schema::from_*_natural` (#557)
-=======
-- `Expression::new_ip`, `Expression::new_decimal`, `RestrictedExpression::new_ip`, and `RestrictedExpression::new_decimal` (#661, resolving #659)
->>>>>>> 332644b8 (Adding constructors for ip/decimal (#661))
 - `PolicyId::new()` (#587, resolving #551)
 - `EntityId::new()` (#583, resolving #553)
 - `AsRef<str>` implementation for `PolicyId` (#504, resolving #503)

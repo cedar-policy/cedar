@@ -1585,7 +1585,9 @@ mod entity_validate_tests {
             HashSet::new(),
         )
         .unwrap();
-        validate_entity(entity, &schema()).unwrap();
+        validate_entity(entity.clone(), &schema()).unwrap();
+        let (uid, attrs, parents) = entity.into_inner();
+        validate_entity(Entity::new(uid, attrs, parents).unwrap(), &schema()).unwrap();
     }
 
     #[test]
