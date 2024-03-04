@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.4.4
+
+Cedar Language Version: 2.1.3
+
+### Changed
+
+- Calling `add_template` with a `PolicyId` that is an existing link will now error. (#671, backport of #456)
+
+### Fixed
+
+- Updated `PolicySet::link` to not mutate internal state when failing to link a static
+  policy. With this fix it is possible to create a link with a policy id
+  after previously failing to create that link with the same id from a static
+  policy. (#669, backport of #412)
+- Action entities in the store will pass schema-based validation without requiring
+  the transitive closure to be pre-computed. (#688, backport of #581)
+- Policies containing the literal `i64::MIN` can now be properly converted to JSON ESTs. (#672, backport of #601)
+- EST to AST conversion errors when there are slots in template conditions. (#672, backport of #626)
+- EST attributes can be special identifiers such as `principal`, `then`, and `true`. (#672, backport of #628)
+
 ## 2.4.3
 
 Cedar Language Version: 2.1.3
@@ -15,11 +35,6 @@ Cedar Language Version: 2.1.3
   The 2.4.2 behavior, including the more useful error messages, remain available
   in all 3.x versions of Cedar.
   (#520)
-- Updated `PolicySet::link` to not mutate internal state when failing to link a static
-  policy. With this fix it is possible to create a link with a policy id
-  after previously failing to create that link with the same id from a static
-  policy.
-- Fixes an issue where certain cedar policies couldn't be converted to JSON (#601)
 
 ## 2.4.2
 
@@ -58,7 +73,6 @@ exist to the `RecordAttrDoesNotExist` error message.
 Now it will not, since we know `{"foo": 5} has bar` is `False`, and the
 validator will return an error for a policy that can never fire.
 - Removed deprecated `__expr` escapes from integration tests.
-- Calling `add_template` with a `PolicyId` that is an existing link will now error.
 
 ## 2.3.3
 
