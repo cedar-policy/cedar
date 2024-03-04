@@ -210,6 +210,40 @@ impl Entity {
         };
         Some(Ok(EvalResult::from(v)))
     }
+
+    /// Consume the entity and return the entity's owned Uid, attributes and parents.
+    pub fn into_inner(
+        self,
+    ) -> (
+        EntityUid,
+        HashMap<String, RestrictedExpression>,
+        HashSet<EntityUid>,
+    ) {
+        let (uid, attrs, ancestors) = self.0.into_inner();
+
+        let attrs = attrs
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    k.to_string(),
+                    match v {
+                        ast::PartialValue::Value(val) => RestrictedExpression(
+                            ast::RestrictedExpr::new_unchecked(ast::Expr::from(val)),
+                        ),
+                        ast::PartialValue::Residual(exp) => {
+                            RestrictedExpression(ast::RestrictedExpr::new_unchecked(exp))
+                        }
+                    },
+                )
+            })
+            .collect();
+
+        (
+            EntityUid(uid),
+            attrs,
+            ancestors.into_iter().map(EntityUid).collect(),
+        )
+    }
 }
 
 impl std::fmt::Display for Entity {
@@ -759,7 +793,7 @@ impl Authorizer {
         EvaluationResponse {
             satisfied_permits: satisfied_permits.into_iter().map(PolicyId).collect(),
             satisfied_forbids: satisfied_forbids.into_iter().map(PolicyId).collect(),
-            errors: errors.into_iter().map(|e| e.into()).collect(),
+            errors: errors.into_iter().map(Into::into).collect(),
             permit_residuals: PolicySet::from_ast(permit_residuals),
             forbid_residuals: PolicySet::from_ast(forbid_residuals),
         }
