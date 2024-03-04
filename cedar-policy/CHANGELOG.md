@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `wasm` Cargo feature for targeting Wasm
 - For the `partial-eval` experimental feature: added
 `Authorizer::evaluate_policies_partial()` (#474)
+- `Entity::into_inner` (resolving #636)
 
 ### Changed
 
