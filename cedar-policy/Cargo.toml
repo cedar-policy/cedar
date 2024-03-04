@@ -23,7 +23,7 @@ thiserror = "1.0"
 smol_str = { version = "0.2", features = ["serde"] }
 dhat = { version = "0.3.2", optional = true }
 serde_with = "3.3.0"
-nonempty = "0.9"
+nonempty = "0.10"
 
 # wasm dependencies
 serde-wasm-bindgen = { version = "0.6", optional = true }
