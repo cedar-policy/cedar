@@ -356,6 +356,26 @@ impl Entity {
     pub fn add_ancestor(&mut self, uid: EntityUID) {
         self.ancestors.insert(uid);
     }
+
+    /// Consume the entity and return the entity's owned Uid, attributes and parents.
+    pub fn into_inner(
+        self,
+    ) -> (
+        EntityUID,
+        HashMap<SmolStr, PartialValue>,
+        HashSet<EntityUID>,
+    ) {
+        let Self {
+            uid,
+            attrs,
+            ancestors,
+        } = self;
+        (
+            uid,
+            attrs.into_iter().map(|(k, v)| (k, v.0)).collect(),
+            ancestors,
+        )
+    }
 }
 
 impl PartialEq for Entity {
