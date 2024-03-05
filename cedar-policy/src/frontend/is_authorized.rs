@@ -299,7 +299,7 @@ struct AuthorizationCall {
     /// `__entity` and `__extn` escapes to be implicit, and it will error if
     /// attributes have the wrong types (e.g., string instead of integer).
     #[serde(rename = "schema")]
-    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, any>"))]
+    #[cfg_attr(feature = "wasm", tsify(type = "Schema"))]
     schema: Option<JsonValueWithNoDuplicateKeys>,
     /// If this is `true` and a schema is provided, perform request validation.
     /// If this is `false`, the schema will only be used for schema-based
