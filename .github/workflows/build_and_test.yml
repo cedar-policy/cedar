@@ -70,3 +70,14 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: EmbarkStudios/cargo-deny-action@v1
+
+  wasm-build:
+    name: run wasm build script
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+    steps:
+      - uses: actions/checkout@v3
+      - run: cd ./cedar-wasm && cargo install wasm-pack && ./build-wasm.sh
