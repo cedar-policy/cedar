@@ -286,12 +286,11 @@ pub fn parse_request_from_test(
         action,
         resource,
         context,
-        None,
-        // if json_request.enable_request_validation {
-        //     Some(schema)
-        // } else {
-        //     None
-        // },
+        if json_request.enable_request_validation {
+            Some(schema)
+        } else {
+            None
+        },
     )
     .unwrap_or_else(|e| {
         panic!(
