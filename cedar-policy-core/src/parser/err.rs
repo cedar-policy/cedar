@@ -575,7 +575,7 @@ impl Diagnostic for ToCSTError {
 #[derive(Debug)]
 pub struct ExpectedTokenConfig {
     /// Defines user-friendly names for tokens used by our parser. Keys are the
-    /// names ok tokens as defined in the `.lalrpop` grammar file. A token may
+    /// names of tokens as defined in the `.lalrpop` grammar file. A token may
     /// be omitted from this map if the name is already friendly enough.
     pub friendly_token_names: HashMap<&'static str, &'static str>,
 
@@ -585,7 +585,7 @@ pub struct ExpectedTokenConfig {
     /// these from the list of expected tokens in an error message.
     pub impossible_tokens: HashSet<&'static str>,
 
-    /// In both our policy and schema grammar have a generic identifier token
+    /// Both our policy and schema grammar have a generic identifier token
     /// and some more specific identifier tokens that we use to parse specific
     /// constructs. It is very often not useful to explicitly list out all of
     /// these special identifier because the parser really just wants any
