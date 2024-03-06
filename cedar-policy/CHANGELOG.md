@@ -57,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 return a `RequestBuilder<&Schema>` so the `RequestBuilder<&Schema>::build`
 method checks the request against the schema provided and the
 `RequestBuilder<UnsetSchema>::build` method becomes infallible. (#559)
+* Improved "unexpected token" parse errors when the parsers expects an identifier. (#698)
 
 ### Fixed
 
