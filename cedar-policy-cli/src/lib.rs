@@ -107,7 +107,7 @@ pub struct TranslateSchemaArgs {
     pub direction: TranslationDirection,
     /// Filename to read the schema from.
     /// If not provided, will default to reading stdin.
-    #[arg(short, long = "schema", value_name = "FILE")]
+    #[arg(short = 's', long = "schema", value_name = "FILE")]
     pub input_file: Option<String>,
 }
 
