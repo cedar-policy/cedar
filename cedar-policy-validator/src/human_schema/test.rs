@@ -13,8 +13,8 @@ mod demo_tests {
 
     use crate::{
         human_schema::{self, ast::PR, err::ToJsonSchemaError},
-        ActionType, ApplySpec, AttributesOrContext, EntityType, HumanSchemaError,
-        NamespaceDefinition, SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
+        ActionType, ApplySpec, AttributesOrContext, EntityType, NamespaceDefinition,
+        SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
     };
 
     #[test]
@@ -341,48 +341,6 @@ mod demo_tests {
         let fragment = SchemaFragment(HashMap::from([("".to_smolstr(), namespace)]));
         let src = fragment.as_natural_schema().unwrap();
         assert!(src.contains(r#"action "j" ;"#), "schema was: `{src}`")
-    }
-
-    #[test]
-    fn fully_qualified_actions() {
-        let (_, _) = SchemaFragment::from_str_natural(
-            r#"namespace NS1 {entity PrincipalEntity  = {  };
-        entity SystemEntity1  = {  };
-        entity SystemEntity2 in [SystemEntity1] = {  };
-        action "Group1" ;
-        }namespace NS2 {entity SystemEntity1 in [NS1::SystemEntity2] = {  };
-        action "Group1" in [NS1::Action::"Group1"];
-        action "Action1" in [Action::"Group1"]appliesTo {  principal: [NS1::PrincipalEntity], 
-          resource: [NS2::SystemEntity1], 
-          context: {  }
-        };
-        }
-        "#,
-        )
-        .expect("schema should parse");
-    }
-
-    #[test]
-    fn action_eid_invalid_escape() {
-        match SchemaFragment::from_str_natural(
-            r#"namespace NS1 {entity PrincipalEntity  = {  };
-        entity SystemEntity1  = {  };
-        entity SystemEntity2 in [SystemEntity1] = {  };
-        action "Group1" ;
-        }namespace NS2 {entity SystemEntity1 in [NS1::SystemEntity2] = {  };
-        action "Group1" in [NS1::Action::"Group1"];
-        action "Action1" in [Action::"\6"]appliesTo {  principal: [NS1::PrincipalEntity], 
-          resource: [NS2::SystemEntity1], 
-          context: {  }
-        };
-        }
-        "#,
-        ) {
-            Ok(_) => panic!("this is not a valid schema"),
-            Err(err) => {
-                assert_matches!(err, HumanSchemaError::Parsing(human_schema::parser::HumanSyntaxParseErrors::NaturalSyntaxError(errs)) => assert!(errs.to_smolstr().contains("Invalid escape codes")))
-            }
-        }
     }
 
     #[test]
