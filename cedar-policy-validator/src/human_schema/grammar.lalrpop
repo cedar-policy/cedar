@@ -223,6 +223,7 @@ Name: Node<SmolStr> = {
 
 // QualName      := Name | Path '::' STR
 QualName : Node<QualName> = {
+    <l:@L> <p : PathInline> "::" <s:STR> <r:@R> => Node::with_source_loc(QualName::qualified(p, s.node), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <i : Name> <r:@R> => Node::with_source_loc(QualName::unqualified(i.node), Loc::new(l..r, Arc::clone(src))),
 }
 
