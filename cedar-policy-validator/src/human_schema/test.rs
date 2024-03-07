@@ -17,6 +17,9 @@ mod demo_tests {
         NamespaceDefinition, SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
     };
 
+    use itertools::Itertools;
+    use miette::Diagnostic;
+
     #[test]
     fn no_applies_to() {
         let src = r#"
@@ -755,6 +758,34 @@ mod demo_tests {
             }
             _ => panic!("Wrong type for shape"),
         }
+    }
+
+    #[test]
+    fn expected_tokens() {
+        #[track_caller]
+        fn assert_labeled_span(src: &str, label: impl Into<String>) {
+            assert_matches!(SchemaFragment::from_str_natural(src).map(|(s, _)| s), Err(e) => {
+                let actual_label = e.labels().and_then(|l| {
+                    l.exactly_one()
+                        .ok()
+                        .expect("Assumed that there would be exactly one label if labels are present")
+                        .label()
+                        .map(|l| l.to_string())
+                });
+                assert_eq!(Some(label.into()), actual_label, "Did not see expected labeled span.");
+            });
+        }
+
+        assert_labeled_span("namespace", "expected identifier");
+        assert_labeled_span("type", "expected identifier");
+        assert_labeled_span("entity", "expected identifier");
+        assert_labeled_span("action", "expected identifier or string literal");
+        assert_labeled_span("type t =", "expected `{`, identifier, or `Set`");
+        assert_labeled_span(
+            "entity User {",
+            "expected `}`, identifier, or string literal",
+        );
+        assert_labeled_span("entity User { name:", "expected `{`, identifier, or `Set`");
     }
 }
 

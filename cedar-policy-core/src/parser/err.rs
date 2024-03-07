@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::{self, Display, Write};
 use std::iter;
 use std::ops::{Deref, DerefMut};
@@ -556,11 +556,11 @@ impl Diagnostic for ToCSTError {
         let labeled_span = match &self.err {
             OwnedRawParseError::InvalidToken { .. } => LabeledSpan::underline(primary_source_span),
             OwnedRawParseError::UnrecognizedEof { expected, .. } => LabeledSpan::new_with_span(
-                expected_to_string(expected, &FRIENDLY_TOKEN_NAMES),
+                expected_to_string(expected, &POLICY_TOKEN_CONFIG),
                 primary_source_span,
             ),
             OwnedRawParseError::UnrecognizedToken { expected, .. } => LabeledSpan::new_with_span(
-                expected_to_string(expected, &FRIENDLY_TOKEN_NAMES),
+                expected_to_string(expected, &POLICY_TOKEN_CONFIG),
                 primary_source_span,
             ),
             OwnedRawParseError::ExtraToken { .. } => LabeledSpan::underline(primary_source_span),
@@ -570,41 +570,111 @@ impl Diagnostic for ToCSTError {
     }
 }
 
+/// Defines configurable rules for how tokens in an `UnrecognizedToken` or
+/// `UnrecognizedEof` error should be displayed to users.
+#[derive(Debug)]
+pub struct ExpectedTokenConfig {
+    /// Defines user-friendly names for tokens used by our parser. Keys are the
+    /// names of tokens as defined in the `.lalrpop` grammar file. A token may
+    /// be omitted from this map if the name is already friendly enough.
+    pub friendly_token_names: HashMap<&'static str, &'static str>,
+
+    /// Some tokens defined in our grammar always cause later processing to fail.
+    /// Our policy grammar defines a token for the mod operator `%`, but we
+    /// reject any CST that uses the operator. To reduce confusion we filter
+    /// these from the list of expected tokens in an error message.
+    pub impossible_tokens: HashSet<&'static str>,
+
+    /// Both our policy and schema grammar have a generic identifier token
+    /// and some more specific identifier tokens that we use to parse specific
+    /// constructs. It is very often not useful to explicitly list out all of
+    /// these special identifier because the parser really just wants any
+    /// generic identifier. That it would accept these does not give any
+    /// useful information.
+    pub special_identifier_tokens: HashSet<&'static str>,
+
+    /// If this token is expected, then the parser expected a generic identifier, so
+    /// we omit the specific identifiers favor of saying we expect an "identifier".
+    pub identifier_sentinel: &'static str,
+
+    /// Special identifiers that may be worth displaying even if the parser
+    /// wants a generic identifier. These can tokens will be parsed as something
+    /// other than an identifier when they occur as the first token in an
+    /// expression (or a type, in the case of the schema grammar).
+    pub first_set_identifier_tokens: HashSet<&'static str>,
+
+    /// If this token is expected, then the parser was looking to start parsing
+    /// an expression (or type, in the schema). We know that we should report the
+    /// tokens that aren't parsed as identifiers at the start of an expression.
+    pub first_set_sentinel: &'static str,
+}
+
 lazy_static! {
-    /// Keys mirror the token names defined in the `match` block of
-    /// `grammar.lalrpop`.
-    static ref FRIENDLY_TOKEN_NAMES: HashMap<&'static str, &'static str> = HashMap::from([
-        ("TRUE", "`true`"),
-        ("FALSE", "`false`"),
-        ("IF", "`if`"),
-        ("PERMIT", "`permit`"),
-        ("FORBID", "`forbid`"),
-        ("WHEN", "`when`"),
-        ("UNLESS", "`unless`"),
-        ("IN", "`in`"),
-        ("HAS", "`has`"),
-        ("LIKE", "`like`"),
-        ("IS", "`is`"),
-        ("THEN", "`then`"),
-        ("ELSE", "`else`"),
-        ("PRINCIPAL", "`principal`"),
-        ("ACTION", "`action`"),
-        ("RESOURCE", "`resource`"),
-        ("CONTEXT", "`context`"),
-        ("PRINCIPAL_SLOT", "`?principal`"),
-        ("RESOURCE_SLOT", "`?resource`"),
-        ("OTHER_SLOT", "template slot"),
-        ("IDENTIFIER", "identifier"),
-        ("NUMBER", "number"),
-        ("STRINGLIT", "string literal"),
-    ]);
+    static ref POLICY_TOKEN_CONFIG: ExpectedTokenConfig = ExpectedTokenConfig {
+        friendly_token_names: HashMap::from([
+            ("TRUE", "`true`"),
+            ("FALSE", "`false`"),
+            ("IF", "`if`"),
+            ("PERMIT", "`permit`"),
+            ("FORBID", "`forbid`"),
+            ("WHEN", "`when`"),
+            ("UNLESS", "`unless`"),
+            ("IN", "`in`"),
+            ("HAS", "`has`"),
+            ("LIKE", "`like`"),
+            ("IS", "`is`"),
+            ("THEN", "`then`"),
+            ("ELSE", "`else`"),
+            ("PRINCIPAL", "`principal`"),
+            ("ACTION", "`action`"),
+            ("RESOURCE", "`resource`"),
+            ("CONTEXT", "`context`"),
+            ("PRINCIPAL_SLOT", "`?principal`"),
+            ("RESOURCE_SLOT", "`?resource`"),
+            ("IDENTIFIER", "identifier"),
+            ("NUMBER", "number"),
+            ("STRINGLIT", "string literal"),
+        ]),
+        impossible_tokens: HashSet::from(["\"=\"", "\"%\"", "\"/\"", "OTHER_SLOT"]),
+        special_identifier_tokens: HashSet::from([
+            "PERMIT",
+            "FORBID",
+            "WHEN",
+            "UNLESS",
+            "IN",
+            "HAS",
+            "LIKE",
+            "IS",
+            "THEN",
+            "ELSE",
+            "PRINCIPAL",
+            "ACTION",
+            "RESOURCE",
+            "CONTEXT",
+        ]),
+        identifier_sentinel: "IDENTIFIER",
+        first_set_identifier_tokens: HashSet::from(["TRUE", "FALSE", "IF"]),
+        first_set_sentinel: "\"!\"",
+    };
 }
 
 /// Format lalrpop expected error messages
-pub fn expected_to_string(
-    expected: &[String],
-    token_map: &HashMap<&'static str, &'static str>,
-) -> Option<String> {
+pub fn expected_to_string(expected: &[String], config: &ExpectedTokenConfig) -> Option<String> {
+    let mut expected = expected
+        .iter()
+        .filter(|e| !config.impossible_tokens.contains(e.as_str()))
+        .map(|e| e.as_str())
+        .collect::<BTreeSet<_>>();
+    if expected.contains(config.identifier_sentinel) {
+        for token in config.special_identifier_tokens.iter() {
+            expected.remove(*token);
+        }
+        if !expected.contains(config.first_set_sentinel) {
+            for token in config.first_set_identifier_tokens.iter() {
+                expected.remove(*token);
+            }
+        }
+    }
     if expected.is_empty() {
         return None;
     }
@@ -616,7 +686,7 @@ pub fn expected_to_string(
         &mut expected_string,
         "or",
         expected,
-        |f, token| match token_map.get(token.as_str()) {
+        |f, token| match config.friendly_token_names.get(token) {
             Some(friendly_token_name) => write!(f, "{}", friendly_token_name),
             None => write!(f, "{}", token.replace('"', "`")),
         },
