@@ -658,7 +658,7 @@ fn test_cedar_policy_642() {
                 principal in NS1::PrincipalEntity::"user1",
                 action in NS1::Action::"Group1",
                 resource in NS1::SystemEntity1::"entity1"
-            );"#
+            );"#,
         )
         .unwrap(),
     );
