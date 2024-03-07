@@ -1100,6 +1100,8 @@ mod parse_tests {
         assert_labeled_span("permit(,,);", "expected `)` or identifier");
         assert_labeled_span("permit(principal,", "expected identifier");
         assert_labeled_span("permit(principal,action,", "expected identifier");
+        // Nothing will actually convert to an AST here.
+        assert_labeled_span("permit(principal,action,resource,", "expected identifier");
         // We still list out `if` as an expected token because it doesn't get
         // parsed as an ident in this position.
         assert_labeled_span(
