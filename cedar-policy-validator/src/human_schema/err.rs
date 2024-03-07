@@ -1,6 +1,13 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+};
 
-use cedar_policy_core::parser::{err::expected_to_string, unescape::UnescapeError, Loc, Node};
+use cedar_policy_core::parser::{
+    err::{expected_to_string, ExpectedTokenConfig},
+    unescape::UnescapeError,
+    Loc, Node,
+};
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
 use miette::{Diagnostic, LabeledSpan, SourceSpan};
@@ -30,19 +37,40 @@ pub(crate) type RawErrorRecovery<'a> = lalr::ErrorRecovery<RawLocation, RawToken
 type OwnedRawParseError = lalr::ParseError<RawLocation, String, RawUserError>;
 
 lazy_static! {
-    /// Keys mirror the token names defined in the `match` block of
-    /// `grammar.lalrpop`.
-    static ref FRIENDLY_TOKEN_NAMES: HashMap<&'static str, &'static str> = HashMap::from([
-        ("IN", "`in`"),
-        ("PRINCIPAL", "`principal`"),
-        ("ACTION", "`action`"),
-        ("RESOURCE", "`resource`"),
-        ("CONTEXT", "`context`"),
-        ("STRINGLIT", "string literal"),
-        ("ENTITY", "`entity`"),
-        ("NAMESPACE", "`namespace`"),
-        ("TYPE", "`type`"),
-    ]);
+    static ref SCHEMA_TOKEN_CONFIG: ExpectedTokenConfig = ExpectedTokenConfig {
+        friendly_token_names: HashMap::from([
+            ("IN", "`in`"),
+            ("PRINCIPAL", "`principal`"),
+            ("ACTION", "`action`"),
+            ("RESOURCE", "`resource`"),
+            ("CONTEXT", "`context`"),
+            ("STRINGLIT", "string literal"),
+            ("ENTITY", "`entity`"),
+            ("NAMESPACE", "`namespace`"),
+            ("TYPE", "`type`"),
+            ("SET", "`Set`"),
+            ("IDENTIFIER", "identifier"),
+        ]),
+        impossible_tokens: HashSet::new(),
+        special_identifier_tokens: HashSet::from([
+            "NAMESPACE",
+            "ENTITY",
+            "IN",
+            "TYPE",
+            "APPLIESTO",
+            "PRINCIPAL",
+            "ACTION",
+            "RESOURCE",
+            "CONTEXT",
+            "ATTRIBUTES",
+            "LONG",
+            "STRING",
+            "BOOL",
+        ]),
+        identifier_sentinel: "IDENTIFIER",
+        first_set_identifier_tokens: HashSet::from(["SET"]),
+        first_set_sentinel: "\"{\"",
+    };
 }
 
 /// For errors during parsing
@@ -115,11 +143,11 @@ impl Diagnostic for ParseError {
         let labeled_span = match err {
             OwnedRawParseError::InvalidToken { .. } => LabeledSpan::underline(primary_source_span),
             OwnedRawParseError::UnrecognizedEof { expected, .. } => LabeledSpan::new_with_span(
-                expected_to_string(expected, &FRIENDLY_TOKEN_NAMES),
+                expected_to_string(expected, &SCHEMA_TOKEN_CONFIG),
                 primary_source_span,
             ),
             OwnedRawParseError::UnrecognizedToken { expected, .. } => LabeledSpan::new_with_span(
-                expected_to_string(expected, &FRIENDLY_TOKEN_NAMES),
+                expected_to_string(expected, &SCHEMA_TOKEN_CONFIG),
                 primary_source_span,
             ),
             OwnedRawParseError::ExtraToken { .. } => LabeledSpan::underline(primary_source_span),
