@@ -578,26 +578,10 @@ impl Expr {
                 (*left).clone().try_into_ast(id.clone())?,
                 (*right).clone().try_into_ast(id)?,
             )),
-            Expr::ExprNoExt(ExprNoExt::Mul { left, right }) => {
-                let left: ast::Expr = (*left).clone().try_into_ast(id.clone())?;
-                let right: ast::Expr = (*right).clone().try_into_ast(id)?;
-                let left_c = match left.expr_kind() {
-                    ast::ExprKind::Lit(ast::Literal::Long(c)) => Some(c),
-                    _ => None,
-                };
-                let right_c = match right.expr_kind() {
-                    ast::ExprKind::Lit(ast::Literal::Long(c)) => Some(c),
-                    _ => None,
-                };
-                match (left_c, right_c) {
-                    (_, Some(c)) => Ok(ast::Expr::mul(left, *c)),
-                    (Some(c), _) => Ok(ast::Expr::mul(right, *c)),
-                    (None, None) => Err(FromJsonError::MultiplicationByNonConstant {
-                        arg1: left,
-                        arg2: right,
-                    })?,
-                }
-            }
+            Expr::ExprNoExt(ExprNoExt::Mul { left, right }) => Ok(ast::Expr::mul(
+                (*left).clone().try_into_ast(id.clone())?,
+                (*right).clone().try_into_ast(id)?,
+            )),
             Expr::ExprNoExt(ExprNoExt::Contains { left, right }) => Ok(ast::Expr::contains(
                 (*left).clone().try_into_ast(id.clone())?,
                 (*right).clone().try_into_ast(id)?,
@@ -740,15 +724,12 @@ impl From<ast::Expr> for Expr {
                     ast::BinaryOp::LessEq => Expr::lesseq(arg1, arg2),
                     ast::BinaryOp::Add => Expr::add(arg1, arg2),
                     ast::BinaryOp::Sub => Expr::sub(arg1, arg2),
+                    ast::BinaryOp::Mul => Expr::mul(arg1, arg2),
                     ast::BinaryOp::Contains => Expr::contains(Arc::new(arg1), arg2),
                     ast::BinaryOp::ContainsAll => Expr::contains_all(Arc::new(arg1), arg2),
                     ast::BinaryOp::ContainsAny => Expr::contains_any(Arc::new(arg1), arg2),
                 }
             }
-            ast::ExprKind::MulByConst { arg, constant } => Expr::mul(
-                Arc::unwrap_or_clone(arg).into(),
-                Expr::lit(CedarValueJson::Long(constant as InputInteger)),
-            ),
             ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let args = Arc::unwrap_or_clone(args)
                     .into_iter()

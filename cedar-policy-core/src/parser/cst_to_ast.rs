@@ -43,9 +43,9 @@ use super::loc::Loc;
 use super::node::Node;
 use super::unescape::{to_pattern, to_unescaped_string};
 use crate::ast::{
-    self, ActionConstraint, CallStyle, EntityReference, EntityType, EntityUID,
-    ExprConstructionError, Integer, PatternElem, PolicySetError, PrincipalConstraint,
-    PrincipalOrResourceConstraint, ResourceConstraint,
+    self, ActionConstraint, CallStyle, EntityReference, EntityType, EntityUID, Integer,
+    PatternElem, PolicySetError, PrincipalConstraint, PrincipalOrResourceConstraint,
+    ResourceConstraint,
 };
 use crate::est::extract_single_argument;
 use itertools::Either;
@@ -1473,53 +1473,13 @@ impl Node<Option<cst::Mult>> {
                     }
                 }
             }
-            // split all the operands into constantints and nonconstantints.
-            // also, remove the opcodes -- from here on we assume they're all
-            // `Times`, having checked above that this is the case
-            let (constantints, nonconstantints): (Vec<ast::Expr>, Vec<ast::Expr>) =
-                std::iter::once(first)
-                    .chain(more.into_iter().map(|(_, e)| e))
-                    .partition(|e| {
-                        matches!(e.expr_kind(), ast::ExprKind::Lit(ast::Literal::Long(_)))
-                    });
-            let constantints = constantints
-                .into_iter()
-                .map(|e| match e.expr_kind() {
-                    ast::ExprKind::Lit(ast::Literal::Long(i)) => *i,
-                    // PANIC SAFETY Checked the match above via the call to `partition`
-                    #[allow(clippy::unreachable)]
-                    _ => unreachable!(
-                        "checked it matched ast::ExprKind::Lit(ast::Literal::Long(_)) above"
-                    ),
-                })
-                .collect::<Vec<Integer>>();
-            if nonconstantints.len() > 1 {
-                // at most one of the operands in `a * b * c * d * ...` can be a nonconstantint
-                errs.push(self.to_ast_err(ToASTErrorKind::NonConstantMultiplication));
-                None
-            } else if nonconstantints.is_empty() {
-                // PANIC SAFETY If nonconstantints is empty then constantints must have at least one value
-                #[allow(clippy::indexing_slicing)]
-                Some(ExprOrSpecial::Expr {
-                    expr: construct_expr_mul(
-                        construct_expr_num(constantints[0], self.loc.clone()),
-                        constantints[1..].iter().copied(),
-                        &self.loc,
-                    ),
-                    loc: self.loc.clone(),
-                })
-            } else {
-                // PANIC SAFETY Checked above that `nonconstantints` has at least one element
-                #[allow(clippy::expect_used)]
-                let nonconstantint: ast::Expr = nonconstantints
-                    .into_iter()
-                    .next()
-                    .expect("already checked that it's not empty");
-                Some(ExprOrSpecial::Expr {
-                    expr: construct_expr_mul(nonconstantint, constantints, &self.loc),
-                    loc: self.loc.clone(),
-                })
-            }
+            // remove the opcodes -- from here on we assume they're all `Times`,
+            // having checked above that this is the case
+            let more = more.into_iter().map(|(_, e)| e);
+            Some(ExprOrSpecial::Expr {
+                expr: construct_expr_mul(first, more, &self.loc),
+                loc: self.loc.clone(),
+            })
         } else {
             maybe_first
         }
@@ -2494,14 +2454,14 @@ fn construct_expr_add(
 /// used for a chain of multiplication only (no division or mod)
 fn construct_expr_mul(
     f: ast::Expr,
-    chained: impl IntoIterator<Item = Integer>,
+    chained: impl IntoIterator<Item = ast::Expr>,
     loc: &Loc,
 ) -> ast::Expr {
     let mut expr = f;
     for next_expr in chained {
         expr = ast::ExprBuilder::new()
             .with_source_loc(loc.clone())
-            .mul(expr, next_expr as Integer)
+            .mul(expr, next_expr);
     }
     expr
 }
@@ -2561,11 +2521,7 @@ fn construct_expr_record(
     ast::ExprBuilder::new()
         .with_source_loc(loc.clone())
         .record(kvs)
-        .map_err(|e| match e {
-            ExprConstructionError::DuplicateKeyInRecordLiteral { key } => {
-                ToASTError::new(ToASTErrorKind::DuplicateKeyInRecordLiteral { key }, loc)
-            }
-        })
+        .map_err(|e| ToASTError::new(e.into(), loc))
 }
 
 // PANIC SAFETY: Unit Test Code
@@ -3706,8 +3662,8 @@ mod tests {
             // the cst should be acceptable
             .expect("parse error")
             .to_expr(&mut errs);
-        // conversion should fail: only multiplication by a constant is allowed
-        assert!(e.is_none());
+        // conversion should succeed
+        assert!(e.is_some());
 
         let e = text_to_cst::parse_expr(r#" 5 + 10 + 90 "#)
             // the cst should be acceptable
@@ -3748,8 +3704,8 @@ mod tests {
             // the cst should be acceptable
             .expect("parse error")
             .to_expr(&mut errs);
-        // conversion should fail: only multiplication by a constant is allowed
-        assert!(e.is_none());
+        // conversion should succeed
+        assert!(e.is_some());
     }
 
     const CORRECT_TEMPLATES: [&str; 7] = [
@@ -3953,51 +3909,105 @@ mod tests {
 
     #[test]
     fn test_mul() {
-        for (es, expr) in [
-            ("--2*3", Expr::mul(Expr::neg(Expr::val(-2)), 3)),
+        for (str, expected) in [
+            ("--2*3", Expr::mul(Expr::neg(Expr::val(-2)), Expr::val(3))),
             (
                 "1 * 2 * false",
-                Expr::mul(Expr::mul(Expr::val(false), 1), 2),
+                Expr::mul(Expr::mul(Expr::val(1), Expr::val(2)), Expr::val(false)),
             ),
             (
                 "0 * 1 * principal",
-                Expr::mul(Expr::mul(Expr::var(ast::Var::Principal), 0), 1),
+                Expr::mul(
+                    Expr::mul(Expr::val(0), Expr::val(1)),
+                    Expr::var(ast::Var::Principal),
+                ),
             ),
             (
                 "0 * (-1) * principal",
-                Expr::mul(Expr::mul(Expr::var(ast::Var::Principal), 0), -1),
+                Expr::mul(
+                    Expr::mul(Expr::val(0), Expr::val(-1)),
+                    Expr::var(ast::Var::Principal),
+                ),
+            ),
+            (
+                "0 * 6 * context.foo",
+                Expr::mul(
+                    Expr::mul(Expr::val(0), Expr::val(6)),
+                    Expr::get_attr(Expr::var(ast::Var::Context), "foo".into()),
+                ),
+            ),
+            (
+                "(0 * 6) * context.foo",
+                Expr::mul(
+                    Expr::mul(Expr::val(0), Expr::val(6)),
+                    Expr::get_attr(Expr::var(ast::Var::Context), "foo".into()),
+                ),
+            ),
+            (
+                "0 * (6 * context.foo)",
+                Expr::mul(
+                    Expr::val(0),
+                    Expr::mul(
+                        Expr::val(6),
+                        Expr::get_attr(Expr::var(ast::Var::Context), "foo".into()),
+                    ),
+                ),
+            ),
+            (
+                "0 * (context.foo * 6)",
+                Expr::mul(
+                    Expr::val(0),
+                    Expr::mul(
+                        Expr::get_attr(Expr::var(ast::Var::Context), "foo".into()),
+                        Expr::val(6),
+                    ),
+                ),
+            ),
+            (
+                "1 * 2 * 3 * context.foo * 4 * 5 * 6",
+                Expr::mul(
+                    Expr::mul(
+                        Expr::mul(
+                            Expr::mul(
+                                Expr::mul(Expr::mul(Expr::val(1), Expr::val(2)), Expr::val(3)),
+                                Expr::get_attr(Expr::var(ast::Var::Context), "foo".into()),
+                            ),
+                            Expr::val(4),
+                        ),
+                        Expr::val(5),
+                    ),
+                    Expr::val(6),
+                ),
+            ),
+            (
+                "principal * (1 + 2)",
+                Expr::mul(
+                    Expr::var(ast::Var::Principal),
+                    Expr::add(Expr::val(1), Expr::val(2)),
+                ),
+            ),
+            (
+                "principal * -(-1)",
+                Expr::mul(Expr::var(ast::Var::Principal), Expr::neg(Expr::val(-1))),
+            ),
+            (
+                "principal * --1",
+                Expr::mul(Expr::var(ast::Var::Principal), Expr::neg(Expr::val(-1))),
+            ),
+            (
+                r#"false * "bob""#,
+                Expr::mul(Expr::val(false), Expr::val("bob")),
             ),
         ] {
             let mut errs = ParseErrors::new();
-            let e = text_to_cst::parse_expr(es)
+            let e = text_to_cst::parse_expr(str)
                 .expect("should construct a CST")
                 .to_expr(&mut errs)
                 .expect("should convert to AST");
+            assert!(errs.is_empty());
             assert!(
-                e.eq_shape(&expr),
-                "{:?} and {:?} should have the same shape.",
-                e,
-                expr
-            );
-        }
-
-        for es in [
-            r#"false * "bob""#,
-            "principal * (1 + 2)",
-            "principal * -(-1)",
-            // --1 is parsed as Expr::neg(Expr::val(-1)) and thus is not
-            // considered as a constant.
-            "principal * --1",
-        ] {
-            let mut errs = ParseErrors::new();
-            let e = text_to_cst::parse_expr(es)
-                .expect("should construct a CST")
-                .to_expr(&mut errs);
-            assert!(e.is_none());
-            expect_some_error_matches(
-                es,
-                &errs,
-                &ExpectedErrorMessage::error("multiplication must be by an integer literal"),
+                e.eq_shape(&expected),
+                "{e:?} and {expected:?} should have the same shape",
             );
         }
     }

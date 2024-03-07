@@ -23,7 +23,7 @@ use crate::parser::err::ParseErrors;
 use crate::parser::{self, Loc};
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::Arc;
@@ -477,15 +477,11 @@ fn is_restricted(expr: &Expr) -> Result<(), RestrictedExprError> {
             expr: expr.clone(),
         }),
         ExprKind::UnaryApp { op, .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
-            feature: op.to_string().into(),
+            feature: op.to_smolstr(),
             expr: expr.clone(),
         }),
         ExprKind::BinaryApp { op, .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
-            feature: op.to_string().into(),
-            expr: expr.clone(),
-        }),
-        ExprKind::MulByConst { .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
-            feature: "multiplication".into(),
+            feature: op.to_smolstr(),
             expr: expr.clone(),
         }),
         ExprKind::GetAttr { .. } => Err(RestrictedExprError::InvalidRestrictedExpression {
@@ -654,6 +650,7 @@ pub enum RestrictedExprParseError {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::ast::ExprConstructionError;
     use crate::parser::err::{ParseError, ToASTError, ToASTErrorKind};
     use crate::parser::Loc;
     use std::str::FromStr;
@@ -706,7 +703,9 @@ mod test {
             RestrictedExpr::from_str(str),
             Err(RestrictedExprParseError::Parse(ParseErrors(vec![
                 ParseError::ToAST(ToASTError::new(
-                    ToASTErrorKind::DuplicateKeyInRecordLiteral { key: "foo".into() },
+                    ToASTErrorKind::ExprConstructionError(
+                        ExprConstructionError::DuplicateKeyInRecordLiteral { key: "foo".into() }
+                    ),
                     Loc::new(0..32, Arc::from(str))
                 ))
             ]))),

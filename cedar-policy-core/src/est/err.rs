@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::ast::{self, SlotId};
+use crate::ast;
 use crate::entities::JsonDeserializationError;
 use crate::parser::err::ParseErrors;
 use crate::parser::unescape;
@@ -49,7 +49,7 @@ pub enum FromJsonError {
     #[diagnostic(help("slots are currently unsupported in `{clausetype}` clauses"))]
     SlotsInConditionClause {
         /// Slot that was found in a when/unless clause
-        slot: SlotId,
+        slot: ast::SlotId,
         /// Clause type, e.g. "when" or "unless"
         clausetype: &'static str,
     },
@@ -80,6 +80,10 @@ pub enum FromJsonError {
     #[error("invalid entity type: {0}")]
     #[diagnostic(transparent)]
     InvalidEntityType(ParseErrors),
+    /// Errors constructing AST expressions
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExprConstructionError(#[from] ast::ExprConstructionError),
 }
 
 /// Errors while instantiating a policy

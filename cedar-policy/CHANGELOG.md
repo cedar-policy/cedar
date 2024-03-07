@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and all associated information in a pretty human-readable format or as JSON.
   For more details, see `miette`'s
   [documentation](https://docs.rs/miette/latest/miette/index.html). (#477)
+- Implement [RFC 57](https://github.com/cedar-policy/rfcs/pull/57): policies can
+  now include multiplication of arbitrary expressions, not just multiplication of
+  an expression and a constant.
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
 - Cedar reserved words like `if`, `has`, and `true` are now allowed as policy
   annotation keys. (#634, resolving #623)

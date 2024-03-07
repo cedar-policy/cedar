@@ -1072,13 +1072,13 @@ fn neg_typecheck_fails() {
 
 #[test]
 fn mul_typechecks() {
-    let neg_expr = Expr::mul(Expr::val(1), 2);
+    let neg_expr = Expr::mul(Expr::val(1), Expr::val(2));
     assert_typechecks_empty_schema(neg_expr, Type::primitive_long());
 }
 
 #[test]
 fn mul_typecheck_fails() {
-    let neg_expr = Expr::mul(Expr::val("foo"), 2);
+    let neg_expr = Expr::mul(Expr::val("foo"), Expr::val(2));
     assert_typecheck_fails_empty_schema(
         neg_expr,
         Type::primitive_long(),
