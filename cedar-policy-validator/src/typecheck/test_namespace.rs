@@ -629,6 +629,42 @@ fn multi_namespace_action_in() {
 }
 
 #[test]
+fn test_cedar_policy_642() {
+    let (schema, _) = SchemaFragment::from_str_natural(
+        r#"
+        namespace NS1 {
+            entity SystemEntity2 in SystemEntity1;
+            entity SystemEntity1, PrincipalEntity;
+            action Group1;
+        }
+        namespace NS2 {
+            entity SystemEntity1 in NS1::SystemEntity2;
+            action "Group1" in NS1::Action::"Group1";
+            action "Action1" in Action::"Group1" appliesTo {
+                principal: [NS1::PrincipalEntity],
+                resource: [NS2::SystemEntity1],
+            };
+        }
+        "#,
+    )
+    .unwrap();
+
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"
+            permit(
+                principal in NS1::PrincipalEntity::"user1",
+                action in NS1::Action::"Group1",
+                resource in NS1::SystemEntity1::"entity1"
+            );"#
+        )
+        .unwrap(),
+    );
+}
+
+#[test]
 fn multi_namespace_action_group_cycle() {
     let (schema, _) = SchemaFragment::from_str_natural(
         r#"
