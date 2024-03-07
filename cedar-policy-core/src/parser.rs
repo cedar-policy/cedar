@@ -1090,16 +1090,34 @@ mod parse_tests {
             "permit(principal, action, resource)",
             "expected `;` or identifier",
         );
+        // AST actually requires `permit` or `forbid`, but grammar looks for any
+        // identifier.
         assert_labeled_span("@if(\"a\")", "expected `@` or identifier");
+        // AST actually requires `principal` (`action`, `resource`, resp.). In
+        // the `principal` case we also claim to expect `)` because an empty scope
+        // initially parses to a CST. The trailing comma rules this out in the others.
         assert_labeled_span("permit(", "expected `)` or identifier");
+        assert_labeled_span("permit(,,);", "expected `)` or identifier");
+        assert_labeled_span("permit(principal,", "expected identifier");
+        assert_labeled_span("permit(principal,action,", "expected identifier");
         // We still list out `if` as an expected token because it doesn't get
         // parsed as an ident in this position.
         assert_labeled_span(
             "permit(principal, action, resource) when {",
             "expected `!`, `(`, `-`, `[`, `{`, `}`, `false`, identifier, `if`, number, `?principal`, `?resource`, string literal, or `true`",
         );
+        // The right operand of an `is` gets parsed as any `Expr`, so we will
+        // list out all the possible expression tokens even though _only_
+        // `identifier` is accepted. This choice allows nicer error messages for
+        // `principal is User::"alice"`, but it doesn't work in our favor here.
+        assert_labeled_span(
+            "permit(principal, action, resource) when { principal is",
+            "expected `!`, `(`, `-`, `[`, `{`, `false`, identifier, `if`, number, `?principal`, `?resource`, string literal, or `true`",
+        );
 
-        // We expect binary operators, but don't claim to expect `=`, `%` or `/`.
+        // We expect binary operators, but don't claim to expect `=`, `%` or
+        // `/`. We still expect `::` even though `true` is a reserved identifier
+        // and so we can't have an entity reference `true::"eid"`
         assert_labeled_span(
             "permit(principal, action, resource) when { if true",
             "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `has`, `in`, `is`, `like`, or `then`",

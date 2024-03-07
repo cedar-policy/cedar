@@ -590,7 +590,7 @@ pub struct ExpectedTokenConfig {
     /// constructs. It is very often not useful to explicitly list out all of
     /// these special identifier because the parser really just wants any
     /// generic identifier. That it would accept these does not give any
-    /// usefully information.
+    /// useful information.
     pub special_identifier_tokens: HashSet<&'static str>,
 
     /// If this token is expected, then the parser expected a generic identifier, so
