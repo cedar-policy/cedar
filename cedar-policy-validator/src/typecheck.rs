@@ -1865,7 +1865,14 @@ impl<'a> Typechecker<'a> {
                                             .get_entity_type(&rhs_name)
                                             .map(|ety| ety.descendants.contains(&lhs_name))
                                             .unwrap_or(false);
-                                        if lhs_name == rhs_name || lhs_ty_in_rhs_ty {
+                                        // A schema may always declare that an action entity is a member of another action entity,
+                                        // regardless of their exact types (i.e., their namespaces), so we shouldn't treat it as an error.
+                                        let action_in_action = is_action_entity_type(&lhs_name)
+                                            && is_action_entity_type(&rhs_name);
+                                        if lhs_name == rhs_name
+                                            || action_in_action
+                                            || lhs_ty_in_rhs_ty
+                                        {
                                             TypecheckAnswer::success(type_of_in)
                                         } else {
                                             // We could actually just return `Type::False`, but this is incurs a larger Dafny proof update.
