@@ -26,10 +26,10 @@ mod example_use_cases;
 mod ip;
 mod multi;
 
-use cedar_testing::integration_testing::JsonTest;
 use cedar_policy::Decision;
 use cedar_policy::EntityUid;
 use cedar_policy::PolicySet;
+use cedar_testing::integration_testing::JsonTest;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;

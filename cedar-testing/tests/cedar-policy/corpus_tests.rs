@@ -46,14 +46,13 @@ fn corpus_tests() {
             )
         })
         .map(|e| e.expect("failed to access file in corpus_tests").path())
-        // only consider files like `*.json`
         .filter(|p| {
             let filename = p
                 .file_name()
                 .expect("didn't expect subdirectories in corpus_tests")
                 .to_str()
                 .expect("expected filenames to be valid UTF-8");
-            filename.ends_with(".json") && !filename.ends_with(".entities.json")
+            filename.ends_with(".json") && !filename.starts_with("schema_")
         });
     for test_json in test_jsons {
         perform_integration_test_from_json(test_json);
