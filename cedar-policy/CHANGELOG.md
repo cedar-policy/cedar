@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   expect an identifier. (#698)
 - Deprecated the integration testing harness code. It will be removed from the
   `cedar-policy` crate in the next major version.
+- Validation error messages render types in the new, more readable, schema
+  syntax. (#708, resolving #242)
 
 ### Fixed
 
