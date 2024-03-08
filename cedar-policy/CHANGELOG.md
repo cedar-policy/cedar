@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Validation for the `in` operator to no longer reports an error when comparing actions
+  in different namespaces. (#704, resolving #642)
+
 ## [3.1.0] - 2024-03-08
 Cedar Language Version: 3.1.0
 
