@@ -1,0 +1,7 @@
+permit(
+  principal in FwGwwwGw::":come/f",
+  action,
+  resource
+) when {
+  (true && (principal == principal)) && principal
+};

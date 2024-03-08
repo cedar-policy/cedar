@@ -1,0 +1,18 @@
+[
+  {
+    "uid": {
+      "type": "nww_ww000001::a",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "nww_ww000001::a",
+      "id": "fff"
+    },
+    "attrs": {},
+    "parents": []
+  }
+]

@@ -1,0 +1,12 @@
+@I220000000000000("")
+@r("6")
+@u("")
+@v("")
+@z("33")
+permit(
+  principal,
+  action,
+  resource
+) when {
+  true
+};

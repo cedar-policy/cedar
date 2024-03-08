@@ -1,0 +1,7 @@
+forbid(
+  principal in A000::a::"",
+  action in [A000::Action::"action"],
+  resource == A000::a::""
+) when {
+  (true && (principal.isLoopback())) && principal
+};

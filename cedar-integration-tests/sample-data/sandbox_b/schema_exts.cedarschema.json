@@ -1,0 +1,300 @@
+{
+  "": {
+    "entityTypes": {
+      "User": {
+        "shape": {
+          "type": "Record",
+          "additionalAttributes": false,
+          "attributes": {
+            "department": {
+              "type": "String",
+              "required": true
+            },
+            "jobLevel": {
+              "type": "Long",
+              "required": true
+            }
+          }
+        },
+        "memberOfTypes": [
+          "UserGroup"
+        ]
+      },
+      "UserGroup": {
+        "shape": {
+          "type": "Record",
+          "additionalAttributes": false,
+          "attributes": {}
+        },
+        "memberOfTypes": []
+      },
+      "Administrator": {
+        "memberOfTypes": []
+      },
+      "Photo": {
+        "shape": {
+          "type": "Record",
+          "additionalAttributes": false,
+          "attributes": {
+            "private": {
+              "type": "Boolean",
+              "required": true
+            },
+            "account": {
+              "type": "Entity",
+              "name": "Account",
+              "required": true
+            },
+            "admins": {
+              "type": "Set",
+              "element": {
+                "type": "Entity",
+                "name": "User"
+              },
+              "required": true
+            }
+          }
+        },
+        "memberOfTypes": [
+          "Account",
+          "Album"
+        ]
+      },
+      "Album": {
+        "shape": {
+          "type": "Record",
+          "additionalAttributes": false,
+          "attributes": {
+            "private": {
+              "type": "Boolean",
+              "required": true
+            },
+            "account": {
+              "type": "Entity",
+              "name": "Account",
+              "required": true
+            },
+            "admins": {
+              "type": "Set",
+              "element": {
+                "type": "Entity",
+                "name": "User"
+              },
+              "required": true
+            }
+          }
+        },
+        "memberOfTypes": [
+          "Account",
+          "Album"
+        ]
+      },
+      "Account": {
+        "shape": {
+          "type": "Record",
+          "additionalAttributes": false,
+          "attributes": {
+            "private": {
+              "type": "Boolean",
+              "required": true
+            },
+            "owner": {
+              "type": "Entity",
+              "name": "User",
+              "required": true
+            },
+            "admins": {
+              "type": "Set",
+              "element": {
+                "type": "Entity",
+                "name": "User"
+              },
+              "required": true
+            }
+          }
+        },
+        "memberOfTypes": [
+          "AccountGroup"
+        ]
+      },
+      "AccountGroup": {
+        "shape": {
+          "type": "Record",
+          "additionalAttributes": false,
+          "attributes": {
+            "owner": {
+              "type": "Entity",
+              "name": "User",
+              "required": true
+            }
+          }
+        },
+        "memberOfTypes": []
+      }
+    },
+    "actions": {
+      "view": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Photo"
+          ],
+          "principalTypes": [
+            "User"
+          ],
+          "context": {
+            "type": "Record",
+            "additionalAttributes": false,
+            "attributes": {
+              "authenticated": {
+                "type": "Boolean",
+                "required": true
+              },
+              "source_ip": {
+                "type": "Extension",
+                "name": "ipaddr",
+                "required": true
+              },
+              "confidence_score": {
+                "type": "Extension",
+                "name": "decimal",
+                "required": true
+              }
+            }
+          }
+        }
+      },
+      "comment": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Photo"
+          ],
+          "principalTypes": [
+            "User"
+          ],
+          "context": {
+            "type": "Record",
+            "additionalAttributes": false,
+            "attributes": {
+              "authenticated": {
+                "type": "Boolean",
+                "required": true
+              }
+            }
+          }
+        }
+      },
+      "edit": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Photo"
+          ],
+          "principalTypes": [
+            "User"
+          ],
+          "context": {
+            "type": "Record",
+            "additionalAttributes": false,
+            "attributes": {
+              "authenticated": {
+                "type": "Boolean",
+                "required": true
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Photo"
+          ],
+          "principalTypes": [
+            "User"
+          ],
+          "context": {
+            "type": "Record",
+            "additionalAttributes": false,
+            "attributes": {
+              "authenticated": {
+                "type": "Boolean",
+                "required": true
+              }
+            }
+          }
+        }
+      },
+      "listAlbums": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Account"
+          ],
+          "principalTypes": [
+            "User"
+          ],
+          "context": {
+            "type": "Record",
+            "additionalAttributes": false,
+            "attributes": {
+              "authenticated": {
+                "type": "Boolean",
+                "required": true
+              }
+            }
+          }
+        }
+      },
+      "listPhotos": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Album"
+          ],
+          "principalTypes": [
+            "User"
+          ],
+          "context": {
+            "type": "Record",
+            "additionalAttributes": false,
+            "attributes": {
+              "authenticated": {
+                "type": "Boolean",
+                "required": true
+              }
+            }
+          }
+        }
+      },
+      "addPhoto": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Album"
+          ],
+          "principalTypes": [
+            "User"
+          ],
+          "context": {
+            "type": "Record",
+            "additionalAttributes": false,
+            "attributes": {
+              "authenticated": {
+                "type": "Boolean",
+                "required": true
+              },
+              "photo": {
+                "type": "Record",
+                "additionalAttributes": false,
+                "attributes": {
+                  "filesize_mb": {
+                    "type": "Long"
+                  },
+                  "filetype": {
+                    "type": "String"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

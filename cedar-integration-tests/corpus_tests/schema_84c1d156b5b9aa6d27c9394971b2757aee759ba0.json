@@ -1,0 +1,53 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "a": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "r3A": {
+              "type": "Record",
+              "attributes": {
+                "": {
+                  "type": "Set",
+                  "element": {
+                    "type": "Boolean"
+                  },
+                  "required": false
+                },
+                "zz": {
+                  "type": "Entity",
+                  "name": "a",
+                  "required": true
+                }
+              },
+              "additionalAttributes": false,
+              "required": false
+            }
+          },
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "a"
+          ],
+          "principalTypes": [
+            "a"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

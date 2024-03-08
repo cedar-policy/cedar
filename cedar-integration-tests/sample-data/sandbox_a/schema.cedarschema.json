@@ -1,0 +1,288 @@
+{
+  "": {
+    "entityTypes": {
+      "User": {
+        "shape": {
+          "type": "Record",
+          "additionalAttributes": false,
+          "attributes": {}
+        },
+        "memberOfTypes": [
+          "UserGroup"
+        ]
+      },
+      "UserGroup": {
+        "shape": {
+          "type": "Record",
+          "additionalAttributes": false,
+          "attributes": {}
+        },
+        "memberOfTypes": []
+      },
+      "Administrator": {
+        "memberOfTypes": []
+      },
+      "Photo": {
+        "shape": {
+          "type": "Record",
+          "additionalAttributes": false,
+          "attributes": {}
+        },
+        "memberOfTypes": [
+          "Account",
+          "Album"
+        ]
+      },
+      "Video": {
+        "shape": {
+          "type": "Record",
+          "additionalAttributes": false,
+          "attributes": {}
+        },
+        "memberOfTypes": [
+          "Account",
+          "Album"
+        ]
+      },
+      "Album": {
+        "shape": {
+          "type": "Record",
+          "additionalAttributes": false,
+          "attributes": {}
+        },
+        "memberOfTypes": [
+          "Account",
+          "Album"
+        ]
+      },
+      "Account": {
+        "shape": {
+          "type": "Record",
+          "additionalAttributes": false,
+          "attributes": {}
+        },
+        "memberOfTypes": []
+      },
+      "AccountGroup": {
+        "shape": {
+          "type": "Record",
+          "additionalAttributes": false,
+          "attributes": {}
+        },
+        "memberOfTypes": []
+      }
+    },
+    "actions": {
+      "view": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Photo", "Video"
+          ],
+          "principalTypes": [
+            "User", "Administrator"
+          ],
+          "context": {
+            "type": "Record",
+            "additionalAttributes": false,
+            "attributes": {
+              "authenticated": {
+                "type": "Boolean",
+                "required": true
+              },
+              "source_ip": {
+                "type": "Extension",
+                "name": "ipaddr",
+                "required": true
+              },
+              "confidence_score": {
+                "type": "Extension",
+                "name": "decimal",
+                "required": true
+              }
+            }
+          }
+        }
+      },
+      "comment": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Photo"
+          ],
+          "principalTypes": [
+            "User"
+          ],
+          "context": {
+            "type": "Record",
+            "additionalAttributes": false,
+            "attributes": {
+              "authenticated": {
+                "type": "Boolean",
+                "required": true
+              },
+              "source_ip": {
+                "type": "Extension",
+                "name": "ipaddr",
+                "required": true
+              },
+              "confidence_score": {
+                "type": "Extension",
+                "name": "decimal",
+                "required": true
+              }
+            }
+          }
+        }
+      },
+      "edit": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Photo"
+          ],
+          "principalTypes": [
+            "User"
+          ],
+          "context": {
+            "type": "Record",
+            "additionalAttributes": false,
+            "attributes": {
+              "authenticated": {
+                "type": "Boolean",
+                "required": true
+              },
+              "source_ip": {
+                "type": "Extension",
+                "name": "ipaddr",
+                "required": true
+              },
+              "confidence_score": {
+                "type": "Extension",
+                "name": "decimal",
+                "required": true
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Photo"
+          ],
+          "principalTypes": [
+            "User"
+          ],
+          "context": {
+            "type": "Record",
+            "additionalAttributes": false,
+            "attributes": {
+              "authenticated": {
+                "type": "Boolean",
+                "required": true
+              },
+              "source_ip": {
+                "type": "Extension",
+                "name": "ipaddr",
+                "required": true
+              },
+              "confidence_score": {
+                "type": "Extension",
+                "name": "decimal",
+                "required": true
+              }
+            }
+          }
+        }
+      },
+      "listAlbums": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Account"
+          ],
+          "principalTypes": [
+            "User"
+          ],
+          "context": {
+            "type": "Record",
+            "additionalAttributes": false,
+            "attributes": {
+              "authenticated": {
+                "type": "Boolean",
+                "required": true
+              },
+              "source_ip": {
+                "type": "Extension",
+                "name": "ipaddr",
+                "required": true
+              },
+              "confidence_score": {
+                "type": "Extension",
+                "name": "decimal",
+                "required": true
+              }
+            }
+          }
+        }
+      },
+      "listPhotos": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Album"
+          ],
+          "principalTypes": [
+            "User"
+          ],
+          "context": {
+            "type": "Record",
+            "additionalAttributes": false,
+            "attributes": {
+              "authenticated": {
+                "type": "Boolean",
+                "required": true
+              },
+              "source_ip": {
+                "type": "Extension",
+                "name": "ipaddr",
+                "required": true
+              },
+              "confidence_score": {
+                "type": "Extension",
+                "name": "decimal",
+                "required": true
+              }
+            }
+          }
+        }
+      },
+      "addPhoto": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Album"
+          ],
+          "principalTypes": [
+            "User"
+          ],
+          "context": {
+            "type": "Record",
+            "additionalAttributes": false,
+            "attributes": {
+              "authenticated": {
+                "type": "Boolean",
+                "required": true
+              },
+              "source_ip": {
+                "type": "Extension",
+                "name": "ipaddr",
+                "required": true
+              },
+              "confidence_score": {
+                "type": "Extension",
+                "name": "decimal",
+                "required": true
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

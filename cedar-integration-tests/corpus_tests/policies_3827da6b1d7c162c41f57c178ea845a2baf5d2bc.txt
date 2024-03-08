@@ -1,0 +1,7 @@
+forbid(
+  principal == W::v::a::"",
+  action in [W::v::Action::"action"],
+  resource == W::v::a::""
+) when {
+  true
+};

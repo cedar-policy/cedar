@@ -1,0 +1,7 @@
+permit(
+  principal in a::"j\u{10}::::ov\0\0",
+  action in [],
+  resource
+) when {
+  true
+};

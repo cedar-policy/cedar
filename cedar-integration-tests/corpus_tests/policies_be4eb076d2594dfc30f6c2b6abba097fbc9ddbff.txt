@@ -1,0 +1,7 @@
+permit(
+  principal,
+  action in [Action::"action",Action::"action"],
+  resource in a::"::\u{4}"
+) when {
+  (true && (!(!true))) && (a::"::\u{4}" && principal)
+};

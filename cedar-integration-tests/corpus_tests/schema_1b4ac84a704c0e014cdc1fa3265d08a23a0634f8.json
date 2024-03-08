@@ -1,0 +1,42 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "Khhzhhhk": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Khhzhhhk"
+          ],
+          "principalTypes": [
+            "Khhzhhhk"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "Akkkk0": {
+                "type": "Set",
+                "element": {
+                  "type": "Extension",
+                  "name": "ipaddr"
+                },
+                "required": false
+              }
+            },
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

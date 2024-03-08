@@ -1,0 +1,7 @@
+forbid(
+  principal == A3::a::"",
+  action in [A3::Action::""],
+  resource in A3::a::""
+) when {
+  (true && (if (principal has "") then principal else principal)) && principal
+};

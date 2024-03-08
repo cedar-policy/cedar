@@ -1,0 +1,57 @@
+[
+  {
+    "uid": {
+      "type": "cP::v::v",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "cP::v::a",
+        "id": ""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "cP::v::Qx",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      {
+        "type": "cP::v::v",
+        "id": ""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "cP::v::Qx",
+      "id": "z"
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      {
+        "type": "cP::v::v",
+        "id": ""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "cP::v::a",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  }
+]

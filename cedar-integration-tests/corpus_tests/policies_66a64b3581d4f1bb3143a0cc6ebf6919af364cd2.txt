@@ -1,0 +1,7 @@
+permit(
+  principal == a::"60",
+  action in [Action::"action"],
+  resource in a::"60"
+) when {
+  (true && ((!(!Dosnm00000000::"")) * 0)) && principal
+};

@@ -1,0 +1,176 @@
+{
+  "schema": "./corpus_tests/schema_4152f079059c8e73f72310634b475881b4ebb8ab.json",
+  "policies": "./corpus_tests/policies_4152f079059c8e73f72310634b475881b4ebb8ab.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_4152f079059c8e73f72310634b475881b4ebb8ab.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::a",
+        "id": ""
+      },
+      "action": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::a",
+        "id": ""
+      },
+      "action": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::a",
+        "id": ""
+      },
+      "action": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::a",
+        "id": ""
+      },
+      "action": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::a",
+        "id": ""
+      },
+      "action": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::a",
+        "id": ""
+      },
+      "action": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::a",
+        "id": ""
+      },
+      "action": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::a",
+        "id": ""
+      },
+      "action": {
+        "type": "v::Qx::bxxvxxxxxxx::v::qL::OMRR::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

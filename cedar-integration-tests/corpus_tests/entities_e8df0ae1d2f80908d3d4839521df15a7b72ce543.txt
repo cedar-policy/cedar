@@ -1,0 +1,42 @@
+[
+  {
+    "uid": {
+      "type": "cP::v::Qx",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "cP::v::a",
+        "id": ""
+      },
+      {
+        "type": "cP::v::v",
+        "id": ""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "cP::v::a",
+      "id": ""
+    },
+    "attrs": {
+      "mxxx": 0
+    },
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "cP::v::v",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "cP::v::a",
+        "id": ""
+      }
+    ]
+  }
+]

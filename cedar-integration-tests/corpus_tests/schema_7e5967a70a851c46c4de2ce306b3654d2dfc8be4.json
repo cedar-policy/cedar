@@ -1,0 +1,37 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "lyyUIKldYqrc": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "": {
+        "appliesTo": null,
+        "memberOf": null
+      },
+      "l/jackst": {
+        "appliesTo": {
+          "resourceTypes": [
+            "lyyUIKldYqrc"
+          ],
+          "principalTypes": [
+            "lyyUIKldYqrc"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

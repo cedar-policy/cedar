@@ -1,0 +1,7 @@
+permit(
+  principal,
+  action in [Gxxxxx100::Action::"action",Gxxxxx100::Action::"action",Gxxxxx100::Action::"action"],
+  resource in Gxxxxx100::a::";"
+) when {
+  true
+};

@@ -1,0 +1,224 @@
+{
+  "schema": "./corpus_tests/schema_bc2a101c4a38cafd034acbf494600294eec9b1e6.json",
+  "policies": "./corpus_tests/policies_bc2a101c4a38cafd034acbf494600294eec9b1e6.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_bc2a101c4a38cafd034acbf494600294eec9b1e6.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": {
+        "type": "q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "q::Action",
+        "id": "f\u0006"
+      },
+      "context": {
+        "G": {
+          "ff\u0006": {
+            "nsti\u00003\u0004nsti\u0000": ""
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": {
+        "type": "q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "q::Action",
+        "id": "f\u0006"
+      },
+      "context": {
+        "G": {
+          "ff\u0006": {
+            "nsti\u00003\u0004nsti\u0000": ""
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": {
+        "type": "q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "q::Action",
+        "id": "f\u0006"
+      },
+      "context": {
+        "G": {
+          "ff\u0006": {
+            "nsti\u00003\u0004nsti\u0000": ""
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": {
+        "type": "q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "q::Action",
+        "id": "f\u0006"
+      },
+      "context": {
+        "G": {
+          "ff\u0006": {
+            "nsti\u00003\u0004nsti\u0000": ""
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": {
+        "type": "q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "q::Action",
+        "id": "f\u0006"
+      },
+      "context": {
+        "G": {
+          "ff\u0006": {
+            "nsti\u00003\u0004nsti\u0000": ""
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": {
+        "type": "q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "q::Action",
+        "id": "f\u0006"
+      },
+      "context": {
+        "G": {
+          "ff\u0006": {
+            "nsti\u00003\u0004nsti\u0000": ""
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": {
+        "type": "q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "q::Action",
+        "id": "f\u0006"
+      },
+      "context": {
+        "G": {
+          "ff\u0006": {
+            "nsti\u00003\u0004nsti\u0000": ""
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": {
+        "type": "q::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "q::a",
+        "id": ""
+      },
+      "action": {
+        "type": "q::Action",
+        "id": "f\u0006"
+      },
+      "context": {
+        "G": {
+          "ff\u0006": {
+            "nsti\u00003\u0004nsti\u0000": ""
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

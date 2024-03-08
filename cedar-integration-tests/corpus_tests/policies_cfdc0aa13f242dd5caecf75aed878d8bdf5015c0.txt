@@ -1,0 +1,7 @@
+permit(
+  principal in a::"00",
+  action,
+  resource == a::"00"
+) when {
+  ((true && a::"00") && ((-(false)) in principal)) && principal
+};

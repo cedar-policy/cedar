@@ -1,0 +1,7 @@
+forbid(
+  principal,
+  action,
+  resource == a::""
+) when {
+  (true && (if context then principal else principal)) && principal
+};

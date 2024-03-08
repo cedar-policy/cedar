@@ -42,7 +42,6 @@ cargo add cedar-policy
 * [cedar-policy-core](./cedar-policy-core) : Internal crate containing the Cedar parser and evaluator
 * [cedar-policy-validator](./cedar-policy-validator) : Internal crate containing the Cedar validator
 * [cedar-policy-formatter](./cedar-policy-formatter) : Internal crate containing an auto-formatter for Cedar policies
-* [cedar-integration-tests](./cedar-integration-tests) : Crate containing integration tests
 
 ## Quick Start
 

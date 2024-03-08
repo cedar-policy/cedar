@@ -1,0 +1,7 @@
+forbid(
+  principal in C22::C233::a::"",
+  action == C22::C233::Action::"action",
+  resource in C22::C233::a::""
+) when {
+  (true && principal) && principal
+};

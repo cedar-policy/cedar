@@ -1,0 +1,192 @@
+{
+  "schema": "./corpus_tests/schema_3af5c7c5f21236beb923bb3b497f21e215b05303.json",
+  "policies": "./corpus_tests/policies_3af5c7c5f21236beb923bb3b497f21e215b05303.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_3af5c7c5f21236beb923bb3b497f21e215b05303.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::Action",
+        "id": "action"
+      },
+      "context": {
+        "K00000000": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::Action",
+        "id": "action"
+      },
+      "context": {
+        "K00000000": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::Action",
+        "id": "action"
+      },
+      "context": {
+        "K00000000": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::Action",
+        "id": "action"
+      },
+      "context": {
+        "K00000000": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::Action",
+        "id": "action"
+      },
+      "context": {
+        "K00000000": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::Action",
+        "id": "action"
+      },
+      "context": {
+        "K00000000": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::Action",
+        "id": "action"
+      },
+      "context": {
+        "K00000000": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::a",
+        "id": ""
+      },
+      "action": {
+        "type": "l777Ixxjj3::r::r::N8xt22337::Action",
+        "id": "action"
+      },
+      "context": {
+        "K00000000": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

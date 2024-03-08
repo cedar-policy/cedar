@@ -1,0 +1,38 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "LfhhhhKx": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "\t": {
+        "appliesTo": {
+          "resourceTypes": [
+            "LfhhhhKx"
+          ],
+          "principalTypes": [
+            "LfhhhhKx"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "ukkkJ002J002kk000": {
+                "type": "String",
+                "required": false
+              }
+            },
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

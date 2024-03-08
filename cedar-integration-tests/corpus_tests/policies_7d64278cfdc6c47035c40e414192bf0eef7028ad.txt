@@ -1,0 +1,7 @@
+forbid(
+  principal,
+  action,
+  resource == s::a::"\0\0\0\0\0\0\0\0\0"
+) when {
+  true
+};

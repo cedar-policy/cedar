@@ -1,0 +1,7 @@
+forbid(
+  principal in a::"00",
+  action == Action::"action",
+  resource == a::"00"
+) when {
+  true && (!(!false))
+};

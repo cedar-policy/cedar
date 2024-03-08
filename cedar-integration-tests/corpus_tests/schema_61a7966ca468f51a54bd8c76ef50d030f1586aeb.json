@@ -1,0 +1,54 @@
+{
+  "A0": {
+    "commonTypes": {},
+    "entityTypes": {
+      "Fwww": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "):": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Fwww"
+          ],
+          "principalTypes": [
+            "Fwww"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      },
+      "": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Fwww"
+          ],
+          "principalTypes": [
+            "Fwww"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "Fv10Z": {
+                "type": "String",
+                "required": false
+              }
+            },
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

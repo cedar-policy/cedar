@@ -1,0 +1,53 @@
+{
+  "r333::r::r": {
+    "commonTypes": {},
+    "entityTypes": {
+      "uH": {
+        "memberOfTypes": [
+          "r"
+        ],
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "R": {
+              "type": "String",
+              "required": false
+            },
+            "rh": {
+              "type": "Boolean",
+              "required": false
+            }
+          },
+          "additionalAttributes": false
+        }
+      },
+      "r": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "uH",
+            "r"
+          ],
+          "principalTypes": [
+            "uH"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "xYqXb0wwwwww0S": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      },
+      "Fw900Aam": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "xYqXb0wwwwww0S"
+          ],
+          "principalTypes": [
+            "Fw900Aam",
+            "xYqXb0wwwwww0S"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

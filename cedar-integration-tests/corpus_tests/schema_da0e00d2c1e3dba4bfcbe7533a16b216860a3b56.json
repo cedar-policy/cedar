@@ -1,0 +1,47 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "F1200sww": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "yJdwwwwwwk": {
+              "type": "Set",
+              "element": {
+                "type": "Extension",
+                "name": "decimal"
+              },
+              "required": false
+            }
+          },
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "F1200sww"
+          ],
+          "principalTypes": [
+            "F1200sww"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "s0000": {
+                "type": "String",
+                "required": false
+              }
+            },
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

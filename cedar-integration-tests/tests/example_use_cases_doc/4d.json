@@ -1,0 +1,75 @@
+{
+ "policies": "tests/example_use_cases_doc/policies_4d.cedar",
+ "entities": "sample-data/sandbox_b/entities.json",
+ "schema": "sample-data/sandbox_b/schema.cedarschema.json",
+ "should_validate": true,
+ "queries": [
+  {
+   "desc": "alice should be able to view a photo in her account",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "vacation.jpg"
+   },
+   "context": {
+    "authenticated": true
+   },
+   "decision": "Allow",
+   "reasons": [
+    "policy0"
+   ],
+   "errors": []
+  },
+  {
+   "desc": "alice should be able to edit a photo in her account",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "edit"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "alice_w2.jpg"
+   },
+   "context": {
+    "authenticated": true
+   },
+   "decision": "Allow",
+   "reasons": [
+    "policy0"
+   ],
+   "errors": []
+  },
+  {
+   "desc": "alice should not be allowed to view a photo in someone else's account",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "prototype_v0.jpg"
+   },
+   "context": {
+    "authenticated": true
+   },
+   "decision": "Deny",
+   "reasons": [],
+   "errors": []
+  }
+ ]
+}

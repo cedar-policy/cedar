@@ -1,0 +1,66 @@
+{
+ "policies": "tests/ip/policies_1.cedar",
+ "entities": "sample-data/sandbox_a/entities.json",
+ "schema": "sample-data/sandbox_a/schema.cedarschema.json",
+ "should_validate": true,
+ "queries": [
+  {
+   "desc": "alice should be able to view the photo when coming from 222.222.222.222",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "VacationPhoto94.jpg"
+   },
+   "context": {
+    "source_ip": {
+     "__extn": {
+      "fn": "ip",
+      "arg": "222.222.222.222"
+     }
+    },
+    "confidence_score": "0.6",
+    "authenticated": true
+   },
+   "decision": "Allow",
+   "reasons": [
+    "policy0"
+   ],
+   "errors": []
+  },
+  {
+   "desc": "alice should not be allowed to view the photo when coming from 222.222.222.111",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "VacationPhoto94.jpg"
+   },
+   "context": {
+    "source_ip": {
+     "__extn": {
+      "fn": "ip",
+      "arg": "222.222.222.111"
+     }
+    },
+    "confidence_score": "0.6",
+    "authenticated": true
+   },
+   "decision": "Deny",
+   "reasons": [],
+   "errors": []
+  }
+ ]
+}

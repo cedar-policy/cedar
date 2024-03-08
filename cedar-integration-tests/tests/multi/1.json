@@ -1,0 +1,104 @@
+{
+ "policies": "tests/multi/policies_1.cedar",
+ "entities": "sample-data/sandbox_a/entities.json",
+ "schema": "sample-data/sandbox_a/schema.cedarschema.json",
+ "should_validate": true,
+ "queries": [
+  {
+   "desc": "alice should be able to view photos in the album",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "VacationPhoto94.jpg"
+   },
+   "context": {
+    "source_ip": "123.123.123.123",
+    "confidence_score": "0.6",
+    "authenticated": true
+   },
+   "decision": "Allow",
+   "reasons": [
+    "policy0"
+   ],
+   "errors": []
+  },
+  {
+   "desc": "bob should be able to edit photos in his own account",
+   "principal": {
+    "type": "User",
+    "id": "bob"
+   },
+   "action": {
+    "type": "Action",
+    "id": "edit"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "selfie.jpg"
+   },
+   "context": {
+    "source_ip": "123.123.123.123",
+    "confidence_score": "0.6",
+    "authenticated": true
+   },
+   "decision": "Allow",
+   "reasons": [
+    "policy1"
+   ],
+   "errors": []
+  },
+  {
+   "desc": "alice should not be able to edit photos in bob's account",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "edit"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "selfie.jpg"
+   },
+   "context": {
+    "source_ip": "123.123.123.123",
+    "confidence_score": "0.6",
+    "authenticated": true
+   },
+   "decision": "Deny",
+   "reasons": [],
+   "errors": []
+  },
+  {
+   "desc": "bob should not be able to view photos in jane's album",
+   "principal": {
+    "type": "User",
+    "id": "bob"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "VacationPhoto94.jpg"
+   },
+   "context": {
+    "source_ip": "123.123.123.123",
+    "confidence_score": "0.6",
+    "authenticated": true
+   },
+   "decision": "Deny",
+   "reasons": [],
+   "errors": []
+  }
+ ]
+}

@@ -1,0 +1,176 @@
+{
+  "schema": "./corpus_tests/schema_ec17b82554295cb700c5c7b245471f51772a3b24.json",
+  "policies": "./corpus_tests/policies_ec17b82554295cb700c5c7b245471f51772a3b24.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_ec17b82554295cb700c5c7b245471f51772a3b24.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": {
+        "type": "a",
+        "id": "fffffffgf`f\u0000ff~\u0000f'fr\u0000\u0000fT"
+      },
+      "resource": {
+        "type": "a",
+        "id": "fffffffgf`f\u0000ff~\u0000f'fr\u0000\u0000fT"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": {
+        "type": "a",
+        "id": "fffffffgf`f\u0000ff~\u0000f'fr\u0000\u0000fT"
+      },
+      "resource": {
+        "type": "a",
+        "id": "fffffffgf`f\u0000ff~\u0000f'fr\u0000\u0000fT"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": {
+        "type": "a",
+        "id": "fffffffgf`f\u0000ff~\u0000f'fr\u0000\u0000fT"
+      },
+      "resource": {
+        "type": "a",
+        "id": "fffffffgf`f\u0000ff~\u0000f'fr\u0000\u0000fT"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": {
+        "type": "a",
+        "id": "fffffffgf`f\u0000ff~\u0000f'fr\u0000\u0000fT"
+      },
+      "resource": {
+        "type": "a",
+        "id": "fffffffgf`f\u0000ff~\u0000f'fr\u0000\u0000fT"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": {
+        "type": "a",
+        "id": "fffffffgf`f\u0000ff~\u0000f'fr\u0000\u0000fT"
+      },
+      "resource": {
+        "type": "a",
+        "id": "fffffffgf`f\u0000ff~\u0000f'fr\u0000\u0000fT"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": {
+        "type": "a",
+        "id": "fffffffgf`f\u0000ff~\u0000f'fr\u0000\u0000fT"
+      },
+      "resource": {
+        "type": "a",
+        "id": "fffffffgf`f\u0000ff~\u0000f'fr\u0000\u0000fT"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": {
+        "type": "a",
+        "id": "fffffffgf`f\u0000ff~\u0000f'fr\u0000\u0000fT"
+      },
+      "resource": {
+        "type": "a",
+        "id": "fffffffgf`f\u0000ff~\u0000f'fr\u0000\u0000fT"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": {
+        "type": "a",
+        "id": "fffffffgf`f\u0000ff~\u0000f'fr\u0000\u0000fT"
+      },
+      "resource": {
+        "type": "a",
+        "id": "fffffffgf`f\u0000ff~\u0000f'fr\u0000\u0000fT"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+permit(
+  principal,
+  action in [],
+  resource in a::""
+) when {
+  (true && (504441641179441770 == principal)) && principal
+};

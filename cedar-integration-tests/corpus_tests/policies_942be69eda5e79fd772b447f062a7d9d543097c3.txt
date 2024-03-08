@@ -1,0 +1,7 @@
+forbid(
+  principal,
+  action,
+  resource
+) when {
+  (true && ("" == "")) && (if ((if false then principal else principal) in principal) then principal else principal)
+};

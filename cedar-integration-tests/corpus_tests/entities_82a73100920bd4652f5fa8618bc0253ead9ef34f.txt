@@ -1,0 +1,22 @@
+[
+  {
+    "uid": {
+      "type": "a",
+      "id": "*"
+    },
+    "attrs": {
+      "r": false,
+      "J": [
+        false,
+        false
+      ],
+      "o": {
+        "__entity": {
+          "id": "*",
+          "type": "a"
+        }
+      }
+    },
+    "parents": []
+  }
+]

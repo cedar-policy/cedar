@@ -1,0 +1,33 @@
+{
+  "uSJJlg1lU::Q80xxu_YYXW": {
+    "commonTypes": {},
+    "entityTypes": {
+      "Mxxwxx": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Mxxwxx"
+          ],
+          "principalTypes": [
+            "Mxxwxx"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

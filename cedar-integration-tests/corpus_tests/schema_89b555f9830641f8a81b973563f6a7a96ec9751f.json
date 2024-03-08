@@ -1,0 +1,45 @@
+{
+  "v::OMRR": {
+    "commonTypes": {},
+    "entityTypes": {
+      "Qx": {
+        "memberOfTypes": [
+          "v"
+        ],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      },
+      "v": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Qx",
+            "v"
+          ],
+          "principalTypes": [
+            "Qx",
+            "v"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

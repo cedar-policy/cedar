@@ -1,0 +1,26 @@
+[
+  {
+    "uid": {
+      "type": "r333::r::r::r",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "r333::r::r::uH",
+      "id": ""
+    },
+    "attrs": {
+      "rh": false,
+      "R": ""
+    },
+    "parents": [
+      {
+        "type": "r333::r::r::r",
+        "id": ""
+      }
+    ]
+  }
+]

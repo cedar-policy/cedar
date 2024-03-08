@@ -1,0 +1,10 @@
+[
+  {
+    "uid": {
+      "type": "LYY::Qml::Edxl::Kxx0xxx::a",
+      "id": "zz"
+    },
+    "attrs": {},
+    "parents": []
+  }
+]

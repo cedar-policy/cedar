@@ -1,0 +1,128 @@
+{
+  "schema": "./corpus_tests/schema_fcc4ead5e89eb1f4cc6a1e756cbb4c377fe8f573.json",
+  "policies": "./corpus_tests/policies_fcc4ead5e89eb1f4cc6a1e756cbb4c377fe8f573.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_fcc4ead5e89eb1f4cc6a1e756cbb4c377fe8f573.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": null,
+      "resource": null,
+      "action": {
+        "type": "Action",
+        "id": "l/ja"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": null,
+      "resource": null,
+      "action": {
+        "type": "Action",
+        "id": "l/ja"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": null,
+      "resource": null,
+      "action": {
+        "type": "Action",
+        "id": "l/ja"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": null,
+      "resource": null,
+      "action": {
+        "type": "Action",
+        "id": "l/ja"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": null,
+      "resource": null,
+      "action": {
+        "type": "Action",
+        "id": "l/ja"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": null,
+      "resource": null,
+      "action": {
+        "type": "Action",
+        "id": "l/ja"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": null,
+      "resource": null,
+      "action": {
+        "type": "Action",
+        "id": "l/ja"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": null,
+      "resource": null,
+      "action": {
+        "type": "Action",
+        "id": "l/ja"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

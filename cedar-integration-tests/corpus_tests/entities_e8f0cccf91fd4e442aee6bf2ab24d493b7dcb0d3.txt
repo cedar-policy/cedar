@@ -1,0 +1,17 @@
+[
+  {
+    "uid": {
+      "type": "bHHHHHHHHH::Kxxxnxx::a",
+      "id": ""
+    },
+    "attrs": {
+      "cnpmx": {
+        "__entity": {
+          "id": "",
+          "type": "bHHHHHHHHH::Kxxxnxx::a"
+        }
+      }
+    },
+    "parents": []
+  }
+]

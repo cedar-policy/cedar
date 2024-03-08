@@ -1,0 +1,7 @@
+permit(
+  principal == a::"\u{1}",
+  action == Action::"action",
+  resource == a::"\u{1}"
+) when {
+  (true && (((a::"\u{1}" == a::"\u{1}") == (a::"\u{1}" == principal)) == principal)) && principal
+};

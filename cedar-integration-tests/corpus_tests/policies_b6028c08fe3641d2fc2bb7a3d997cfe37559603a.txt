@@ -1,0 +1,8 @@
+@Gjj0jjjjj("")
+forbid(
+  principal in i::"",
+  action in [Action::"action",Action::"action",Action::"action"],
+  resource
+) when {
+  true
+};

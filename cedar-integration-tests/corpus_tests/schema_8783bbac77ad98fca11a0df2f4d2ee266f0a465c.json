@@ -1,0 +1,45 @@
+{
+  "Q::A::V": {
+    "commonTypes": {},
+    "entityTypes": {
+      "A": {
+        "memberOfTypes": [
+          "w"
+        ],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      },
+      "w": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "A",
+            "w"
+          ],
+          "principalTypes": [
+            "A",
+            "w"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

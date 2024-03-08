@@ -1,0 +1,102 @@
+{
+ "policies": "tests/example_use_cases_doc/policies_2c.cedar",
+ "entities": "sample-data/sandbox_a/entities.json",
+ "schema": "sample-data/sandbox_a/schema.cedarschema.json",
+ "should_validate": true,
+ "queries": [
+  {
+   "desc": "alice should be allowed to edit the photo",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "edit"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "VacationPhoto94.jpg"
+   },
+   "context": {
+    "source_ip": "123.123.123.123",
+    "confidence_score": "0.6",
+    "authenticated": true
+   },
+   "decision": "Allow",
+   "reasons": [
+    "policy0"
+   ],
+   "errors": []
+  },
+  {
+   "desc": "alice should not be allowed to delete the photo",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "delete"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "VacationPhoto94.jpg"
+   },
+   "context": {
+    "source_ip": "123.123.123.123",
+    "confidence_score": "0.6",
+    "authenticated": true
+   },
+   "decision": "Deny",
+   "reasons": [],
+   "errors": []
+  },
+  {
+   "desc": "bob should not be allowed to edit the photo",
+   "principal": {
+    "type": "User",
+    "id": "bob"
+   },
+   "action": {
+    "type": "Action",
+    "id": "edit"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "VacationPhoto94.jpg"
+   },
+   "context": {
+    "source_ip": "123.123.123.123",
+    "confidence_score": "0.6",
+    "authenticated": true
+   },
+   "decision": "Deny",
+   "reasons": [],
+   "errors": []
+  },
+  {
+   "desc": "alice should not be allowed to view an unrelated photo",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "passportscan.jpg"
+   },
+   "context": {
+    "source_ip": "123.123.123.123",
+    "confidence_score": "0.6",
+    "authenticated": true
+   },
+   "decision": "Deny",
+   "reasons": [],
+   "errors": []
+  }
+ ]
+}

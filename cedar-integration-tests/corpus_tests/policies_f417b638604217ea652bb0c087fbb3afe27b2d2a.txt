@@ -1,0 +1,7 @@
+forbid(
+  principal == a::"\0\u{2}\u{2}1sq\u{2}\u{2}.\u{2}\0\u{2}\u{2}1",
+  action in [Action::"action",Action::"action"],
+  resource == a::"\0\u{2}\u{2}1sq\u{2}\u{2}.\u{2}\0\u{2}\u{2}1"
+) when {
+  true
+};

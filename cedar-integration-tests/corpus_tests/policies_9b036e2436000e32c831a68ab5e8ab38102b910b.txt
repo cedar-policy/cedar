@@ -1,0 +1,8 @@
+@r33330ww("")
+permit(
+  principal,
+  action,
+  resource
+) when {
+  true
+};

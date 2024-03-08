@@ -1,0 +1,7 @@
+forbid(
+  principal,
+  action in [Action::"action",Action::"action",Action::"action"],
+  resource == a::"\0"
+) when {
+  true && (("\u{1}j".contains(a::"\0")) in (principal.containsAll(principal)))
+};

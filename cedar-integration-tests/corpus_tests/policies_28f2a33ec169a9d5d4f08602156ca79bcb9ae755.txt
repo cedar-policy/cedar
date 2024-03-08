@@ -1,0 +1,7 @@
+forbid(
+  principal == a::"\u{2}1",
+  action in [Action::"action"],
+  resource == a::"\u{2}1"
+) when {
+  true && (!215610940295651377)
+};

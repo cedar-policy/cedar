@@ -1,0 +1,44 @@
+{
+  "F": {
+    "commonTypes": {},
+    "entityTypes": {
+      "A0s": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      },
+      "FamUJdww": {
+        "memberOfTypes": [
+          "A0s"
+        ],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "FamUJdww"
+          ],
+          "principalTypes": [
+            "FamUJdww",
+            "A0s"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

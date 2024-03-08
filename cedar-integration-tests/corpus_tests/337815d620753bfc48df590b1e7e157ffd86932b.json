@@ -1,0 +1,176 @@
+{
+  "schema": "./corpus_tests/schema_337815d620753bfc48df590b1e7e157ffd86932b.json",
+  "policies": "./corpus_tests/policies_337815d620753bfc48df590b1e7e157ffd86932b.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_337815d620753bfc48df590b1e7e157ffd86932b.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": {
+        "type": "r::n::r::r::r::r::r::r::r::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::n::r::r::r::r::r::r::r::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::n::r::r::r::r::r::r::r::r::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": {
+        "type": "r::n::r::r::r::r::r::r::r::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::n::r::r::r::r::r::r::r::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::n::r::r::r::r::r::r::r::r::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": {
+        "type": "r::n::r::r::r::r::r::r::r::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::n::r::r::r::r::r::r::r::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::n::r::r::r::r::r::r::r::r::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": {
+        "type": "r::n::r::r::r::r::r::r::r::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::n::r::r::r::r::r::r::r::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::n::r::r::r::r::r::r::r::r::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": {
+        "type": "r::n::r::r::r::r::r::r::r::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::n::r::r::r::r::r::r::r::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::n::r::r::r::r::r::r::r::r::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": {
+        "type": "r::n::r::r::r::r::r::r::r::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::n::r::r::r::r::r::r::r::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::n::r::r::r::r::r::r::r::r::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": {
+        "type": "r::n::r::r::r::r::r::r::r::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::n::r::r::r::r::r::r::r::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::n::r::r::r::r::r::r::r::r::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": {
+        "type": "r::n::r::r::r::r::r::r::r::r::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "r::n::r::r::r::r::r::r::r::r::a",
+        "id": ""
+      },
+      "action": {
+        "type": "r::n::r::r::r::r::r::r::r::r::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

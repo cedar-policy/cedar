@@ -1,0 +1,37 @@
+{
+  "lAdw6wyUy6U784": {
+    "commonTypes": {},
+    "entityTypes": {
+      "g333": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "\u0007": {
+        "appliesTo": {
+          "resourceTypes": [
+            "g333"
+          ],
+          "principalTypes": [
+            "g333"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      },
+      "": {
+        "appliesTo": null,
+        "memberOf": null
+      }
+    }
+  }
+}

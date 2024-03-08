@@ -1,0 +1,75 @@
+{
+ "policies": "tests/example_use_cases_doc/policies_4f.cedar",
+ "entities": "sample-data/sandbox_b/entities.json",
+ "schema": "sample-data/sandbox_b/schema.cedarschema.json",
+ "should_validate": true,
+ "queries": [
+  {
+   "desc": "alice should be able to view her own photo",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "vacation.jpg"
+   },
+   "context": {
+    "authenticated": true
+   },
+   "decision": "Allow",
+   "reasons": [
+    "policy0"
+   ],
+   "errors": []
+  },
+  {
+   "desc": "alice should not be able to view a photo in stacey's account",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "sales_projections.jpg"
+   },
+   "context": {
+    "authenticated": true
+   },
+   "decision": "Deny",
+   "reasons": [],
+   "errors": []
+  },
+  {
+   "desc": "giuseppe should be able to view the photo since he is an admin on it",
+   "principal": {
+    "type": "User",
+    "id": "giuseppe"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "sales_projections.jpg"
+   },
+   "context": {
+    "authenticated": true
+   },
+   "decision": "Allow",
+   "reasons": [
+    "policy0"
+   ],
+   "errors": []
+  }
+ ]
+}

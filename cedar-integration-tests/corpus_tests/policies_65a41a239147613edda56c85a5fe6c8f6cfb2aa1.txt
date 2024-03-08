@@ -1,0 +1,7 @@
+forbid(
+  principal == a::"",
+  action,
+  resource
+) when {
+  ((true && ((!Action::"action") like "\u{1}***")) && principal) && principal
+};

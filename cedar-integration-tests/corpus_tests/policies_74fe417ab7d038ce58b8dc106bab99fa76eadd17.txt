@@ -1,0 +1,7 @@
+forbid(
+  principal,
+  action in [Action::"action",Action::"action",Action::"action"],
+  resource == a::"\u{6}:"
+) when {
+  true && ("z" == (("" * 16383999) * 0))
+};

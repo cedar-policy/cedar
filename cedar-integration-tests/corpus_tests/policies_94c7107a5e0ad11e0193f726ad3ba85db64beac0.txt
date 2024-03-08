@@ -1,0 +1,7 @@
+permit(
+  principal in Khhkkhk::a::"\r",
+  action in [Khhkkhk::Action::"action",Khhkkhk::Action::"action",Khhkkhk::Action::"action"],
+  resource == Khhkkhk::a::"\r"
+) when {
+  true
+};

@@ -1,0 +1,8 @@
+@f("")
+forbid(
+  principal in nww_ww00000::a::"",
+  action,
+  resource in nww_ww00000::a::""
+) when {
+  (true && (!principal)) && principal
+};

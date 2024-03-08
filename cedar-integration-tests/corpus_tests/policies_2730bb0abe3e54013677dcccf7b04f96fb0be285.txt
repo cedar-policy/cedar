@@ -1,0 +1,7 @@
+permit(
+  principal == a::"\0",
+  action,
+  resource
+) when {
+  true && 7134266958731542649
+};
