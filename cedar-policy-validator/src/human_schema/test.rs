@@ -8,7 +8,9 @@ mod demo_tests {
         iter::{empty, once},
     };
 
+    use crate::Node as INode;
     use cool_asserts::assert_matches;
+    use itertools::Itertools;
     use smol_str::ToSmolStr;
 
     use crate::{
@@ -64,7 +66,7 @@ mod demo_tests {
             ActionType { applies_to : Some(ApplySpec { resource_types : None, principal_types : Some(principals), ..}), .. } =>
                 {
                     match principals.as_slice() {
-                        [a] if a == &"a".to_smolstr() => (),
+                        [a] if a.data == "a".to_smolstr() => (),
                         _ => panic!("Bad principals")
                     }
                 }
@@ -83,7 +85,7 @@ mod demo_tests {
             ActionType { applies_to : Some(ApplySpec { resource_types : Some(resources), principal_types : None, ..}), .. } =>
                 {
                     match resources.as_slice() {
-                        [a] if a == &"a".to_smolstr() => (),
+                        [a] if a.data == "a".to_smolstr() => (),
                         _ => panic!("Bad principals")
                     }
                 }
@@ -103,7 +105,7 @@ mod demo_tests {
         let foo = unqual.actions.get("Foo").unwrap();
         assert_matches!(foo,
                 ActionType { applies_to : Some(ApplySpec { resource_types : Some(resources), principal_types : None, .. }  ), ..} =>
-                    assert_matches!(resources.as_slice(), [a] => assert_eq!(a.as_ref(), "a"))
+                    assert_matches!(resources.as_slice(), [a] => assert_eq!(a.data.as_ref(), "a"))
             ,
         );
     }
@@ -123,8 +125,8 @@ mod demo_tests {
         assert_matches!(foo,
                 ActionType { applies_to : Some(ApplySpec { resource_types : Some(resources), principal_types : None, .. }  ), ..} =>
                     assert_matches!(resources.as_slice(), [a, b] => {
-                        assert_eq!(a.as_ref(), "a");
-                        assert_eq!(b.as_ref(), "b")
+                        assert_eq!(a.data.as_ref(), "a");
+                        assert_eq!(b.data.as_ref(), "b")
                     })
             ,
         );
@@ -143,7 +145,7 @@ mod demo_tests {
         let foo = unqual.actions.get("Foo").unwrap();
         assert_matches!(foo,
                 ActionType { applies_to : Some(ApplySpec { resource_types : None, principal_types : Some(principals), .. }  ), ..} =>
-                    assert_matches!(principals.as_slice(), [a] => assert_eq!(a.as_ref(), "a"))
+                    assert_matches!(principals.as_slice(), [a] => assert_eq!(a.data.as_ref(), "a"))
             ,
         );
     }
@@ -163,8 +165,8 @@ mod demo_tests {
         assert_matches!(foo,
                 ActionType { applies_to : Some(ApplySpec { resource_types : None, principal_types : Some(principals), .. }  ), ..} =>
                     assert_matches!(principals.as_slice(), [a,b] => {
-                        assert_eq!(a.as_ref(), "a");
-                        assert_eq!(b.as_ref(), "b");
+                        assert_eq!(a.data.as_ref(), "a");
+                        assert_eq!(b.data.as_ref(), "b");
                 })
             ,
         );
@@ -189,12 +191,12 @@ mod demo_tests {
                 ActionType { applies_to : Some(ApplySpec { resource_types : Some(resources), principal_types : Some(principals), .. }  ), ..} =>
                 {
                     assert_matches!(principals.as_slice(), [a,b] => {
-                        assert_eq!(a.as_ref(), "a");
-                        assert_eq!(b.as_ref(), "b");
+                        assert_eq!(a.data.as_ref(), "a");
+                        assert_eq!(b.data.as_ref(), "b");
                 });
                 assert_matches!(resources.as_slice(), [c,d] =>  {
-                        assert_eq!(c.as_ref(), "c");
-                        assert_eq!(d.as_ref(), "d");
+                        assert_eq!(c.data.as_ref(), "c");
+                        assert_eq!(d.data.as_ref(), "d");
 
                 })
             }
@@ -221,12 +223,12 @@ mod demo_tests {
                 ActionType { applies_to : Some(ApplySpec { resource_types : Some(resources), principal_types : Some(principals), .. }  ), ..} =>
                 {
                     assert_matches!(principals.as_slice(), [a,b] => {
-                        assert_eq!(a.as_ref(), "a");
-                        assert_eq!(b.as_ref(), "b");
+                        assert_eq!(a.data.as_ref(), "a");
+                        assert_eq!(b.data.as_ref(), "b");
                 });
                 assert_matches!(resources.as_slice(), [c,d] =>  {
-                        assert_eq!(c.as_ref(), "c");
-                        assert_eq!(d.as_ref(), "d");
+                        assert_eq!(c.data.as_ref(), "c");
+                        assert_eq!(d.data.as_ref(), "d");
 
                 })
             }
@@ -334,7 +336,7 @@ mod demo_tests {
                     attributes: None,
                     applies_to: Some(ApplySpec {
                         resource_types: Some(vec![]),
-                        principal_types: Some(vec!["a".to_smolstr()]),
+                        principal_types: Some(vec![INode::no_loc("a".to_smolstr())]),
                         context: AttributesOrContext::default(),
                     }),
                     member_of: None,
@@ -422,7 +424,11 @@ mod demo_tests {
         let user = github.entity_types.get("User").expect("No `User`");
         assert_empty_records(user);
         assert_eq!(
-            &user.member_of_types,
+            &user
+                .member_of_types
+                .iter()
+                .map(|ty| ty.to_smolstr())
+                .collect_vec(),
             &vec!["UserGroup".to_smolstr(), "Team".to_smolstr()]
         );
         // UserGroup
@@ -431,7 +437,14 @@ mod demo_tests {
             .get("UserGroup")
             .expect("No `UserGroup`");
         assert_empty_records(usergroup);
-        assert_eq!(&usergroup.member_of_types, &vec!["UserGroup".to_smolstr()]);
+        assert_eq!(
+            &usergroup
+                .member_of_types
+                .iter()
+                .map(|ty| ty.to_smolstr())
+                .collect_vec(),
+            &vec!["UserGroup".to_smolstr()]
+        );
         // Repository
         let repo = github
             .entity_types
@@ -441,10 +454,14 @@ mod demo_tests {
         let groups = ["readers", "writers", "triagers", "admins", "maintainers"];
         for group in groups {
             match &repo.shape.0 {
-                crate::SchemaType::Type(SchemaTypeVariant::Record {
-                    attributes,
-                    additional_attributes: false,
-                }) => {
+                INode {
+                    data:
+                        crate::SchemaType::Type(SchemaTypeVariant::Record {
+                            attributes,
+                            additional_attributes: false,
+                        }),
+                    loc: _,
+                } => {
                     let expected = SchemaTypeVariant::Entity {
                         name: "UserGroup".into(),
                     };
@@ -457,10 +474,14 @@ mod demo_tests {
         let issue = github.entity_types.get("Issue").expect("No `Issue`");
         assert!(issue.member_of_types.is_empty());
         match &issue.shape.0 {
-            crate::SchemaType::Type(SchemaTypeVariant::Record {
-                attributes,
-                additional_attributes: false,
-            }) => {
+            INode {
+                data:
+                    crate::SchemaType::Type(SchemaTypeVariant::Record {
+                        attributes,
+                        additional_attributes: false,
+                    }),
+                loc: _,
+            } => {
                 let attribute = attributes.get("repo").expect("No `repo`");
                 assert_has_type(
                     attribute,
@@ -483,10 +504,14 @@ mod demo_tests {
         let groups = ["members", "owners", "memberOfTypes"];
         for group in groups {
             match &org.shape.0 {
-                crate::SchemaType::Type(SchemaTypeVariant::Record {
-                    attributes,
-                    additional_attributes: false,
-                }) => {
+                INode {
+                    data:
+                        crate::SchemaType::Type(SchemaTypeVariant::Record {
+                            attributes,
+                            additional_attributes: false,
+                        }),
+                    loc: _,
+                } => {
                     let expected = SchemaTypeVariant::Entity {
                         name: "UserGroup".into(),
                     };
@@ -501,17 +526,24 @@ mod demo_tests {
     fn assert_has_type(e: &TypeOfAttribute, expected: SchemaTypeVariant) {
         assert!(e.required, "Attribute was not required");
         match &e.ty {
-            crate::SchemaType::Type(t) => assert_eq!(t, &expected),
+            INode {
+                data: crate::SchemaType::Type(t),
+                loc: _,
+            } => assert_eq!(t, &expected),
             _ => panic!("Wrong type"),
         }
     }
 
     fn assert_empty_records(etyp: &EntityType) {
         match &etyp.shape.0 {
-            crate::SchemaType::Type(SchemaTypeVariant::Record {
-                attributes,
-                additional_attributes: false,
-            }) => assert!(attributes.is_empty(), "Record should be empty"),
+            INode {
+                data:
+                    crate::SchemaType::Type(SchemaTypeVariant::Record {
+                        attributes,
+                        additional_attributes: false,
+                    }),
+                loc: _,
+            } => assert!(attributes.is_empty(), "Record should be empty"),
             _ => panic!("Should have an empty record"),
         }
     }
@@ -544,12 +576,23 @@ mod demo_tests {
         assert!(warnings.collect::<Vec<_>>().is_empty());
         let doccloud = fragment.0.get("DocCloud").expect("No `DocCloud` namespace");
         let user = doccloud.entity_types.get("User").expect("No `User`");
-        assert_eq!(&user.member_of_types, &vec!["Group".to_smolstr()]);
+        assert_eq!(
+            &user
+                .member_of_types
+                .iter()
+                .map(|ty| ty.to_smolstr())
+                .collect_vec(),
+            &vec!["Group".to_smolstr()]
+        );
         match &user.shape.0 {
-            crate::SchemaType::Type(SchemaTypeVariant::Record {
-                attributes,
-                additional_attributes: false,
-            }) => {
+            INode {
+                data:
+                    crate::SchemaType::Type(SchemaTypeVariant::Record {
+                        attributes,
+                        additional_attributes: false,
+                    }),
+                loc: _,
+            } => {
                 assert_has_type(
                     attributes.get("personalGroup").unwrap(),
                     SchemaTypeVariant::Entity {
@@ -559,21 +602,34 @@ mod demo_tests {
                 assert_has_type(
                     attributes.get("blocked").unwrap(),
                     SchemaTypeVariant::Set {
-                        element: Box::new(crate::SchemaType::Type(SchemaTypeVariant::Entity {
-                            name: "User".into(),
-                        })),
+                        element: Box::new(INode::no_loc(crate::SchemaType::Type(
+                            SchemaTypeVariant::Entity {
+                                name: "User".into(),
+                            },
+                        ))),
                     },
                 );
             }
             _ => panic!("Wrong type"),
         }
         let group = doccloud.entity_types.get("Group").expect("No `Group`");
-        assert_eq!(&group.member_of_types, &vec!["DocumentShare".to_smolstr()]);
+        assert_eq!(
+            &group
+                .member_of_types
+                .iter()
+                .map(|ty| ty.to_smolstr())
+                .collect_vec(),
+            &vec!["DocumentShare".to_smolstr()]
+        );
         match &group.shape.0 {
-            crate::SchemaType::Type(SchemaTypeVariant::Record {
-                attributes,
-                additional_attributes: false,
-            }) => {
+            INode {
+                data:
+                    crate::SchemaType::Type(SchemaTypeVariant::Record {
+                        attributes,
+                        additional_attributes: false,
+                    }),
+                loc: _,
+            } => {
                 assert_has_type(
                     attributes.get("owner").unwrap(),
                     SchemaTypeVariant::Entity {
@@ -586,10 +642,14 @@ mod demo_tests {
         let document = doccloud.entity_types.get("Document").expect("No `Group`");
         assert!(document.member_of_types.is_empty());
         match &document.shape.0 {
-            crate::SchemaType::Type(SchemaTypeVariant::Record {
-                attributes,
-                additional_attributes: false,
-            }) => {
+            INode {
+                data:
+                    crate::SchemaType::Type(SchemaTypeVariant::Record {
+                        attributes,
+                        additional_attributes: false,
+                    }),
+                loc: _,
+            } => {
                 assert_has_type(
                     attributes.get("owner").unwrap(),
                     SchemaTypeVariant::Entity {
@@ -633,7 +693,14 @@ mod demo_tests {
         assert_empty_records(document_share);
 
         let public = doccloud.entity_types.get("Public").expect("No `Public`");
-        assert_eq!(&public.member_of_types, &vec!["DocumentShare".to_smolstr()]);
+        assert_eq!(
+            &public
+                .member_of_types
+                .iter()
+                .map(|ty| ty.to_smolstr())
+                .collect_vec(),
+            &vec!["DocumentShare".to_smolstr()]
+        );
         assert_empty_records(public);
 
         let drive = doccloud.entity_types.get("Drive").expect("No `Drive`");
@@ -742,15 +809,22 @@ mod demo_tests {
         let service = fragment.0.get("Service").unwrap();
         let resource = service.entity_types.get("Resource").unwrap();
         match &resource.shape.0 {
-            crate::SchemaType::Type(SchemaTypeVariant::Record {
-                attributes,
-                additional_attributes,
-            }) => {
+            INode {
+                data:
+                    crate::SchemaType::Type(SchemaTypeVariant::Record {
+                        attributes,
+                        additional_attributes,
+                    }),
+                loc: _,
+            } => {
                 assert!(!additional_attributes);
                 let TypeOfAttribute { ty, required } = attributes.get("tag").unwrap();
                 assert!(required);
                 match ty {
-                    crate::SchemaType::TypeDef { type_name } => {
+                    INode {
+                        data: crate::SchemaType::TypeDef { type_name },
+                        loc: _,
+                    } => {
                         assert_eq!(type_name, &"AWS::Tag".to_smolstr())
                     }
                     _ => panic!("Wrong type for attribute"),
@@ -1021,6 +1095,7 @@ mod parser_tests {
 #[allow(clippy::panic)]
 #[cfg(test)]
 mod translator_tests {
+    use crate::Node as INode;
     use cedar_policy_core::FromNormalizedStr;
     use smol_str::ToSmolStr;
 
@@ -1265,10 +1340,14 @@ mod translator_tests {
         let demo = schema.0.get("Demo").unwrap();
         let user = demo.entity_types.get("User").unwrap();
         match &user.shape.0 {
-            crate::SchemaType::Type(SchemaTypeVariant::Record {
-                attributes,
-                additional_attributes,
-            }) => {
+            INode {
+                data:
+                    crate::SchemaType::Type(SchemaTypeVariant::Record {
+                        attributes,
+                        additional_attributes,
+                    }),
+                loc: _,
+            } => {
                 assert!(!additional_attributes);
                 let TypeOfAttribute { ty, required } = attributes.get("name").unwrap();
                 {
@@ -1276,7 +1355,7 @@ mod translator_tests {
                     let expected = crate::SchemaType::TypeDef {
                         type_name: "id".into(),
                     };
-                    assert_eq!(ty, &expected);
+                    assert_eq!(ty.data, expected);
                 }
                 let TypeOfAttribute { ty, required } = attributes.get("email").unwrap();
                 {
@@ -1284,7 +1363,7 @@ mod translator_tests {
                     let expected = crate::SchemaType::Type(SchemaTypeVariant::Entity {
                         name: "email_address".into(),
                     });
-                    assert_eq!(ty, &expected);
+                    assert_eq!(ty.data, expected);
                 }
             }
             _ => panic!("Wrong type"),

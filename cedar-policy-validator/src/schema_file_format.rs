@@ -14,14 +14,18 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::entities::CedarValueJson;
+use cedar_policy_core::{entities::CedarValueJson, parser::Loc};
 use serde::{
     de::{MapAccess, Visitor},
     Deserialize, Serialize,
 };
 use serde_with::serde_as;
 use smol_str::SmolStr;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    fmt::Display,
+    hash::Hash,
+};
 
 use crate::{
     human_schema::{
@@ -83,6 +87,113 @@ impl SchemaFragment {
     }
 }
 
+/// Schema AST node
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Node<T> {
+    /// `data` field contains the wrapped type
+    pub data: T,
+    /// `loc` contains an optional source location
+    /// It's skipped during deserialization
+    #[serde(skip)]
+    pub loc: Option<Loc>,
+}
+
+impl<T> Node<T> {
+    /// Construct a node without source location
+    pub fn no_loc(data: T) -> Self {
+        Node { data, loc: None }
+    }
+
+    pub fn with_loc(data: T, loc: Loc) -> Self {
+        Node {
+            data,
+            loc: Some(loc),
+        }
+    }
+
+    pub fn map<R>(self, f: impl FnOnce(T) -> R) -> Node<R> {
+        Node {
+            data: f(self.data),
+            loc: self.loc,
+        }
+    }
+}
+
+impl<T> PartialEq for Node<T>
+where
+    T: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.data.eq(&other.data)
+    }
+}
+
+impl<T> PartialOrd for Node<T>
+where
+    T: PartialOrd,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.data.partial_cmp(&other.data)
+    }
+}
+
+impl<T> Ord for Node<T>
+where
+    T: Ord,
+{
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.data.cmp(&other.data)
+    }
+}
+
+impl<T> Eq for Node<T> where T: Eq {}
+
+impl<T> Display for Node<T>
+where
+    T: Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.data.fmt(f)
+    }
+}
+
+impl<T> From<cedar_policy_core::parser::Node<T>> for Node<T> {
+    fn from(value: cedar_policy_core::parser::Node<T>) -> Self {
+        Self {
+            data: value.node,
+            loc: Some(value.loc),
+        }
+    }
+}
+
+impl<T> Hash for Node<T>
+where
+    T: Hash,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.data.hash(state)
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a, T> arbitrary::Arbitrary<'a> for Node<T>
+where
+    T: arbitrary::Arbitrary<'a>,
+{
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Node::no_loc(u.arbitrary()?))
+    }
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        <T as arbitrary::Arbitrary>::size_hint(depth)
+    }
+}
+
+/// A node wrapping a string
+pub type StrNode = Node<SmolStr>;
+/// A node wrapping a schema type
+pub type TypeNode = Node<SchemaType>;
+
 /// A single namespace definition from a SchemaFragment.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde_as]
@@ -94,7 +205,7 @@ pub struct NamespaceDefinition {
     #[serde(default)]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     #[serde(rename = "commonTypes")]
-    pub common_types: HashMap<SmolStr, SchemaType>,
+    pub common_types: HashMap<SmolStr, TypeNode>,
     #[serde(rename = "entityTypes")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     pub entity_types: HashMap<SmolStr, EntityType>,
@@ -125,7 +236,7 @@ impl NamespaceDefinition {
 pub struct EntityType {
     #[serde(default)]
     #[serde(rename = "memberOfTypes")]
-    pub member_of_types: Vec<SmolStr>,
+    pub member_of_types: Vec<StrNode>,
     #[serde(default)]
     pub shape: AttributesOrContext,
 }
@@ -137,21 +248,21 @@ pub struct EntityType {
 pub struct AttributesOrContext(
     // We use the usual `SchemaType` deserialization, but it will ultimately
     // need to be a `Record` or type def which resolves to a `Record`.
-    pub SchemaType,
+    pub TypeNode,
 );
 
 impl AttributesOrContext {
     pub fn into_inner(self) -> SchemaType {
-        self.0
+        self.0.data
     }
 }
 
 impl Default for AttributesOrContext {
     fn default() -> Self {
-        Self(SchemaType::Type(SchemaTypeVariant::Record {
+        Self(Node::no_loc(SchemaType::Type(SchemaTypeVariant::Record {
             attributes: BTreeMap::new(),
             additional_attributes: partial_schema_default(),
-        }))
+        })))
     }
 }
 
@@ -190,10 +301,10 @@ pub struct ActionType {
 pub struct ApplySpec {
     #[serde(default)]
     #[serde(rename = "resourceTypes")]
-    pub resource_types: Option<Vec<SmolStr>>,
+    pub resource_types: Option<Vec<StrNode>>,
     #[serde(default)]
     #[serde(rename = "principalTypes")]
-    pub principal_types: Option<Vec<SmolStr>>,
+    pub principal_types: Option<Vec<StrNode>>,
     #[serde(default)]
     pub context: AttributesOrContext,
 }
@@ -442,7 +553,7 @@ impl SchemaTypeVisitor {
 
                 if let Some(element) = element {
                     Ok(SchemaType::Type(SchemaTypeVariant::Set {
-                        element: Box::new(element?),
+                        element: Box::new(Node::no_loc(element?)),
                     }))
                 } else {
                     Err(serde::de::Error::missing_field(Element.as_str()))
@@ -520,7 +631,7 @@ pub enum SchemaTypeVariant {
     Long,
     Boolean,
     Set {
-        element: Box<SchemaType>,
+        element: Box<TypeNode>,
     },
     Record {
         attributes: BTreeMap<SmolStr, TypeOfAttribute>,
@@ -560,10 +671,10 @@ impl SchemaType {
     pub fn is_extension(&self) -> Option<bool> {
         match self {
             Self::Type(SchemaTypeVariant::Extension { .. }) => Some(true),
-            Self::Type(SchemaTypeVariant::Set { element }) => element.is_extension(),
+            Self::Type(SchemaTypeVariant::Set { element }) => element.data.is_extension(),
             Self::Type(SchemaTypeVariant::Record { attributes, .. }) => attributes
                 .values()
-                .try_fold(false, |a, e| match e.ty.is_extension() {
+                .try_fold(false, |a, e| match e.ty.data.is_extension() {
                     Some(true) => Some(true),
                     Some(false) => Some(a),
                     None => None,
@@ -640,7 +751,7 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct TypeOfAttribute {
     #[serde(flatten)]
-    pub ty: SchemaType,
+    pub ty: TypeNode,
     #[serde(default = "record_attribute_required_default")]
     pub required: bool,
 }
@@ -668,7 +779,7 @@ mod test {
         }
         "#;
         let et = serde_json::from_str::<EntityType>(user).expect("Parse Error");
-        assert_eq!(et.member_of_types, vec!["UserGroup"]);
+        assert_eq!(et.member_of_types, vec![Node::no_loc("UserGroup".into())]);
         assert_eq!(
             et.shape.into_inner(),
             SchemaType::Type(SchemaTypeVariant::Record {
@@ -707,8 +818,8 @@ mod test {
         "#;
         let at: ActionType = serde_json::from_str(src).expect("Parse Error");
         let spec = ApplySpec {
-            resource_types: Some(vec!["Album".into()]),
-            principal_types: Some(vec!["User".into()]),
+            resource_types: Some(vec![Node::no_loc("Album".into())]),
+            principal_types: Some(vec![Node::no_loc("User".into())]),
             context: AttributesOrContext::default(),
         };
         assert_eq!(at.applies_to, Some(spec));

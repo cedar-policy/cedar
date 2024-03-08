@@ -36,7 +36,7 @@ use crate::{
     err::*,
     human_schema::SchemaWarning,
     types::{Attributes, EntityRecordKind, OpenTag, Type},
-    SchemaFragment,
+    Node, SchemaFragment,
 };
 
 mod action;
@@ -226,7 +226,7 @@ impl ValidatorSchema {
             // different.
             for (name, ty) in ns_def.type_defs.type_defs {
                 match type_defs.entry(name) {
-                    Entry::Vacant(v) => v.insert(ty),
+                    Entry::Vacant(v) => v.insert(ty.data),
                     Entry::Occupied(o) => {
                         return Err(SchemaError::DuplicateCommonType(o.key().to_string()));
                     }
@@ -276,9 +276,11 @@ impl ValidatorSchema {
                 // `memberOfTypes` list. The error is reported alongside the
                 // error for any other undeclared entity types by
                 // `check_for_undeclared`.
-                let descendants = entity_children.remove(&name).unwrap_or_default();
+                let descendants = entity_children
+                    .remove(&Node::no_loc(name.clone()))
+                    .unwrap_or_default();
                 let (attributes, open_attributes) = Self::record_attributes_or_none(
-                    entity_type.attributes.resolve_type_defs(&type_defs)?,
+                    entity_type.attributes.data.resolve_type_defs(&type_defs)?,
                 )
                 .ok_or(SchemaError::ContextOrShapeNotRecord(
                     ContextOrShape::EntityTypeShape(name.clone()),
@@ -308,11 +310,12 @@ impl ValidatorSchema {
             .into_iter()
             .map(|(name, action)| -> Result<_> {
                 let descendants = action_children.remove(&name).unwrap_or_default();
-                let (context, open_context_attributes) =
-                    Self::record_attributes_or_none(action.context.resolve_type_defs(&type_defs)?)
-                        .ok_or(SchemaError::ContextOrShapeNotRecord(
-                            ContextOrShape::ActionContext(name.clone()),
-                        ))?;
+                let (context, open_context_attributes) = Self::record_attributes_or_none(
+                    action.context.data.resolve_type_defs(&type_defs)?,
+                )
+                .ok_or(SchemaError::ContextOrShapeNotRecord(
+                    ContextOrShape::ActionContext(name.clone()),
+                ))?;
                 Ok((
                     name.clone(),
                     ValidatorActionId {
@@ -362,7 +365,7 @@ impl ValidatorSchema {
     /// handled by the `SchemaFragment` constructor.
     fn check_for_undeclared(
         entity_types: &HashMap<Name, ValidatorEntityType>,
-        undeclared_parent_entities: impl IntoIterator<Item = Name>,
+        undeclared_parent_entities: impl IntoIterator<Item = Node<Name>>,
         action_ids: &HashMap<EntityUID, ValidatorActionId>,
         undeclared_parent_actions: impl IntoIterator<Item = EntityUID>,
     ) -> Result<()> {
@@ -372,7 +375,6 @@ impl ValidatorSchema {
         // any undeclared entity types which appeared in a `memberOf` list.
         let mut undeclared_e = undeclared_parent_entities
             .into_iter()
-            .map(|n| n.to_string())
             .collect::<HashSet<_>>();
         // Looking at entity types, we need to check entity references in
         // attribute types. We already know that all elements of the
@@ -404,7 +406,7 @@ impl ValidatorSchema {
                 match p_entity {
                     EntityType::Specified(p_entity) => {
                         if !entity_types.contains_key(p_entity) {
-                            undeclared_e.insert(p_entity.to_string());
+                            undeclared_e.insert(Node::no_loc(p_entity.clone()));
                         }
                     }
                     EntityType::Unspecified => (),
@@ -415,7 +417,7 @@ impl ValidatorSchema {
                 match r_entity {
                     EntityType::Specified(r_entity) => {
                         if !entity_types.contains_key(r_entity) {
-                            undeclared_e.insert(r_entity.to_string());
+                            undeclared_e.insert(Node::no_loc(r_entity.clone()));
                         }
                     }
                     EntityType::Unspecified => (),
@@ -448,13 +450,13 @@ impl ValidatorSchema {
     fn check_undeclared_in_type(
         ty: &Type,
         entity_types: &HashMap<Name, ValidatorEntityType>,
-        undeclared_types: &mut HashSet<String>,
+        undeclared_types: &mut HashSet<Node<Name>>,
     ) {
         match ty {
             Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => {
                 for name in lub.iter() {
                     if !entity_types.contains_key(name) {
-                        undeclared_types.insert(name.to_string());
+                        undeclared_types.insert(Node::no_loc(name.clone()));
                     }
                 }
             }
@@ -656,7 +658,7 @@ mod test {
     use std::{collections::BTreeMap, str::FromStr};
 
     use crate::types::Type;
-    use crate::{SchemaType, SchemaTypeVariant};
+    use crate::{Node, SchemaType, SchemaTypeVariant};
 
     use cedar_policy_core::ast::RestrictedExpr;
     use cedar_policy_core::parser::err::{ParseError, ToASTError, ToASTErrorKind};
@@ -825,7 +827,12 @@ mod test {
         match schema {
             Ok(_) => panic!("try_into should have failed"),
             Err(SchemaError::UndeclaredEntityTypes(v)) => {
-                assert_eq!(v, HashSet::from(["Bar::Group".to_string()]))
+                assert_eq!(
+                    v.into_iter()
+                        .map(|ty| ty.to_string())
+                        .collect::<HashSet<_>>(),
+                    HashSet::from(["Bar::Group".to_string()])
+                )
             }
             _ => panic!("Unexpected error from try_into"),
         }
@@ -851,7 +858,9 @@ mod test {
             Ok(_) => panic!("try_into should have failed"),
             Err(SchemaError::UndeclaredEntityTypes(v)) => {
                 assert_eq!(
-                    v,
+                    v.into_iter()
+                        .map(|ty| ty.to_string())
+                        .collect::<HashSet<_>>(),
                     HashSet::from(["Bar::Photo".to_string(), "Bar::User".to_string()])
                 )
             }
@@ -1054,7 +1063,12 @@ mod test {
         let schema: Result<ValidatorSchema> = schema_json.try_into();
         match schema {
             Err(SchemaError::UndeclaredEntityTypes(tys)) => {
-                assert_eq!(tys, HashSet::from(["C::D::Foo".to_string()]))
+                assert_eq!(
+                    tys.into_iter()
+                        .map(|ty| ty.to_string())
+                        .collect::<HashSet<_>>(),
+                    HashSet::from(["C::D::Foo".to_string()])
+                )
             }
             _ => panic!("Schema construction should have failed due to undeclared entity type."),
         }
@@ -1183,9 +1197,10 @@ mod test {
         );
         let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
             Some(&Name::parse_unqualified_name("NS").expect("Expected namespace.")),
-            schema_ty,
+            Node::no_loc(schema_ty),
         )
         .expect("Error converting schema type to type.")
+        .data
         .resolve_type_defs(&HashMap::new())
         .unwrap();
         assert_eq!(ty, Type::named_entity_reference_from_str("NS::Foo"));
@@ -1203,9 +1218,10 @@ mod test {
         );
         let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
             Some(&Name::parse_unqualified_name("NS").expect("Expected namespace.")),
-            schema_ty,
+            Node::no_loc(schema_ty),
         )
         .expect("Error converting schema type to type.")
+        .data
         .resolve_type_defs(&HashMap::new())
         .unwrap();
         assert_eq!(ty, Type::named_entity_reference_from_str("NS::Foo"));
@@ -1223,7 +1239,7 @@ mod test {
         );
         match ValidatorNamespaceDef::try_schema_type_into_validator_type(
             Some(&Name::parse_unqualified_name("NS").expect("Expected namespace.")),
-            schema_ty,
+            Node::no_loc(schema_ty),
         ) {
             Err(SchemaError::ParseEntityType(_)) => (),
             _ => panic!("Did not see expected entity type parse error."),
@@ -1241,10 +1257,14 @@ mod test {
                 additional_attributes: false,
             }),
         );
-        let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(None, schema_ty)
-            .expect("Error converting schema type to type.")
-            .resolve_type_defs(&HashMap::new())
-            .unwrap();
+        let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
+            None,
+            Node::no_loc(schema_ty),
+        )
+        .expect("Error converting schema type to type.")
+        .data
+        .resolve_type_defs(&HashMap::new())
+        .unwrap();
         assert_eq!(ty, Type::closed_record_with_attributes(None));
     }
 
@@ -2004,7 +2024,7 @@ mod test {
         );
         let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::UndeclaredCommonTypes(types)) =>
-            assert_eq!(types, HashSet::from(["Demo::id".to_string()])));
+            assert_eq!(types.into_iter().map(|ty| ty.to_string()).collect::<HashSet<_>>(), HashSet::from(["Demo::id".to_string()])));
     }
 
     #[test]
@@ -2038,6 +2058,6 @@ mod test {
         );
         let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::UndeclaredCommonTypes(types)) =>
-            assert_eq!(types, HashSet::from(["Demo::id".to_string()])));
+            assert_eq!(types.into_iter().map(|ty| ty.to_string()).collect::<HashSet<_>>(), HashSet::from(["Demo::id".to_string()])));
     }
 }

@@ -483,7 +483,7 @@ mod test {
                 (
                     user_type.into(),
                     EntityType {
-                        member_of_types: vec![group_type.into()],
+                        member_of_types: vec![Node::no_loc(group_type.into())],
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -497,7 +497,7 @@ mod test {
                 (
                     widget_type.into(),
                     EntityType {
-                        member_of_types: vec![bin_type.into()],
+                        member_of_types: vec![Node::no_loc(bin_type.into())],
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -513,8 +513,8 @@ mod test {
                 action_name.into(),
                 ActionType {
                     applies_to: Some(ApplySpec {
-                        resource_types: Some(vec![widget_type.into()]),
-                        principal_types: Some(vec![user_type.into()]),
+                        resource_types: Some(vec![Node::no_loc(widget_type.into())]),
+                        principal_types: Some(vec![Node::no_loc(user_type.into())]),
                         context: AttributesOrContext::default(),
                     }),
                     member_of: None,
@@ -1135,8 +1135,8 @@ mod test {
                 action_name.into(),
                 ActionType {
                     applies_to: Some(ApplySpec {
-                        resource_types: Some(vec![resource_type.into()]),
-                        principal_types: Some(vec![principal_type.into()]),
+                        resource_types: Some(vec![Node::no_loc(resource_type.into())]),
+                        principal_types: Some(vec![Node::no_loc(principal_type.into())]),
                         context: AttributesOrContext::default(),
                     }),
                     member_of: Some(vec![]),
@@ -1533,14 +1533,14 @@ mod test {
                 (
                     resource_type.into(),
                     EntityType {
-                        member_of_types: vec![resource_parent_type.into()],
+                        member_of_types: vec![Node::no_loc(resource_parent_type.into())],
                         shape: AttributesOrContext::default(),
                     },
                 ),
                 (
                     resource_parent_type.into(),
                     EntityType {
-                        member_of_types: vec![resource_grandparent_type.into()],
+                        member_of_types: vec![Node::no_loc(resource_grandparent_type.into())],
                         shape: AttributesOrContext::default(),
                     },
                 ),
@@ -1557,8 +1557,8 @@ mod test {
                     action_name.into(),
                     ActionType {
                         applies_to: Some(ApplySpec {
-                            resource_types: Some(vec![resource_type.into()]),
-                            principal_types: Some(vec![principal_type.into()]),
+                            resource_types: Some(vec![Node::no_loc(resource_type.into())]),
+                            principal_types: Some(vec![Node::no_loc(principal_type.into())]),
                             context: AttributesOrContext::default(),
                         }),
                         member_of: Some(vec![ActionEntityUID {
