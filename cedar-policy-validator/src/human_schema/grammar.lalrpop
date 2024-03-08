@@ -146,7 +146,7 @@ AppDecls: Node<NonEmpty<Node<AppDecl>>> = {
 // SetType := 'Set' '<' Type '>'
 // RecType := '{' [AttrDecls] '}'
 // Type := PRIMTYPE | Path | SetType | RecType
-Type: Node<SType> = {
+pub Type: Node<SType> = {
     <p:Path>
         => { let loc = p.loc().clone(); Node::with_source_loc(SType::Ident(p), loc) },
     <l:@L> SET "<" <t:Type> ">" <r:@R>

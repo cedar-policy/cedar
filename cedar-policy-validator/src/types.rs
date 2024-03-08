@@ -17,6 +17,7 @@
 //! Defines the type structure for typechecking and various utilities for
 //! constructing and manipulating types.
 
+use itertools::Itertools;
 use serde::Serialize;
 use smol_str::SmolStr;
 use std::{
@@ -497,98 +498,6 @@ impl Type {
         )
     }
 
-    fn json_type(type_name: &str) -> serde_json::value::Map<String, serde_json::value::Value> {
-        [("type".to_string(), type_name.into())]
-            .into_iter()
-            .collect()
-    }
-
-    fn to_type_json(&self) -> serde_json::value::Map<String, serde_json::value::Value> {
-        match self {
-            Type::Never => Type::json_type("Never"),
-            Type::True => Type::json_type("True"),
-            Type::False => Type::json_type("False"),
-            Type::Primitive {
-                primitive_type: Primitive::Bool,
-            } => Type::json_type("Boolean"),
-            Type::Primitive {
-                primitive_type: Primitive::Long,
-            } => Type::json_type("Long"),
-            Type::Primitive {
-                primitive_type: Primitive::String,
-            } => Type::json_type("String"),
-            Type::Set { element_type } => {
-                let mut set_json = Type::json_type("Set");
-                match element_type {
-                    Some(e_ty) => {
-                        set_json.insert("element".to_string(), (*e_ty).to_type_json().into());
-                    }
-                    None => (),
-                }
-                set_json
-            }
-            Type::EntityOrRecord(rk) => {
-                let mut record_json = match rk {
-                    EntityRecordKind::Record { .. } => Type::json_type("Record"),
-                    EntityRecordKind::AnyEntity => Type::json_type("Entity"),
-                    EntityRecordKind::Entity(entities) => entities.to_type_json(),
-                    EntityRecordKind::ActionEntity { .. } => Type::json_type("ActionEntity"),
-                };
-                match rk {
-                    EntityRecordKind::Record {
-                        attrs,
-                        open_attributes,
-                    } => {
-                        let attr_json = attrs
-                            .iter()
-                            .map(|(attr, attr_ty)| {
-                                (attr.to_string(), {
-                                    let mut attr_ty_json = attr_ty.attr_type.to_type_json();
-                                    attr_ty_json
-                                        .insert("required".to_string(), attr_ty.is_required.into());
-                                    attr_ty_json.into()
-                                })
-                            })
-                            .collect::<serde_json::value::Map<_, _>>();
-                        record_json.insert("attributes".to_string(), attr_json.into());
-                        if open_attributes.is_open() {
-                            record_json.insert(
-                                "additionalAttributes".to_string(),
-                                open_attributes.is_open().into(),
-                            );
-                        }
-                    }
-                    EntityRecordKind::ActionEntity { name, attrs } => {
-                        let attr_json = attrs
-                            .iter()
-                            .map(|(attr, attr_ty)| {
-                                (attr.to_string(), {
-                                    let mut attr_ty_json = attr_ty.attr_type.to_type_json();
-                                    attr_ty_json
-                                        .insert("required".to_string(), attr_ty.is_required.into());
-                                    attr_ty_json.into()
-                                })
-                            })
-                            .collect::<serde_json::value::Map<_, _>>();
-                        record_json.insert("attributes".to_string(), attr_json.into());
-                        record_json.insert("name".to_string(), name.to_string().into());
-                    }
-                    // In these case, we don't need to record attributes.
-                    // `AnyEntity` does not have attributes while `Entity(_)`
-                    // attributes are specified by the list of entities in the
-                    // LUB.
-                    EntityRecordKind::AnyEntity | EntityRecordKind::Entity(_) => {}
-                }
-                record_json
-            }
-            Type::ExtensionType { name } => {
-                let mut ext_json = Type::json_type("Extension");
-                ext_json.insert("name".into(), name.to_string().into());
-                ext_json
-            }
-        }
-    }
-
     /// Is this validator type "consistent with" the given Core SchemaType.
     /// Meaning, is there at least some value that could have this SchemaType and
     /// this validator type simultaneously.
@@ -877,11 +786,60 @@ impl Type {
 
 impl Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            serde_json::value::Value::Object(self.to_type_json())
-        )
+        match self {
+            Type::Never => write!(f, "__cedar::internal::Never"),
+            Type::True => write!(f, "__cedar::internal::True"),
+            Type::False => write!(f, "__cedar::internal::False"),
+            Type::Primitive {
+                primitive_type: Primitive::Long,
+            } => write!(f, "Long"),
+            Type::Primitive {
+                primitive_type: Primitive::Bool,
+            } => write!(f, "Bool"),
+            Type::Primitive {
+                primitive_type: Primitive::String,
+            } => write!(f, "String"),
+            Type::Set { element_type } => match element_type {
+                Some(element_type) => write!(f, "Set<{element_type}>"),
+                None => write!(f, "Set<__cedar::internal::Any>"),
+            },
+            Type::EntityOrRecord(EntityRecordKind::AnyEntity) => {
+                write!(f, "__cedar::internal::AnyEntity")
+            }
+            // Ignoring action attributes for display purposes.
+            Type::EntityOrRecord(EntityRecordKind::ActionEntity {
+                name,
+                attrs: _attrs,
+            }) => write!(f, "{name}"),
+            Type::EntityOrRecord(EntityRecordKind::Entity(elub)) => {
+                match elub.get_single_entity() {
+                    Some(e) => write!(f, "{e}"),
+                    None => write!(
+                        f,
+                        "__cedar::internal::Union<{}>",
+                        elub.iter().map(ToString::to_string).join(", ")
+                    ),
+                }
+            }
+            Type::EntityOrRecord(EntityRecordKind::Record {
+                attrs,
+                open_attributes,
+            }) => {
+                if open_attributes.is_open() {
+                    write!(f, "__cedar::internal::OpenRecord")?;
+                }
+                write!(f, "{{")?;
+                for (name, ty) in attrs.iter() {
+                    write!(f, "{name}")?;
+                    if !ty.is_required {
+                        write!(f, "?")?;
+                    }
+                    write!(f, ": {},", ty.attr_type)?;
+                }
+                write!(f, "}}")
+            }
+            Type::ExtensionType { name } => write!(f, "{name}"),
+        }
     }
 }
 
@@ -1076,35 +1034,6 @@ impl EntityLUB {
     // Check if this EntityLUB contains a particular entity type.
     pub(crate) fn contains_entity_type(&self, ety: &Name) -> bool {
         self.lub_elements.contains(ety)
-    }
-
-    fn to_type_json(&self) -> serde_json::value::Map<String, serde_json::value::Value> {
-        let mut ordered_lub_elems = self.lub_elements.iter().collect::<Vec<_>>();
-        // We want the display order of elements of the set to be consistent.
-        ordered_lub_elems.sort();
-
-        let mut lub_element_objs = ordered_lub_elems.iter().map(|name| {
-            [
-                ("type".to_string(), "Entity".into()),
-                ("name".to_string(), name.to_string().into()),
-            ]
-            .into_iter()
-            .collect()
-        });
-        if self.lub_elements.len() == 1 {
-            // PANIC SAFETY: Invariant on `lub_elements` guarantees the set is non-empty.
-            #[allow(clippy::expect_used)]
-            lub_element_objs
-                .next()
-                .expect("Invariant violated: EntityLUB set must be non-empty.")
-        } else {
-            let mut entities_json = Type::json_type("Union");
-            entities_json.insert(
-                "elements".to_string(),
-                lub_element_objs.collect::<Vec<_>>().into(),
-            );
-            entities_json
-        }
     }
 }
 
@@ -1655,7 +1584,7 @@ impl<'a> Effect<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{ActionBehavior, SchemaType, ValidatorNamespaceDef};
+    use crate::{human_schema::parser::parse_type, ActionBehavior, ValidatorNamespaceDef};
     use cool_asserts::assert_matches;
     use std::collections::HashMap;
 
@@ -2342,11 +2271,11 @@ mod test {
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_json_parses_to_schema_type(ty: Type) {
-        let json_str = serde_json::value::Value::Object(ty.to_type_json()).to_string();
-        println!("{json_str}");
-        let parsed_schema_type: SchemaType = serde_json::from_str(&json_str)
-            .expect("JSON representation should have parsed into a schema type");
+    fn assert_type_display_roundtrip(ty: Type) {
+        let type_str = ty.to_string();
+        println!("{type_str}");
+        let parsed_schema_type = parse_type(&type_str)
+            .expect("String representation should have parsed into a schema type");
         let type_from_schema_type =
             ValidatorNamespaceDef::try_schema_type_into_validator_type(None, parsed_schema_type)
                 .expect("Schema type should have converted to type.")
@@ -2356,22 +2285,19 @@ mod test {
     }
 
     #[test]
-    fn json_display_of_schema_type_parses_to_schema_type() {
-        assert_json_parses_to_schema_type(Type::primitive_boolean());
-        assert_json_parses_to_schema_type(Type::primitive_long());
-        assert_json_parses_to_schema_type(Type::primitive_string());
-        assert_json_parses_to_schema_type(Type::set(Type::primitive_boolean()));
-        assert_json_parses_to_schema_type(Type::set(Type::primitive_string()));
-        assert_json_parses_to_schema_type(Type::set(Type::primitive_long()));
-        assert_json_parses_to_schema_type(Type::named_entity_reference_from_str("Foo"));
-        assert_json_parses_to_schema_type(Type::named_entity_reference_from_str("Foo::Bar"));
-        assert_json_parses_to_schema_type(Type::named_entity_reference_from_str("Foo::Bar::Baz"));
-        assert_json_parses_to_schema_type(Type::closed_record_with_attributes(None));
-        assert_json_parses_to_schema_type(Type::closed_record_with_attributes([(
+    fn type_display_roundtrip() {
+        assert_type_display_roundtrip(Type::primitive_boolean());
+        assert_type_display_roundtrip(Type::primitive_long());
+        assert_type_display_roundtrip(Type::primitive_string());
+        assert_type_display_roundtrip(Type::set(Type::primitive_boolean()));
+        assert_type_display_roundtrip(Type::set(Type::primitive_string()));
+        assert_type_display_roundtrip(Type::set(Type::primitive_long()));
+        assert_type_display_roundtrip(Type::closed_record_with_attributes(None));
+        assert_type_display_roundtrip(Type::closed_record_with_attributes([(
             "a".into(),
             AttributeType::required_attribute(Type::primitive_boolean()),
         )]));
-        assert_json_parses_to_schema_type(Type::closed_record_with_attributes([
+        assert_type_display_roundtrip(Type::closed_record_with_attributes([
             (
                 "a".into(),
                 AttributeType::required_attribute(Type::primitive_boolean()),
@@ -2393,13 +2319,29 @@ mod test {
         );
     }
 
+    // Test display for types that don't roundtrip.
     #[test]
-    fn test_non_schema_type_display() {
-        assert_displays_as(Type::Never, r#"{"type":"Never"}"#);
-        assert_displays_as(Type::True, r#"{"type":"True"}"#);
-        assert_displays_as(Type::False, r#"{"type":"False"}"#);
-        assert_displays_as(Type::any_set(), r#"{"type":"Set"}"#);
-        assert_displays_as(Type::any_entity_reference(), r#"{"type":"Entity"}"#);
+    fn test_type_display() {
+        // Entity types don't roundtrip because the human format type parser
+        // checks that they are defined already, so we'd need to provide a
+        // complete schema. TODO: the final stage of schema parsing already does
+        // this. Can we remove duplicated checks from human schema parsing?
+        assert_displays_as(Type::named_entity_reference_from_str("Foo"), "Foo");
+        assert_displays_as(
+            Type::named_entity_reference_from_str("Foo::Bar"),
+            "Foo::Bar",
+        );
+        assert_displays_as(
+            Type::named_entity_reference_from_str("Foo::Bar::Baz"),
+            "Foo::Bar::Baz",
+        );
+
+        // These type aren't representable in a schema.
+        assert_displays_as(Type::Never, "__cedar::internal::Never");
+        assert_displays_as(Type::True, "__cedar::internal::True");
+        assert_displays_as(Type::False, "__cedar::internal::False");
+        assert_displays_as(Type::any_set(), "Set<__cedar::internal::Any>");
+        assert_displays_as(Type::any_entity_reference(), "__cedar::internal::AnyEntity");
         assert_displays_as(
             Type::least_upper_bound(
                 &ValidatorSchema::empty(),
@@ -2408,7 +2350,7 @@ mod test {
                 ValidationMode::Permissive,
             )
             .expect("Expected a least upper bound to exist."),
-            r#"{"type":"Union","elements":[{"type":"Entity","name":"Bar"},{"type":"Entity","name":"Foo"}]}"#,
+            "__cedar::internal::Union<Bar, Foo>",
         );
     }
 
@@ -2416,6 +2358,6 @@ mod test {
     #[cfg(feature = "ipaddr")]
     fn text_extension_type_dislay() {
         let ipaddr = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
-        assert_json_parses_to_schema_type(Type::extension(ipaddr));
+        assert_type_display_roundtrip(Type::extension(ipaddr));
     }
 }

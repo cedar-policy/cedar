@@ -20,11 +20,10 @@ use lalrpop_util::lalrpop_mod;
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::human_schema::to_json_schema::custom_schema_to_json_schema;
-
 use super::{
     ast::Schema,
     err::{self, ParseError, ParseErrors, SchemaWarning, ToJsonSchemaErrors},
+    to_json_schema::{custom_schema_to_json_schema, custom_type_to_json_type},
 };
 
 lalrpop_mod!(
@@ -76,7 +75,8 @@ fn parse_collect_errors<'a, P, T>(
 
 // Thread-safe "global" parsers, initialized at first use
 lazy_static::lazy_static! {
-    static ref POLICIES_PARSER: grammar::SchemaParser = grammar::SchemaParser::new();
+    static ref SCHEMA_PARSER: grammar::SchemaParser = grammar::SchemaParser::new();
+    static ref TYPE_PARSER: grammar::TypeParser = grammar::TypeParser::new();
 }
 
 #[derive(Debug, Diagnostic, Error)]
@@ -89,15 +89,20 @@ pub enum HumanSyntaxParseErrors {
     JsonError(#[from] ToJsonSchemaErrors),
 }
 
+pub fn parse_type(src: &str) -> Result<crate::SchemaType, HumanSyntaxParseErrors> {
+    let ty = parse_collect_errors(&*TYPE_PARSER, grammar::TypeParser::parse, src)?;
+    Ok(custom_type_to_json_type(ty)?)
+}
+
 pub fn parse_natural_schema_fragment(
     src: &str,
 ) -> Result<(crate::SchemaFragment, impl Iterator<Item = SchemaWarning>), HumanSyntaxParseErrors> {
-    let ast: Schema = parse_collect_errors(&*POLICIES_PARSER, grammar::SchemaParser::parse, src)?;
+    let ast: Schema = parse_collect_errors(&*SCHEMA_PARSER, grammar::SchemaParser::parse, src)?;
     let tuple = custom_schema_to_json_schema(ast)?;
     Ok(tuple)
 }
 
 /// Parse schema from text
 pub fn parse_schema(text: &str) -> Result<Schema, err::ParseErrors> {
-    parse_collect_errors(&*POLICIES_PARSER, grammar::SchemaParser::parse, text)
+    parse_collect_errors(&*SCHEMA_PARSER, grammar::SchemaParser::parse, text)
 }
