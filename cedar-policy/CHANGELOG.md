@@ -20,9 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   expect an identifier. (#698)
 - Deprecated the integration testing harness code. It will be removed from the
   `cedar-policy` crate in the next major version.
+- Validation error messages render types in the new, more readable, schema
+  syntax. (#708, resolving #242)
 - Deprecated error `TypeErrorKind::ImpossiblePolicy` in favor of warning
   `ValidationWarningKind::ImpossiblePolicy` so future improvements to Cedar
-  typing precision will not result in breaking changes. (#539)
+  typing precision will not result in breaking changes. (resolving #539)
 
 ### Fixed
 
