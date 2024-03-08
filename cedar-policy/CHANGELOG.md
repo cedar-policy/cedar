@@ -59,6 +59,8 @@ method checks the request against the schema provided and the
 `RequestBuilder<UnsetSchema>::build` method becomes infallible. (#559)
 - Improved "unexpected token" parse errors when the schema or policy parsers
   expect an identifier. (#698)
+- Deprecated the integration testing harness code. It will be removed from the
+  `cedar-policy` crate in the next major version.
 
 ### Fixed
 

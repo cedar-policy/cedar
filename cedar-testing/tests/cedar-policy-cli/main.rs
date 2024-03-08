@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-//! Cedar integration tests are stored in the `CedarIntegrationTests`
-//! package, and shared among multiple interfaces (Rust bindings, Java bindings,
-//! CLI [here], etc).
+//! Helper code to run Cedar integration tests through the CLI
 
 // PANIC SAFETY tests
 #![allow(clippy::expect_used)]
@@ -24,14 +22,14 @@
 #![allow(clippy::panic)]
 mod corpus_tests;
 mod decimal;
-mod example_use_cases_doc;
+mod example_use_cases;
 mod ip;
 mod multi;
 
-use cedar_policy::integration_testing::JsonTest;
 use cedar_policy::Decision;
 use cedar_policy::EntityUid;
 use cedar_policy::PolicySet;
+use cedar_testing::integration_testing::JsonTest;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
