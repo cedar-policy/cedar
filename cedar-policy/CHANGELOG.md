@@ -192,6 +192,25 @@ Cedar Language Version: 3.0.0
   To continue using this feature you must enable the `permissive-validate`
   feature flag. (#428)
 
+## [2.4.4] - 2023-03-08
+
+Cedar Language Version: 2.1.3
+
+### Changed
+
+- Calling `add_template` with a `PolicyId` that is an existing link will now error. (#671, backport of #456)
+
+### Fixed
+
+- Updated `PolicySet::link` to not mutate internal state when failing to link a static
+  policy. With this fix it is possible to create a link with a policy id
+  after previously failing to create that link with the same id from a static
+  policy. (#669, backport of #412)
+- Action entities in the store will pass schema-based validation without requiring
+  the transitive closure to be pre-computed. (#688, backport of #581)
+- Policies containing the literal `i64::MIN` can now be properly converted to the JSON policy format. (#672, backport of #601)
+- `Template::from_json` errors when there are slots in template conditions. (#672, backport of #626)
+- `Policy::to_json` does not error on policies containing special identifiers such as `principal`, `then`, and `true`. (#672, backport of #628)
 
 ## [2.4.3] - 2023-12-21
 
@@ -379,7 +398,8 @@ Cedar Language Version: 2.0.0
 
 [Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.0.1...main
 [3.0.1]: https://github.com/cedar-policy/cedar/compare/v3.0.0...v3.0.1
-[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.3...v3.0.0
+[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.4...v3.0.0
+[2.4.4]: https://github.com/cedar-policy/cedar/compare/v2.4.3...v2.4.4
 [2.4.3]: https://github.com/cedar-policy/cedar/compare/v2.4.2...v2.4.3
 [2.4.2]: https://github.com/cedar-policy/cedar/compare/v2.4.1...v2.4.2
 [2.4.1]: https://github.com/cedar-policy/cedar/compare/v2.4.0...v2.4.1
