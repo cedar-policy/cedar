@@ -49,4 +49,5 @@ mod prop_test_policy_set;
 mod tests;
 
 #[cfg(feature = "integration_testing")]
+#[deprecated(since = "3.2.0", note = "please use the `cedar-testing` crate instead")]
 pub mod integration_testing;

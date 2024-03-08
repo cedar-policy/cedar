@@ -14,14 +14,10 @@
  * limitations under the License.
  */
 
-//! These integration tests are auto-generated using the differential tester.
-//! See notes in CedarDRT.
-//!
-//! The test files themselves exist separately in the
-//! `CedarIntegrationTests` package.
+//! Integration tests auto-generated using the differential tester.
 
-use super::perform_integration_test_from_json;
-use super::resolve_integration_test_path;
+use crate::integration_testing::perform_integration_test_from_json;
+use crate::integration_testing::resolve_integration_test_path;
 use std::path::Path;
 
 /// Path of the folder containing the corpus tests
@@ -29,6 +25,8 @@ fn folder() -> &'static Path {
     Path::new("corpus_tests")
 }
 
+// PANIC SAFETY: Corpus Tests
+#[allow(clippy::panic)]
 // for now we have a single #[test] that runs all the corpus tests.
 // The disadvantage of this is that only one error message will be displayed,
 // even if many of the corpus tests fail.
@@ -48,39 +46,15 @@ fn corpus_tests() {
             )
         })
         .map(|e| e.expect("failed to access file in corpus_tests").path())
-        // ignore non-JSON files
-        .filter(|p| {
-            p.extension()
-                .map(|ext| ext.eq_ignore_ascii_case("json"))
-                .unwrap_or(false)
-        })
-        // ignore files that start with policies_, entities_, or schema_
         .filter(|p| {
             let filename = p
                 .file_name()
                 .expect("didn't expect subdirectories in corpus_tests")
                 .to_str()
                 .expect("expected filenames to be valid UTF-8");
-            !filename.starts_with("policies_")
-                && !filename.starts_with("entities_")
-                && !filename.starts_with("schema_")
-        })
-        // As of this writing, runtime to run all of the corpus tests is
-        // excessively long.
-        // Until/unless we optimize this somehow, we just run a subset of the
-        // corpus tests.
-        // Specifically, we choose all the tests whose hash begins with 0; this
-        // should function as a random, but deterministically stable, sample (we
-        // still get the same behavior when running `cargo test` twice)
-        .filter(|p| {
-            p.file_name()
-                .expect("didn't expect subdirectories in corpus_tests")
-                .to_str()
-                .expect("expected filenames to be valid UTF-8")
-                .starts_with('0')
+            filename.ends_with(".json") && !filename.starts_with("schema_")
         });
     for test_json in test_jsons {
-        println!("testing {}", test_json.display());
         perform_integration_test_from_json(test_json);
     }
 }
