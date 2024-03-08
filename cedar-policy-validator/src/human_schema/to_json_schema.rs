@@ -47,6 +47,20 @@ pub fn custom_schema_to_json_schema(
     Ok((SchemaFragment(fragment), warnings.into_iter()))
 }
 
+/// Convert a custom type AST into the JSON representation of the type.
+/// Conversion is done in an empty context.
+pub fn custom_type_to_json_type(ty: Node<Type>) -> Result<SchemaType, ToJsonSchemaErrors> {
+    let names = HashMap::from([("".into(), NamespaceRecord::default())]);
+    let context = ConversionContext::new(
+        &names,
+        &Namespace {
+            name: None,
+            decls: vec![],
+        },
+    );
+    context.convert_type(ty)
+}
+
 fn split_unqualified_namespace(
     namespaces: impl IntoIterator<Item = Namespace>,
 ) -> (impl Iterator<Item = Namespace>, Option<Namespace>) {
