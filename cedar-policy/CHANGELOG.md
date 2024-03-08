@@ -62,6 +62,8 @@ method checks the request against the schema provided and the
 - Deprecated error `TypeErrorKind::ImpossiblePolicy` in favor of warning
   `ValidationWarningKind::ImpossiblePolicy` so future improvements to Cedar
   typing precision will not result in breaking changes. (#539)
+- Deprecated the integration testing harness code. It will be removed from the
+  `cedar-policy` crate in the next major version.
 
 ### Fixed
 
