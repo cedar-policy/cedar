@@ -44,7 +44,6 @@ fn corpus_tests() {
             )
         })
         .map(|e| e.expect("failed to access file in corpus_tests").path())
-        // only consider files like `*.json`
         .filter(|p| {
             let filename = p
                 .file_name()
