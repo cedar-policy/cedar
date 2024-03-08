@@ -22,7 +22,7 @@ use std::path::Path;
 
 /// Path of the folder containing the corpus tests
 fn folder() -> &'static Path {
-    Path::new("corpus-tests")
+    Path::new("corpus_tests")
 }
 
 // PANIC SAFETY: Corpus Tests
@@ -41,16 +41,16 @@ fn corpus_tests() {
     let test_jsons = std::fs::read_dir(&corpus_tests_folder)
         .unwrap_or_else(|e| {
             panic!(
-                "failed to read corpus-tests folder {}: {e}",
+                "failed to read corpus_tests folder {}: {e}",
                 corpus_tests_folder.display()
             )
         })
-        .map(|e| e.expect("failed to access file in corpus-tests").path())
+        .map(|e| e.expect("failed to access file in corpus_tests").path())
         // only consider files like `*.json`
         .filter(|p| {
             let filename = p
                 .file_name()
-                .expect("didn't expect subdirectories in corpus-tests")
+                .expect("didn't expect subdirectories in corpus_tests")
                 .to_str()
                 .expect("expected filenames to be valid UTF-8");
             filename.ends_with(".json") && !filename.ends_with(".entities.json")
