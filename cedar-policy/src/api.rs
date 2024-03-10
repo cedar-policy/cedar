@@ -50,7 +50,7 @@ use nonempty::NonEmpty;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{hash_map, BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::Infallible;
 use std::marker::PhantomData;
 use std::str::FromStr;
@@ -623,6 +623,19 @@ impl Entities {
         f: impl std::io::Write,
     ) -> std::result::Result<(), entities::EntitiesError> {
         self.0.write_to_json(f)
+    }
+}
+
+type ConvertInternToApiEntity = fn(ast::Entity) -> Entity;
+
+impl IntoIterator for Entities {
+    type Item = Entity;
+
+    type IntoIter =
+        std::iter::Map<hash_map::IntoValues<ast::EntityUID, ast::Entity>, ConvertInternToApiEntity>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter().map(Entity)
     }
 }
 
@@ -4523,5 +4536,34 @@ mod test {
                     } => assert_eq!(extension_name, &("decimal".parse().unwrap()))
                 )
         );
+    }
+
+    #[test]
+    fn into_iter_entities() {
+        let test_data = r#"
+        [
+        {
+        "uid": {"type":"User","id":"alice"},
+        "attrs": {
+            "age":19,
+            "ip_addr":{"__extn":{"fn":"ip", "arg":"10.0.1.101"}}
+        },
+        "parents": [{"type":"Group","id":"admin"}]
+        },
+        {
+        "uid": {"type":"Group","id":"admin"},
+        "attrs": {},
+        "parents": []
+        }
+        ]
+        "#;
+
+        let list = Entities::from_json_str(test_data, None).unwrap();
+        let mut list_out: Vec<String> = list
+            .into_iter()
+            .map(|entity| entity.uid().id().to_string())
+            .collect();
+        list_out.sort();
+        assert_eq!(list_out, &["admin", "alice"]);
     }
 }
