@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cedar-policy` crate in the next major version.
 - Validation error messages render types in the new, more readable, schema
   syntax. (#708, resolving #242)
+- Removed unnecessary lifetimes from some validation related structs (#715)
 
 ### Fixed
 
