@@ -59,6 +59,9 @@ method checks the request against the schema provided and the
 `RequestBuilder<UnsetSchema>::build` method becomes infallible. (#559)
 - Improved "unexpected token" parse errors when the schema or policy parsers
   expect an identifier. (#698)
+- Deprecated error `TypeErrorKind::ImpossiblePolicy` in favor of warning
+  `ValidationWarningKind::ImpossiblePolicy` so future improvements to Cedar
+  typing precision will not result in breaking changes. (#539)
 
 ### Fixed
 

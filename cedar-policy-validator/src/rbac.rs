@@ -429,9 +429,10 @@ mod test {
 
     use super::*;
     use crate::{
-        err::*, schema_file_format::NamespaceDefinition, schema_file_format::*, TypeErrorKind,
-        UnrecognizedActionId, UnrecognizedEntityType, UnspecifiedEntityError, ValidationError,
-        ValidationMode, Validator,
+        err::*,
+        schema_file_format::{NamespaceDefinition, *},
+        UnrecognizedActionId, UnrecognizedEntityType, UnspecifiedEntityError, ValidationMode,
+        ValidationWarningKind, Validator,
     };
 
     use cool_asserts::assert_matches;
@@ -1149,6 +1150,48 @@ mod test {
         (principal_euid, action_euid, resource_euid, schema)
     }
 
+    fn assert_validate_policy_succeeds(schema: ValidatorSchema, policy: &Template) {
+        let validate = Validator::new(schema);
+        assert!(
+            validate
+                .validate_policy(&policy, ValidationMode::default())
+                .0
+                .next()
+                .is_none(),
+            "Did not expect any validation notes."
+        );
+    }
+
+    fn assert_validate_policy_fails(
+        schema: ValidatorSchema,
+        policy: &Template,
+        expected: Vec<ValidationErrorKind>,
+    ) {
+        let validate = Validator::new(schema);
+        assert_eq!(
+            validate
+                .validate_policy(policy, ValidationMode::default())
+                .0
+                .map(|e| { e.into_location_and_error_kind().1 })
+                .collect::<Vec<ValidationErrorKind>>(),
+            expected,
+            "Unexpected validation notes."
+        );
+    }
+
+    fn assert_validate_policy_flags_impossible_policy(schema: ValidatorSchema, policy: &Template) {
+        let validate = Validator::new(schema);
+        assert_eq!(
+            validate
+                .validate_policy(policy, ValidationMode::default())
+                .1
+                .map(|w| { w.to_kind_and_location().1 })
+                .collect::<Vec<ValidationWarningKind>>(),
+            vec![ValidationWarningKind::ImpossiblePolicy],
+            "Unexpected validation notes."
+        );
+    }
+
     #[test]
     fn validate_action_apply_correct() -> Result<()> {
         let (principal, action, resource, schema) = schema_with_single_principal_action_resource();
@@ -1163,15 +1206,7 @@ mod test {
             Expr::val(true),
         );
 
-        let validate = Validator::new(schema);
-        assert!(
-            validate
-                .validate_policy(&policy, ValidationMode::default())
-                .next()
-                .is_none(),
-            "Did not expect any validation notes."
-        );
-
+        assert_validate_policy_succeeds(schema, &policy);
         Ok(())
     }
 
@@ -1263,15 +1298,7 @@ mod test {
             Expr::val(true),
         );
 
-        let validate = Validator::new(schema);
-        assert!(
-            validate
-                .validate_policy(&policy, ValidationMode::default())
-                .next()
-                .is_none(),
-            "Did not expect any validation notes."
-        );
-
+        assert_validate_policy_succeeds(schema, &policy);
         Ok(())
     }
 
@@ -1308,14 +1335,7 @@ mod test {
         let policy =
             parse_policy_template(None, "permit(principal is bar, action, resource);").unwrap();
 
-        let validate = Validator::new(schema.clone());
-        assert!(
-            validate
-                .validate_policy(&policy, ValidationMode::default())
-                .next()
-                .is_none(),
-            "Did not expect any validation notes."
-        );
+        assert_validate_policy_succeeds(schema.clone(), &policy);
 
         let policy = parse_policy_template(
             None,
@@ -1323,14 +1343,7 @@ mod test {
         )
         .unwrap();
 
-        let validate = Validator::new(schema);
-        assert!(
-            validate
-                .validate_policy(&policy, ValidationMode::default())
-                .next()
-                .is_none(),
-            "Did not expect any validation notes."
-        );
+        assert_validate_policy_succeeds(schema, &policy);
     }
 
     #[test]
@@ -1340,17 +1353,14 @@ mod test {
         let policy =
             parse_policy_template(None, "permit(principal is baz, action, resource);").unwrap();
 
-        let validate = Validator::new(schema.clone());
-        assert_eq!(
-            validate
-                .validate_policy(&policy, ValidationMode::default())
-                .map(|e| { e.into_location_and_error_kind().1 })
-                .collect::<Vec<ValidationErrorKind>>(),
-            vec![
-                ValidationErrorKind::invalid_action_application(false, false),
-                ValidationErrorKind::TypeError(TypeErrorKind::ImpossiblePolicy)
-            ],
+        assert_validate_policy_fails(
+            schema.clone(),
+            &policy,
+            vec![ValidationErrorKind::invalid_action_application(
+                false, false,
+            )],
         );
+        assert_validate_policy_flags_impossible_policy(schema.clone(), &policy);
 
         let policy = parse_policy_template(
             None,
@@ -1358,19 +1368,16 @@ mod test {
         )
         .unwrap();
 
-        let validate = Validator::new(schema.clone());
-        assert_eq!(
-            validate
-                .validate_policy(&policy, ValidationMode::default())
-                .map(|e| { e.into_location_and_error_kind().1 })
-                .collect::<Vec<ValidationErrorKind>>(),
+        assert_validate_policy_fails(
+            schema.clone(),
+            &policy,
             vec![
                 ValidationErrorKind::unrecognized_entity_type("faz".into(), Some("baz".into())),
                 ValidationErrorKind::unrecognized_entity_type("biz".into(), Some("baz".into())),
                 ValidationErrorKind::invalid_action_application(false, false),
-                ValidationErrorKind::TypeError(TypeErrorKind::ImpossiblePolicy)
             ],
         );
+        assert_validate_policy_flags_impossible_policy(schema.clone(), &policy);
 
         let policy = parse_policy_template(
             None,
@@ -1378,17 +1385,14 @@ mod test {
         )
         .unwrap();
 
-        let validate = Validator::new(schema.clone());
-        assert_eq!(
-            validate
-                .validate_policy(&policy, ValidationMode::default())
-                .map(|e| { e.into_location_and_error_kind().1 })
-                .collect::<Vec<ValidationErrorKind>>(),
-            vec![
-                ValidationErrorKind::invalid_action_application(false, false),
-                ValidationErrorKind::TypeError(TypeErrorKind::ImpossiblePolicy)
-            ],
+        assert_validate_policy_fails(
+            schema.clone(),
+            &policy,
+            vec![ValidationErrorKind::invalid_action_application(
+                false, false,
+            )],
         );
+        assert_validate_policy_flags_impossible_policy(schema, &policy);
     }
 
     #[test]
@@ -1398,14 +1402,7 @@ mod test {
         let policy =
             parse_policy_template(None, "permit(principal, action, resource is baz);").unwrap();
 
-        let validate = Validator::new(schema.clone());
-        assert!(
-            validate
-                .validate_policy(&policy, ValidationMode::default())
-                .next()
-                .is_none(),
-            "Did not expect any validation notes."
-        );
+        assert_validate_policy_succeeds(schema.clone(), &policy);
 
         let policy = parse_policy_template(
             None,
@@ -1413,14 +1410,7 @@ mod test {
         )
         .unwrap();
 
-        let validate = Validator::new(schema);
-        assert!(
-            validate
-                .validate_policy(&policy, ValidationMode::default())
-                .next()
-                .is_none(),
-            "Did not expect any validation notes."
-        );
+        assert_validate_policy_succeeds(schema, &policy);
     }
 
     #[test]
@@ -1430,17 +1420,14 @@ mod test {
         let policy =
             parse_policy_template(None, "permit(principal, action, resource is bar);").unwrap();
 
-        let validate = Validator::new(schema.clone());
-        assert_eq!(
-            validate
-                .validate_policy(&policy, ValidationMode::default())
-                .map(|e| { e.into_location_and_error_kind().1 })
-                .collect::<Vec<ValidationErrorKind>>(),
-            vec![
-                ValidationErrorKind::invalid_action_application(false, false),
-                ValidationErrorKind::TypeError(TypeErrorKind::ImpossiblePolicy)
-            ],
+        assert_validate_policy_fails(
+            schema.clone(),
+            &policy,
+            vec![ValidationErrorKind::invalid_action_application(
+                false, false,
+            )],
         );
+        assert_validate_policy_flags_impossible_policy(schema.clone(), &policy);
 
         let policy = parse_policy_template(
             None,
@@ -1448,17 +1435,14 @@ mod test {
         )
         .unwrap();
 
-        let validate = Validator::new(schema.clone());
-        assert_eq!(
-            validate
-                .validate_policy(&policy, ValidationMode::default())
-                .map(|e| { e.into_location_and_error_kind().1 })
-                .collect::<Vec<ValidationErrorKind>>(),
-            vec![
-                ValidationErrorKind::invalid_action_application(false, false),
-                ValidationErrorKind::TypeError(TypeErrorKind::ImpossiblePolicy)
-            ],
+        assert_validate_policy_fails(
+            schema.clone(),
+            &policy,
+            vec![ValidationErrorKind::invalid_action_application(
+                false, false,
+            )],
         );
+        assert_validate_policy_flags_impossible_policy(schema.clone(), &policy);
 
         let policy = parse_policy_template(
             None,
@@ -1466,19 +1450,16 @@ mod test {
         )
         .unwrap();
 
-        let validate = Validator::new(schema.clone());
-        assert_eq!(
-            validate
-                .validate_policy(&policy, ValidationMode::default())
-                .map(|e| { e.into_location_and_error_kind().1 })
-                .collect::<Vec<ValidationErrorKind>>(),
+        assert_validate_policy_fails(
+            schema.clone(),
+            &policy,
             vec![
                 ValidationErrorKind::unrecognized_entity_type("faz".into(), Some("baz".into())),
                 ValidationErrorKind::unrecognized_entity_type("biz".into(), Some("baz".into())),
                 ValidationErrorKind::invalid_action_application(false, false),
-                ValidationErrorKind::TypeError(TypeErrorKind::ImpossiblePolicy)
             ],
         );
+        assert_validate_policy_flags_impossible_policy(schema, &policy);
     }
 
     #[test]
@@ -1490,17 +1471,15 @@ mod test {
         )
         .unwrap();
 
-        let validate = Validator::new(schema.clone());
-        assert_eq!(
-            validate
-                .validate_policy(&policy, ValidationMode::default())
-                .map(|e| { e.into_location_and_error_kind().1 })
-                .collect::<Vec<ValidationErrorKind>>(),
-            vec![
-                ValidationErrorKind::unrecognized_entity_type("biz".into(), Some("baz".into())),
-                ValidationErrorKind::TypeError(TypeErrorKind::ImpossiblePolicy)
-            ],
+        assert_validate_policy_fails(
+            schema.clone(),
+            &policy,
+            vec![ValidationErrorKind::unrecognized_entity_type(
+                "biz".into(),
+                Some("baz".into()),
+            )],
         );
+        assert_validate_policy_flags_impossible_policy(schema, &policy);
     }
 
     #[test]
@@ -1601,17 +1580,7 @@ mod test {
             Expr::val(true),
         );
 
-        let validate = Validator::new(schema);
-
-        let notes: Vec<ValidationError> = validate
-            .validate_policy(&policy, ValidationMode::default())
-            .collect();
-        assert!(
-            notes.is_empty(),
-            "Expected empty validation notes, saw {:?}",
-            notes
-        );
-
+        assert_validate_policy_succeeds(schema, &policy);
         Ok(())
     }
 
@@ -1691,7 +1660,7 @@ mod test {
 
     #[test]
     fn action_with_unspecified_resource_applies() {
-        let schema = serde_json::from_str::<NamespaceDefinition>(
+        let schema: ValidatorSchema = serde_json::from_str::<NamespaceDefinition>(
             r#"
         {
             "entityTypes": {"a": {}},
@@ -1715,13 +1684,8 @@ mod test {
         )
         .unwrap();
 
-        let validate = Validator::new(schema);
         let (template, _) = Template::link_static_policy(policy);
-        let mut errs = validate.validate_policy(&template, ValidationMode::default());
-        assert!(
-            errs.next().is_none(),
-            "Did not expect any validation errors."
-        );
+        assert_validate_policy_succeeds(schema, &template);
     }
 
     #[test]
@@ -1750,13 +1714,8 @@ mod test {
         )
         .unwrap();
 
-        let validate = Validator::new(schema);
         let (template, _) = Template::link_static_policy(policy);
-        let mut errs = validate.validate_policy(&template, ValidationMode::default());
-        assert!(
-            errs.next().is_none(),
-            "Did not expect any validation errors."
-        );
+        assert_validate_policy_succeeds(schema, &template);
     }
 
     #[test]
@@ -1780,16 +1739,8 @@ mod test {
         )
         .unwrap();
 
-        let validate = Validator::new(schema);
         let (template, _) = Template::link_static_policy(policy);
-        let errs = validate.validate_policy(&template, ValidationMode::default());
-        assert_eq!(
-            errs.map(|e| e.into_location_and_error_kind().1)
-                .collect::<Vec<_>>(),
-            vec![ValidationErrorKind::type_error(
-                TypeErrorKind::ImpossiblePolicy
-            )]
-        );
+        assert_validate_policy_flags_impossible_policy(schema, &template);
     }
 }
 
@@ -1821,6 +1772,7 @@ mod partial_schema {
         let validate = Validator::new(schema);
         let errs = validate
             .validate_policy(&template, crate::ValidationMode::Partial)
+            .0
             .collect::<Vec<_>>();
         assert_eq!(errs, vec![], "Did not expect any validation errors.");
     }

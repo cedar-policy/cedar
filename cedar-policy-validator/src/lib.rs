@@ -37,7 +37,7 @@ pub use schema::*;
 mod schema_file_format;
 pub use schema_file_format::*;
 mod str_checks;
-pub use str_checks::{confusable_string_checks, ValidationWarning, ValidationWarningKind};
+pub use str_checks::confusable_string_checks;
 mod type_error;
 pub use type_error::*;
 pub mod human_schema;
@@ -97,16 +97,20 @@ impl Validator {
         policies: &'a PolicySet,
         mode: ValidationMode,
     ) -> ValidationResult<'a> {
-        let template_and_static_policy_errs = policies
+        let validate_policy_results: (Vec<_>, Vec<_>) = policies
             .all_templates()
-            .flat_map(|p| self.validate_policy(p, mode));
+            .map(|p| self.validate_policy(p, mode))
+            .unzip();
+        let template_and_static_policy_errs = validate_policy_results.0.into_iter().flatten();
+        let template_and_static_policy_warnings = validate_policy_results.1.into_iter().flatten();
         let link_errs = policies
             .policies()
             .filter_map(|p| self.validate_slots(p, mode))
             .flatten();
         ValidationResult::new(
             template_and_static_policy_errs.chain(link_errs),
-            confusable_string_checks(policies.all_templates()),
+            template_and_static_policy_warnings
+                .chain(confusable_string_checks(policies.all_templates())),
         )
     }
 
@@ -117,8 +121,11 @@ impl Validator {
         &'a self,
         p: &'a Template,
         mode: ValidationMode,
-    ) -> impl Iterator<Item = ValidationError> + 'a {
-        if mode.is_partial() {
+    ) -> (
+        impl Iterator<Item = ValidationError<'a>>,
+        impl Iterator<Item = ValidationWarning<'a>>,
+    ) {
+        let validation_errors = if mode.is_partial() {
             // We skip `validate_entity_types`, `validate_action_ids`, and
             // `validate_action_application` passes for partial schema
             // validation because there may be arbitrary extra entity types and
@@ -141,8 +148,9 @@ impl Validator {
             )
         }
         .into_iter()
-        .flatten()
-        .chain(self.typecheck_policy(p, mode))
+        .flatten();
+        let (type_errors, warnings) = self.typecheck_policy(p, mode);
+        (validation_errors.chain(type_errors), warnings)
     }
 
     /// Run relevant validations against a single template-linked policy,
@@ -185,14 +193,27 @@ impl Validator {
         &'a self,
         t: &'a Template,
         mode: ValidationMode,
-    ) -> impl Iterator<Item = ValidationError> + 'a {
+    ) -> (
+        impl Iterator<Item = ValidationError<'a>>,
+        impl Iterator<Item = ValidationWarning<'a>>,
+    ) {
         let typecheck = Typechecker::new(&self.schema, mode);
         let mut type_errors = HashSet::new();
-        typecheck.typecheck_policy(t, &mut type_errors);
-        type_errors.into_iter().map(|type_error| {
-            let (kind, location) = type_error.kind_and_location();
-            ValidationError::with_policy_id(t.id(), location, ValidationErrorKind::type_error(kind))
-        })
+        let mut warnings = HashSet::new();
+        typecheck.typecheck_policy(t, &mut type_errors, &mut warnings);
+        (
+            type_errors.into_iter().map(|type_error| {
+                let (kind, location) = type_error.kind_and_location();
+                ValidationError::with_policy_id(
+                    t.id(),
+                    location,
+                    ValidationErrorKind::type_error(kind),
+                )
+            }),
+            warnings
+                .into_iter()
+                .map(|kind| ValidationWarning::with_policy_id(t.id(), None, kind)),
+        )
     }
 }
 

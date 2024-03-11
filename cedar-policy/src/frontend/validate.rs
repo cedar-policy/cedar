@@ -293,7 +293,7 @@ mod test {
 "#.to_string();
 
         let result = json_validate(&call_json);
-        assert_validates_with_notes(result, 4);
+        assert_validates_with_notes(result, 2);
     }
 
     #[test]
@@ -397,7 +397,7 @@ mod test {
 "#.to_string();
 
         let result = json_validate(&call_json);
-        assert_validates_with_notes(result, 2);
+        assert_validates_with_notes(result, 1);
     }
 
     #[test]
