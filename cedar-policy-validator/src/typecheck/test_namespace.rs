@@ -36,11 +36,7 @@ use super::test_utils::{
 use crate::{
     type_error::TypeError,
     types::{EntityLUB, Type},
-<<<<<<< HEAD
     AttributeAccess, SchemaError, SchemaFragment, ValidationWarningKind, ValidatorSchema,
-=======
-    AttributeAccess, SchemaError, SchemaFragment, ValidatorSchema,
->>>>>>> main
 };
 
 fn namespaced_entity_type_schema() -> SchemaFragment {
@@ -565,17 +561,10 @@ fn multi_namespace_action_eq() {
         r#"permit(principal, action, resource) when { NS1::Action::"Action" == NS2::Action::"Action" };"#,
     )
     .unwrap();
-<<<<<<< HEAD
     assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
         vec![ValidationWarningKind::ImpossiblePolicy],
-=======
-    assert_policy_typecheck_fails(
-        schema.clone(),
-        policy.clone(),
-        vec![TypeError::impossible_policy(policy.condition())],
->>>>>>> main
     );
 }
 
@@ -632,17 +621,10 @@ fn multi_namespace_action_in() {
         r#"permit(principal, action in NS4::Action::"Group", resource);"#,
     )
     .unwrap();
-<<<<<<< HEAD
     assert_policy_typecheck_warns(
         schema.clone(),
         policy.clone(),
         vec![ValidationWarningKind::ImpossiblePolicy],
-=======
-    assert_policy_typecheck_fails(
-        schema.clone(),
-        policy.clone(),
-        vec![TypeError::impossible_policy(policy.condition())],
->>>>>>> main
     );
 }
 
