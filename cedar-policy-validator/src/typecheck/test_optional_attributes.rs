@@ -778,8 +778,8 @@ fn action_attrs_failing() {
         )],
     );
 
-    // Doesn't fail due to imprecision in ActionEntity LUB computation requiring `may_have_attr` to return true for ActionEntity types
-
+    // No error is returned, but the typechecker identifies that `action has ""`
+    // is always false.
     let failing_policy = parse_policy(
         Some("0".to_string()),
         r#"permit(principal, action == Action::"view", resource) when { action has "" };"#,
@@ -791,6 +791,8 @@ fn action_attrs_failing() {
         vec![ValidationWarningKind::ImpossiblePolicy],
     );
 
+    // Fails because OtherNamespace::Action::"view" is not defined in the schema.
+    // However, this will be detected by a different pass, so no error is reported.
     let failing_policy = parse_policy(
         Some("0".to_string()),
         r#"
@@ -805,5 +807,5 @@ fn action_attrs_failing() {
         "#,
     )
     .expect("Policy should parse.");
-    assert_policy_typecheck_fails(schema, failing_policy, vec![]); //fails because OtherNamespace::Action::"view" doesn't have defined attributes
+    assert_policy_typecheck_fails(schema, failing_policy, vec![]);
 }

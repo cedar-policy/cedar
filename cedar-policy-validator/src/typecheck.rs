@@ -261,14 +261,15 @@ impl<'a> Typechecker<'a> {
         }
     }
 
-    /// The main entry point for typechecking policies. This method takes a
-    /// policy and a mutable `Vec` used to output type errors. Typechecking
-    /// ensures that the policy expression has type boolean. If typechecking
-    /// succeeds, then the method will return true, and no items will be
-    /// added to the output list. Otherwise, the function returns false and the
-    /// input `type_errors` list is populated with any errors encountered
-    /// while typechecking. In addition, warnings may be added to the `warnings`
-    /// list, although these will oot impact the boolean return value.
+    /// The main entry point for typechecking policies. Checks that the policy
+    /// expression has type boolean. If typechecking succeeds, then the method
+    /// will return true, and no items will be added to the output list.
+    /// Otherwise, the function returns false and the `type_errors` list is
+    /// populated with any errors encountered while typechecking. Note that it
+    /// is possible for _no_ errors to be added in this case because the
+    /// relevant error is expected to be added by a different pass. Finally,
+    /// warnings may be added to the `warnings` list, although these will not
+    /// impact the boolean return value.
     pub fn typecheck_policy(
         &self,
         t: &Template,

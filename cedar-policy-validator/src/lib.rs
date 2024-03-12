@@ -91,7 +91,7 @@ impl Validator {
     }
 
     /// Validate all templates, links, and static policies in a policy set.
-    /// Return an iterator of policy notes associated with each policy id.
+    /// Return a `ValidationResult`.
     pub fn validate<'a>(
         &'a self,
         policies: &'a PolicySet,
@@ -116,7 +116,7 @@ impl Validator {
 
     /// Run all validations against a single static policy or template (note
     /// that Core `Template` includes static policies as well), gathering all
-    /// validation notes together in the returned iterator.
+    /// validation errors and warnings in the returned iterators.
     fn validate_policy<'a>(
         &'a self,
         p: &'a Template,
@@ -154,7 +154,7 @@ impl Validator {
     }
 
     /// Run relevant validations against a single template-linked policy,
-    /// gathering all validation notes together in the returned iterator.
+    /// gathering all validation errors together in the returned iterator.
     fn validate_slots<'a>(
         &'a self,
         p: &'a Policy,
