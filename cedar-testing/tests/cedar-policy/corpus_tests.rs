@@ -16,8 +16,8 @@
 
 //! Integration tests auto-generated using the differential tester.
 
-use crate::integration_testing::perform_integration_test_from_json;
-use crate::integration_testing::resolve_integration_test_path;
+use cedar_testing::integration_testing::perform_integration_test_from_json;
+use cedar_testing::integration_testing::resolve_integration_test_path;
 use std::path::Path;
 
 /// Path of the folder containing the corpus tests

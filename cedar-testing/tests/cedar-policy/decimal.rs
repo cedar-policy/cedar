@@ -16,7 +16,7 @@
 
 //! Integration tests targeting the decimal extension
 
-use crate::integration_testing::perform_integration_test_from_json;
+use cedar_testing::integration_testing::perform_integration_test_from_json;
 use std::path::Path;
 
 /// Path of the folder containing the JSON tests
