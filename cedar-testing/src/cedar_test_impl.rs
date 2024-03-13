@@ -123,33 +123,34 @@ pub trait CedarTestImplementation {
     fn validation_comparison_mode(&self) -> ValidationComparisonMode;
 }
 
-/// Specifies how authorization errors coming from this `CedarTestImplementation`
+/// Specifies how authorization errors coming from this [`CedarTestImplementation`]
 ///  should be compared against errors coming from another implementation.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ErrorComparisonMode {
-    /// Don't compare errors at all.
+    /// Don't compare errors at all. The [`CedarTestImplementation`] will be
+    /// expected to never report errors.
     Ignore,
-    /// The `CedarTestImplementation` is expected to produce "error messages"
+    /// The [`CedarTestImplementation`] is expected to produce "error messages"
     /// that are actually just the id of the erroring policy. This will used to
-    /// ensure that different `CedarTestImplementation`s agree on which policies
-    /// produce errors.
+    /// ensure that different implementations agree on which policies produce
+    /// errors.
     PolicyIds,
-    /// The `CedarTestImplementation` is expected to produce error messages that
+    /// The [`CedarTestImplementation`] is expected to produce error messages that
     /// exactly match the Rust implementation's error messages' `Display` text.
     Full,
 }
 
-/// Specifies how validation results from this `CedarTestImplementation` should
+/// Specifies how validation results from this [`CedarTestImplementation`] should
 /// compared against validation results from another implementation.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ValidationComparisonMode {
-    /// When comparing this `CedarTestImplementation` against another
+    /// When comparing this [`CedarTestImplementation`] against another
     /// implementation, `validate` should return a `validation_passed` result
     /// for any input that the other implementation says is valid. This allows
     /// for flexibility in cases where the other implementation (incorrectly)
     /// says the input is invalid due to weaker typing precision.
     AgreeOnValid,
-    /// When comparing this `CedarTestImplementation` against another
+    /// When comparing this [`CedarTestImplementation`] against another
     /// implementation, the valid / not valid decision should agree for all
     /// inputs, although the exact validation errors may differ.
     AgreeOnAll,

@@ -312,17 +312,16 @@ pub fn perform_integration_test_from_json_custom(
             "Unexpected validation errors in {test_name}: {:?}",
             validation_result.errors
         );
-    }
-    if !test.should_validate
-        && matches!(
-            test_impl.validation_comparison_mode(),
-            ValidationComparisonMode::AgreeOnAll
-        )
-    {
-        assert!(
-            !validation_result.validation_passed(),
-            "Expected that validation would fail in {test_name}, but it did not.",
-        );
+    } else {
+        match test_impl.validation_comparison_mode() {
+            ValidationComparisonMode::AgreeOnAll => {
+                assert!(
+                    !validation_result.validation_passed(),
+                    "Expected that validation would fail in {test_name}, but it did not.",
+                );
+            }
+            ValidationComparisonMode::AgreeOnValid => {} // ignore
+        }
     }
 
     for json_request in test.requests {

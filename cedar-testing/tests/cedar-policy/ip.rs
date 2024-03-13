@@ -25,19 +25,16 @@ fn folder() -> &'static Path {
 }
 
 #[test]
-#[cfg(feature = "ipaddr")]
 fn ip_1() {
     perform_integration_test_from_json(folder().join("1.json"));
 }
 
 #[test]
-#[cfg(feature = "ipaddr")]
 fn ip_2() {
     perform_integration_test_from_json(folder().join("2.json"));
 }
 
 #[test]
-#[cfg(feature = "ipaddr")]
 fn ip_3() {
     perform_integration_test_from_json(folder().join("3.json"));
 }

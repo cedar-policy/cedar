@@ -20,10 +20,17 @@
 #![allow(clippy::expect_used)]
 // PANIC SAFETY tests
 #![allow(clippy::panic)]
+
 mod corpus_tests;
+
+#[cfg(feature = "decimal")]
 mod decimal;
+
 mod example_use_cases;
+
+#[cfg(feature = "ipaddr")]
 mod ip;
+
 mod multi;
 
 use cedar_policy::Decision;
