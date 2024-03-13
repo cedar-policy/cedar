@@ -16,6 +16,8 @@
 
 //! Helper code to run Cedar integration tests through the CLI
 
+#![cfg(feature = "integration-testing")]
+
 // PANIC SAFETY tests
 #![allow(clippy::expect_used)]
 // PANIC SAFETY tests
