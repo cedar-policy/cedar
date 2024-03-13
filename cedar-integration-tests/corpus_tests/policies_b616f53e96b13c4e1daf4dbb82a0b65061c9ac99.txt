@@ -1,7 +1,0 @@
-permit(
-  principal,
-  action in [Action::"action"],
-  resource == a::""
-) when {
-  true && 7668159475125730666
-};

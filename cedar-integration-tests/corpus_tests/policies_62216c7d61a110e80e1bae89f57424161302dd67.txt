@@ -1,7 +1,0 @@
-permit(
-  principal in a::"\u{16}",
-  action,
-  resource
-) when {
-  true && (!((!principal) == (!false)))
-};

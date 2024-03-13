@@ -1,7 +1,0 @@
-forbid(
-  principal in a::"q",
-  action,
-  resource
-) when {
-  true
-};

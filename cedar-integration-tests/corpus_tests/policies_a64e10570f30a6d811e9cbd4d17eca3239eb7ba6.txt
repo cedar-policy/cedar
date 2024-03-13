@@ -1,7 +1,0 @@
-permit(
-  principal,
-  action in [C6w::r::Action::"action"],
-  resource
-) when {
-  true
-};

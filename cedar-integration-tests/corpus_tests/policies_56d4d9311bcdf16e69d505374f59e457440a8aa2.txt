@@ -1,7 +1,0 @@
-permit(
-  principal in a::"",
-  action in [Action::""],
-  resource
-) when {
-  (true && (A0000::""[""])) && principal
-};

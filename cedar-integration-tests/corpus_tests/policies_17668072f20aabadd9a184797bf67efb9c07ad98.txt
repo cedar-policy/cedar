@@ -1,7 +1,0 @@
-permit(
-  principal in a::"",
-  action in [Action::"action",Action::"action",Action::"action"],
-  resource in a::""
-) when {
-  ((true && ((a::"".contains(principal)) == principal)) && principal) && principal
-};

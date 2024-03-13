@@ -1,8 +1,0 @@
-@G677A6C6("\u{6}\u{6}\u{6}\u{6}\u{6}")
-permit(
-  principal,
-  action,
-  resource
-) when {
-  true
-};
