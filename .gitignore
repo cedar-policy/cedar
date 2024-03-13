@@ -18,4 +18,4 @@ target
 Cargo.lock
 
 # Ignore the intergation tests, if cloned locally
-cedar-intergation-tests
+cedar-integration-tests/

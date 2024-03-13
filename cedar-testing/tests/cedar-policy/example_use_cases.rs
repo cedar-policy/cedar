@@ -19,7 +19,7 @@ use std::path::Path;
 
 /// Path of the folder containing the JSON tests
 fn folder() -> &'static Path {
-    Path::new("tests/example_use_cases_doc")
+    Path::new("tests/example_use_cases")
 }
 
 #[test]
