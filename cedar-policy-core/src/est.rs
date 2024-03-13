@@ -2684,6 +2684,84 @@ mod test {
     }
 
     #[test]
+    fn negative_numbers() {
+        let policy = r#"
+        permit(principal, action, resource)
+        when { -1 };
+        "#;
+        let cst = parser::text_to_cst::parse_policy(policy)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let expected_json = json!(
+        {
+            "effect": "permit",
+            "principal": {
+                "op": "All",
+            },
+            "action": {
+                "op": "All",
+            },
+            "resource": {
+                "op": "All",
+            },
+            "conditions": [
+                {
+                    "kind": "when",
+                    "body": {
+                        "Value": -1
+                    }
+                }]});
+        assert_eq!(
+            serde_json::to_value(&est).unwrap(),
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&est).unwrap()
+        );
+        let policy = r#"
+        permit(principal, action, resource)
+        when { -(1) };
+        "#;
+        let cst = parser::text_to_cst::parse_policy(policy)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let expected_json = json!(
+        {
+            "effect": "permit",
+            "principal": {
+                "op": "All",
+            },
+            "action": {
+                "op": "All",
+            },
+            "resource": {
+                "op": "All",
+            },
+            "conditions": [
+                {
+                    "kind": "when",
+                    "body": {
+                      "neg": {
+                        "arg": {
+                          "Value": 1
+                        }
+                      }
+                    }
+                  }]});
+        assert_eq!(
+            serde_json::to_value(&est).unwrap(),
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&est).unwrap()
+        );
+    }
+
+    #[test]
     fn string_escapes() {
         let est = parse_policy_or_template_to_est(
             r#"permit(principal, action, resource) when { "\n" };"#,
