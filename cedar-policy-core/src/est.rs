@@ -2227,6 +2227,200 @@ mod test {
     }
 
     #[test]
+    fn like_special_patterns() {
+        let policy = r#"
+        permit(principal, action, resource)
+        when {
+            
+            "" like "ḛ̶͑͝x̶͔͛a̵̰̯͛m̴͉̋́p̷̠͂l̵͇̍̔ȩ̶̣͝"
+        };
+    "#;
+        let cst = parser::text_to_cst::parse_policy(policy)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let expected_json = json!(
+        {
+            "effect": "permit",
+            "principal": {
+              "op": "All"
+            },
+            "action": {
+              "op": "All"
+            },
+            "resource": {
+              "op": "All"
+            },
+            "conditions": [
+              {
+                "kind": "when",
+                "body": {
+                  "like": {
+                    "left": {
+                      "Value": ""
+                    },
+                    "pattern": [
+                      {
+                        "Literal": "e"
+                      },
+                      {
+                        "Literal": "̶"
+                      },
+                      {
+                        "Literal": "͑"
+                      },
+                      {
+                        "Literal": "͝"
+                      },
+                      {
+                        "Literal": "̰"
+                      },
+                      {
+                        "Literal": "x"
+                      },
+                      {
+                        "Literal": "̶"
+                      },
+                      {
+                        "Literal": "͛"
+                      },
+                      {
+                        "Literal": "͔"
+                      },
+                      {
+                        "Literal": "a"
+                      },
+                      {
+                        "Literal": "̵"
+                      },
+                      {
+                        "Literal": "͛"
+                      },
+                      {
+                        "Literal": "̰"
+                      },
+                      {
+                        "Literal": "̯"
+                      },
+                      {
+                        "Literal": "m"
+                      },
+                      {
+                        "Literal": "̴"
+                      },
+                      {
+                        "Literal": "̋"
+                      },
+                      {
+                        "Literal": "́"
+                      },
+                      {
+                        "Literal": "͉"
+                      },
+                      {
+                        "Literal": "p"
+                      },
+                      {
+                        "Literal": "̷"
+                      },
+                      {
+                        "Literal": "͂"
+                      },
+                      {
+                        "Literal": "̠"
+                      },
+                      {
+                        "Literal": "l"
+                      },
+                      {
+                        "Literal": "̵"
+                      },
+                      {
+                        "Literal": "̍"
+                      },
+                      {
+                        "Literal": "̔"
+                      },
+                      {
+                        "Literal": "͇"
+                      },
+                      {
+                        "Literal": "e"
+                      },
+                      {
+                        "Literal": "̶"
+                      },
+                      {
+                        "Literal": "͝"
+                      },
+                      {
+                        "Literal": "̧"
+                      },
+                      {
+                        "Literal": "̣"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          });
+        assert_eq!(
+            serde_json::to_value(&est).unwrap(),
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&est).unwrap()
+        );
+        let old_est = est.clone();
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
+        assert_eq!(&old_est, &est);
+
+        assert_eq!(ast_roundtrip(est.clone()), est);
+        assert_eq!(circular_roundtrip(est.clone()), est);
+
+        let alternative_json = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                  "op": "All"
+                },
+                "action": {
+                  "op": "All"
+                },
+                "resource": {
+                  "op": "All"
+                },
+                "conditions": [
+                  {
+                    "kind": "when",
+                    "body": {
+                      "like": {
+                        "left": {
+                          "Value": ""
+                        },
+                        "pattern": [
+                          {
+                            "Literal": "ḛ̶͑͝x̶͔͛a̵̰̯͛m̴͉̋́p̷̠͂l̵͇̍̔ȩ̶̣͝"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+        );
+        let est1: Policy = serde_json::from_value(expected_json).unwrap();
+        let est2: Policy = serde_json::from_value(alternative_json).unwrap();
+        let ast1 = est1.try_into_ast_policy(None).unwrap();
+        let ast2 = est2.try_into_ast_policy(None).unwrap();
+        assert_eq!(ast1, ast2);
+    }
+
+    #[test]
     fn has_like_and_if() {
         let policy = r#"
             permit(principal, action, resource)
