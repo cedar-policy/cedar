@@ -292,7 +292,10 @@ struct AuthorizationCall {
     #[cfg_attr(feature = "wasm", tsify(type = "string|{type: string, id: string}"))]
     resource: Option<JsonValueWithNoDuplicateKeys>,
     #[serde_as(as = "MapPreventDuplicates<_, _>")]
-    #[cfg_attr(feature = "wasm", tsify(optional, type = "Record<string, any>"))]
+    #[cfg_attr(
+        feature = "wasm",
+        tsify(optional, type = "Record<string, CedarValueJson>")
+    )]
     context: HashMap<String, JsonValueWithNoDuplicateKeys>,
     /// Optional schema in JSON format.
     /// If present, this will inform the parsing: for instance, it will allow
