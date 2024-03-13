@@ -146,7 +146,7 @@ AppDecls: Node<NonEmpty<Node<AppDecl>>> = {
 // SetType := 'Set' '<' Type '>'
 // RecType := '{' [AttrDecls] '}'
 // Type := PRIMTYPE | Path | SetType | RecType
-Type: Node<SType> = {
+pub Type: Node<SType> = {
     <p:Path>
         => { let loc = p.loc().clone(); Node::with_source_loc(SType::Ident(p), loc) },
     <l:@L> SET "<" <t:Type> ">" <r:@R>
@@ -223,6 +223,7 @@ Name: Node<SmolStr> = {
 
 // QualName      := Name | Path '::' STR
 QualName : Node<QualName> = {
+    <l:@L> <p : PathInline> "::" <s:STR> <r:@R> => Node::with_source_loc(QualName::qualified(p, s.node), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <i : Name> <r:@R> => Node::with_source_loc(QualName::unqualified(i.node), Loc::new(l..r, Arc::clone(src))),
 }
 

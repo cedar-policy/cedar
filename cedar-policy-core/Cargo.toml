@@ -25,7 +25,7 @@ smol_str = { version = "0.2", features = ["serde"] }
 stacker = "0.1.15"
 arbitrary = { version = "1", features = ["derive"], optional = true }
 miette = { version = "7.1.0", features = ["serde"] }
-nonempty = "0.9.0"
+nonempty = "0.10.0"
 
 # decimal extension requires regex
 regex = { version = "1.8", features = ["unicode"], optional = true }

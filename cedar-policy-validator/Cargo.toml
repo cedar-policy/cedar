@@ -24,7 +24,12 @@ stacker = "0.1.15"
 arbitrary = { version = "1", features = ["derive"], optional = true }
 lalrpop-util = { version = "0.20.0", features = ["lexer", "unicode"] }
 lazy_static = "1.4.0"
-nonempty = "0.9.0"
+nonempty = "0.10.0"
+
+# wasm dependencies
+serde-wasm-bindgen = { version = "0.6", optional = true }
+tsify = { version = "0.4.5", optional = true }
+wasm-bindgen = { version = "0.2.82", optional = true }
 
 [features]
 # by default, enable all Cedar extensions
@@ -38,6 +43,7 @@ arbitrary = ["dep:arbitrary"]
 
 # Experimental features.
 partial-validate = []
+wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
 [dev-dependencies]
 cool_asserts = "2.0"

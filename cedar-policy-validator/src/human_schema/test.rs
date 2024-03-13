@@ -13,9 +13,12 @@ mod demo_tests {
 
     use crate::{
         human_schema::{self, ast::PR, err::ToJsonSchemaError},
-        ActionType, ApplySpec, AttributesOrContext, EntityType, NamespaceDefinition,
-        SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
+        ActionType, ApplySpec, AttributesOrContext, EntityType, HumanSchemaError,
+        NamespaceDefinition, SchemaFragment, SchemaTypeVariant, TypeOfAttribute,
     };
+
+    use itertools::Itertools;
+    use miette::Diagnostic;
 
     #[test]
     fn no_applies_to() {
@@ -309,7 +312,8 @@ mod demo_tests {
         let namespace = NamespaceDefinition::new(empty(), once(("foo".to_smolstr(), action)));
         let fragment = SchemaFragment(HashMap::from([("bar".to_smolstr(), namespace)]));
         let as_src = fragment.as_natural_schema().unwrap();
-        let expected = r#"action "foo" ;"#;
+        let expected = r#"action "foo" appliesTo {  context: {}
+};"#;
         assert!(as_src.contains(expected), "src was:\n`{as_src}`");
     }
 
@@ -340,6 +344,48 @@ mod demo_tests {
         let fragment = SchemaFragment(HashMap::from([("".to_smolstr(), namespace)]));
         let src = fragment.as_natural_schema().unwrap();
         assert!(src.contains(r#"action "j" ;"#), "schema was: `{src}`")
+    }
+
+    #[test]
+    fn fully_qualified_actions() {
+        let (_, _) = SchemaFragment::from_str_natural(
+            r#"namespace NS1 {entity PrincipalEntity  = {  };
+        entity SystemEntity1  = {  };
+        entity SystemEntity2 in [SystemEntity1] = {  };
+        action "Group1" ;
+        }namespace NS2 {entity SystemEntity1 in [NS1::SystemEntity2] = {  };
+        action "Group1" in [NS1::Action::"Group1"];
+        action "Action1" in [Action::"Group1"]appliesTo {  principal: [NS1::PrincipalEntity], 
+          resource: [NS2::SystemEntity1], 
+          context: {  }
+        };
+        }
+        "#,
+        )
+        .expect("schema should parse");
+    }
+
+    #[test]
+    fn action_eid_invalid_escape() {
+        match SchemaFragment::from_str_natural(
+            r#"namespace NS1 {entity PrincipalEntity  = {  };
+        entity SystemEntity1  = {  };
+        entity SystemEntity2 in [SystemEntity1] = {  };
+        action "Group1" ;
+        }namespace NS2 {entity SystemEntity1 in [NS1::SystemEntity2] = {  };
+        action "Group1" in [NS1::Action::"Group1"];
+        action "Action1" in [Action::"\6"]appliesTo {  principal: [NS1::PrincipalEntity], 
+          resource: [NS2::SystemEntity1], 
+          context: {  }
+        };
+        }
+        "#,
+        ) {
+            Ok(_) => panic!("this is not a valid schema"),
+            Err(err) => {
+                assert_matches!(err, HumanSchemaError::Parsing(human_schema::parser::HumanSyntaxParseErrors::NaturalSyntaxError(errs)) => assert!(errs.to_smolstr().contains("Invalid escape codes")))
+            }
+        }
     }
 
     #[test]
@@ -712,6 +758,34 @@ mod demo_tests {
             }
             _ => panic!("Wrong type for shape"),
         }
+    }
+
+    #[test]
+    fn expected_tokens() {
+        #[track_caller]
+        fn assert_labeled_span(src: &str, label: impl Into<String>) {
+            assert_matches!(SchemaFragment::from_str_natural(src).map(|(s, _)| s), Err(e) => {
+                let actual_label = e.labels().and_then(|l| {
+                    l.exactly_one()
+                        .ok()
+                        .expect("Assumed that there would be exactly one label if labels are present")
+                        .label()
+                        .map(|l| l.to_string())
+                });
+                assert_eq!(Some(label.into()), actual_label, "Did not see expected labeled span.");
+            });
+        }
+
+        assert_labeled_span("namespace", "expected identifier");
+        assert_labeled_span("type", "expected identifier");
+        assert_labeled_span("entity", "expected identifier");
+        assert_labeled_span("action", "expected identifier or string literal");
+        assert_labeled_span("type t =", "expected `{`, identifier, or `Set`");
+        assert_labeled_span(
+            "entity User {",
+            "expected `}`, identifier, or string literal",
+        );
+        assert_labeled_span("entity User { name:", "expected `{`, identifier, or `Set`");
     }
 }
 

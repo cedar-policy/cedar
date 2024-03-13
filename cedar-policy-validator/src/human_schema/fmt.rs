@@ -153,6 +153,12 @@ impl Display for ActionType {
                     write!(f, "\n}}")?;
                 }
             }
+        } else {
+            // No `appliesTo` key: both principal and resource must be unspecified entities
+            write!(f, "appliesTo {{")?;
+            // context is an empty record
+            write!(f, "  context: {{}}")?;
+            write!(f, "\n}}")?;
         }
         Ok(())
     }

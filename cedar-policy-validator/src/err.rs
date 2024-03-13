@@ -35,6 +35,7 @@ pub enum HumanSchemaError {
     #[error("{0}")]
     IO(#[from] std::io::Error),
     #[error("{0}")]
+    #[diagnostic(transparent)]
     Parsing(#[from] HumanSyntaxParseErrors),
 }
 

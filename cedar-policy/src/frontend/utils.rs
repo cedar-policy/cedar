@@ -18,11 +18,16 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[cfg(feature = "wasm")]
+extern crate tsify;
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 #[serde(
     expecting = "policies as a concatenated string or multiple policies as a hashmap where the policy Id is the key with no duplicate IDs"
 )]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 /// Struct defining the two possible ways to pass a set of policies to `json_is_authorized` and `json_validate`
 pub enum PolicySpecification {
     /// provides multiple policies as a concatenated string
@@ -34,6 +39,8 @@ pub enum PolicySpecification {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "success")]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 /// Result of a call to a JSON interface
 pub enum InterfaceResult {
     /// The call succeeded

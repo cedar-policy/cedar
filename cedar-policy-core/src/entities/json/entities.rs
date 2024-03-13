@@ -34,9 +34,14 @@ use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+#[cfg(feature = "wasm")]
+extern crate tsify;
+
 /// Serde JSON format for a single entity
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct EntityJson {
     /// UID of the entity, specified in any form accepted by `EntityUidJson`
     uid: EntityUidJson,
@@ -47,6 +52,7 @@ pub struct EntityJson {
     /// any duplicate keys in any records that may occur in an attribute value
     /// (even nested).)
     #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
+    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, CedarValueJson>"))]
     // the annotation covers duplicates in this `HashMap` itself, while the `JsonValueWithNoDuplicateKeys` covers duplicates in any records contained in attribute values (including recursively)
     attrs: HashMap<SmolStr, JsonValueWithNoDuplicateKeys>,
     /// Parents of the entity, specified in any form accepted by `EntityUidJson`

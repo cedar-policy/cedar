@@ -23,7 +23,8 @@ use crate::entities::{
 use crate::extensions::Extensions;
 use crate::parser::cst::{self, Ident};
 use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
-use crate::parser::{unescape, Loc, Node};
+use crate::parser::unescape::to_unescaped_string;
+use crate::parser::{Loc, Node};
 use crate::{ast, FromNormalizedStr};
 use either::Either;
 use itertools::Itertools;
@@ -36,6 +37,8 @@ use std::sync::Arc;
 /// Serde JSON structure for a Cedar expression in the EST format
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum Expr {
     /// Any Cedar expression other than an extension function call.
     /// We try to match this first, see docs on #[serde(untagged)].
@@ -46,11 +49,54 @@ pub enum Expr {
     ExtFuncCall(ExtFuncCall),
 }
 
+/// Represent an element of a pattern literal
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum PatternElem {
+    /// The wildcard asterisk
+    Wildcard,
+    /// A string without any wildcards
+    Literal(SmolStr),
+}
+
+impl From<Vec<PatternElem>> for crate::ast::Pattern {
+    fn from(value: Vec<PatternElem>) -> Self {
+        let mut elems = Vec::new();
+        for elem in value {
+            match elem {
+                PatternElem::Wildcard => {
+                    elems.push(crate::ast::PatternElem::Wildcard);
+                }
+                PatternElem::Literal(s) => {
+                    elems.extend(s.chars().map(|c| crate::ast::PatternElem::Char(c)));
+                }
+            }
+        }
+        Self::new(elems)
+    }
+}
+
+impl From<crate::ast::PatternElem> for PatternElem {
+    fn from(value: crate::ast::PatternElem) -> Self {
+        match value {
+            crate::ast::PatternElem::Wildcard => Self::Wildcard,
+            crate::ast::PatternElem::Char(c) => Self::Literal(c.to_smolstr()),
+        }
+    }
+}
+
+impl From<crate::ast::Pattern> for Vec<PatternElem> {
+    fn from(value: crate::ast::Pattern) -> Self {
+        value.iter().map(|elem| elem.clone().into()).collect()
+    }
+}
+
 /// Serde JSON structure for [any Cedar expression other than an extension
 /// function call] in the EST format
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum ExprNoExt {
     /// Literal value (including anything that's legal to express in the
     /// attribute-value JSON format)
@@ -58,10 +104,11 @@ pub enum ExprNoExt {
     /// Var
     Var(ast::Var),
     /// Template slot
-    Slot(ast::SlotId),
+    Slot(#[cfg_attr(feature = "wasm", tsify(type = "string"))] ast::SlotId),
     /// Unknown (for partial evaluation)
     Unknown {
         /// Name of the unknown
+        #[cfg_attr(feature = "wasm", tsify(type = "string"))]
         name: SmolStr,
     },
     /// `!`
@@ -218,7 +265,7 @@ pub enum ExprNoExt {
         /// Left-hand argument
         left: Arc<Expr>,
         /// Pattern
-        pattern: SmolStr,
+        pattern: Vec<PatternElem>,
     },
     /// `<entity> is <entity_type> in <entity_or_entity_set> `
     #[serde(rename = "is")]
@@ -252,12 +299,18 @@ pub enum ExprNoExt {
     /// Record literal, whose elements may be arbitrary expressions
     /// (which is why we need this case specifically and can't just
     /// use Expr::Value)
-    Record(#[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")] HashMap<SmolStr, Expr>),
+    Record(
+        #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
+        #[cfg_attr(feature = "wasm", tsify(type = "Record<string, Expr>"))]
+        HashMap<SmolStr, Expr>,
+    ),
 }
 
 /// Serde JSON structure for an extension function call in the EST format
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ExtFuncCall {
     /// maps the name of the function to a JSON list/array of the arguments.
     /// Note that for method calls, the method receiver is the first argument.
@@ -269,6 +322,7 @@ pub struct ExtFuncCall {
     /// we want.
     #[serde(flatten)]
     #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
+    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, Array<Expr>>"))]
     call: HashMap<SmolStr, Vec<Expr>>,
 }
 
@@ -441,10 +495,10 @@ impl Expr {
     }
 
     /// `left like pattern`
-    pub fn like(left: Expr, pattern: SmolStr) -> Self {
+    pub fn like(left: Expr, pattern: impl IntoIterator<Item = PatternElem>) -> Self {
         Expr::ExprNoExt(ExprNoExt::Like {
             left: Arc::new(left),
-            pattern,
+            pattern: pattern.into_iter().collect(),
         })
     }
 
@@ -604,12 +658,10 @@ impl Expr {
             Expr::ExprNoExt(ExprNoExt::HasAttr { left, attr }) => {
                 Ok(ast::Expr::has_attr((*left).clone().try_into_ast(id)?, attr))
             }
-            Expr::ExprNoExt(ExprNoExt::Like { left, pattern }) => {
-                match unescape::to_pattern(&pattern) {
-                    Ok(pattern) => Ok(ast::Expr::like((*left).clone().try_into_ast(id)?, pattern)),
-                    Err(errs) => Err(FromJsonError::UnescapeError(errs)),
-                }
-            }
+            Expr::ExprNoExt(ExprNoExt::Like { left, pattern }) => Ok(ast::Expr::like(
+                (*left).clone().try_into_ast(id)?,
+                crate::ast::Pattern::from(pattern).iter().cloned(),
+            )),
             Expr::ExprNoExt(ExprNoExt::Is {
                 left,
                 entity_type,
@@ -752,7 +804,7 @@ impl From<ast::Expr> for Expr {
             }
             ast::ExprKind::Like { expr, pattern } => Expr::like(
                 Arc::unwrap_or_clone(expr).into(),
-                pattern.to_string().into(),
+                Vec::<PatternElem>::from(pattern),
             ),
             ast::ExprKind::Is { expr, entity_type } => Expr::is_entity_type(
                 Arc::unwrap_or_clone(expr).into(),
@@ -894,13 +946,24 @@ impl TryFrom<&Node<Option<cst::Relation>>> for Expr {
             }
             cst::Relation::Like { target, pattern } => {
                 let target_expr = target.try_into()?;
-                let pat_expr: Expr = pattern.try_into()?;
-                let pat_str = pat_expr.into_string_literal().map_err(|e| {
-                    pattern.to_ast_err(ToASTErrorKind::InvalidPattern(
-                        serde_json::to_string(&e).unwrap_or_else(|_| "<malformed est>".to_string()),
-                    ))
-                })?;
-                Ok(Expr::like(target_expr, pat_str))
+                let mut errs = ParseErrors::new();
+                match pattern
+                    .to_expr_or_special(&mut errs)
+                    .map(|expr| expr.into_pattern(&mut errs))
+                {
+                    Some(Some(pat)) => Ok(Expr::like(
+                        target_expr,
+                        pat.into_iter().map(PatternElem::from),
+                    )),
+                    _ => {
+                        match pattern.ok_or_missing() {
+                            // We got real errors (i.e., non-`MissingNodeData`)
+                            Ok(_) => Err(errs),
+                            // We got `MissingNodeData` and forward it to upstream user
+                            Err(err) => Err(err.into()),
+                        }
+                    }
+                }
             }
             cst::Relation::IsIn {
                 target,
@@ -1048,20 +1111,31 @@ fn interpret_primary(
     match p.ok_or_missing()? {
         cst::Primary::Literal(lit) => Ok(Either::Right(lit.try_into()?)),
         cst::Primary::Ref(node) => match node.ok_or_missing()? {
-            cst::Ref::Uid { path, eid } => {
+            cst::Ref::Uid {
+                path,
+                eid: eid_node,
+            } => {
                 let mut errs = ParseErrors::new();
                 let maybe_name = path.to_name(&mut errs);
-                let maybe_eid = eid.as_valid_string(&mut errs);
+                let maybe_eid = eid_node.as_valid_string(&mut errs);
 
                 match (maybe_name, maybe_eid) {
-                    (Some(name), Some(eid)) => {
-                        Ok(Either::Right(Expr::lit(CedarValueJson::EntityEscape {
+                    (Some(name), Some(eid)) => match to_unescaped_string(eid) {
+                        Ok(eid) => Ok(Either::Right(Expr::lit(CedarValueJson::EntityEscape {
                             __entity: TypeAndId::from(ast::EntityUID::from_components(
                                 name,
-                                ast::Eid::new(eid.clone()),
+                                ast::Eid::new(eid),
                             )),
-                        })))
-                    }
+                        }))),
+                        Err(unescape_errs) => {
+                            errs.extend(unescape_errs.into_iter().map(|err| {
+                                crate::parser::err::ParseError::from(
+                                    eid_node.to_ast_err(ToASTErrorKind::Unescape(err)),
+                                )
+                            }));
+                            Err(errs)
+                        }
+                    },
                     _ => Err(errs),
                 }
             }
@@ -1285,7 +1359,14 @@ impl TryFrom<&Node<Option<cst::Literal>>> for Expr {
                     .map_err(|_| lit.to_ast_err(ToASTErrorKind::IntegerLiteralTooLarge(*n)))?,
             ))),
             cst::Literal::Str(node) => match node.ok_or_missing()? {
-                cst::Str::String(s) => Ok(Expr::lit(CedarValueJson::String(s.clone()))),
+                cst::Str::String(s) => match to_unescaped_string(s) {
+                    Ok(s) => Ok(Expr::lit(CedarValueJson::String(s))),
+                    Err(errs) => Err(ParseErrors(
+                        errs.into_iter()
+                            .map(|err| node.to_ast_err(ToASTErrorKind::Unescape(err)).into())
+                            .collect(),
+                    )),
+                },
                 cst::Str::Invalid(invalid_str) => Err(node
                     .to_ast_err(ToASTErrorKind::InvalidString(invalid_str.to_string()))
                     .into()),
@@ -1534,7 +1615,12 @@ impl std::fmt::Display for ExprNoExt {
                 attr.escape_debug()
             ),
             ExprNoExt::Like { left, pattern } => {
-                write!(f, "{} like \"{}\"", maybe_with_parens(left), pattern) // intentionally not using .escape_debug() for pattern
+                write!(
+                    f,
+                    "{} like \"{}\"",
+                    maybe_with_parens(left),
+                    crate::ast::Pattern::from(pattern.clone())
+                )
             }
             ExprNoExt::Is {
                 left,

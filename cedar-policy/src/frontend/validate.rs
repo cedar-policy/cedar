@@ -25,6 +25,9 @@ use cedar_policy_core::{
 use cedar_policy_validator::Validator;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "wasm")]
+extern crate tsify;
+
 fn validate(call: &ValidateCall) -> Result<ValidateAnswer, String> {
     let mut policy_set = PolicySet::new();
     let mut parse_errors: Vec<String> = vec![];
@@ -99,6 +102,8 @@ pub fn json_validate(input: &str) -> InterfaceResult {
 }
 
 #[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 struct ValidateCall {
     #[serde(default)]
     #[serde(rename = "validationSettings")]
@@ -109,11 +114,15 @@ struct ValidateCall {
 }
 
 #[derive(Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 struct ValidationSettings {
     mode: ValidationMode,
 }
 
 #[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 enum ValidationMode {
     #[serde(rename = "regular")]
     Regular,

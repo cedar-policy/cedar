@@ -19,6 +19,7 @@
 #![cfg(test)]
 // GRCOV_STOP_COVERAGE
 
+use cool_asserts::assert_matches;
 use serde_json::json;
 use std::str::FromStr;
 use std::vec;
@@ -35,7 +36,7 @@ use super::test_utils::{
 use crate::{
     type_error::TypeError,
     types::{EntityLUB, Type},
-    AttributeAccess, SchemaFragment, ValidatorSchema,
+    AttributeAccess, SchemaError, SchemaFragment, ValidatorSchema,
 };
 
 fn namespaced_entity_type_schema() -> SchemaFragment {
@@ -525,4 +526,156 @@ fn namespaced_entity_is_wrong_type_when() {
             None,
         )],
     );
+}
+
+#[test]
+fn multi_namespace_action_eq() {
+    let (schema, _) = SchemaFragment::from_str_natural(
+        r#"
+            action "Action" appliesTo { context: {} };
+            namespace NS1 { action "Action" appliesTo { context: {} }; }
+            namespace NS2 { action "Action" appliesTo { context: {} }; }
+        "#,
+    )
+    .unwrap();
+
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"permit(principal, action == Action::"Action", resource);"#,
+        )
+        .unwrap(),
+    );
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"permit(principal, action == NS1::Action::"Action", resource);"#,
+        )
+        .unwrap(),
+    );
+
+    let policy = parse_policy(
+        None,
+        r#"permit(principal, action, resource) when { NS1::Action::"Action" == NS2::Action::"Action" };"#,
+    )
+    .unwrap();
+    assert_policy_typecheck_fails(
+        schema.clone(),
+        policy.clone(),
+        vec![TypeError::impossible_policy(policy.condition())],
+    );
+}
+
+#[test]
+fn multi_namespace_action_in() {
+    let (schema, _) = SchemaFragment::from_str_natural(
+        r#"
+            namespace NS1 { action "Group"; }
+            namespace NS2 { action "Group" in [NS1::Action::"Group"]; }
+            namespace NS3 {
+                action "Group" in [NS2::Action::"Group"];
+                action "Action" in [Action::"Group"] appliesTo { context: {} };
+            }
+            namespace NS4 { action "Group"; }
+        "#,
+    )
+    .unwrap();
+
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"permit(principal, action in NS1::Action::"Group", resource);"#,
+        )
+        .unwrap(),
+    );
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"permit(principal, action in NS2::Action::"Group", resource);"#,
+        )
+        .unwrap(),
+    );
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"permit(principal, action in NS3::Action::"Group", resource);"#,
+        )
+        .unwrap(),
+    );
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"permit(principal, action in NS3::Action::"Action", resource);"#,
+        )
+        .unwrap(),
+    );
+
+    let policy = parse_policy(
+        None,
+        r#"permit(principal, action in NS4::Action::"Group", resource);"#,
+    )
+    .unwrap();
+    assert_policy_typecheck_fails(
+        schema.clone(),
+        policy.clone(),
+        vec![TypeError::impossible_policy(policy.condition())],
+    );
+}
+
+#[test]
+fn test_cedar_policy_642() {
+    let (schema, _) = SchemaFragment::from_str_natural(
+        r#"
+        namespace NS1 {
+            entity SystemEntity2 in SystemEntity1;
+            entity SystemEntity1, PrincipalEntity;
+            action Group1;
+        }
+        namespace NS2 {
+            entity SystemEntity1 in NS1::SystemEntity2;
+            action "Group1" in NS1::Action::"Group1";
+            action "Action1" in Action::"Group1" appliesTo {
+                principal: [NS1::PrincipalEntity],
+                resource: [NS2::SystemEntity1],
+            };
+        }
+        "#,
+    )
+    .unwrap();
+
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"
+            permit(
+                principal in NS1::PrincipalEntity::"user1",
+                action in NS1::Action::"Group1",
+                resource in NS1::SystemEntity1::"entity1"
+            );"#,
+        )
+        .unwrap(),
+    );
+}
+
+#[test]
+fn multi_namespace_action_group_cycle() {
+    let (schema, _) = SchemaFragment::from_str_natural(
+        r#"
+            namespace A { action "Act" in C::Action::"Act"; }
+            namespace B { action "Act" in A::Action::"Act"; }
+            namespace C { action "Act" in B::Action::"Act"; }
+        "#,
+    )
+    .unwrap();
+    assert_matches!(
+        ValidatorSchema::try_from(schema),
+        Err(SchemaError::CycleInActionHierarchy(_))
+    )
 }

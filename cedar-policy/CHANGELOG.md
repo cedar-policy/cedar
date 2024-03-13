@@ -10,6 +10,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `Expression::new_ip`, `Expression::new_decimal`, `RestrictedExpression::new_ip`, and `RestrictedExpression::new_decimal` (#661, resolving #659)
+- `wasm` Cargo feature for targeting Wasm
+- `Entity::into_inner` (resolving #636)
+
+### Changed
+
+- Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
+- Improved "unexpected token" parse errors when the schema or policy parsers
+  expect an identifier. (#698)
+- Deprecated the integration testing harness code. It will be removed from the
+  `cedar-policy` crate in the next major version.
+- Validation error messages render types in the new, more readable, schema
+  syntax. (#708, resolving #242)
+- Removed unnecessary lifetimes from some validation related structs (#715)
+
+### Fixed
+
+- Validation for the `in` operator to no longer reports an error when comparing actions
+  in different namespaces. (#704, resolving #642)
+- `ValidationResult` methods `validation_errors` and `validation_warnings`, along with
+  `confusable_string_checker`, now return iterators with static lifetimes instead of
+  custom lifetimes, addressing potential unsoundness. (#712)
+
+## [3.1.0] - 2024-03-08
+Cedar Language Version: 3.1.0
+
+### Added
+
+- Implementation of the human-readable schema format proposed in
+  [RFC 24](https://github.com/cedar-policy/rfcs/blob/main/text/0024-schema-syntax.md).
+  New public APIs `SchemaFragment::from_*_natural`,
+  `SchemaFragment::as_natural`, and `Schema::from_*_natural` (#557)
 - `PolicyId::new()` (#587, resolving #551)
 - `EntityId::new()` (#583, resolving #553)
 - `AsRef<str>` implementation for `PolicyId` (#504, resolving #503)
@@ -17,14 +48,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   template-linked policy (#515, resolving #489)
 - `AuthorizationError::id()` to get the id of the policy associated with an
   authorization error (#589)
-- `wasm` Cargo feature for targeting Wasm
 - For the `partial-eval` experimental feature: added
-`Authorizer::evaluate_policies_partial()` (#474)
+  `Authorizer::evaluate_policies_partial()` (#593, resolving #474)
+- For the `partial-eval` experimental feature: added
+  `json_is_authorized_partial()` (#571, resolving #570)
 
 ### Changed
 
-- Changed error message on `SchemaError::UndeclaredCommonTypes` to report
-  fully qualified type names. (#652, resolving #580)
 - Better integration with `miette` for various error types. If you have
   previously been just using the `Display` trait to get the error message from a
   Cedar error type, you may want to consider also examining other data provided
@@ -33,7 +63,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and all associated information in a pretty human-readable format or as JSON.
   For more details, see `miette`'s
   [documentation](https://docs.rs/miette/latest/miette/index.html). (#477)
-- Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
 - Cedar reserved words like `if`, `has`, and `true` are now allowed as policy
   annotation keys. (#634, resolving #623)
 - Add hints suggesting how to fix some type errors. (#513)
@@ -49,13 +78,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   using the wrong call style. (#482)
 - Include source spans on more parse error messages. (#471, resolving #465)
 - Include source spans on more evaluation error messages. (#582)
+- Changed error message on `SchemaError::UndeclaredCommonTypes` to report
+  fully qualified type names. (#652, resolving #580)
 - For the `partial-eval` experimental feature: make the return values of
   `RequestBuilder`'s `principal`, `action`, `resource`, `context` and
   `schema` functions `#[must_use]`. (#502)
 - For the `partial-eval` experimental feature: make `RequestBuilder::schema`
-return a `RequestBuilder<&Schema>` so the `RequestBuilder<&Schema>::build`
-method checks the request against the schema provided and the
-`RequestBuilder<UnsetSchema>::build` method becomes infallible. (#559)
+  return a `RequestBuilder<&Schema>` so the `RequestBuilder<&Schema>::build`
+  method checks the request against the schema provided and the
+  `RequestBuilder<UnsetSchema>::build` method becomes infallible. (#591,
+  resolving #559)
+- For the `permissive-validate` experimental feature: `X in []` is typed `False`
+  for all `X`, including unspecified `X`. (#615)
 
 ### Fixed
 
@@ -64,12 +98,17 @@ method checks the request against the schema provided and the
 - Variables qualified by a namespace with a single element are correctly
   rejected. E.g., `foo::principal` is an error and is not parsed as
   `principal`. Variables qualified by a namespace of any size comprised entirely
-  of Cedar keywords are correctly rejected. E.g., `if::then::else::principal` is an error.
-  (#594 and #596)
+  of Cedar keywords are correctly rejected. E.g., `if::then::else::principal` is
+  an error. (#594 and #597)
 - The entity type tested for by an `is` expression may be an identifier shared
   with a builtin variable. E.g., `... is principal` and `... is action` are now
-  accepted by the Cedar parser. (#558)
-- Policies containing the literal `i64::MIN` can now be properly converted to JSON ESTs (#601, resolving #596)
+  accepted by the Cedar parser. (#595, resolving #558)
+- Policies containing the literal `i64::MIN` can now be properly converted to
+  the JSON policy format. (#601, resolving #596)
+- `Policy::to_json` does not error on policies containing special identifiers
+  such as `principal`, `then`, and `true`. (#628, resolving #604)
+- `Template::from_json` errors when there are slots in template conditions.
+  (#626, resolving #606)
 
 ## [3.0.1] - 2023-12-21
 Cedar Language Version: 3.0.0
@@ -189,6 +228,25 @@ Cedar Language Version: 3.0.0
   To continue using this feature you must enable the `permissive-validate`
   feature flag. (#428)
 
+## [2.4.4] - 2023-03-08
+
+Cedar Language Version: 2.1.3
+
+### Changed
+
+- Calling `add_template` with a `PolicyId` that is an existing link will now error. (#671, backport of #456)
+
+### Fixed
+
+- Updated `PolicySet::link` to not mutate internal state when failing to link a static
+  policy. With this fix it is possible to create a link with a policy id
+  after previously failing to create that link with the same id from a static
+  policy. (#669, backport of #412)
+- Action entities in the store will pass schema-based validation without requiring
+  the transitive closure to be pre-computed. (#688, backport of #581)
+- Policies containing the literal `i64::MIN` can now be properly converted to the JSON policy format. (#672, backport of #601)
+- `Template::from_json` errors when there are slots in template conditions. (#672, backport of #626)
+- `Policy::to_json` does not error on policies containing special identifiers such as `principal`, `then`, and `true`. (#672, backport of #628)
 
 ## [2.4.3] - 2023-12-21
 
@@ -374,9 +432,11 @@ Cedar Language Version: 2.0.0
 Cedar Language Version: 2.0.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.0.1...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.1.0...main
+[3.1.0]: https://github.com/cedar-policy/cedar/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/cedar-policy/cedar/compare/v3.0.0...v3.0.1
-[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.3...v3.0.0
+[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.4...v3.0.0
+[2.4.4]: https://github.com/cedar-policy/cedar/compare/v2.4.3...v2.4.4
 [2.4.3]: https://github.com/cedar-policy/cedar/compare/v2.4.2...v2.4.3
 [2.4.2]: https://github.com/cedar-policy/cedar/compare/v2.4.1...v2.4.2
 [2.4.1]: https://github.com/cedar-policy/cedar/compare/v2.4.0...v2.4.1

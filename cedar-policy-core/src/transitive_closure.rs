@@ -17,7 +17,6 @@
 //! Module containing code to compute the transitive closure of a graph.
 //! This is a generic utility, and not specific to Cedar.
 
-use std::cmp::Eq;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
