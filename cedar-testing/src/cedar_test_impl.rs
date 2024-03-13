@@ -141,7 +141,7 @@ pub enum ErrorComparisonMode {
 }
 
 /// Specifies how validation results from this [`CedarTestImplementation`] should
-/// compared against validation results from another implementation.
+/// be compared against validation results from another implementation.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ValidationComparisonMode {
     /// When comparing this [`CedarTestImplementation`] against another
