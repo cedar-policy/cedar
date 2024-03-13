@@ -50,7 +50,7 @@ use nonempty::NonEmpty;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
-use std::collections::{hash_map, BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::Infallible;
 use std::marker::PhantomData;
 use std::str::FromStr;
@@ -626,16 +626,31 @@ impl Entities {
     }
 }
 
-type ConvertInternToApiEntity = fn(ast::Entity) -> Entity;
+/// `IntoIter` iterator for Entities
+#[derive(Debug)]
+pub struct EntitiesIntoIter {
+    inner: <entities::Entities as IntoIterator>::IntoIter,
+}
+
+impl Iterator for EntitiesIntoIter {
+    type Item = Entity;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(Entity)
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
 
 impl IntoIterator for Entities {
     type Item = Entity;
-
-    type IntoIter =
-        std::iter::Map<hash_map::IntoValues<ast::EntityUID, ast::Entity>, ConvertInternToApiEntity>;
+    type IntoIter = EntitiesIntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter().map(Entity)
+        Self::IntoIter {
+            inner: self.0.into_iter(),
+        }
     }
 }
 
