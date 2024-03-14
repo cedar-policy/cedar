@@ -56,6 +56,27 @@ use std::marker::PhantomData;
 use std::str::FromStr;
 use thiserror::Error;
 
+/// Extended functionality for `Entities` struct
+pub mod entities {
+
+    /// `IntoIter` iterator for `Entities`
+    #[derive(Debug)]
+    pub struct IntoIter {
+        pub(super) inner: <cedar_policy_core::entities::Entities as IntoIterator>::IntoIter,
+    }
+
+    impl Iterator for IntoIter {
+        type Item = super::Entity;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            self.inner.next().map(super::Entity)
+        }
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            self.inner.size_hint()
+        }
+    }
+}
+
 /// Identifier for a Template slot
 #[repr(transparent)]
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, RefCast)]
@@ -626,26 +647,9 @@ impl Entities {
     }
 }
 
-/// `IntoIter` iterator for Entities
-#[derive(Debug)]
-pub struct EntitiesIntoIter {
-    inner: <cedar_policy_core::entities::Entities as IntoIterator>::IntoIter,
-}
-
-impl Iterator for EntitiesIntoIter {
-    type Item = Entity;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(Entity)
-    }
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.inner.size_hint()
-    }
-}
-
 impl IntoIterator for Entities {
     type Item = Entity;
-    type IntoIter = EntitiesIntoIter;
+    type IntoIter = entities::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
         Self::IntoIter {
