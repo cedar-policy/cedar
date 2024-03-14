@@ -28,7 +28,7 @@ use cedar_policy_core::ast::{
 }; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{
-    self, ContextJsonDeserializationError, ContextSchema, Dereference, JsonDeserializationError,
+    ContextJsonDeserializationError, ContextSchema, Dereference, JsonDeserializationError,
     JsonDeserializationErrorContext,
 };
 use cedar_policy_core::est;
@@ -256,9 +256,9 @@ impl std::fmt::Display for Entity {
 /// Uid.
 #[repr(transparent)]
 #[derive(Debug, Clone, Default, PartialEq, Eq, RefCast)]
-pub struct Entities(pub(crate) entities::Entities);
+pub struct Entities(pub(crate) cedar_policy_core::entities::Entities);
 
-pub use entities::EntitiesError;
+pub use cedar_policy_core::entities::EntitiesError;
 
 impl Entities {
     /// Create a fresh `Entities` with no entities
@@ -267,7 +267,7 @@ impl Entities {
     /// let entities = Entities::empty();
     /// ```
     pub fn empty() -> Self {
-        Self(entities::Entities::new())
+        Self(cedar_policy_core::entities::Entities::new())
     }
 
     /// Get the `Entity` with the given Uid, if any
@@ -310,13 +310,13 @@ impl Entities {
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
         schema: Option<&Schema>,
-    ) -> Result<Self, entities::EntitiesError> {
-        entities::Entities::from_entities(
+    ) -> Result<Self, cedar_policy_core::entities::EntitiesError> {
+        cedar_policy_core::entities::Entities::from_entities(
             entities.into_iter().map(|e| e.0),
             schema
                 .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
                 .as_ref(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
             Extensions::all_available(),
         )
         .map(Entities)
@@ -344,7 +344,7 @@ impl Entities {
                 schema
                     .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
                     .as_ref(),
-                entities::TCComputation::ComputeNow,
+                cedar_policy_core::entities::TCComputation::ComputeNow,
                 Extensions::all_available(),
             )?,
         ))
@@ -369,16 +369,16 @@ impl Entities {
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
-        let eparser = entities::EntityJsonParser::new(
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
         );
         let new_entities = eparser.iter_from_json_str(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
             schema.as_ref(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
             Extensions::all_available(),
         )?))
     }
@@ -402,16 +402,16 @@ impl Entities {
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
-        let eparser = entities::EntityJsonParser::new(
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
         );
         let new_entities = eparser.iter_from_json_value(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
             schema.as_ref(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
             Extensions::all_available(),
         )?))
     }
@@ -435,16 +435,16 @@ impl Entities {
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
-        let eparser = entities::EntityJsonParser::new(
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
         );
         let new_entities = eparser.iter_from_json_file(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
             schema.as_ref(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
             Extensions::all_available(),
         )?))
     }
@@ -496,12 +496,12 @@ impl Entities {
     pub fn from_json_str(
         json: &str,
         schema: Option<&Schema>,
-    ) -> Result<Self, entities::EntitiesError> {
+    ) -> Result<Self, cedar_policy_core::entities::EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
-        let eparser = entities::EntityJsonParser::new(
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
         );
         eparser.from_json_str(json).map(Entities)
     }
@@ -548,12 +548,12 @@ impl Entities {
     pub fn from_json_value(
         json: serde_json::Value,
         schema: Option<&Schema>,
-    ) -> Result<Self, entities::EntitiesError> {
+    ) -> Result<Self, cedar_policy_core::entities::EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
-        let eparser = entities::EntityJsonParser::new(
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
         );
         eparser.from_json_value(json).map(Entities)
     }
@@ -578,12 +578,12 @@ impl Entities {
     pub fn from_json_file(
         json: impl std::io::Read,
         schema: Option<&Schema>,
-    ) -> Result<Self, entities::EntitiesError> {
+    ) -> Result<Self, cedar_policy_core::entities::EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
-        let eparser = entities::EntityJsonParser::new(
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
         );
         eparser.from_json_file(json).map(Entities)
     }
@@ -621,7 +621,7 @@ impl Entities {
     pub fn write_to_json(
         &self,
         f: impl std::io::Write,
-    ) -> std::result::Result<(), entities::EntitiesError> {
+    ) -> std::result::Result<(), cedar_policy_core::entities::EntitiesError> {
         self.0.write_to_json(f)
     }
 }
@@ -629,7 +629,7 @@ impl Entities {
 /// `IntoIter` iterator for Entities
 #[derive(Debug)]
 pub struct EntitiesIntoIter {
-    inner: <entities::Entities as IntoIterator>::IntoIter,
+    inner: <cedar_policy_core::entities::Entities as IntoIterator>::IntoIter,
 }
 
 impl Iterator for EntitiesIntoIter {
@@ -2240,9 +2240,9 @@ impl EntityUid {
     /// ```
     #[allow(clippy::result_large_err)]
     pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
-        let parsed: entities::EntityUidJson = serde_json::from_value(json)?;
+        let parsed: cedar_policy_core::entities::EntityUidJson = serde_json::from_value(json)?;
         // INVARIANT: There is no way to write down the unspecified entityuid
-        Ok::<Self, entities::JsonDeserializationError>(Self(
+        Ok::<Self, cedar_policy_core::entities::JsonDeserializationError>(Self(
             parsed.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
         ))
     }
@@ -3432,8 +3432,10 @@ impl LosslessPolicy {
     ) -> Result<Self, est::InstantiationError> {
         match self {
             Self::Est(est) => {
-                let unwrapped_est_vals: HashMap<ast::SlotId, entities::EntityUidJson> =
-                    vals.into_iter().map(|(k, v)| (k, v.into())).collect();
+                let unwrapped_est_vals: HashMap<
+                    ast::SlotId,
+                    cedar_policy_core::entities::EntityUidJson,
+                > = vals.into_iter().map(|(k, v)| (k, v.into())).collect();
                 Ok(Self::Est(est.link(&unwrapped_est_vals)?))
             }
             Self::Text { text, slots } => {
@@ -3992,9 +3994,11 @@ impl Context {
         let schema = schema
             .map(|(s, uid)| Self::get_context_schema(s, uid))
             .transpose()?;
-        let context =
-            entities::ContextJsonParser::new(schema.as_ref(), Extensions::all_available())
-                .from_json_str(json)?;
+        let context = cedar_policy_core::entities::ContextJsonParser::new(
+            schema.as_ref(),
+            Extensions::all_available(),
+        )
+        .from_json_str(json)?;
         Ok(Self(context))
     }
 
@@ -4054,9 +4058,11 @@ impl Context {
         let schema = schema
             .map(|(s, uid)| Self::get_context_schema(s, uid))
             .transpose()?;
-        let context =
-            entities::ContextJsonParser::new(schema.as_ref(), Extensions::all_available())
-                .from_json_value(json)?;
+        let context = cedar_policy_core::entities::ContextJsonParser::new(
+            schema.as_ref(),
+            Extensions::all_available(),
+        )
+        .from_json_value(json)?;
         Ok(Self(context))
     }
 
@@ -4098,9 +4104,11 @@ impl Context {
         let schema = schema
             .map(|(s, uid)| Self::get_context_schema(s, uid))
             .transpose()?;
-        let context =
-            entities::ContextJsonParser::new(schema.as_ref(), Extensions::all_available())
-                .from_json_file(json)?;
+        let context = cedar_policy_core::entities::ContextJsonParser::new(
+            schema.as_ref(),
+            Extensions::all_available(),
+        )
+        .from_json_file(json)?;
         Ok(Self(context))
     }
 
