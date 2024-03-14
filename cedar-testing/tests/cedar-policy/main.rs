@@ -14,27 +14,15 @@
  * limitations under the License.
  */
 
-//! Integration tests targeting the ipaddr extension
+// PANIC SAFETY tests
+#![allow(clippy::expect_used)]
+// PANIC SAFETY tests
+#![allow(clippy::panic)]
 
-use cedar_testing::integration_testing::perform_integration_test_from_json;
-use std::path::Path;
-
-/// Path of the folder containing the JSON tests
-fn folder() -> &'static Path {
-    Path::new("tests/ip")
-}
-
-#[test]
-fn ip_1() {
-    perform_integration_test_from_json(folder().join("1.json"));
-}
-
-#[test]
-fn ip_2() {
-    perform_integration_test_from_json(folder().join("2.json"));
-}
-
-#[test]
-fn ip_3() {
-    perform_integration_test_from_json(folder().join("3.json"));
-}
+mod corpus_tests;
+#[cfg(feature = "decimal")]
+mod decimal;
+mod example_use_cases;
+#[cfg(feature = "ipaddr")]
+mod ip;
+mod multi;

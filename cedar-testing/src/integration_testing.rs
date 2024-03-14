@@ -313,10 +313,15 @@ pub fn perform_integration_test_from_json_custom(
             validation_result.errors
         );
     } else {
-        assert!(
-            !validation_result.validation_passed(),
-            "Expected that validation would fail in {test_name}, but it did not.",
-        );
+        match test_impl.validation_comparison_mode() {
+            ValidationComparisonMode::AgreeOnAll => {
+                assert!(
+                    !validation_result.validation_passed(),
+                    "Expected that validation would fail in {test_name}, but it did not.",
+                );
+            }
+            ValidationComparisonMode::AgreeOnValid => {} // ignore
+        }
     }
 
     for json_request in test.requests {
