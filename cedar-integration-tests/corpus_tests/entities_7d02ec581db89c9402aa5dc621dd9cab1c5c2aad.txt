@@ -1,0 +1,40 @@
+[
+  {
+    "uid": {
+      "type": "Kxx0xnx::Edml",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "Kxx0xnx::Qml",
+        "id": ""
+      },
+      {
+        "type": "Kxx0xnx::LYY",
+        "id": ""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "Kxx0xnx::LYY",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "Kxx0xnx::Qml",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "Kxx0xnx::LYY",
+        "id": ""
+      }
+    ]
+  }
+]

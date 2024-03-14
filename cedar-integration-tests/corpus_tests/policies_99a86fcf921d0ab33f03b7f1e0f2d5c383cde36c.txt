@@ -1,0 +1,7 @@
+permit(
+  principal,
+  action,
+  resource
+) when {
+  (true && 140737488421120) && 140737488421120
+};

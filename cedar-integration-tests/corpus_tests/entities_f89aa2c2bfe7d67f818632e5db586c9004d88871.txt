@@ -1,0 +1,53 @@
+[
+  {
+    "uid": {
+      "type": "a",
+      "id": "*'"
+    },
+    "attrs": {
+      "n": {
+        "__entity": {
+          "id": "*'",
+          "type": "a"
+        }
+      },
+      "r": false,
+      "A": false
+    },
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "a",
+      "id": ""
+    },
+    "attrs": {
+      "n": {
+        "__entity": {
+          "id": "*'",
+          "type": "a"
+        }
+      },
+      "A": false,
+      "r": false
+    },
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "a",
+      "id": ":"
+    },
+    "attrs": {
+      "A": false,
+      "r": false,
+      "n": {
+        "__entity": {
+          "id": "",
+          "type": "a"
+        }
+      }
+    },
+    "parents": []
+  }
+]

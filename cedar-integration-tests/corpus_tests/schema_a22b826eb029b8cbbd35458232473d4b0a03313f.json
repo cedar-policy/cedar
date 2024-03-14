@@ -1,0 +1,71 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "L": {
+        "memberOfTypes": [
+          "Fwwwwwww3",
+          "r",
+          "x"
+        ],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      },
+      "Fwwwwwww3": {
+        "memberOfTypes": [
+          "r",
+          "x"
+        ],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      },
+      "r": {
+        "memberOfTypes": [
+          "x"
+        ],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      },
+      "x": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Fwwwwwww3",
+            "r",
+            "x"
+          ],
+          "principalTypes": [
+            "L",
+            "Fwwwwwww3",
+            "r",
+            "x"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

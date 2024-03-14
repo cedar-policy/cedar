@@ -1,0 +1,7 @@
+forbid(
+  principal == a::"",
+  action in [Action::"action"],
+  resource == a::""
+) when {
+  (true && (if (if (if false then principal else principal) then principal else principal) then principal else principal)) && principal
+};

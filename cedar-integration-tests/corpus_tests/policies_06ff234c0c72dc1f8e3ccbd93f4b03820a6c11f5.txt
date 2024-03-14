@@ -1,0 +1,8 @@
+@r("\'#\u{8}Zzzzz")
+forbid(
+  principal,
+  action,
+  resource
+) when {
+  true
+};

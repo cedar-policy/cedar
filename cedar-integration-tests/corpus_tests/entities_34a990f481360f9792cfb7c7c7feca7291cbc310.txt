@@ -1,0 +1,26 @@
+[
+  {
+    "uid": {
+      "type": "v::xd::x::v::a",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "v::xd::x::v::a",
+      "id": "r\u0000"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "v::xd::x::v::a",
+      "id": "f~\u0000ff\u0000"
+    },
+    "attrs": {},
+    "parents": []
+  }
+]

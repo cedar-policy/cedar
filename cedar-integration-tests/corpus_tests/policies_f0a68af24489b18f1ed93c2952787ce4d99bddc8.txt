@@ -1,0 +1,7 @@
+permit(
+  principal,
+  action in [],
+  resource == s::a::"\0\0\0Z\0"
+) when {
+  true
+};

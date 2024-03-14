@@ -1,0 +1,7 @@
+permit(
+  principal == Ro1JJJJ::"",
+  action,
+  resource in Ro1JJJJ::"\0\0\0R"
+) when {
+  true
+};

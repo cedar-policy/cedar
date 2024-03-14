@@ -1,0 +1,176 @@
+{
+  "schema": "./corpus_tests/schema_e7d5f6bfb9f8404d376c144399022396b497521c.json",
+  "policies": "./corpus_tests/policies_e7d5f6bfb9f8404d376c144399022396b497521c.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_e7d5f6bfb9f8404d376c144399022396b497521c.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": {
+        "type": "a",
+        "id": "x\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": "x\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": {
+        "type": "a",
+        "id": "x\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": "x\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": {
+        "type": "a",
+        "id": "x\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": "x\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": {
+        "type": "a",
+        "id": "x\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": "x\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": {
+        "type": "a",
+        "id": "x\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": "x\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": {
+        "type": "a",
+        "id": "x\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": "x\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": {
+        "type": "a",
+        "id": "x\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": "x\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": {
+        "type": "a",
+        "id": "x\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002"
+      },
+      "resource": {
+        "type": "a",
+        "id": "x\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002\u0002"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

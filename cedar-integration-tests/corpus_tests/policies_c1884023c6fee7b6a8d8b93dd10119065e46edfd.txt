@@ -1,0 +1,7 @@
+permit(
+  principal in a::"\u{15}&",
+  action == Action::"action",
+  resource
+) when {
+  ((true && (!(!(!Action::"action")))) && [(false == true) == principal, principal, principal, principal, principal, principal, principal]) && principal
+};

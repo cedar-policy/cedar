@@ -1,0 +1,10 @@
+[
+  {
+    "uid": {
+      "type": "B::a",
+      "id": "\u0000fffffbffff"
+    },
+    "attrs": {},
+    "parents": []
+  }
+]

@@ -1,0 +1,7 @@
+forbid(
+  principal,
+  action,
+  resource
+) when {
+  true && (if (if ("" || 60138) then principal else principal) then principal else principal)
+};

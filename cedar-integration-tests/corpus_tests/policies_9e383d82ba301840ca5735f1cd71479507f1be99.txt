@@ -1,0 +1,7 @@
+permit(
+  principal in a::"",
+  action,
+  resource
+) when {
+  (true && (context like "\u{1}*\0")) && principal
+};

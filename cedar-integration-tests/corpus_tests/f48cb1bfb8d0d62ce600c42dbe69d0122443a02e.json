@@ -1,0 +1,232 @@
+{
+  "schema": "./corpus_tests/schema_f48cb1bfb8d0d62ce600c42dbe69d0122443a02e.json",
+  "policies": "./corpus_tests/policies_f48cb1bfb8d0d62ce600c42dbe69d0122443a02e.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_f48cb1bfb8d0d62ce600c42dbe69d0122443a02e.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": {
+        "type": "FwwwwGww::K::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "FwwwwGww::K::a",
+        "id": ""
+      },
+      "action": {
+        "type": "FwwwwGww::K::Action",
+        "id": "action"
+      },
+      "context": {
+        "lC05": {
+          "__entity": {
+            "id": "",
+            "type": "FwwwwGww::K::a"
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": {
+        "type": "FwwwwGww::K::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "FwwwwGww::K::a",
+        "id": ""
+      },
+      "action": {
+        "type": "FwwwwGww::K::Action",
+        "id": "action"
+      },
+      "context": {
+        "lC05": {
+          "__entity": {
+            "id": "",
+            "type": "FwwwwGww::K::a"
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": {
+        "type": "FwwwwGww::K::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "FwwwwGww::K::a",
+        "id": ""
+      },
+      "action": {
+        "type": "FwwwwGww::K::Action",
+        "id": "action"
+      },
+      "context": {
+        "lC05": {
+          "__entity": {
+            "id": "",
+            "type": "FwwwwGww::K::a"
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": {
+        "type": "FwwwwGww::K::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "FwwwwGww::K::a",
+        "id": ""
+      },
+      "action": {
+        "type": "FwwwwGww::K::Action",
+        "id": "action"
+      },
+      "context": {
+        "lC05": {
+          "__entity": {
+            "id": "",
+            "type": "FwwwwGww::K::a"
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": {
+        "type": "FwwwwGww::K::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "FwwwwGww::K::a",
+        "id": ""
+      },
+      "action": {
+        "type": "FwwwwGww::K::Action",
+        "id": "action"
+      },
+      "context": {
+        "lC05": {
+          "__entity": {
+            "id": "",
+            "type": "FwwwwGww::K::a"
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": {
+        "type": "FwwwwGww::K::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "FwwwwGww::K::a",
+        "id": ""
+      },
+      "action": {
+        "type": "FwwwwGww::K::Action",
+        "id": "action"
+      },
+      "context": {
+        "lC05": {
+          "__entity": {
+            "id": "",
+            "type": "FwwwwGww::K::a"
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": {
+        "type": "FwwwwGww::K::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "FwwwwGww::K::a",
+        "id": ""
+      },
+      "action": {
+        "type": "FwwwwGww::K::Action",
+        "id": "action"
+      },
+      "context": {
+        "lC05": {
+          "__entity": {
+            "id": "",
+            "type": "FwwwwGww::K::a"
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": {
+        "type": "FwwwwGww::K::a",
+        "id": ""
+      },
+      "resource": {
+        "type": "FwwwwGww::K::a",
+        "id": ""
+      },
+      "action": {
+        "type": "FwwwwGww::K::Action",
+        "id": "action"
+      },
+      "context": {
+        "lC05": {
+          "__entity": {
+            "id": "",
+            "type": "FwwwwGww::K::a"
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

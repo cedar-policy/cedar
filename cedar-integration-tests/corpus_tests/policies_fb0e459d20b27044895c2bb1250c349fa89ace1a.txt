@@ -1,0 +1,7 @@
+permit(
+  principal in a::"zzz",
+  action in [],
+  resource in a::"zzz"
+) when {
+  (true && (!(action == (0 == principal)))) && principal
+};

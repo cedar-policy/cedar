@@ -1,0 +1,200 @@
+{
+  "schema": "./corpus_tests/schema_762d6af30778d678da7849f82db71d278c02d7a1.json",
+  "policies": "./corpus_tests/policies_762d6af30778d678da7849f82db71d278c02d7a1.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_762d6af30778d678da7849f82db71d278c02d7a1.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "resource": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "egi"
+      },
+      "context": {
+        "r": "",
+        "Ay": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "resource": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "egi"
+      },
+      "context": {
+        "r": "",
+        "Ay": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "resource": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "egi"
+      },
+      "context": {
+        "r": "",
+        "Ay": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "resource": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "egi"
+      },
+      "context": {
+        "r": "",
+        "Ay": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "resource": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "egi"
+      },
+      "context": {
+        "r": "",
+        "Ay": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "resource": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "egi"
+      },
+      "context": {
+        "r": "",
+        "Ay": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "resource": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "egi"
+      },
+      "context": {
+        "r": "",
+        "Ay": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "resource": {
+        "type": "MYqs",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "egi"
+      },
+      "context": {
+        "r": "",
+        "Ay": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

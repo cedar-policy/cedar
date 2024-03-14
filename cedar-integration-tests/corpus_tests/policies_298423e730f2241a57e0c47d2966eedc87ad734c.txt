@@ -1,0 +1,7 @@
+forbid(
+  principal == a::"",
+  action in [Action::"action"],
+  resource == a::""
+) when {
+  ((true && (if ((1008963615466 && principal) && principal) then principal else principal)) && principal) && principal
+};

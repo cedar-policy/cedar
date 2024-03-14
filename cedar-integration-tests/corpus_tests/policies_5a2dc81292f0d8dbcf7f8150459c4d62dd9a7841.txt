@@ -1,0 +1,7 @@
+permit(
+  principal,
+  action,
+  resource in q::a::"\0"
+) when {
+  (true && (!((q::a::"\0" like "Z*Z*") == principal))) && principal
+};

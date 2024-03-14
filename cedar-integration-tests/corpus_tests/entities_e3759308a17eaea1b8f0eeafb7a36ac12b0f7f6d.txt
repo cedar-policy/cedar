@@ -1,0 +1,42 @@
+[
+  {
+    "uid": {
+      "type": "a",
+      "id": "\u0002\u0002\u0002"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "a",
+      "id": "\u0002\u0002\u0002\u0002co\u0002\n\u0002\u0002\u0002\u0002\u0002\u0002cx\u0001"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "a",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "a",
+      "id": "\u0002"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "a",
+      "id": "\u0007"
+    },
+    "attrs": {},
+    "parents": []
+  }
+]

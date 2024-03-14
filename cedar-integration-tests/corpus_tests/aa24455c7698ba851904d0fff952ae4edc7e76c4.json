@@ -1,0 +1,192 @@
+{
+  "schema": "./corpus_tests/schema_aa24455c7698ba851904d0fff952ae4edc7e76c4.json",
+  "policies": "./corpus_tests/policies_aa24455c7698ba851904d0fff952ae4edc7e76c4.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_aa24455c7698ba851904d0fff952ae4edc7e76c4.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": {
+        "type": "ukkkkkkkkka20::Khhhhhh::A",
+        "id": ""
+      },
+      "resource": {
+        "type": "ukkkkkkkkka20::Khhhhhh::A",
+        "id": ""
+      },
+      "action": {
+        "type": "ukkkkkkkkka20::Khhhhhh::Action",
+        "id": "action"
+      },
+      "context": {
+        "A": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": {
+        "type": "ukkkkkkkkka20::Khhhhhh::A",
+        "id": ""
+      },
+      "resource": {
+        "type": "ukkkkkkkkka20::Khhhhhh::A",
+        "id": ""
+      },
+      "action": {
+        "type": "ukkkkkkkkka20::Khhhhhh::Action",
+        "id": "action"
+      },
+      "context": {
+        "A": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": {
+        "type": "ukkkkkkkkka20::Khhhhhh::A",
+        "id": ""
+      },
+      "resource": {
+        "type": "ukkkkkkkkka20::Khhhhhh::A",
+        "id": ""
+      },
+      "action": {
+        "type": "ukkkkkkkkka20::Khhhhhh::Action",
+        "id": "action"
+      },
+      "context": {
+        "A": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": {
+        "type": "ukkkkkkkkka20::Khhhhhh::A",
+        "id": ""
+      },
+      "resource": {
+        "type": "ukkkkkkkkka20::Khhhhhh::A",
+        "id": ""
+      },
+      "action": {
+        "type": "ukkkkkkkkka20::Khhhhhh::Action",
+        "id": "action"
+      },
+      "context": {
+        "A": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": {
+        "type": "ukkkkkkkkka20::Khhhhhh::A",
+        "id": ""
+      },
+      "resource": {
+        "type": "ukkkkkkkkka20::Khhhhhh::A",
+        "id": ""
+      },
+      "action": {
+        "type": "ukkkkkkkkka20::Khhhhhh::Action",
+        "id": "action"
+      },
+      "context": {
+        "A": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": {
+        "type": "ukkkkkkkkka20::Khhhhhh::A",
+        "id": ""
+      },
+      "resource": {
+        "type": "ukkkkkkkkka20::Khhhhhh::A",
+        "id": ""
+      },
+      "action": {
+        "type": "ukkkkkkkkka20::Khhhhhh::Action",
+        "id": "action"
+      },
+      "context": {
+        "A": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": {
+        "type": "ukkkkkkkkka20::Khhhhhh::A",
+        "id": ""
+      },
+      "resource": {
+        "type": "ukkkkkkkkka20::Khhhhhh::A",
+        "id": ""
+      },
+      "action": {
+        "type": "ukkkkkkkkka20::Khhhhhh::Action",
+        "id": "action"
+      },
+      "context": {
+        "A": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": {
+        "type": "ukkkkkkkkka20::Khhhhhh::A",
+        "id": ""
+      },
+      "resource": {
+        "type": "ukkkkkkkkka20::Khhhhhh::A",
+        "id": ""
+      },
+      "action": {
+        "type": "ukkkkkkkkka20::Khhhhhh::Action",
+        "id": "action"
+      },
+      "context": {
+        "A": ""
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

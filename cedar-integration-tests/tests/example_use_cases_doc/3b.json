@@ -1,0 +1,106 @@
+{
+ "policies": "tests/example_use_cases_doc/policies_3b.cedar",
+ "entities": "sample-data/sandbox_a/entities.json",
+ "schema": "sample-data/sandbox_a/schema.cedarschema.json",
+ "should_validate": true,
+ "queries": [
+  {
+   "desc": "alice should be able to view a photo in jane's account",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "VacationPhoto94.jpg"
+   },
+   "context": {
+    "source_ip": "123.123.123.123",
+    "confidence_score": "0.6",
+    "authenticated": true
+   },
+   "decision": "Allow",
+   "reasons": [
+    "policy0"
+   ],
+   "errors": []
+  },
+  {
+   "desc": "alice should be able to list photos in an album in jane's account",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "listPhotos"
+   },
+   "resource": {
+    "type": "Album",
+    "id": "jane_vacation"
+   },
+   "context": {
+    "source_ip": "123.123.123.123",
+    "confidence_score": "0.6",
+    "authenticated": true
+   },
+   "decision": "Allow",
+   "reasons": [
+    "policy0"
+   ],
+   "errors": []
+  },
+  {
+   "desc": "alice should be able to list albums in jane's account",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "listAlbums"
+   },
+   "resource": {
+    "type": "Account",
+    "id": "jane"
+   },
+   "context": {
+    "source_ip": "123.123.123.123",
+    "confidence_score": "0.6",
+    "authenticated": true
+   },
+   "decision": "Allow",
+   "reasons": [
+    "policy0"
+   ],
+   "errors": []
+  },
+  {
+   "desc": "alice should not be able to view a photo in bob's account",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "selfie.jpg"
+   },
+   "context": {
+    "source_ip": "123.123.123.123",
+    "confidence_score": "0.6",
+    "authenticated": true
+   },
+   "decision": "Deny",
+   "reasons": [],
+   "errors": []
+  }
+ ]
+}

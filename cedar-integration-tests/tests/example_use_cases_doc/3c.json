@@ -1,0 +1,83 @@
+{
+ "policies": "tests/example_use_cases_doc/policies_3c.cedar",
+ "entities": "sample-data/sandbox_a/entities.json",
+ "schema": "sample-data/sandbox_a/schema.cedarschema.json",
+ "should_validate": true,
+ "queries": [
+  {
+   "desc": "alice should be able to view a photo in the album",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "VacationPhoto94.jpg"
+   },
+   "context": {
+    "source_ip": "123.123.123.123",
+    "confidence_score": "0.6",
+    "authenticated": true
+   },
+   "decision": "Allow",
+   "reasons": [
+    "policy0"
+   ],
+   "errors": []
+  },
+  {
+   "desc": "alice should be able to edit a photo in the album",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "edit"
+   },
+   "resource": {
+    "type": "Photo",
+    "id": "VacationPhoto94.jpg"
+   },
+   "context": {
+    "source_ip": "123.123.123.123",
+    "confidence_score": "0.6",
+    "authenticated": true
+   },
+   "decision": "Allow",
+   "reasons": [
+    "policy0"
+   ],
+   "errors": []
+  },
+  {
+   "desc": "alice should be able to view a video in the album",
+   "principal": {
+    "type": "User",
+    "id": "alice"
+   },
+   "action": {
+    "type": "Action",
+    "id": "view"
+   },
+   "resource": {
+    "type": "Video",
+    "id": "surf.mp4"
+   },
+   "context": {
+    "source_ip": "123.123.123.123",
+    "confidence_score": "0.6",
+    "authenticated": true
+   },
+   "decision": "Allow",
+   "reasons": [
+    "policy0"
+   ],
+   "errors": []
+  }
+ ]
+}

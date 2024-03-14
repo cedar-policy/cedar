@@ -1,0 +1,17 @@
+[
+  {
+    "uid": {
+      "type": "a",
+      "id": ""
+    },
+    "attrs": {
+      "D655Cz": [
+        false,
+        true,
+        true,
+        false
+      ]
+    },
+    "parents": []
+  }
+]

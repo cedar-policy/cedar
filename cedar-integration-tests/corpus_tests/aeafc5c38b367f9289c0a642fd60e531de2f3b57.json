@@ -1,0 +1,176 @@
+{
+  "schema": "./corpus_tests/schema_aeafc5c38b367f9289c0a642fd60e531de2f3b57.json",
+  "policies": "./corpus_tests/policies_aeafc5c38b367f9289c0a642fd60e531de2f3b57.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_aeafc5c38b367f9289c0a642fd60e531de2f3b57.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": {
+        "type": "a",
+        "id": "FEF"
+      },
+      "resource": {
+        "type": "a",
+        "id": "FEF"
+      },
+      "action": {
+        "type": "Action",
+        "id": "zq"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": {
+        "type": "a",
+        "id": "FEF"
+      },
+      "resource": {
+        "type": "a",
+        "id": "FEF"
+      },
+      "action": {
+        "type": "Action",
+        "id": "zq"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": {
+        "type": "a",
+        "id": "FEF"
+      },
+      "resource": {
+        "type": "a",
+        "id": "FEF"
+      },
+      "action": {
+        "type": "Action",
+        "id": "zq"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": {
+        "type": "a",
+        "id": "FEF"
+      },
+      "resource": {
+        "type": "a",
+        "id": "FEF"
+      },
+      "action": {
+        "type": "Action",
+        "id": "zq"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": {
+        "type": "a",
+        "id": "FEF"
+      },
+      "resource": {
+        "type": "a",
+        "id": "FEF"
+      },
+      "action": {
+        "type": "Action",
+        "id": "zq"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": {
+        "type": "a",
+        "id": "FEF"
+      },
+      "resource": {
+        "type": "a",
+        "id": "FEF"
+      },
+      "action": {
+        "type": "Action",
+        "id": "zq"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": {
+        "type": "a",
+        "id": "FEF"
+      },
+      "resource": {
+        "type": "a",
+        "id": "FEF"
+      },
+      "action": {
+        "type": "Action",
+        "id": "zq"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": {
+        "type": "a",
+        "id": "FEF"
+      },
+      "resource": {
+        "type": "a",
+        "id": "FEF"
+      },
+      "action": {
+        "type": "Action",
+        "id": "zq"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

@@ -1,0 +1,181 @@
+[
+  {
+    "uid": {
+      "type": "User",
+      "id": "alice"
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "UserGroup",
+        "id": "jane_friends"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "User",
+      "id": "bob"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "User",
+      "id": "tim"
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "UserGroup",
+        "id": "jane_friends"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "UserGroup",
+      "id": "jane_friends"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "Administrator",
+      "id": "ahmad"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "Action",
+      "id": "view"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "Action",
+      "id": "comment"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "Action",
+      "id": "edit"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "Action",
+      "id": "delete"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "Action",
+      "id": "listAlbums"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "Action",
+      "id": "listPhotos"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "Photo",
+      "id": "VacationPhoto94.jpg"
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "Album",
+        "id": "jane_vacation"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "Photo",
+      "id": "passportscan.jpg"
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "Account",
+        "id": "jane"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "Video",
+      "id": "surf.mp4"
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "Album",
+        "id": "jane_vacation"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "Photo",
+      "id": "selfie.jpg"
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "Account",
+        "id": "bob"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "Album",
+      "id": "jane_vacation"
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "Account",
+        "id": "jane"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "Account",
+      "id": "jane"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "Account",
+      "id": "bob"
+    },
+    "attrs": {},
+    "parents": []
+  }
+]

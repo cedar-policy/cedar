@@ -1,0 +1,45 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "a": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "sun_misc_P": {
+        "appliesTo": null,
+        "memberOf": null
+      },
+      "va": {
+        "appliesTo": null,
+        "memberOf": null
+      },
+      "rf_regi": {
+        "appliesTo": {
+          "resourceTypes": [
+            "a"
+          ],
+          "principalTypes": [
+            "a"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      },
+      "te": {
+        "appliesTo": null,
+        "memberOf": null
+      }
+    }
+  }
+}

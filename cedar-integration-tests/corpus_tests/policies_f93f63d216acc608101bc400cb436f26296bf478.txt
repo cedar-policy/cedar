@@ -1,0 +1,7 @@
+permit(
+  principal in G666666::"\0\u{2}",
+  action,
+  resource in G666666::"\0\u{2}"
+) when {
+  (true && principal) && principal
+};

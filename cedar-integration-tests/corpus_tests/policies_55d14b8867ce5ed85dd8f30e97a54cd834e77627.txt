@@ -1,0 +1,7 @@
+permit(
+  principal,
+  action,
+  resource
+) when {
+  ((true && (if ((false == principal) <= (7378697629483877990 has "")) then principal else principal)) && principal) && principal
+};

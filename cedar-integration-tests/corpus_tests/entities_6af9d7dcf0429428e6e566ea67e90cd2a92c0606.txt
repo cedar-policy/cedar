@@ -1,0 +1,40 @@
+[
+  {
+    "uid": {
+      "type": "a",
+      "id": "::4"
+    },
+    "attrs": {
+      "F": []
+    },
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "a",
+      "id": ""
+    },
+    "attrs": {
+      "F": [
+        [
+          false,
+          true
+        ],
+        [],
+        [
+          false,
+          true
+        ],
+        [
+          true,
+          false,
+          false,
+          false,
+          false
+        ],
+        []
+      ]
+    },
+    "parents": []
+  }
+]

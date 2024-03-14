@@ -1,0 +1,7 @@
+forbid(
+  principal,
+  action == Action::"action",
+  resource
+) when {
+  (true && ("\u{4}\u{5}" in (false || principal))) && principal
+};

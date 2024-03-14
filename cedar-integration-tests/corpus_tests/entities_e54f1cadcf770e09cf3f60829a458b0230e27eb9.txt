@@ -1,0 +1,17 @@
+[
+  {
+    "uid": {
+      "type": "sWqs",
+      "id": ""
+    },
+    "attrs": {
+      "_qaWMlqY": {
+        "__entity": {
+          "id": "",
+          "type": "sWqs"
+        }
+      }
+    },
+    "parents": []
+  }
+]

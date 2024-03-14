@@ -1,0 +1,174 @@
+{
+  "schema": "./corpus_tests/schema_5a21934d3b7aac23efbac0239b70091420e324d0.json",
+  "policies": "./corpus_tests/policies_5a21934d3b7aac23efbac0239b70091420e324d0.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_5a21934d3b7aac23efbac0239b70091420e324d0.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": {
+        "type": "AYrdlcwl",
+        "id": ""
+      },
+      "resource": {
+        "type": "AYrdlcwl",
+        "id": ":"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Deny",
+      "reasons": [],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": {
+        "type": "AYrdlcwl",
+        "id": ":"
+      },
+      "resource": {
+        "type": "AYrdlcwl",
+        "id": ":"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": {
+        "type": "AYrdlcwl",
+        "id": ":"
+      },
+      "resource": {
+        "type": "AYrdlcwl",
+        "id": ":"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": {
+        "type": "AYrdlcwl",
+        "id": ":"
+      },
+      "resource": {
+        "type": "AYrdlcwl",
+        "id": ":"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": {
+        "type": "AYrdlcwl",
+        "id": ":"
+      },
+      "resource": {
+        "type": "AYrdlcwl",
+        "id": ":"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": {
+        "type": "AYrdlcwl",
+        "id": ":"
+      },
+      "resource": {
+        "type": "AYrdlcwl",
+        "id": ":"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": {
+        "type": "AYrdlcwl",
+        "id": ":"
+      },
+      "resource": {
+        "type": "AYrdlcwl",
+        "id": ":"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": {
+        "type": "AYrdlcwl",
+        "id": ":"
+      },
+      "resource": {
+        "type": "AYrdlcwl",
+        "id": ":"
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

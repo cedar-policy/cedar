@@ -1,0 +1,232 @@
+{
+  "schema": "./corpus_tests/schema_3f108515ed95ea8e4b5a58e5c06dc0233554f8bd.json",
+  "policies": "./corpus_tests/policies_3f108515ed95ea8e4b5a58e5c06dc0233554f8bd.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_3f108515ed95ea8e4b5a58e5c06dc0233554f8bd.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "\u0006"
+      },
+      "context": {
+        "_q": {
+          "__entity": {
+            "id": "",
+            "type": "a"
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "\u0006"
+      },
+      "context": {
+        "_q": {
+          "__entity": {
+            "id": "",
+            "type": "a"
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "\u0006"
+      },
+      "context": {
+        "_q": {
+          "__entity": {
+            "id": "",
+            "type": "a"
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "\u0006"
+      },
+      "context": {
+        "_q": {
+          "__entity": {
+            "id": "",
+            "type": "a"
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "\u0006"
+      },
+      "context": {
+        "_q": {
+          "__entity": {
+            "id": "",
+            "type": "a"
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "\u0006"
+      },
+      "context": {
+        "_q": {
+          "__entity": {
+            "id": "",
+            "type": "a"
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "\u0006"
+      },
+      "context": {
+        "_q": {
+          "__entity": {
+            "id": "",
+            "type": "a"
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "\u0006"
+      },
+      "context": {
+        "_q": {
+          "__entity": {
+            "id": "",
+            "type": "a"
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

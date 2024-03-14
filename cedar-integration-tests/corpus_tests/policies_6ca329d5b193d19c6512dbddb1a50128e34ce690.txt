@@ -1,0 +1,7 @@
+forbid(
+  principal,
+  action,
+  resource in a::"FF%%\0\0\0\0\0\0\0@\0"
+) when {
+  true
+};

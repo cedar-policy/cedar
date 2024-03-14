@@ -1,0 +1,50 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "MYqs": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "_WkgqaWM": {
+              "type": "Set",
+              "element": {
+                "type": "Long"
+              },
+              "required": false
+            }
+          },
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "egi": {
+        "appliesTo": {
+          "resourceTypes": [
+            "MYqs"
+          ],
+          "principalTypes": [
+            "MYqs"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "Ay": {
+                "type": "String",
+                "required": false
+              },
+              "r": {
+                "type": "String",
+                "required": false
+              }
+            },
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+permit(
+  principal == A000::a::"",
+  action in [A000::Action::"action"],
+  resource
+) when {
+  (true && (if (principal.isLoopback()) then principal else principal)) && principal
+};

@@ -1,0 +1,23 @@
+[
+  {
+    "uid": {
+      "type": "Khdkk::Akkkk000",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "Khdkk::r",
+        "id": ""
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "Khdkk::r",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  }
+]

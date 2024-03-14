@@ -1,0 +1,176 @@
+{
+  "schema": "./corpus_tests/schema_dba1be0e19ff7c90ca7f8272e5c246f818809428.json",
+  "policies": "./corpus_tests/policies_dba1be0e19ff7c90ca7f8272e5c246f818809428.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_dba1be0e19ff7c90ca7f8272e5c246f818809428.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": {
+        "type": "lUy6y788Fwww::a",
+        "id": "l:i_ym\u0000\u0000\u0000&"
+      },
+      "resource": {
+        "type": "lUy6y788Fwww::a",
+        "id": "l:i_ym\u0000\u0000\u0000&"
+      },
+      "action": {
+        "type": "lUy6y788Fwww::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": {
+        "type": "lUy6y788Fwww::a",
+        "id": "l:i_ym\u0000\u0000\u0000&"
+      },
+      "resource": {
+        "type": "lUy6y788Fwww::a",
+        "id": "l:i_ym\u0000\u0000\u0000&"
+      },
+      "action": {
+        "type": "lUy6y788Fwww::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": {
+        "type": "lUy6y788Fwww::a",
+        "id": "l:i_ym\u0000\u0000\u0000&"
+      },
+      "resource": {
+        "type": "lUy6y788Fwww::a",
+        "id": "l:i_ym\u0000\u0000\u0000&"
+      },
+      "action": {
+        "type": "lUy6y788Fwww::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": {
+        "type": "lUy6y788Fwww::a",
+        "id": "l:i_ym\u0000\u0000\u0000&"
+      },
+      "resource": {
+        "type": "lUy6y788Fwww::a",
+        "id": "l:i_ym\u0000\u0000\u0000&"
+      },
+      "action": {
+        "type": "lUy6y788Fwww::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": {
+        "type": "lUy6y788Fwww::a",
+        "id": "l:i_ym\u0000\u0000\u0000&"
+      },
+      "resource": {
+        "type": "lUy6y788Fwww::a",
+        "id": "l:i_ym\u0000\u0000\u0000&"
+      },
+      "action": {
+        "type": "lUy6y788Fwww::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": {
+        "type": "lUy6y788Fwww::a",
+        "id": "l:i_ym\u0000\u0000\u0000&"
+      },
+      "resource": {
+        "type": "lUy6y788Fwww::a",
+        "id": "l:i_ym\u0000\u0000\u0000&"
+      },
+      "action": {
+        "type": "lUy6y788Fwww::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": {
+        "type": "lUy6y788Fwww::a",
+        "id": "l:i_ym\u0000\u0000\u0000&"
+      },
+      "resource": {
+        "type": "lUy6y788Fwww::a",
+        "id": "l:i_ym\u0000\u0000\u0000&"
+      },
+      "action": {
+        "type": "lUy6y788Fwww::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": {
+        "type": "lUy6y788Fwww::a",
+        "id": "l:i_ym\u0000\u0000\u0000&"
+      },
+      "resource": {
+        "type": "lUy6y788Fwww::a",
+        "id": "l:i_ym\u0000\u0000\u0000&"
+      },
+      "action": {
+        "type": "lUy6y788Fwww::Action",
+        "id": "action"
+      },
+      "context": {},
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

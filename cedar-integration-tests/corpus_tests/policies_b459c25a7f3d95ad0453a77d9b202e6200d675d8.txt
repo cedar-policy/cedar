@@ -1,0 +1,13 @@
+@A("")
+@n("")
+@r("")
+@v("")
+@w("")
+@y("")
+permit(
+  principal,
+  action,
+  resource
+) when {
+  true
+};

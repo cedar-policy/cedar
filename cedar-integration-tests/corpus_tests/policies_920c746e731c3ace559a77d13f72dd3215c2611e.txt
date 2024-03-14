@@ -1,0 +1,7 @@
+permit(
+  principal,
+  action,
+  resource in a::"j\0"
+) when {
+  ((true && (((context.containsAll(a::"j\0")).containsAll(false)) == principal)) && principal) && principal
+};

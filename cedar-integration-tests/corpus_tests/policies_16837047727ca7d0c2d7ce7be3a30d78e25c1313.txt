@@ -1,0 +1,7 @@
+permit(
+  principal,
+  action in [Action::"action",Action::"action",Action::"action"],
+  resource == a::"b\'f"
+) when {
+  (true && ((a::"b\'f".greaterThan(a::"b\'f" == principal)) == principal)) && principal
+};

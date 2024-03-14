@@ -1,0 +1,19 @@
+[
+  {
+    "uid": {
+      "type": "a",
+      "id": "zzzzz"
+    },
+    "attrs": {
+      "A": {
+        "__entity": {
+          "id": "zzzzz",
+          "type": "a"
+        }
+      },
+      "C3vv7": "",
+      "wx": false
+    },
+    "parents": []
+  }
+]

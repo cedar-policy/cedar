@@ -1,0 +1,41 @@
+{
+  "": {
+    "commonTypes": {},
+    "entityTypes": {
+      "xYqs": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "_WkgqaWM": {
+              "type": "Set",
+              "element": {
+                "type": "Long"
+              },
+              "required": false
+            }
+          },
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "xYqs"
+          ],
+          "principalTypes": [
+            "xYqs"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {},
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

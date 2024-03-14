@@ -1,0 +1,11 @@
+@A("")
+@Qx87("")
+@byxxGx333("")
+@r("")
+permit(
+  principal,
+  action,
+  resource
+) when {
+  true
+};

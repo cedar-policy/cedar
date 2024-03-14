@@ -1,0 +1,275 @@
+[
+  {
+    "uid": {
+      "type": "User",
+      "id": "alice"
+    },
+    "attrs": {
+      "department": "HardwareEngineering",
+      "jobLevel": 5
+    },
+    "parents": [
+      {
+        "type": "UserGroup",
+        "id": "alice_friends"
+      },
+      {
+        "type": "UserGroup",
+        "id": "AVTeam"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "User",
+      "id": "ahmad"
+    },
+    "attrs": {
+      "department": "HardwareEngineering",
+      "jobLevel": 4
+    },
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "User",
+      "id": "stacey"
+    },
+    "attrs": {
+      "department": "Sales",
+      "jobLevel": 6
+    },
+    "parents": [
+      {
+        "type": "UserGroup",
+        "id": "alice_friends"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "User",
+      "id": "giuseppe"
+    },
+    "attrs": {
+      "department": "CustomerSupport",
+      "jobLevel": 7
+    },
+    "parents": [
+      {
+        "type": "UserGroup",
+        "id": "AVTeam"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "UserGroup",
+      "id": "alice_friends"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "Photo",
+      "id": "prototype_v0.jpg"
+    },
+    "attrs": {
+      "private": false,
+      "account": {
+        "type" : "Account",
+        "id": "ahmad"
+      },
+      "admins": []
+    },
+    "parents": [
+      {
+        "type": "Album",
+        "id": "device_prototypes"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "Photo",
+      "id": "vacation.jpg"
+    },
+    "attrs": {
+      "private": false,
+      "account": { "type":"Account", "id":"alice" },
+      "admins": []
+    },
+    "parents": [
+      {
+        "type": "Album",
+        "id": "alice_vacation"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "Photo",
+      "id": "alice_w2.jpg"
+    },
+    "attrs": {
+      "private": true,
+      "account": {
+        "type": "Account",
+        "id": "alice"
+      },
+      "admins": []
+    },
+    "parents": [
+      {
+        "type": "Account",
+        "id": "alice"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "Photo",
+      "id": "sales_projections.jpg"
+    },
+    "attrs": {
+      "private": false,
+      "account": {
+        "type": "Account",
+        "id": "stacey"
+      },
+      "admins": [
+        {
+          "type": "User",
+          "id": "giuseppe"
+        }
+      ]
+    },
+    "parents": [
+      {
+        "type": "Account",
+        "id": "stacey"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "Album",
+      "id": "device_prototypes"
+    },
+    "attrs": {
+      "private": false,
+      "account": {
+        "type": "Account",
+        "id": "alice"
+      },
+      "admins": []
+    },
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "Album",
+      "id": "alice_vacation"
+    },
+    "attrs": {
+      "private": false,
+      "account": {
+        "type": "Account",
+        "id": "alice"
+      },
+      "admins": []
+    },
+    "parents": [
+      {
+        "type": "Account",
+        "id": "alice"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "Account",
+      "id": "alice"
+    },
+    "attrs": {
+      "private": false,
+      "owner": {
+        "type": "User",
+        "id": "alice"
+      },
+      "admins": []
+    },
+    "parents": [
+      {
+        "type": "AccountGroup",
+        "id": "GeronimoTeam"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "Account",
+      "id": "ahmad"
+    },
+    "attrs": {
+      "private": false,
+      "owner": {
+        "type": "User",
+        "id": "ahmad"
+      },
+      "admins": []
+    },
+    "parents": [
+      {
+        "type": "AccountGroup",
+        "id": "GeronimoTeam"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "Account",
+      "id": "stacey"
+    },
+    "attrs": {
+      "private": false,
+      "owner": {
+        "type": "User",
+        "id": "stacey"
+      },
+      "admins": []
+    },
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "UserGroup",
+      "id": "AVTeam"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "AccountGroup",
+      "id": "GeronimoTeam"
+    },
+    "attrs": {
+      "owner": {
+        "type": "User",
+        "id": "alice"
+      }
+    },
+    "parents": []
+  },
+   {
+    "uid": {
+      "type": "Action",
+      "id": "view"
+    },
+    "attrs": {
+    },
+    "parents": []
+   } 
+]

@@ -1,0 +1,18 @@
+[
+  {
+    "uid": {
+      "type": "qss::A000r::a",
+      "id": "6006+"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "qss::A000r::a",
+      "id": ""
+    },
+    "attrs": {},
+    "parents": []
+  }
+]

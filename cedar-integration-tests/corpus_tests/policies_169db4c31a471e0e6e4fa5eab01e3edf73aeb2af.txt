@@ -1,0 +1,12 @@
+@A("")
+@b("")
+@m("")
+@q("")
+@r("")
+permit(
+  principal,
+  action,
+  resource
+) when {
+  true
+};

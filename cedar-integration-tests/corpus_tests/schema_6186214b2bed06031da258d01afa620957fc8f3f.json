@@ -1,0 +1,38 @@
+{
+  "Gxt833777": {
+    "commonTypes": {},
+    "entityTypes": {
+      "vxxnjjjjjj": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {},
+          "additionalAttributes": false
+        }
+      }
+    },
+    "actions": {
+      "action": {
+        "appliesTo": {
+          "resourceTypes": [
+            "vxxnjjjjjj"
+          ],
+          "principalTypes": [
+            "vxxnjjjjjj"
+          ],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "K00000000": {
+                "type": "String",
+                "required": false
+              }
+            },
+            "additionalAttributes": false
+          }
+        },
+        "memberOf": null
+      }
+    }
+  }
+}

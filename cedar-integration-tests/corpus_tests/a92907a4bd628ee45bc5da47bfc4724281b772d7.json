@@ -1,0 +1,264 @@
+{
+  "schema": "./corpus_tests/schema_a92907a4bd628ee45bc5da47bfc4724281b772d7.json",
+  "policies": "./corpus_tests/policies_a92907a4bd628ee45bc5da47bfc4724281b772d7.txt",
+  "should_validate": true,
+  "entities": "./corpus_tests/entities_a92907a4bd628ee45bc5da47bfc4724281b772d7.txt",
+  "queries": [
+    {
+      "desc": "Query 0",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {
+        "G": {
+          "ff\u0006": {
+            "fny/": {
+              "__entity": {
+                "id": "",
+                "type": "a"
+              }
+            }
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 1",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {
+        "G": {
+          "ff\u0006": {
+            "fny/": {
+              "__entity": {
+                "id": "",
+                "type": "a"
+              }
+            }
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 2",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {
+        "G": {
+          "ff\u0006": {
+            "fny/": {
+              "__entity": {
+                "id": "",
+                "type": "a"
+              }
+            }
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 3",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {
+        "G": {
+          "ff\u0006": {
+            "fny/": {
+              "__entity": {
+                "id": "",
+                "type": "a"
+              }
+            }
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 4",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {
+        "G": {
+          "ff\u0006": {
+            "fny/": {
+              "__entity": {
+                "id": "",
+                "type": "a"
+              }
+            }
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 5",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {
+        "G": {
+          "ff\u0006": {
+            "fny/": {
+              "__entity": {
+                "id": "",
+                "type": "a"
+              }
+            }
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 6",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {
+        "G": {
+          "ff\u0006": {
+            "fny/": {
+              "__entity": {
+                "id": "",
+                "type": "a"
+              }
+            }
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    },
+    {
+      "desc": "Query 7",
+      "principal": {
+        "type": "a",
+        "id": ""
+      },
+      "resource": {
+        "type": "a",
+        "id": ""
+      },
+      "action": {
+        "type": "Action",
+        "id": "action"
+      },
+      "context": {
+        "G": {
+          "ff\u0006": {
+            "fny/": {
+              "__entity": {
+                "id": "",
+                "type": "a"
+              }
+            }
+          }
+        }
+      },
+      "decision": "Allow",
+      "reasons": [
+        "policy0"
+      ],
+      "errors": []
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+forbid(
+  principal,
+  action in [Action::"action"],
+  resource
+) when {
+  true && (([Action::"action", Bxm0000000000000::"", principal, principal, principal, principal, principal] in principal) == principal)
+};

@@ -1,0 +1,7 @@
+permit(
+  principal == ZJJJ::"RRRR\u{1}\0",
+  action == Action::"action",
+  resource == ZJJJ::"RRRR\u{1}\0"
+) when {
+  (true && principal) && principal
+};
