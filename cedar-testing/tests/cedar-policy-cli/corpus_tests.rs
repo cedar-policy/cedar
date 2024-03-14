@@ -50,7 +50,7 @@ fn corpus_tests() {
                 .expect("didn't expect subdirectories in corpus-tests")
                 .to_str()
                 .expect("expected filenames to be valid UTF-8");
-            filename.ends_with(".json") && !filename.ends_with(".entities.json")
+            filename.ends_with(".json")
         })
         // As of this writing, runtime to run all of the corpus tests is
         // excessively long.

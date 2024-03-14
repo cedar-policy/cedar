@@ -17,7 +17,7 @@ jobs:
       RUSTFLAGS: '-D warnings -F unsafe-code'
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: ./panic_safety.sh
       - run: cargo doc --all-features --no-deps
@@ -32,7 +32,7 @@ jobs:
       - run: cargo audit --deny warnings # For some reason this hangs if you don't cargo build first
 
   integration_testing:
-    name: Integration testing
+    name: Integration tests
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -46,9 +46,10 @@ jobs:
 
     steps:
       - name: Checkout cedar
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+      - run: rm -rf cedar-integration-tests # blast the current content
       - name: Checkout cedar-integration-tests
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: cedar-policy/cedar-integration-tests
           ref: main
@@ -69,7 +70,7 @@ jobs:
           - stable
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       # Clippy is configured by `.cargo/config.toml` to deny on lints like
       # `unwrap_used`. They aren't detected by `panic_safety.sh` which only
@@ -86,7 +87,7 @@ jobs:
           - stable
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: cargo fmt --all --check
 
@@ -94,7 +95,7 @@ jobs:
     name: cargo deny
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v1
 
   wasm-build:
@@ -105,5 +106,5 @@ jobs:
         toolchain:
           - stable
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: cd ./cedar-wasm && cargo install wasm-pack && ./build-wasm.sh

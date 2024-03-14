@@ -12,6 +12,7 @@ Then, run `cargo test --features "integration-testing" -- --ignored`.
 
 ```bash
 # starting in the top-level directory (..)
+rm -rf cedar-integration-tests
 git clone https://github.com/cedar-policy/cedar-integration-tests
 cd cedar-integration-tests
 tar xzf corpus-tests.tar.gz
