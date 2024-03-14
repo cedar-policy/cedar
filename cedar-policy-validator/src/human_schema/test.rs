@@ -318,6 +318,46 @@ mod demo_tests {
     }
 
     #[test]
+    fn context_is_common_type() {
+        assert!(SchemaFragment::from_str_natural(
+            r#"
+        type empty = {};
+        action "Foo" appliesTo {
+            context: empty,
+        };
+    "#
+        )
+        .is_ok());
+        assert!(SchemaFragment::from_str_natural(
+            r#"
+    type empty = {};
+    action "Foo" appliesTo {
+        context: empty
+    };
+"#
+        )
+        .is_ok());
+        assert!(SchemaFragment::from_str_natural(
+            r#"
+namespace Bar { type empty = {}; }
+action "Foo" appliesTo {
+    context: Bar::empty
+};
+"#
+        )
+        .is_ok());
+        assert!(SchemaFragment::from_str_natural(
+            r#"
+namespace Bar { type empty = {}; }
+namespace Baz {action "Foo" appliesTo {
+    context: Bar::empty
+};}
+"#
+        )
+        .is_ok());
+    }
+
+    #[test]
     fn print_actions() {
         let namespace = NamespaceDefinition {
             common_types: HashMap::new(),
