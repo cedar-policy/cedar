@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Expression::new_ip`, `Expression::new_decimal`, `RestrictedExpression::new_ip`, and `RestrictedExpression::new_decimal` (#661, resolving #659)
 - `wasm` Cargo feature for targeting Wasm
 - `Entity::into_inner` (resolving #636)
+- `Entities::into_iter` (resolving #680)
 
 ### Changed
 
