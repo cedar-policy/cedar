@@ -51,6 +51,14 @@ impl<T> TestResult<T> {
             Self::Failure(err) => panic!("{msg}: {err}"),
         }
     }
+
+    /// Apply a function to the success value.
+    pub fn map<F: FnOnce(T) -> T>(self, f: F) -> Self {
+        match self {
+            Self::Success(t) => Self::Success(f(t)),
+            Self::Failure(err) => Self::Failure(err),
+        }
+    }
 }
 
 /// Simple wrapper around u128 to remind ourselves that timing info is in microseconds.
