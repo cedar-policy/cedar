@@ -25,13 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   syntax. (#708, resolving #242)
 - Removed unnecessary lifetimes from some validation related structs (#715)
 
-### Fixed
+## [3.1.1] - 2024-03-14
 
-- Validation for the `in` operator to no longer reports an error when comparing actions
-  in different namespaces. (#704, resolving #642)
+### Fixed 
+
 - `ValidationResult` methods `validation_errors` and `validation_warnings`, along with
   `confusable_string_checker`, now return iterators with static lifetimes instead of
-  custom lifetimes, addressing potential unsoundness. (#712)
+  custom lifetimes, fixing build for latest nightly Rust. (#712)
+- Validation for the `in` operator to no longer reports an error when comparing actions
+  in different namespaces. (#704, resolving #642)
 
 ## [3.1.0] - 2024-03-08
 Cedar Language Version: 3.1.0
@@ -433,7 +435,8 @@ Cedar Language Version: 2.0.0
 Cedar Language Version: 2.0.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.1.0...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.1.1...main
+[3.1.1]: https://github.com/cedar-policy/cedar/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/cedar-policy/cedar/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/cedar-policy/cedar/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.4...v3.0.0
