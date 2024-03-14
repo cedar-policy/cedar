@@ -15,7 +15,9 @@
  */
 
 //! Definition of a `CedarTestImplementation` trait that describes an
-//! implementation of Cedar to use during testing.
+//! implementation of Cedar to use during testing. This trait is used for
+//! running the integration tests and for performing randomized differential
+//! testing (see <https://github.com/cedar-policy/cedar-spec>).
 
 pub use cedar_policy::frontend::is_authorized::InterfaceResponse;
 use cedar_policy_core::ast::{Expr, PolicySet, Request, Value};
@@ -47,6 +49,14 @@ impl<T> TestResult<T> {
         match self {
             Self::Success(t) => t,
             Self::Failure(err) => panic!("{msg}: {err}"),
+        }
+    }
+
+    /// Apply a function to the success value.
+    pub fn map<F: FnOnce(T) -> T>(self, f: F) -> Self {
+        match self {
+            Self::Success(t) => Self::Success(f(t)),
+            Self::Failure(err) => Self::Failure(err),
         }
     }
 }
@@ -116,26 +126,42 @@ pub trait CedarTestImplementation {
 
     /// `ErrorComparisonMode` that should be used for this `CedarTestImplementation`
     fn error_comparison_mode(&self) -> ErrorComparisonMode;
+
+    /// `ValidationComparisonMode` that should be used for this `CedarTestImplementation`
+    fn validation_comparison_mode(&self) -> ValidationComparisonMode;
 }
 
-/// Specifies how errors coming from a `CedarTestImplementation` should be
-/// compared against errors coming from the Rust implementation.
+/// Specifies how authorization errors coming from this [`CedarTestImplementation`]
+///  should be compared against errors coming from another implementation.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ErrorComparisonMode {
-    /// Don't compare errors at all; the `CedarTestImplementation` is not
-    /// expected to produce errors matching the Rust implementation's errors in
-    /// any way.
-    /// In fact, the `CedarTestImplementation` will be expected to never report
-    /// errors.
+    /// Don't compare errors at all. The [`CedarTestImplementation`] will be
+    /// expected to never report errors.
     Ignore,
-    /// The `CedarTestImplementation` is expected to produce "error messages" that
-    /// are actually just the id of the erroring policy. This will be compared to
-    /// ensure that the `CedarTestImplementation` agrees with the Rust
-    /// implementation on which policies produce errors.
+    /// The [`CedarTestImplementation`] is expected to produce "error messages"
+    /// that are actually just the id of the erroring policy. This will used to
+    /// ensure that different implementations agree on which policies produce
+    /// errors.
     PolicyIds,
-    /// The `CedarTestImplementation` is expected to produce error messages that
+    /// The [`CedarTestImplementation`] is expected to produce error messages that
     /// exactly match the Rust implementation's error messages' `Display` text.
     Full,
+}
+
+/// Specifies how validation results from this [`CedarTestImplementation`] should
+/// be compared against validation results from another implementation.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ValidationComparisonMode {
+    /// When comparing this [`CedarTestImplementation`] against another
+    /// implementation, `validate` should return a `validation_passed` result
+    /// for any input that the other implementation says is valid. This allows
+    /// for flexibility in cases where the other implementation (incorrectly)
+    /// says the input is invalid due to weaker typing precision.
+    AgreeOnValid,
+    /// When comparing this [`CedarTestImplementation`] against another
+    /// implementation, the valid / not valid decision should agree for all
+    /// inputs, although the exact validation errors may differ.
+    AgreeOnAll,
 }
 
 /// Basic struct to support implementing the `CedarTestImplementation` trait
@@ -230,5 +256,9 @@ impl CedarTestImplementation for RustEngine {
 
     fn error_comparison_mode(&self) -> ErrorComparisonMode {
         ErrorComparisonMode::PolicyIds
+    }
+
+    fn validation_comparison_mode(&self) -> ValidationComparisonMode {
+        ValidationComparisonMode::AgreeOnAll
     }
 }
