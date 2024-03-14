@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#![cfg(feature = "integration-testing")]
 // PANIC SAFETY tests
 #![allow(clippy::expect_used)]
 // PANIC SAFETY tests
