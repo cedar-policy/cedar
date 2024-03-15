@@ -33,13 +33,13 @@ jobs:
             wget https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh
             bash elan-init.sh -y
       - name: Checkout cedar-spec
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: cedar-policy/cedar-spec
           ref: ${{ needs.get-branch-name.outputs.branch_name }}
           path: ./cedar-spec
       - name: checkout cedar
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: cedar-spec/cedar
       - name: build cedar-lean
@@ -72,13 +72,13 @@ jobs:
       - name: Install Zig
         run: ${{ matrix.zigInstall }}
       - name: Checkout cedar-java
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: cedar-policy/cedar-java
           ref: ${{ needs.get-branch-name.outputs.branch_name }}
           path: ./cedar-java
       - name: checkout cedar
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: cedar-java/cedar
       - name: Check FFI Formatting

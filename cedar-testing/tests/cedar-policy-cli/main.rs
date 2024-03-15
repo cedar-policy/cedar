@@ -16,6 +16,7 @@
 
 //! Helper code to run Cedar integration tests through the CLI
 
+#![cfg(feature = "integration-testing")]
 // PANIC SAFETY tests
 #![allow(clippy::expect_used)]
 // PANIC SAFETY tests
@@ -115,6 +116,8 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             .arg(&schema_file)
             .arg("--policies")
             .arg(&policy_file)
+            .arg("--schema-format")
+            .arg("human")
             .assert()
             .append_context("validation", json_request.desc.clone());
 
@@ -159,6 +162,8 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             .arg(&entity_file)
             .arg("--schema")
             .arg(&schema_file)
+            .arg("--schema-format")
+            .arg("human")
             .arg("--verbose") // so that reasons are displayed
             .assert()
             .append_context("authorization", json_request.desc.clone());

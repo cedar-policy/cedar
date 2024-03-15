@@ -17,7 +17,7 @@ jobs:
       RUSTFLAGS: '-D warnings -F unsafe-code'
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: ./panic_safety.sh
       - run: cargo doc --all-features --no-deps
@@ -25,12 +25,39 @@ jobs:
       # All targets are run with the same `RUSTFLAGS
       - run: cargo build --verbose
       - run: cargo test --verbose
-      - run: cargo test --verbose -- --ignored
       - run: cargo bench --no-run --profile=dev
       - run: cargo test --verbose --no-default-features
       - run: cargo build --verbose --features "experimental"
       - run: cargo test --verbose --features "experimental"
       - run: cargo audit --deny warnings # For some reason this hangs if you don't cargo build first
+
+  integration_testing:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+
+    # Set `RUSTFLAGS` once for all cargo commands so that changing these flags
+    # doesn't trigger a fresh build.
+    env:
+      RUSTFLAGS: '-D warnings -F unsafe-code'
+
+    steps:
+      - name: Checkout cedar
+        uses: actions/checkout@v4
+      - run: rm -rf cedar-integration-tests # blast the current content
+      - name: Checkout cedar-integration-tests
+        uses: actions/checkout@v4
+        with:
+          repository: cedar-policy/cedar-integration-tests
+          ref: main
+          path: ./cedar-integration-tests
+      - run: cd cedar-integration-tests && tar xzf corpus-tests.tar.gz
+      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - run: cargo test --verbose --features "integration-testing"
+      - run: cargo test --verbose --features "integration-testing" -- --ignored
 
   # Clippy in its own job so that the `RUSTFLAGS` set for `build_and_test`
   # don't effect it. As a side effect, this will run in parallel, saving some
@@ -43,7 +70,7 @@ jobs:
           - stable
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       # Clippy is configured by `.cargo/config.toml` to deny on lints like
       # `unwrap_used`. They aren't detected by `panic_safety.sh` which only
@@ -60,7 +87,7 @@ jobs:
           - stable
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: cargo fmt --all --check
 
@@ -68,5 +95,5 @@ jobs:
     name: cargo deny
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v1
