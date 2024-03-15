@@ -20,14 +20,14 @@ jobs:
           - stable
     steps:
       - name: Check out head (${{ github.head_ref }})
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: head
       # Pull requests to non-release branches are checked for SemVer breakage
       # relative to their target branch.
       - if: ${{ !startsWith(github.base_ref, 'release/') }}
         name: Check out base (${{ github.base_ref }})
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.base_ref }}
           path: base
