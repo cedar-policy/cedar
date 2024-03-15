@@ -160,8 +160,9 @@ pub fn parse_schema_from_test(test: &JsonTest) -> ValidatorSchema {
     let schema_file = resolve_integration_test_path(&test.schema);
     let schema_text = std::fs::read_to_string(schema_file)
         .unwrap_or_else(|e| panic!("error loading schema file {}: {e}", &test.schema));
-    ValidatorSchema::from_str(&schema_text)
+    ValidatorSchema::from_str_natural(&schema_text, Extensions::all_available())
         .unwrap_or_else(|e| panic!("error parsing schema in {}: {e}", &test.schema))
+        .0
 }
 
 /// Given a `JsonTest`, parse (and validate) the provided entities file.
@@ -313,10 +314,15 @@ pub fn perform_integration_test_from_json_custom(
             validation_result.errors
         );
     } else {
-        assert!(
-            !validation_result.validation_passed(),
-            "Expected that validation would fail in {test_name}, but it did not.",
-        );
+        match test_impl.validation_comparison_mode() {
+            ValidationComparisonMode::AgreeOnAll => {
+                assert!(
+                    !validation_result.validation_passed(),
+                    "Expected that validation would fail in {test_name}, but it did not.",
+                );
+            }
+            ValidationComparisonMode::AgreeOnValid => {} // ignore
+        }
     }
 
     for json_request in test.requests {
