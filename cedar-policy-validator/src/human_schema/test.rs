@@ -330,9 +330,9 @@ mod demo_tests {
         .is_ok());
         assert!(SchemaFragment::from_str_natural(
             r#"
-    type empty = {};
+    type flag = { value: __cedar::Bool };
     action "Foo" appliesTo {
-        context: empty
+        context: flag
     };
 "#
         )
@@ -348,10 +348,31 @@ action "Foo" appliesTo {
         .is_ok());
         assert!(SchemaFragment::from_str_natural(
             r#"
-namespace Bar { type empty = {}; }
+namespace Bar { type flag = { value: Bool }; }
 namespace Baz {action "Foo" appliesTo {
-    context: Bar::empty
+    context: Bar::flag
 };}
+"#
+        )
+        .is_ok());
+        assert!(SchemaFragment::from_str_natural(
+            r#"
+        type authcontext = {
+            ip: ipaddr,
+            is_authenticated: Boolean,
+            timestamp: Long
+        };
+        entity Ticket {
+          who: String,
+          operation: Long,
+          request: {
+            ip: ipaddr,
+            is_authenticated: Boolean,
+            timestamp: Long
+          }
+        };
+        action view appliesTo { context: authcontext };
+        action upload appliesTo { context: authcontext };
 "#
         )
         .is_ok());
