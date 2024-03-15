@@ -359,17 +359,13 @@ namespace Baz {action "Foo" appliesTo {
             r#"
         type authcontext = {
             ip: ipaddr,
-            is_authenticated: Boolean,
+            is_authenticated: Bool,
             timestamp: Long
         };
         entity Ticket {
           who: String,
           operation: Long,
-          request: {
-            ip: ipaddr,
-            is_authenticated: Boolean,
-            timestamp: Long
-          }
+          request: authcontext
         };
         action view appliesTo { context: authcontext };
         action upload appliesTo { context: authcontext };
