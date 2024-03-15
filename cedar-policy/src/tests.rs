@@ -3404,14 +3404,18 @@ mod issue_606 {
 }
 
 mod issue_619 {
+    use crate::{eval_expression, Context, Entities, EvalResult, Policy, Request};
     use cool_asserts::assert_matches;
-    use crate::{Context, Entities, EvalResult, Policy, Request, eval_expression};
 
     /// The first issue reported in issue 619.
     /// This policy should parse properly, convert to JSON properly, and convert back from JSON properly.
     #[test]
     fn issue_619() {
-        let policy = Policy::parse(None, r#"permit(principal, action, resource) when {1 * 2 * true};"#).unwrap();
+        let policy = Policy::parse(
+            None,
+            r#"permit(principal, action, resource) when {1 * 2 * true};"#,
+        )
+        .unwrap();
         let json = policy.to_json().unwrap();
         let _ = Policy::from_json(None, json).unwrap();
     }
@@ -3429,7 +3433,13 @@ mod issue_619 {
         assert_matches!(eval(&format!("{}*{}*0", 2^63, 2^63)), Err(e) => {
             assert_eq!(&e.to_string(), "multiplication overflow");
         });
-        assert_matches!(eval(&format!("{}*0*{}", 2^63, 2^63)), Ok(EvalResult::Long(0)));
-        assert_matches!(eval(&format!("0*{}*{}", 2^63, 2^63)), Ok(EvalResult::Long(0)));
+        assert_matches!(
+            eval(&format!("{}*0*{}", 2 ^ 63, 2 ^ 63)),
+            Ok(EvalResult::Long(0))
+        );
+        assert_matches!(
+            eval(&format!("0*{}*{}", 2 ^ 63, 2 ^ 63)),
+            Ok(EvalResult::Long(0))
+        );
     }
 }

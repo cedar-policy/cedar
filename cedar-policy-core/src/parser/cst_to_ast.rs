@@ -48,7 +48,7 @@ use crate::ast::{
     ResourceConstraint,
 };
 use crate::est::extract_single_argument;
-use itertools::Either;
+use itertools::{Either, Itertools};
 use smol_str::SmolStr;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
@@ -1450,32 +1450,23 @@ impl Node<Option<cst::Mult>> {
         let mult = self.as_inner()?;
 
         let maybe_first = mult.initial.to_expr_or_special(errs);
-        // collect() preforms all the conversions, generating any errors
-        let more: Vec<(cst::MultOp, _)> = mult
+        let more = mult
             .extended
             .iter()
-            .filter_map(|&(op, ref i)| i.to_expr(errs).map(|e| (op, e)))
-            .collect();
+            .filter_map(|&(op, ref i)| i.to_expr(errs).map(|e| (op, e)));
 
-        if !more.is_empty() {
+        let (more, new_errs): (Vec<_>, Vec<_>) = more
+            .map(|(op, expr)| match op {
+                cst::MultOp::Times => Ok(expr),
+                cst::MultOp::Divide => Err(self.to_ast_err(ToASTErrorKind::UnsupportedDivision)),
+                cst::MultOp::Mod => Err(self.to_ast_err(ToASTErrorKind::UnsupportedModulo)),
+            })
+            .partition_result();
+        if !errs.is_empty() {
+            errs.extend(new_errs);
+            return None;
+        } else if !more.is_empty() {
             let first = maybe_first?.into_expr(errs)?;
-            // enforce that division and remainder/modulo are not supported
-            for (op, _) in &more {
-                match op {
-                    cst::MultOp::Times => {}
-                    cst::MultOp::Divide => {
-                        errs.push(self.to_ast_err(ToASTErrorKind::UnsupportedDivision));
-                        return None;
-                    }
-                    cst::MultOp::Mod => {
-                        errs.push(self.to_ast_err(ToASTErrorKind::UnsupportedModulo));
-                        return None;
-                    }
-                }
-            }
-            // remove the opcodes -- from here on we assume they're all `Times`,
-            // having checked above that this is the case
-            let more = more.into_iter().map(|(_, e)| e);
             Some(ExprOrSpecial::Expr {
                 expr: construct_expr_mul(first, more, &self.loc),
                 loc: self.loc.clone(),
