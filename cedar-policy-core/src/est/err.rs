@@ -80,10 +80,6 @@ pub enum FromJsonError {
     #[error("invalid entity type: {0}")]
     #[diagnostic(transparent)]
     InvalidEntityType(ParseErrors),
-    /// Errors constructing AST expressions
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ExprConstructionError(#[from] ast::ExprConstructionError),
 }
 
 /// Errors while instantiating a policy
