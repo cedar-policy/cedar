@@ -3430,15 +3430,15 @@ mod issue_619 {
                 &expr.parse().unwrap(),
             )
         };
-        assert_matches!(eval(&format!("{}*{}*0", 2^63, 2^63)), Err(e) => {
-            assert_eq!(&e.to_string(), "multiplication overflow");
+        assert_matches!(eval(&format!("{}*{}*0", 1_i64 << 62, 1_i64 << 62)), Err(e) => {
+            assert_eq!(&e.to_string(), "integer overflow while attempting to multiply the values `4611686018427387904` and `4611686018427387904`");
         });
         assert_matches!(
-            eval(&format!("{}*0*{}", 2 ^ 63, 2 ^ 63)),
+            eval(&format!("{}*0*{}", 1_i64 << 62, 1_i64 << 62)),
             Ok(EvalResult::Long(0))
         );
         assert_matches!(
-            eval(&format!("0*{}*{}", 2 ^ 63, 2 ^ 63)),
+            eval(&format!("0*{}*{}", 1_i64 << 62, 1_i64 << 62)),
             Ok(EvalResult::Long(0))
         );
     }
