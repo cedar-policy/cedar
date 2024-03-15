@@ -1462,8 +1462,12 @@ impl Node<Option<cst::Mult>> {
                 cst::MultOp::Mod => Err(self.to_ast_err(ToASTErrorKind::UnsupportedModulo)),
             })
             .partition_result();
-        if !errs.is_empty() {
+        if !errs.is_empty() || !new_errs.is_empty() {
             errs.extend(new_errs);
+            if !more.is_empty() {
+                // in this case, `first` must be an expr, we should collect any errors there as well
+                let _ = maybe_first?.into_expr(errs)?;
+            }
             return None;
         } else if !more.is_empty() {
             let first = maybe_first?.into_expr(errs)?;
@@ -2540,7 +2544,7 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs.clone())));
         assert!(errs.is_empty());
         // manual check at test defn
         println!("{:?}", expr);
@@ -2556,7 +2560,7 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
         // manual check at test defn
         println!("{:?}", expr);
     }
@@ -2572,14 +2576,18 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
         match expr.expr_kind() {
             ast::ExprKind::GetAttr { attr, .. } => {
                 assert_eq!(attr, "some_ident");
             }
             _ => panic!("should be a get expr"),
         }
+    }
 
+    #[test]
+    fn show_expr4() {
+        let mut errs = ParseErrors::new();
         let expr = text_to_cst::parse_expr(
             r#"
             1.some_ident
@@ -2587,14 +2595,18 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
         match expr.expr_kind() {
             ast::ExprKind::GetAttr { attr, .. } => {
                 assert_eq!(attr, "some_ident");
             }
             _ => panic!("should be a get expr"),
         }
+    }
 
+    #[test]
+    fn show_expr5() {
+        let mut errs = ParseErrors::new();
         let expr = text_to_cst::parse_expr(
             r#"
             "first"["some string"]
@@ -2602,7 +2614,7 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
         match expr.expr_kind() {
             ast::ExprKind::GetAttr { attr, .. } => {
                 assert_eq!(attr, "some string");
@@ -2612,7 +2624,7 @@ mod tests {
     }
 
     #[test]
-    fn show_expr4() {
+    fn show_expr6() {
         let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
@@ -2621,7 +2633,7 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
 
         match expr.expr_kind() {
             ast::ExprKind::HasAttr { attr, .. } => {
@@ -2632,7 +2644,7 @@ mod tests {
     }
 
     #[test]
-    fn show_expr5() {
+    fn show_expr7() {
         let mut errs = ParseErrors::new();
         let expr = text_to_cst::parse_expr(
             r#"
@@ -2641,7 +2653,7 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
 
         match expr.expr_kind() {
             ast::ExprKind::GetAttr { attr, .. } => {
@@ -2649,7 +2661,11 @@ mod tests {
             }
             _ => panic!("should be a get expr"),
         }
+    }
 
+    #[test]
+    fn show_expr8() {
+        let mut errs = ParseErrors::new();
         // parses to the same AST expression as above
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
@@ -2658,7 +2674,7 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
 
         match expr.expr_kind() {
             ast::ExprKind::GetAttr { attr, .. } => {
@@ -2666,7 +2682,10 @@ mod tests {
             }
             _ => panic!("should be a get expr"),
         }
+    }
 
+    #[test]
+    fn show_expr9() {
         // accessing a record with a non-identifier attribute
         let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
@@ -2676,7 +2695,7 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
 
         match expr.expr_kind() {
             ast::ExprKind::GetAttr { attr, .. } => {
@@ -2687,7 +2706,7 @@ mod tests {
     }
 
     #[test]
-    fn show_expr6_idents() {
+    fn show_expr10() {
         let mut errs = ParseErrors::new();
         let expr = text_to_cst::parse_expr(
             r#"
@@ -2698,13 +2717,16 @@ mod tests {
         .expect("failed parser")
         .to_expr(&mut errs);
 
-        println!("{:?}", errs);
-        assert!(expr.is_none());
-        // a,b,a,b: unsupported variables
-        // if .. then .. else are invalid attributes
-        assert!(errs.len() == 6);
+        assert_matches!(expr, None => {
+            // a,b,a,b: unsupported variables
+            // if .. then .. else are invalid attributes
+            assert_eq!(errs.len(), 6, "{:?}", miette::Report::new(errs));
+        });
+    }
 
-        errs.clear();
+    #[test]
+    fn show_expr11() {
+        let mut errs = ParseErrors::new();
         let expr = text_to_cst::parse_expr(
             r#"
             {principal:"principal"}
@@ -2712,15 +2734,17 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
 
-        println!("{:?}", expr);
         match expr.expr_kind() {
             ast::ExprKind::Record { .. } => {}
-            _ => panic!("should be record"),
+            _ => panic!("should be record, got: {expr:?}"),
         }
+    }
 
-        errs.clear();
+    #[test]
+    fn show_expr12() {
+        let mut errs = ParseErrors::new();
         let expr = text_to_cst::parse_expr(
             r#"
             {"principal":"principal"}
@@ -2728,12 +2752,11 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
 
-        println!("{:?}", expr);
         match expr.expr_kind() {
             ast::ExprKind::Record { .. } => {}
-            _ => panic!("should be record"),
+            _ => panic!("should be record, got: {expr:?}"),
         }
     }
 
@@ -2748,115 +2771,104 @@ mod tests {
         .expect("failed parse");
 
         let convert = parse.to_expr(&mut errs);
-        println!("{:?}", errs);
         // uses true and false:
-        assert!(errs.len() == 2);
-        assert!(convert.is_none());
-
-        let mut errs = ParseErrors::new();
-        let parse = text_to_cst::parse_expr(
-            r#"
-            if {if: true}.if then {"if":false}["if"] else {when:true}.permit
-        "#,
-        )
-        .expect("failed parse");
-
-        let convert = parse.to_expr(&mut errs);
-        println!("{:?}", errs);
-        // uses if twice, one of those triggers an invalid attr
-        assert!(errs.len() == 3);
-        assert!(convert.is_none());
+        assert_matches!(convert, None => {
+            assert_eq!(errs.len(), 2, "{:?}", miette::Report::new(errs));
+        });
     }
 
     #[test]
     fn reserved_idents2() {
         let mut errs = ParseErrors::new();
-        let parse = text_to_cst::parse_expr(
-            r#"
-            if {where: true}.like || {has:false}.in then {"like":false}["in"] else {then:true}.else
-        "#,
-        )
-        .expect("failed parse");
+        let src = r#"
+            if {if: true}.if then {"if":false}["if"] else {when:true}.permit
+        "#;
+        let parse = text_to_cst::parse_expr(src).expect("failed parse");
 
-        let convert = parse.to_expr(&mut errs);
-        println!("{:?}", errs);
-        // uses 5x reserved idents, 2 of those trigger an invalid attr
-        assert!(errs.len() == 7);
-        assert!(convert.is_none());
+        assert_matches!(parse.to_expr(&mut errs), None => {
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("this identifier is reserved and cannot be used: `if`"));
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("record literal has invalid attributes"));
+            assert_eq!(errs.len(), 5, "{:?}", miette::Report::new(errs)); // both of the above errors occur multiple times in that expression
+        });
+    }
+
+    #[test]
+    fn reserved_idents3() {
+        let mut errs = ParseErrors::new();
+        let src = r#"
+            if {where: true}.like || {has:false}.in then {"like":false}["in"] else {then:true}.else
+        "#;
+        let parse = text_to_cst::parse_expr(src).expect("failed parse");
+
+        assert_matches!(parse.to_expr(&mut errs), None => {
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("this identifier is reserved and cannot be used: `has`"));
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("this identifier is reserved and cannot be used: `like`"));
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("this identifier is reserved and cannot be used: `in`"));
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("this identifier is reserved and cannot be used: `then`"));
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("this identifier is reserved and cannot be used: `else`"));
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("record literal has invalid attributes"));
+            assert_eq!(errs.len(), 8, "{:?}", miette::Report::new(errs)); // some of the above errors occur multiple times in that expression
+        });
     }
 
     #[test]
     fn show_policy1() {
         let mut errs = ParseErrors::new();
-        let parse = text_to_cst::parse_policy(
-            r#"
+        let src = r#"
             permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
-        "#,
-        )
-        .expect("failed parse");
+        "#;
+        let parse = text_to_cst::parse_policy(src).expect("failed parse");
         println!("{:#}", parse.as_inner().expect("internal parse error"));
-        let convert = parse.to_policy(ast::PolicyID::from_string("id"), &mut errs);
-        println!("{:?}", errs);
-        // 3x type constraints, 2x arbitrary vars, advice block
-        assert!(errs.len() == 6);
-        assert!(convert.is_none());
-        // manual check at test defn
-        println!("{:?}", convert);
+        assert_matches!(parse.to_policy(ast::PolicyID::from_string("id"), &mut errs), None => {
+            // TODO: check the source snippet pointed to in each of these three errors is `p`, `a`, and `r` respectively
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error_and_help("type constraints using `:` are not supported", "try using `is` instead"));
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error_and_help("type constraints using `:` are not supported", "try using `is` instead"));
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error_and_help("type constraints using `:` are not supported", "try using `is` instead"));
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("arbitrary var"));
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("arbitrary var"));
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error_and_help("not a valid policy condition: `advice`", "condition must be either `when` or `unless`"));
+        });
     }
 
     #[test]
     fn show_policy2() {
         let mut errs = ParseErrors::new();
-        let parse = text_to_cst::parse_policy(
-            r#"
+        let src = r#"
             permit(principal,action,resource)when{true};
-        "#,
-        )
-        .expect("failed parse");
-        println!("{}", parse.as_inner().expect("internal parse error"));
-        println!("{:?}", parse.as_inner().expect("internal parse error"));
-        let convert = parse.to_policy(ast::PolicyID::from_string("id"), &mut errs);
-        assert!(convert.is_some());
-        // manual check at test defn
-        println!("{:?}", convert);
+        "#;
+        let parse = text_to_cst::parse_policy(src).expect("failed parse");
+        println!("{:#}", parse.as_inner().expect("internal parse error"));
+        assert_matches!(parse.to_policy(ast::PolicyID::from_string("id"), &mut errs), Some(_) => {
+            assert!(errs.is_empty(), "{:?}", miette::Report::new(errs));
+        });
     }
 
     #[test]
     fn show_policy3() {
         let mut errs = ParseErrors::new();
-        let parse = text_to_cst::parse_policy(
-            r#"
+        let src = r#"
             permit(principal in User::"jane",action,resource);
-        "#,
-        )
-        .expect("failed parse");
-        println!("{}", parse.as_inner().expect("internal parse error"));
-        println!("{:?}", parse.as_inner().expect("internal parse error"));
-        let convert = parse
-            .to_policy(ast::PolicyID::from_string("id"), &mut errs)
-            .expect("failed convert");
-        assert!(errs.is_empty());
-        // manual check at test defn
-        println!("{:?}", convert);
+        "#;
+        let parse = text_to_cst::parse_policy(src).expect("failed parse");
+        println!("{:#}", parse.as_inner().expect("internal parse error"));
+        assert_matches!(parse.to_policy(ast::PolicyID::from_string("id"), &mut errs), Some(_) => {
+            assert!(errs.is_empty(), "{:?}", miette::Report::new(errs));
+        });
     }
 
     #[test]
     fn show_policy4() {
         let mut errs = ParseErrors::new();
-        let parse = text_to_cst::parse_policy(
-            r#"
+        let src = r#"
             forbid(principal in User::"jane",action,resource)unless{
                 context.group != "friends"
             };
-        "#,
-        )
-        .expect("failed parse");
-        let convert = parse
-            .to_policy(ast::PolicyID::from_string("id"), &mut errs)
-            .expect("failed convert");
-        assert!(errs.is_empty());
-        // manual check at test defn
-        println!("\n{:?}", convert);
+        "#;
+        let parse = text_to_cst::parse_policy(src).expect("failed parse");
+        println!("{:#}", parse.as_inner().expect("internal parse error"));
+        assert_matches!(parse.to_policy(ast::PolicyID::from_string("id"), &mut errs), Some(_) => {
+            assert!(errs.is_empty(), "{:?}", miette::Report::new(errs));
+        });
     }
 
     #[test]
@@ -2870,7 +2882,7 @@ mod tests {
         )
         .expect("should parse")
         .to_policy(ast::PolicyID::from_string("id"), &mut errs)
-        .expect("should be valid");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
         assert_matches!(
             policy.annotation(&ast::AnyId::new_unchecked("anno")),
             Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "good annotation")
@@ -2888,9 +2900,10 @@ mod tests {
         )
         .expect("should parse")
         .to_policy(ast::PolicyID::from_string("id"), &mut errs);
-        assert!(policy.is_none());
-        // annotation duplication (anno)
-        assert!(errs.len() == 1);
+        assert_matches!(policy, None => {
+            // annotation duplication (anno)
+            assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
+        });
 
         // can have multiple annotations
         let mut errs = ParseErrors::new();
@@ -2909,7 +2922,7 @@ mod tests {
         )
         .expect("should parse")
         .to_policyset(&mut errs)
-        .expect("should be valid");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
         assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy0"))
@@ -2999,7 +3012,7 @@ mod tests {
             "#,
         ).expect("should parse")
         .to_policyset(&mut errs)
-        .expect("should be valid");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
         let policy0 = policyset
             .get(&ast::PolicyID::from_string("policy0"))
             .expect("should be the right policy ID");
@@ -3060,9 +3073,9 @@ mod tests {
         .expect("failed parse");
         println!("\n{:#}", parse.as_inner().expect("internal parse error"));
         let convert = parse.to_policy(ast::PolicyID::from_string("id"), &mut errs);
-        println!("{:?}", errs);
-        assert!(errs.len() == 1);
-        assert!(convert.is_none());
+        assert_matches!(convert, None => {
+            assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
+        });
     }
 
     #[test]
@@ -3080,9 +3093,9 @@ mod tests {
         .expect("failed parse");
         println!("{:#}", parse.as_inner().expect("internal parse error"));
         let convert = parse.to_policy(ast::PolicyID::from_string("id"), &mut errs);
-        println!("{:?}", errs);
-        assert!(errs.len() == 1);
-        assert!(convert.is_none());
+        assert_matches!(convert, None => {
+            assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
+        });
     }
 
     #[test]
@@ -3095,8 +3108,9 @@ mod tests {
         )
         .expect("failed parse");
         let convert = parse.to_policy(ast::PolicyID::from_string("id"), &mut errs);
-        assert!(errs.len() == 1);
-        assert!(convert.is_none());
+        assert_matches!(convert, None => {
+            assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
+        });
     }
 
     #[test]
@@ -3111,8 +3125,10 @@ mod tests {
         .expect("parse error")
         .to_expr(&mut errs);
         // ast should be acceptable
-        println!("{:?}", errs);
-        assert!(e.is_some());
+        assert!(e.is_some(),
+            "{:?}", // the Debug representation of `miette::Report` is the pretty one
+            miette::Report::new(errs.clone()),
+        );
         assert!(errs.is_empty());
 
         let e = text_to_cst::parse_expr(
@@ -3124,13 +3140,13 @@ mod tests {
         .expect("parse error")
         .to_expr(&mut errs);
         // ast should be error, since "contains" is used inappropriately
-        println!("{:?}", errs);
-        assert!(e.is_none());
-        assert!(errs.len() == 1);
+        assert_matches!(e, None => {
+            assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
+        });
     }
 
     #[test]
-    fn construct_record1() {
+    fn construct_record_1() {
         let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(
             r#"
@@ -3140,75 +3156,7 @@ mod tests {
         // the cst should be acceptable
         .expect("parse error")
         .to_expr(&mut errs)
-        .expect("convert fail");
-        // ast should be acceptable, with record construction
-        if let ast::ExprKind::Record { .. } = e.expr_kind() {
-            // good
-        } else {
-            panic!("not a record")
-        }
-        println!("{e}");
-
-        let e = text_to_cst::parse_expr(
-            r#"
-                {"one":"one"}
-                "#,
-        )
-        // the cst should be acceptable
-        .expect("parse error")
-        .to_expr(&mut errs)
-        .expect("convert fail");
-        // ast should be acceptable, with record construction
-        if let ast::ExprKind::Record { .. } = e.expr_kind() {
-            // good
-        } else {
-            panic!("not a record")
-        }
-        println!("{e}");
-
-        let e = text_to_cst::parse_expr(
-            r#"
-                {"one":"one",two:"two"}
-                "#,
-        )
-        // the cst should be acceptable
-        .expect("parse error")
-        .to_expr(&mut errs)
-        .expect("convert fail");
-        // ast should be acceptable, with record construction
-        if let ast::ExprKind::Record { .. } = e.expr_kind() {
-            // good
-        } else {
-            panic!("not a record")
-        }
-        println!("{e}");
-
-        let e = text_to_cst::parse_expr(
-            r#"
-                {one:"one","two":"two"}
-                "#,
-        )
-        // the cst should be acceptable
-        .expect("parse error")
-        .to_expr(&mut errs)
-        .expect("convert fail");
-        // ast should be acceptable, with record construction
-        if let ast::ExprKind::Record { .. } = e.expr_kind() {
-            // good
-        } else {
-            panic!("not a record")
-        }
-        println!("{e}");
-
-        let e = text_to_cst::parse_expr(
-            r#"
-                {one:"b\"","b\"":2}
-                "#,
-        )
-        // the cst should be acceptable
-        .expect("parse error")
-        .to_expr(&mut errs)
-        .expect("convert fail");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
         // ast should be acceptable, with record construction
         if let ast::ExprKind::Record { .. } = e.expr_kind() {
             // good
@@ -3219,7 +3167,91 @@ mod tests {
     }
 
     #[test]
-    fn construct_invalid_get() {
+    fn construct_record_2() {
+        let mut errs = ParseErrors::new();
+        let e = text_to_cst::parse_expr(
+            r#"
+                {"one":"one"}
+                "#,
+        )
+        // the cst should be acceptable
+        .expect("parse error")
+        .to_expr(&mut errs)
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
+        // ast should be acceptable, with record construction
+        if let ast::ExprKind::Record { .. } = e.expr_kind() {
+            // good
+        } else {
+            panic!("not a record")
+        }
+        println!("{e}");
+    }
+
+    #[test]
+    fn construct_record_3() {
+        let mut errs = ParseErrors::new();
+        let e = text_to_cst::parse_expr(
+            r#"
+                {"one":"one",two:"two"}
+                "#,
+        )
+        // the cst should be acceptable
+        .expect("parse error")
+        .to_expr(&mut errs)
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
+        // ast should be acceptable, with record construction
+        if let ast::ExprKind::Record { .. } = e.expr_kind() {
+            // good
+        } else {
+            panic!("not a record")
+        }
+        println!("{e}");
+    }
+
+    #[test]
+    fn construct_record_4() {
+        let mut errs = ParseErrors::new();
+        let e = text_to_cst::parse_expr(
+            r#"
+                {one:"one","two":"two"}
+                "#,
+        )
+        // the cst should be acceptable
+        .expect("parse error")
+        .to_expr(&mut errs)
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
+        // ast should be acceptable, with record construction
+        if let ast::ExprKind::Record { .. } = e.expr_kind() {
+            // good
+        } else {
+            panic!("not a record")
+        }
+        println!("{e}");
+    }
+
+    #[test]
+    fn construct_record_5() {
+        let mut errs = ParseErrors::new();
+        let e = text_to_cst::parse_expr(
+            r#"
+                {one:"b\"","b\"":2}
+                "#,
+        )
+        // the cst should be acceptable
+        .expect("parse error")
+        .to_expr(&mut errs)
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
+        // ast should be acceptable, with record construction
+        if let ast::ExprKind::Record { .. } = e.expr_kind() {
+            // good
+        } else {
+            panic!("not a record")
+        }
+        println!("{e}");
+    }
+
+    #[test]
+    fn construct_invalid_get_1() {
         let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(
             r#"
@@ -3229,10 +3261,14 @@ mod tests {
         .expect("failed parser")
         .to_expr(&mut errs);
         // ast should be error: 0 is not a string literal
-        println!("{:?}", errs);
-        assert!(e.is_none());
-        assert!(errs.len() == 1);
+        assert_matches!(e, None => {
+            assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
+        });
+    }
 
+    #[test]
+    fn construct_invalid_get_2() {
+        let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(
             r#"
             {"one":1, "two":"two"}[-1]
@@ -3241,9 +3277,14 @@ mod tests {
         .expect("failed parser")
         .to_expr(&mut errs);
         // ast should be error: -1 is not a string literal
-        println!("{:?}", errs);
-        assert!(e.is_none());
+        assert_matches!(e, None => {
+            assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
+        });
+    }
 
+    #[test]
+    fn construct_invalid_get_3() {
+        let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(
             r#"
             {"one":1, "two":"two"}[true]
@@ -3252,9 +3293,14 @@ mod tests {
         .expect("failed parser")
         .to_expr(&mut errs);
         // ast should be error: true is not a string literal
-        println!("{:?}", errs);
-        assert!(e.is_none());
+        assert_matches!(e, None => {
+            assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
+        });
+    }
 
+    #[test]
+    fn construct_invalid_get_4() {
+        let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(
             r#"
             {"one":1, "two":"two"}[one]
@@ -3263,12 +3309,13 @@ mod tests {
         .expect("failed parser")
         .to_expr(&mut errs);
         // ast should be error: one is not a string literal
-        println!("{:?}", errs);
-        assert!(e.is_none());
+        assert_matches!(e, None => {
+            assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
+        });
     }
 
     #[test]
-    fn construct_has() {
+    fn construct_has_1() {
         let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
@@ -3277,7 +3324,7 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
 
         match expr.expr_kind() {
             ast::ExprKind::HasAttr { attr, .. } => {
@@ -3285,7 +3332,10 @@ mod tests {
             }
             _ => panic!("should be a has expr"),
         }
+    }
 
+    #[test]
+    fn construct_has_2() {
         let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(
             r#"
@@ -3295,13 +3345,13 @@ mod tests {
         .expect("failed parser")
         .to_expr(&mut errs);
         // ast should be error
-        println!("{:?}", errs);
-        assert!(e.is_none());
-        assert!(errs.len() == 1);
+        assert_matches!(e, None => {
+            assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
+        });
     }
 
     #[test]
-    fn construct_like() {
+    fn construct_like_1() {
         let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
@@ -3310,14 +3360,18 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
         match expr.expr_kind() {
             ast::ExprKind::Like { pattern, .. } => {
                 assert_eq!(pattern.to_string(), "*5*");
             }
             _ => panic!("should be a like expr"),
         }
+    }
 
+    #[test]
+    fn construct_like_2() {
+        let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(
             r#"
             "354 hams" like 354
@@ -3326,10 +3380,13 @@ mod tests {
         .expect("failed parser")
         .to_expr(&mut errs);
         // ast should be error
-        println!("{:?}", errs);
-        assert!(e.is_none());
-        assert!(errs.len() == 1);
+        assert_matches!(e, None => {
+            assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
+        });
+    }
 
+    #[test]
+    fn construct_like_3() {
         let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
@@ -3338,14 +3395,18 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
         match expr.expr_kind() {
             ast::ExprKind::Like { pattern, .. } => {
                 assert_eq!(pattern.to_string(), r"string\\with\\backslashes");
             }
             _ => panic!("should be a like expr"),
         }
+    }
 
+    #[test]
+    fn construct_like_4() {
+        let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
             "string\\with\\backslashes" like "string\*with\*backslashes"
@@ -3353,14 +3414,18 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
         match expr.expr_kind() {
             ast::ExprKind::Like { pattern, .. } => {
                 assert_eq!(pattern.to_string(), r"string\*with\*backslashes");
             }
             _ => panic!("should be a like expr"),
         }
+    }
 
+    #[test]
+    fn construct_like_5() {
+        let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(
             r#"
             "string\*with\*escaped\*stars" like "string\*with\*escaped\*stars"
@@ -3369,10 +3434,14 @@ mod tests {
         .expect("failed parser")
         .to_expr(&mut errs);
         // ast should be error, \* is not a valid string character
-        println!("{:?}", errs);
-        assert!(e.is_none());
-        assert!(errs.len() == 3); // 3 invalid escapes in the first argument
+        assert_matches!(e, None => {
+            assert_eq!(errs.len(), 3, "{:?}", miette::Report::new(errs)); // 3 invalid escapes in the first argument
+        });
+    }
 
+    #[test]
+    fn construct_like_6() {
+        let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
             "string*with*stars" like "string\*with\*stars"
@@ -3380,14 +3449,17 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
         match expr.expr_kind() {
             ast::ExprKind::Like { pattern, .. } => {
                 assert_eq!(pattern.to_string(), "string\\*with\\*stars");
             }
             _ => panic!("should be a like expr"),
         }
+    }
 
+    #[test]
+    fn construct_like_7() {
         let mut errs = ParseErrors::new();
         let expr: ast::Expr = text_to_cst::parse_expr(
             r#"
@@ -3396,7 +3468,7 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
         match expr.expr_kind() {
             ast::ExprKind::Like { pattern, .. } => {
                 assert_eq!(
@@ -3406,7 +3478,11 @@ mod tests {
             }
             _ => panic!("should be a like expr"),
         }
-        // round trip test
+    }
+
+    #[test]
+    fn pattern_roundtrip() {
+        let mut errs = ParseErrors::new();
         let test_pattern = &vec![
             PatternElem::Char('h'),
             PatternElem::Char('e'),
@@ -3426,7 +3502,7 @@ mod tests {
         let e2 = text_to_cst::parse_expr(&s1)
             .expect("failed parser")
             .to_expr(&mut errs)
-            .expect("failed convert");
+            .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
         match e2.expr_kind() {
             ast::ExprKind::Like { pattern, .. } => {
                 assert_eq!(pattern.get_elems(), test_pattern);
@@ -3465,7 +3541,7 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
         match expr.expr_kind() {
             ast::ExprKind::HasAttr { attr, .. } => {
                 assert_eq!(attr, "age");
@@ -3482,7 +3558,7 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
         match expr.expr_kind() {
             ast::ExprKind::HasAttr { attr, .. } => {
                 assert_eq!(attr, "arbitrary+ _string");
@@ -3499,8 +3575,9 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs);
-        assert!(e.is_none());
-        assert!(errs.len() == 1);
+        assert_matches!(e, None => {
+            assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
+        });
 
         // ok
         let mut errs = ParseErrors::new();
@@ -3511,7 +3588,7 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
         match expr.expr_kind() {
             ast::ExprKind::GetAttr { attr, .. } => {
                 assert_eq!(attr, "age");
@@ -3528,7 +3605,7 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .expect("failed convert");
+        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
         match expr.expr_kind() {
             ast::ExprKind::GetAttr { attr, .. } => {
                 assert_eq!(attr, "arbitrary+ _string");
@@ -3545,8 +3622,9 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs);
-        assert!(e.is_none());
-        assert!(errs.len() == 1);
+        assert_matches!(e, None => {
+            assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
+        });
     }
 
     #[test]
@@ -3561,8 +3639,14 @@ mod tests {
         .expect("parse error")
         .to_expr(&mut errs);
         // conversion should fail, too many relational ops
-        assert!(e.is_none());
+        assert_matches!(e, None => {
+            assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
+        });
+    }
 
+    #[test]
+    fn relational_ops2() {
+        let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(
             r#"
                     3 >= ("dad" in "dad")
@@ -3572,8 +3656,16 @@ mod tests {
         .expect("parse error")
         .to_expr(&mut errs);
         // conversion should succeed, only one relational op
-        assert!(e.is_some());
+        assert!(e.is_some(),
+            "{:?}", // the Debug representation of `miette::Report` is the pretty one
+            miette::Report::new(errs.clone()),
+        );
+        assert!(errs.is_empty());
+    }
 
+    #[test]
+    fn relational_ops3() {
+        let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(
             r#"
                 (3 >= 2) == true
@@ -3583,8 +3675,16 @@ mod tests {
         .expect("parse error")
         .to_expr(&mut errs);
         // conversion should succeed, parentheses provided
-        assert!(e.is_some());
+        assert!(e.is_some(),
+            "{:?}", // the Debug representation of `miette::Report` is the pretty one
+            miette::Report::new(errs.clone()),
+        );
+        assert!(errs.is_empty());
+    }
 
+    #[test]
+    fn relational_ops4() {
+        let mut errs = ParseErrors::new();
         let e = text_to_cst::parse_expr(
             r#"
                 if 4 < 3 then 4 != 3 else 4 == 3 < 4
@@ -3594,7 +3694,9 @@ mod tests {
         .expect("parse error")
         .to_expr(&mut errs);
         // conversion should fail, too many relational ops
-        assert!(e.is_none());
+        assert_matches!(e, None => {
+            assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
+        });
     }
 
     #[test]
@@ -3605,98 +3707,154 @@ mod tests {
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some());
+        assert!(e.is_some(),
+            "{:?}", // the Debug representation of `miette::Report` is the pretty one
+            miette::Report::new(errs.clone()),
+        );
+        assert!(errs.is_empty());
 
         let e = text_to_cst::parse_expr(r#" 2 + -5 "#)
             // the cst should be acceptable
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some());
+        assert!(e.is_some(),
+            "{:?}", // the Debug representation of `miette::Report` is the pretty one
+            miette::Report::new(errs.clone()),
+        );
+        assert!(errs.is_empty());
 
         let e = text_to_cst::parse_expr(r#" 2 - 5 "#)
             // the cst should be acceptable
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some());
+        assert!(e.is_some(),
+            "{:?}", // the Debug representation of `miette::Report` is the pretty one
+            miette::Report::new(errs.clone()),
+        );
+        assert!(errs.is_empty());
 
         let e = text_to_cst::parse_expr(r#" 2 * 5 "#)
             // the cst should be acceptable
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some());
+        assert!(e.is_some(),
+            "{:?}", // the Debug representation of `miette::Report` is the pretty one
+            miette::Report::new(errs.clone()),
+        );
+        assert!(errs.is_empty());
 
         let e = text_to_cst::parse_expr(r#" 2 * -5 "#)
             // the cst should be acceptable
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some());
+        assert!(e.is_some(),
+            "{:?}", // the Debug representation of `miette::Report` is the pretty one
+            miette::Report::new(errs.clone()),
+        );
+        assert!(errs.is_empty());
 
         let e = text_to_cst::parse_expr(r#" context.size * 4 "#)
             // the cst should be acceptable
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some());
+        assert!(e.is_some(),
+            "{:?}", // the Debug representation of `miette::Report` is the pretty one
+            miette::Report::new(errs.clone()),
+        );
+        assert!(errs.is_empty());
 
         let e = text_to_cst::parse_expr(r#" 4 * context.size "#)
             // the cst should be acceptable
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some());
+        assert!(e.is_some(),
+            "{:?}", // the Debug representation of `miette::Report` is the pretty one
+            miette::Report::new(errs.clone()),
+        );
+        assert!(errs.is_empty());
 
         let e = text_to_cst::parse_expr(r#" context.size * context.scale "#)
             // the cst should be acceptable
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some());
+        assert!(e.is_some(),
+            "{:?}", // the Debug representation of `miette::Report` is the pretty one
+            miette::Report::new(errs.clone()),
+        );
+        assert!(errs.is_empty());
 
         let e = text_to_cst::parse_expr(r#" 5 + 10 + 90 "#)
             // the cst should be acceptable
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some());
+        assert!(e.is_some(),
+            "{:?}", // the Debug representation of `miette::Report` is the pretty one
+            miette::Report::new(errs.clone()),
+        );
+        assert!(errs.is_empty());
 
         let e = text_to_cst::parse_expr(r#" 5 + 10 - 90 * -2 "#)
             // the cst should be acceptable
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some());
+        assert!(e.is_some(),
+            "{:?}", // the Debug representation of `miette::Report` is the pretty one
+            miette::Report::new(errs.clone()),
+        );
+        assert!(errs.is_empty());
 
         let e = text_to_cst::parse_expr(r#" 5 + 10 * 90 - 2 "#)
             // the cst should be acceptable
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some());
+        assert!(e.is_some(),
+            "{:?}", // the Debug representation of `miette::Report` is the pretty one
+            miette::Report::new(errs.clone()),
+        );
+        assert!(errs.is_empty());
 
         let e = text_to_cst::parse_expr(r#" 5 - 10 - 90 - 2 "#)
             // the cst should be acceptable
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some());
+        assert!(e.is_some(),
+            "{:?}", // the Debug representation of `miette::Report` is the pretty one
+            miette::Report::new(errs.clone()),
+        );
+        assert!(errs.is_empty());
 
         let e = text_to_cst::parse_expr(r#" 5 * context.size * 10 "#)
             // the cst should be acceptable
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some());
+        assert!(e.is_some(),
+            "{:?}", // the Debug representation of `miette::Report` is the pretty one
+            miette::Report::new(errs.clone()),
+        );
+        assert!(errs.is_empty());
 
         let e = text_to_cst::parse_expr(r#" context.size * 3 * context.scale "#)
             // the cst should be acceptable
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some());
+        assert!(e.is_some(),
+            "{:?}", // the Debug representation of `miette::Report` is the pretty one
+            miette::Report::new(errs.clone()),
+        );
+        assert!(errs.is_empty());
     }
 
     const CORRECT_TEMPLATES: [&str; 7] = [
@@ -3734,7 +3892,12 @@ mod tests {
         .expect("parse error")
         .to_policy(ast::PolicyID::from_string("0"), &mut errs);
         // conversion should succeed, it's just permit all
-        assert!(e.is_some());
+        assert!(e.is_some(),
+            "{:?}", // the Debug representation of `miette::Report` is the pretty one
+            miette::Report::new(errs.clone()),
+        );
+        assert!(errs.is_empty());
+
         let e = text_to_cst::parse_policy(
             r#"
                 permit(principal:User,action,resource);
@@ -3744,7 +3907,9 @@ mod tests {
         .expect("parse error")
         .to_policy(ast::PolicyID::from_string("1"), &mut errs);
         // conversion should fail, variable types are not supported
-        assert!(e.is_none());
+        assert_matches!(e, None => {
+            assert_eq!(errs.len(), 1, "{:?}", miette::Report::new(errs));
+        });
     }
     #[test]
     fn string_escapes() {
@@ -3770,7 +3935,7 @@ mod tests {
         let test_invalid = |s: &str, en: usize| {
             let r = parse_literal(&format!("\"{}\"", s));
             assert!(r.is_err());
-            assert!(r.unwrap_err().len() == en);
+            assert_eq!(r.unwrap_err().len(), en);
         };
         // invalid escape `\a`
         test_invalid("\\a", 1);
@@ -3994,7 +4159,7 @@ mod tests {
             let e = text_to_cst::parse_expr(str)
                 .expect("should construct a CST")
                 .to_expr(&mut errs)
-                .expect("should convert to AST");
+                .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs.clone())));
             assert!(errs.is_empty());
             assert!(
                 e.eq_shape(&expected),
@@ -4046,7 +4211,7 @@ mod tests {
             let e = text_to_cst::parse_expr(es)
                 .expect("should construct a CST")
                 .to_expr(&mut errs)
-                .expect("should convert to AST");
+                .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
             assert!(
                 e.eq_shape(&expr),
                 "{:?} and {:?} should have the same shape.",
@@ -4083,7 +4248,7 @@ mod tests {
             let e = text_to_cst::parse_expr(es)
                 .expect("should construct a CST")
                 .to_expr(&mut errs)
-                .expect("should convert to AST");
+                .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
             assert!(
                 e.eq_shape(&expr),
                 "{:?} and {:?} should have the same shape.",
@@ -4116,8 +4281,9 @@ mod tests {
             let e = text_to_cst::parse_expr(es)
                 .expect("should construct a CST")
                 .to_expr(&mut errs);
-            assert_matches!(e, None);
-            expect_err(es, &errs, &em);
+            assert_matches!(e, None => {
+                expect_err(es, &errs, &em);
+            });
         }
     }
 
