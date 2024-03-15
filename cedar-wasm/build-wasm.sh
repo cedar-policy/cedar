@@ -23,4 +23,5 @@ sed -i "s/SchemaFragment/Schema/g" pkg/cedar_wasm.d.ts
 
 echo "type SmolStr = string;" >> pkg/cedar_wasm.d.ts
 echo "export type TypeOfAttribute = SchemaType & { required?: boolean };" >> pkg/cedar_wasm.d.ts
+echo "export type Context = Record<string, CedarValueJson>;" >> pkg/cedar_wasm.d.ts
 echo "Finished post-processing types file"

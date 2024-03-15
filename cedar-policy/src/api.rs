@@ -28,7 +28,7 @@ use cedar_policy_core::ast::{
 }; // `ContextCreationError` is unsuitable for `pub use` because it contains internal types like `RestrictedExpr`
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{
-    self, ContextJsonDeserializationError, ContextSchema, Dereference, JsonDeserializationError,
+    ContextJsonDeserializationError, ContextSchema, Dereference, JsonDeserializationError,
     JsonDeserializationErrorContext,
 };
 use cedar_policy_core::est;
@@ -52,9 +52,29 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::Infallible;
-use std::marker::PhantomData;
 use std::str::FromStr;
 use thiserror::Error;
+
+/// Extended functionality for `Entities` struct
+pub mod entities {
+
+    /// `IntoIter` iterator for `Entities`
+    #[derive(Debug)]
+    pub struct IntoIter {
+        pub(super) inner: <cedar_policy_core::entities::Entities as IntoIterator>::IntoIter,
+    }
+
+    impl Iterator for IntoIter {
+        type Item = super::Entity;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            self.inner.next().map(super::Entity)
+        }
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            self.inner.size_hint()
+        }
+    }
+}
 
 /// Identifier for a Template slot
 #[repr(transparent)]
@@ -256,9 +276,9 @@ impl std::fmt::Display for Entity {
 /// Uid.
 #[repr(transparent)]
 #[derive(Debug, Clone, Default, PartialEq, Eq, RefCast)]
-pub struct Entities(pub(crate) entities::Entities);
+pub struct Entities(pub(crate) cedar_policy_core::entities::Entities);
 
-pub use entities::EntitiesError;
+pub use cedar_policy_core::entities::EntitiesError;
 
 impl Entities {
     /// Create a fresh `Entities` with no entities
@@ -267,7 +287,7 @@ impl Entities {
     /// let entities = Entities::empty();
     /// ```
     pub fn empty() -> Self {
-        Self(entities::Entities::new())
+        Self(cedar_policy_core::entities::Entities::new())
     }
 
     /// Get the `Entity` with the given Uid, if any
@@ -310,13 +330,13 @@ impl Entities {
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
         schema: Option<&Schema>,
-    ) -> Result<Self, entities::EntitiesError> {
-        entities::Entities::from_entities(
+    ) -> Result<Self, cedar_policy_core::entities::EntitiesError> {
+        cedar_policy_core::entities::Entities::from_entities(
             entities.into_iter().map(|e| e.0),
             schema
                 .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
                 .as_ref(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
             Extensions::all_available(),
         )
         .map(Entities)
@@ -344,7 +364,7 @@ impl Entities {
                 schema
                     .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
                     .as_ref(),
-                entities::TCComputation::ComputeNow,
+                cedar_policy_core::entities::TCComputation::ComputeNow,
                 Extensions::all_available(),
             )?,
         ))
@@ -369,16 +389,16 @@ impl Entities {
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
-        let eparser = entities::EntityJsonParser::new(
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
         );
         let new_entities = eparser.iter_from_json_str(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
             schema.as_ref(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
             Extensions::all_available(),
         )?))
     }
@@ -402,16 +422,16 @@ impl Entities {
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
-        let eparser = entities::EntityJsonParser::new(
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
         );
         let new_entities = eparser.iter_from_json_value(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
             schema.as_ref(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
             Extensions::all_available(),
         )?))
     }
@@ -435,16 +455,16 @@ impl Entities {
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
-        let eparser = entities::EntityJsonParser::new(
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
         );
         let new_entities = eparser.iter_from_json_file(json)?;
         Ok(Self(self.0.add_entities(
             new_entities,
             schema.as_ref(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
             Extensions::all_available(),
         )?))
     }
@@ -496,12 +516,12 @@ impl Entities {
     pub fn from_json_str(
         json: &str,
         schema: Option<&Schema>,
-    ) -> Result<Self, entities::EntitiesError> {
+    ) -> Result<Self, cedar_policy_core::entities::EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
-        let eparser = entities::EntityJsonParser::new(
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
         );
         eparser.from_json_str(json).map(Entities)
     }
@@ -548,12 +568,12 @@ impl Entities {
     pub fn from_json_value(
         json: serde_json::Value,
         schema: Option<&Schema>,
-    ) -> Result<Self, entities::EntitiesError> {
+    ) -> Result<Self, cedar_policy_core::entities::EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
-        let eparser = entities::EntityJsonParser::new(
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
         );
         eparser.from_json_value(json).map(Entities)
     }
@@ -578,12 +598,12 @@ impl Entities {
     pub fn from_json_file(
         json: impl std::io::Read,
         schema: Option<&Schema>,
-    ) -> Result<Self, entities::EntitiesError> {
+    ) -> Result<Self, cedar_policy_core::entities::EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
-        let eparser = entities::EntityJsonParser::new(
+        let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
-            entities::TCComputation::ComputeNow,
+            cedar_policy_core::entities::TCComputation::ComputeNow,
         );
         eparser.from_json_file(json).map(Entities)
     }
@@ -621,8 +641,19 @@ impl Entities {
     pub fn write_to_json(
         &self,
         f: impl std::io::Write,
-    ) -> std::result::Result<(), entities::EntitiesError> {
+    ) -> std::result::Result<(), cedar_policy_core::entities::EntitiesError> {
         self.0.write_to_json(f)
+    }
+}
+
+impl IntoIterator for Entities {
+    type Item = Entity;
+    type IntoIter = entities::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Self::IntoIter {
+            inner: self.0.into_iter(),
+        }
     }
 }
 
@@ -1187,11 +1218,7 @@ impl Validator {
     /// that policy passed the validator. If the function `validation_passed`
     /// returns true, then there were no validation errors found, so all
     /// policies in the policy set have passed the validator.
-    pub fn validate<'a>(
-        &'a self,
-        pset: &'a PolicySet,
-        mode: ValidationMode,
-    ) -> ValidationResult<'static> {
+    pub fn validate(&self, pset: &PolicySet, mode: ValidationMode) -> ValidationResult {
         ValidationResult::from(self.0.validate(&pset.ast, mode.into()))
     }
 }
@@ -1652,13 +1679,12 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
 /// Validation succeeds if there are no fatal errors. There may still be
 /// non-fatal warnings present when validation passes.
 #[derive(Debug)]
-pub struct ValidationResult<'a> {
-    validation_errors: Vec<ValidationError<'static>>,
-    validation_warnings: Vec<ValidationWarning<'static>>,
-    phantom: PhantomData<&'a ()>,
+pub struct ValidationResult {
+    validation_errors: Vec<ValidationError>,
+    validation_warnings: Vec<ValidationWarning>,
 }
 
-impl<'a> ValidationResult<'a> {
+impl ValidationResult {
     /// True when validation passes. There are no errors, but there may be
     /// non-fatal warnings. Use [`ValidationResult::validation_passed_without_warnings`]
     /// to check that there are also no warnings.
@@ -1673,12 +1699,12 @@ impl<'a> ValidationResult<'a> {
     }
 
     /// Get an iterator over the errors found by the validator.
-    pub fn validation_errors<'b>(&self) -> impl Iterator<Item = &ValidationError<'b>> {
+    pub fn validation_errors(&self) -> impl Iterator<Item = &ValidationError> {
         self.validation_errors.iter()
     }
 
     /// Get an iterator over the warnings found by the validator.
-    pub fn validation_warnings<'b>(&self) -> impl Iterator<Item = &ValidationWarning<'b>> {
+    pub fn validation_warnings(&self) -> impl Iterator<Item = &ValidationWarning> {
         self.validation_warnings.iter()
     }
 
@@ -1694,18 +1720,17 @@ impl<'a> ValidationResult<'a> {
     }
 }
 
-impl<'a> From<cedar_policy_validator::ValidationResult<'a>> for ValidationResult<'static> {
+impl<'a> From<cedar_policy_validator::ValidationResult<'a>> for ValidationResult {
     fn from(r: cedar_policy_validator::ValidationResult<'a>) -> Self {
         let (errors, warnings) = r.into_errors_and_warnings();
         Self {
             validation_errors: errors.map(ValidationError::from).collect(),
             validation_warnings: warnings.map(ValidationWarning::from).collect(),
-            phantom: PhantomData,
         }
     }
 }
 
-impl<'a> std::fmt::Display for ValidationResult<'a> {
+impl std::fmt::Display for ValidationResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.first_error_or_warning() {
             Some(diagnostic) => write!(f, "{diagnostic}"),
@@ -1714,7 +1739,7 @@ impl<'a> std::fmt::Display for ValidationResult<'a> {
     }
 }
 
-impl<'a> std::error::Error for ValidationResult<'a> {
+impl std::error::Error for ValidationResult {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         self.first_error_or_warning()
             .and_then(std::error::Error::source)
@@ -1736,8 +1761,8 @@ impl<'a> std::error::Error for ValidationResult<'a> {
 // Except for `.related()`, and `.severity` everything is forwarded to the first
 // error, or to the first warning if there are no errors. This is done for the
 // same reason as policy parse errors.
-impl<'a> Diagnostic for ValidationResult<'a> {
-    fn related<'s>(&'s self) -> Option<Box<dyn Iterator<Item = &'s dyn Diagnostic> + 's>> {
+impl Diagnostic for ValidationResult {
+    fn related(&self) -> Option<Box<dyn Iterator<Item = &dyn Diagnostic> + '_>> {
         let mut related = self
             .validation_errors
             .iter()
@@ -1767,15 +1792,15 @@ impl<'a> Diagnostic for ValidationResult<'a> {
             .and_then(Diagnostic::source_code)
     }
 
-    fn code<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+    fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
         self.first_error_or_warning().and_then(Diagnostic::code)
     }
 
-    fn url<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+    fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
         self.first_error_or_warning().and_then(Diagnostic::url)
     }
 
-    fn help<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+    fn help(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
         self.first_error_or_warning().and_then(Diagnostic::help)
     }
 
@@ -1791,39 +1816,37 @@ impl<'a> Diagnostic for ValidationResult<'a> {
 /// where the problem was encountered.
 #[derive(Debug, Clone, Error)]
 #[error("validation error on {location}: {}", self.error_kind())]
-pub struct ValidationError<'a> {
-    location: SourceLocation<'static>,
+pub struct ValidationError {
+    location: SourceLocation,
     error_kind: ValidationErrorKind,
-    phantom: PhantomData<&'a ()>,
 }
 
-impl<'a> ValidationError<'a> {
+impl ValidationError {
     /// Extract details about the exact issue detected by the validator.
     pub fn error_kind(&self) -> &ValidationErrorKind {
         &self.error_kind
     }
 
     /// Extract the location where the validator found the issue.
-    pub fn location(&self) -> &SourceLocation<'a> {
+    pub fn location(&self) -> &SourceLocation {
         &self.location
     }
 }
 
 #[doc(hidden)]
-impl<'a> From<cedar_policy_validator::ValidationError<'a>> for ValidationError<'static> {
+impl<'a> From<cedar_policy_validator::ValidationError<'a>> for ValidationError {
     fn from(err: cedar_policy_validator::ValidationError<'a>) -> Self {
         let (location, error_kind) = err.into_location_and_error_kind();
         Self {
             location: SourceLocation::from(location),
             error_kind,
-            phantom: PhantomData,
         }
     }
 }
 
 // custom impl of `Diagnostic`: source location and source code are from
 // .location, everything else forwarded to .error_kind
-impl<'a> Diagnostic for ValidationError<'a> {
+impl Diagnostic for ValidationError {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         let label = miette::LabeledSpan::underline(self.location.source_loc.as_ref()?.span);
         Some(Box::new(std::iter::once(label)))
@@ -1833,7 +1856,7 @@ impl<'a> Diagnostic for ValidationError<'a> {
         Some(&self.location.source_loc.as_ref()?.src)
     }
 
-    fn code<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+    fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
         self.error_kind.code()
     }
 
@@ -1841,15 +1864,15 @@ impl<'a> Diagnostic for ValidationError<'a> {
         self.error_kind.severity()
     }
 
-    fn url<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+    fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
         self.error_kind.url()
     }
 
-    fn help<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+    fn help(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
         self.error_kind.help()
     }
 
-    fn related<'s>(&'s self) -> Option<Box<dyn Iterator<Item = &'s dyn Diagnostic> + 's>> {
+    fn related(&self) -> Option<Box<dyn Iterator<Item = &dyn Diagnostic> + '_>> {
         self.error_kind.related()
     }
 
@@ -1860,13 +1883,12 @@ impl<'a> Diagnostic for ValidationError<'a> {
 
 /// Represents a location in Cedar policy source.
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct SourceLocation<'a> {
+pub struct SourceLocation {
     policy_id: PolicyId,
     source_loc: Option<parser::Loc>,
-    phantom: PhantomData<&'a ()>,
 }
 
-impl<'a> SourceLocation<'a> {
+impl SourceLocation {
     /// Get the `PolicyId` for the policy at this source location.
     pub fn policy_id(&self) -> &PolicyId {
         &self.policy_id
@@ -1885,7 +1907,7 @@ impl<'a> SourceLocation<'a> {
     }
 }
 
-impl<'a> std::fmt::Display for SourceLocation<'a> {
+impl std::fmt::Display for SourceLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "policy `{}`", self.policy_id)?;
         if let Some(loc) = &self.source_loc {
@@ -1895,14 +1917,13 @@ impl<'a> std::fmt::Display for SourceLocation<'a> {
     }
 }
 
-impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation<'static> {
-    fn from(loc: cedar_policy_validator::SourceLocation<'a>) -> SourceLocation<'static> {
+impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation {
+    fn from(loc: cedar_policy_validator::SourceLocation<'a>) -> Self {
         let policy_id = PolicyId(loc.policy_id().clone());
         let source_loc = loc.source_loc().cloned();
         Self {
             policy_id,
             source_loc,
-            phantom: PhantomData,
         }
     }
 }
@@ -1911,12 +1932,9 @@ impl<'a> From<cedar_policy_validator::SourceLocation<'a>> for SourceLocation<'st
 /// checks are also provided through [`Validator::validate`] which provides more
 /// comprehensive error detection, but this function can be used to check for
 /// confusable strings without defining a schema.
-pub fn confusable_string_checker<'a, 'b>(
+pub fn confusable_string_checker<'a>(
     templates: impl Iterator<Item = &'a Template> + 'a,
-) -> impl Iterator<Item = ValidationWarning<'b>> + 'a
-where
-    'b: 'a,
-{
+) -> impl Iterator<Item = ValidationWarning> + 'a {
     cedar_policy_validator::confusable_string_checks(templates.map(|t| &t.ast))
         .map(std::convert::Into::into)
 }
@@ -1924,39 +1942,37 @@ where
 #[derive(Debug, Clone, Error)]
 #[error("validation warning on {location}: {kind}")]
 /// Warnings found in Cedar policies
-pub struct ValidationWarning<'a> {
-    location: SourceLocation<'static>,
+pub struct ValidationWarning {
+    location: SourceLocation,
     kind: ValidationWarningKind,
-    phantom: PhantomData<&'a ()>,
 }
 
-impl<'a> ValidationWarning<'a> {
+impl ValidationWarning {
     /// Extract details about the exact issue detected by the validator.
     pub fn warning_kind(&self) -> &ValidationWarningKind {
         &self.kind
     }
 
     /// Extract the location where the validator found the issue.
-    pub fn location(&self) -> &SourceLocation<'a> {
+    pub fn location(&self) -> &SourceLocation {
         &self.location
     }
 }
 
 #[doc(hidden)]
-impl<'a> From<cedar_policy_validator::ValidationWarning<'a>> for ValidationWarning<'static> {
+impl<'a> From<cedar_policy_validator::ValidationWarning<'a>> for ValidationWarning {
     fn from(w: cedar_policy_validator::ValidationWarning<'a>) -> Self {
         let (loc, kind) = w.to_kind_and_location();
-        ValidationWarning {
+        Self {
             location: loc.into(),
             kind,
-            phantom: PhantomData,
         }
     }
 }
 
 // custom impl of `Diagnostic`: source location and source code are from
 // .location, everything else forwarded to .kind
-impl<'a> Diagnostic for ValidationWarning<'a> {
+impl Diagnostic for ValidationWarning {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         let label = miette::LabeledSpan::underline(self.location.source_loc.as_ref()?.span);
         Some(Box::new(std::iter::once(label)))
@@ -1966,7 +1982,7 @@ impl<'a> Diagnostic for ValidationWarning<'a> {
         Some(&self.location.source_loc.as_ref()?.src)
     }
 
-    fn code<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+    fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
         self.kind.code()
     }
 
@@ -1974,15 +1990,15 @@ impl<'a> Diagnostic for ValidationWarning<'a> {
         self.kind.severity()
     }
 
-    fn url<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+    fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
         self.kind.url()
     }
 
-    fn help<'s>(&'s self) -> Option<Box<dyn std::fmt::Display + 's>> {
+    fn help(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
         self.kind.help()
     }
 
-    fn related<'s>(&'s self) -> Option<Box<dyn Iterator<Item = &'s dyn Diagnostic> + 's>> {
+    fn related(&self) -> Option<Box<dyn Iterator<Item = &dyn Diagnostic> + '_>> {
         self.kind.related()
     }
 
@@ -2212,9 +2228,9 @@ impl EntityUid {
     /// ```
     #[allow(clippy::result_large_err)]
     pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
-        let parsed: entities::EntityUidJson = serde_json::from_value(json)?;
+        let parsed: cedar_policy_core::entities::EntityUidJson = serde_json::from_value(json)?;
         // INVARIANT: There is no way to write down the unspecified entityuid
-        Ok::<Self, entities::JsonDeserializationError>(Self(
+        Ok::<Self, cedar_policy_core::entities::JsonDeserializationError>(Self(
             parsed.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
         ))
     }
@@ -3404,8 +3420,10 @@ impl LosslessPolicy {
     ) -> Result<Self, est::InstantiationError> {
         match self {
             Self::Est(est) => {
-                let unwrapped_est_vals: HashMap<ast::SlotId, entities::EntityUidJson> =
-                    vals.into_iter().map(|(k, v)| (k, v.into())).collect();
+                let unwrapped_est_vals: HashMap<
+                    ast::SlotId,
+                    cedar_policy_core::entities::EntityUidJson,
+                > = vals.into_iter().map(|(k, v)| (k, v.into())).collect();
                 Ok(Self::Est(est.link(&unwrapped_est_vals)?))
             }
             Self::Text { text, slots } => {
@@ -3964,9 +3982,11 @@ impl Context {
         let schema = schema
             .map(|(s, uid)| Self::get_context_schema(s, uid))
             .transpose()?;
-        let context =
-            entities::ContextJsonParser::new(schema.as_ref(), Extensions::all_available())
-                .from_json_str(json)?;
+        let context = cedar_policy_core::entities::ContextJsonParser::new(
+            schema.as_ref(),
+            Extensions::all_available(),
+        )
+        .from_json_str(json)?;
         Ok(Self(context))
     }
 
@@ -4026,9 +4046,11 @@ impl Context {
         let schema = schema
             .map(|(s, uid)| Self::get_context_schema(s, uid))
             .transpose()?;
-        let context =
-            entities::ContextJsonParser::new(schema.as_ref(), Extensions::all_available())
-                .from_json_value(json)?;
+        let context = cedar_policy_core::entities::ContextJsonParser::new(
+            schema.as_ref(),
+            Extensions::all_available(),
+        )
+        .from_json_value(json)?;
         Ok(Self(context))
     }
 
@@ -4070,9 +4092,11 @@ impl Context {
         let schema = schema
             .map(|(s, uid)| Self::get_context_schema(s, uid))
             .transpose()?;
-        let context =
-            entities::ContextJsonParser::new(schema.as_ref(), Extensions::all_available())
-                .from_json_file(json)?;
+        let context = cedar_policy_core::entities::ContextJsonParser::new(
+            schema.as_ref(),
+            Extensions::all_available(),
+        )
+        .from_json_file(json)?;
         Ok(Self(context))
     }
 
@@ -4523,5 +4547,34 @@ mod test {
                     } => assert_eq!(extension_name, &("decimal".parse().unwrap()))
                 )
         );
+    }
+
+    #[test]
+    fn into_iter_entities() {
+        let test_data = r#"
+        [
+        {
+        "uid": {"type":"User","id":"alice"},
+        "attrs": {
+            "age":19,
+            "ip_addr":{"__extn":{"fn":"ip", "arg":"10.0.1.101"}}
+        },
+        "parents": [{"type":"Group","id":"admin"}]
+        },
+        {
+        "uid": {"type":"Group","id":"admin"},
+        "attrs": {},
+        "parents": []
+        }
+        ]
+        "#;
+
+        let list = Entities::from_json_str(test_data, None).unwrap();
+        let mut list_out: Vec<String> = list
+            .into_iter()
+            .map(|entity| entity.uid().id().to_string())
+            .collect();
+        list_out.sort();
+        assert_eq!(list_out, &["admin", "alice"]);
     }
 }

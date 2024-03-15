@@ -15,10 +15,8 @@
  */
 
 //! Integration tests which involve interactions between multiple policies
-//!
-//! These files exist separately in the `CedarIntegrationTests` package
 
-use cedar_policy::integration_testing::perform_integration_test_from_json;
+use super::perform_integration_test_from_json;
 use std::path::Path;
 
 /// Path of the folder containing the JSON tests

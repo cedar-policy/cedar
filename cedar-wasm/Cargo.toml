@@ -30,12 +30,8 @@ crate_type = ["cdylib", "rlib"]
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.13"
+cool_asserts = "2.0"
 
 [build-dependencies]
 cargo-lock = "9.0.0"
 itertools = "0.12.1"
-
-[profile.release]
-overflow-checks = true
-# Tell `rustc` to optimize for small code size.
-opt-level = "s"

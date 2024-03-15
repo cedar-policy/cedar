@@ -903,7 +903,7 @@ impl ExprOrSpecial<'_> {
         }
     }
 
-    fn into_pattern(self, errs: &mut ParseErrors) -> Option<Vec<PatternElem>> {
+    pub(crate) fn into_pattern(self, errs: &mut ParseErrors) -> Option<Vec<PatternElem>> {
         match &self {
             Self::StrLit { lit, .. } => match to_pattern(lit) {
                 Ok(pat) => Some(pat),
