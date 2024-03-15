@@ -315,6 +315,63 @@ mod demo_tests {
     }
 
     #[test]
+    fn context_is_common_type() {
+        assert!(SchemaFragment::from_str_natural(
+            r#"
+        type empty = {};
+        action "Foo" appliesTo {
+            context: empty,
+        };
+    "#
+        )
+        .is_ok());
+        assert!(SchemaFragment::from_str_natural(
+            r#"
+    type flag = { value: __cedar::Bool };
+    action "Foo" appliesTo {
+        context: flag
+    };
+"#
+        )
+        .is_ok());
+        assert!(SchemaFragment::from_str_natural(
+            r#"
+namespace Bar { type empty = {}; }
+action "Foo" appliesTo {
+    context: Bar::empty
+};
+"#
+        )
+        .is_ok());
+        assert!(SchemaFragment::from_str_natural(
+            r#"
+namespace Bar { type flag = { value: Bool }; }
+namespace Baz {action "Foo" appliesTo {
+    context: Bar::flag
+};}
+"#
+        )
+        .is_ok());
+        assert!(SchemaFragment::from_str_natural(
+            r#"
+        type authcontext = {
+            ip: ipaddr,
+            is_authenticated: Bool,
+            timestamp: Long
+        };
+        entity Ticket {
+          who: String,
+          operation: Long,
+          request: authcontext
+        };
+        action view appliesTo { context: authcontext };
+        action upload appliesTo { context: authcontext };
+"#
+        )
+        .is_ok());
+    }
+
+    #[test]
     fn print_actions() {
         let namespace = NamespaceDefinition {
             common_types: HashMap::new(),

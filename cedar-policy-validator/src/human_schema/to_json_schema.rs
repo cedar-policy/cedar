@@ -212,8 +212,8 @@ impl<'a> ConversionContext<'a> {
         let context = contexts
             .into_iter()
             .at_most_one()
-            .map_err(|e| convert_context_error(e, loc.clone()))?
-            .map(|attrs| self.convert_attr_decls(attrs))
+            .map_err(|_| convert_context_error(loc.clone()))?
+            .map(|attrs| self.convert_context_decl(attrs))
             .transpose()?
             .unwrap_or_default();
 
@@ -275,6 +275,25 @@ impl<'a> ConversionContext<'a> {
                 additional_attributes: false,
             },
         )))
+    }
+
+    /// Create a context decl
+    fn convert_context_decl(
+        &self,
+        decl: Either<Path, Vec<Node<AttrDecl>>>,
+    ) -> Result<AttributesOrContext, ToJsonSchemaErrors> {
+        Ok(AttributesOrContext(match decl {
+            Either::Left(p) => SchemaType::TypeDef {
+                type_name: p.to_smolstr(),
+            },
+            Either::Right(attrs) => SchemaType::Type(SchemaTypeVariant::Record {
+                attributes: collect_all_errors(
+                    attrs.into_iter().map(|attr| self.convert_attr_decl(attr)),
+                )?
+                .collect(),
+                additional_attributes: false,
+            }),
+        }))
     }
 
     /// Convert an attribute type from an AttrDecl
@@ -388,10 +407,7 @@ fn convert_pr_error(
 }
 
 /// Wrap [`ExactlyOneError`] for the purpose of converting ContextDecls
-fn convert_context_error(
-    _e: ExactlyOneError<std::vec::IntoIter<Vec<Node<AttrDecl>>>>,
-    loc: Loc,
-) -> ToJsonSchemaError {
+fn convert_context_error(loc: Loc) -> ToJsonSchemaError {
     ToJsonSchemaError::DuplicateContext {
         start: loc.clone(),
         end: loc,
@@ -399,7 +415,7 @@ fn convert_context_error(
 }
 
 /// Partition on whether or not this [`AppDecl`] is defining a context
-fn is_context_decl(n: Node<AppDecl>) -> Either<Vec<Node<AttrDecl>>, PRAppDecl> {
+fn is_context_decl(n: Node<AppDecl>) -> Either<Either<Path, Vec<Node<AttrDecl>>>, PRAppDecl> {
     match n.node {
         AppDecl::PR(decl) => Either::Right(decl),
         AppDecl::Context(attrs) => Either::Left(attrs),
