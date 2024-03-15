@@ -1462,19 +1462,20 @@ impl Node<Option<cst::Mult>> {
                 cst::MultOp::Mod => Err(self.to_ast_err(ToASTErrorKind::UnsupportedModulo)),
             })
             .partition_result();
-        if !errs.is_empty() || !new_errs.is_empty() {
-            errs.extend(new_errs);
-            if !more.is_empty() {
-                // in this case, `first` must be an expr, we should collect any errors there as well
-                let _ = maybe_first?.into_expr(errs)?;
-            }
-            return None;
-        } else if !more.is_empty() {
+        errs.extend(new_errs);
+        if !more.is_empty() {
+            // in this case, `first` must be an expr, we should collect any errors there as well
             let first = maybe_first?.into_expr(errs)?;
-            Some(ExprOrSpecial::Expr {
-                expr: construct_expr_mul(first, more, &self.loc),
-                loc: self.loc.clone(),
-            })
+            if !errs.is_empty() {
+                None
+            } else {
+                Some(ExprOrSpecial::Expr {
+                    expr: construct_expr_mul(first, more, &self.loc),
+                    loc: self.loc.clone(),
+                })
+            }
+        } else if !errs.is_empty() {
+            None
         } else {
             maybe_first
         }
@@ -2544,7 +2545,12 @@ mod tests {
         )
         .expect("failed parser")
         .to_expr(&mut errs)
-        .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs.clone())));
+        .unwrap_or_else(|| {
+            panic!(
+                "failed convert to AST:\n{:?}",
+                miette::Report::new(errs.clone())
+            )
+        });
         assert!(errs.is_empty());
         // manual check at test defn
         println!("{:?}", expr);
@@ -2718,8 +2724,8 @@ mod tests {
         .to_expr(&mut errs);
 
         assert_matches!(expr, None => {
-            // a,b,a,b: unsupported variables
-            // if .. then .. else are invalid attributes
+            // four errors of unsupported-variable for a,b,a,b
+            // two errors of invalid record attribute
             assert_eq!(errs.len(), 6, "{:?}", miette::Report::new(errs));
         });
     }
@@ -3125,7 +3131,8 @@ mod tests {
         .expect("parse error")
         .to_expr(&mut errs);
         // ast should be acceptable
-        assert!(e.is_some(),
+        assert!(
+            e.is_some(),
             "{:?}", // the Debug representation of `miette::Report` is the pretty one
             miette::Report::new(errs.clone()),
         );
@@ -3656,7 +3663,8 @@ mod tests {
         .expect("parse error")
         .to_expr(&mut errs);
         // conversion should succeed, only one relational op
-        assert!(e.is_some(),
+        assert!(
+            e.is_some(),
             "{:?}", // the Debug representation of `miette::Report` is the pretty one
             miette::Report::new(errs.clone()),
         );
@@ -3675,7 +3683,8 @@ mod tests {
         .expect("parse error")
         .to_expr(&mut errs);
         // conversion should succeed, parentheses provided
-        assert!(e.is_some(),
+        assert!(
+            e.is_some(),
             "{:?}", // the Debug representation of `miette::Report` is the pretty one
             miette::Report::new(errs.clone()),
         );
@@ -3707,7 +3716,8 @@ mod tests {
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some(),
+        assert!(
+            e.is_some(),
             "{:?}", // the Debug representation of `miette::Report` is the pretty one
             miette::Report::new(errs.clone()),
         );
@@ -3718,7 +3728,8 @@ mod tests {
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some(),
+        assert!(
+            e.is_some(),
             "{:?}", // the Debug representation of `miette::Report` is the pretty one
             miette::Report::new(errs.clone()),
         );
@@ -3729,7 +3740,8 @@ mod tests {
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some(),
+        assert!(
+            e.is_some(),
             "{:?}", // the Debug representation of `miette::Report` is the pretty one
             miette::Report::new(errs.clone()),
         );
@@ -3740,7 +3752,8 @@ mod tests {
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some(),
+        assert!(
+            e.is_some(),
             "{:?}", // the Debug representation of `miette::Report` is the pretty one
             miette::Report::new(errs.clone()),
         );
@@ -3751,7 +3764,8 @@ mod tests {
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some(),
+        assert!(
+            e.is_some(),
             "{:?}", // the Debug representation of `miette::Report` is the pretty one
             miette::Report::new(errs.clone()),
         );
@@ -3762,7 +3776,8 @@ mod tests {
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some(),
+        assert!(
+            e.is_some(),
             "{:?}", // the Debug representation of `miette::Report` is the pretty one
             miette::Report::new(errs.clone()),
         );
@@ -3773,7 +3788,8 @@ mod tests {
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some(),
+        assert!(
+            e.is_some(),
             "{:?}", // the Debug representation of `miette::Report` is the pretty one
             miette::Report::new(errs.clone()),
         );
@@ -3784,7 +3800,8 @@ mod tests {
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some(),
+        assert!(
+            e.is_some(),
             "{:?}", // the Debug representation of `miette::Report` is the pretty one
             miette::Report::new(errs.clone()),
         );
@@ -3795,7 +3812,8 @@ mod tests {
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some(),
+        assert!(
+            e.is_some(),
             "{:?}", // the Debug representation of `miette::Report` is the pretty one
             miette::Report::new(errs.clone()),
         );
@@ -3806,7 +3824,8 @@ mod tests {
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some(),
+        assert!(
+            e.is_some(),
             "{:?}", // the Debug representation of `miette::Report` is the pretty one
             miette::Report::new(errs.clone()),
         );
@@ -3817,7 +3836,8 @@ mod tests {
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some(),
+        assert!(
+            e.is_some(),
             "{:?}", // the Debug representation of `miette::Report` is the pretty one
             miette::Report::new(errs.clone()),
         );
@@ -3828,7 +3848,8 @@ mod tests {
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some(),
+        assert!(
+            e.is_some(),
             "{:?}", // the Debug representation of `miette::Report` is the pretty one
             miette::Report::new(errs.clone()),
         );
@@ -3839,7 +3860,8 @@ mod tests {
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some(),
+        assert!(
+            e.is_some(),
             "{:?}", // the Debug representation of `miette::Report` is the pretty one
             miette::Report::new(errs.clone()),
         );
@@ -3850,7 +3872,8 @@ mod tests {
             .expect("parse error")
             .to_expr(&mut errs);
         // conversion should succeed
-        assert!(e.is_some(),
+        assert!(
+            e.is_some(),
             "{:?}", // the Debug representation of `miette::Report` is the pretty one
             miette::Report::new(errs.clone()),
         );
@@ -3892,7 +3915,8 @@ mod tests {
         .expect("parse error")
         .to_policy(ast::PolicyID::from_string("0"), &mut errs);
         // conversion should succeed, it's just permit all
-        assert!(e.is_some(),
+        assert!(
+            e.is_some(),
             "{:?}", // the Debug representation of `miette::Report` is the pretty one
             miette::Report::new(errs.clone()),
         );
@@ -4159,7 +4183,12 @@ mod tests {
             let e = text_to_cst::parse_expr(str)
                 .expect("should construct a CST")
                 .to_expr(&mut errs)
-                .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs.clone())));
+                .unwrap_or_else(|| {
+                    panic!(
+                        "failed convert to AST:\n{:?}",
+                        miette::Report::new(errs.clone())
+                    )
+                });
             assert!(errs.is_empty());
             assert!(
                 e.eq_shape(&expected),
@@ -4211,7 +4240,9 @@ mod tests {
             let e = text_to_cst::parse_expr(es)
                 .expect("should construct a CST")
                 .to_expr(&mut errs)
-                .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
+                .unwrap_or_else(|| {
+                    panic!("failed convert to AST:\n{:?}", miette::Report::new(errs))
+                });
             assert!(
                 e.eq_shape(&expr),
                 "{:?} and {:?} should have the same shape.",
@@ -4248,7 +4279,9 @@ mod tests {
             let e = text_to_cst::parse_expr(es)
                 .expect("should construct a CST")
                 .to_expr(&mut errs)
-                .unwrap_or_else(|| panic!("failed convert to AST:\n{:?}", miette::Report::new(errs)));
+                .unwrap_or_else(|| {
+                    panic!("failed convert to AST:\n{:?}", miette::Report::new(errs))
+                });
             assert!(
                 e.eq_shape(&expr),
                 "{:?} and {:?} should have the same shape.",
