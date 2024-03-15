@@ -86,6 +86,8 @@ pub enum Commands {
     Authorize(AuthorizeArgs),
     /// Evaluate a Cedar expression
     Evaluate(EvaluateArgs),
+    /// Partially Evaluate Cedar policies
+    PartialEvaluate(PartialEvaluateArgs),
     /// Validate a policy set against a schema
     Validate(ValidateArgs),
     /// Check that policies successfully parse
@@ -473,6 +475,36 @@ pub struct EvaluateArgs {
     pub expression: String,
 }
 
+#[derive(Args, Debug)]
+pub struct PartialEvaluateArgs {
+    /// Principal for the request, e.g., User::"alice"
+    #[arg(short, long)]
+    pub principal: Option<String>,
+    /// Action for the request, e.g., Action::"view"
+    #[arg(short, long)]
+    pub action: Option<String>,
+    /// Resource for the request, e.g., File::"myfile.txt"
+    #[arg(short, long)]
+    pub resource: Option<String>,
+    /// JSON string representing the context for the request.
+    #[arg(short, long = "context")]
+    pub context_json: Option<String>,
+    /// Cedar policies for evaluation
+    #[arg(short = 'l', long = "policies")]
+    pub policies: Option<String>,
+}
+
+
+#[derive(Eq, PartialEq, Debug)]
+pub enum PartialEvaluationResponse {
+    // Failure message for partial evaluation
+    Error(String),
+    // Concrete response for the policies.
+    Concrete(Response),
+    // Residual policies response
+    ResidualPolicies(String),
+}
+
 #[derive(Eq, PartialEq, Debug)]
 pub enum CedarExitCode {
     // The command completed successfully with a result other than a
@@ -609,6 +641,56 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
         }
     }
 }
+
+pub fn partial_evaluate(args: &PartialEvaluateArgs) -> (CedarExitCode, PartialEvaluationResponse) { 
+
+    let policies_src = args.policies.clone().unwrap();
+    let policies: PolicySet = policies_src.parse().unwrap();
+
+    let principal_string = args.principal.clone();
+    let action_string = args.action.clone();
+    let resource_string = args.resource.clone();
+    let context_json = args.context_json.clone();
+
+    let auth = Authorizer::new();
+    let mut request_builder = RequestBuilder::default();
+
+    if let Some(principal) = principal_string {
+        request_builder = request_builder.principal(Some(principal.parse().unwrap()));
+    }
+
+    if let Some(action) = action_string {
+        request_builder = request_builder.action(Some(action.parse().unwrap()));
+    }
+
+    if let Some(resource) = resource_string {
+        request_builder = request_builder.resource(Some(resource.parse().unwrap()));
+    }
+
+    if let Some(context) = context_json {
+        let context_obj = Context::from_json_str(&context, None).unwrap();
+        request_builder = request_builder.context(context_obj);
+    }
+
+    let r = request_builder.build();
+
+    match auth.is_authorized_partial(&r, &policies, &Entities::empty()) {
+        PartialResponse::Concrete(a) => {
+            println!("{:?}", a);
+            (CedarExitCode::Success, PartialEvaluationResponse::Concrete(a))
+        }
+        PartialResponse::Residual(p) => {
+            //println!("{:?}", p);
+            let mut policies = String::new();
+            for policy in p.residuals().policies() {
+                policies.push_str(&policy.to_string());
+            }
+            println!("{policies}");
+            (CedarExitCode::Success, PartialEvaluationResponse::ResidualPolicies(policies))
+        }
+    }
+}
+
 
 pub fn link(args: &LinkArgs) -> CedarExitCode {
     if let Err(err) = link_inner(args) {
