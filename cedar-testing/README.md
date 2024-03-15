@@ -17,5 +17,5 @@ git clone --depth 1 https://github.com/cedar-policy/cedar-integration-tests
 cd cedar-integration-tests
 tar xzf corpus-tests.tar.gz
 cd ..
-cargo test --features "integration-testing" -- --ignored
+cargo test --features "integration-testing" -- --include-ignored
 ```
