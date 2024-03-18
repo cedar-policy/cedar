@@ -144,6 +144,8 @@ impl PartialResponse {
     }
 
     /// Returns an under-approximation of the set of determining policies.
+    ///
+    /// This is all policies that must be determining for all possible substitutions of the unknowns.
     pub fn definitely_determining(&self) -> impl Iterator<Item = &PolicyID> {
         // If there are no true forbids or potentially true forbids,
         // the the under approximation is the true permits
