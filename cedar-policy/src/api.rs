@@ -857,7 +857,9 @@ impl PartialResponse {
         self.0.may_be_determining().map(PolicyId::ref_cast)
     }
 
-    /// Returns an under-approximation of the set of determining policies.
+    /// Returns an under-approximation of the set of determining policies
+    ///
+    /// This is all policies that must be determining for all possible substitutions of the unknowns
     pub fn definitely_determining(&self) -> impl Iterator<Item = &PolicyId> {
         self.0.definitely_determining().map(PolicyId::ref_cast)
     }
