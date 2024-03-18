@@ -828,7 +828,7 @@ pub struct PartialResponse(cedar_policy_core::authorizer::PartialResponse);
 
 #[cfg(feature = "partial-eval")]
 impl PartialResponse {
-    /// Attempt to reach a partial decision, the presence of residual may result in returning [`None`],
+    /// Attempt to reach a partial decision; the presence of residuals may result in returning [`None`],
     /// indicating that a decision could not be reached given the unknowns
     pub fn decision(&self) -> Option<Decision> {
         self.0.decision()
