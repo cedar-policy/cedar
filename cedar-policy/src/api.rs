@@ -851,6 +851,8 @@ impl PartialResponse {
     }
 
     /// Returns an over-approximation of the set of determining policies
+    ///
+    /// This is all policies that may be determining for any substitution of the unknowns
     pub fn may_be_determining(&self) -> impl Iterator<Item = &PolicyId> {
         self.0.may_be_determining().map(PolicyId::ref_cast)
     }
