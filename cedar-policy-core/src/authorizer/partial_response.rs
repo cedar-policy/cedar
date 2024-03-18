@@ -148,7 +148,7 @@ impl PartialResponse {
     /// This is all policies that must be determining for all possible substitutions of the unknowns.
     pub fn definitely_determining(&self) -> impl Iterator<Item = &PolicyID> {
         // If there are no true forbids or potentially true forbids,
-        // the the under approximation is the true permits
+        // then the under approximation is the true permits
         if self.satisfied_forbids.is_empty() && self.residual_forbids.is_empty() {
             Either::Left(self.satisfied_permit_ids())
         } else {
