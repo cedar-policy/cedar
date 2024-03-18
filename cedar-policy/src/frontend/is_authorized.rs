@@ -34,6 +34,8 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use serde_with::MapPreventDuplicates;
 use std::collections::{HashMap, HashSet};
+#[cfg(feature = "partial-eval")]
+use std::convert::Infallible;
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -79,20 +81,15 @@ pub fn json_is_authorized(input: &str) -> InterfaceResult {
 fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAnswer {
     match call.get_components_partial() {
         Ok((request, policies, entities)) => AUTHORIZER.with(|authorizer| {
-            match authorizer.is_authorized_partial(&request, &policies, &entities) {
-                concrete_response @ PartialResponse::Concrete(_) => {
-                    match concrete_response.try_into() {
-                        Ok(response) => PartialAuthorizationAnswer::Concrete { response },
-                        Err(errors) => PartialAuthorizationAnswer::ParseFailed { errors },
-                    }
-                }
-                residual_response @ PartialResponse::Residual(_) => {
-                    match residual_response.try_into() {
-                        Ok(response) => PartialAuthorizationAnswer::Residuals { response },
-                        Err(errors) => PartialAuthorizationAnswer::ParseFailed { errors },
-                    }
-                }
-            }
+            let response = authorizer.is_authorized_partial(&request, &policies, &entities);
+            // Allowing this lint warning because the suggestion causes type inference to break
+            #[allow(clippy::map_unwrap_or)]
+            response
+                .try_into()
+                .map(|response| PartialAuthorizationAnswer::Residuals { response })
+                .unwrap_or_else(|e| PartialAuthorizationAnswer::ParseFailed {
+                    errors: vec![e.to_string()],
+                })
         }),
         Err(errors) => PartialAuthorizationAnswer::ParseFailed { errors },
     }
@@ -108,8 +105,9 @@ pub fn json_is_authorized_partial(input: &str) -> InterfaceResult {
     serde_json::from_str::<AuthorizationCall>(input).map_or_else(
         |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
         |call| match is_authorized_partial(call) {
-            answer @ (PartialAuthorizationAnswer::Concrete { .. }
-            | PartialAuthorizationAnswer::Residuals { .. }) => InterfaceResult::succeed(answer),
+            answer @ PartialAuthorizationAnswer::Residuals { .. } => {
+                InterfaceResult::succeed(answer)
+            }
             PartialAuthorizationAnswer::ParseFailed { errors } => {
                 InterfaceResult::fail_bad_request(errors)
             }
@@ -177,21 +175,19 @@ impl From<Response> for InterfaceResponse {
 
 #[cfg(feature = "partial-eval")]
 impl TryFrom<PartialResponse> for InterfaceResponse {
-    type Error = Vec<String>;
+    type Error = Infallible;
 
     fn try_from(partial_response: PartialResponse) -> Result<Self, Self::Error> {
-        match partial_response {
-            PartialResponse::Concrete(concrete) => Ok(Self::new(
-                concrete.decision(),
-                concrete.diagnostics().reason().cloned().collect(),
-                concrete
-                    .diagnostics()
-                    .errors()
-                    .map(ToString::to_string)
-                    .collect(),
-            )),
-            PartialResponse::Residual(_) => Err(vec!["unsupported".into()]),
-        }
+        let concrete = partial_response.concretize();
+        Ok(Self::new(
+            concrete.decision(),
+            concrete.diagnostics().reason().cloned().collect(),
+            concrete
+                .diagnostics()
+                .errors()
+                .map(ToString::to_string)
+                .collect(),
+        ))
     }
 }
 
@@ -210,55 +206,32 @@ impl InterfaceDiagnostics {
 /// Integration version of a `PartialResponse` that uses `InterfaceDiagnistics` for simpler (de)serialization
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InterfaceResidualResponse {
-    /// A residual set of policies. Determining the concrete response requires further processing.
-    residuals: HashMap<PolicyId, serde_json::Value>,
-    /// Diagnostics providing more information on how this decision was reached
-    diagnostics: InterfaceDiagnostics,
-}
-
-#[cfg(feature = "partial-eval")]
-impl InterfaceResidualResponse {
-    /// Construct an `InterfaceResidualResponse`
-    pub fn new(
-        residuals: HashMap<PolicyId, serde_json::Value>,
-        reason: HashSet<PolicyId>,
-        errors: HashSet<String>,
-    ) -> Self {
-        Self {
-            residuals,
-            diagnostics: InterfaceDiagnostics { reason, errors },
-        }
-    }
+    decision: Option<Decision>,
+    satisfied: HashSet<PolicyId>,
+    errored: HashSet<PolicyId>,
+    definitely_determining: HashSet<PolicyId>,
+    maybe_determining: HashSet<PolicyId>,
+    residuals: Vec<serde_json::Value>,
 }
 
 #[cfg(feature = "partial-eval")]
 impl TryFrom<PartialResponse> for InterfaceResidualResponse {
-    type Error = Vec<String>;
+    type Error = serde_json::Error;
 
     fn try_from(partial_response: PartialResponse) -> Result<Self, Self::Error> {
-        match partial_response {
-            PartialResponse::Residual(residual) => Ok(Self::new(
-                residual
-                    .residuals()
-                    .policies()
-                    .map(|policy| match policy.to_json() {
-                        Ok(json) => Ok((policy.id().clone(), json)),
-                        Err(errors) => Err(vec![errors.to_string()]),
-                    })
-                    .collect::<Result<Vec<(PolicyId, serde_json::Value)>, Self::Error>>()?
-                    .into_iter()
-                    .collect(),
-                residual.diagnostics().reason().cloned().collect(),
-                residual
-                    .diagnostics()
-                    .errors()
-                    .map(ToString::to_string)
-                    .collect(),
-            )),
-            PartialResponse::Concrete(_) => Err(vec!["unsupported".into()]),
-        }
+        Ok(Self {
+            decision: partial_response.decision(),
+            satisfied: partial_response.definitely_satisfied().cloned().collect(),
+            errored: partial_response.definitely_errored().cloned().collect(),
+            definitely_determining: partial_response.definitely_determining().cloned().collect(),
+            maybe_determining: partial_response.may_be_determining().cloned().collect(),
+            residuals: partial_response
+                .all_residuals()
+                .map(|e| serde_json::to_value(e))
+                .collect::<Result<_, _>>()?,
+        })
     }
 }
 
@@ -276,7 +249,6 @@ enum AuthorizationAnswer {
 #[serde(untagged)]
 enum PartialAuthorizationAnswer {
     ParseFailed { errors: Vec<String> },
-    Concrete { response: InterfaceResponse },
     Residuals { response: InterfaceResidualResponse },
 }
 

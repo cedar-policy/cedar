@@ -22,18 +22,21 @@
 
 use crate::ast::*;
 use crate::entities::Entities;
-use crate::evaluator::{EvaluationError, Evaluator};
+use crate::evaluator::Evaluator;
 use crate::extensions::Extensions;
-use itertools::Either;
+use itertools::{Either, Itertools};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::iter::once;
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
 mod err;
+mod partial_response;
 pub use err::AuthorizationError;
+
+pub use partial_response::ErrorState;
+pub use partial_response::PartialResponse;
 
 /// Authorizer
 pub struct Authorizer {
@@ -48,33 +51,9 @@ pub struct Authorizer {
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ErrorHandling {
-    /// Deny the entire request if _any_ policy encounters an evaluation error
-    Deny,
-    /// If a permit policy errors, skip it (implicit deny).  If a forbid policy
-    /// errors, enforce it (explicit deny).
-    Forbid,
     /// If a policy encounters an evaluation error, skip it.  The decision will
     /// be as if the erroring policy did not exist.
     Skip,
-}
-
-/// A potentially partial response from the authorizer
-#[derive(Debug, Clone)]
-pub enum ResponseKind {
-    /// A fully evaluated response
-    FullyEvaluated(Response),
-    /// A response that has some residuals
-    Partial(PartialResponse),
-}
-
-impl ResponseKind {
-    /// The decision reached, if a decision could be reached
-    pub fn decision(&self) -> Option<Decision> {
-        match self {
-            ResponseKind::FullyEvaluated(a) => Some(a.decision),
-            ResponseKind::Partial(_) => None,
-        }
-    }
 }
 
 impl Default for ErrorHandling {
@@ -97,64 +76,7 @@ impl Authorizer {
     /// The language spec and formal model give a precise definition of how this is
     /// computed.
     pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> Response {
-        match self.is_authorized_core(q, pset, entities) {
-            ResponseKind::FullyEvaluated(response) => response,
-            ResponseKind::Partial(partial) => {
-                // If we get a residual, we have to treat every residual policy as an error, and obey the error semantics.
-                // This can result in an Accept in one case:
-                // `error_handling` is `SkipOnerror`, no forbids evaluated to a concrete response, and some permits evaluated to `true`
-                let mut errors = partial.diagnostics.errors;
-                errors.extend(partial.residuals.policies().map(|p| {
-                    AuthorizationError::PolicyEvaluationError {
-                        id: p.id().clone(),
-                        error: EvaluationError::non_value(p.condition()),
-                    }
-                }));
-
-                let idset = partial.residuals.policies().map(|p| p.id().clone());
-
-                match self.error_handling {
-                    ErrorHandling::Deny => Response::new(
-                        Decision::Deny,
-                        idset.chain(partial.diagnostics.reason).collect(),
-                        errors,
-                    ),
-                    ErrorHandling::Forbid => Response::new(
-                        Decision::Deny,
-                        idset.chain(partial.diagnostics.reason).collect(),
-                        errors,
-                    ),
-                    ErrorHandling::Skip => {
-                        // If there were satisfied permits in the residual, then skipping errors means returning `Allow`
-                        // This is tricky logic, but it's correct as follows:
-                        //  If any permit policy is in the diagnostics, it means it evaluated to a concrete `true` and was not overridden by a `forbid` policy
-                        //  That means that all forbid policies evaluated to one of:
-                        //    concrete `false`
-                        //    concrete error
-                        //    a residual (effectively concrete error).
-                        // Thus all residuals should be `skipped`
-                        // However, if all of the policies are `forbid`, then we still have to return `Deny`, likewise if the set is empty.
-
-                        // PANIC SAFETY: every policy in the diagnostics had to come from the policy set
-                        #[allow(clippy::unwrap_used)]
-                        if partial
-                            .diagnostics
-                            .reason
-                            .iter()
-                            .any(|pid| pset.get(pid).unwrap().effect() == Effect::Permit)
-                        {
-                            Response::new(Decision::Allow, partial.diagnostics.reason, errors)
-                        } else {
-                            Response::new(
-                                Decision::Deny,
-                                idset.chain(partial.diagnostics.reason).collect(),
-                                errors,
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        self.is_authorized_core(q, pset, entities).concretize()
     }
 
     /// Returns an authorization response for `q` with respect to the given `Slice`.
@@ -167,236 +89,69 @@ impl Authorizer {
         q: Request,
         pset: &PolicySet,
         entities: &Entities,
-    ) -> ResponseKind {
-        let results = self.evaluate_policies_core(pset, q, entities);
-
-        let errors = results
-            .errors
-            .into_iter()
-            .map(|(pid, err)| AuthorizationError::PolicyEvaluationError {
-                id: pid,
-                error: err,
-            })
-            .collect();
-
-        if !results.global_deny_policies.is_empty() {
-            return ResponseKind::FullyEvaluated(Response::new(
-                Decision::Deny,
-                results.global_deny_policies,
-                errors,
-            ));
-        }
-        // Semantics ask for the set C_I^+ of all satisfied Permit policies
-        // which override all satisfied Forbid policies. We call this set
-        // `satisfied_permits`.
-        // Notice that this currently differs from the semantics stated in the Language Spec,
-        // which no longer consider overrides. The implementation is however equivalent,
-        // since forbids always trump permits.
-        let mut satisfied_permits = results
-            .satisfied_permits
-            .into_iter()
-            .filter(|permit_p| {
-                results
-                    .satisfied_forbids
-                    .iter()
-                    .all(|forbid_p| Self::overrides(permit_p, forbid_p))
-            })
-            .peekable();
-
-        match (
-            satisfied_permits.peek().is_some(),
-            !results.permit_residuals.is_empty(),
-            !results.forbid_residuals.is_empty(),
-        ) {
-            // If we have a satisfied permit and _no_ residual forbids, we can return Allow (this is true regardless of residual permits)
-            (true, false | true, false) => {
-                let idset = satisfied_permits.map(|p| p.id().clone()).collect();
-                ResponseKind::FullyEvaluated(Response::new(Decision::Allow, idset, errors))
-            }
-            // If we have a satisfied permit, and there are residual forbids, we must return a residual response. (this is true regardless of residual permits)
-            (true, false | true, true) => {
-                // `idset` is non-empty as `satisified_permits.peek().is_some()` is `true`
-                let idset = satisfied_permits
-                    .map(|p| p.id().clone())
-                    .collect::<HashSet<_>>();
-                // The residual will consist of all of the residual forbids, and one trivially true `permit`.
-                // We will re-use one of the satisfied permits policy IDs to ensure uniqueness
-                // PANIC SAFETY This `unwrap` is safe as `idset` is non-empty
-                #[allow(clippy::unwrap_used)]
-                let id = idset.iter().next().unwrap().clone(); // This unwrap is safe as we know there are satisfied permits
-                let trivial_true = Policy::from_when_clause(Effect::Permit, Expr::val(true), id);
-                // PANIC SAFETY Since all of the ids in the original policy set were unique by construction, a subset will still be unique
-                #[allow(clippy::unwrap_used)]
-                let policy_set = PolicySet::try_from_iter(
-                    results
-                        .forbid_residuals
-                        .into_iter()
-                        .chain(once(trivial_true)),
-                )
-                .unwrap();
-                ResponseKind::Partial(PartialResponse::new(policy_set, idset, errors))
-            }
-            // If there are no satisfied permits, and no residual permits, then the request cannot succeed
-            (false, false, false | true) => {
-                let idset = results
-                    .satisfied_forbids
-                    .into_iter()
-                    .map(|p| p.id().clone())
-                    .collect();
-                ResponseKind::FullyEvaluated(Response::new(Decision::Deny, idset, errors))
-            }
-            // If there are no satisfied permits, but residual permits, then request may still succeed. Return residual
-            // Add in the forbid_residuals if any
-            (false, true, false | true) => {
-                // The request will definitely fail if there are satisfied forbids, check those
-                if !results.satisfied_forbids.is_empty() {
-                    let idset = results
-                        .satisfied_forbids
-                        .into_iter()
-                        .map(|p| p.id().clone())
-                        .collect();
-                    ResponseKind::FullyEvaluated(Response::new(Decision::Deny, idset, errors))
-                } else {
-                    // No satisfied forbids
-                    // PANIC SAFETY all policy IDs in the original policy are unique by construction
-                    #[allow(clippy::unwrap_used)]
-                    let all_residuals = PolicySet::try_from_iter(
-                        [results.forbid_residuals, results.permit_residuals].concat(),
-                    )
-                    .unwrap();
-                    ResponseKind::Partial(PartialResponse::new(
-                        all_residuals,
-                        HashSet::new(),
-                        errors,
-                    ))
-                }
-            }
-        }
-    }
-
-    /// Returns a policy evaluation response for `q`.
-    pub fn evaluate_policies(
-        &self,
-        pset: &PolicySet,
-        q: Request,
-        entities: &Entities,
-    ) -> EvaluationResponse {
-        let EvaluationResults {
-            satisfied_permits,
-            satisfied_forbids,
-            global_deny_policies: _,
-            errors,
-            permit_residuals,
-            forbid_residuals,
-        } = self.evaluate_policies_core(pset, q, entities);
-
-        let errors = errors
-            .into_iter()
-            .map(|(pid, err)| AuthorizationError::PolicyEvaluationError {
-                id: pid,
-                error: err,
-            })
-            .collect();
-
-        let satisfied_permits = satisfied_permits.iter().map(|p| p.id().clone()).collect();
-        let satisfied_forbids = satisfied_forbids.iter().map(|p| p.id().clone()).collect();
-
-        // PANIC SAFETY all policy IDs in the original policy are unique by construction
-        #[allow(clippy::unwrap_used)]
-        let permit_residuals = PolicySet::try_from_iter(permit_residuals).unwrap();
-        // PANIC SAFETY all policy IDs in the original policy are unique by construction
-        #[allow(clippy::unwrap_used)]
-        let forbid_residuals = PolicySet::try_from_iter(forbid_residuals).unwrap();
-
-        EvaluationResponse {
-            satisfied_permits,
-            satisfied_forbids,
-            errors,
-            permit_residuals,
-            forbid_residuals,
-        }
-    }
-
-    fn evaluate_policies_core<'a>(
-        &'a self,
-        pset: &'a PolicySet,
-        q: Request,
-        entities: &Entities,
-    ) -> EvaluationResults<'a> {
+    ) -> PartialResponse {
         let eval = Evaluator::new(q, entities, &self.extensions);
-        let mut results = EvaluationResults::default();
-        let mut satisfied_policies = vec![];
+        let mut true_permits = vec![];
+        let mut true_forbids = vec![];
+        let mut false_permits = vec![];
+        let mut false_forbids = vec![];
+        let mut residual_permits = vec![];
+        let mut residual_forbids = vec![];
+        let mut errors = vec![];
 
         for p in pset.policies() {
+            let (id, annotations) = (
+                p.id().clone(),
+                p.annotations()
+                    .map(|(i, a)| (i.clone(), a.clone()))
+                    .collect(),
+            );
             match eval.partial_evaluate(p) {
-                Ok(Either::Left(response)) => {
-                    if response {
-                        satisfied_policies.push(p)
+                Ok(Either::Left(satisfied)) => match (satisfied, p.effect()) {
+                    (true, Effect::Permit) => true_permits.push((id, annotations)),
+                    (true, Effect::Forbid) => true_forbids.push((id, annotations)),
+                    (false, Effect::Permit) => {
+                        false_permits.push((id, (ErrorState::NoError, annotations)))
                     }
-                }
+                    (false, Effect::Forbid) => {
+                        false_forbids.push((id, (ErrorState::NoError, annotations)))
+                    }
+                },
                 Ok(Either::Right(residual)) => match p.effect() {
-                    Effect::Permit => results.permit_residuals.push(Policy::from_when_clause(
-                        p.effect(),
-                        residual,
-                        p.id().clone(),
-                    )),
-                    Effect::Forbid => results.forbid_residuals.push(Policy::from_when_clause(
-                        p.effect(),
-                        residual,
-                        p.id().clone(),
-                    )),
+                    Effect::Permit => residual_permits.push((id, (residual, annotations))),
+                    Effect::Forbid => residual_forbids.push((id, (residual, annotations))),
                 },
                 Err(e) => {
-                    results.errors.push((p.id().clone(), e));
+                    errors.push(AuthorizationError::PolicyEvaluationError {
+                        id: id.clone(),
+                        error: e,
+                    });
                     let satisfied = match self.error_handling {
-                        ErrorHandling::Deny => {
-                            results.global_deny_policies.insert(p.id().clone());
-                            true
-                        }
-                        ErrorHandling::Forbid => match p.effect() {
-                            Effect::Permit => false,
-                            Effect::Forbid => true,
-                        },
                         ErrorHandling::Skip => false,
                     };
-                    if satisfied {
-                        satisfied_policies.push(p);
+                    match (satisfied, p.effect()) {
+                        (true, Effect::Permit) => true_permits.push((id, annotations)),
+                        (true, Effect::Forbid) => true_forbids.push((id, annotations)),
+                        (false, Effect::Permit) => {
+                            false_permits.push((id, (ErrorState::Error, annotations)))
+                        }
+                        (false, Effect::Forbid) => {
+                            false_forbids.push((id, (ErrorState::Error, annotations)))
+                        }
                     }
                 }
             };
         }
 
-        let (satisfied_permits, satisfied_forbids) = satisfied_policies
-            .iter()
-            .partition(|p| p.effect() == Effect::Permit);
-
-        results.satisfied_forbids = satisfied_forbids;
-        results.satisfied_permits = satisfied_permits;
-
-        results
-    }
-
-    /// Private helper function which determines if policy `p1` overrides policy
-    /// `p2`.
-    ///
-    /// INVARIANT: p1 and p2 must have differing effects.
-    /// This only makes sense to call with one `Permit` and one `Forbid` policy.
-    /// If you call this with two `Permit`s or two `Forbid`s, this will panic.
-    fn overrides(p1: &Policy, p2: &Policy) -> bool {
-        // For now, we only support the default:
-        // all Forbid policies override all Permit policies.
-        // PANIC SAFETY p1 and p2s effect cannot be equal by invariant
-        #[allow(clippy::unreachable)]
-        match (p1.effect(), p2.effect()) {
-            (Effect::Forbid, Effect::Permit) => true,
-            (Effect::Permit, Effect::Forbid) => false,
-            (Effect::Permit, Effect::Permit) => {
-                unreachable!("Shouldn't call overrides() with two Permits")
-            }
-            (Effect::Forbid, Effect::Forbid) => {
-                unreachable!("Shouldn't call overrides() with two Forbids")
-            }
-        }
+        PartialResponse::new(
+            true_permits,
+            false_permits,
+            residual_permits,
+            true_forbids,
+            false_forbids,
+            residual_forbids,
+            errors,
+        )
     }
 }
 
@@ -406,16 +161,6 @@ impl Default for Authorizer {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-struct EvaluationResults<'a> {
-    satisfied_permits: Vec<&'a Policy>,
-    satisfied_forbids: Vec<&'a Policy>,
-    global_deny_policies: HashSet<PolicyID>,
-    errors: Vec<(PolicyID, EvaluationError)>,
-    permit_residuals: Vec<Policy>,
-    forbid_residuals: Vec<Policy>,
-}
-
 impl std::fmt::Debug for Authorizer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.extensions.ext_names().next().is_none() {
@@ -423,8 +168,8 @@ impl std::fmt::Debug for Authorizer {
         } else {
             write!(
                 f,
-                "<Authorizer with the following extensions: {:?}>",
-                self.extensions.ext_names().collect::<Vec<_>>()
+                "<Authorizer with the following extensions: [{}]>",
+                self.extensions.ext_names().join(", ")
             )
         }
     }
@@ -435,7 +180,6 @@ impl std::fmt::Debug for Authorizer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::ast::{Annotations, RequestSchemaAllPass};
     use crate::parser;
 
     /// Sanity unit test case for is_authorized.
@@ -675,14 +419,13 @@ mod test {
         let r = a.is_authorized_core(q.clone(), &pset, &es).decision();
         assert_eq!(r, Some(Decision::Allow));
 
-        let r = a.evaluate_policies(&pset, q, &es);
-        assert!(r.satisfied_permits.contains(&PolicyID::from_string("1")));
-        assert!(r.satisfied_forbids.is_empty());
+        let r = a.is_authorized_core(q, &pset, &es);
         assert!(r
-            .permit_residuals
-            .get(&PolicyID::from_string("3"))
-            .is_some());
-        assert!(r.forbid_residuals.is_empty());
+            .satisfied_permits
+            .contains_key(&PolicyID::from_string("1")));
+        assert!(r.satisfied_forbids.is_empty());
+        assert!(r.residual_permits.contains_key(&PolicyID::from_string("3")));
+        assert!(r.residual_forbids.is_empty());
         assert!(r.errors.is_empty());
     }
 
@@ -715,46 +458,23 @@ mod test {
             .unwrap();
 
         let r = a.is_authorized_core(q.clone(), &pset, &es);
-        match r {
-            ResponseKind::FullyEvaluated(_) => {
-                panic!("Reached response, should have gotten residual.")
-            }
-            ResponseKind::Partial(p) => {
-                let map = [("test".into(), Value::from(false))].into_iter().collect();
-                let new = p.residuals.policies().map(|p| {
-                    Policy::from_when_clause(
-                        p.effect(),
-                        p.condition().substitute(&map).unwrap(),
-                        p.id().clone(),
-                    )
-                });
-                let pset = PolicySet::try_from_iter(new).unwrap();
-                let r = a.is_authorized(q.clone(), &pset, &es);
-                assert_eq!(r.decision, Decision::Allow);
+        let map = [("test".into(), Value::from(false))].into_iter().collect();
+        let r2: Response = r.reauthorize(&map, &a, q.clone(), &es).unwrap().into();
+        assert_eq!(r2.decision, Decision::Allow);
+        drop(r2);
 
-                let map = [("test".into(), Value::from(true))].into_iter().collect();
-                let new = p.residuals.policies().map(|p| {
-                    Policy::from_when_clause(
-                        p.effect(),
-                        p.condition().substitute(&map).unwrap(),
-                        p.id().clone(),
-                    )
-                });
-                let pset = PolicySet::try_from_iter(new).unwrap();
-                let r = a.is_authorized(q.clone(), &pset, &es);
-                assert_eq!(r.decision, Decision::Deny);
-            }
-        }
+        let map = [("test".into(), Value::from(true))].into_iter().collect();
+        let r2: Response = r.reauthorize(&map, &a, q.clone(), &es).unwrap().into();
+        assert_eq!(r2.decision, Decision::Deny);
 
-        let r = a.evaluate_policies(&pset, q, &es);
-        assert!(r.satisfied_permits.contains(&PolicyID::from_string("1")));
+        let r = a.is_authorized_core(q, &pset, &es);
+        assert!(r
+            .satisfied_permits
+            .contains_key(&PolicyID::from_string("1")));
         assert!(r.satisfied_forbids.is_empty());
         assert!(r.errors.is_empty());
-        assert!(r.permit_residuals.is_empty());
-        assert!(r
-            .forbid_residuals
-            .get(&PolicyID::from_string("2"))
-            .is_some());
+        assert!(r.residual_permits.is_empty());
+        assert!(r.residual_forbids.contains_key(&PolicyID::from_string("2")));
     }
 
     #[test]
@@ -807,15 +527,16 @@ mod test {
         let r = a.is_authorized_core(q.clone(), &pset, &es);
         assert_eq!(r.decision(), Some(Decision::Deny));
 
-        let r = a.evaluate_policies(&pset, q, &es);
-        assert!(r.satisfied_permits.contains(&PolicyID::from_string("4")));
-        assert!(r.satisfied_forbids.contains(&PolicyID::from_string("3")));
-        assert!(r.errors.is_empty());
-        assert!(r.permit_residuals.is_empty());
+        let r = a.is_authorized_core(q, &pset, &es);
         assert!(r
-            .forbid_residuals
-            .get(&PolicyID::from_string("2"))
-            .is_some());
+            .satisfied_permits
+            .contains_key(&PolicyID::from_string("4")));
+        assert!(r
+            .satisfied_forbids
+            .contains_key(&PolicyID::from_string("3")));
+        assert!(r.errors.is_empty());
+        assert!(r.residual_permits.is_empty());
+        assert!(r.residual_forbids.contains_key(&PolicyID::from_string("2")));
     }
 
     #[test]
@@ -849,51 +570,27 @@ mod test {
             .unwrap();
 
         let r = a.is_authorized_core(q.clone(), &pset, &es);
-        match r {
-            ResponseKind::FullyEvaluated(_) => {
-                panic!("Reached response, should have gotten residual.")
-            }
-            ResponseKind::Partial(p) => {
-                let map = [("a".into(), Value::from(false))].into_iter().collect();
-                let new = p.residuals.policies().map(|p| {
-                    Policy::from_when_clause(
-                        p.effect(),
-                        p.condition().substitute(&map).unwrap(),
-                        p.id().clone(),
-                    )
-                });
-                let pset = PolicySet::try_from_iter(new).unwrap();
-                let r = a.is_authorized(q.clone(), &pset, &es);
-                assert_eq!(r.decision, Decision::Deny);
+        let map = [("a".into(), Value::from(false))].into_iter().collect();
+        let r2: Response = r.reauthorize(&map, &a, q.clone(), &es).unwrap().into();
+        assert_eq!(r2.decision, Decision::Deny);
 
-                let map = [("a".into(), Value::from(true))].into_iter().collect();
-                let new = p.residuals.policies().map(|p| {
-                    Policy::from_when_clause(
-                        p.effect(),
-                        p.condition().substitute(&map).unwrap(),
-                        p.id().clone(),
-                    )
-                });
-                let pset = PolicySet::try_from_iter(new).unwrap();
-                let r = a.is_authorized(q.clone(), &pset, &es);
-                assert_eq!(r.decision, Decision::Allow);
-            }
-        }
+        let map = [("a".into(), Value::from(true))].into_iter().collect();
+        let r2: Response = r.reauthorize(&map, &a, q.clone(), &es).unwrap().into();
+        assert_eq!(r2.decision, Decision::Allow);
 
         pset.add_static(parser::parse_policy(Some("3".into()), src3).unwrap())
             .unwrap();
         let r = a.is_authorized_core(q.clone(), &pset, &es);
         assert_eq!(r.decision(), Some(Decision::Deny));
 
-        let r = a.evaluate_policies(&pset, q, &es);
+        let r = a.is_authorized_core(q, &pset, &es);
         assert!(r.satisfied_permits.is_empty());
-        assert!(r.satisfied_forbids.contains(&PolicyID::from_string("3")));
-        assert!(r.errors.is_empty());
         assert!(r
-            .permit_residuals
-            .get(&PolicyID::from_string("2"))
-            .is_some());
-        assert!(r.forbid_residuals.is_empty());
+            .satisfied_forbids
+            .contains_key(&PolicyID::from_string("3")));
+        assert!(r.errors.is_empty());
+        assert!(r.residual_permits.contains_key(&PolicyID::from_string("2")));
+        assert!(r.residual_forbids.is_empty());
     }
 }
 // by default, Coverlay does not track coverage for lines after a line
@@ -909,29 +606,6 @@ pub struct Response {
     pub decision: Decision,
     /// Diagnostics providing more information on how this decision was reached
     pub diagnostics: Diagnostics,
-}
-
-/// Response that may contain a residual.
-#[derive(Debug, PartialEq, Clone)]
-pub struct PartialResponse {
-    /// Residual policies
-    pub residuals: PolicySet,
-    /// Diagnostics providing info
-    pub diagnostics: Diagnostics,
-}
-
-impl PartialResponse {
-    /// Create a partial response with a residual PolicySet
-    pub fn new(
-        pset: PolicySet,
-        reason: HashSet<PolicyID>,
-        errors: Vec<AuthorizationError>,
-    ) -> Self {
-        PartialResponse {
-            residuals: pset,
-            diagnostics: Diagnostics { reason, errors },
-        }
-    }
 }
 
 /// Policy evaluation response returned from the `Authorizer`.

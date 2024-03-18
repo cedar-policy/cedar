@@ -187,8 +187,8 @@ impl Template {
             Ok(())
         } else {
             Err(LinkingError::from_unbound_and_extras(
-                unbound.into_iter().map(SlotId::clone),
-                extra.into_iter().map(SlotId::clone),
+                unbound.into_iter().copied(),
+                extra.into_iter().copied(),
             ))
         }
     }
@@ -342,9 +342,19 @@ impl Policy {
 
     /// Build a policy with a given effect, given when clause, and unconstrained head variables
     pub fn from_when_clause(effect: Effect, when: Expr, id: PolicyID) -> Self {
+        Self::from_when_clause_annos(effect, when, id, Annotations::default())
+    }
+
+    /// Build a policy with a given effect, given when clause, and unconstrained head variables
+    pub fn from_when_clause_annos(
+        effect: Effect,
+        when: Expr,
+        id: PolicyID,
+        annotations: Annotations,
+    ) -> Self {
         let t = Template::new(
             id,
-            Annotations::new(),
+            annotations,
             effect,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -757,7 +767,7 @@ impl StaticPolicy {
             resource_constraint,
             non_head_constraints,
         );
-        let num_slots = body.condition().slots().next().map(SlotId::clone);
+        let num_slots = body.condition().slots().next().copied();
         // INVARIANT (inline policy correctness), checks that no slots exists
         match num_slots {
             Some(slot_id) => Err(UnexpectedSlotError::FoundSlot(slot_id))?,
@@ -771,7 +781,7 @@ impl TryFrom<Template> for StaticPolicy {
 
     fn try_from(value: Template) -> Result<Self, Self::Error> {
         // INVARIANT (Static policy correctness): Must ensure StaticPolicy contains no slots
-        let o = value.slots().next().map(SlotId::clone);
+        let o = value.slots().next().copied();
         match o {
             Some(slot_id) => Err(Self::Error::FoundSlot(slot_id)),
             None => Ok(Self(value.body)),
@@ -1739,12 +1749,9 @@ mod test {
     use std::collections::HashSet;
 
     use super::{test_generators::*, *};
-    use crate::{
-        ast::{entity, id, name, EntityUID},
-        parser::{
-            err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind},
-            parse_policy, Loc,
-        },
+    use crate::parser::{
+        err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind},
+        parse_policy,
     };
 
     #[test]

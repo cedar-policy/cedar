@@ -920,7 +920,7 @@ fn stack_size_check() -> Result<()> {
 #[allow(clippy::panic)]
 #[cfg(test)]
 pub mod test {
-    use std::{collections::HashMap, str::FromStr};
+    use std::str::FromStr;
 
     use super::*;
 
@@ -4570,7 +4570,7 @@ pub mod test {
                 let m: HashMap<_, _> = [("principal".into(), Value::from(euid))]
                     .into_iter()
                     .collect();
-                let new_expr = expr.substitute(&m).unwrap();
+                let new_expr = expr.substitute_typed(&m).unwrap();
                 assert_eq!(
                     e.partial_interpret(&new_expr, &HashMap::new())
                         .expect("Failed to eval"),
