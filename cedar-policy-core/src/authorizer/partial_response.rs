@@ -122,7 +122,9 @@ impl PartialResponse {
             .filter_map(did_error)
     }
 
-    /// Returns an over-approximation of the set of determining policies
+    /// Returns an over-approximation of the set of determining policies.
+    ///
+    /// This is all policies that may be determining for any substitution of the unknowns.
     pub fn may_be_determining(&self) -> impl Iterator<Item = &PolicyID> {
         if self.satisfied_forbids.is_empty() {
             // We have no definitely true forbids, so the over approx is everything that is true or potentially true
