@@ -28,7 +28,8 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
-fn validate(call: &ValidateCall) -> Result<ValidateAnswer, String> {
+/// Parse a policy set and optionally validate it against a provided schema
+pub fn validate(call: &ValidateCall) -> Result<ValidateAnswer, String> {
     let mut policy_set = PolicySet::new();
     let mut parse_errors: Vec<String> = vec![];
 
@@ -101,10 +102,11 @@ pub fn json_validate(input: &str) -> InterfaceResult {
     )
 }
 
-#[derive(Serialize, Deserialize)]
+/// Struct containing the input data for validation
+#[derive(Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-struct ValidateCall {
+pub struct ValidateCall {
     #[serde(default)]
     #[serde(rename = "validationSettings")]
     validation_settings: ValidationSettings,
@@ -113,19 +115,24 @@ struct ValidateCall {
     policy_set: PolicySpecification,
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-struct ValidationSettings {
+/// Configuration for the validation call
+pub struct ValidationSettings {
+    /// The selected validation mode
     mode: ValidationMode,
 }
 
-#[derive(Serialize, Deserialize)]
+/// String enum for validation mode
+#[derive(Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-enum ValidationMode {
+pub enum ValidationMode {
+    /// Mode for which policies will be validated against the schema
     #[serde(rename = "regular")]
     Regular,
+    /// Mode for which no validation will be done
     #[serde(rename = "off")]
     Off,
 }
@@ -136,18 +143,30 @@ impl Default for ValidationMode {
     }
 }
 
+/// Note of issue with a specified policy after validation
 #[derive(Debug, Serialize, Deserialize)]
-struct ValidationNote {
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct ValidationNote {
     #[serde(rename = "policyId")]
     policy_id: String,
     note: String,
 }
 
+/// Result struct for validation
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
-enum ValidateAnswer {
-    ParseFailed { errors: Vec<String> },
-    Success { notes: Vec<ValidationNote> },
+pub enum ValidateAnswer {
+    /// Represents unsuccessful parsing
+    ParseFailed {
+        /// Parsing errors
+        errors: Vec<String>,
+    },
+    /// Represents successful parsing
+    Success {
+        /// Notes from any issues found during validation
+        notes: Vec<ValidationNote>,
+    },
 }
 
 // PANIC SAFETY unit tests

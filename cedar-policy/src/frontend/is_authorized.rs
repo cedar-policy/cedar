@@ -46,7 +46,7 @@ thread_local!(
 );
 
 /// Construct and ask the authorizer the request.
-fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
+pub fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
     match call.get_components() {
         Ok((request, policies, entities)) => {
             AUTHORIZER.with(|authorizer| AuthorizationAnswer::Success {
@@ -262,13 +262,22 @@ impl TryFrom<PartialResponse> for InterfaceResidualResponse {
     }
 }
 
+/// Answer struct from authorization call
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-enum AuthorizationAnswer {
-    ParseFailed { errors: Vec<String> },
-    Success { response: InterfaceResponse },
+pub enum AuthorizationAnswer {
+    /// Represents a failure to parse and call the authorizer
+    ParseFailed {
+        /// Parsing errors
+        errors: Vec<String>,
+    },
+    /// Represents a successful authorization call
+    Success {
+        /// Details of the authorization decision
+        response: InterfaceResponse,
+    },
 }
 
 #[cfg(feature = "partial-eval")]
@@ -280,29 +289,31 @@ enum PartialAuthorizationAnswer {
     Residuals { response: InterfaceResidualResponse },
 }
 
+/// Struct containing the input data for authorization
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-struct AuthorizationCall {
+pub struct AuthorizationCall {
+    /// The principal taking action
     #[cfg_attr(feature = "wasm", tsify(type = "string|{type: string, id: string}"))]
     principal: Option<JsonValueWithNoDuplicateKeys>,
+    /// The action the principal is taking
     #[cfg_attr(feature = "wasm", tsify(type = "string|{type: string, id: string}"))]
     action: JsonValueWithNoDuplicateKeys,
+    /// The resource being acted on by the principal
     #[cfg_attr(feature = "wasm", tsify(type = "string|{type: string, id: string}"))]
     resource: Option<JsonValueWithNoDuplicateKeys>,
     #[serde_as(as = "MapPreventDuplicates<_, _>")]
-    #[cfg_attr(
-        feature = "wasm",
-        tsify(optional, type = "Record<string, CedarValueJson>")
-    )]
+    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, CedarValueJson>"))]
+    /// The context details specific to the request
     context: HashMap<String, JsonValueWithNoDuplicateKeys>,
     /// Optional schema in JSON format.
     /// If present, this will inform the parsing: for instance, it will allow
     /// `__entity` and `__extn` escapes to be implicit, and it will error if
     /// attributes have the wrong types (e.g., string instead of integer).
     #[serde(rename = "schema")]
-    #[cfg_attr(feature = "wasm", tsify(type = "Schema"))]
+    #[cfg_attr(feature = "wasm", tsify(optional, type = "Schema"))]
     schema: Option<JsonValueWithNoDuplicateKeys>,
     /// If this is `true` and a schema is provided, perform request validation.
     /// If this is `false`, the schema will only be used for schema-based
@@ -310,6 +321,7 @@ struct AuthorizationCall {
     /// If a schema is not provided, this option has no effect.
     #[serde(default = "constant_true")]
     enable_request_validation: bool,
+    /// The slice containing entities and policies
     slice: RecvdSlice,
 }
 

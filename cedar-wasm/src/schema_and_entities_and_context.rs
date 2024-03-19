@@ -6,14 +6,12 @@ use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 
 #[derive(Tsify, Debug, Serialize, Deserialize)]
-#[serde(tag = "success")]
+#[serde(untagged)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 /// struct that defines the result for the syntax validation function
 pub enum CheckParseResult {
-    #[serde(rename = "true")]
     /// represents successful syntax validation
     Success,
-    #[serde(rename = "false")]
     /// represents a syntax error and encloses a vector of the errors
     SyntaxError { errors: Vec<String> },
 }
