@@ -43,7 +43,7 @@ use crate::ast::{
     self, ActionConstraint, CallStyle, EntityReference, EntityType, EntityUID, PatternElem,
     PolicySetError, PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint,
 };
-use itertools::Either;
+use itertools::{Either, Itertools};
 use smol_str::SmolStr;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
@@ -1189,78 +1189,31 @@ impl ASTNode<Option<cst::Mult>> {
         let mult = maybe_mult?;
 
         let maybe_first = mult.initial.to_expr_or_special(errs);
-        // collect() preforms all the conversions, generating any errors
-        let more: Vec<(cst::MultOp, _)> = mult
+        let more = mult
             .extended
             .iter()
-            .filter_map(|&(op, ref i)| i.to_expr(errs).map(|e| (op, e)))
-            .collect();
+            .filter_map(|&(op, ref i)| i.to_expr(errs).map(|e| (op, e)));
 
-        if !more.is_empty() {
-            let first = maybe_first?.into_expr(errs)?;
-            // enforce that division and remainder/modulo are not supported
-            for (op, _) in &more {
-                match op {
-                    cst::MultOp::Times => {}
-                    cst::MultOp::Divide => {
-                        errs.push(ParseError::ToAST("division is not supported".to_string()));
-                        return None;
-                    }
-                    cst::MultOp::Mod => {
-                        errs.push(ParseError::ToAST(
-                            "remainder/modulo is not supported".to_string(),
-                        ));
-                        return None;
-                    }
+        let (more, new_errs): (Vec<_>, Vec<_>) = more
+            .map(|(op, expr)| match op {
+                cst::MultOp::Times => Ok(expr),
+                cst::MultOp::Divide => {
+                    Err(ParseError::ToAST("division is not supported".to_string()))
                 }
-            }
-            // split all the operands into constantints and nonconstantints.
-            // also, remove the opcodes -- from here on we assume they're all
-            // `Times`, having checked above that this is the case
-            let (constantints, nonconstantints): (Vec<ast::Expr>, Vec<ast::Expr>) =
-                std::iter::once(first)
-                    .chain(more.into_iter().map(|(_, e)| e))
-                    .partition(|e| {
-                        matches!(e.expr_kind(), ast::ExprKind::Lit(ast::Literal::Long(_)))
-                    });
-            let constantints = constantints
-                .into_iter()
-                .map(|e| match e.expr_kind() {
-                    ast::ExprKind::Lit(ast::Literal::Long(i)) => *i,
-                    // PANIC SAFETY Checked the match above via the call to `partition`
-                    #[allow(clippy::unreachable)]
-                    _ => unreachable!(
-                        "checked it matched ast::ExprKind::Lit(ast::Literal::Long(_)) above"
-                    ),
-                })
-                .collect::<Vec<i64>>();
-            if nonconstantints.len() > 1 {
-                // at most one of the operands in `a * b * c * d * ...` can be a nonconstantint
-                errs.push(err::ParseError::ToAST(
-                    "Multiplication must be by a constant int".to_string(), // you could see this error for division by a nonconstant as well, but this error message seems like the appropriate one, it will be the common case
-                ));
-                None
-            } else if nonconstantints.is_empty() {
-                // PANIC SAFETY If nonconstantints is empty then constantints must have at least one value
-                #[allow(clippy::indexing_slicing)]
-                Some(ExprOrSpecial::Expr(construct_expr_mul(
-                    construct_expr_num(constantints[0], src.clone()),
-                    constantints[1..].iter().copied(),
-                    src.clone(),
-                )))
-            } else {
-                // PANIC SAFETY Checked above that `nonconstantints` has at least one element
-                #[allow(clippy::expect_used)]
-                let nonconstantint: ast::Expr = nonconstantints
-                    .into_iter()
-                    .next()
-                    .expect("already checked that it's not empty");
-                Some(ExprOrSpecial::Expr(construct_expr_mul(
-                    nonconstantint,
-                    constantints,
-                    src.clone(),
-                )))
-            }
+                cst::MultOp::Mod => Err(ParseError::ToAST(
+                    "remainder/modulo is not supported".to_string(),
+                )),
+            })
+            .partition_result();
+        errs.0.extend(new_errs);
+        if !more.is_empty() {
+            // in this case, `first` must be an expr, we should collect any errors there as well
+            let first = maybe_first?.into_expr(errs)?;
+            Some(ExprOrSpecial::Expr(construct_expr_mul(
+                first,
+                more,
+                src.clone(),
+            )))
         } else {
             maybe_first
         }
@@ -2096,14 +2049,14 @@ fn construct_expr_add(
 /// used for a chain of multiplication only (no division or mod)
 fn construct_expr_mul(
     f: ast::Expr,
-    chained: impl IntoIterator<Item = i64>,
-    l: SourceInfo,
+    chained: impl IntoIterator<Item = ast::Expr>,
+    loc: SourceInfo,
 ) -> ast::Expr {
     let mut expr = f;
     for next_expr in chained {
         expr = ast::ExprBuilder::new()
-            .with_source_info(l.clone())
-            .mul(expr, next_expr)
+            .with_source_info(loc.clone())
+            .mul(expr, next_expr);
     }
     expr
 }
@@ -2157,6 +2110,8 @@ fn construct_expr_record(kvs: Vec<(SmolStr, ast::Expr)>, l: SourceInfo) -> ast::
 #[allow(clippy::panic)]
 #[cfg(test)]
 mod tests {
+    use cool_asserts::assert_matches;
+
     use super::*;
     use crate::{
         ast::Expr,
@@ -3204,8 +3159,8 @@ mod tests {
             // the cst should be acceptable
             .expect("parse error")
             .to_expr(&mut errs);
-        // conversion should fail: only multiplication by a constant is allowed
-        assert!(e.is_none());
+        // conversion should succeed
+        assert!(e.is_some());
 
         let e = text_to_cst::parse_expr(r#" 5 + 10 + 90 "#)
             // the cst should be acceptable
@@ -3246,8 +3201,8 @@ mod tests {
             // the cst should be acceptable
             .expect("parse error")
             .to_expr(&mut errs);
-        // conversion should fail: only multiplication by a constant is allowed
-        assert!(e.is_none());
+        // conversion should succeed
+        assert!(e.is_some());
     }
 
     const CORRECT_TEMPLATES: [&str; 7] = [
@@ -3466,47 +3421,111 @@ mod tests {
 
     #[test]
     fn test_mul() {
-        for (es, expr) in [
-            ("--2*3", Expr::mul(Expr::neg(Expr::val(-2)), 3)),
+        for (str, expected) in [
+            ("--2*3", Expr::mul(Expr::neg(Expr::val(-2)), Expr::val(3))),
             (
                 "1 * 2 * false",
-                Expr::mul(Expr::mul(Expr::val(false), 1), 2),
+                Expr::mul(Expr::mul(Expr::val(1), Expr::val(2)), Expr::val(false)),
             ),
             (
                 "0 * 1 * principal",
-                Expr::mul(Expr::mul(Expr::var(ast::Var::Principal), 0), 1),
+                Expr::mul(
+                    Expr::mul(Expr::val(0), Expr::val(1)),
+                    Expr::var(ast::Var::Principal),
+                ),
             ),
             (
                 "0 * (-1) * principal",
-                Expr::mul(Expr::mul(Expr::var(ast::Var::Principal), 0), -1),
+                Expr::mul(
+                    Expr::mul(Expr::val(0), Expr::val(-1)),
+                    Expr::var(ast::Var::Principal),
+                ),
+            ),
+            (
+                "0 * 6 * context.foo",
+                Expr::mul(
+                    Expr::mul(Expr::val(0), Expr::val(6)),
+                    Expr::get_attr(Expr::var(ast::Var::Context), "foo".into()),
+                ),
+            ),
+            (
+                "(0 * 6) * context.foo",
+                Expr::mul(
+                    Expr::mul(Expr::val(0), Expr::val(6)),
+                    Expr::get_attr(Expr::var(ast::Var::Context), "foo".into()),
+                ),
+            ),
+            (
+                "0 * (6 * context.foo)",
+                Expr::mul(
+                    Expr::val(0),
+                    Expr::mul(
+                        Expr::val(6),
+                        Expr::get_attr(Expr::var(ast::Var::Context), "foo".into()),
+                    ),
+                ),
+            ),
+            (
+                "0 * (context.foo * 6)",
+                Expr::mul(
+                    Expr::val(0),
+                    Expr::mul(
+                        Expr::get_attr(Expr::var(ast::Var::Context), "foo".into()),
+                        Expr::val(6),
+                    ),
+                ),
+            ),
+            (
+                "1 * 2 * 3 * context.foo * 4 * 5 * 6",
+                Expr::mul(
+                    Expr::mul(
+                        Expr::mul(
+                            Expr::mul(
+                                Expr::mul(Expr::mul(Expr::val(1), Expr::val(2)), Expr::val(3)),
+                                Expr::get_attr(Expr::var(ast::Var::Context), "foo".into()),
+                            ),
+                            Expr::val(4),
+                        ),
+                        Expr::val(5),
+                    ),
+                    Expr::val(6),
+                ),
+            ),
+            (
+                "principal * (1 + 2)",
+                Expr::mul(
+                    Expr::var(ast::Var::Principal),
+                    Expr::add(Expr::val(1), Expr::val(2)),
+                ),
+            ),
+            (
+                "principal * -(-1)",
+                Expr::mul(Expr::var(ast::Var::Principal), Expr::neg(Expr::val(-1))),
+            ),
+            (
+                "principal * --1",
+                Expr::mul(Expr::var(ast::Var::Principal), Expr::neg(Expr::val(-1))),
+            ),
+            (
+                r#"false * "bob""#,
+                Expr::mul(Expr::val(false), Expr::val("bob")),
             ),
         ] {
             let mut errs = ParseErrors::new();
-            let e = text_to_cst::parse_expr(es)
+            let e = text_to_cst::parse_expr(str)
                 .expect("should construct a CST")
                 .to_expr(&mut errs)
-                .expect("should convert to AST");
+                .unwrap_or_else(|| {
+                    panic!(
+                        "failed convert to AST:\n{:?}",
+                        miette::Report::new(errs.clone())
+                    )
+                });
+            assert!(errs.is_empty());
             assert!(
-                e.eq_shape(&expr),
-                "{:?} and {:?} should have the same shape.",
-                e,
-                expr
+                e.eq_shape(&expected),
+                "{e:?} and {expected:?} should have the same shape",
             );
-        }
-
-        for es in [
-            r#"false * "bob""#,
-            "principal * (1 + 2)",
-            "principal * -(-1)",
-            // --1 is parsed as Expr::neg(Expr::val(-1)) and thus is not
-            // considered as a constant.
-            "principal * --1",
-        ] {
-            let mut errs = ParseErrors::new();
-            let e = text_to_cst::parse_expr(es)
-                .expect("should construct a CST")
-                .to_expr(&mut errs);
-            assert!(e.is_none());
         }
     }
 
