@@ -26,6 +26,8 @@ use thiserror::Error;
 
 /// Top level structure for a policy template.
 /// Contains both the AST for template, and the list of open slots in the template.
+///
+/// Note that this "template" may have no slots, in which case this `Template` represents a static policy
 #[derive(Clone, Hash, Eq, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(from = "TemplateBody")]
 #[serde(into = "TemplateBody")]
@@ -33,6 +35,8 @@ pub struct Template {
     body: TemplateBody,
     /// INVARIANT (slot cache correctness): This Vec must contain _all_ of the open slots in `body`
     /// This is maintained by the only two public constructors, `new` and `instantiate_inline_policy`
+    ///
+    /// Note that `slots` may be empty, in which case this `Template` represents a static policy
     slots: Vec<SlotId>,
 }
 

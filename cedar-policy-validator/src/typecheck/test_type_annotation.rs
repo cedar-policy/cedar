@@ -100,10 +100,10 @@ fn expr_typechecks_with_correct_annotation() {
             .not(ExprBuilder::with_data(Some(Type::singleton_boolean(false))).val(false)),
     );
     assert_expr_has_annotated_ast(
-        &Expr::mul(Expr::val(3), 4),
+        &Expr::mul(Expr::val(3), Expr::val(4)),
         &ExprBuilder::with_data(Some(Type::primitive_long())).mul(
             ExprBuilder::with_data(Some(Type::primitive_long())).val(3),
-            4,
+            ExprBuilder::with_data(Some(Type::primitive_long())).val(4),
         ),
     );
     assert_expr_has_annotated_ast(
