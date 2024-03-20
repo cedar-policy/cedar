@@ -69,20 +69,21 @@ jobs:
           repository: cedar-policy/cedar-java
           ref: ${{ needs.get-branch-name.outputs.branch_name }}
           path: ./cedar-java
-      - name: checkout cedar
-        uses: actions/checkout@v4
-        with:
-          path: cedar-java/cedar
-      - name: configure cedar-java
-        working-directory: cedar-java/CedarJava
-        shell: bash
-        run: bash config.sh run_int_tests
-      - name: build cedar-java/CedarJavaFFI
+      - name: Prepare Rust Build
+        run: rustup update stable && rustup default stable
+      - name: Check FFI Formatting
         working-directory: cedar-java/CedarJavaFFI
-        run: RUSTFLAGS="-D warnings" cargo build
-      - name: build cedar-java/CedarJava
+        run: cargo fmt --all --check
+      - name: Install Zig
+        run: sudo snap install zig --beta --classic
+      - name: Build FFI and Java Libraries
         working-directory: cedar-java/CedarJava
-        run: export MUST_RUN_CEDAR_INTEGRATION_TESTS=1 && ./gradlew build
+        env:
+          MUST_RUN_CEDAR_INTEGRATION_TESTS: 1
+        run: ./gradlew build
+      - name: Generate Java Documentation
+        working-directory: ./CedarJava
+        run: ./gradlew javadoc
 
   build-cedar-examples-hello-world:
     needs: get-branch-name
