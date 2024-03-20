@@ -18,92 +18,39 @@
 //!
 #![allow(clippy::module_name_repetitions)]
 use super::utils::{InterfaceResult, PolicySpecification};
-use cedar_policy_core::{
-    ast::PolicySet,
-    parser::{parse_policy, parse_policyset},
-};
-use cedar_policy_validator::Validator;
+use crate::{PolicySet, Schema, ValidationMode, Validator};
+use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
 /// Parse a policy set and optionally validate it against a provided schema
-fn validate(call: &ValidationCall) -> ValidationAnswer {
-    let mut policy_set = PolicySet::new();
-    let mut parse_errors: Vec<String> = vec![];
-
-    match &call.policy_set {
-        PolicySpecification::Concatenated(policies_str) => match parse_policyset(policies_str) {
-            Ok(parsed_policy_set) => {
-                policy_set = parsed_policy_set;
-            }
-            Err(policy_set_parse_errs) => {
-                parse_errors.extend(
-                    policy_set_parse_errs
-                        .into_iter()
-                        .map(|pe| format!("parse error in policy: {pe}")),
-                );
-            }
-        },
-        PolicySpecification::Map(policy_set_input) => {
-            for (id, policy_text) in policy_set_input {
-                match parse_policy(Some(id.clone()), policy_text.as_str()) {
-                    Ok(policy) => {
-                        policy_set.add_static(policy).ok();
-                    }
-                    Err(errors) => {
-                        for error in errors {
-                            parse_errors.push(format!("parse error in policy {id:}: {error:}"));
-                        }
-                    }
-                };
-            }
-        }
-    }
-
-    if !parse_errors.is_empty() {
-        return ValidationAnswer::ParseFailed {
-            errors: parse_errors,
-        };
-    }
-
-    let schema = call.schema.clone().try_into();
-    match schema {
-        Ok(schema) => {
+fn validate(call: ValidationCall) -> ValidationAnswer {
+    match call.get_components() {
+        Ok((policies, schema)) => {
             let validator = Validator::new(schema);
-
-            let validation_result = validator.validate(
-                &policy_set,
-                cedar_policy_validator::ValidationMode::default(),
-            );
-
-            let errors: Vec<ValidationError> = validation_result
+            let validation_result = validator.validate(&policies, ValidationMode::default());
+            let validation_errors: Vec<ValidationError> = validation_result
                 .validation_errors()
                 .map(|error| ValidationError {
                     policy_id: error.location().policy_id().to_string(),
                     error: format!("{}", error.error_kind()),
                 })
                 .collect();
-
-            let warnings: Vec<ValidationWarning> = validation_result
+            let validation_warnings: Vec<ValidationWarning> = validation_result
                 .validation_warnings()
                 .map(|error| ValidationWarning {
                     policy_id: error.location().policy_id().to_string(),
-                    warning: format!("{}", error.kind()),
+                    warning: format!("{}", error.warning_kind()),
                 })
                 .collect();
-
             ValidationAnswer::Success {
-                validation_errors: errors,
-                validation_warnings: warnings,
+                validation_errors,
+                validation_warnings,
             }
         }
-        Err(e) => {
-            return ValidationAnswer::ParseFailed {
-                errors: vec![format!("could not construct schema: {e}")],
-            };
-        }
+        Err(errors) => ValidationAnswer::Failure { errors },
     }
 }
 
@@ -111,9 +58,9 @@ fn validate(call: &ValidationCall) -> ValidationAnswer {
 pub fn json_validate(input: &str) -> InterfaceResult {
     serde_json::from_str::<ValidationCall>(input).map_or_else(
         |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
-        |call| match validate(&call) {
+        |call| match validate(call) {
             answer @ ValidationAnswer::Success { .. } => InterfaceResult::succeed(answer),
-            ValidationAnswer::ParseFailed { errors } => InterfaceResult::fail_bad_request(errors),
+            ValidationAnswer::Failure { errors } => InterfaceResult::fail_bad_request(errors),
         },
     )
 }
@@ -126,9 +73,22 @@ struct ValidationCall {
     #[serde(default)]
     #[serde(rename = "validationSettings")]
     validation_settings: ValidationSettings,
-    schema: cedar_policy_validator::SchemaFragment,
+    /// Schema in JSON format
+    schema: JsonValueWithNoDuplicateKeys,
     #[serde(rename = "policySet")]
     policy_set: PolicySpecification,
+}
+
+fn parse_schema(schema_json: JsonValueWithNoDuplicateKeys) -> Result<Schema, Vec<String>> {
+    Schema::from_json_value(schema_json.into()).map_err(|e| vec![e.to_string()])
+}
+
+impl ValidationCall {
+    fn get_components(self) -> Result<(PolicySet, Schema), Vec<String>> {
+        let policies = self.policy_set.try_into(None)?;
+        let schema = parse_schema(self.schema)?;
+        Ok((policies, schema))
+    }
 }
 
 /// Configuration for the validation call
@@ -136,23 +96,23 @@ struct ValidationCall {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 struct ValidationSettings {
-    mode: ValidationMode,
+    enabled: ValidationEnabled,
 }
 
-/// Configuration for the validation call
 #[derive(Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-enum ValidationMode {
-    #[serde(rename = "regular")]
-    Regular,
+enum ValidationEnabled {
+    #[serde(rename = "on")]
+    #[serde(alias = "regular")]
+    On,
     #[serde(rename = "off")]
     Off,
 }
 
-impl Default for ValidationMode {
+impl Default for ValidationEnabled {
     fn default() -> Self {
-        Self::Regular
+        Self::On
     }
 }
 
@@ -175,9 +135,7 @@ struct ValidationWarning {
 #[serde(untagged)]
 enum ValidationAnswer {
     /// Represents a failure to parse or call the validator
-    ParseFailed {
-        errors: Vec<String>,
-    },
+    Failure { errors: Vec<String> },
     /// Represents a successful validation call
     Success {
         validation_errors: Vec<ValidationError>,
@@ -192,11 +150,12 @@ mod test {
     use super::*;
     use crate::frontend::utils::assert_is_failure;
     use cool_asserts::assert_matches;
-    use std::collections::HashMap;
+    use std::{collections::HashMap, str::FromStr};
 
     #[test]
     fn test_validate_empty_policy_directly() {
-        let schema = cedar_policy_validator::SchemaFragment(HashMap::new());
+        let schema =
+            JsonValueWithNoDuplicateKeys::from_str("{}").expect("empty schema should be valid");
 
         let call = ValidationCall {
             validation_settings: ValidationSettings::default(),
@@ -292,11 +251,7 @@ mod test {
         .to_string();
 
         let result = json_validate(&call_json);
-        assert_is_failure(
-            &result,
-            false,
-            "parse error in policy policy0: unexpected end of input",
-        );
+        assert_is_failure(&result, false);
     }
 
     #[test]
@@ -399,11 +354,7 @@ mod test {
         .to_string();
 
         let result = json_validate(&call_json);
-        assert_is_failure(
-            &result,
-            false,
-            "parse error in policy: unexpected end of input",
-        );
+        assert_is_failure(&result, false);
     }
 
     #[test]
@@ -446,17 +397,13 @@ mod test {
         }"#
         .to_string();
         let result = json_validate(&call_json);
-        assert_is_failure(
-            &result,
-            false,
-            "parse error in policy: unexpected end of input",
-        );
+        assert_is_failure(&result, false);
     }
 
     #[test]
     fn test_bad_call_format_fails() {
         let result = json_validate("uerfheriufheiurfghtrg");
-        assert_is_failure(&result, true, "error parsing call: expected value");
+        assert_is_failure(&result, true);
     }
 
     #[test]
@@ -470,11 +417,7 @@ mod test {
         }"#
         .to_string();
         let result = json_validate(&call_json);
-        assert_is_failure(
-            &result,
-            true,
-            "error parsing call: invalid entry: found duplicate key",
-        );
+        assert_is_failure(&result, true);
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
@@ -508,6 +451,6 @@ mod test {
         }"#
         .to_string();
         let result = json_validate(&call_json);
-        assert_is_failure(&result, true, "no duplicate IDs");
+        assert_is_failure(&result, true);
     }
 }

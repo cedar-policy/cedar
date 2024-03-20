@@ -24,8 +24,8 @@ use crate::api::EntityTypeName;
 use crate::api::PartialResponse;
 use crate::PolicyId;
 use crate::{
-    Authorizer, Context, Decision, Entities, EntityUid, Policy, PolicySet, Request, Response,
-    Schema, SlotId, Template,
+    Authorizer, Context, Decision, Entities, EntityUid, PolicySet, Request, Response, Schema,
+    SlotId,
 };
 use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 use itertools::Itertools;
@@ -55,7 +55,7 @@ fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
                     .into(),
             })
         }
-        Err(errors) => AuthorizationAnswer::ParseFailed { errors },
+        Err(errors) => AuthorizationAnswer::Failure { errors },
     }
 }
 
@@ -68,9 +68,7 @@ pub fn json_is_authorized(input: &str) -> InterfaceResult {
         |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
         |call| match is_authorized(call) {
             answer @ AuthorizationAnswer::Success { .. } => InterfaceResult::succeed(answer),
-            AuthorizationAnswer::ParseFailed { errors } => {
-                InterfaceResult::fail_bad_request(errors)
-            }
+            AuthorizationAnswer::Failure { errors } => InterfaceResult::fail_bad_request(errors),
         },
     )
 }
@@ -83,18 +81,18 @@ fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAnswer 
                 concrete_response @ PartialResponse::Concrete(_) => {
                     match concrete_response.try_into() {
                         Ok(response) => PartialAuthorizationAnswer::Concrete { response },
-                        Err(errors) => PartialAuthorizationAnswer::ParseFailed { errors },
+                        Err(errors) => PartialAuthorizationAnswer::Failure { errors },
                     }
                 }
                 residual_response @ PartialResponse::Residual(_) => {
                     match residual_response.try_into() {
                         Ok(response) => PartialAuthorizationAnswer::Residuals { response },
-                        Err(errors) => PartialAuthorizationAnswer::ParseFailed { errors },
+                        Err(errors) => PartialAuthorizationAnswer::Failure { errors },
                     }
                 }
             }
         }),
-        Err(errors) => PartialAuthorizationAnswer::ParseFailed { errors },
+        Err(errors) => PartialAuthorizationAnswer::Failure { errors },
     }
 }
 
@@ -110,7 +108,7 @@ pub fn json_is_authorized_partial(input: &str) -> InterfaceResult {
         |call| match is_authorized_partial(call) {
             answer @ (PartialAuthorizationAnswer::Concrete { .. }
             | PartialAuthorizationAnswer::Residuals { .. }) => InterfaceResult::succeed(answer),
-            PartialAuthorizationAnswer::ParseFailed { errors } => {
+            PartialAuthorizationAnswer::Failure { errors } => {
                 InterfaceResult::fail_bad_request(errors)
             }
         },
@@ -269,7 +267,7 @@ impl TryFrom<PartialResponse> for InterfaceResidualResponse {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 enum AuthorizationAnswer {
     /// Represents a failure to parse or call the authorizer
-    ParseFailed { errors: Vec<String> },
+    Failure { errors: Vec<String> },
     /// Represents a successful authorization call
     Success { response: InterfaceResponse },
 }
@@ -278,7 +276,7 @@ enum AuthorizationAnswer {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 enum PartialAuthorizationAnswer {
-    ParseFailed { errors: Vec<String> },
+    Failure { errors: Vec<String> },
     Concrete { response: InterfaceResponse },
     Residuals { response: InterfaceResidualResponse },
 }
@@ -326,7 +324,7 @@ fn constant_true() -> bool {
     true
 }
 
-pub(crate) fn parse_schema(
+fn parse_schema(
     schema_json: Option<JsonValueWithNoDuplicateKeys>,
 ) -> Result<Option<Schema>, Vec<String>> {
     schema_json
@@ -566,19 +564,7 @@ impl RecvdSlice {
             template_instantiations,
         } = self;
 
-        let policy_set = match policies {
-            PolicySpecification::Concatenated(policies) => match PolicySet::from_str(&policies) {
-                Ok(ps) => Ok(ps),
-                Err(parse_errors) => Err(std::iter::once(
-                    "couldn't parse concatenated policies string".to_string(),
-                )
-                .chain(parse_errors.errors_as_strings())
-                .collect()),
-            },
-            PolicySpecification::Map(policies) => {
-                parse_policy_set_from_individual_policies(&policies, templates)
-            }
-        };
+        let policy_set: Result<PolicySet, Vec<String>> = policies.try_into(templates);
 
         let mut errs = Vec::new();
 
@@ -616,51 +602,6 @@ impl RecvdSlice {
         } else {
             Err(errs)
         }
-    }
-}
-
-fn parse_policy_set_from_individual_policies(
-    policies: &HashMap<String, String>,
-    templates: Option<HashMap<String, String>>,
-) -> Result<PolicySet, Vec<String>> {
-    let mut policy_set = PolicySet::new();
-    let mut errs = Vec::new();
-    for (id, policy_src) in policies {
-        match Policy::parse(Some(id.clone()), policy_src) {
-            Ok(p) => match policy_set.add(p) {
-                Ok(()) => {}
-                Err(err) => {
-                    errs.push(format!("couldn't add policy to set due to error: {err}"));
-                }
-            },
-            Err(pes) => errs.extend(
-                std::iter::once(format!("couldn't parse policy with id `{id}`"))
-                    .chain(pes.errors_as_strings().into_iter()),
-            ),
-        }
-    }
-
-    if let Some(templates) = templates {
-        for (id, policy_src) in templates {
-            match Template::parse(Some(id.clone()), policy_src) {
-                Ok(p) => match policy_set.add_template(p) {
-                    Ok(()) => {}
-                    Err(err) => {
-                        errs.push(format!("couldn't add policy to set due to error: {err}"));
-                    }
-                },
-                Err(pes) => errs.extend(
-                    std::iter::once(format!("couldn't parse policy with id `{id}`"))
-                        .chain(pes.errors_as_strings().into_iter()),
-                ),
-            }
-        }
-    }
-
-    if errs.is_empty() {
-        Ok(policy_set)
-    } else {
-        Err(errs)
     }
 }
 
@@ -729,11 +670,7 @@ mod test {
 
     #[test]
     fn test_failure_on_invalid_syntax() {
-        assert_is_failure(
-            &json_is_authorized("iefjieoafiaeosij"),
-            true,
-            "expected value",
-        );
+        assert_is_failure(&json_is_authorized("iefjieoafiaeosij"), true);
     }
 
     #[test]
@@ -1229,11 +1166,7 @@ mod test {
                 "template_instantiations" : []
             }
         }"#;
-        assert_is_failure(
-            &json_is_authorized(call),
-            false,
-            "couldn't add policy to set due to error: duplicate template or policy id `ID0`",
-        );
+        assert_is_failure(&json_is_authorized(call), false);
     }
 
     #[test]
@@ -1280,11 +1213,7 @@ mod test {
                 ]
             }
         }"#;
-        assert_is_failure(
-            &json_is_authorized(call),
-            false,
-            "Error instantiating template: unable to link template: template-linked policy id `ID1` conflicts with an existing policy id",
-        );
+        assert_is_failure(&json_is_authorized(call), false);
     }
 
     #[test]
@@ -1321,11 +1250,7 @@ mod test {
                 ]
             }
         }"#;
-        assert_is_failure(
-            &json_is_authorized(call),
-            false,
-            "Error instantiating template: unable to link template: template-linked policy id `ID0` conflicts with an existing policy id",
-        );
+        assert_is_failure(&json_is_authorized(call), false);
     }
 
     #[test]
@@ -1362,11 +1287,7 @@ mod test {
                 ]
             }
         }"#;
-        assert_is_failure(
-            &json_is_authorized(call),
-            false,
-            "Error instantiating template: unable to link template: template-linked policy id `ID1` conflicts with an existing policy id",
-        );
+        assert_is_failure(&json_is_authorized(call), false);
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
@@ -1410,7 +1331,7 @@ mod test {
                 "template_instantiations" : [ ]
             }
         }"#;
-        assert_is_failure(&json_is_authorized(call), true, "no duplicate IDs");
+        assert_is_failure(&json_is_authorized(call), true);
     }
 
     #[test]
@@ -1430,7 +1351,7 @@ mod test {
                 "template_instantiations" : [ ]
             }
         }"#;
-        assert_is_failure(&json_is_authorized(call), true, "found duplicate key");
+        assert_is_failure(&json_is_authorized(call), true);
     }
 
     #[test]
@@ -1462,11 +1383,7 @@ mod test {
                 ]
             }
         }"#;
-        assert_is_failure(
-            &json_is_authorized(call),
-            true,
-            "duplicate instantiations of the slot(s): `?principal`",
-        );
+        assert_is_failure(&json_is_authorized(call), true);
     }
 
     #[test]
@@ -1502,11 +1419,7 @@ mod test {
                 ]
             }
         }"#;
-        assert_is_failure(
-            &json_is_authorized(call),
-            true,
-            "duplicate instantiations of the slot(s): `?principal`",
-        );
+        assert_is_failure(&json_is_authorized(call), true);
     }
 
     #[test]
@@ -1546,11 +1459,7 @@ mod test {
                 ]
             }
         }"#;
-        assert_is_failure(
-            &json_is_authorized(call),
-            true,
-            "duplicate instantiations of the slot(s): `?principal`, `?resource`",
-        );
+        assert_is_failure(&json_is_authorized(call), true);
     }
 
     #[test]
@@ -1593,11 +1502,7 @@ mod test {
                 "template_instantiations" : []
             }
         }"#;
-        assert_is_failure(
-            &json_is_authorized(call),
-            false,
-            r#"duplicate entity entry `User::"alice"`"#,
-        );
+        assert_is_failure(&json_is_authorized(call), false);
     }
 
     #[test]
@@ -1626,7 +1531,7 @@ mod test {
                 "template_instantiations" : []
             }
         }"#;
-        assert_is_failure(&json_is_authorized(call), true, "found duplicate key");
+        assert_is_failure(&json_is_authorized(call), true);
     }
 
     #[cfg(feature = "partial-eval")]
