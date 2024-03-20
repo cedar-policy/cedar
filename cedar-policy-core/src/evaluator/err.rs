@@ -66,7 +66,7 @@ impl Diagnostic for EvaluationError {
     }
 
     fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        self.error_kind.code()
+        Some(Box::new(format!("A1{:02}", self.error_kind().error_id())))
     }
 
     fn severity(&self) -> Option<miette::Severity> {
@@ -375,6 +375,30 @@ pub enum EvaluationErrorKind {
     /// Maximum recursion limit reached for expression evaluation
     #[error("recursion limit reached")]
     RecursionLimit,
+}
+
+impl EvaluationErrorKind {
+    /// Return an id for an error kind
+    /// The id is the last two digit of an error code
+    /// E.g., `EvaluationErrorKind::NonValue` has error id 6
+    /// and error code "A106"
+    pub(crate) fn error_id(&self) -> u8 {
+        match self {
+            Self::EntityAttrDoesNotExist { .. } => 0,
+            Self::EntityDoesNotExist(_) => 1,
+            Self::FailedExtensionFunctionApplication { .. } => 2,
+            Self::FailedExtensionFunctionLookup(_) => 3,
+            Self::IntegerOverflow(_) => 4,
+            Self::InvalidRestrictedExpression(_) => 5,
+            Self::NonValue(_) => 6,
+            Self::RecordAttrDoesNotExist(_, _) => 7,
+            Self::RecursionLimit => 8,
+            Self::TypeError { .. } => 9,
+            Self::UnlinkedSlot(_) => 10,
+            Self::UnspecifiedEntityAccess(_) => 11,
+            Self::WrongNumArguments { .. } => 12,
+        }
+    }
 }
 
 /// helper function for pretty-printing type errors
