@@ -82,7 +82,7 @@ jobs:
           MUST_RUN_CEDAR_INTEGRATION_TESTS: 1
         run: ./gradlew build
       - name: Generate Java Documentation
-        working-directory: ./CedarJava
+        working-directory: cedar-java/CedarJava
         run: ./gradlew javadoc
 
   build-cedar-examples-hello-world:
