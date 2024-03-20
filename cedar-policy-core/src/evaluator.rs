@@ -407,7 +407,11 @@ impl<'e> Evaluator<'e> {
                 match op {
                     BinaryOp::Eq => Ok((arg1 == arg2).into()),
                     // comparison and arithmetic operators, which only work on Longs
-                    BinaryOp::Less | BinaryOp::LessEq | BinaryOp::Add | BinaryOp::Sub => {
+                    BinaryOp::Less
+                    | BinaryOp::LessEq
+                    | BinaryOp::Add
+                    | BinaryOp::Sub
+                    | BinaryOp::Mul => {
                         let i1 = arg1.get_as_long()?;
                         let i2 = arg2.get_as_long()?;
                         match op {
@@ -426,6 +430,17 @@ impl<'e> Evaluator<'e> {
                             },
                             BinaryOp::Sub => match i1.checked_sub(i2) {
                                 Some(diff) => Ok(diff.into()),
+                                None => Err(EvaluationError::integer_overflow(
+                                    IntegerOverflowError::BinaryOp {
+                                        op: *op,
+                                        arg1,
+                                        arg2,
+                                    },
+                                    loc.cloned(),
+                                )),
+                            },
+                            BinaryOp::Mul => match i1.checked_mul(i2) {
+                                Some(prod) => Ok(prod.into()),
                                 None => Err(EvaluationError::integer_overflow(
                                     IntegerOverflowError::BinaryOp {
                                         op: *op,
@@ -529,22 +544,6 @@ impl<'e> Evaluator<'e> {
                     }
                 }
             }
-            ExprKind::MulByConst { arg, constant } => match self.partial_interpret(arg, slots)? {
-                PartialValue::Value(arg) => {
-                    let i1 = arg.get_as_long()?;
-                    match i1.checked_mul(*constant) {
-                        Some(prod) => Ok(prod.into()),
-                        None => Err(EvaluationError::integer_overflow(
-                            IntegerOverflowError::Multiplication {
-                                arg,
-                                constant: *constant,
-                            },
-                            loc.cloned(),
-                        )),
-                    }
-                }
-                PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::mul(r, *constant))),
-            },
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let args = args
                     .iter()
@@ -2985,17 +2984,17 @@ pub mod test {
         );
         // 5 * (-3)
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::mul(Expr::val(5), -3)),
+            eval.interpret_inline_policy(&Expr::mul(Expr::val(5), Expr::val(-3))),
             Ok(Value::from(-15))
         );
         // 5 * 0
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::mul(Expr::val(5), 0)),
+            eval.interpret_inline_policy(&Expr::mul(Expr::val(5), Expr::val(0))),
             Ok(Value::from(0))
         );
         // "5" * 0
         assert_matches!(
-            eval.interpret_inline_policy(&Expr::mul(Expr::val("5"), 0)),
+            eval.interpret_inline_policy(&Expr::mul(Expr::val("5"), Expr::val(0))),
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: vec![Type::Long],
@@ -3005,11 +3004,12 @@ pub mod test {
         );
         // overflow
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::mul(Expr::val(Integer::MAX - 1), 3)),
+            eval.interpret_inline_policy(&Expr::mul(Expr::val(Integer::MAX - 1), Expr::val(3))),
             Err(EvaluationError::integer_overflow(
-                IntegerOverflowError::Multiplication {
-                    arg: Value::from(Integer::MAX - 1),
-                    constant: 3,
+                IntegerOverflowError::BinaryOp {
+                    op: BinaryOp::Mul,
+                    arg1: Value::from(Integer::MAX - 1),
+                    arg2: Value::from(3),
                 },
                 None
             ))
@@ -5549,7 +5549,7 @@ pub mod test {
         let exts = Extensions::none();
         let eval = Evaluator::new(empty_request(), &es, &exts);
 
-        let e = Expr::mul(Expr::unknown(Unknown::new_untyped("a")), 32);
+        let e = Expr::mul(Expr::unknown(Unknown::new_untyped("a")), Expr::val(32));
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(r, PartialValue::Residual(e));
     }
