@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Validation error messages render types in the new, more readable, schema
   syntax. (#708, resolving #242)
 - Removed unnecessary lifetimes from some validation related structs (#715)
+- Made `isAuthorized` and `validate` functions in the frontend public, as well as their related structs: `AuthorizationAnswer`, `AuthorizationCall`, `ValidateCall`, `ValidationSettings`, `ValidationMode`, `ValidateAnswer`, `ValidationNote`. (#737) 
 
 ## [3.1.1] - 2024-03-14
 
