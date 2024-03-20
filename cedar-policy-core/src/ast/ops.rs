@@ -61,6 +61,11 @@ pub enum BinaryOp {
     /// Arguments must have Long type
     Sub,
 
+    /// Integer multiplication
+    ///
+    /// Arguments must have Long type
+    Mul,
+
     /// Hierarchy membership. Specifically, is the first arg a member of the
     /// second.
     ///
@@ -103,6 +108,7 @@ impl std::fmt::Display for BinaryOp {
             BinaryOp::LessEq => write!(f, "_<=_"),
             BinaryOp::Add => write!(f, "_+_"),
             BinaryOp::Sub => write!(f, "_-_"),
+            BinaryOp::Mul => write!(f, "_*_"),
             BinaryOp::In => write!(f, "_in_"),
             BinaryOp::Contains => write!(f, "contains"),
             BinaryOp::ContainsAll => write!(f, "containsAll"),

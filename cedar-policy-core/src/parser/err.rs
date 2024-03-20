@@ -26,7 +26,7 @@ use miette::{Diagnostic, LabeledSpan, SourceSpan};
 use smol_str::SmolStr;
 use thiserror::Error;
 
-use crate::ast::{self, InputInteger, PolicyID, RestrictedExprError, Var};
+use crate::ast::{self, ExprConstructionError, InputInteger, PolicyID, RestrictedExprError, Var};
 use crate::parser::fmt::join_with_conjunction;
 use crate::parser::loc::Loc;
 use crate::parser::node::Node;
@@ -305,9 +305,10 @@ pub enum ToASTErrorKind {
     /// Returned when a policy uses the remainder/modulo operator (`%`), which is not supported
     #[error("remainder/modulo is not supported")]
     UnsupportedModulo,
-    /// Returned when a policy attempts to multiply by a non-constant integer
-    #[error("multiplication must be by an integer literal")]
-    NonConstantMultiplication,
+    /// Any `ExprConstructionError` can also happen while converting CST to AST
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExprConstructionError(#[from] ExprConstructionError),
     /// Returned when a policy contains an integer literal that is out of range
     #[error("integer literal `{0}` is too large")]
     #[diagnostic(help("maximum allowed integer literal is `{}`", InputInteger::MAX))]
@@ -343,12 +344,6 @@ pub enum ToASTErrorKind {
     /// Returned when the contents of an indexing expression is not a string literal
     #[error("the contents of an index expression must be a string literal")]
     NonStringIndex,
-    /// Returned when the same key appears two or more times in a single record literal
-    #[error("duplicate key `{key}` in record literal")]
-    DuplicateKeyInRecordLiteral {
-        /// The key that appeared two or more times
-        key: SmolStr,
-    },
     /// Returned when a user attempts to use type-constraint `:` syntax. This
     /// syntax was not adopted, but `is` can be used to write type constraints
     /// in the policy scope.

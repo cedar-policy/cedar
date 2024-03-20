@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Implement [RFC 57](https://github.com/cedar-policy/rfcs/pull/57): policies can
+  now include multiplication of arbitrary expressions, not just multiplication of
+  an expression and a constant.
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
 - Improved "unexpected token" parse errors when the schema or policy parsers
   expect an identifier. (#698)
@@ -27,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.1.1] - 2024-03-14
 
-### Fixed 
+### Fixed
 
 - `ValidationResult` methods `validation_errors` and `validation_warnings`, along with
   `confusable_string_checker`, now return iterators with static lifetimes instead of

@@ -248,7 +248,6 @@ impl TryFrom<Expr> for ValueKind {
             ExprKind::Or { .. } => Err(NotValue::NotValue { loc }),
             ExprKind::UnaryApp { .. } => Err(NotValue::NotValue { loc }),
             ExprKind::BinaryApp { .. } => Err(NotValue::NotValue { loc }),
-            ExprKind::MulByConst { .. } => Err(NotValue::NotValue { loc }),
             ExprKind::ExtensionFunctionApp { .. } => Err(NotValue::NotValue { loc }),
             ExprKind::GetAttr { .. } => Err(NotValue::NotValue { loc }),
             ExprKind::HasAttr { .. } => Err(NotValue::NotValue { loc }),

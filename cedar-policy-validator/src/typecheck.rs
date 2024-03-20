@@ -949,10 +949,6 @@ impl<'a> Typechecker<'a> {
                 // INVARIANT: typecheck_binary requires a `BinaryApp`, we've just ensured this
                 self.typecheck_binary(request_env, prior_eff, e, type_errors)
             }
-            ExprKind::MulByConst { .. } => {
-                // INVARIANT: typecheck_mul requires a `MulByConst`, we've just ensured this
-                self.typecheck_mul(request_env, prior_eff, e, type_errors)
-            }
             ExprKind::ExtensionFunctionApp { .. } => {
                 // INVARIANT: typecheck_extension requires a `ExtensionFunctionApp`, we've just ensured this
                 self.typecheck_extension(request_env, prior_eff, e, type_errors)
@@ -1413,7 +1409,7 @@ impl<'a> Typechecker<'a> {
                 })
             }
 
-            BinaryOp::Add | BinaryOp::Sub => {
+            BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
                 let help_builder = |actual: &Type| match (op, actual) {
                     (
                         BinaryOp::Add,
@@ -1605,39 +1601,6 @@ impl<'a> Typechecker<'a> {
                 _ => TypecheckAnswer::success(annotated_expr),
             },
         }
-    }
-
-    /// Like `typecheck_binary()`, but for multiplication, which isn't
-    /// technically a `BinaryOp`
-    /// INVARIANT: must be called `mul_expr` being a `MulByConst`
-    fn typecheck_mul<'b>(
-        &self,
-        request_env: &RequestEnv,
-        prior_eff: &EffectSet<'b>,
-        mul_expr: &'b Expr,
-        type_errors: &mut Vec<TypeError>,
-    ) -> TypecheckAnswer<'b> {
-        // PANIC SAFETY: maintained by invariant on this function
-        #[allow(clippy::panic)]
-        let ExprKind::MulByConst { arg, constant } = mul_expr.expr_kind() else {
-            panic!("`typecheck_mul` called with an expression kind other than `MulByConst`");
-        };
-
-        let ans_arg = self.expect_type(
-            request_env,
-            prior_eff,
-            arg,
-            Type::primitive_long(),
-            type_errors,
-            |_| None,
-        );
-        ans_arg.then_typecheck(|arg_expr_ty, _| {
-            TypecheckAnswer::success({
-                ExprBuilder::with_data(Some(Type::primitive_long()))
-                    .with_same_source_loc(mul_expr)
-                    .mul(arg_expr_ty, *constant)
-            })
-        })
     }
 
     /// Get the type for an `==` expression given the input types.

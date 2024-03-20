@@ -93,17 +93,6 @@ pub enum ExprKind<T = ()> {
         /// Second arg
         arg2: Arc<Expr<T>>,
     },
-    /// Multiplication by constant
-    ///
-    /// This isn't just a BinaryOp because its arguments aren't both expressions.
-    /// (Similar to how `like` isn't a BinaryOp and has its own AST node as well.)
-    MulByConst {
-        /// first argument, which may be an arbitrary expression, but must
-        /// evaluate to Long type
-        arg: Arc<Expr<T>>,
-        /// second argument, which must be an integer constant
-        constant: Integer,
-    },
     /// Application of an extension function to n arguments
     /// INVARIANT (MethodStyleArgs):
     ///   if op.style is MethodStyle then args _cannot_ be empty.
@@ -384,9 +373,9 @@ impl Expr {
         ExprBuilder::new().sub(e1, e2)
     }
 
-    /// Create a 'mul' expression. First argument must evaluate to Long type.
-    pub fn mul(e: Expr, c: Integer) -> Self {
-        ExprBuilder::new().mul(e, c)
+    /// Create a 'mul' expression. Arguments must evaluate to Long type
+    pub fn mul(e1: Expr, e2: Expr) -> Self {
+        ExprBuilder::new().mul(e1, e2)
     }
 
     /// Create a 'neg' expression. `e` must evaluate to Long type.
@@ -588,9 +577,6 @@ impl Expr {
                 #[allow(clippy::expect_used)]
                 Ok(Expr::record(map)
                     .expect("cannot have a duplicate key because the input was already a BTreeMap"))
-            }
-            ExprKind::MulByConst { arg, constant } => {
-                Ok(Expr::mul(arg.substitute(definitions)?, *constant))
             }
             ExprKind::Is { expr, entity_type } => Ok(Expr::is_entity_type(
                 expr.substitute(definitions)?,
@@ -862,11 +848,12 @@ impl<T> ExprBuilder<T> {
         })
     }
 
-    /// Create a 'mul' expression. First argument must evaluate to Long type.
-    pub fn mul(self, e: Expr<T>, c: Integer) -> Expr<T> {
-        self.with_expr_kind(ExprKind::MulByConst {
-            arg: Arc::new(e),
-            constant: c,
+    /// Create a 'mul' expression. Arguments must evaluate to Long type
+    pub fn mul(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+        self.with_expr_kind(ExprKind::BinaryApp {
+            op: BinaryOp::Mul,
+            arg1: Arc::new(e1),
+            arg2: Arc::new(e2),
         })
     }
 
@@ -1077,12 +1064,12 @@ impl<T: Clone> ExprBuilder<T> {
 }
 
 /// Errors when constructing an `Expr`
-#[derive(Debug, PartialEq, Diagnostic, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
 pub enum ExprConstructionError {
-    /// A key occurred twice (or more) in a record literal
+    /// The same key occurred two or more times in a single record literal
     #[error("duplicate key `{key}` in record literal")]
     DuplicateKeyInRecordLiteral {
-        /// The key which occurred twice (or more) in the record literal
+        /// The key which occurred two or more times in the record literal
         key: SmolStr,
     },
 }
@@ -1179,13 +1166,6 @@ impl<T> Expr<T> {
                 },
             ) => op == op1 && arg1.eq_shape(arg11) && arg2.eq_shape(arg21),
             (
-                MulByConst { arg, constant },
-                MulByConst {
-                    arg: arg1,
-                    constant: constant1,
-                },
-            ) => constant == constant1 && arg.eq_shape(arg1),
-            (
                 ExtensionFunctionApp { fn_name, args },
                 ExtensionFunctionApp {
                     fn_name: fn_name1,
@@ -1273,10 +1253,6 @@ impl<T> Expr<T> {
                 op.hash(state);
                 arg1.hash_shape(state);
                 arg2.hash_shape(state);
-            }
-            ExprKind::MulByConst { arg, constant } => {
-                arg.hash_shape(state);
-                constant.hash(state);
             }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 fn_name.hash(state);
@@ -1654,8 +1630,8 @@ mod test {
                 Expr::sub(Expr::val(1), Expr::val(1)),
             ),
             (
-                ExprBuilder::with_data(1).mul(temp.clone(), 1),
-                Expr::mul(Expr::val(1), 1),
+                ExprBuilder::with_data(1).mul(temp.clone(), temp.clone()),
+                Expr::mul(Expr::val(1), Expr::val(1)),
             ),
             (
                 ExprBuilder::with_data(1).neg(temp.clone()),
