@@ -28,7 +28,8 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
-fn validate(call: &ValidateCall) -> Result<ValidateAnswer, String> {
+/// Parse a policy set and optionally validate it against a provided schema
+fn validate(call: &ValidationCall) -> ValidationAnswer {
     let mut policy_set = PolicySet::new();
     let mut parse_errors: Vec<String> = vec![];
 
@@ -62,49 +63,66 @@ fn validate(call: &ValidateCall) -> Result<ValidateAnswer, String> {
     }
 
     if !parse_errors.is_empty() {
-        return Ok(ValidateAnswer::ParseFailed {
+        return ValidationAnswer::ParseFailed {
             errors: parse_errors,
-        });
+        };
     }
 
-    let schema = call
-        .schema
-        .clone()
-        .try_into()
-        .map_err(|e| format!("could not construct schema: {e}"))?;
-    let validator = Validator::new(schema);
+    let schema = call.schema.clone().try_into();
+    match schema {
+        Ok(schema) => {
+            let validator = Validator::new(schema);
 
-    let notes: Vec<ValidationNote> = validator
-        .validate(
-            &policy_set,
-            cedar_policy_validator::ValidationMode::default(),
-        )
-        .validation_errors()
-        .map(|error| ValidationNote {
-            policy_id: error.location().policy_id().to_string(),
-            note: format!("{}", error.error_kind()),
-        })
-        .collect();
+            let validation_result = validator.validate(
+                &policy_set,
+                cedar_policy_validator::ValidationMode::default(),
+            );
 
-    Ok(ValidateAnswer::Success { notes })
+            let errors: Vec<ValidationError> = validation_result
+                .validation_errors()
+                .map(|error| ValidationError {
+                    policy_id: error.location().policy_id().to_string(),
+                    error: format!("{}", error.error_kind()),
+                })
+                .collect();
+
+            let warnings: Vec<ValidationWarning> = validation_result
+                .validation_warnings()
+                .map(|error| ValidationWarning {
+                    policy_id: error.location().policy_id().to_string(),
+                    warning: format!("{}", error.kind()),
+                })
+                .collect();
+
+            ValidationAnswer::Success {
+                validation_errors: errors,
+                validation_warnings: warnings,
+            }
+        }
+        Err(e) => {
+            return ValidationAnswer::ParseFailed {
+                errors: vec![format!("could not construct schema: {e}")],
+            };
+        }
+    }
 }
 
 /// public string-based validation function
 pub fn json_validate(input: &str) -> InterfaceResult {
-    serde_json::from_str::<ValidateCall>(input).map_or_else(
+    serde_json::from_str::<ValidationCall>(input).map_or_else(
         |e| InterfaceResult::fail_internally(format!("error parsing call: {e:}")),
         |call| match validate(&call) {
-            Ok(answer @ ValidateAnswer::Success { .. }) => InterfaceResult::succeed(answer),
-            Ok(ValidateAnswer::ParseFailed { errors }) => InterfaceResult::fail_bad_request(errors),
-            Err(e) => InterfaceResult::fail_internally(e),
+            answer @ ValidationAnswer::Success { .. } => InterfaceResult::succeed(answer),
+            ValidationAnswer::ParseFailed { errors } => InterfaceResult::fail_bad_request(errors),
         },
     )
 }
 
+/// Struct containing the input data for validation
 #[derive(Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-struct ValidateCall {
+struct ValidationCall {
     #[serde(default)]
     #[serde(rename = "validationSettings")]
     validation_settings: ValidationSettings,
@@ -113,6 +131,7 @@ struct ValidateCall {
     policy_set: PolicySpecification,
 }
 
+/// Configuration for the validation call
 #[derive(Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -120,6 +139,7 @@ struct ValidationSettings {
     mode: ValidationMode,
 }
 
+/// Configuration for the validation call
 #[derive(Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -137,17 +157,32 @@ impl Default for ValidationMode {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct ValidationNote {
+struct ValidationError {
     #[serde(rename = "policyId")]
     policy_id: String,
-    note: String,
+    error: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+struct ValidationWarning {
+    #[serde(rename = "policyId")]
+    policy_id: String,
+    warning: String,
+}
+
+/// Result struct for validation
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
-enum ValidateAnswer {
-    ParseFailed { errors: Vec<String> },
-    Success { notes: Vec<ValidationNote> },
+enum ValidationAnswer {
+    /// Represents a failure to parse or call the validator
+    ParseFailed {
+        errors: Vec<String>,
+    },
+    /// Represents a successful validation call
+    Success {
+        validation_errors: Vec<ValidationError>,
+        validation_warnings: Vec<ValidationWarning>,
+    },
 }
 
 // PANIC SAFETY unit tests
@@ -163,7 +198,7 @@ mod test {
     fn test_validate_empty_policy_directly() {
         let schema = cedar_policy_validator::SchemaFragment(HashMap::new());
 
-        let call = ValidateCall {
+        let call = ValidationCall {
             validation_settings: ValidationSettings::default(),
             schema,
             policy_set: PolicySpecification::Map(HashMap::new()),
@@ -172,11 +207,11 @@ mod test {
         let call_json: String = serde_json::to_string(&call).expect("could not serialise call");
 
         let result = json_validate(&call_json);
-        assert_validates_without_notes(result);
+        assert_validates_without_errors(result);
     }
 
     #[test]
-    fn test_empty_policy_validates_without_notes() {
+    fn test_empty_policy_validates_without_errors() {
         let call_json = r#"{
             "schema": {},
             "policySet": {}
@@ -184,11 +219,11 @@ mod test {
         .to_string();
 
         let result = json_validate(&call_json);
-        assert_validates_without_notes(result);
+        assert_validates_without_errors(result);
     }
 
     #[test]
-    fn test_nontrivial_correct_policy_validates_without_notes() {
+    fn test_nontrivial_correct_policy_validates_without_errors() {
         let call_json = r#"{
   "schema": { "": {
     "entityTypes": {
@@ -240,7 +275,7 @@ mod test {
 "#.to_string();
 
         let result = json_validate(&call_json);
-        assert_validates_without_notes(result);
+        assert_validates_without_errors(result);
     }
 
     #[test]
@@ -265,7 +300,7 @@ mod test {
     }
 
     #[test]
-    fn test_semantically_incorrect_policy_fails_with_notes() {
+    fn test_semantically_incorrect_policy_fails_with_errors() {
         let call_json = r#"{
   "schema":{"": {
     "entityTypes": {
@@ -293,11 +328,11 @@ mod test {
 "#.to_string();
 
         let result = json_validate(&call_json);
-        assert_validates_with_notes(result, 4);
+        assert_validates_with_errors(result, 4);
     }
 
     #[test]
-    fn test_nontrivial_correct_policy_validates_without_notes_concatenated_policies() {
+    fn test_nontrivial_correct_policy_validates_without_errors_concatenated_policies() {
         let call_json = r#"{
   "schema": { "": {
     "entityTypes": {
@@ -349,7 +384,7 @@ mod test {
 "#.to_string();
 
         let result = json_validate(&call_json);
-        assert_validates_without_notes(result);
+        assert_validates_without_errors(result);
     }
 
     #[test]
@@ -372,7 +407,7 @@ mod test {
     }
 
     #[test]
-    fn test_semantically_incorrect_policy_fails_with_notes_concatenated_policies() {
+    fn test_semantically_incorrect_policy_fails_with_errors_concatenated_policies() {
         let call_json = r#"{
   "schema": {"": {
     "entityTypes": {
@@ -397,7 +432,7 @@ mod test {
 "#.to_string();
 
         let result = json_validate(&call_json);
-        assert_validates_with_notes(result, 2);
+        assert_validates_with_errors(result, 2);
     }
 
     #[test]
@@ -443,21 +478,21 @@ mod test {
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_validates_without_notes(result: InterfaceResult) {
+    fn assert_validates_without_errors(result: InterfaceResult) {
         assert_matches!(result, InterfaceResult::Success { result } => {
-            let parsed_result: ValidateAnswer = serde_json::from_str(result.as_str()).unwrap();
-            assert_matches!(parsed_result, ValidateAnswer::Success { notes, .. } => {
-                assert_eq!(notes.len(), 0, "Unexpected validation notes: {notes:?}");
+            let parsed_result: ValidationAnswer = serde_json::from_str(result.as_str()).unwrap();
+            assert_matches!(parsed_result, ValidationAnswer::Success { validation_errors, validation_warnings: _ } => {
+                assert_eq!(validation_errors.len(), 0, "Unexpected validation errors: {validation_errors:?}");
             });
         });
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_validates_with_notes(result: InterfaceResult, expected_num_notes: usize) {
+    fn assert_validates_with_errors(result: InterfaceResult, expected_num_errors: usize) {
         assert_matches!(result, InterfaceResult::Success { result } => {
-            let parsed_result: ValidateAnswer = serde_json::from_str(result.as_str()).unwrap();
-            assert_matches!(parsed_result, ValidateAnswer::Success { notes, .. } => {
-                assert_eq!(notes.len(), expected_num_notes);
+            let parsed_result: ValidationAnswer = serde_json::from_str(result.as_str()).unwrap();
+            assert_matches!(parsed_result, ValidationAnswer::Success { validation_errors, validation_warnings: _ } => {
+                assert_eq!(validation_errors.len(), expected_num_errors);
             });
         });
     }

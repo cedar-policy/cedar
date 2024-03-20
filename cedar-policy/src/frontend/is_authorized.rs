@@ -262,12 +262,15 @@ impl TryFrom<PartialResponse> for InterfaceResidualResponse {
     }
 }
 
+/// Answer struct from authorization call
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 enum AuthorizationAnswer {
+    /// Represents a failure to parse or call the authorizer
     ParseFailed { errors: Vec<String> },
+    /// Represents a successful authorization call
     Success { response: InterfaceResponse },
 }
 
@@ -280,17 +283,22 @@ enum PartialAuthorizationAnswer {
     Residuals { response: InterfaceResidualResponse },
 }
 
+/// Struct containing the input data for authorization
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 struct AuthorizationCall {
+    /// The principal taking action
     #[cfg_attr(feature = "wasm", tsify(type = "string|{type: string, id: string}"))]
     principal: Option<JsonValueWithNoDuplicateKeys>,
+    /// The action the principal is taking
     #[cfg_attr(feature = "wasm", tsify(type = "string|{type: string, id: string}"))]
     action: JsonValueWithNoDuplicateKeys,
+    /// The resource being acted on by the principal
     #[cfg_attr(feature = "wasm", tsify(type = "string|{type: string, id: string}"))]
     resource: Option<JsonValueWithNoDuplicateKeys>,
+    /// The context details specific to the request
     #[serde_as(as = "MapPreventDuplicates<_, _>")]
     #[cfg_attr(
         feature = "wasm",
@@ -310,6 +318,7 @@ struct AuthorizationCall {
     /// If a schema is not provided, this option has no effect.
     #[serde(default = "constant_true")]
     enable_request_validation: bool,
+    /// The slice containing entities and policies
     slice: RecvdSlice,
 }
 
@@ -317,7 +326,7 @@ fn constant_true() -> bool {
     true
 }
 
-fn parse_schema(
+pub(crate) fn parse_schema(
     schema_json: Option<JsonValueWithNoDuplicateKeys>,
 ) -> Result<Option<Schema>, Vec<String>> {
     schema_json
