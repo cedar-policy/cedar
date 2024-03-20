@@ -2789,7 +2789,7 @@ mod tests {
         assert_matches!(parse.to_expr(&mut errs), None => {
             expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("this identifier is reserved and cannot be used: `if`"));
             expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("record literal has invalid attributes"));
-            assert_eq!(errs.len(), 5, "{:?}", miette::Report::new(errs)); // both of the above errors occur multiple times in that expression
+            assert_eq!(errs.len(), 3, "{:?}", miette::Report::new(errs)); // the `if` error occurs twice in that expression, so the total number of errors is 3
         });
     }
 
@@ -2808,7 +2808,7 @@ mod tests {
             expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("this identifier is reserved and cannot be used: `then`"));
             expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("this identifier is reserved and cannot be used: `else`"));
             expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("record literal has invalid attributes"));
-            assert_eq!(errs.len(), 8, "{:?}", miette::Report::new(errs)); // some of the above errors occur multiple times in that expression
+            assert_eq!(errs.len(), 7, "{:?}", miette::Report::new(errs)); // the "record literal has invalid attributes" error occurs twice in that expression
         });
     }
 
