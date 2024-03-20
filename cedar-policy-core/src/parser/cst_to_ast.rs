@@ -827,6 +827,7 @@ impl Node<Option<cst::Str>> {
 /// During conversion it is useful to keep track of expression that may be used
 /// as function names, record names, or record attributes. This prevents parsing these
 /// terms to a general Expr expression and then immediately unwrapping them.
+#[derive(Debug)]
 pub(crate) enum ExprOrSpecial<'a> {
     /// Any expression except a variable, name, or string literal
     Expr { expr: ast::Expr, loc: Loc },
@@ -1466,16 +1467,10 @@ impl Node<Option<cst::Mult>> {
         if !more.is_empty() {
             // in this case, `first` must be an expr, we should collect any errors there as well
             let first = maybe_first?.into_expr(errs)?;
-            if !errs.is_empty() {
-                None
-            } else {
-                Some(ExprOrSpecial::Expr {
-                    expr: construct_expr_mul(first, more, &self.loc),
-                    loc: self.loc.clone(),
-                })
-            }
-        } else if !errs.is_empty() {
-            None
+            Some(ExprOrSpecial::Expr {
+                expr: construct_expr_mul(first, more, &self.loc),
+                loc: self.loc.clone(),
+            })
         } else {
             maybe_first
         }
@@ -2830,8 +2825,8 @@ mod tests {
             expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error_and_help("type constraints using `:` are not supported", "try using `is` instead"));
             expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error_and_help("type constraints using `:` are not supported", "try using `is` instead"));
             expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error_and_help("type constraints using `:` are not supported", "try using `is` instead"));
-            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("arbitrary var"));
-            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error("arbitrary var"));
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error_and_help("arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`", "did you mean to enclose `w` in quotes to make a string?"));
+            expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error_and_help("arbitrary variables are not supported; the valid Cedar variables are `principal`, `action`, `resource`, and `context`", "did you mean to enclose `u` in quotes to make a string?"));
             expect_some_error_matches(src, &errs, &ExpectedErrorMessage::error_and_help("not a valid policy condition: `advice`", "condition must be either `when` or `unless`"));
         });
     }
