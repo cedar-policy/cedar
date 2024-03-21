@@ -251,7 +251,7 @@ mod test {
         .to_string();
 
         let result = json_validate(&call_json);
-        assert_is_failure(&result, false);
+        assert_is_failure(&result, false, "unexpected end of input");
     }
 
     #[test]
@@ -354,7 +354,7 @@ mod test {
         .to_string();
 
         let result = json_validate(&call_json);
-        assert_is_failure(&result, false);
+        assert_is_failure(&result, false, "unexpected end of input");
     }
 
     #[test]
@@ -397,13 +397,13 @@ mod test {
         }"#
         .to_string();
         let result = json_validate(&call_json);
-        assert_is_failure(&result, false);
+        assert_is_failure(&result, false, "unexpected end of input");
     }
 
     #[test]
     fn test_bad_call_format_fails() {
         let result = json_validate("uerfheriufheiurfghtrg");
-        assert_is_failure(&result, true);
+        assert_is_failure(&result, true, "error parsing call: expected value");
     }
 
     #[test]
@@ -417,7 +417,11 @@ mod test {
         }"#
         .to_string();
         let result = json_validate(&call_json);
-        assert_is_failure(&result, true);
+        assert_is_failure(
+            &result,
+            true,
+            "error parsing call: the key `foo` occurs two or more times in the same JSON object",
+        );
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
@@ -451,6 +455,6 @@ mod test {
         }"#
         .to_string();
         let result = json_validate(&call_json);
-        assert_is_failure(&result, true);
+        assert_is_failure(&result, true, "error parsing call: policies as a concatenated string or multiple policies as a hashmap where the policy id is the key");
     }
 }

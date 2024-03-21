@@ -670,7 +670,11 @@ mod test {
 
     #[test]
     fn test_failure_on_invalid_syntax() {
-        assert_is_failure(&json_is_authorized("iefjieoafiaeosij"), true);
+        assert_is_failure(
+            &json_is_authorized("iefjieoafiaeosij"),
+            true,
+            "error parsing call: expected value",
+        );
     }
 
     #[test]
@@ -1166,7 +1170,11 @@ mod test {
                 "template_instantiations" : []
             }
         }"#;
-        assert_is_failure(&json_is_authorized(call), false);
+        assert_is_failure(
+            &json_is_authorized(call),
+            false,
+            "couldn't add policy to set due to error: duplicate template or policy id `ID0`",
+        );
     }
 
     #[test]
@@ -1213,7 +1221,7 @@ mod test {
                 ]
             }
         }"#;
-        assert_is_failure(&json_is_authorized(call), false);
+        assert_is_failure(&json_is_authorized(call), false, "Error instantiating template: unable to link template: template-linked policy id `ID1` conflicts with an existing policy id");
     }
 
     #[test]
@@ -1250,7 +1258,7 @@ mod test {
                 ]
             }
         }"#;
-        assert_is_failure(&json_is_authorized(call), false);
+        assert_is_failure(&json_is_authorized(call), false, "Error instantiating template: unable to link template: template-linked policy id `ID0` conflicts with an existing policy id");
     }
 
     #[test]
@@ -1287,7 +1295,7 @@ mod test {
                 ]
             }
         }"#;
-        assert_is_failure(&json_is_authorized(call), false);
+        assert_is_failure(&json_is_authorized(call), false, "Error instantiating template: unable to link template: template-linked policy id `ID1` conflicts with an existing policy id");
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
@@ -1331,7 +1339,7 @@ mod test {
                 "template_instantiations" : [ ]
             }
         }"#;
-        assert_is_failure(&json_is_authorized(call), true);
+        assert_is_failure(&json_is_authorized(call), true, "error parsing call: policies as a concatenated string or multiple policies as a hashmap where the policy id is the key");
     }
 
     #[test]
@@ -1351,7 +1359,11 @@ mod test {
                 "template_instantiations" : [ ]
             }
         }"#;
-        assert_is_failure(&json_is_authorized(call), true);
+        assert_is_failure(
+            &json_is_authorized(call),
+            true,
+            "error parsing call: invalid entry: found duplicate key",
+        );
     }
 
     #[test]
@@ -1383,7 +1395,11 @@ mod test {
                 ]
             }
         }"#;
-        assert_is_failure(&json_is_authorized(call), true);
+        assert_is_failure(
+            &json_is_authorized(call),
+            true,
+            "error parsing call: duplicate instantiations of the slot(s): `?principal`",
+        );
     }
 
     #[test]
@@ -1419,7 +1435,11 @@ mod test {
                 ]
             }
         }"#;
-        assert_is_failure(&json_is_authorized(call), true);
+        assert_is_failure(
+            &json_is_authorized(call),
+            true,
+            "error parsing call: duplicate instantiations of the slot(s): `?principal`",
+        );
     }
 
     #[test]
@@ -1459,7 +1479,11 @@ mod test {
                 ]
             }
         }"#;
-        assert_is_failure(&json_is_authorized(call), true);
+        assert_is_failure(
+            &json_is_authorized(call),
+            true,
+            "error parsing call: duplicate instantiations of the slot(s): `?principal`, `?resource`",
+        );
     }
 
     #[test]
@@ -1502,7 +1526,11 @@ mod test {
                 "template_instantiations" : []
             }
         }"#;
-        assert_is_failure(&json_is_authorized(call), false);
+        assert_is_failure(
+            &json_is_authorized(call),
+            false,
+            r#"duplicate entity entry `User::"alice"`"#,
+        );
     }
 
     #[test]
@@ -1531,7 +1559,11 @@ mod test {
                 "template_instantiations" : []
             }
         }"#;
-        assert_is_failure(&json_is_authorized(call), true);
+        assert_is_failure(
+            &json_is_authorized(call),
+            true,
+            "error parsing call: invalid entry: found duplicate key",
+        );
     }
 
     #[cfg(feature = "partial-eval")]
