@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::ast::PolicyID;
 use cedar_policy_core::parser::Loc;
+use cedar_policy_core::{ast::PolicyID, error_code::ErrorCode};
 use miette::Diagnostic;
+use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::{TypeErrorKind, ValidationWarning};
@@ -207,6 +208,21 @@ impl ValidationErrorKind {
 
     pub(crate) fn unspecified_entity(entity_id: String) -> ValidationErrorKind {
         UnspecifiedEntityError { entity_id }.into()
+    }
+}
+
+impl ErrorCode for ValidationErrorKind {
+    fn prefix() -> SmolStr {
+        "V1".into()
+    }
+    fn error_id(&self) -> u8 {
+        match self {
+            Self::InvalidActionApplication(_) => 0,
+            Self::TypeError(_) => 1,
+            Self::UnrecognizedActionId(_) => 2,
+            Self::UnrecognizedEntityType(_) => 3,
+            Self::UnspecifiedEntity(_) => 4,
+        }
     }
 }
 

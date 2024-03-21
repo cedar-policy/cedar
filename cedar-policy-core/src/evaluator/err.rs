@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-use crate::ast::*;
 use crate::parser::Loc;
+use crate::{ast::*, error_code::ErrorCode};
 use itertools::Itertools;
 use miette::{Diagnostic, LabeledSpan};
 use nonempty::{nonempty, NonEmpty};
@@ -66,7 +66,7 @@ impl Diagnostic for EvaluationError {
     }
 
     fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        Some(Box::new(format!("A1{:02}", self.error_kind().error_id())))
+        Some(Box::new(self.error_kind().error_code()))
     }
 
     fn severity(&self) -> Option<miette::Severity> {
@@ -377,12 +377,11 @@ pub enum EvaluationErrorKind {
     RecursionLimit,
 }
 
-impl EvaluationErrorKind {
-    /// Return an id for an error kind
-    /// The id is the last two digit of an error code
-    /// E.g., `EvaluationErrorKind::NonValue` has error id 6
-    /// and error code "A106"
-    pub(crate) fn error_id(&self) -> u8 {
+impl ErrorCode for EvaluationErrorKind {
+    fn prefix() -> SmolStr {
+        "A1".into()
+    }
+    fn error_id(&self) -> u8 {
         match self {
             Self::EntityAttrDoesNotExist { .. } => 0,
             Self::EntityDoesNotExist(_) => 1,

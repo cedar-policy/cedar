@@ -26,6 +26,7 @@ pub mod authorizer;
 mod from_normalized_str;
 pub use from_normalized_str::*;
 pub mod entities;
+pub mod error_code;
 pub mod est;
 pub mod evaluator;
 pub mod extensions;

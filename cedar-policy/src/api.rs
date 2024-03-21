@@ -31,6 +31,7 @@ use cedar_policy_core::entities::{
     ContextJsonDeserializationError, ContextSchema, Dereference, JsonDeserializationError,
     JsonDeserializationErrorContext,
 };
+use cedar_policy_core::error_code::ErrorCode;
 use cedar_policy_core::est;
 use cedar_policy_core::evaluator::Evaluator;
 pub use cedar_policy_core::evaluator::{EvaluationError, EvaluationErrorKind};
@@ -1857,7 +1858,11 @@ impl Diagnostic for ValidationError {
     }
 
     fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.error_kind.code()
+        Some(Box::new(match self.error_kind() {
+            // We forward the error code of type errors
+            ValidationErrorKind::TypeError(ty_err) => ty_err.error_code(),
+            _ => self.error_kind().error_code(),
+        }))
     }
 
     fn severity(&self) -> Option<miette::Severity> {

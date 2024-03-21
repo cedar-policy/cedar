@@ -19,6 +19,7 @@
 use std::{collections::BTreeSet, fmt::Display};
 
 use cedar_policy_core::ast::{CallStyle, EntityUID, Expr, ExprKind, Name, Var};
+use cedar_policy_core::error_code::ErrorCode;
 use cedar_policy_core::parser::Loc;
 
 use crate::types::{EntityLUB, EntityRecordKind, RequestEnv};
@@ -292,6 +293,29 @@ pub enum TypeErrorKind {
     #[error(transparent)]
     #[diagnostic(transparent)]
     HierarchyNotRespected(HierarchyNotRespected),
+}
+
+impl ErrorCode for TypeErrorKind {
+    fn prefix() -> SmolStr {
+        "V2".into()
+    }
+    fn error_id(&self) -> u8 {
+        match self {
+            Self::EmptySetForbidden => 0,
+            Self::FunctionArgumentValidationError(_) => 1,
+            Self::HierarchyNotRespected(_) => 2,
+            Self::ImpossiblePolicy => 3,
+            Self::IncompatibleTypes(_) => 4,
+            Self::MultiplyDefinedFunction(_) => 5,
+            Self::NonLitExtConstructor => 6,
+            Self::UndefinedFunction(_) => 7,
+            Self::UnexpectedType(_) => 8,
+            Self::UnsafeAttributeAccess(_) => 9,
+            Self::UnsafeOptionalAttributeAccess(_) => 10,
+            Self::WrongCallStyle(_) => 11,
+            Self::WrongNumberArguments(_) => 12,
+        }
+    }
 }
 
 /// Structure containing details about an unexpected type error.
