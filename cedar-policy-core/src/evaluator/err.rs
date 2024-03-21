@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
+use crate::ast::*;
 use crate::parser::Loc;
-use crate::{ast::*, error_code::ErrorCode};
 use itertools::Itertools;
 use miette::{Diagnostic, LabeledSpan};
 use nonempty::{nonempty, NonEmpty};
@@ -66,7 +66,7 @@ impl Diagnostic for EvaluationError {
     }
 
     fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        Some(Box::new(self.error_kind().error_code()))
+        self.error_kind.code()
     }
 
     fn severity(&self) -> Option<miette::Severity> {
@@ -375,29 +375,6 @@ pub enum EvaluationErrorKind {
     /// Maximum recursion limit reached for expression evaluation
     #[error("recursion limit reached")]
     RecursionLimit,
-}
-
-impl ErrorCode for EvaluationErrorKind {
-    fn prefix() -> SmolStr {
-        "A1".into()
-    }
-    fn error_id(&self) -> u8 {
-        match self {
-            Self::EntityAttrDoesNotExist { .. } => 0,
-            Self::EntityDoesNotExist(_) => 1,
-            Self::FailedExtensionFunctionApplication { .. } => 2,
-            Self::FailedExtensionFunctionLookup(_) => 3,
-            Self::IntegerOverflow(_) => 4,
-            Self::InvalidRestrictedExpression(_) => 5,
-            Self::NonValue(_) => 6,
-            Self::RecordAttrDoesNotExist(_, _) => 7,
-            Self::RecursionLimit => 8,
-            Self::TypeError { .. } => 9,
-            Self::UnlinkedSlot(_) => 10,
-            Self::UnspecifiedEntityAccess(_) => 11,
-            Self::WrongNumArguments { .. } => 12,
-        }
-    }
 }
 
 /// helper function for pretty-printing type errors
