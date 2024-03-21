@@ -229,6 +229,9 @@ impl Diagnostic for UnrecognizedEntityType {
             None => None,
         }
     }
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new("validation::unrecognized_entity_type"))
+    }
 }
 
 /// Structure containing details about an unrecognized action id error.
@@ -249,6 +252,9 @@ impl Diagnostic for UnrecognizedActionId {
             Some(s) => Some(Box::new(format!("did you mean `{s}`?"))),
             None => None,
         }
+    }
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new("validation::unrecognized_action_id"))
     }
 }
 
@@ -276,6 +282,9 @@ impl Diagnostic for InvalidActionApplication {
             (false, false) => None,
         }
     }
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new("validation::invalid_action_application"))
+    }
 }
 
 /// Structure containing details about an unspecified entity error.
@@ -283,6 +292,7 @@ impl Diagnostic for InvalidActionApplication {
 #[cfg_attr(test, derive(Eq, PartialEq))]
 #[error("unspecified entity with id `{entity_id}`")]
 #[diagnostic(help("unspecified entities cannot be used in policies"))]
+#[diagnostic(code(validation::unspecified_entity))]
 pub struct UnspecifiedEntityError {
     /// EID of the unspecified entity.
     pub(crate) entity_id: String,

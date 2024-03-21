@@ -138,6 +138,7 @@ impl<'a> Extensions<'a> {
 pub enum ExtensionFunctionLookupError {
     /// Tried to call a function that doesn't exist
     #[error("extension function `{name}` does not exist")]
+    #[diagnostic(code(evaluation::extension_function_lookup::func_does_not_exist))]
     FuncDoesNotExist {
         /// Name of the function that doesn't exist
         name: Name,
@@ -145,6 +146,7 @@ pub enum ExtensionFunctionLookupError {
 
     /// Attempted to typecheck an expression that had no type
     #[error("extension function `{name}` has no type")]
+    #[diagnostic(code(evaluation::extension_function_lookup::has_no_type))]
     HasNoType {
         /// Name of the function that returns no type
         name: Name,
@@ -153,6 +155,7 @@ pub enum ExtensionFunctionLookupError {
     /// Tried to call a function but it was defined multiple times (e.g., by
     /// multiple different extensions)
     #[error("extension function `{name}` is defined {num_defs} times")]
+    #[diagnostic(code(evaluation::extension_function_lookup::func_multiply_defined))]
     FuncMultiplyDefined {
         /// Name of the function that is multiply defined
         name: Name,
@@ -165,6 +168,9 @@ pub enum ExtensionFunctionLookupError {
     #[error(
         "multiple extension constructors have the same type signature {arg_type} -> {return_type}"
     )]
+    #[diagnostic(code(
+        evaluation::extension_function_lookup::multiple_constructors_same_signature
+    ))]
     MultipleConstructorsSameSignature {
         /// return type of the shared constructor signature
         return_type: Box<SchemaType>,

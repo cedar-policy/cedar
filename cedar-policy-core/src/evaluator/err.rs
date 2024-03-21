@@ -294,11 +294,13 @@ pub enum EvaluationErrorKind {
     /// Tried to lookup this entity UID, but it didn't exist in the provided
     /// entities
     #[error("entity `{0}` does not exist")]
+    #[diagnostic(code(evaluation::entity_does_not_exist))]
     EntityDoesNotExist(Arc<EntityUID>),
 
     /// Tried to get this attribute, but the specified entity didn't
     /// have that attribute
     #[error("`{}` does not have the attribute `{}`", &.entity, &.attr)]
+    #[diagnostic(code(evaluation::entity_attr_does_not_exist))]
     EntityAttrDoesNotExist {
         /// Entity that didn't have the attribute
         entity: Arc<EntityUID>,
@@ -308,12 +310,14 @@ pub enum EvaluationErrorKind {
 
     /// Tried to access an attribute of an unspecified entity
     #[error("cannot access attribute `{0}` of unspecified entity")]
+    #[diagnostic(code(evaluation::unspecified_entity_access))]
     UnspecifiedEntityAccess(SmolStr),
 
     /// Tried to get an attribute of a (non-entity) record, but that record
     /// didn't have that attribute
     #[error("record does not have the attribute `{0}`")]
     #[diagnostic(help("available attributes: {1:?}"))]
+    #[diagnostic(code(evaluation::record_attr_does_not_exist))]
     RecordAttrDoesNotExist(SmolStr, Vec<SmolStr>),
 
     /// An error occurred when looking up an extension function
@@ -324,6 +328,7 @@ pub enum EvaluationErrorKind {
     /// Tried to evaluate an operation on values with incorrect types for that
     /// operation
     #[error("{}", pretty_type_error(expected, actual))]
+    #[diagnostic(code(evaluation::type_error))]
     TypeError {
         /// Expected one of these types
         expected: NonEmpty<Type>,
@@ -333,6 +338,7 @@ pub enum EvaluationErrorKind {
 
     /// Wrong number of arguments provided to an extension function
     #[error("wrong number of arguments provided to extension function `{function_name}`: expected {expected}, got {actual}")]
+    #[diagnostic(code(evaluation::wrong_num_arguments))]
     WrongNumArguments {
         /// arguments to this function
         function_name: Name,
@@ -355,10 +361,12 @@ pub enum EvaluationErrorKind {
     /// Thrown when a policy is evaluated with a slot that is not linked to an
     /// [`EntityUID`]
     #[error("template slot `{0}` was not linked")]
+    #[diagnostic(code(evaluation::unlinked_slot))]
     UnlinkedSlot(SlotId),
 
     /// Evaluation error thrown by an extension function
     #[error("error while evaluating `{extension_name}` extension function: {msg}")]
+    #[diagnostic(code(evaluation::failed_extension_function_application))]
     FailedExtensionFunctionApplication {
         /// Name of the extension throwing the error
         extension_name: Name,
@@ -370,10 +378,12 @@ pub enum EvaluationErrorKind {
     /// reduced to a [`Value`]. In order to return partial results, use the
     /// partial evaluation APIs instead.
     #[error("the expression contains unknown(s): `{0}`")]
+    #[diagnostic(code(evaluation::non_value))]
     NonValue(Expr),
 
     /// Maximum recursion limit reached for expression evaluation
     #[error("recursion limit reached")]
+    #[diagnostic(code(evaluation::recursion_limit))]
     RecursionLimit,
 }
 
@@ -393,6 +403,7 @@ fn pretty_type_error(expected: &NonEmpty<Type>, actual: &Type) -> String {
 pub enum IntegerOverflowError {
     /// Overflow during a binary operation
     #[error("integer overflow while attempting to {} the values `{arg1}` and `{arg2}`", match .op { BinaryOp::Add => "add", BinaryOp::Sub => "subtract", BinaryOp::Mul => "multiply", _ => "perform an operation on" })]
+    #[diagnostic(code(evaluation::integer_overflow::binary_op))]
     BinaryOp {
         /// overflow while evaluating this operator
         op: BinaryOp,
@@ -404,6 +415,7 @@ pub enum IntegerOverflowError {
 
     /// Overflow during a unary operation
     #[error("integer overflow while attempting to {} the value `{arg}`", match .op { UnaryOp::Neg => "negate", _ => "perform an operation on" })]
+    #[diagnostic(code(evaluation::integer_overflow::unary_op))]
     UnaryOp {
         /// overflow while evaluating this operator
         op: UnaryOp,
