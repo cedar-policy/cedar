@@ -250,6 +250,7 @@ pub enum TypeErrorKind {
     UnexpectedType(UnexpectedType),
     /// The typechecker could not compute a least upper bound for `types`.
     #[error("unable to find upper bound for types: [{}]", .0.types.iter().join(","))]
+    #[diagnostic(code(validation::type_error::incompatible_types))]
     IncompatibleTypes(IncompatibleTypes),
     /// The typechecker detected an access to a record or entity attribute
     /// that it could not statically guarantee would be present.
@@ -265,26 +266,33 @@ pub enum TypeErrorKind {
     #[error(
         "policy is impossible: the policy expression evaluates to false for all valid requests"
     )]
+    #[diagnostic(code(validation::type_error::impossible_policy))]
     ImpossiblePolicy,
     /// Undefined extension function.
     #[error("undefined extension function: {}", .0.name)]
+    #[diagnostic(code(validation::type_error::undefined_function))]
     UndefinedFunction(UndefinedFunction),
     /// Multiply defined extension function.
     #[error("extension function defined multiple times: {}", .0.name)]
+    #[diagnostic(code(validation::type_error::multiply_defined_function))]
     MultiplyDefinedFunction(MultiplyDefinedFunction),
     /// Incorrect number of arguments in an extension function application.
     #[error("wrong number of arguments in extension function application. Expected {}, got {}", .0.expected, .0.actual)]
+    #[diagnostic(code(validation::type_error::wrong_num_arguments))]
     WrongNumberArguments(WrongNumberArguments),
     /// Incorrect call style in an extension function application.
     #[error("wrong call style in extension function application. Expected {}, got {}", .0.expected, .0.actual)]
+    #[diagnostic(code(validation::type_error::wrong_call_style))]
     WrongCallStyle(WrongCallStyle),
     /// Error returned by custom extension function argument validation
     #[error("error during extension function argument validation: {0}")]
     #[diagnostic(transparent)]
     FunctionArgumentValidationError(FunctionArgumentValidationError),
     #[error("empty set literals are forbidden in policies")]
+    #[diagnostic(code(validation::type_error::empty_set_forbidden))]
     EmptySetForbidden,
     #[error("extension constructors may not be called with non-literal expressions")]
+    #[diagnostic(code(validation::type_error::non_lit_ext_constructor))]
     NonLitExtConstructor,
     /// To pass strict validation a policy cannot contain an `in` expression
     /// where the entity type on the left might not be able to be a member of
@@ -303,6 +311,7 @@ pub enum TypeErrorKind {
     },
     .actual
 )]
+#[diagnostic(code(validation::type_error::unexpected_type))]
 pub struct UnexpectedType {
     expected: BTreeSet<Type>,
     actual: Type,
@@ -360,12 +369,16 @@ impl Diagnostic for UnsafeAttributeAccess {
             (None, false) => None,
         }
     }
+    fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new("validation::type_error::unsafe_attribute_access"))
+    }
 }
 
 /// Structure containing details about an unsafe optional attribute error.
 #[derive(Error, Diagnostic, Debug, Clone, Hash, Eq, PartialEq)]
 #[error("unable to guarantee safety of access to optional attribute {attribute_access}")]
 #[diagnostic(help("try testing for the attribute with `{} && ..`", attribute_access.suggested_has_guard()))]
+#[diagnostic(code(validation::type_error::unsafe_optional_attribute_access))]
 pub struct UnsafeOptionalAttributeAccess {
     attribute_access: AttributeAccess,
 }
@@ -399,6 +412,7 @@ pub struct WrongCallStyle {
 /// Structure containing details about a function argument validation error.
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Diagnostic, Error)]
 #[error("{msg}")]
+#[diagnostic(code(validation::type_error::function_argument_validation))]
 pub struct FunctionArgumentValidationError {
     msg: String,
 }
@@ -419,6 +433,9 @@ impl Diagnostic for HierarchyNotRespected {
             ))),
             _ => None,
         }
+    }
+    fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new("validation::type_error::hierarchy_not_respected"))
     }
 }
 

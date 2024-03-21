@@ -631,6 +631,14 @@ impl Diagnostic for RestrictedExprError {
                 .map(|loc| &loc.src as &dyn miette::SourceCode),
         }
     }
+
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        match self {
+            Self::InvalidRestrictedExpression { .. } => Some(Box::new(
+                "evaluation::restricted_expr::invalid_restricted_expression",
+            )),
+        }
+    }
 }
 
 /// Errors possible from `RestrictedExpr::from_str()`
