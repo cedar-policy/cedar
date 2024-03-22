@@ -4,7 +4,7 @@ use cedar_policy_core::{
     ast::Id,
     parser::{Loc, Node},
 };
-use itertools::Itertools;
+use itertools::{Either, Itertools};
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
 // We don't need this import on macOS but CI fails without it
@@ -311,7 +311,7 @@ pub enum AppDecl {
     /// Constraints on the `principal`` or `resource``
     PR(PRAppDecl),
     /// Constraints on the `context`
-    Context(Vec<Node<AttrDecl>>),
+    Context(Either<Path, Vec<Node<AttrDecl>>>),
 }
 
 /// An action declaration

@@ -12,9 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Expression::new_ip`, `Expression::new_decimal`, `RestrictedExpression::new_ip`, and `RestrictedExpression::new_decimal` (#661, resolving #659)
 - `wasm` Cargo feature for targeting Wasm
 - `Entity::into_inner` (resolving #636)
+- `Entities::into_iter` (resolving #680)
 
 ### Changed
 
+- Implement [RFC 57](https://github.com/cedar-policy/rfcs/pull/57): policies can
+  now include multiplication of arbitrary expressions, not just multiplication of
+  an expression and a constant.
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
 - Improved "unexpected token" parse errors when the schema or policy parsers
   expect an identifier. (#698)
@@ -27,13 +31,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ValidationWarningKind::ImpossiblePolicy` so future improvements to Cedar
   typing precision will not result in breaking changes. (resolving #539)
 
+## [3.1.1] - 2024-03-14
+
 ### Fixed
 
-- Validation for the `in` operator to no longer reports an error when comparing actions
-  in different namespaces. (#704, resolving #642)
 - `ValidationResult` methods `validation_errors` and `validation_warnings`, along with
   `confusable_string_checker`, now return iterators with static lifetimes instead of
-  custom lifetimes, addressing potential unsoundness. (#712)
+  custom lifetimes, fixing build for latest nightly Rust. (#712)
+- Validation for the `in` operator to no longer reports an error when comparing actions
+  in different namespaces. (#704, resolving #642)
 
 ## [3.1.0] - 2024-03-08
 Cedar Language Version: 3.1.0
@@ -435,7 +441,8 @@ Cedar Language Version: 2.0.0
 Cedar Language Version: 2.0.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.1.0...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.1.1...main
+[3.1.1]: https://github.com/cedar-policy/cedar/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/cedar-policy/cedar/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/cedar-policy/cedar/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.4...v3.0.0

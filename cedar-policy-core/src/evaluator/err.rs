@@ -392,7 +392,7 @@ fn pretty_type_error(expected: &NonEmpty<Type>, actual: &Type) -> String {
 #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
 pub enum IntegerOverflowError {
     /// Overflow during a binary operation
-    #[error("integer overflow while attempting to {} the values `{arg1}` and `{arg2}`", match .op { BinaryOp::Add => "add", BinaryOp::Sub => "subtract", _ => "perform an operation on" })]
+    #[error("integer overflow while attempting to {} the values `{arg1}` and `{arg2}`", match .op { BinaryOp::Add => "add", BinaryOp::Sub => "subtract", BinaryOp::Mul => "multiply", _ => "perform an operation on" })]
     BinaryOp {
         /// overflow while evaluating this operator
         op: BinaryOp,
@@ -400,15 +400,6 @@ pub enum IntegerOverflowError {
         arg1: Value,
         /// second argument to that operator
         arg2: Value,
-    },
-
-    /// Overflow during multiplication
-    #[error("integer overflow while attempting to multiply `{arg}` by `{constant}`")]
-    Multiplication {
-        /// first argument, which wasn't necessarily a constant in the policy
-        arg: Value,
-        /// second argument, which was a constant in the policy
-        constant: Integer,
     },
 
     /// Overflow during a unary operation

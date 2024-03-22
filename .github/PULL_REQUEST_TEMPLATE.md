@@ -24,6 +24,3 @@ I confirm that [`cedar-spec`](https://github.com/cedar-policy/cedar-spec) (choos
 - [ ] Requires updates, but I do not plan to make them in the near future. (Make sure that your changes are hidden behind a feature flag to mark them as experimental.)
 - [ ] I'm not sure how my change impacts `cedar-spec`. (Post your PR anyways, and we'll discuss in the comments.)
 
-## Disclaimer
-
-By submitting this pull request, I confirm that you can use, modify, copy, and redistribute this contribution, under the terms of your choice.

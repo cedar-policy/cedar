@@ -3259,6 +3259,46 @@ mod error_source_tests {
     }
 }
 
+mod issue_618 {
+    use std::str::FromStr;
+
+    use crate::Policy;
+
+    #[track_caller]
+    fn round_trip(policy_src: &str) {
+        let p1 = Policy::from_str(policy_src).unwrap();
+
+        let json = p1.to_json().unwrap();
+
+        let p2 = Policy::from_json(None, json).unwrap();
+        assert_eq!(p1.to_string(), p2.to_string());
+    }
+    #[test]
+    fn string_escapes() {
+        round_trip(r#"permit(principal, action, resource) when { "\n" };"#);
+        round_trip(r#"permit(principal, action, resource) when { principal has "\n" };"#);
+        round_trip(r#"permit(principal, action, resource) when { principal["\n"] };"#);
+        round_trip(r#"permit(principal, action, resource) when { {"\n": 0} };"#);
+        round_trip(
+            r#"@annotation("\n") 
+permit(principal, action, resource) when { {"\n": 0} };"#,
+        );
+    }
+
+    #[test]
+    fn pattern_escapes() {
+        round_trip(r#"permit(principal, action, resource) when { "" like "\n" };"#);
+        round_trip(r#"permit(principal, action, resource) when { "" like "\*\n" };"#);
+        round_trip(r#"permit(principal, action, resource) when { "\r" like "*\n" };"#);
+        round_trip(r#"permit(principal, action, resource) when { "b\ra*" like "\*c*\nd" };"#);
+    }
+
+    #[test]
+    fn eid_escapes() {
+        round_trip(r#"permit(principal, action, resource) when { Foo::"\n" };"#);
+        round_trip(r#"permit(principal, action, resource) when { Foo::"\n\r\\" };"#);
+    }
+}
 mod issue_604 {
     use crate::Policy;
     use cedar_policy_core::parser::parse_policy_or_template_to_est;
@@ -3360,5 +3400,46 @@ mod issue_606 {
                 clausetype: "when"
             })
         ));
+    }
+}
+
+mod issue_619 {
+    use crate::{eval_expression, Context, Entities, EvalResult, Policy, Request};
+    use cool_asserts::assert_matches;
+
+    /// The first issue reported in issue 619.
+    /// This policy should parse properly, convert to JSON properly, and convert back from JSON properly.
+    #[test]
+    fn issue_619() {
+        let policy = Policy::parse(
+            None,
+            r#"permit(principal, action, resource) when {1 * 2 * true};"#,
+        )
+        .unwrap();
+        let json = policy.to_json().unwrap();
+        let _ = Policy::from_json(None, json).unwrap();
+    }
+
+    /// Another issue from a comment: Ensure the correct error semantics of these expressions
+    #[test]
+    fn mult_overflows() {
+        let eval = |expr: &str| {
+            eval_expression(
+                &Request::new(None, None, None, Context::empty(), None).unwrap(),
+                &Entities::empty(),
+                &expr.parse().unwrap(),
+            )
+        };
+        assert_matches!(eval(&format!("{}*{}*0", 1_i64 << 62, 1_i64 << 62)), Err(e) => {
+            assert_eq!(&e.to_string(), "integer overflow while attempting to multiply the values `4611686018427387904` and `4611686018427387904`");
+        });
+        assert_matches!(
+            eval(&format!("{}*0*{}", 1_i64 << 62, 1_i64 << 62)),
+            Ok(EvalResult::Long(0))
+        );
+        assert_matches!(
+            eval(&format!("0*{}*{}", 1_i64 << 62, 1_i64 << 62)),
+            Ok(EvalResult::Long(0))
+        );
     }
 }
