@@ -34,7 +34,8 @@ use crate::{
     schema::ACTION_ENTITY_TYPE,
     type_error::TypeError,
     types::{EffectSet, OpenTag, RequestEnv, Type},
-    NamespaceDefinition, UnexpectedTypeHelp, ValidationMode, ValidatorSchema,
+    NamespaceDefinition, UnexpectedTypeHelp, ValidationMode, ValidationWarningKind,
+    ValidatorSchema,
 };
 
 impl TypeError {
@@ -148,6 +149,31 @@ pub(crate) fn assert_expected_type_errors(expected: &Vec<TypeError>, actual: &Ha
     );
 }
 
+/// Assert that every `ValidationWarningKind` in the expected list of warnings
+/// appears in the expected list of warnings, and that the expected number of
+/// warnings were generated.
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
+pub(crate) fn assert_expected_warnings(
+    expected: &Vec<ValidationWarningKind>,
+    actual: &HashSet<ValidationWarningKind>,
+) {
+    expected.iter().for_each(|expected| {
+            assert!(
+                actual.contains(expected),
+                "Expected generated warnings to contain {:#?}, but warning was not found. The following warnings were generated: {:#?}",
+                expected,
+                actual
+            );
+        });
+    assert_eq!(
+        expected.len(),
+        actual.len(),
+        "Unexpected warnings generated. Expected {:#?}, saw {:#?}.",
+        expected,
+        actual,
+    );
+}
+
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_policy_typechecks(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
@@ -166,7 +192,8 @@ pub(crate) fn assert_policy_typechecks_for_mode(
         let policy: Arc<Template> = policy.into();
         typechecker.mode = mode;
         let mut type_errors: HashSet<TypeError> = HashSet::new();
-        let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors);
+        let mut warnings: HashSet<ValidationWarningKind> = HashSet::new();
+        let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
         assert_eq!(type_errors, HashSet::new(), "Did not expect any errors.");
         assert!(typechecked, "Expected that policy would typecheck.");
 
@@ -174,7 +201,7 @@ pub(crate) fn assert_policy_typechecks_for_mode(
         // should validate with a complete schema to no longer validate with the
         // same complete schema.
         typechecker.mode = ValidationMode::Permissive;
-        let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors);
+        let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
         assert_eq!(
             type_errors,
             HashSet::new(),
@@ -202,6 +229,20 @@ pub(crate) fn assert_policy_typecheck_fails(
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+pub(crate) fn assert_policy_typecheck_warns(
+    schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
+    policy: impl Into<Arc<Template>>,
+    expected_warnings: Vec<ValidationWarningKind>,
+) {
+    assert_policy_typecheck_warns_for_mode(
+        schema,
+        policy,
+        expected_warnings,
+        ValidationMode::Strict,
+    )
+}
+
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_policy_typecheck_fails_for_mode(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
     policy: impl Into<Arc<Template>>,
@@ -211,9 +252,32 @@ pub(crate) fn assert_policy_typecheck_fails_for_mode(
     with_typechecker_from_schema(schema, |mut typechecker| {
         typechecker.mode = mode;
         let mut type_errors: HashSet<TypeError> = HashSet::new();
-        let typechecked = typechecker.typecheck_policy(&policy.into(), &mut type_errors);
+        let mut warnings: HashSet<ValidationWarningKind> = HashSet::new();
+        let typechecked =
+            typechecker.typecheck_policy(&policy.into(), &mut type_errors, &mut warnings);
         assert_expected_type_errors(&expected_type_errors, &type_errors);
         assert!(!typechecked, "Expected that policy would not typecheck.");
+    });
+}
+
+#[track_caller] // report the caller's location as the location of the panic, not the location in this function
+pub(crate) fn assert_policy_typecheck_warns_for_mode(
+    schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
+    policy: impl Into<Arc<Template>>,
+    expected_warnings: Vec<ValidationWarningKind>,
+    mode: ValidationMode,
+) {
+    with_typechecker_from_schema(schema, |mut typechecker| {
+        typechecker.mode = mode;
+        let mut type_errors: HashSet<TypeError> = HashSet::new();
+        let mut warnings: HashSet<ValidationWarningKind> = HashSet::new();
+        let typechecked =
+            typechecker.typecheck_policy(&policy.into(), &mut type_errors, &mut warnings);
+        assert_expected_warnings(&expected_warnings, &warnings);
+        assert!(
+            typechecked,
+            "Expected that policy would typecheck (with warnings)."
+        );
     });
 }
 
