@@ -223,7 +223,10 @@ impl Entity {
     /// assert_eq!(entity.attr("department").unwrap().unwrap(), EvalResult::String("CS".to_string()));
     /// assert!(entity.attr("foo").is_none());
     /// ```
-    pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, impl miette::Diagnostic>> {
+    pub fn attr(
+        &self,
+        attr: &str,
+    ) -> Option<Result<EvalResult, cedar_policy_core::ast::PartialValueToValueError>> {
         let v = match ast::Value::try_from(self.0.get(attr)?.clone()) {
             Ok(v) => v,
             Err(e) => return Some(Err(e)),
@@ -2227,12 +2230,12 @@ impl EntityUid {
     /// # assert_eq!(euid.id(), &EntityId::from_str("123abc").unwrap());
     /// ```
     #[allow(clippy::result_large_err)]
-    pub fn from_json(json: serde_json::Value) -> Result<Self, impl miette::Diagnostic> {
+    pub fn from_json(json: serde_json::Value) -> Result<Self, JsonDeserializationError> {
         let parsed: cedar_policy_core::entities::EntityUidJson = serde_json::from_value(json)?;
         // INVARIANT: There is no way to write down the unspecified entityuid
-        Ok::<Self, cedar_policy_core::entities::JsonDeserializationError>(Self(
-            parsed.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
-        ))
+        Ok(Self(parsed.into_euid(|| {
+            JsonDeserializationErrorContext::EntityUid
+        })?))
     }
 
     /// Testing utility for creating `EntityUids` a bit easier
@@ -2869,10 +2872,10 @@ impl Template {
     }
 
     /// Get the JSON representation of this `Template`.
-    pub fn to_json(&self) -> Result<serde_json::Value, impl miette::Diagnostic> {
+    pub fn to_json(&self) -> Result<serde_json::Value, PolicyToJsonError> {
         let est = self.lossless.est()?;
         let json = serde_json::to_value(est)?;
-        Ok::<_, PolicyToJsonError>(json)
+        Ok(json)
     }
 
     /// Create a `Template` from its AST representation only. The EST will
@@ -3329,10 +3332,10 @@ impl Policy {
     /// println!("{}", json);
     /// assert_eq!(json, Policy::from_json(None, json.clone()).unwrap().to_json().unwrap());
     /// ```
-    pub fn to_json(&self) -> Result<serde_json::Value, impl miette::Diagnostic> {
+    pub fn to_json(&self) -> Result<serde_json::Value, PolicyToJsonError> {
         let est = self.lossless.est()?;
         let json = serde_json::to_value(est)?;
-        Ok::<_, PolicyToJsonError>(json)
+        Ok(json)
     }
 
     /// Create a `Policy` from its AST representation only. The `LosslessPolicy`
