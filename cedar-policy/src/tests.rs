@@ -3467,4 +3467,10 @@ mod macro_tests {
         assert_eq!(e.type_name().to_string(), "Foo");
         assert_eq!(e.id(), &EntityId::from_str(r#"\n"#).unwrap());
     }
+
+    #[test]
+    fn fail() {
+        let t = trybuild::TestCases::new();
+        t.compile_fail("macro-tests/fail.rs");
+    }
 }

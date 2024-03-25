@@ -1,0 +1,11 @@
+error: expected identifier
+ --> macro-tests/fail.rs:3:11
+  |
+3 |     euid!(::, "foo");
+  |           ^
+
+error: invalid identifier: 東京
+ --> macro-tests/fail.rs:4:14
+  |
+4 |     euid!(a::東京::b, "foo");
+  |              ^^^^

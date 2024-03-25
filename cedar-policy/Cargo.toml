@@ -74,6 +74,8 @@ criterion = "0.5"
 globset = "0.4"
 
 proptest = "1.0.0"
+# Used to test the `euid` macro
+trybuild = "1.0"
 
 [[bench]]
 name = "cedar_benchmarks"
