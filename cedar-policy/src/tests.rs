@@ -3443,3 +3443,22 @@ mod issue_619 {
         );
     }
 }
+
+mod macro_tests {
+    use std::str::FromStr;
+
+    use crate::euid;
+
+    use crate::EntityId;
+    use crate::EntityUid;
+
+    #[test]
+    fn pass() {
+        let e: EntityUid = euid!(Foo, "bar");
+        assert_eq!(e.type_name().to_string(), "Foo");
+        assert_eq!(e.id(), &EntityId::from_str("bar").unwrap());
+        let e: EntityUid = euid!(Foo, "\n");
+        assert_eq!(e.type_name().to_string(), "Foo");
+        assert_eq!(e.id(), &EntityId::from_str("\n").unwrap());
+    }
+}
