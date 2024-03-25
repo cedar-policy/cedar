@@ -3460,5 +3460,11 @@ mod macro_tests {
         let e: EntityUid = euid!(Foo, "\n");
         assert_eq!(e.type_name().to_string(), "Foo");
         assert_eq!(e.id(), &EntityId::from_str("\n").unwrap());
+        let e: EntityUid = euid!(Foo::Bar, "baz");
+        assert_eq!(e.type_name().to_string(), "Foo::Bar");
+        assert_eq!(e.id(), &EntityId::from_str("baz").unwrap());
+        let e: EntityUid = euid!(Foo, "\\n");
+        assert_eq!(e.type_name().to_string(), "Foo");
+        assert_eq!(e.id(), &EntityId::from_str(r#"\n"#).unwrap());
     }
 }

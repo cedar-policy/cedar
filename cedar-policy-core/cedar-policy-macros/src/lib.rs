@@ -1,8 +1,7 @@
-use cedar_policy_core::ast::{Eid, EntityUID, Name};
-use cedar_policy_core::parser::err::ParseErrors;
+use cedar_policy_core::ast::{Eid, EntityUID, Id, Name};
 use cedar_policy_core::FromNormalizedStr;
-use itertools::Itertools;
 use proc_macro::TokenStream;
+use proc_macro_error::{abort, proc_macro_error};
 use quote::quote;
 use syn::{parse::Parse, punctuated::Punctuated, Token};
 use syn::{parse_macro_input, Ident, LitStr};
@@ -25,29 +24,32 @@ impl Parse for Input {
     }
 }
 
-impl TryFrom<Input> for EntityUID {
-    type Error = ParseErrors;
-    fn try_from(value: Input) -> Result<Self, Self::Error> {
-        let name = Name::from_normalized_str(&value.path.into_iter().join("::"))?;
-        let eid = Eid::new(value.id.value());
-        Ok(Self::from_components(name, eid))
-    }
-}
-
+#[proc_macro_error]
 #[proc_macro]
-pub fn euid(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as Input);
-    let euid: EntityUID = match input.try_into() {
-        Ok(euid) => euid,
-        Err(_) => panic!("invalid euid"),
-    };
+pub fn euid(input_stream: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input_stream as Input);
+    // We only need to check if entity type components (i.e., `Id`s) are valid
+    // or not because `eid` is a valid string after successful execution of the
+    // statement above
+    let mut ids: Vec<Id> = Vec::new();
+    for id in input.path {
+        match Id::from_normalized_str(&id.to_string()) {
+            Ok(id) => {
+                ids.push(id);
+            }
+            // We abort after the first parsing error is encountered
+            // This is not ideal because users may want to see all errors
+            // reported
+            // For instance, we should report both `Москва` and `東京` are
+            // invalid identifiers in `euid!(Москва::foo::東京)`.
+            Err(_) => abort!(id.span(), "invalid identifier: {}", id),
+        }
+    }
+    let (basename, path) = ids.split_last().unwrap();
+    let euid: EntityUID = EntityUID::from_components(
+        Name::new(basename.clone(), path.into_iter().cloned()),
+        Eid::new(input.id.value()),
+    );
     let euid_str = euid.to_string();
-    quote! { #euid_str.parse().unwrap() }.into()
-}
-
-#[test]
-fn tests() {
-    let t = trybuild::TestCases::new();
-    t.pass("tests/pass.rs");
-    //t.compile_fail("tests/fail.rs");
+    quote! { crate::EntityUid::from_str(#euid_str).unwrap() }.into()
 }
