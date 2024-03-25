@@ -15,8 +15,9 @@
  */
 
 //! Utility functions and types for JSON interface
+use crate::{Policy, PolicySet, Template};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
@@ -24,7 +25,7 @@ extern crate tsify;
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 #[serde(
-    expecting = "policies as a concatenated string or multiple policies as a hashmap where the policy Id is the key with no duplicate IDs"
+    expecting = "policies as a concatenated string or multiple policies as a hashmap where the policy id is the key"
 )]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -35,6 +36,70 @@ pub enum PolicySpecification {
     /// provides multiple policies as a hashmap where the policyId is the key
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     Map(HashMap<String, String>),
+}
+
+fn parse_policy_set_from_individual_policies(
+    policies: &HashMap<String, String>,
+    templates: Option<HashMap<String, String>>,
+) -> Result<PolicySet, Vec<String>> {
+    let mut policy_set = PolicySet::new();
+    let mut errs = Vec::new();
+    for (id, policy_src) in policies {
+        match Policy::parse(Some(id.clone()), policy_src) {
+            Ok(p) => match policy_set.add(p) {
+                Ok(()) => {}
+                Err(err) => {
+                    errs.push(format!("couldn't add policy to set due to error: {err}"));
+                }
+            },
+            Err(pes) => errs.extend(
+                std::iter::once(format!("couldn't parse policy with id `{id}`"))
+                    .chain(pes.errors_as_strings().into_iter()),
+            ),
+        }
+    }
+
+    if let Some(templates) = templates {
+        for (id, policy_src) in templates {
+            match Template::parse(Some(id.clone()), policy_src) {
+                Ok(p) => match policy_set.add_template(p) {
+                    Ok(()) => {}
+                    Err(err) => {
+                        errs.push(format!("couldn't add policy to set due to error: {err}"));
+                    }
+                },
+                Err(pes) => errs.extend(
+                    std::iter::once(format!("couldn't parse policy with id `{id}`"))
+                        .chain(pes.errors_as_strings().into_iter()),
+                ),
+            }
+        }
+    }
+
+    if errs.is_empty() {
+        Ok(policy_set)
+    } else {
+        Err(errs)
+    }
+}
+
+impl PolicySpecification {
+    pub(crate) fn try_into(
+        self,
+        templates: Option<HashMap<String, String>>,
+    ) -> Result<PolicySet, Vec<String>> {
+        match self {
+            Self::Concatenated(policies) => match PolicySet::from_str(&policies) {
+                Ok(ps) => Ok(ps),
+                Err(parse_errors) => Err(std::iter::once(
+                    "couldn't parse concatenated policies string".to_string(),
+                )
+                .chain(parse_errors.errors_as_strings())
+                .collect()),
+            },
+            Self::Map(policies) => parse_policy_set_from_individual_policies(&policies, templates),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -100,12 +165,11 @@ impl InterfaceResult {
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_is_failure(result: &InterfaceResult, internal: bool, err: &str) {
     use cool_asserts::assert_matches;
-    use itertools::Itertools;
 
     assert_matches!(result, InterfaceResult::Failure { is_internal, errors } => {
         assert!(
-            errors.iter().exactly_one().unwrap().contains(err),
-            "Expected to see error containing `{err}`, but saw {errors:?}");
+            errors.iter().any(|e| e.contains(err)),
+            "Expected to see error(s) containing `{err}`, but saw {errors:?}");
         assert_eq!(is_internal, &internal, "Unexpected value for `is_internal`");
     });
 }
