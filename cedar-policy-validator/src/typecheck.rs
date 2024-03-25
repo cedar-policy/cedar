@@ -43,7 +43,7 @@ use crate::{
     types::{
         AttributeType, Effect, EffectSet, EntityRecordKind, OpenTag, Primitive, RequestEnv, Type,
     },
-    AttributeAccess, UnexpectedTypeHelp, ValidationMode,
+    AttributeAccess, UnexpectedTypeHelp, ValidationMode, ValidationWarningKind,
 };
 
 use super::type_error::TypeError;
@@ -261,13 +261,21 @@ impl<'a> Typechecker<'a> {
         }
     }
 
-    /// The main entry point for typechecking policies. This method takes a
-    /// policy and a mutable `Vec` used to output type errors. Typechecking
-    /// ensures that the policy expression has type boolean. If typechecking
-    /// succeeds, then the method will return true, and no items will be
-    /// added to the output list. Otherwise, the function returns false and the
-    /// output list is populated with any errors encountered while typechecking.
-    pub fn typecheck_policy(&self, t: &Template, type_errors: &mut HashSet<TypeError>) -> bool {
+    /// The main entry point for typechecking policies. Checks that the policy
+    /// expression has type boolean. If typechecking succeeds, then the method
+    /// will return true, and no items will be added to the output list.
+    /// Otherwise, the function returns false and the `type_errors` list is
+    /// populated with any errors encountered while typechecking. Note that it
+    /// is possible for _no_ errors to be added in this case because the
+    /// relevant error is expected to be added by a different pass. Finally,
+    /// warnings may be added to the `warnings` list, although these will not
+    /// impact the boolean return value.
+    pub fn typecheck_policy(
+        &self,
+        t: &Template,
+        type_errors: &mut HashSet<TypeError>,
+        warnings: &mut HashSet<ValidationWarningKind>,
+    ) -> bool {
         let typecheck_answers = self.typecheck_by_request_env(t);
 
         // consolidate the results from each query environment
@@ -290,11 +298,10 @@ impl<'a> Typechecker<'a> {
         // If every policy typechecked with type false, then the policy cannot
         // possibly apply to any request.
         if all_false {
-            type_errors.insert(TypeError::impossible_policy(t.condition()));
-            false
-        } else {
-            all_succ
+            warnings.insert(ValidationWarningKind::ImpossiblePolicy);
         }
+
+        all_succ
     }
 
     /// Secondary entry point for typechecking requests. This method takes a policy and

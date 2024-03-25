@@ -167,14 +167,6 @@ impl TypeError {
         }
     }
 
-    pub(crate) fn impossible_policy(on_expr: Expr) -> Self {
-        Self {
-            on_expr: Some(on_expr),
-            source_loc: None,
-            kind: TypeErrorKind::ImpossiblePolicy,
-        }
-    }
-
     pub(crate) fn undefined_extension(on_expr: Expr, name: String) -> Self {
         Self {
             on_expr: Some(on_expr),
@@ -264,6 +256,10 @@ pub enum TypeErrorKind {
     /// The typechecker found that a policy condition will always evaluate to false.
     #[error(
         "policy is impossible: the policy expression evaluates to false for all valid requests"
+    )]
+    #[deprecated(
+        since = "3.2.0",
+        note = "`ImpossiblePolicy` is now a warning rather than an error"
     )]
     ImpossiblePolicy,
     /// Undefined extension function.

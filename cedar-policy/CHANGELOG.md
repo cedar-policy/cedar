@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Validation error messages render types in the new, more readable, schema
   syntax. (#708, resolving #242)
 - Removed unnecessary lifetimes from some validation related structs (#715)
+- Deprecated error `TypeErrorKind::ImpossiblePolicy` in favor of warning
+  `ValidationWarningKind::ImpossiblePolicy` so future improvements to Cedar
+  typing precision will not result in breaking changes. (resolving #539)
 
 ## [3.1.1] - 2024-03-14
 

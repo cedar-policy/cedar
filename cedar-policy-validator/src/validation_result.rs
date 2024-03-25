@@ -19,7 +19,7 @@ use cedar_policy_core::parser::Loc;
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::{TypeErrorKind, ValidationWarning};
+use crate::TypeErrorKind;
 
 /// Contains the result of policy validation. The result includes the list of
 /// issues found by validation and whether validation succeeds or fails.
@@ -286,4 +286,76 @@ impl Diagnostic for InvalidActionApplication {
 pub struct UnspecifiedEntityError {
     /// EID of the unspecified entity.
     pub(crate) entity_id: String,
+}
+
+/// The structure for validation warnings.
+#[derive(Debug, Clone)]
+pub struct ValidationWarning<'a> {
+    pub(crate) location: SourceLocation<'a>,
+    pub(crate) kind: ValidationWarningKind,
+}
+
+impl<'a> ValidationWarning<'a> {
+    pub(crate) fn with_policy_id(
+        id: &'a PolicyID,
+        source_loc: Option<Loc>,
+        warning_kind: ValidationWarningKind,
+    ) -> Self {
+        Self {
+            kind: warning_kind,
+            location: SourceLocation::new(id, source_loc),
+        }
+    }
+
+    pub fn location(&self) -> &SourceLocation<'a> {
+        &self.location
+    }
+
+    pub fn kind(&self) -> &ValidationWarningKind {
+        &self.kind
+    }
+
+    pub fn to_kind_and_location(self) -> (SourceLocation<'a>, ValidationWarningKind) {
+        (self.location, self.kind)
+    }
+}
+
+impl std::fmt::Display for ValidationWarning<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "validation warning on policy `{}`: {}",
+            self.location.policy_id(),
+            self.kind
+        )
+    }
+}
+
+/// Represents the different kinds of validation warnings and information
+/// specific to that warning. Marked as `non_exhaustive` to allow adding
+/// additional warnings in the future as a non-breaking change.
+#[derive(Debug, Clone, PartialEq, Diagnostic, Error, Eq, Hash)]
+#[non_exhaustive]
+#[diagnostic(severity(Warning))]
+pub enum ValidationWarningKind {
+    /// A string contains mixed scripts. Different scripts can contain visually similar characters which may be confused for each other.
+    #[error("string `\"{0}\"` contains mixed scripts")]
+    MixedScriptString(String),
+    /// A string contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
+    #[error("string `\"{0}\"` contains BIDI control characters")]
+    BidiCharsInString(String),
+    /// An id contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
+    #[error("identifier `{0}` contains BIDI control characters")]
+    BidiCharsInIdentifier(String),
+    /// An id contains mixed scripts. This can cause characters to be confused for each other.
+    #[error("identifier `{0}` contains mixed scripts")]
+    MixedScriptIdentifier(String),
+    /// An id contains characters that fall outside of the General Security Profile for Identifiers. We recommend adhering to this if possible. See Unicode® Technical Standard #39 for more info.
+    #[error("identifier `{0}` contains characters that fall outside of the General Security Profile for Identifiers")]
+    ConfusableIdentifier(String),
+    /// The typechecker found that a policy condition will always evaluate to false.
+    #[error(
+        "policy is impossible: the policy expression evaluates to false for all valid requests"
+    )]
+    ImpossiblePolicy,
 }
