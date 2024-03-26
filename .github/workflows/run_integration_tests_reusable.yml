@@ -30,7 +30,12 @@ jobs:
       - name: Decompress corpus tests
         working-directory: ./cedar-integration-tests
         run: tar xzf corpus-tests.tar.gz
-      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - run: cargo test --verbose --features "integration-testing"
-      - run: cargo test --verbose --features "integration-testing" -- --ignored
+      - name: Prepare Rust build
+        run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - name: Setup upterm session
+        uses: lhotari/action-upterm@v1
+      - name: Run handwritten integration tests
+        run: cargo test --verbose --features "integration-testing"
+      - name: Run corpus tests
+        run: cargo test --verbose --features "integration-testing" -- --ignored
       
