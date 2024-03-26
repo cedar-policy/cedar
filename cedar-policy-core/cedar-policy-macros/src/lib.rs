@@ -45,8 +45,7 @@ pub fn euid(input_stream: TokenStream) -> TokenStream {
             Err(_) => abort!(id.span(), "invalid identifier: {}", id),
         }
     }
-    // PANIC SAFETY: using `parse_separated_nonempty` above ensures that there
-    // is at least one id
+    // PANIC SAFETY: using `parse_separated_nonempty` above ensures that there is at least one id
     #[allow(clippy::unwrap_used)]
     let (basename, path) = ids.split_last().unwrap();
     let euid: EntityUID = EntityUID::from_components(
