@@ -45,11 +45,17 @@ pub fn euid(input_stream: TokenStream) -> TokenStream {
             Err(_) => abort!(id.span(), "invalid identifier: {}", id),
         }
     }
+    // PANIC SAFETY: using `parse_separated_nonempty` above ensures that there
+    // is at least one id
+    #[allow(clippy::unwrap_used)]
     let (basename, path) = ids.split_last().unwrap();
     let euid: EntityUID = EntityUID::from_components(
         Name::new(basename.clone(), path.into_iter().cloned()),
         Eid::new(input.id.value()),
     );
     let euid_str = euid.to_string();
-    quote! { crate::EntityUid::from_str(#euid_str).unwrap() }.into()
+    quote! {
+        crate::EntityUid::from_str(#euid_str).unwrap()
+    }
+    .into()
 }

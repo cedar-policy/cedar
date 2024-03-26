@@ -1,11 +1,71 @@
+error: unknown character escape: `*`
+  --> macro-tests/fail.rs:19:16
+   |
+19 |     euid!(a, "\*");
+   |                ^ unknown character escape
+   |
+   = help: for more information, visit <https://doc.rust-lang.org/reference/tokens.html#literals>
+help: if you meant to write a literal backslash (perhaps escaping in a regular expression), consider a raw string literal
+   |
+19 |     euid!(a, r"\*");
+   |              ~~~~~
+
 error: expected identifier
- --> macro-tests/fail.rs:3:11
+ --> macro-tests/fail.rs:4:11
   |
-3 |     euid!(::, "foo");
+4 |     euid!(,"");
   |           ^
 
-error: invalid identifier: 東京
- --> macro-tests/fail.rs:4:14
+error: unexpected end of input, expected string literal
+ --> macro-tests/fail.rs:6:5
   |
-4 |     euid!(a::東京::b, "foo");
-  |              ^^^^
+6 |     euid!(a,);
+  |     ^^^^^^^^^
+  |
+  = note: this error originates in the macro `euid` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: expected `,`
+ --> macro-tests/fail.rs:8:5
+  |
+8 |     euid!(a);
+  |     ^^^^^^^^
+  |
+  = note: this error originates in the macro `euid` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: expected identifier
+ --> macro-tests/fail.rs:9:11
+  |
+9 |     euid!("");
+  |           ^^
+
+error: expected identifier
+  --> macro-tests/fail.rs:11:11
+   |
+11 |     euid!("", "");
+   |           ^^
+
+error: expected string literal
+  --> macro-tests/fail.rs:13:14
+   |
+13 |     euid!(a, a);
+   |              ^
+
+error: expected identifier
+  --> macro-tests/fail.rs:15:11
+   |
+15 |     euid!(::, "foo");
+   |           ^
+
+error: invalid identifier: 東京
+  --> macro-tests/fail.rs:17:14
+   |
+17 |     euid!(a::東京::b, "foo");
+   |              ^^^^
+
+error: proc macro panicked
+  --> macro-tests/fail.rs:19:5
+   |
+19 |     euid!(a, "\*");
+   |     ^^^^^^^^^^^^^^
+   |
+   = help: message: unexpected byte 42 after \ character in byte literal
