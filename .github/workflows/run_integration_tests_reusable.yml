@@ -20,7 +20,13 @@ jobs:
     steps:
       - name: Checkout cedar
         uses: actions/checkout@v4
-      - run: rm -rf cedar-integration-tests # blast the current content
+        with:
+          repository: cedar-policy/cedar
+          ref: main
+          path: ./cedar
+      - name: Delete old integration tests
+        working-directory: ./cedar
+        run: rm -rf cedar-integration-tests # blast the current content
       - name: Checkout cedar-integration-tests
         uses: actions/checkout@v4
         with:
@@ -32,10 +38,10 @@ jobs:
         run: tar xzf corpus-tests.tar.gz
       - name: Prepare Rust build
         run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - name: Setup upterm session
-        uses: lhotari/action-upterm@v1
       - name: Run handwritten integration tests
+        working-directory: ./cedar
         run: cargo test --verbose --features "integration-testing"
       - name: Run corpus tests
+        working-directory: ./cedar
         run: cargo test --verbose --features "integration-testing" -- --ignored
       
