@@ -32,9 +32,9 @@ jobs:
         with:
           repository: cedar-policy/cedar-integration-tests
           ref: main
-          path: ./cedar-integration-tests
+          path: ./cedar/cedar-integration-tests
       - name: Decompress corpus tests
-        working-directory: ./cedar-integration-tests
+        working-directory: ./cedar/cedar-integration-tests
         run: tar xzf corpus-tests.tar.gz
       - name: Prepare Rust build
         run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}

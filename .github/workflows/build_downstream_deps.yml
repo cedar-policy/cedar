@@ -76,14 +76,10 @@ jobs:
         run: cargo fmt --all --check
       - name: Install Zig
         run: sudo snap install zig --beta --classic
-      - name: Setup Java JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'corretto'
-          cache: 'gradle'
       - name: Build FFI and Java Libraries
         working-directory: cedar-java/CedarJava
+        env:
+          MUST_RUN_CEDAR_INTEGRATION_TESTS: 1
         run: ./gradlew build
       - name: Generate Java Documentation
         working-directory: cedar-java/CedarJava
