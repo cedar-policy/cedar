@@ -54,6 +54,10 @@ pub fn euid(input_stream: TokenStream) -> TokenStream {
         Eid::new(input.id.value()),
     );
     let euid_str = euid.to_string();
+    // PANIC SAFETY: `#euid_str` should parse
+    // Note that this comment is used to pass panic checks
+    // Users still need to annotate macro call sites to get rid of
+    // `clippy::unwrap_used`
     quote! {
         crate::EntityUid::from_str(#euid_str).unwrap()
     }
