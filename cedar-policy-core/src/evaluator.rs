@@ -465,12 +465,15 @@ impl<'e> Evaluator<'e> {
                                 // If arg1 is not an entity and arg2 is a set, then possibly
                                 // the user intended `arg2.contains(arg1)` rather than `arg1 in arg2`.
                                 // If arg2 is a record, then possibly they intended `arg2 has arg1`.
-                                if matches!(e.error_kind(), EvaluationErrorKind::TypeError { .. }) {
-                                    match arg2.type_of() {
-                                        Type::Set => e.set_advice("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()),
-                                        Type::Record => e.set_advice("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()),
-                                        _ => {}
+                                match e.error_kind_mut() {
+                                    EvaluationErrorKind::TypeError { advice, .. } => {
+                                        match arg2.type_of() {
+                                            Type::Set => *advice = Some("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()),
+                                            Type::Record => *advice = Some("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()),
+                                            _ => {}
+                                        }
                                     }
+                                    _ => {}
                                 };
                                 e
                             })?;
@@ -1446,6 +1449,7 @@ pub mod test {
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Bool],
                     actual: Type::String,
+                    advice: None,
                 },
             )
         );
@@ -1462,6 +1466,7 @@ pub mod test {
                     actual: Type::Entity {
                         ty: EntityUID::test_entity_type(),
                     },
+                    advice: None,
                 },
             )
         );
@@ -1656,6 +1661,7 @@ pub mod test {
                         ),
                     ],
                     actual: Type::Set,
+                    advice: None,
                 }
             )
         );
@@ -1672,6 +1678,7 @@ pub mod test {
                         ),
                     ],
                     actual: Type::Set,
+                    advice: None,
                 }
             )
         );
@@ -1721,6 +1728,7 @@ pub mod test {
                         ),
                     ],
                     actual: Type::Set,
+                    advice: None,
                 }
             )
         );
@@ -1784,6 +1792,7 @@ pub mod test {
                         ),
                     ],
                     actual: Type::Set,
+                    advice: None,
                 }
             )
         );
@@ -1803,6 +1812,7 @@ pub mod test {
                         ),
                     ],
                     actual: Type::Set,
+                    advice: None,
                 }
             )
         );
@@ -2072,6 +2082,7 @@ pub mod test {
                         ),
                     ],
                     actual: Type::Long,
+                    advice: None,
                 }
             )
         );
@@ -2088,6 +2099,7 @@ pub mod test {
                         ),
                     ],
                     actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2104,6 +2116,7 @@ pub mod test {
                         ),
                     ],
                     actual: Type::Long,
+                    advice: None,
                 }
             )
         );
@@ -2120,6 +2133,7 @@ pub mod test {
                         ),
                     ],
                     actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2148,6 +2162,7 @@ pub mod test {
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Bool],
                     actual: Type::Long,
+                    advice: None,
                 }
             )
         );
@@ -2160,6 +2175,7 @@ pub mod test {
                     actual: Type::Entity {
                         ty: EntityUID::test_entity_type(),
                     },
+                    advice: None,
                 }
             )
         );
@@ -2240,7 +2256,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::Bool
+                    actual: Type::Bool,
+                    advice: None,
                 }
             )
         );
@@ -2254,7 +2271,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::Set
+                    actual: Type::Set,
+                    advice: None,
                 }
             )
         );
@@ -2563,7 +2581,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::Bool
+                    actual: Type::Bool,
+                    advice: None,
                 }
             )
         );
@@ -2573,7 +2592,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::Bool
+                    actual: Type::Bool,
+                    advice: None,
                 }
             )
         );
@@ -2583,7 +2603,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::Bool
+                    actual: Type::Bool,
+                    advice: None,
                 }
             )
         );
@@ -2593,7 +2614,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::Bool
+                    actual: Type::Bool,
+                    advice: None,
                 }
             )
         );
@@ -2603,7 +2625,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::Bool
+                    actual: Type::Bool,
+                    advice: None,
                 }
             )
         );
@@ -2613,7 +2636,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::Bool
+                    actual: Type::Bool,
+                    advice: None,
                 }
             )
         );
@@ -2623,7 +2647,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::Bool
+                    actual: Type::Bool,
+                    advice: None,
                 }
             )
         );
@@ -2633,7 +2658,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::Bool
+                    actual: Type::Bool,
+                    advice: None,
                 }
             )
         );
@@ -2643,7 +2669,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2653,7 +2680,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2663,7 +2691,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2673,7 +2702,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2683,7 +2713,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2693,7 +2724,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2703,7 +2735,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2713,7 +2746,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2723,7 +2757,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2733,7 +2768,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2743,7 +2779,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2756,7 +2793,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2766,7 +2804,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2776,7 +2815,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2786,7 +2826,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2796,7 +2837,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2806,7 +2848,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2816,7 +2859,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::Bool
+                    actual: Type::Bool,
+                    advice: None,
                 }
             )
         );
@@ -2826,7 +2870,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::Bool
+                    actual: Type::Bool,
+                    advice: None,
                 }
             )
         );
@@ -2839,7 +2884,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::Set
+                    actual: Type::Set,
+                    advice: None,
                 }
             )
         );
@@ -2863,7 +2909,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2876,7 +2923,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2889,7 +2937,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2902,7 +2951,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2947,7 +2997,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2979,7 +3030,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -2999,7 +3051,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Long],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -3165,7 +3218,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Set],
-                    actual: Type::Long
+                    actual: Type::Long,
+                    advice: None,
                 }
             )
         );
@@ -3178,7 +3232,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Set],
-                    actual: Type::Record
+                    actual: Type::Record,
+                    advice: None,
                 }
             )
         );
@@ -3191,7 +3246,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Set],
-                    actual: Type::Long
+                    actual: Type::Long,
+                    advice: None,
                 }
             )
         );
@@ -3392,6 +3448,7 @@ pub mod test {
                             .expect("should be a valid identifier")
                     )],
                     actual: Type::Bool,
+                    advice: None,
                 }
             )
         );
@@ -3449,6 +3506,7 @@ pub mod test {
                             .expect("should be a valid identifier")
                     )],
                     actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -3465,6 +3523,7 @@ pub mod test {
                             .expect("should be a valid identifier")
                     )],
                     actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -3483,11 +3542,8 @@ pub mod test {
                                 .expect("should be a valid identifier")
                         )],
                         actual: Type::Long,
+                        advice: Some("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()),
                     }
-                );
-                assert_eq!(
-                    e.advice(),
-                    Some("`in` is for checking the entity hierarchy; use `.contains()` to test set membership")
                 );
             }
         );
@@ -3509,11 +3565,8 @@ pub mod test {
                                 .expect("should be a valid identifier")
                         )],
                         actual: Type::String,
+                        advice: Some("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()),
                     }
-                );
-                assert_eq!(
-                    e.advice(),
-                    Some("`in` is for checking the entity hierarchy; use `has` to test if a record has a key")
                 );
             }
         );
@@ -3537,6 +3590,7 @@ pub mod test {
                         )
                     ],
                     actual: Type::Record,
+                    advice: None,
                 }
             )
         );
@@ -3753,7 +3807,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::String],
-                    actual: Type::Long
+                    actual: Type::Long,
+                    advice: None,
                 }
             )
         );
@@ -3766,7 +3821,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Set],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -3890,6 +3946,7 @@ pub mod test {
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
                     actual: Type::Long,
+                    advice: None,
                 }
             )
         );
@@ -4017,7 +4074,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Set],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -4034,7 +4092,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Set],
-                    actual: Type::Record
+                    actual: Type::Record,
+                    advice: None,
                 }
             )
         );
@@ -4141,7 +4200,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Set],
-                    actual: Type::String
+                    actual: Type::String,
+                    advice: None,
                 }
             )
         );
@@ -4158,7 +4218,8 @@ pub mod test {
             Err(e) => assert_eq!(e.error_kind(),
                 &EvaluationErrorKind::TypeError {
                     expected: nonempty![Type::Set],
-                    actual: Type::Record
+                    actual: Type::Record,
+                    advice: None,
                 }
             )
         );
