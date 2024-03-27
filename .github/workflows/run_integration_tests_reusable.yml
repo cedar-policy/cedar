@@ -1,0 +1,47 @@
+name: Run Integration Tests
+
+on:
+  workflow_call:
+
+jobs:
+  run_integration_tests:
+    name: Run integration tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+
+    # Set `RUSTFLAGS` once for all cargo commands so that changing these flags
+    # doesn't trigger a fresh build.
+    env:
+      RUSTFLAGS: '-D warnings -F unsafe-code'
+
+    steps:
+      - name: Checkout cedar
+        uses: actions/checkout@v4
+        with:
+          repository: cedar-policy/cedar
+          ref: main
+          path: ./cedar
+      - name: Delete old integration tests
+        working-directory: ./cedar
+        run: rm -rf cedar-integration-tests # blast the current content
+      - name: Checkout cedar-integration-tests
+        uses: actions/checkout@v4
+        with:
+          repository: cedar-policy/cedar-integration-tests
+          ref: main
+          path: ./cedar/cedar-integration-tests
+      - name: Decompress corpus tests
+        working-directory: ./cedar/cedar-integration-tests
+        run: tar xzf corpus-tests.tar.gz
+      - name: Prepare Rust build
+        run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - name: Run handwritten integration tests
+        working-directory: ./cedar
+        run: cargo test --verbose --features "integration-testing"
+      - name: Run corpus tests
+        working-directory: ./cedar
+        run: cargo test --verbose --features "integration-testing" -- --ignored
+      
