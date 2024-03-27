@@ -130,7 +130,7 @@ pub enum SchemaFormat {
 
 impl Default for SchemaFormat {
     fn default() -> Self {
-        Self::Json
+        Self::Human
     }
 }
 
@@ -151,7 +151,7 @@ pub struct ValidateArgs {
     #[arg(long = "partial-validate")]
     pub partial_validate: bool,
     /// Schema format (Human-readable or json)
-    #[arg(long, value_enum, default_value_t = SchemaFormat::Json)]
+    #[arg(long, value_enum, default_value_t = SchemaFormat::Human)]
     pub schema_format: SchemaFormat,
 }
 
@@ -347,7 +347,7 @@ pub struct AuthorizeArgs {
     #[arg(short, long = "schema", value_name = "FILE")]
     pub schema_file: Option<String>,
     /// Schema format (Human-readable or JSON)
-    #[arg(long, value_enum, default_value_t = SchemaFormat::Json)]
+    #[arg(long, value_enum, default_value_t = SchemaFormat::Human)]
     pub schema_format: SchemaFormat,
     /// File containing JSON representation of the Cedar entity hierarchy
     #[arg(long = "entities", value_name = "FILE")]
@@ -462,7 +462,7 @@ pub struct EvaluateArgs {
     #[arg(short, long = "schema", value_name = "FILE")]
     pub schema_file: Option<String>,
     /// Schema format (Human-readable or JSON)
-    #[arg(long, value_enum, default_value_t = SchemaFormat::Json)]
+    #[arg(long, value_enum, default_value_t = SchemaFormat::Human)]
     pub schema_format: SchemaFormat,
     /// File containing JSON representation of the Cedar entity hierarchy.
     /// This is optional; if not present, we'll just use an empty hierarchy.
