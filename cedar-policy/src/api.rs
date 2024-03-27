@@ -2869,10 +2869,9 @@ impl Template {
     }
 
     /// Get the JSON representation of this `Template`.
-    pub fn to_json(&self) -> Result<serde_json::Value, impl miette::Diagnostic> {
+    pub fn to_json(&self) -> Result<serde_json::Value, PolicyToJsonError> {
         let est = self.lossless.est()?;
-        let json = serde_json::to_value(est)?;
-        Ok::<_, PolicyToJsonError>(json)
+        serde_json::to_value(est).map_err(Into::into)
     }
 
     /// Create a `Template` from its AST representation only. The EST will
@@ -3329,10 +3328,9 @@ impl Policy {
     /// println!("{}", json);
     /// assert_eq!(json, Policy::from_json(None, json.clone()).unwrap().to_json().unwrap());
     /// ```
-    pub fn to_json(&self) -> Result<serde_json::Value, impl miette::Diagnostic> {
+    pub fn to_json(&self) -> Result<serde_json::Value, PolicyToJsonError> {
         let est = self.lossless.est()?;
-        let json = serde_json::to_value(est)?;
-        Ok::<_, PolicyToJsonError>(json)
+        serde_json::to_value(est).map_err(Into::into)
     }
 
     /// Create a `Policy` from its AST representation only. The `LosslessPolicy`
@@ -3471,10 +3469,41 @@ pub enum PolicyToJsonError {
     /// For linked policies, error linking the JSON representation
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Link(#[from] est::InstantiationError),
+    Link(#[from] JsonLinkError),
     /// Error in the JSON serialization
     #[error(transparent)]
-    Serde(#[from] serde_json::Error),
+    JsonSerialization(#[from] PolicyJsonSerializationError),
+}
+
+impl From<est::InstantiationError> for PolicyToJsonError {
+    fn from(e: est::InstantiationError) -> Self {
+        JsonLinkError::from(e).into()
+    }
+}
+
+impl From<serde_json::Error> for PolicyToJsonError {
+    fn from(e: serde_json::Error) -> Self {
+        PolicyJsonSerializationError::from(e).into()
+    }
+}
+
+/// Error linking the JSON representation of a linked policy
+#[derive(Debug, Diagnostic, Error)]
+#[error(transparent)]
+#[diagnostic(transparent)]
+pub struct JsonLinkError {
+    /// Underlying error
+    #[from]
+    err: est::InstantiationError,
+}
+
+/// Error serializing a policy as JSON
+#[derive(Debug, Diagnostic, Error)]
+#[error(transparent)]
+pub struct PolicyJsonSerializationError {
+    /// Underlying error
+    #[from]
+    err: serde_json::Error,
 }
 
 /// Expressions to be evaluated
