@@ -277,37 +277,26 @@ pub fn parse_request_from_test(
     })
 }
 
-/// Given the filename of a JSON file describing an integration test, perform
-/// the test. If a custom Cedar implementation is provided, then use it for the
-/// test, otherwise perform the test on the `Cedar` API.
+/// Run an integration test starting from a pre-parsed `JsonTest`.
 ///
-/// Relative paths are assumed to be relative to the root of the
-/// cedar-integration-tests folder.
-/// Absolute paths are handled without modification.
 /// # Panics
-/// When integration test data cannot be found or the test otherwise fails.
+/// When the integration test fails.
 #[allow(clippy::too_many_lines)]
 // PANIC SAFETY this is testing code
 #[allow(clippy::panic)]
-pub fn perform_integration_test_from_json_custom(
-    jsonfile: impl AsRef<Path>,
+pub fn perform_integration_test(
+    policies: PolicySet,
+    entities: Entities,
+    schema: ValidatorSchema,
+    should_validate: bool,
+    requests: Vec<JsonRequest>,
+    test_name: &str,
     test_impl: &impl CedarTestImplementation,
 ) {
-    let jsonfile = resolve_integration_test_path(jsonfile);
-    eprintln!("File path: {jsonfile:?}");
-    let test_name: String = jsonfile.display().to_string();
-    let jsonstr = std::fs::read_to_string(jsonfile.as_path())
-        .unwrap_or_else(|e| panic!("error reading from file {test_name}: {e}"));
-    let test: JsonTest =
-        serde_json::from_str(&jsonstr).unwrap_or_else(|e| panic!("error parsing {test_name}: {e}"));
-    let policies = parse_policies_from_test(&test);
-    let schema = parse_schema_from_test(&test);
-    let entities = parse_entities_from_test(&test, &schema);
-
     let validation_result = test_impl
         .validate(&schema, &policies, ValidationMode::default().into())
         .expect("Validation failed");
-    if test.should_validate {
+    if should_validate {
         assert!(
             validation_result.validation_passed(),
             "Unexpected validation errors in {test_name}: {:?}",
@@ -325,8 +314,8 @@ pub fn perform_integration_test_from_json_custom(
         }
     }
 
-    for json_request in test.requests {
-        let request = parse_request_from_test(&json_request, &schema, &test_name);
+    for json_request in requests {
+        let request = parse_request_from_test(&json_request, &schema, test_name);
         let response = test_impl
             .is_authorized(&request, &policies, &entities)
             .expect("Authorization failed");
@@ -365,6 +354,42 @@ pub fn perform_integration_test_from_json_custom(
             );
         }
     }
+}
+
+/// Given the filename of a JSON file describing an integration test, perform
+/// the test.
+///
+/// Relative paths are assumed to be relative to the root of the
+/// cedar-integration-tests folder.
+/// Absolute paths are handled without modification.
+/// # Panics
+/// When integration test data cannot be found.
+#[allow(clippy::too_many_lines)]
+// PANIC SAFETY this is testing code
+#[allow(clippy::panic)]
+pub fn perform_integration_test_from_json_custom(
+    jsonfile: impl AsRef<Path>,
+    test_impl: &impl CedarTestImplementation,
+) {
+    let jsonfile = resolve_integration_test_path(jsonfile);
+    eprintln!("Running test: {jsonfile:?}");
+    let test_name: String = jsonfile.display().to_string();
+    let jsonstr = std::fs::read_to_string(jsonfile.as_path())
+        .unwrap_or_else(|e| panic!("error reading from file {test_name}: {e}"));
+    let test: JsonTest =
+        serde_json::from_str(&jsonstr).unwrap_or_else(|e| panic!("error parsing {test_name}: {e}"));
+    let policies = parse_policies_from_test(&test);
+    let schema = parse_schema_from_test(&test);
+    let entities = parse_entities_from_test(&test, &schema);
+    perform_integration_test(
+        policies,
+        entities,
+        schema,
+        test.should_validate,
+        test.requests,
+        test_name.as_ref(),
+        test_impl,
+    );
 }
 
 /// Specialization of `perform_integration_test_from_json_custom` that performs
