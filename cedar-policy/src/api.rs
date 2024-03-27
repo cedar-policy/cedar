@@ -1462,23 +1462,6 @@ pub enum SchemaError {
     /// Cycle in the schema's action hierarchy.
     #[error("cycle in action hierarchy containing `{0}`")]
     CycleInActionHierarchy(EntityUid),
-    /// Parse errors occurring while parsing an entity type.
-    #[error("parse error in entity type: {0}")]
-    #[diagnostic(transparent)]
-    ParseEntityType(ParseErrors),
-    /// Parse errors occurring while parsing a namespace identifier.
-    #[error("parse error in namespace identifier: {0}")]
-    #[diagnostic(transparent)]
-    ParseNamespace(ParseErrors),
-    /// Parse errors occurring while parsing an extension type.
-    #[error("parse error in extension type: {0}")]
-    #[diagnostic(transparent)]
-    ParseExtensionType(ParseErrors),
-    /// Parse errors occurring while parsing the name of a reusable
-    /// declared type.
-    #[error("parse error in common type identifier: {0}")]
-    #[diagnostic(transparent)]
-    ParseCommonType(ParseErrors),
     /// The schema file included an entity type `Action` in the entity type
     /// list. The `Action` entity type is always implicitly declared, and it
     /// cannot currently have attributes or be in any groups, so there is no
@@ -1647,12 +1630,6 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
             }
             cedar_policy_validator::SchemaError::CycleInActionHierarchy(e) => {
                 Self::CycleInActionHierarchy(EntityUid(e))
-            }
-            cedar_policy_validator::SchemaError::ParseEntityType(e) => Self::ParseEntityType(e),
-            cedar_policy_validator::SchemaError::ParseNamespace(e) => Self::ParseNamespace(e),
-            cedar_policy_validator::SchemaError::ParseCommonType(e) => Self::ParseCommonType(e),
-            cedar_policy_validator::SchemaError::ParseExtensionType(e) => {
-                Self::ParseExtensionType(e)
             }
             cedar_policy_validator::SchemaError::ActionEntityTypeDeclared => {
                 Self::ActionEntityTypeDeclared

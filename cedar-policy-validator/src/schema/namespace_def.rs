@@ -11,7 +11,6 @@ use cedar_policy_core::{
     entities::{CedarValueJson, JsonDeserializationErrorContext},
     evaluator::RestrictedEvaluator,
     extensions::Extensions,
-    parser::err::ParseErrors,
     FromNormalizedStr,
 };
 use smol_str::{SmolStr, ToSmolStr};
@@ -269,12 +268,11 @@ impl ValidatorNamespaceDef {
         Ok(EntityTypesDef {
             entity_types: schema_files_types
                 .into_iter()
-                .map(|(name_str, entity_type)| -> Result<_> {
-                    let name = Self::parse_unqualified_name_with_namespace(
-                        &name_str,
+                .map(|(id, entity_type)| -> Result<_> {
+                    let name = Self::prefix_namespace(
                         schema_namespace.cloned(),
-                    )
-                    .map_err(SchemaError::ParseEntityType)?;
+                        Name::unqualified_name(id),
+                    );
 
                     let parents = entity_type
                         .member_of_types
@@ -570,20 +568,6 @@ impl ValidatorNamespaceDef {
                     .collect::<HashSet<_>>()
             })
             .unwrap_or_else(|| HashSet::from([EntityType::Unspecified]))
-    }
-
-    /// Parse a name from a string into the `Id` (basename only).  Then
-    /// initialize the namespace for this type with the provided namespace vec
-    /// to create the qualified `Name`.
-    fn parse_unqualified_name_with_namespace(
-        type_name: impl AsRef<str>,
-        namespace: Option<Name>,
-    ) -> std::result::Result<Name, ParseErrors> {
-        let type_name = Id::from_normalized_str(type_name.as_ref())?;
-        match namespace {
-            Some(namespace) => Ok(Name::type_in_namespace(type_name, namespace)),
-            None => Ok(Name::unqualified_name(type_name)),
-        }
     }
 
     /// Take an action identifier as a string and use it to construct an
