@@ -128,7 +128,7 @@ fn pretty_type_error(expected: &[Type], actual: &Type) -> String {
 #[derive(Debug, PartialEq, Clone, Error)]
 pub enum IntegerOverflowError {
     /// Overflow during a binary operation
-    #[error("integer overflow while attempting to {} the values `{arg1}` and `{arg2}`", match .op { BinaryOp::Add => "add", BinaryOp::Sub => "subtract", BinaryOp::Mul => "multiply", _ => "perform an operation on" })]
+    #[error("integer overflow while attempting to {} {arg1} by {arg2}", match .op { BinaryOp::Add => "add", BinaryOp::Sub => "subtract", BinaryOp::Mul => "multiply", _ => "perform an operation on" })]
     BinaryOp {
         /// overflow while evaluating this operator
         op: BinaryOp,
