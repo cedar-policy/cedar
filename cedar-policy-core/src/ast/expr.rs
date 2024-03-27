@@ -722,8 +722,8 @@ impl<T> ExprBuilder<T> {
         self.with_maybe_source_loc(expr.source_loc.clone())
     }
 
-    /// internally used to update `.source_loc` to the given `Some` or `None`
-    fn with_maybe_source_loc(mut self, maybe_source_loc: Option<Loc>) -> Self {
+    /// Used to update `.source_loc` to the given `Some` or `None`
+    pub fn with_maybe_source_loc(mut self, maybe_source_loc: Option<Loc>) -> Self {
         self.source_loc = maybe_source_loc;
         self
     }

@@ -3231,7 +3231,7 @@ mod test {
         assert_matches!(
             ast,
             Err(FromJsonError::TemplateToPolicy(
-                ast::UnexpectedSlotError::FoundSlot(s)
+                ast::UnexpectedSlotError::FoundSlot(s, None)
             )) => assert_eq!(s, ast::SlotId::principal())
         );
     }

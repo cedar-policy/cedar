@@ -43,9 +43,9 @@ use super::loc::Loc;
 use super::node::Node;
 use super::unescape::{to_pattern, to_unescaped_string};
 use crate::ast::{
-    self, ActionConstraint, CallStyle, EntityReference, EntityType, EntityUID, Integer,
+    self, ActionConstraint, CallStyle, EntityReference, EntityType, EntityUID, ExprKind, Integer,
     PatternElem, PolicySetError, PrincipalConstraint, PrincipalOrResourceConstraint,
-    ResourceConstraint,
+    PrincipalOrResourceConstraintKind, ResourceConstraint,
 };
 use crate::est::extract_single_argument;
 use itertools::{Either, Itertools};
@@ -201,10 +201,14 @@ impl Node<Option<cst::Policy>> {
         // now case 1: if `policy` is `Some(Err(e))`, there is a slot where there shouldn't be;
         // report that as `UnexpectedTemplate`
         match policy {
-            Some(Err(ast::UnexpectedSlotError::FoundSlot(slot))) => {
-                errs.push(
-                    self.to_ast_err(ToASTErrorKind::UnexpectedTemplate { slot: slot.into() }),
-                );
+            Some(Err(ast::UnexpectedSlotError::FoundSlot(slot, loc))) => {
+                errs.push(ToASTError::new(
+                    ToASTErrorKind::UnexpectedTemplate { slot: slot.into() },
+                    // Error should have a loc when reported for a policy
+                    // constructed from CST, but we fall back to `self.loc` to
+                    // avoid the possibility of panics.
+                    loc.unwrap_or(self.loc.clone()),
+                ));
                 None
             }
             // in other cases, we're done reporting errors, so we can return the policy, if we have one
@@ -241,11 +245,23 @@ impl Node<Option<cst::Policy>> {
             .iter()
             .filter_map(|c| {
                 let (e, is_when) = c.to_expr(errs)?;
-                for slot in e.slots() {
-                    errs.push(c.to_ast_err(ToASTErrorKind::SlotsInConditionClause {
-                        slot: (*slot).into(),
-                        clausetype: if is_when { "when" } else { "unless" },
-                    }));
+                // Don't use e.slots() because the `SlotId` enum does not carry
+                // a source location.
+                for expr in e.subexpressions() {
+                    match expr.expr_kind() {
+                        ExprKind::Slot(slot) => errs.push(ToASTError::new(
+                            ToASTErrorKind::SlotsInConditionClause {
+                                slot: (*slot).into(),
+                                clausetype: if is_when { "when" } else { "unless" },
+                            },
+                            // `expr.source_loc()` should always be `Some` when
+                            // the expr is built from a CST node, but we include
+                            // a fall back to the outer condition location to
+                            // avoid any chance at a panic.
+                            expr.source_loc().unwrap_or(&c.loc).clone(),
+                        )),
+                        _ => (),
+                    }
                 }
                 Some(e)
             })
@@ -602,21 +618,23 @@ impl Node<Option<cst::VariableDef>> {
             unused_typename.to_type_constraint(errs)?;
         }
 
-        let c = if let Some((op, rel_expr)) = &vardef.ineq {
+        let constraint_kind = if let Some((op, rel_expr)) = &vardef.ineq {
             let eref = rel_expr.to_ref_or_slot(errs, var)?;
             match (op, &vardef.entity_type) {
-                (cst::RelOp::Eq, None) => Some(PrincipalOrResourceConstraint::Eq(eref)),
+                (cst::RelOp::Eq, None) => Some(PrincipalOrResourceConstraintKind::Eq(eref)),
                 (cst::RelOp::Eq, Some(_)) => {
                     errs.push(self.to_ast_err(ToASTErrorKind::InvalidIs(
                         err::InvalidIsError::WrongOp(cst::RelOp::Eq),
                     )));
                     None
                 }
-                (cst::RelOp::In, None) => Some(PrincipalOrResourceConstraint::In(eref)),
-                (cst::RelOp::In, Some(entity_type)) => Some(PrincipalOrResourceConstraint::IsIn(
-                    entity_type.to_expr_or_special(errs)?.into_name(errs)?,
-                    eref,
-                )),
+                (cst::RelOp::In, None) => Some(PrincipalOrResourceConstraintKind::In(eref)),
+                (cst::RelOp::In, Some(entity_type)) => {
+                    Some(PrincipalOrResourceConstraintKind::IsIn(
+                        entity_type.to_expr_or_special(errs)?.into_name(errs)?,
+                        eref,
+                    ))
+                }
                 (cst::RelOp::InvalidSingleEq, _) => {
                     errs.push(self.to_ast_err(ToASTErrorKind::InvalidSingleEq));
                     None
@@ -627,17 +645,20 @@ impl Node<Option<cst::VariableDef>> {
                 }
             }
         } else if let Some(entity_type) = &vardef.entity_type {
-            Some(PrincipalOrResourceConstraint::Is(
+            Some(PrincipalOrResourceConstraintKind::Is(
                 entity_type.to_expr_or_special(errs)?.into_name(errs)?,
             ))
         } else {
-            Some(PrincipalOrResourceConstraint::Any)
+            Some(PrincipalOrResourceConstraintKind::Any)
         }?;
+        let constraint = PrincipalOrResourceConstraint::new(constraint_kind, Some(self.loc));
         match var {
-            ast::Var::Principal => {
-                Some(PrincipalOrResource::Principal(PrincipalConstraint::new(c)))
-            }
-            ast::Var::Resource => Some(PrincipalOrResource::Resource(ResourceConstraint::new(c))),
+            ast::Var::Principal => Some(PrincipalOrResource::Principal(PrincipalConstraint::new(
+                constraint,
+            ))),
+            ast::Var::Resource => Some(PrincipalOrResource::Resource(ResourceConstraint::new(
+                constraint,
+            ))),
             got => {
                 errs.push(self.to_ast_err(ToASTErrorKind::IncorrectVariable { expected, got }));
                 None

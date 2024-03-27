@@ -599,17 +599,13 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
         constraint: ResourceConstraint,
     ) -> Result<ast::PrincipalOrResourceConstraint, Self::Error> {
         match constraint {
-            ResourceConstraint::All => Ok(ast::PrincipalOrResourceConstraint::Any),
+            ResourceConstraint::All => Ok(ast::PrincipalOrResourceConstraint::any()),
             ResourceConstraint::Eq(EqConstraint::Entity { entity }) => Ok(
-                ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::EUID(Arc::new(
-                    entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
-                ))),
+                ast::PrincipalOrResourceConstraint::is_eq( entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?),
             ),
             ResourceConstraint::Eq(EqConstraint::Slot { slot }) => {
                 if slot == ast::SlotId::resource() {
-                    Ok(ast::PrincipalOrResourceConstraint::Eq(
-                        ast::EntityReference::Slot,
-                    ))
+                    Ok(ast::PrincipalOrResourceConstraint::is_eq_slot())
                 } else {
                     Err(Self::Error::InvalidSlotName)
                 }
