@@ -686,7 +686,6 @@ impl SchemaType {
 #[allow(clippy::panic)]
 impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<SchemaType> {
-        use cedar_policy_core::ast::Name;
         use std::collections::BTreeSet;
 
         Ok(SchemaType::Type(match u.int_in_range::<u8>(1..=8)? {
@@ -711,15 +710,13 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
             }
             6 => {
                 let name: Name = u.arbitrary()?;
-                SchemaTypeVariant::Entity {
-                    name: name.to_string().into(),
-                }
+                SchemaTypeVariant::Entity { name }
             }
             7 => SchemaTypeVariant::Extension {
-                name: "ipaddr".into(),
+                name: "ipaddr".parse().unwrap(),
             },
             8 => SchemaTypeVariant::Extension {
-                name: "decimal".into(),
+                name: "decimal".parse().unwrap(),
             },
             n => panic!("bad index: {n}"),
         }))
