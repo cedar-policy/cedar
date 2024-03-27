@@ -1483,6 +1483,10 @@ fn display_cedarvaluejson(f: &mut std::fmt::Formatter<'_>, v: &CedarValueJson) -
             write!(f, "}}")?;
             Ok(())
         }
+        CedarValueJson::Null => {
+            write!(f, "null")?;
+            Ok(())
+        }
     }
 }
 

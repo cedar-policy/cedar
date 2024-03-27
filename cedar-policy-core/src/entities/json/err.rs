@@ -233,6 +233,9 @@ pub enum JsonDeserializationError {
     #[error("{0}, the `__expr` escape is no longer supported")]
     #[diagnostic(help("to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly"))]
     ExprTag(Box<JsonDeserializationErrorContext>),
+    /// Raised when the input JSON contains a `null`
+    #[error("{0}, found a `null`; JSON `null`s are not allowed in Cedar")]
+    Null(Box<JsonDeserializationErrorContext>),
 }
 
 /// Errors thrown during serialization to JSON

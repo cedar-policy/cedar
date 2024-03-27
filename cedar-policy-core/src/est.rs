@@ -2239,7 +2239,7 @@ mod test {
         let policy = r#"
         permit(principal, action, resource)
         when {
-            
+
             "" like "ḛ̶͑͝x̶͔͛a̵̰̯͛m̴͉̋́p̷̠͂l̵͇̍̔ȩ̶̣͝"
         };
     "#;
