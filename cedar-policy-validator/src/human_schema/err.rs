@@ -353,8 +353,6 @@ pub enum ToJsonSchemaError {
     UnknownTypeName(Node<SmolStr>),
     #[error("Use reserved namespace `__cedar`")]
     UseReservedNamespace(Loc),
-    #[error("Invalid name: `{0}`")]
-    InvalidName(SmolStr),
 }
 
 impl ToJsonSchemaError {
@@ -397,7 +395,6 @@ impl Diagnostic for ToJsonSchemaError {
             ToJsonSchemaError::UseReservedNamespace(loc) => {
                 Some(Box::new(std::iter::once(LabeledSpan::underline(loc.span))))
             }
-            Self::InvalidName(name) => None,
         }
     }
 }

@@ -90,6 +90,9 @@ impl Name {
         self.path.iter().join("::")
     }
 
+    /// Prefix the name with a optional namespace
+    /// e.g., prefix `A::B`` with `Some(C)` produces `C::A::B`
+    /// prefix `A::B` with `None` yields itself
     pub fn prefix_namespace(&self, namespace: Option<Name>) -> Name {
         match namespace {
             Some(namespace) => Self::new(
@@ -104,6 +107,7 @@ impl Name {
         }
     }
 
+    /// Test if a `Name` is an `Id`
     pub fn is_singleton(&self) -> bool {
         self.path.is_empty()
     }

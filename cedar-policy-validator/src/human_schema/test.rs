@@ -1118,7 +1118,6 @@ mod parser_tests {
 #[cfg(test)]
 mod translator_tests {
     use cedar_policy_core::FromNormalizedStr;
-    use smol_str::ToSmolStr;
 
     use crate::{SchemaError, SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema};
 

@@ -3,9 +3,8 @@ use std::collections::HashMap;
 use cedar_policy_core::{
     ast::{Id, Name},
     parser::{Loc, Node},
-    FromNormalizedStr,
 };
-use itertools::{Either, ExactlyOneError, Itertools};
+use itertools::{Either, Itertools};
 use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::hash_map::Entry;
@@ -238,12 +237,12 @@ impl<'a> ConversionContext<'a> {
         let principal_types = principals
             .into_iter()
             .at_most_one()
-            .map_err(|e| convert_pr_error(PR::Principal, loc.clone()))?;
+            .map_err(|_| convert_pr_error(PR::Principal, loc.clone()))?;
         // Ensure we have at most one resource decl, then convert it
         let resource_types = resources
             .into_iter()
             .at_most_one()
-            .map_err(|e| convert_pr_error(PR::Resource, loc.clone()))?;
+            .map_err(|_| convert_pr_error(PR::Resource, loc.clone()))?;
         Ok(ApplySpec {
             resource_types,
             principal_types,
