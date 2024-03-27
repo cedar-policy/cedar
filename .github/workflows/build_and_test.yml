@@ -31,33 +31,8 @@ jobs:
       - run: cargo test --verbose --features "experimental"
       - run: cargo audit --deny warnings # For some reason this hangs if you don't cargo build first
 
-  integration_testing:
-    name: Integration tests
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        toolchain:
-          - stable
-
-    # Set `RUSTFLAGS` once for all cargo commands so that changing these flags
-    # doesn't trigger a fresh build.
-    env:
-      RUSTFLAGS: '-D warnings -F unsafe-code'
-
-    steps:
-      - name: Checkout cedar
-        uses: actions/checkout@v4
-      - run: rm -rf cedar-integration-tests # blast the current content
-      - name: Checkout cedar-integration-tests
-        uses: actions/checkout@v4
-        with:
-          repository: cedar-policy/cedar-integration-tests
-          ref: main
-          path: ./cedar-integration-tests
-      - run: cd cedar-integration-tests && tar xzf corpus-tests.tar.gz
-      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - run: cargo test --verbose --features "integration-testing"
-      - run: cargo test --verbose --features "integration-testing" -- --ignored
+  run-integration-tests:
+    uses: ./.github/workflows/run_integration_tests_reusable.yml
 
   # Clippy in its own job so that the `RUSTFLAGS` set for `build_and_test`
   # don't effect it. As a side effect, this will run in parallel, saving some
