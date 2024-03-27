@@ -61,7 +61,7 @@ pub struct JsonTest {
 
 /// JSON representation of a single request, along with its expected result,
 /// in our integration test file format
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct JsonRequest {
     /// Description for the request
