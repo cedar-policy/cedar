@@ -89,6 +89,24 @@ impl Name {
     pub fn namespace(&self) -> String {
         self.path.iter().join("::")
     }
+
+    pub fn prefix_namespace(&self, namespace: Option<Name>) -> Name {
+        match namespace {
+            Some(namespace) => Self::new(
+                self.basename().clone(),
+                namespace
+                    .namespace_components()
+                    .chain(std::iter::once(namespace.basename()))
+                    .chain(self.namespace_components())
+                    .cloned(),
+            ),
+            None => self.clone(),
+        }
+    }
+
+    pub fn is_singleton(&self) -> bool {
+        self.path.is_empty()
+    }
 }
 
 impl std::fmt::Display for Name {
@@ -199,6 +217,8 @@ mod vars_test {
 #[cfg(test)]
 mod test {
 
+    use smol_str::ToSmolStr;
+
     use super::*;
 
     #[test]
@@ -210,5 +230,37 @@ mod test {
         Name::from_normalized_str("foo ").expect_err("shouldn't be OK");
         Name::from_normalized_str("foo\n").expect_err("shouldn't be OK");
         Name::from_normalized_str("foo//comment").expect_err("shouldn't be OK");
+    }
+
+    #[test]
+    fn prefix_namespace() {
+        assert_eq!(
+            "foo::bar::baz",
+            Name::from_normalized_str("baz")
+                .unwrap()
+                .prefix_namespace(Some("foo::bar".parse().unwrap()))
+                .to_smolstr()
+        );
+        assert_eq!(
+            "A::B::C::D",
+            Name::from_normalized_str("C::D")
+                .unwrap()
+                .prefix_namespace(Some("A::B".parse().unwrap()))
+                .to_smolstr()
+        );
+        assert_eq!(
+            "A::B::C::D",
+            Name::from_normalized_str("D")
+                .unwrap()
+                .prefix_namespace(Some("A::B::C".parse().unwrap()))
+                .to_smolstr()
+        );
+        assert_eq!(
+            "A::B::C::D",
+            Name::from_normalized_str("B::C::D")
+                .unwrap()
+                .prefix_namespace(Some("A".parse().unwrap()))
+                .to_smolstr()
+        );
     }
 }

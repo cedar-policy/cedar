@@ -14,10 +14,15 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::entities::CedarValueJson;
+use cedar_policy_core::{
+    ast::{Id, Name},
+    entities::CedarValueJson,
+    parser::err::ParseErrors,
+    FromNormalizedStr,
+};
 use serde::{
     de::{MapAccess, Visitor},
-    Deserialize, Serialize,
+    Deserialize, Deserializer, Serialize,
 };
 use serde_with::serde_as;
 use smol_str::SmolStr;
@@ -43,9 +48,45 @@ extern crate tsify;
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct SchemaFragment(
-    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub  HashMap<SmolStr, NamespaceDefinition>,
+    #[serde(deserialize_with = "deserialize_schema_fragment")]
+    pub  HashMap<Option<Name>, NamespaceDefinition>,
 );
+
+fn deserialize_hash_map<'de, D, K, V>(
+    key_parser: impl Fn(SmolStr) -> std::result::Result<K, ParseErrors>,
+    deserializer: D,
+) -> std::result::Result<HashMap<K, V>, D::Error>
+where
+    D: Deserializer<'de>,
+    V: Deserialize<'de>,
+    K: std::cmp::Eq + std::hash::Hash,
+{
+    let raw: HashMap<SmolStr, V> =
+        serde_with::rust::maps_duplicate_key_is_error::deserialize(deserializer)?;
+    Ok(HashMap::from_iter(
+        raw.into_iter()
+            .map(|(key, value)| Ok((key_parser(key).map_err(serde::de::Error::custom)?, value)))
+            .collect::<std::result::Result<Vec<(K, V)>, D::Error>>()?,
+    ))
+}
+
+fn deserialize_schema_fragment<'de, D>(
+    deserializer: D,
+) -> std::result::Result<HashMap<Option<Name>, NamespaceDefinition>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_hash_map(
+        |key| {
+            if key.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(Name::from_normalized_str(&key)?))
+            }
+        },
+        deserializer,
+    )
+}
 
 impl SchemaFragment {
     /// Create a [`SchemaFragment`] from a JSON value (which should be an object
@@ -92,19 +133,37 @@ impl SchemaFragment {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct NamespaceDefinition {
     #[serde(default)]
-    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
+    #[serde(deserialize_with = "deserialize_common_types")]
     #[serde(rename = "commonTypes")]
-    pub common_types: HashMap<SmolStr, SchemaType>,
+    pub common_types: HashMap<Id, SchemaType>,
     #[serde(rename = "entityTypes")]
-    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub entity_types: HashMap<SmolStr, EntityType>,
+    #[serde(deserialize_with = "deserialize_entity_types")]
+    pub entity_types: HashMap<Id, EntityType>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     pub actions: HashMap<SmolStr, ActionType>,
 }
 
+fn deserialize_common_types<'de, D>(
+    deserializer: D,
+) -> std::result::Result<HashMap<Id, SchemaType>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_hash_map(|key| Id::from_normalized_str(&key), deserializer)
+}
+
+fn deserialize_entity_types<'de, D>(
+    deserializer: D,
+) -> std::result::Result<HashMap<Id, EntityType>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_hash_map(|key| Id::from_normalized_str(&key), deserializer)
+}
+
 impl NamespaceDefinition {
     pub fn new(
-        entity_types: impl IntoIterator<Item = (SmolStr, EntityType)>,
+        entity_types: impl IntoIterator<Item = (Id, EntityType)>,
         actions: impl IntoIterator<Item = (SmolStr, ActionType)>,
     ) -> Self {
         Self {
@@ -125,9 +184,21 @@ impl NamespaceDefinition {
 pub struct EntityType {
     #[serde(default)]
     #[serde(rename = "memberOfTypes")]
-    pub member_of_types: Vec<SmolStr>,
+    #[serde(deserialize_with = "deserialize_vec_name")]
+    pub member_of_types: Vec<Name>,
     #[serde(default)]
     pub shape: AttributesOrContext,
+}
+
+fn deserialize_vec_name<'de, D>(deserializer: D) -> std::result::Result<Vec<Name>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw = Vec::<SmolStr>::deserialize(deserializer)?;
+    raw.into_iter()
+        .map(|s| Name::from_normalized_str(&s))
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(serde::de::Error::custom)
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -190,12 +261,30 @@ pub struct ActionType {
 pub struct ApplySpec {
     #[serde(default)]
     #[serde(rename = "resourceTypes")]
-    pub resource_types: Option<Vec<SmolStr>>,
+    #[serde(deserialize_with = "deserialize_pr_types")]
+    pub resource_types: Option<Vec<Name>>,
     #[serde(default)]
     #[serde(rename = "principalTypes")]
-    pub principal_types: Option<Vec<SmolStr>>,
+    #[serde(deserialize_with = "deserialize_pr_types")]
+    pub principal_types: Option<Vec<Name>>,
     #[serde(default)]
     pub context: AttributesOrContext,
+}
+
+fn deserialize_pr_types<'de, D>(deserializer: D) -> std::result::Result<Option<Vec<Name>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw = Option::<Vec<SmolStr>>::deserialize(deserializer)?;
+    match raw {
+        Some(vs) => Ok(Some(
+            vs.into_iter()
+                .map(|v| Name::from_normalized_str(&v))
+                .collect::<std::result::Result<Vec<Name>, _>>()
+                .map_err(serde::de::Error::custom)?,
+        )),
+        None => Ok(None),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -207,7 +296,21 @@ pub struct ActionEntityUID {
 
     #[serde(rename = "type")]
     #[serde(default)]
-    pub ty: Option<SmolStr>,
+    #[serde(deserialize_with = "deserialize_option_name")]
+    pub ty: Option<Name>,
+}
+
+fn deserialize_option_name<'de, D>(deserializer: D) -> std::result::Result<Option<Name>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw = Option::<SmolStr>::deserialize(deserializer)?;
+    match raw {
+        Some(s) => Ok(Some(
+            Name::from_normalized_str(&s).map_err(serde::de::Error::custom)?,
+        )),
+        None => Ok(None),
+    }
 }
 
 impl ActionEntityUID {
@@ -241,7 +344,7 @@ pub enum SchemaType {
     Type(SchemaTypeVariant),
     TypeDef {
         #[serde(rename = "type")]
-        type_name: SmolStr,
+        type_name: Name,
     },
 }
 
@@ -475,7 +578,10 @@ impl SchemaTypeVisitor {
                 )?;
 
                 if let Some(name) = name {
-                    Ok(SchemaType::Type(SchemaTypeVariant::Entity { name: name? }))
+                    Ok(SchemaType::Type(SchemaTypeVariant::Entity {
+                        name: cedar_policy_core::ast::Name::from_normalized_str(&name?)
+                            .map_err(serde::de::Error::custom)?,
+                    }))
                 } else {
                     Err(serde::de::Error::missing_field(Name.as_str()))
                 }
@@ -488,7 +594,7 @@ impl SchemaTypeVisitor {
 
                 if let Some(name) = name {
                     Ok(SchemaType::Type(SchemaTypeVariant::Extension {
-                        name: name?,
+                        name: Id::from_normalized_str(&name?).map_err(serde::de::Error::custom)?,
                     }))
                 } else {
                     Err(serde::de::Error::missing_field(Name.as_str()))
@@ -497,7 +603,8 @@ impl SchemaTypeVisitor {
             Some(type_name) => {
                 error_if_any_fields()?;
                 Ok(SchemaType::TypeDef {
-                    type_name: type_name.into(),
+                    type_name: cedar_policy_core::ast::Name::from_normalized_str(type_name)
+                        .map_err(serde::de::Error::custom)?,
                 })
             }
             None => Err(serde::de::Error::missing_field(Type.as_str())),
@@ -528,10 +635,10 @@ pub enum SchemaTypeVariant {
         additional_attributes: bool,
     },
     Entity {
-        name: SmolStr,
+        name: Name,
     },
     Extension {
-        name: SmolStr,
+        name: Id,
     },
 }
 
@@ -668,7 +775,7 @@ mod test {
         }
         "#;
         let et = serde_json::from_str::<EntityType>(user).expect("Parse Error");
-        assert_eq!(et.member_of_types, vec!["UserGroup"]);
+        assert_eq!(et.member_of_types, vec!["UserGroup".parse().unwrap()]);
         assert_eq!(
             et.shape.into_inner(),
             SchemaType::Type(SchemaTypeVariant::Record {
@@ -707,8 +814,8 @@ mod test {
         "#;
         let at: ActionType = serde_json::from_str(src).expect("Parse Error");
         let spec = ApplySpec {
-            resource_types: Some(vec!["Album".into()]),
-            principal_types: Some(vec!["User".into()]),
+            resource_types: Some(vec!["Album".parse().unwrap()]),
+            principal_types: Some(vec!["User".parse().unwrap()]),
             context: AttributesOrContext::default(),
         };
         assert_eq!(at.applies_to, Some(spec));
@@ -801,7 +908,7 @@ mod test {
         }"#;
         let schema: SchemaFragment = serde_json::from_str(src).expect("Parse Error");
         let (namespace, _descriptor) = schema.0.into_iter().next().unwrap();
-        assert_eq!(namespace, "foo::foo::bar::baz".to_string());
+        assert_eq!(namespace, Some("foo::foo::bar::baz".parse().unwrap()));
     }
 
     #[test]

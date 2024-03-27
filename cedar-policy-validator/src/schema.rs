@@ -92,7 +92,7 @@ impl ValidatorSchemaFragment {
                 .into_iter()
                 .map(|(fragment_ns, ns_def)| {
                     ValidatorNamespaceDef::from_namespace_definition(
-                        Some(fragment_ns),
+                        fragment_ns,
                         ns_def,
                         action_behavior,
                         extensions,
@@ -1179,7 +1179,9 @@ mod test {
         let schema_ty: SchemaType = serde_json::from_value(src).expect("Parse Error");
         assert_eq!(
             schema_ty,
-            SchemaType::Type(SchemaTypeVariant::Entity { name: "Foo".into() })
+            SchemaType::Type(SchemaTypeVariant::Entity {
+                name: "Foo".parse().unwrap()
+            })
         );
         let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
             Some(&Name::parse_unqualified_name("NS").expect("Expected namespace.")),
@@ -1198,7 +1200,7 @@ mod test {
         assert_eq!(
             schema_ty,
             SchemaType::Type(SchemaTypeVariant::Entity {
-                name: "NS::Foo".into()
+                name: "NS::Foo".parse().unwrap()
             })
         );
         let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
@@ -1218,7 +1220,7 @@ mod test {
         assert_eq!(
             schema_ty,
             SchemaType::Type(SchemaTypeVariant::Entity {
-                name: "::Foo".into()
+                name: "::Foo".parse().unwrap()
             })
         );
         match ValidatorNamespaceDef::try_schema_type_into_validator_type(
