@@ -71,9 +71,6 @@ impl<'a, T> Iterator for ExprIterator<'a, T> {
                 self.expression_stack.push(arg1);
                 self.expression_stack.push(arg2);
             }
-            ExprKind::MulByConst { arg, .. } => {
-                self.expression_stack.push(arg);
-            }
             ExprKind::ExtensionFunctionApp { args, .. } => {
                 for arg in args.as_ref() {
                     self.expression_stack.push(arg);

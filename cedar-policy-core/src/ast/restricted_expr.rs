@@ -205,13 +205,8 @@ fn is_restricted(expr: &Expr) -> Result<(), RestrictedExpressionError> {
                 feature: op.to_string(),
             })
         }
-        ExprKind::MulByConst { .. } => {
-            Err(RestrictedExpressionError::InvalidRestrictedExpression {
-                feature: "multiplication".into(),
-            })
-        }
         ExprKind::GetAttr { .. } => Err(RestrictedExpressionError::InvalidRestrictedExpression {
-            feature: "get-attribute".into(),
+            feature: "attribute accesses".into(),
         }),
         ExprKind::HasAttr { .. } => Err(RestrictedExpressionError::InvalidRestrictedExpression {
             feature: "'has'".into(),
