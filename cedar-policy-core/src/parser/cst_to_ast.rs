@@ -247,9 +247,7 @@ impl Node<Option<cst::Policy>> {
                             slot: slot.id.into(),
                             clausetype: if is_when { "when" } else { "unless" },
                         },
-                        slot.loc.expect(
-                            "all exprs created with `c.to_expr()` should have source locs attached",
-                        ),
+                        slot.loc.unwrap_or_else(|| c.loc.clone()),
                     ));
                 }
                 Some(e)
