@@ -3222,7 +3222,7 @@ mod test {
             ast,
             Err(FromJsonError::TemplateToPolicy(
                 ast::UnexpectedSlotError::FoundSlot(s)
-            )) => assert_eq!(s, ast::SlotId::principal())
+            )) => assert_eq!(s.id, ast::SlotId::principal())
         );
     }
 

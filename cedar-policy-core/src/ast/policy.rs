@@ -40,7 +40,7 @@ pub struct Template {
     /// This is maintained by the only two public constructors, `new` and `instantiate_inline_policy`
     ///
     /// Note that `slots` may be empty, in which case this `Template` represents a static policy
-    slots: Vec<SlotId>,
+    slots: Vec<Slot>,
 }
 
 impl From<Template> for TemplateBody {
@@ -53,12 +53,11 @@ impl Template {
     /// Checks the invariant (slot cache correctness)
     #[cfg(test)]
     pub fn check_invariant(&self) {
-        let body_slots = self.body.condition().slots().collect::<Vec<_>>();
-        for slot in &body_slots {
-            assert!(self.slots.contains(&slot.id));
+        for slot in self.body.condition().slots() {
+            assert!(self.slots.contains(&slot));
         }
         for slot in self.slots() {
-            assert!(body_slots.iter().any(|bslot| bslot.id == *slot));
+            assert!(self.body.condition().slots().contains(slot));
         }
     }
     // by default, Coverlay does not track coverage for lines after a line
@@ -149,7 +148,7 @@ impl Template {
     }
 
     /// List of open slots in this template
-    pub fn slots(&self) -> impl Iterator<Item = &SlotId> {
+    pub fn slots(&self) -> impl Iterator<Item = &Slot> {
         self.slots.iter()
     }
 
@@ -172,13 +171,17 @@ impl Template {
         let unbound = template
             .slots
             .iter()
-            .filter(|slot| !values.contains_key(slot))
+            .filter(|slot| !values.contains_key(&slot.id))
             .collect::<Vec<_>>();
 
         let extra = values
             .iter()
             .filter_map(|(slot, _)| {
-                if !template.slots.contains(slot) {
+                if !template
+                    .slots
+                    .iter()
+                    .any(|template_slot| template_slot.id == *slot)
+                {
                     Some(slot)
                 } else {
                     None
@@ -190,8 +193,8 @@ impl Template {
             Ok(())
         } else {
             Err(LinkingError::from_unbound_and_extras(
-                unbound.into_iter().map(SlotId::clone),
-                extra.into_iter().map(SlotId::clone),
+                unbound.into_iter().map(|slot| slot.id),
+                extra.into_iter().map(|slotid| *slotid),
             ))
         }
     }
@@ -238,11 +241,7 @@ impl From<TemplateBody> for Template {
     fn from(body: TemplateBody) -> Self {
         // INVARIANT: (slot cache correctness)
         // Pull all the slots out of the template body's condition.
-        let slots = body
-            .condition()
-            .slots()
-            .map(|slot| slot.id)
-            .collect::<Vec<_>>();
+        let slots = body.condition().slots().collect::<Vec<_>>();
         Self { body, slots }
     }
 }
@@ -282,10 +281,10 @@ pub enum LinkingError {
 }
 
 impl LinkingError {
-    fn from_unbound_and_extras<T>(unbound: T, extra: T) -> Self
-    where
-        T: Iterator<Item = SlotId>,
-    {
+    fn from_unbound_and_extras(
+        unbound: impl Iterator<Item = SlotId>,
+        extra: impl Iterator<Item = SlotId>,
+    ) -> Self {
         Self::ArityError {
             unbound_values: unbound.collect(),
             extra_values: extra.collect(),
@@ -767,7 +766,7 @@ impl StaticPolicy {
         let first_slot = body.condition().slots().next();
         // INVARIANT (inline policy correctness), checks that no slots exists
         match first_slot {
-            Some(slot) => Err(UnexpectedSlotError::FoundSlot(slot.id))?,
+            Some(slot) => Err(UnexpectedSlotError::FoundSlot(slot))?,
             None => Ok(Self(body)),
         }
     }
@@ -778,9 +777,9 @@ impl TryFrom<Template> for StaticPolicy {
 
     fn try_from(value: Template) -> Result<Self, Self::Error> {
         // INVARIANT (Static policy correctness): Must ensure StaticPolicy contains no slots
-        let o = value.slots().next().map(SlotId::clone);
-        match o {
-            Some(slot_id) => Err(Self::Error::FoundSlot(slot_id)),
+        let first_slot = value.slots().next();
+        match first_slot {
+            Some(slot) => Err(Self::Error::FoundSlot(slot.clone())),
             None => Ok(Self(value.body)),
         }
     }
@@ -1272,19 +1271,6 @@ impl EntityReference {
         Self::EUID(Arc::new(euid))
     }
 
-    /// Get the entity reference as an `EntityUID`, returning an error if it is
-    /// a slot rather than an `EntityUID`.
-    ///
-    /// `slot` indicates what `SlotId` would be implied by
-    /// `EntityReference::Slot`, which is always clear from the caller's
-    /// context. It is only used for error reporting
-    pub fn into_euid(self, slot: SlotId) -> Result<Arc<EntityUID>, UnexpectedSlotError> {
-        match self {
-            EntityReference::EUID(euid) => Ok(euid),
-            EntityReference::Slot => Err(UnexpectedSlotError::FoundSlot(slot)),
-        }
-    }
-
     /// Transform into an expression AST
     ///
     /// `slot` indicates what `SlotId` would be implied by
@@ -1299,11 +1285,22 @@ impl EntityReference {
 }
 
 /// Error for unexpected slots
-#[derive(Debug, Clone, PartialEq, Diagnostic, Error)]
+#[derive(Debug, Clone, PartialEq, Error)]
 pub enum UnexpectedSlotError {
     /// Found this slot where slots are not allowed
-    #[error("found slot `{0}` where slots are not allowed")]
-    FoundSlot(SlotId),
+    #[error("found slot `{}` where slots are not allowed", .0.id)]
+    FoundSlot(Slot),
+}
+
+impl Diagnostic for UnexpectedSlotError {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        match self {
+            Self::FoundSlot(Slot { loc, .. }) => loc.as_ref().map(|loc| {
+                let label = miette::LabeledSpan::underline(loc.span);
+                Box::new(std::iter::once(label)) as Box<dyn Iterator<Item = miette::LabeledSpan>>
+            }),
+        }
+    }
 }
 
 impl From<EntityUID> for EntityReference {
@@ -1759,7 +1756,7 @@ mod test {
             let t = Arc::new(template);
             let env = t
                 .slots()
-                .map(|slotid| (*slotid, EntityUID::with_eid("eid")))
+                .map(|slot| (slot.id, EntityUID::with_eid("eid")))
                 .collect();
             let p =
                 Template::link(t, PolicyID::from_string("id"), env).expect("Instantiation Failed");

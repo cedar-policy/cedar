@@ -190,6 +190,23 @@ pub struct Slot {
     pub loc: Option<Loc>,
 }
 
+/// `PartialEq` implementation ignores the `loc`. Slots are equal if their ids
+/// are equal.
+impl PartialEq for Slot {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl Eq for Slot {}
+
+impl std::hash::Hash for Slot {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // hash only the id, in line with the `PartialEq` impl which compares
+        // only the id
+        self.id.hash(state);
+    }
+}
+
 #[cfg(test)]
 mod vars_test {
     use super::*;

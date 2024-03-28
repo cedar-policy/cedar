@@ -202,9 +202,12 @@ impl Node<Option<cst::Policy>> {
         // report that as `UnexpectedTemplate`
         match policy {
             Some(Err(ast::UnexpectedSlotError::FoundSlot(slot))) => {
-                errs.push(
-                    self.to_ast_err(ToASTErrorKind::UnexpectedTemplate { slot: slot.into() }),
-                );
+                errs.push(ToASTError::new(
+                    ToASTErrorKind::UnexpectedTemplate {
+                        slot: slot.id.into(),
+                    },
+                    slot.loc.unwrap_or_else(|| self.loc.clone()),
+                ));
                 None
             }
             // in other cases, we're done reporting errors, so we can return the policy, if we have one

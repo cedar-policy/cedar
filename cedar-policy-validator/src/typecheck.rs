@@ -52,7 +52,6 @@ use cedar_policy_core::ast::{
     BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name,
     PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
 };
-use itertools::Itertools;
 
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 
@@ -493,7 +492,7 @@ impl<'a> Typechecker<'a> {
         var: &'a EntityType,
         constraint: &PrincipalOrResourceConstraint,
     ) -> Box<dyn Iterator<Item = Option<EntityType>> + 'a> {
-        if t.slots().contains(&slot_id) {
+        if t.slots().any(|t_slot| t_slot.id == slot_id) {
             let all_entity_types = self.schema.entity_types();
             match constraint {
                 // The condition is `var = ?slot`, so the policy can only apply
