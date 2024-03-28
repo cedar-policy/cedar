@@ -1205,7 +1205,7 @@ impl ASTNode<Option<cst::Mult>> {
                 )),
             })
             .partition_result();
-        errs.0.extend(new_errs);
+        errs.extend(new_errs);
         if !more.is_empty() {
             // in this case, `first` must be an expr, we should collect any errors there as well
             let first = maybe_first?.into_expr(errs)?;
@@ -2110,8 +2110,6 @@ fn construct_expr_record(kvs: Vec<(SmolStr, ast::Expr)>, l: SourceInfo) -> ast::
 #[allow(clippy::panic)]
 #[cfg(test)]
 mod tests {
-    use cool_asserts::assert_matches;
-
     use super::*;
     use crate::{
         ast::Expr,
