@@ -44,7 +44,7 @@ impl<'a> entities::Schema for CoreSchema<'a> {
     }
 
     fn action(&self, action: &ast::EntityUID) -> Option<Arc<ast::Entity>> {
-        self.actions.get(action).map(Arc::clone)
+        self.actions.get(action).cloned()
     }
 
     fn entity_types_with_basename<'b>(

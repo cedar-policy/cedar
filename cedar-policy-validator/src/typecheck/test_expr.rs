@@ -60,7 +60,7 @@ fn slot_in_typechecks() {
         member_of_types: vec![],
         shape: AttributesOrContext::default(),
     };
-    let schema = NamespaceDefinition::new([("typename".into(), etype)], []);
+    let schema = NamespaceDefinition::new([("typename".parse().unwrap(), etype)], []);
     assert_typechecks_for_mode(
         schema.clone(),
         Expr::binary_app(
@@ -93,7 +93,7 @@ fn slot_equals_typechecks() {
     // typechecker doesn't have access to a schema, so it can't instantiate
     // the template slots with appropriate types. Similar policies that pass
     // strict typechecking are in the test_policy file.
-    let schema = NamespaceDefinition::new([("typename".into(), etype)], []);
+    let schema = NamespaceDefinition::new([("typename".parse().unwrap(), etype)], []);
     assert_typechecks_for_mode(
         schema.clone(),
         Expr::binary_app(

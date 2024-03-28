@@ -92,7 +92,7 @@ impl ValidatorSchemaFragment {
                 .into_iter()
                 .map(|(fragment_ns, ns_def)| {
                     ValidatorNamespaceDef::from_namespace_definition(
-                        Some(fragment_ns),
+                        fragment_ns,
                         ns_def,
                         action_behavior,
                         extensions,
@@ -652,15 +652,12 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes {
 #[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod test {
-    use std::sync::Arc;
     use std::{collections::BTreeMap, str::FromStr};
 
     use crate::types::Type;
     use crate::{SchemaType, SchemaTypeVariant};
 
     use cedar_policy_core::ast::RestrictedExpr;
-    use cedar_policy_core::parser::err::{ParseError, ToASTError, ToASTErrorKind};
-    use cedar_policy_core::parser::Loc;
     use cool_asserts::assert_matches;
     use serde_json::json;
 
@@ -1024,10 +1021,8 @@ mod test {
             "actions": {}
         }
         "#;
-        let schema_file: NamespaceDefinition = serde_json::from_str(src).expect("Parse Error");
-        assert!(
-            matches!(TryInto::<ValidatorSchema>::try_into(schema_file), Err(SchemaError::ParseEntityType(_))),
-            "Expected that namespace in the entity type NS::User would cause a EntityType parse error.");
+        let schema_file: std::result::Result<NamespaceDefinition, _> = serde_json::from_str(src);
+        assert!(schema_file.is_err());
     }
 
     #[test]
@@ -1179,7 +1174,9 @@ mod test {
         let schema_ty: SchemaType = serde_json::from_value(src).expect("Parse Error");
         assert_eq!(
             schema_ty,
-            SchemaType::Type(SchemaTypeVariant::Entity { name: "Foo".into() })
+            SchemaType::Type(SchemaTypeVariant::Entity {
+                name: "Foo".parse().unwrap()
+            })
         );
         let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
             Some(&Name::parse_unqualified_name("NS").expect("Expected namespace.")),
@@ -1198,7 +1195,7 @@ mod test {
         assert_eq!(
             schema_ty,
             SchemaType::Type(SchemaTypeVariant::Entity {
-                name: "NS::Foo".into()
+                name: "NS::Foo".parse().unwrap()
             })
         );
         let ty: Type = ValidatorNamespaceDef::try_schema_type_into_validator_type(
@@ -1214,20 +1211,8 @@ mod test {
     #[test]
     fn test_entity_type_namespace_parse_error() {
         let src = json!({"type": "Entity", "name": "::Foo"});
-        let schema_ty: SchemaType = serde_json::from_value(src).expect("Parse Error");
-        assert_eq!(
-            schema_ty,
-            SchemaType::Type(SchemaTypeVariant::Entity {
-                name: "::Foo".into()
-            })
-        );
-        match ValidatorNamespaceDef::try_schema_type_into_validator_type(
-            Some(&Name::parse_unqualified_name("NS").expect("Expected namespace.")),
-            schema_ty,
-        ) {
-            Err(SchemaError::ParseEntityType(_)) => (),
-            _ => panic!("Did not see expected entity type parse error."),
-        }
+        let schema_ty: std::result::Result<SchemaType, _> = serde_json::from_value(src);
+        assert!(schema_ty.is_err());
     }
 
     #[test]
@@ -1719,25 +1704,9 @@ mod test {
                 "actions": {}
             }
         });
-        let fragment = serde_json::from_value::<SchemaFragment>(bad1)
-            .expect("constructing the fragment itself should succeed"); // should this fail in the future?
-        let err = ValidatorSchema::try_from(fragment)
-            .expect_err("should error due to invalid entity type name");
-        let problem_field = "User // comment";
-        let expected_err = ParseError::ToAST(ToASTError::new(
-            ToASTErrorKind::NonNormalizedString {
-                kind: "Id",
-                src: problem_field.to_string(),
-                normalized_src: "User".to_string(),
-            },
-            Loc::new(4, Arc::from(problem_field)),
-        ))
-        .into();
-
-        match err {
-            SchemaError::ParseEntityType(parse_error) => assert_eq!(parse_error, expected_err),
-            err => panic!("Incorrect error {err}"),
-        }
+        let fragment = serde_json::from_value::<SchemaFragment>(bad1); // should this fail in the future?
+                                                                       // The future has come?
+        assert!(fragment.is_err());
 
         // non-normalized schema namespace
         let bad2 = json!({
@@ -1750,24 +1719,9 @@ mod test {
                 "actions": {}
             }
         });
-        let fragment = serde_json::from_value::<SchemaFragment>(bad2)
-            .expect("constructing the fragment itself should succeed"); // should this fail in the future?
-        let err = ValidatorSchema::try_from(fragment)
-            .expect_err("should error due to invalid schema namespace");
-        let problem_field = "ABC     :: //comment \n XYZ  ";
-        let expected_err = ParseError::ToAST(ToASTError::new(
-            ToASTErrorKind::NonNormalizedString {
-                kind: "Name",
-                src: problem_field.to_string(),
-                normalized_src: "ABC::XYZ".to_string(),
-            },
-            Loc::new(3, Arc::from(problem_field)),
-        ))
-        .into();
-        match err {
-            SchemaError::ParseNamespace(parse_error) => assert_eq!(parse_error, expected_err),
-            err => panic!("Incorrect error {:?}", err),
-        };
+        let fragment = serde_json::from_value::<SchemaFragment>(bad2); // should this fail in the future?
+                                                                       // The future has come?
+        assert!(fragment.is_err());
     }
 
     #[test]

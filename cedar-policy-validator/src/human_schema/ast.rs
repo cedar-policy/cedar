@@ -1,7 +1,7 @@
 use std::iter::once;
 
 use cedar_policy_core::{
-    ast::Id,
+    ast::{Id, Name},
     parser::{Loc, Node},
 };
 use itertools::{Either, Itertools};
@@ -95,10 +95,22 @@ impl std::fmt::Display for Path {
     }
 }
 
+impl From<Path> for Name {
+    fn from(value: Path) -> Self {
+        value.0.node.into()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct PathInternal {
     basename: Id,
     namespace: Vec<Id>,
+}
+
+impl From<PathInternal> for Name {
+    fn from(value: PathInternal) -> Self {
+        Self::new(value.basename, value.namespace)
+    }
 }
 
 impl PathInternal {
@@ -192,16 +204,6 @@ pub enum Declaration {
     Type(TypeDecl),
 }
 
-impl Decl for Declaration {
-    fn names(&self) -> Vec<Node<SmolStr>> {
-        match self {
-            Declaration::Entity(e) => e.names(),
-            Declaration::Action(a) => a.names(),
-            Declaration::Type(t) => t.names(),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct TypeDecl {
     pub name: Node<Id>,
@@ -224,15 +226,6 @@ pub struct EntityDecl {
     pub member_of_types: Vec<Path>,
     /// Attributes this entity has
     pub attrs: Vec<Node<AttrDecl>>,
-}
-
-impl Decl for EntityDecl {
-    fn names(&self) -> Vec<Node<SmolStr>> {
-        self.names
-            .iter()
-            .map(|n| n.clone().map(|id| id.to_smolstr()))
-            .collect()
-    }
 }
 
 /// Type definitions
