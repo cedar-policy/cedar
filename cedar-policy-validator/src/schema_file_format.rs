@@ -55,6 +55,7 @@ pub struct SchemaFragment(
 fn deserialize_hash_map<'de, D, K, V>(
     key_parser: impl Fn(SmolStr) -> std::result::Result<K, ParseErrors>,
     deserializer: D,
+    kind: &'static str,
 ) -> std::result::Result<HashMap<K, V>, D::Error>
 where
     D: Deserializer<'de>,
@@ -65,7 +66,14 @@ where
         serde_with::rust::maps_duplicate_key_is_error::deserialize(deserializer)?;
     Ok(HashMap::from_iter(
         raw.into_iter()
-            .map(|(key, value)| Ok((key_parser(key).map_err(serde::de::Error::custom)?, value)))
+            .map(|(key, value)| {
+                Ok((
+                    key_parser(key).map_err(|err| {
+                        serde::de::Error::custom(format!("invalid {kind}: {err}"))
+                    })?,
+                    value,
+                ))
+            })
             .collect::<std::result::Result<Vec<(K, V)>, D::Error>>()?,
     ))
 }
@@ -85,6 +93,7 @@ where
             }
         },
         deserializer,
+        "namespace",
     )
 }
 
@@ -149,7 +158,11 @@ fn deserialize_common_types<'de, D>(
 where
     D: Deserializer<'de>,
 {
-    deserialize_hash_map(|key| Id::from_normalized_str(&key), deserializer)
+    deserialize_hash_map(
+        |key| Id::from_normalized_str(&key),
+        deserializer,
+        "common type",
+    )
 }
 
 fn deserialize_entity_types<'de, D>(
@@ -158,7 +171,11 @@ fn deserialize_entity_types<'de, D>(
 where
     D: Deserializer<'de>,
 {
-    deserialize_hash_map(|key| Id::from_normalized_str(&key), deserializer)
+    deserialize_hash_map(
+        |key| Id::from_normalized_str(&key),
+        deserializer,
+        "entity type",
+    )
 }
 
 impl NamespaceDefinition {
@@ -184,13 +201,13 @@ impl NamespaceDefinition {
 pub struct EntityType {
     #[serde(default)]
     #[serde(rename = "memberOfTypes")]
-    #[serde(deserialize_with = "deserialize_vec_name")]
+    #[serde(deserialize_with = "deserialize_member_of_types")]
     pub member_of_types: Vec<Name>,
     #[serde(default)]
     pub shape: AttributesOrContext,
 }
 
-fn deserialize_vec_name<'de, D>(deserializer: D) -> std::result::Result<Vec<Name>, D::Error>
+fn deserialize_member_of_types<'de, D>(deserializer: D) -> std::result::Result<Vec<Name>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -198,7 +215,7 @@ where
     raw.into_iter()
         .map(|s| Name::from_normalized_str(&s))
         .collect::<std::result::Result<Vec<_>, _>>()
-        .map_err(serde::de::Error::custom)
+        .map_err(|err| serde::de::Error::custom(format!("invalid member of type: {err}")))
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -281,7 +298,9 @@ where
             vs.into_iter()
                 .map(|v| Name::from_normalized_str(&v))
                 .collect::<std::result::Result<Vec<Name>, _>>()
-                .map_err(serde::de::Error::custom)?,
+                .map_err(|err| {
+                    serde::de::Error::custom(format!("invalid principal or resource types: {err}"))
+                })?,
         )),
         None => Ok(None),
     }
@@ -296,19 +315,19 @@ pub struct ActionEntityUID {
 
     #[serde(rename = "type")]
     #[serde(default)]
-    #[serde(deserialize_with = "deserialize_option_name")]
+    #[serde(deserialize_with = "deserialize_action_type")]
     pub ty: Option<Name>,
 }
 
-fn deserialize_option_name<'de, D>(deserializer: D) -> std::result::Result<Option<Name>, D::Error>
+fn deserialize_action_type<'de, D>(deserializer: D) -> std::result::Result<Option<Name>, D::Error>
 where
     D: Deserializer<'de>,
 {
     let raw = Option::<SmolStr>::deserialize(deserializer)?;
     match raw {
-        Some(s) => Ok(Some(
-            Name::from_normalized_str(&s).map_err(serde::de::Error::custom)?,
-        )),
+        Some(s) => Ok(Some(Name::from_normalized_str(&s).map_err(|err| {
+            serde::de::Error::custom(format!("invalid action type: {err}"))
+        })?)),
         None => Ok(None),
     }
 }
@@ -579,8 +598,9 @@ impl SchemaTypeVisitor {
 
                 if let Some(name) = name {
                     Ok(SchemaType::Type(SchemaTypeVariant::Entity {
-                        name: cedar_policy_core::ast::Name::from_normalized_str(&name?)
-                            .map_err(serde::de::Error::custom)?,
+                        name: cedar_policy_core::ast::Name::from_normalized_str(&name?).map_err(
+                            |err| serde::de::Error::custom(format!("invalid entity type: {err}")),
+                        )?,
                     }))
                 } else {
                     Err(serde::de::Error::missing_field(Name.as_str()))
@@ -594,7 +614,9 @@ impl SchemaTypeVisitor {
 
                 if let Some(name) = name {
                     Ok(SchemaType::Type(SchemaTypeVariant::Extension {
-                        name: Id::from_normalized_str(&name?).map_err(serde::de::Error::custom)?,
+                        name: Id::from_normalized_str(&name?).map_err(|err| {
+                            serde::de::Error::custom(format!("invalid extension type: {err}"))
+                        })?,
                     }))
                 } else {
                     Err(serde::de::Error::missing_field(Name.as_str()))
@@ -604,7 +626,9 @@ impl SchemaTypeVisitor {
                 error_if_any_fields()?;
                 Ok(SchemaType::TypeDef {
                     type_name: cedar_policy_core::ast::Name::from_normalized_str(type_name)
-                        .map_err(serde::de::Error::custom)?,
+                        .map_err(|err| {
+                            serde::de::Error::custom(format!("invalid common type: {err}"))
+                        })?,
                 })
             }
             None => Err(serde::de::Error::missing_field(Type.as_str())),
