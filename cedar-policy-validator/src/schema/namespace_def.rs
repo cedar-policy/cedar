@@ -248,8 +248,7 @@ impl ValidatorNamespaceDef {
                 if Self::is_builtin_type_name(&name_str) {
                     return Err(SchemaError::DuplicateCommonType(name_str.to_string()));
                 }
-                let name =
-                    Self::prefix_namespace(schema_namespace.cloned(), Name::unqualified_name(name));
+                let name = Name::from(name).prefix_namespace(schema_namespace.cloned());
                 let ty = Self::try_schema_type_into_validator_type(schema_namespace, schema_ty)?
                     .resolve_type_defs(&HashMap::new())?;
                 Ok((name, ty))
@@ -269,15 +268,12 @@ impl ValidatorNamespaceDef {
             entity_types: schema_files_types
                 .into_iter()
                 .map(|(id, entity_type)| -> Result<_> {
-                    let name = Self::prefix_namespace(
-                        schema_namespace.cloned(),
-                        Name::unqualified_name(id),
-                    );
+                    let name = Name::from(id).prefix_namespace(schema_namespace.cloned());
 
                     let parents = entity_type
                         .member_of_types
                         .into_iter()
-                        .map(|ty| Self::prefix_namespace(schema_namespace.cloned(), ty))
+                        .map(|ty| ty.prefix_namespace(schema_namespace.cloned()))
                         .collect();
 
                     let attributes = Self::try_schema_type_into_validator_type(
@@ -558,12 +554,7 @@ impl ValidatorNamespaceDef {
                     // Parse each type name string into a `Name`, generating an
                     // `EntityTypeParseError` when the string is not a valid
                     // name.
-                    .map(|ty| {
-                        EntityType::Specified(Self::prefix_namespace(
-                            namespace.cloned(),
-                            ty.clone(),
-                        ))
-                    })
+                    .map(|ty| EntityType::Specified(ty.prefix_namespace(namespace.cloned())))
                     // Fail if any of the types failed.
                     .collect::<HashSet<_>>()
             })
@@ -580,7 +571,7 @@ impl ValidatorNamespaceDef {
         namespace: Option<&Name>,
     ) -> EntityUID {
         let namespaced_action_type = if let Some(action_ty) = &action_id.ty {
-            Self::prefix_namespace(namespace.cloned(), action_ty.clone())
+            action_ty.prefix_namespace(namespace.cloned())
         } else {
             // PANIC SAFETY: The constant ACTION_ENTITY_TYPE is valid entity type.
             #[allow(clippy::expect_used)]
@@ -637,20 +628,16 @@ impl ValidatorNamespaceDef {
                     )
                 }
             }
-            SchemaType::Type(SchemaTypeVariant::Entity { name }) => {
-                Ok(Type::named_entity_reference(Self::prefix_namespace(
-                    default_namespace.cloned(),
-                    name,
-                ))
-                .into())
-            }
+            SchemaType::Type(SchemaTypeVariant::Entity { name }) => Ok(
+                Type::named_entity_reference(name.prefix_namespace(default_namespace.cloned()))
+                    .into(),
+            ),
             SchemaType::Type(SchemaTypeVariant::Extension { name }) => {
                 let extension_type_name = Name::unqualified_name(name);
                 Ok(Type::extension(extension_type_name).into())
             }
             SchemaType::TypeDef { type_name } => {
-                let defined_type_name =
-                    Self::prefix_namespace(default_namespace.cloned(), type_name);
+                let defined_type_name = type_name.prefix_namespace(default_namespace.cloned());
                 Ok(WithUnresolvedTypeDefs::new(move |typ_defs| {
                     typ_defs.get(&defined_type_name).cloned().ok_or(
                         SchemaError::UndeclaredCommonTypes(HashSet::from([
@@ -665,13 +652,5 @@ impl ValidatorNamespaceDef {
     /// Access the `Name` for the namespace of this definition.
     pub fn namespace(&self) -> &Option<Name> {
         &self.namespace
-    }
-
-    fn prefix_namespace(ns: Option<Name>, name: Name) -> Name {
-        if name.is_singleton() {
-            name.prefix_namespace(ns)
-        } else {
-            name
-        }
     }
 }

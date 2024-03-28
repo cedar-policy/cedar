@@ -36,6 +36,13 @@ pub struct Name {
     pub(crate) path: Arc<Vec<Id>>,
 }
 
+// A shortcut for `Name::unqualified_name`
+impl From<Id> for Name {
+    fn from(value: Id) -> Self {
+        Self::unqualified_name(value)
+    }
+}
+
 impl Name {
     /// A full constructor for `Name`
     pub fn new(basename: Id, path: impl IntoIterator<Item = Id>) -> Self {
@@ -91,19 +98,26 @@ impl Name {
     }
 
     /// Prefix the name with a optional namespace
-    /// e.g., prefix `A::B`` with `Some(C)` produces `C::A::B`
-    /// prefix `A::B` with `None` yields itself
+    /// When the name is not an `Id`, it doesn't make sense to prefix any
+    /// namespace and hence this method returns a copy of `self`
+    /// When the name is an `Id`, prefix it with the optional namespace
+    /// e.g., prefix `A::B`` with `Some(C)` or `None` produces `A::B`
+    /// prefix `A` with `Some(B::C)` yields `B::C::A`
     pub fn prefix_namespace(&self, namespace: Option<Name>) -> Name {
-        match namespace {
-            Some(namespace) => Self::new(
-                self.basename().clone(),
-                namespace
-                    .namespace_components()
-                    .chain(std::iter::once(namespace.basename()))
-                    .chain(self.namespace_components())
-                    .cloned(),
-            ),
-            None => self.clone(),
+        if self.is_singleton() {
+            // Ideally, we want to implement `IntoIterator` for `Name`
+            match namespace {
+                Some(namespace) => Self::new(
+                    self.basename().clone(),
+                    namespace
+                        .namespace_components()
+                        .chain(std::iter::once(namespace.basename()))
+                        .cloned(),
+                ),
+                None => self.clone(),
+            }
+        } else {
+            self.clone()
         }
     }
 
@@ -246,7 +260,7 @@ mod test {
                 .to_smolstr()
         );
         assert_eq!(
-            "A::B::C::D",
+            "C::D",
             Name::from_normalized_str("C::D")
                 .unwrap()
                 .prefix_namespace(Some("A::B".parse().unwrap()))
@@ -260,7 +274,7 @@ mod test {
                 .to_smolstr()
         );
         assert_eq!(
-            "A::B::C::D",
+            "B::C::D",
             Name::from_normalized_str("B::C::D")
                 .unwrap()
                 .prefix_namespace(Some("A".parse().unwrap()))
