@@ -261,7 +261,7 @@ impl<'a> ConversionContext<'a> {
             AppDecl::PR(decl) => decl.entity_tys.iter().map(|n| n.clone().into()).collect(),
             // PANIC SAFETY: see the message below
             #[allow(clippy::unreachable)]
-            _ => unreachable!("this declaration has been deemed to be a resource declaration"),
+            _ => unreachable!("this declaration has been deemed to be a principal declaration"),
         });
         let context = context_decl
             .map(|decl| match &decl.node {
