@@ -261,10 +261,13 @@ impl<T> Expr<T> {
     }
 
     /// Iterate over all of the slots in this policy AST
-    pub fn slots(&self) -> impl Iterator<Item = &SlotId> {
+    pub fn slots(&self) -> impl Iterator<Item = Slot> + '_ {
         self.subexpressions()
             .filter_map(|exp| match &exp.expr_kind {
-                ExprKind::Slot(slotid) => Some(slotid),
+                ExprKind::Slot(slotid) => Some(Slot {
+                    id: *slotid,
+                    loc: exp.source_loc().cloned(),
+                }),
                 _ => None,
             })
     }
@@ -1521,8 +1524,8 @@ mod test {
         let e = Expr::slot(SlotId::principal());
         let p = SlotId::principal();
         let r = SlotId::resource();
-        let set: HashSet<&SlotId> = [&p].into_iter().collect();
-        assert_eq!(set, e.slots().collect::<HashSet<_>>());
+        let set: HashSet<SlotId> = HashSet::from_iter([p]);
+        assert_eq!(set, e.slots().map(|slot| slot.id).collect::<HashSet<_>>());
         let e = Expr::or(
             Expr::slot(SlotId::principal()),
             Expr::ite(
@@ -1531,8 +1534,8 @@ mod test {
                 Expr::val(false),
             ),
         );
-        let set: HashSet<&SlotId> = [&p, &r].into_iter().collect();
-        assert_eq!(set, e.slots().collect::<HashSet<_>>());
+        let set: HashSet<SlotId> = HashSet::from_iter([p, r]);
+        assert_eq!(set, e.slots().map(|slot| slot.id).collect::<HashSet<_>>());
     }
 
     #[test]

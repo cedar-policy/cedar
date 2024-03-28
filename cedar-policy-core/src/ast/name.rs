@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::parser::err::ParseErrors;
+use crate::parser::Loc;
 use crate::FromNormalizedStr;
 
 use super::PrincipalOrResource;
@@ -178,6 +179,15 @@ impl std::fmt::Display for ValidSlotId {
         };
         write!(f, "?{s}")
     }
+}
+
+/// [`SlotId`] plus a source location
+#[derive(Debug, Clone)]
+pub struct Slot {
+    /// [`SlotId`]
+    pub id: SlotId,
+    /// Source location, if available
+    pub loc: Option<Loc>,
 }
 
 #[cfg(test)]

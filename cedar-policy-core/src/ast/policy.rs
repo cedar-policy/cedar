@@ -53,13 +53,12 @@ impl Template {
     /// Checks the invariant (slot cache correctness)
     #[cfg(test)]
     pub fn check_invariant(&self) {
-        let cond = self.body.condition();
-        let slots = cond.slots().collect::<Vec<_>>();
-        for slot in slots.iter() {
-            assert!(self.slots.contains(slot));
+        let body_slots = self.body.condition().slots().collect::<Vec<_>>();
+        for slot in &body_slots {
+            assert!(self.slots.contains(&slot.id));
         }
         for slot in self.slots() {
-            assert!(slots.contains(&slot));
+            assert!(body_slots.iter().any(|bslot| bslot.id == *slot));
         }
     }
     // by default, Coverlay does not track coverage for lines after a line
@@ -239,7 +238,11 @@ impl From<TemplateBody> for Template {
     fn from(body: TemplateBody) -> Self {
         // INVARIANT: (slot cache correctness)
         // Pull all the slots out of the template body's condition.
-        let slots = body.condition().slots().copied().collect::<Vec<_>>();
+        let slots = body
+            .condition()
+            .slots()
+            .map(|slot| slot.id)
+            .collect::<Vec<_>>();
         Self { body, slots }
     }
 }
@@ -761,10 +764,10 @@ impl StaticPolicy {
             resource_constraint,
             non_head_constraints,
         );
-        let num_slots = body.condition().slots().next().map(SlotId::clone);
+        let first_slot = body.condition().slots().next();
         // INVARIANT (inline policy correctness), checks that no slots exists
-        match num_slots {
-            Some(slot_id) => Err(UnexpectedSlotError::FoundSlot(slot_id))?,
+        match first_slot {
+            Some(slot) => Err(UnexpectedSlotError::FoundSlot(slot.id))?,
             None => Ok(Self(body)),
         }
     }
@@ -1740,15 +1743,14 @@ pub mod test_generators {
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 mod test {
+    use cool_asserts::assert_matches;
     use std::collections::HashSet;
 
     use super::{test_generators::*, *};
     use crate::{
         ast::{entity, id, name, EntityUID},
-        parser::{
-            err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind},
-            parse_policy, Loc,
-        },
+        parser::{parse_policy, test_utils::*},
+        test_utils::*,
     };
 
     #[test]
@@ -1836,19 +1838,10 @@ mod test {
         ));
         let mut m = HashMap::new();
         m.insert(SlotId::resource(), EntityUID::with_eid("eid"));
-        match Template::link(t, iid, m) {
-            Ok(_) => panic!("Should fail!"),
-            Err(LinkingError::ArityError {
-                unbound_values,
-                extra_values,
-            }) => {
-                assert_eq!(unbound_values.len(), 1);
-                assert!(unbound_values.contains(&SlotId::principal()));
-                assert_eq!(extra_values.len(), 1);
-                assert!(extra_values.contains(&SlotId::resource()));
-            }
-            Err(e) => panic!("Wrong error: {e}"),
-        };
+        assert_matches!(Template::link(t, iid, m), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
+            assert_eq!(unbound_values, vec![SlotId::principal()]);
+            assert_eq!(extra_values, vec![SlotId::resource()]);
+        });
     }
 
     #[test]
@@ -1864,31 +1857,16 @@ mod test {
             ResourceConstraint::is_in_slot(),
             Expr::val(true),
         ));
-        match Template::link(t.clone(), iid.clone(), HashMap::new()) {
-            Ok(_) => panic!("should have failed!"),
-            Err(LinkingError::ArityError {
-                unbound_values,
-                extra_values,
-            }) => {
-                assert_eq!(unbound_values.len(), 2);
-                assert_eq!(extra_values.len(), 0);
-            }
-            Err(e) => panic!("Wrong error: {e}"),
-        };
+        assert_matches!(Template::link(t.clone(), iid.clone(), HashMap::new()), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
+            assert_eq!(unbound_values, vec![SlotId::resource(), SlotId::principal()]);
+            assert_eq!(extra_values, vec![]);
+        });
         let mut m = HashMap::new();
         m.insert(SlotId::principal(), EntityUID::with_eid("eid"));
-        match Template::link(t, iid, m) {
-            Ok(_) => panic!("should have failed!"),
-            Err(LinkingError::ArityError {
-                unbound_values,
-                extra_values,
-            }) => {
-                assert_eq!(unbound_values.len(), 1);
-                assert!(unbound_values.contains(&SlotId::resource()));
-                assert_eq!(extra_values.len(), 0);
-            }
-            Err(e) => panic!("Wrong error: {e}"),
-        };
+        assert_matches!(Template::link(t, iid, m), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
+            assert_eq!(unbound_values, vec![SlotId::resource()]);
+            assert_eq!(extra_values, vec![]);
+        });
     }
 
     #[test]
@@ -2088,26 +2066,27 @@ mod test {
     #[test]
     fn unexpected_templates() {
         let policy_str = r#"permit(principal == ?principal, action, resource);"#;
-        let ParseErrors(errs) = parse_policy(Some("id".into()), policy_str).err().unwrap();
-        assert_eq!(
-            &errs[0],
-            &ParseError::ToAST(ToASTError::new(
-                ToASTErrorKind::UnexpectedTemplate {
-                    slot: crate::parser::cst::Slot::Principal
-                },
-                Loc::new(0..50, Arc::from(policy_str)),
-            ))
-        );
-        assert_eq!(errs.len(), 1);
+        assert_matches!(parse_policy(Some("id".into()), policy_str), Err(e) => {
+            expect_exactly_one_error(policy_str, &e, &ExpectedErrorMessageBuilder::error(
+                "expected a static policy, got a template containing the slot ?principal"
+                )
+                .help("try removing the template slot(s) from this policy")
+                .exactly_one_underline("permit(principal == ?principal, action, resource);")
+                .build()
+            );
+        });
+
         let policy_str =
             r#"permit(principal == ?principal, action, resource) when { ?principal == 3 } ;"#;
-        let ParseErrors(errs) = parse_policy(Some("id".into()), policy_str).err().unwrap();
-        assert!(errs.contains(&ParseError::ToAST(ToASTError::new(
-            ToASTErrorKind::UnexpectedTemplate {
-                slot: crate::parser::cst::Slot::Principal
-            },
-            Loc::new(50..74, Arc::from(policy_str)),
-        ))));
-        assert_eq!(errs.len(), 2);
+        assert_matches!(parse_policy(Some("id".into()), policy_str), Err(e) => {
+            expect_some_error_matches(policy_str, &e, &ExpectedErrorMessageBuilder::error(
+                "expected a static policy, got a template containing the slot ?principal"
+                )
+                .help("try removing the template slot(s) from this policy")
+                .exactly_one_underline("?principal")
+                .build()
+            );
+            assert_eq!(e.len(), 2);
+        });
     }
 }
