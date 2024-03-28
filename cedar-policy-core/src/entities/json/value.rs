@@ -94,6 +94,9 @@ pub enum CedarValueJson {
     Record(
         #[cfg_attr(feature = "wasm", tsify(type = "{ [key: string]: CedarValueJson }"))] JsonRecord,
     ),
+    /// JSON null, which is never valid, but we put this here in order to
+    /// provide a better error message.
+    Null,
 }
 
 /// Structure representing a Cedar record in JSON
@@ -258,6 +261,7 @@ impl CedarValueJson {
             )),
             Self::ExtnEscape { __extn: extn } => extn.into_expr(ctx),
             Self::ExprEscape { .. } => Err(JsonDeserializationError::ExprTag(Box::new(ctx()))),
+            Self::Null => Err(JsonDeserializationError::Null(Box::new(ctx()))),
         }
     }
 
