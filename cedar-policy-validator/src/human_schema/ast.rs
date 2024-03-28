@@ -109,7 +109,7 @@ struct PathInternal {
 
 impl From<PathInternal> for Name {
     fn from(value: PathInternal) -> Self {
-        Self::new(value.basename, value.namespace.into_iter())
+        Self::new(value.basename, value.namespace)
     }
 }
 

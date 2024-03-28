@@ -1,9 +1,10 @@
 use std::{collections::HashSet, fmt::Display};
 
+use cedar_policy_core::ast::Name;
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::NonEmpty;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use thiserror::Error;
 
 use crate::{
@@ -177,12 +178,20 @@ pub fn json_schema_to_custom_schema_str(
         let entity_types: HashSet<SmolStr> = ns
             .entity_types
             .keys()
-            .map(|ty_name| format!("{}::{ty_name}", name.as_ref().unwrap()).into())
+            .map(|ty_name| {
+                Name::unqualified_name(ty_name.clone())
+                    .prefix_namespace(name.clone())
+                    .to_smolstr()
+            })
             .collect();
         let common_types: HashSet<SmolStr> = ns
             .common_types
             .keys()
-            .map(|ty_name| format!("{}::{ty_name}", name.as_ref().unwrap()).into())
+            .map(|ty_name| {
+                Name::unqualified_name(ty_name.clone())
+                    .prefix_namespace(name.clone())
+                    .to_smolstr()
+            })
             .collect();
         name_collisions.extend(entity_types.intersection(&common_types).cloned());
     }

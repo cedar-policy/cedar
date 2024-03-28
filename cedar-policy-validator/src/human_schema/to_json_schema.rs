@@ -223,12 +223,20 @@ impl<'a> ConversionContext<'a> {
         let (decls, _) = decls.into_inner();
         let principals_decl = decls.iter().filter(|decl| matches!(&decl.node, AppDecl::PR(pr) if matches!(pr.kind.node, PR::Principal))).at_most_one().map_err(|mut err| ToJsonSchemaError::DuplicatePR {
             kind: PR::Principal,
+            // PANIC SAFETY: there are at least two elements, so `err` should be able to yield twice
+            #[allow(clippy::unwrap_used)]
             start: err.next().unwrap().loc.clone(),
+            // PANIC SAFETY: there are at least two elements, so `err` should be able to yield twice
+            #[allow(clippy::unwrap_used)]
             end: err.next().unwrap().loc.clone(),
         })?;
         let resources_decl = decls.iter().filter(|decl| matches!(&decl.node, AppDecl::PR(pr) if matches!(pr.kind.node, PR::Resource))).at_most_one().map_err(|mut err| ToJsonSchemaError::DuplicatePR {
             kind: PR::Resource,
+            // PANIC SAFETY: there are at least two elements, so `err` should be able to yield twice
+            #[allow(clippy::unwrap_used)]
             start: err.next().unwrap().loc.clone(),
+            // PANIC SAFETY: there are at least two elements, so `err` should be able to yield twice
+            #[allow(clippy::unwrap_used)]
             end: err.next().unwrap().loc.clone(),
         })?;
         let context_decl = decls
@@ -236,20 +244,30 @@ impl<'a> ConversionContext<'a> {
             .filter(|decl| matches!(decl.node, AppDecl::Context(_)))
             .at_most_one()
             .map_err(|mut err| ToJsonSchemaError::DuplicateContext {
+                // PANIC SAFETY: there are at least two elements, so `err` should be able to yield twice
+                #[allow(clippy::unwrap_used)]
                 start: err.next().unwrap().loc.clone(),
+                // PANIC SAFETY: there are at least two elements, so `err` should be able to yield twice
+                #[allow(clippy::unwrap_used)]
                 end: err.next().unwrap().loc.clone(),
             })?;
         let resource_types = resources_decl.map(|decl| match &decl.node {
             AppDecl::PR(decl) => decl.entity_tys.iter().map(|n| n.clone().into()).collect(),
+            // PANIC SAFETY: see the message below
+            #[allow(clippy::unreachable)]
             _ => unreachable!("this declaration has been deemed to be a resource declaration"),
         });
         let principal_types = principals_decl.map(|decl| match &decl.node {
             AppDecl::PR(decl) => decl.entity_tys.iter().map(|n| n.clone().into()).collect(),
+            // PANIC SAFETY: see the message below
+            #[allow(clippy::unreachable)]
             _ => unreachable!("this declaration has been deemed to be a resource declaration"),
         });
         let context = context_decl
             .map(|decl| match &decl.node {
                 AppDecl::Context(decl) => self.convert_context_decl(decl.clone()),
+                // PANIC SAFETY: see the message below
+                #[allow(clippy::unreachable)]
                 _ => unreachable!("this declaration has been deemed to be a context declaration"),
             })
             .transpose()?
@@ -370,6 +388,8 @@ impl<'a> ConversionContext<'a> {
             // We search the current namespace
             self.lookup_namespace(loc.clone(), &self.current_namespace_name)
         } else {
+            // PANIC SAFETY: `name`'s namespace is not empty because its prefix is not
+            #[allow(clippy::unwrap_used)]
             self.lookup_namespace(loc.clone(), &Some(name.namespace().parse().unwrap()))
         }?;
         // Now we search that namespace according to Rule 3
