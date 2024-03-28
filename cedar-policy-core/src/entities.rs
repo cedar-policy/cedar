@@ -953,10 +953,11 @@ mod json_parsing_tests {
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         assert_matches!(eparser.from_json_value(json.clone()), Err(e) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"error during entity deserialization: in uid field of <unknown entity>, expected a literal entity reference, but got `"test_entity_type::\"Alice\""`"#,
+            ).help(
                 r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
-            ));
+            ).build());
         });
     }
 
@@ -986,10 +987,11 @@ mod json_parsing_tests {
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         assert_matches!(eparser.from_json_value(json.clone()), Err(e) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "error during entity deserialization: in uid field of <unknown entity>, the `__expr` escape is no longer supported",
+            ).help(
                 "to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly",
-            ));
+            ).build());
         });
     }
 
@@ -1019,10 +1021,11 @@ mod json_parsing_tests {
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         assert_matches!(eparser.from_json_value(json.clone()), Err(e) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"error during entity deserialization: in attribute `pancakes` on `test_entity_type::"Alice"`, the `__expr` escape is no longer supported"#,
+            ).help(
                 "to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly",
-            ));
+            ).build());
         });
     }
 
@@ -1050,10 +1053,11 @@ mod json_parsing_tests {
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         assert_matches!(eparser.from_json_value(json.clone()), Err(e) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"error during entity deserialization: in parents field of `test_entity_type::"Alice"`, the `__expr` escape is no longer supported"#,
+            ).help(
                 "to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly",
-            ));
+            ).build());
         });
     }
 
@@ -1081,10 +1085,11 @@ mod json_parsing_tests {
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         assert_matches!(eparser.from_json_value(json.clone()), Err(e) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"error during entity deserialization: in parents field of `test_entity_type::"Alice"`, expected a literal entity reference, but got `"test_entity_type::\"bob\""`"#,
+            ).help(
                 r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
-            ));
+            ).build());
         });
     }
 
@@ -1259,10 +1264,11 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"in uid field of <unknown entity>, expected a literal entity reference, but got `"hello"`"#,
+            ).help(
                 r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
-            ));
+            ).build());
         });
 
         let json = serde_json::json!(
@@ -1275,10 +1281,11 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"in uid field of <unknown entity>, expected a literal entity reference, but got `"\"hello\""`"#,
+            ).help(
                 r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
-            ));
+            ).build());
         });
 
         let json = serde_json::json!(
@@ -1291,10 +1298,11 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"in uid field of <unknown entity>, expected a literal entity reference, but got `{"spam":"eggs","type":"foo"}`"#,
+            ).help(
                 r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
-            ));
+            ).build());
         });
 
         let json = serde_json::json!(
@@ -1307,9 +1315,9 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"invalid type: string "foo::\"help\"", expected a sequence"#
-            ));
+            ).build());
         });
 
         let json = serde_json::json!(
@@ -1325,10 +1333,11 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"in parents field of `foo::"bar"`, expected a literal entity reference, but got `"foo::\"help\""`"#,
+            ).help(
                 r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
-            ));
+            ).build());
         });
     }
 
@@ -1490,10 +1499,11 @@ mod json_parsing_tests {
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         assert_matches!(eparser.from_json_value(json.clone()), Err(e) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"error during entity deserialization: action `XYZ::Action::"view"` has a non-action parent `User::"alice"`"#,
+            ).help(
                 "parents of actions need to have type `Action` themselves, perhaps namespaced",
-            ));
+            ).build());
         });
     }
 
@@ -1542,9 +1552,9 @@ mod json_parsing_tests {
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         assert_matches!(eparser.from_json_str(json), Err(e) => {
-            expect_err(json, &e, &ExpectedErrorMessage::error(
+            expect_err(json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"error during entity deserialization: the key `bar` occurs two or more times in the same JSON object at line 11 column 25"# // TODO: put the line-column information in `Diagnostic::labels()` instead of printing it in the error message
-            ));
+            ).build());
         });
     }
 }
@@ -2020,9 +2030,9 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"entity does not conform to the schema: in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#
-            ));
+            ).build());
         });
     }
 
@@ -2063,10 +2073,11 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"error during entity deserialization: in attribute `manager` on `Employee::"12UA45"`, expected a literal entity reference, but got `"34FB87"`"#,
+            ).help(
                 r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
-            ));
+            ).build());
         });
     }
 
@@ -2104,9 +2115,9 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"error during entity deserialization: in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type (set of `HR`), but actually has type record with attributes: {"id" => (optional) string, "type" => (optional) string}: `{"id": "aaaaa", "type": "HR"}`"#
-            ));
+            ).build());
         });
     }
 
@@ -2147,9 +2158,9 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"entity does not conform to the schema: in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#
-            ));
+            ).build());
         });
     }
 
@@ -2191,9 +2202,9 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"entity does not conform to the schema: in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#
-            ));
+            ).build());
         });
     }
 
@@ -2233,9 +2244,9 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"error during entity deserialization: in attribute `json_blob` on `Employee::"12UA45"`, expected the record to have an attribute `inner2`, but it does not"#
-            ));
+            ).build());
         });
     }
 
@@ -2276,9 +2287,9 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_starts_with(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error_starts_with(
                 r#"entity does not conform to the schema: in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type record with attributes: "#
-            ));
+            ).build());
         });
 
         let entitiesjson = json!(
@@ -2351,9 +2362,9 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"error during entity deserialization: in attribute `json_blob` on `Employee::"12UA45"`, record attribute `inner4` should not exist according to the schema"#
-            ));
+            ).build());
         });
     }
 
@@ -2393,9 +2404,9 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"entity does not conform to the schema: expected entity `Employee::"12UA45"` to have attribute `numDirectReports`, but it does not"#
-            ));
+            ).build());
         });
     }
 
@@ -2437,9 +2448,9 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"error during entity deserialization: attribute `wat` on `Employee::"12UA45"` should not exist according to the schema"#
-            ));
+            ).build());
         });
     }
 
@@ -2482,9 +2493,9 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"entity does not conform to the schema: `Employee::"12UA45"` is not allowed to have an ancestor of type `Employee` according to the schema"#
-            ));
+            ).build());
         });
     }
 
@@ -2506,9 +2517,9 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"error during entity deserialization: entity `CEO::"abcdef"` has type `CEO` which is not declared in the schema"#
-            ));
+            ).build());
         });
     }
 
@@ -2530,9 +2541,9 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"error during entity deserialization: found action entity `Action::"update"`, but it was not declared as an action in the schema"#
-            ));
+            ).build());
         });
     }
 
@@ -2591,10 +2602,11 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#,
+            ).help(
                 r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#,
-            ));
+            ).build());
         });
     }
 
@@ -2620,10 +2632,11 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#,
+            ).help(
                 r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#,
-            ));
+            ).build());
         });
     }
 
@@ -2647,10 +2660,11 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#,
+            ).help(
                 r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#,
-            ));
+            ).build());
         });
     }
 
@@ -2677,10 +2691,11 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"error during entity deserialization: definition of action `Action::"view"` does not match its schema declaration"#,
+            ).help(
                 r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#,
-            ));
+            ).build());
         });
     }
 
@@ -2704,10 +2719,11 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#,
+            ).help(
                 r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#,
-            ));
+            ).build());
         });
     }
 
@@ -2734,10 +2750,11 @@ mod schema_based_parsing_tests {
             TCComputation::ComputeNow,
         );
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"entity does not conform to the schema: definition of action `Action::"view"` does not match its schema declaration"#,
+            ).help(
                 r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#,
-            ));
+            ).build());
         });
     }
 
@@ -2868,9 +2885,9 @@ mod schema_based_parsing_tests {
         );
 
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"entity does not conform to the schema: in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but actually has type `Employee`: `Employee::"34FB87"`"#
-            ));
+            ).build());
         });
 
         let entitiesjson = json!(
@@ -2888,10 +2905,11 @@ mod schema_based_parsing_tests {
         );
 
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
-            expect_err(&entitiesjson, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&entitiesjson, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"error during entity deserialization: entity `Employee::"12UA45"` has type `Employee` which is not declared in the schema"#,
+            ).help(
                 "did you mean `XYZCorp::Employee`?",
-            ));
+            ).build());
         });
     }
 }
