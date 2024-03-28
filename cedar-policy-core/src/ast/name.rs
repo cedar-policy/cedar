@@ -36,10 +36,24 @@ pub struct Name {
     pub(crate) path: Arc<Vec<Id>>,
 }
 
-// A shortcut for `Name::unqualified_name`
+/// A shortcut for `Name::unqualified_name`
 impl From<Id> for Name {
     fn from(value: Id) -> Self {
         Self::unqualified_name(value)
+    }
+}
+
+/// Convert a `Name` to an `Id`
+/// The error type is the unit type because the reason the conversion fails
+/// is obvious
+impl TryFrom<Name> for Id {
+    type Error = ();
+    fn try_from(value: Name) -> Result<Self, Self::Error> {
+        if value.is_unqualified() {
+            Ok(value.id)
+        } else {
+            Err(())
+        }
     }
 }
 
