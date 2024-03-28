@@ -713,9 +713,13 @@ impl<'a> arbitrary::Arbitrary<'a> for SchemaType {
                 SchemaTypeVariant::Entity { name }
             }
             7 => SchemaTypeVariant::Extension {
+                // PANIC SAFETY: `ipaddr` is a valid `Id`
+                #[allow(clippy::unwrap_used)]
                 name: "ipaddr".parse().unwrap(),
             },
             8 => SchemaTypeVariant::Extension {
+                // PANIC SAFETY: `decimal` is a valid `Id`
+                #[allow(clippy::unwrap_used)]
                 name: "decimal".parse().unwrap(),
             },
             n => panic!("bad index: {n}"),
