@@ -762,11 +762,13 @@ mod parse_tests {
                 resource == ?resource
             };
             "#;
-        let slot_in_when_clause = ExpectedErrorMessageBuilder::error(
-            "found template slot ?resource in a `when` clause")
-        .help("slots are currently unsupported in `when` clauses")
-        .exactly_one_underline("when {\n                resource == ?resource\n            }")
-        .build();
+        let slot_in_when_clause =
+            ExpectedErrorMessageBuilder::error("found template slot ?resource in a `when` clause")
+                .help("slots are currently unsupported in `when` clauses")
+                .exactly_one_underline(
+                    "when {\n                resource == ?resource\n            }",
+                )
+                .build();
         let unexpected_template = ExpectedErrorMessageBuilder::error(
             "expected a static policy, got a template containing the slot ?resource",
         )
@@ -799,11 +801,13 @@ mod parse_tests {
                 resource == ?principal
             };
             "#;
-        let slot_in_when_clause = ExpectedErrorMessageBuilder::error(
-            "found template slot ?principal in a `when` clause")
-        .help("slots are currently unsupported in `when` clauses")
-        .exactly_one_underline("when {\n                resource == ?principal\n            }")
-        .build();
+        let slot_in_when_clause =
+            ExpectedErrorMessageBuilder::error("found template slot ?principal in a `when` clause")
+                .help("slots are currently unsupported in `when` clauses")
+                .exactly_one_underline(
+                    "when {\n                resource == ?principal\n            }",
+                )
+                .build();
         let unexpected_template = ExpectedErrorMessageBuilder::error(
             "expected a static policy, got a template containing the slot ?principal",
         )
@@ -836,12 +840,10 @@ mod parse_tests {
                 resource == ?blah
             };
             "#;
-        let error = ExpectedErrorMessageBuilder::error(
-            "`?blah` is not a valid template slot"
-        )
-        .help("a template slot may only be `?principal` or `?resource`")
-        .exactly_one_underline("?blah")
-        .build();
+        let error = ExpectedErrorMessageBuilder::error("`?blah` is not a valid template slot")
+            .help("a template slot may only be `?principal` or `?resource`")
+            .exactly_one_underline("?blah")
+            .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &error);
         });
@@ -942,12 +944,10 @@ mod parse_tests {
                 resource == ?blah
             };
             "#;
-        let error = ExpectedErrorMessageBuilder::error(
-            "`?blah` is not a valid template slot"
-        )
-        .help("a template slot may only be `?principal` or `?resource`")
-        .exactly_one_underline("?blah")
-        .build();
+        let error = ExpectedErrorMessageBuilder::error("`?blah` is not a valid template slot")
+            .help("a template slot may only be `?principal` or `?resource`")
+            .exactly_one_underline("?blah")
+            .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &error);
         });
@@ -974,12 +974,13 @@ mod parse_tests {
                 resource == ?resource
             };
             "#;
-        let slot_in_when_clause = ExpectedErrorMessageBuilder::error(
-            "found template slot ?resource in a `when` clause"
-        )
-        .help("slots are currently unsupported in `when` clauses")
-        .exactly_one_underline("when {\n                resource == ?resource\n            }")
-        .build();
+        let slot_in_when_clause =
+            ExpectedErrorMessageBuilder::error("found template slot ?resource in a `when` clause")
+                .help("slots are currently unsupported in `when` clauses")
+                .exactly_one_underline(
+                    "when {\n                resource == ?resource\n            }",
+                )
+                .build();
         let slot_in_unless_clause = ExpectedErrorMessageBuilder::error(
             "found template slot ?resource in a `unless` clause",
         )
