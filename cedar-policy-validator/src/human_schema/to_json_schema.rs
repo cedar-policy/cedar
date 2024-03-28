@@ -17,8 +17,8 @@ use crate::{
 
 use super::{
     ast::{
-        ActionDecl, AppDecl, AttrDecl, Decl, Declaration, EntityDecl, Namespace, PRAppDecl,
-        QualName, Schema, Type, TypeDecl, BUILTIN_TYPES, CEDAR_NAMESPACE, EXTENSIONS, PR,
+        ActionDecl, AppDecl, AttrDecl, Decl, Declaration, EntityDecl, Namespace, QualName, Schema,
+        Type, TypeDecl, BUILTIN_TYPES, CEDAR_NAMESPACE, EXTENSIONS, PR,
     },
     err::{SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors},
 };
@@ -220,29 +220,40 @@ impl<'a> ConversionContext<'a> {
         decls: Node<NonEmpty<Node<AppDecl>>>,
     ) -> Result<ApplySpec, ToJsonSchemaErrors> {
         // Split AppDecl's into context/principal/resource decls
-        let (decls, loc) = decls.into_inner();
-        let (contexts, rest): (Vec<_>, Vec<_>) = decls.into_iter().partition_map(is_context_decl);
-        let (principals, resources): (Vec<_>, Vec<_>) =
-            rest.into_iter().partition_map(partition_pr_decls);
-        // Ensure we have at most one context decl, then convert it
-        let context = contexts
-            .into_iter()
+        let (decls, _) = decls.into_inner();
+        let principals_decl = decls.iter().filter(|decl| matches!(&decl.node, AppDecl::PR(pr) if matches!(pr.kind.node, PR::Principal))).at_most_one().map_err(|mut err| ToJsonSchemaError::DuplicatePR {
+            kind: PR::Principal,
+            start: err.next().unwrap().loc.clone(),
+            end: err.next().unwrap().loc.clone(),
+        })?;
+        let resources_decl = decls.iter().filter(|decl| matches!(&decl.node, AppDecl::PR(pr) if matches!(pr.kind.node, PR::Resource))).at_most_one().map_err(|mut err| ToJsonSchemaError::DuplicatePR {
+            kind: PR::Resource,
+            start: err.next().unwrap().loc.clone(),
+            end: err.next().unwrap().loc.clone(),
+        })?;
+        let context_decl = decls
+            .iter()
+            .filter(|decl| matches!(decl.node, AppDecl::Context(_)))
             .at_most_one()
-            .map_err(|_| convert_context_error(loc.clone()))?
-            .map(|attrs| self.convert_context_decl(attrs))
+            .map_err(|mut err| ToJsonSchemaError::DuplicateContext {
+                start: err.next().unwrap().loc.clone(),
+                end: err.next().unwrap().loc.clone(),
+            })?;
+        let resource_types = resources_decl.map(|decl| match &decl.node {
+            AppDecl::PR(decl) => decl.entity_tys.iter().map(|n| n.clone().into()).collect(),
+            _ => unreachable!("this declaration has been deemed to be a resource declaration"),
+        });
+        let principal_types = principals_decl.map(|decl| match &decl.node {
+            AppDecl::PR(decl) => decl.entity_tys.iter().map(|n| n.clone().into()).collect(),
+            _ => unreachable!("this declaration has been deemed to be a resource declaration"),
+        });
+        let context = context_decl
+            .map(|decl| match &decl.node {
+                AppDecl::Context(decl) => self.convert_context_decl(decl.clone()),
+                _ => unreachable!("this declaration has been deemed to be a context declaration"),
+            })
             .transpose()?
             .unwrap_or_default();
-
-        // Ensure we have at most one principal decl, then convert it
-        let principal_types = principals
-            .into_iter()
-            .at_most_one()
-            .map_err(|_| convert_pr_error(PR::Principal, loc.clone()))?;
-        // Ensure we have at most one resource decl, then convert it
-        let resource_types = resources
-            .into_iter()
-            .at_most_one()
-            .map_err(|_| convert_pr_error(PR::Resource, loc.clone()))?;
         Ok(ApplySpec {
             resource_types,
             principal_types,
@@ -399,43 +410,6 @@ impl<'a> ConversionContext<'a> {
                 ))
             })
         }
-    }
-}
-
-/// Wrap [`ExactlyOneError`] for the purpose of converting PRDecls
-fn convert_pr_error(kind: PR, loc: Loc) -> ToJsonSchemaErrors {
-    ToJsonSchemaError::DuplicatePR {
-        kind,
-        start: loc.clone(),
-        end: loc,
-    }
-    .into()
-}
-
-/// Wrap [`ExactlyOneError`] for the purpose of converting ContextDecls
-fn convert_context_error(loc: Loc) -> ToJsonSchemaError {
-    ToJsonSchemaError::DuplicateContext {
-        start: loc.clone(),
-        end: loc,
-    }
-}
-
-/// Partition on whether or not this [`AppDecl`] is defining a context
-fn is_context_decl(n: Node<AppDecl>) -> Either<Either<Path, Vec<Node<AttrDecl>>>, PRAppDecl> {
-    match n.node {
-        AppDecl::PR(decl) => Either::Right(decl),
-        AppDecl::Context(attrs) => Either::Left(attrs),
-    }
-}
-
-/// Partition on whether or this [`PRAppDecl`] is referring to [`PR::Principal`] or [`PR::Resource`]
-/// Returns a tuple of (principals, resources)
-fn partition_pr_decls(n: PRAppDecl) -> Either<Vec<Name>, Vec<Name>> {
-    let PRAppDecl { kind, entity_tys } = n;
-    let entity_tys = entity_tys.into_iter().map(|path| path.into()).collect();
-    match kind.node {
-        PR::Principal => Either::Left(entity_tys),
-        PR::Resource => Either::Right(entity_tys),
     }
 }
 
@@ -657,37 +631,4 @@ fn into_partition_decls(
     }
 
     (entities, actions, types)
-}
-
-#[cfg(test)]
-mod test {
-    use std::sync::Arc;
-
-    use cool_asserts::assert_matches;
-
-    use super::*;
-
-    fn dummy_loc() -> Loc {
-        Loc::new(1, Arc::from("foo"))
-    }
-
-    #[test]
-    fn partition_entity_decl_principal() {
-        let entity_tys = NonEmpty::singleton(Path::single("Foo".parse().unwrap(), dummy_loc()));
-        let pr = PRAppDecl {
-            kind: Node::with_source_loc(PR::Principal, dummy_loc()),
-            entity_tys,
-        };
-        assert_matches!(partition_pr_decls(pr), Either::Left(path) => path == vec!["Foo".parse().unwrap()]);
-    }
-
-    #[test]
-    fn partition_entity_decl_resource() {
-        let entity_tys = NonEmpty::singleton(Path::single("Foo".parse().unwrap(), dummy_loc()));
-        let pr = PRAppDecl {
-            kind: Node::with_source_loc(PR::Resource, dummy_loc()),
-            entity_tys,
-        };
-        assert_matches!(partition_pr_decls(pr), Either::Right(path) => path == vec!["Foo".parse().unwrap()]);
-    }
 }
