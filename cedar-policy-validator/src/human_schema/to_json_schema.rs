@@ -4,7 +4,7 @@ use cedar_policy_core::{
     ast::{Id, Name},
     parser::{Loc, Node},
 };
-use itertools::{Either, Itertools};
+use itertools::Either;
 use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::hash_map::Entry;
@@ -17,8 +17,8 @@ use crate::{
 
 use super::{
     ast::{
-        ActionDecl, AppDecl, AttrDecl, Decl, Declaration, EntityDecl, Namespace, QualName, Schema,
-        Type, TypeDecl, BUILTIN_TYPES, CEDAR_NAMESPACE, EXTENSIONS, PR,
+        ActionDecl, AppDecl, AttrDecl, Decl, Declaration, EntityDecl, Namespace, PRAppDecl,
+        QualName, Schema, Type, TypeDecl, BUILTIN_TYPES, CEDAR_NAMESPACE, EXTENSIONS, PR,
     },
     err::{SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors},
 };
@@ -221,61 +221,89 @@ impl<'a> ConversionContext<'a> {
     ) -> Result<ApplySpec, ToJsonSchemaErrors> {
         // Split AppDecl's into context/principal/resource decls
         let (decls, _) = decls.into_inner();
-        let principals_decl = decls.iter().filter(|decl| matches!(&decl.node, AppDecl::PR(pr) if matches!(pr.kind.node, PR::Principal))).at_most_one().map_err(|mut err| ToJsonSchemaError::DuplicatePR {
-            kind: PR::Principal,
-            // PANIC SAFETY: there are at least two elements, so `err` should be able to yield twice
-            #[allow(clippy::unwrap_used)]
-            start: err.next().unwrap().loc.clone(),
-            // PANIC SAFETY: there are at least two elements, so `err` should be able to yield twice
-            #[allow(clippy::unwrap_used)]
-            end: err.next().unwrap().loc.clone(),
-        })?;
-        let resources_decl = decls.iter().filter(|decl| matches!(&decl.node, AppDecl::PR(pr) if matches!(pr.kind.node, PR::Resource))).at_most_one().map_err(|mut err| ToJsonSchemaError::DuplicatePR {
-            kind: PR::Resource,
-            // PANIC SAFETY: there are at least two elements, so `err` should be able to yield twice
-            #[allow(clippy::unwrap_used)]
-            start: err.next().unwrap().loc.clone(),
-            // PANIC SAFETY: there are at least two elements, so `err` should be able to yield twice
-            #[allow(clippy::unwrap_used)]
-            end: err.next().unwrap().loc.clone(),
-        })?;
-        let context_decl = decls
-            .iter()
-            .filter(|decl| matches!(decl.node, AppDecl::Context(_)))
-            .at_most_one()
-            .map_err(|mut err| ToJsonSchemaError::DuplicateContext {
-                // PANIC SAFETY: there are at least two elements, so `err` should be able to yield twice
-                #[allow(clippy::unwrap_used)]
-                start: err.next().unwrap().loc.clone(),
-                // PANIC SAFETY: there are at least two elements, so `err` should be able to yield twice
-                #[allow(clippy::unwrap_used)]
-                end: err.next().unwrap().loc.clone(),
-            })?;
-        let resource_types = resources_decl.map(|decl| match &decl.node {
-            AppDecl::PR(decl) => decl.entity_tys.iter().map(|n| n.clone().into()).collect(),
-            // PANIC SAFETY: see the message below
-            #[allow(clippy::unreachable)]
-            _ => unreachable!("this declaration has been deemed to be a resource declaration"),
-        });
-        let principal_types = principals_decl.map(|decl| match &decl.node {
-            AppDecl::PR(decl) => decl.entity_tys.iter().map(|n| n.clone().into()).collect(),
-            // PANIC SAFETY: see the message below
-            #[allow(clippy::unreachable)]
-            _ => unreachable!("this declaration has been deemed to be a principal declaration"),
-        });
-        let context = context_decl
-            .map(|decl| match &decl.node {
-                AppDecl::Context(decl) => self.convert_context_decl(decl.clone()),
-                // PANIC SAFETY: see the message below
-                #[allow(clippy::unreachable)]
-                _ => unreachable!("this declaration has been deemed to be a context declaration"),
-            })
-            .transpose()?
-            .unwrap_or_default();
+        let mut principal_types: Option<Node<Vec<Name>>> = None;
+        let mut resource_types: Option<Node<Vec<Name>>> = None;
+        let mut context: Option<Node<AttributesOrContext>> = None;
+
+        for decl in decls {
+            match decl {
+                Node {
+                    node: AppDecl::Context(context_decl),
+                    loc,
+                } => match context {
+                    Some(existing_context) => {
+                        return Err(ToJsonSchemaError::DuplicateContext {
+                            loc1: existing_context.loc,
+                            loc2: loc,
+                        }
+                        .into());
+                    }
+                    None => {
+                        context = Some(Node::with_source_loc(
+                            self.convert_context_decl(context_decl)?,
+                            loc,
+                        ));
+                    }
+                },
+                Node {
+                    node:
+                        AppDecl::PR(PRAppDecl {
+                            kind:
+                                Node {
+                                    node: PR::Principal,
+                                    ..
+                                },
+                            entity_tys,
+                        }),
+                    loc,
+                } => match principal_types {
+                    Some(existing_tys) => {
+                        return Err(ToJsonSchemaError::DuplicatePR {
+                            kind: PR::Principal,
+                            loc1: existing_tys.loc,
+                            loc2: loc,
+                        }
+                        .into())
+                    }
+                    None => {
+                        principal_types = Some(Node::with_source_loc(
+                            entity_tys.iter().map(|n| n.clone().into()).collect(),
+                            loc,
+                        ))
+                    }
+                },
+                Node {
+                    node:
+                        AppDecl::PR(PRAppDecl {
+                            kind:
+                                Node {
+                                    node: PR::Resource, ..
+                                },
+                            entity_tys,
+                        }),
+                    loc,
+                } => match resource_types {
+                    Some(existing_tys) => {
+                        return Err(ToJsonSchemaError::DuplicatePR {
+                            kind: PR::Resource,
+                            loc1: existing_tys.loc,
+                            loc2: loc,
+                        }
+                        .into())
+                    }
+                    None => {
+                        resource_types = Some(Node::with_source_loc(
+                            entity_tys.iter().map(|n| n.clone().into()).collect(),
+                            loc,
+                        ))
+                    }
+                },
+            }
+        }
         Ok(ApplySpec {
-            resource_types,
-            principal_types,
-            context,
+            resource_types: resource_types.map(|tys| tys.node),
+            principal_types: principal_types.map(|tys| tys.node),
+            context: context.map(|c| c.node).unwrap_or_default(),
         })
     }
 
@@ -384,13 +412,19 @@ impl<'a> ConversionContext<'a> {
         let is_unqualified_or_cedar = p.is_in_unqualified_or_cedar();
         let loc = p.loc().clone();
         let (prefix, base) = p.split_last();
-        let namespace_to_search = if prefix.is_empty() {
+        let namespace_to_search = match prefix.split_last() {
+            Some((prefix_base, prefix_prefix)) => self.lookup_namespace(
+                loc.clone(),
+                &Some(Name::new(
+                    prefix_base.clone(),
+                    prefix_prefix.into_iter().cloned(),
+                )),
+            ),
+            None =>
             // We search the current namespace
-            self.lookup_namespace(loc.clone(), &self.current_namespace_name)
-        } else {
-            // PANIC SAFETY: `name`'s namespace is not empty because its prefix is not
-            #[allow(clippy::unwrap_used)]
-            self.lookup_namespace(loc.clone(), &Some(name.namespace().parse().unwrap()))
+            {
+                self.lookup_namespace(loc.clone(), &self.current_namespace_name)
+            }
         }?;
         // Now we search that namespace according to Rule 3
         // (https://github.com/cedar-policy/rfcs/blob/main/text/0024-schema-syntax.md#rule-3-resolve-name-references-in-a-priority-order)
@@ -530,8 +564,8 @@ where
         match map.entry(key.clone()) {
             Entry::Occupied(entry) => Err(ToJsonSchemaError::DuplicateDeclarations {
                 decl: key.to_smolstr(),
-                start: entry.get().loc.clone(),
-                end: node.loc,
+                loc1: entry.get().loc.clone(),
+                loc2: node.loc,
             }),
             Entry::Vacant(entry) => {
                 entry.insert(node);
@@ -606,8 +640,8 @@ fn update_namespace_record(
     match map.entry(name.clone()) {
         Entry::Occupied(entry) => Err(ToJsonSchemaError::DuplicateNameSpaces {
             namespace_id: name.map_or("".into(), |n| n.to_smolstr()),
-            start: record.loc,
-            end: entry.get().loc.clone(),
+            loc1: record.loc,
+            loc2: entry.get().loc.clone(),
         }
         .into()),
         Entry::Vacant(entry) => {
