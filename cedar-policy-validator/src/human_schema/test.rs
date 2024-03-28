@@ -1641,4 +1641,69 @@ mod translator_tests {
 
         assert!(SchemaFragment::from_str_natural(src).is_err());
     }
+
+    #[test]
+    fn multiple_principal_decls() {
+        let schema = SchemaFragment::from_str_natural(
+            r#"
+        entity foo;
+        action a appliesTo { principal: A, principal: A };
+        "#,
+        );
+        assert!(schema.is_err());
+
+        let schema = SchemaFragment::from_str_natural(
+            r#"
+        entity foo;
+        action a appliesTo { principal: A, resource: B, principal: A };
+        "#,
+        );
+        assert!(schema.is_err());
+    }
+
+    #[test]
+    fn multiple_resource_decls() {
+        let schema = SchemaFragment::from_str_natural(
+            r#"
+        entity foo;
+        action a appliesTo { resource: A, resource: A };
+        "#,
+        );
+        assert!(schema.is_err());
+
+        let schema = SchemaFragment::from_str_natural(
+            r#"
+        entity foo;
+        action a appliesTo { resource: A, principal: B, resource: A };
+        "#,
+        );
+        assert!(schema.is_err());
+    }
+
+    #[test]
+    fn multiple_context_decls() {
+        let schema = SchemaFragment::from_str_natural(
+            r#"
+        entity foo;
+        action a appliesTo { context: A, context: A };
+        "#,
+        );
+        assert!(schema.is_err());
+
+        let schema = SchemaFragment::from_str_natural(
+            r#"
+        entity foo;
+        action a appliesTo { principal: C, context: A, context: A };
+        "#,
+        );
+        assert!(schema.is_err());
+
+        let schema = SchemaFragment::from_str_natural(
+            r#"
+        entity foo;
+        action a appliesTo { resource: C, context: A, context: A };
+        "#,
+        );
+        assert!(schema.is_err());
+    }
 }
