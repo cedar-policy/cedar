@@ -204,8 +204,9 @@ impl Diagnostics {
     }
 }
 
-/// FFI version of a [`PartialResponse`] that uses the above [`Diagnostics`]
-/// instead of [`crate::Diagnostics`] for simpler (de)serialization
+/// FFI version of a [`crate::PartialResponse`] that uses the above
+/// [`Diagnostics`] instead of [`crate::Diagnostics`] for simpler
+/// (de)serialization
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
