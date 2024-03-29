@@ -137,14 +137,11 @@ mod test {
     fn test_conversion_from_cedar() {
         let cedar_repr = r#"permit(principal, action, resource) when { principal has "Email" && principal.Email == "a@a.com" };"#;
         let json_conversion_result = policy_text_to_json(cedar_repr);
-        assert!(matches!(
-            json_conversion_result,
-            PolicyToJsonResult::Success { policy: _ }
-        ))
+        assert_matches!(json_conversion_result, PolicyToJsonResult::Success { .. });
     }
 
     #[test]
-    fn test_convertion_from_json() {
+    fn test_conversion_from_json() {
         let est_repr = r#"{
             "effect": "permit",
             "action": {
@@ -167,17 +164,13 @@ mod test {
             "conditions": []
         }"#;
 
-        let cedar_convertion_result: JsonToPolicyResult = policy_text_from_json(&est_repr);
-        match cedar_convertion_result {
-            JsonToPolicyResult::Success { policy_text } => assert_eq!(
+        let cedar_conversion_result: JsonToPolicyResult = policy_text_from_json(est_repr);
+        assert_matches(cedar_conversion_result, JsonToPolicyResult::Success { policy_text } => {
+            assert_eq!(
                 &policy_text,
                 "permit(principal in UserGroup::\"DeathRowRecords\", action == Action::\"pop\", resource);"
-            ),
-            JsonToPolicyResult::Error { errors } => {
-                dbg!(errors);
-                panic!("Test failed")
-            }
-        }
+            );
+        });
     }
 
     #[test]
@@ -206,20 +199,11 @@ mod test {
     }
 
     fn assert_result_is_ok(result: &CheckParsePolicySetResult) {
-        assert!(matches!(
-            result,
-            CheckParsePolicySetResult::Success {
-                policies: _,
-                templates: _,
-            }
-        ));
+        assert_matches!(result, CheckParsePolicySetResult::Success { .. });
     }
 
     fn assert_result_had_syntax_errors(result: &CheckParsePolicySetResult) {
-        assert!(matches!(
-            result,
-            CheckParsePolicySetResult::SyntaxError { errors: _ }
-        ));
+        assert_matches!(result, CheckParsePolicySetResult::SyntaxError { .. });
     }
 
     #[test]
@@ -235,19 +219,13 @@ mod test {
     fn parse_template_fails_for_missing_slots() {
         let template_str = r#"permit (principal, action, resource);"#;
         let result = check_parse_template(template_str);
-        assert!(matches!(
-            result,
-            CheckParseTemplateResult::Error { errors: _ }
-        ));
+        assert_matches!(result, CheckParseTemplateResult::Error { .. });
     }
 
     #[test]
     fn parse_template_fails_for_bad_slot() {
         let template_str = r#"permit (principal, action, resource == ?principal);"#;
         let result = check_parse_template(template_str);
-        assert!(matches!(
-            result,
-            CheckParseTemplateResult::Error { errors: _ }
-        ));
+        assert_matches!(result, CheckParseTemplateResult::Error { .. });
     }
 }

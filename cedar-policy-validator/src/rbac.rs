@@ -1154,7 +1154,7 @@ mod test {
     fn assert_validate_policy_succeeds(validator: &Validator, policy: &Template) {
         assert!(
             validator
-                .validate_policy(&policy, ValidationMode::default())
+                .validate_policy(policy, ValidationMode::default())
                 .0
                 .next()
                 .is_none(),
@@ -1162,7 +1162,7 @@ mod test {
         );
         assert!(
             validator
-                .validate_policy(&policy, ValidationMode::default())
+                .validate_policy(policy, ValidationMode::default())
                 .1
                 .next()
                 .is_none(),
