@@ -42,7 +42,7 @@ thread_local!(
     static AUTHORIZER: Authorizer = Authorizer::new();
 );
 
-/// Basic interface, using `AuthorizationCall` and `AuthorizationAnswer` types
+/// Basic interface, using [`AuthorizationCall`] and [`AuthorizationAnswer`] types
 pub fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
     match call.get_components() {
         Ok((request, policies, entities)) => {
