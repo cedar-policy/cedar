@@ -18,8 +18,6 @@
 //! FFI's can call in order to use Cedar functionality
 #![allow(clippy::module_name_repetitions)]
 use super::utils::PolicySpecification;
-#[cfg(feature = "partial-eval")]
-use crate::PartialResponse;
 use crate::{
     Authorizer, Context, Decision, Entities, EntityId, EntityTypeName, EntityUid, PolicyId,
     PolicySet, Request, SchemaWarning, SlotId,
@@ -78,13 +76,13 @@ pub fn is_authorized_partial(call: AuthorizationCall) -> PartialAuthorizationAns
     match call.get_components_partial() {
         Ok((request, policies, entities)) => AUTHORIZER.with(|authorizer| {
             match authorizer.is_authorized_partial(&request, &policies, &entities) {
-                concrete_response @ PartialResponse::Concrete(_) => {
+                concrete_response @ crate::PartialResponse::Concrete(_) => {
                     match concrete_response.try_into() {
                         Ok(response) => PartialAuthorizationAnswer::Concrete { response },
                         Err(errors) => PartialAuthorizationAnswer::Failure { errors },
                     }
                 }
-                residual_response @ PartialResponse::Residual(_) => {
+                residual_response @ crate::PartialResponse::Residual(_) => {
                     match residual_response.try_into() {
                         Ok(response) => PartialAuthorizationAnswer::Residuals { response },
                         Err(errors) => PartialAuthorizationAnswer::Failure { errors },
@@ -175,12 +173,12 @@ impl From<crate::Response> for Response {
 }
 
 #[cfg(feature = "partial-eval")]
-impl TryFrom<PartialResponse> for Response {
+impl TryFrom<crate::PartialResponse> for Response {
     type Error = Vec<String>;
 
-    fn try_from(partial_response: PartialResponse) -> Result<Self, Self::Error> {
+    fn try_from(partial_response: crate::PartialResponse) -> Result<Self, Self::Error> {
         match partial_response {
-            PartialResponse::Concrete(concrete) => Ok(Self::new(
+            crate::PartialResponse::Concrete(concrete) => Ok(Self::new(
                 concrete.decision(),
                 concrete.diagnostics().reason().cloned().collect(),
                 concrete
@@ -189,7 +187,7 @@ impl TryFrom<PartialResponse> for Response {
                     .map(ToString::to_string)
                     .collect(),
             )),
-            PartialResponse::Residual(_) => Err(vec!["unsupported".into()]),
+            crate::PartialResponse::Residual(_) => Err(vec!["unsupported".into()]),
         }
     }
 }
@@ -206,7 +204,8 @@ impl Diagnostics {
     }
 }
 
-/// Integration version of a `PartialResponse` that uses `InterfaceDiagnistics` for simpler (de)serialization
+/// FFI version of a [`PartialResponse`] that uses the above [`Diagnostics`]
+/// instead of [`crate::Diagnostics`] for simpler (de)serialization
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -219,7 +218,7 @@ pub struct ResidualResponse {
 
 #[cfg(feature = "partial-eval")]
 impl ResidualResponse {
-    /// Construct an `InterfaceResidualResponse`
+    /// Construct a `ResidualResponse`
     pub fn new(
         residuals: HashMap<PolicyId, serde_json::Value>,
         reason: HashSet<PolicyId>,
@@ -233,12 +232,12 @@ impl ResidualResponse {
 }
 
 #[cfg(feature = "partial-eval")]
-impl TryFrom<PartialResponse> for InterfaceResidualResponse {
+impl TryFrom<crate::PartialResponse> for ResidualResponse {
     type Error = Vec<String>;
 
-    fn try_from(partial_response: PartialResponse) -> Result<Self, Self::Error> {
+    fn try_from(partial_response: crate::PartialResponse) -> Result<Self, Self::Error> {
         match partial_response {
-            PartialResponse::Residual(residual) => Ok(Self::new(
+            crate::PartialResponse::Residual(residual) => Ok(Self::new(
                 residual
                     .residuals()
                     .policies()
@@ -256,7 +255,7 @@ impl TryFrom<PartialResponse> for InterfaceResidualResponse {
                     .map(ToString::to_string)
                     .collect(),
             )),
-            PartialResponse::Concrete(_) => Err(vec!["unsupported".into()]),
+            crate::PartialResponse::Concrete(_) => Err(vec!["unsupported".into()]),
         }
     }
 }
@@ -281,6 +280,7 @@ pub enum AuthorizationAnswer {
     },
 }
 
+/// Answer struct from partial-authorization call
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -520,7 +520,7 @@ impl AuthorizationCall {
         let resource = self
             .resource
             .and_then(|r| parse_entity_uid(r, "resource", &mut errs));
-        let context = parse_context(self.context, schema.as_ref(), &action, &mut errs);
+        let context = parse_context(self.context, schema.as_ref(), action.as_ref(), &mut errs);
 
         let mut b = Request::builder();
         if principal.is_some() {
@@ -550,7 +550,7 @@ impl AuthorizationCall {
         let (policies, entities) = match self.slice.try_into(schema.as_ref()) {
             Ok((policies, entities)) => (Some(policies), Some(entities)),
             Err(e) => {
-                errs.push(e);
+                errs.extend(e);
                 (None, None)
             }
         };
