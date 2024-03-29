@@ -148,7 +148,6 @@ enum ValidationAnswer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::frontend::utils::assert_is_failure;
     use cool_asserts::assert_matches;
     use std::{collections::HashMap, str::FromStr};
 
@@ -441,6 +440,16 @@ mod test {
             assert_matches!(parsed_result, ValidationAnswer::Success { validation_errors, validation_warnings: _ } => {
                 assert_eq!(validation_errors.len(), expected_num_errors);
             });
+        });
+    }
+
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+    fn assert_is_failure(result: &InterfaceResult, internal: bool, err: &str) {
+        assert_matches!(result, InterfaceResult::Failure { errors, is_internal } => {
+            assert!(
+                errors.iter().any(|e| e.contains(err)),
+                "Expected to see error(s) containing `{err}`, but saw {errors:?}");
+            assert_eq!(internal, *is_internal);
         });
     }
 

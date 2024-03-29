@@ -19,7 +19,7 @@
 //! running the integration tests and for performing randomized differential
 //! testing (see <https://github.com/cedar-policy/cedar-spec>).
 
-pub use cedar_policy::frontend::is_authorized::InterfaceResponse;
+pub use cedar_policy::frontend::is_authorized::Response;
 use cedar_policy_core::ast::{Expr, PolicySet, Request, Value};
 use cedar_policy_core::authorizer::Authorizer;
 use cedar_policy_core::entities::Entities;
@@ -70,7 +70,7 @@ pub struct Micros(pub u128);
 #[derive(Debug, Deserialize)]
 pub struct TestResponse {
     /// Actual response
-    pub response: InterfaceResponse,
+    pub response: Response,
     /// Timing info in microseconds. This field is a `HashMap` to allow timing
     /// multiple components (or none at all).
     pub timing_info: HashMap<String, Micros>,
@@ -200,7 +200,7 @@ impl CedarTestImplementation for RustEngine {
         // Error messages should only include the policy id to use the
         // `ErrorComparisonMode::PolicyIds` mode.
         let response = cedar_policy::Response::from(response);
-        let response = InterfaceResponse::new(
+        let response = Response::new(
             response.decision(),
             response.diagnostics().reason().cloned().collect(),
             response
