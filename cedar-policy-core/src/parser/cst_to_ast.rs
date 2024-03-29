@@ -185,7 +185,7 @@ impl Node<Option<cst::Policy>> {
         // `SlotsInConditionClause`, we can report that as `UnexpectedTemplate`
         let new_errs = errs
             .iter()
-            .flat_map(|err| match err {
+            .filter_map(|err| match err {
                 ParseError::ToAST(err) => match err.kind() {
                     ToASTErrorKind::SlotsInConditionClause { slot, .. } => Some(ToASTError::new(
                         ToASTErrorKind::UnexpectedTemplate { slot: slot.clone() },
@@ -202,9 +202,12 @@ impl Node<Option<cst::Policy>> {
         // report that as `UnexpectedTemplate`
         match policy {
             Some(Err(ast::UnexpectedSlotError::FoundSlot(slot))) => {
-                errs.push(
-                    self.to_ast_err(ToASTErrorKind::UnexpectedTemplate { slot: slot.into() }),
-                );
+                errs.push(ToASTError::new(
+                    ToASTErrorKind::UnexpectedTemplate {
+                        slot: slot.id.into(),
+                    },
+                    slot.loc.unwrap_or_else(|| self.loc.clone()),
+                ));
                 None
             }
             // in other cases, we're done reporting errors, so we can return the policy, if we have one
@@ -242,10 +245,13 @@ impl Node<Option<cst::Policy>> {
             .filter_map(|c| {
                 let (e, is_when) = c.to_expr(errs)?;
                 for slot in e.slots() {
-                    errs.push(c.to_ast_err(ToASTErrorKind::SlotsInConditionClause {
-                        slot: (*slot).into(),
-                        clausetype: if is_when { "when" } else { "unless" },
-                    }));
+                    errs.push(ToASTError::new(
+                        ToASTErrorKind::SlotsInConditionClause {
+                            slot: slot.id.into(),
+                            clausetype: if is_when { "when" } else { "unless" },
+                        },
+                        slot.loc.unwrap_or_else(|| c.loc.clone()),
+                    ));
                 }
                 Some(e)
             })
