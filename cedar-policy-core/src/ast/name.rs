@@ -37,6 +37,27 @@ pub struct Name {
     pub(crate) path: Arc<Vec<Id>>,
 }
 
+/// A shortcut for `Name::unqualified_name`
+impl From<Id> for Name {
+    fn from(value: Id) -> Self {
+        Self::unqualified_name(value)
+    }
+}
+
+/// Convert a `Name` to an `Id`
+/// The error type is the unit type because the reason the conversion fails
+/// is obvious
+impl TryFrom<Name> for Id {
+    type Error = ();
+    fn try_from(value: Name) -> Result<Self, Self::Error> {
+        if value.is_unqualified() {
+            Ok(value.id)
+        } else {
+            Err(())
+        }
+    }
+}
+
 impl Name {
     /// A full constructor for `Name`
     pub fn new(basename: Id, path: impl IntoIterator<Item = Id>) -> Self {
@@ -89,6 +110,35 @@ impl Name {
     /// - `foo::bar::baz` --> the namespace is `"foo::bar"`
     pub fn namespace(&self) -> String {
         self.path.iter().join("::")
+    }
+
+    /// Prefix the name with a optional namespace
+    /// When the name is not an `Id`, it doesn't make sense to prefix any
+    /// namespace and hence this method returns a copy of `self`
+    /// When the name is an `Id`, prefix it with the optional namespace
+    /// e.g., prefix `A::B`` with `Some(C)` or `None` produces `A::B`
+    /// prefix `A` with `Some(B::C)` yields `B::C::A`
+    pub fn prefix_namespace_if_unqualified(&self, namespace: Option<Name>) -> Name {
+        if self.is_unqualified() {
+            // Ideally, we want to implement `IntoIterator` for `Name`
+            match namespace {
+                Some(namespace) => Self::new(
+                    self.basename().clone(),
+                    namespace
+                        .namespace_components()
+                        .chain(std::iter::once(namespace.basename()))
+                        .cloned(),
+                ),
+                None => self.clone(),
+            }
+        } else {
+            self.clone()
+        }
+    }
+
+    /// Test if a `Name` is an `Id`
+    pub fn is_unqualified(&self) -> bool {
+        self.path.is_empty()
     }
 }
 
@@ -225,6 +275,7 @@ mod vars_test {
 
 #[cfg(test)]
 mod test {
+    use smol_str::ToSmolStr;
 
     use super::*;
 
@@ -237,5 +288,37 @@ mod test {
         Name::from_normalized_str("foo ").expect_err("shouldn't be OK");
         Name::from_normalized_str("foo\n").expect_err("shouldn't be OK");
         Name::from_normalized_str("foo//comment").expect_err("shouldn't be OK");
+    }
+
+    #[test]
+    fn prefix_namespace() {
+        assert_eq!(
+            "foo::bar::baz",
+            Name::from_normalized_str("baz")
+                .unwrap()
+                .prefix_namespace_if_unqualified(Some("foo::bar".parse().unwrap()))
+                .to_smolstr()
+        );
+        assert_eq!(
+            "C::D",
+            Name::from_normalized_str("C::D")
+                .unwrap()
+                .prefix_namespace_if_unqualified(Some("A::B".parse().unwrap()))
+                .to_smolstr()
+        );
+        assert_eq!(
+            "A::B::C::D",
+            Name::from_normalized_str("D")
+                .unwrap()
+                .prefix_namespace_if_unqualified(Some("A::B::C".parse().unwrap()))
+                .to_smolstr()
+        );
+        assert_eq!(
+            "B::C::D",
+            Name::from_normalized_str("B::C::D")
+                .unwrap()
+                .prefix_namespace_if_unqualified(Some("A".parse().unwrap()))
+                .to_smolstr()
+        );
     }
 }

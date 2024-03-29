@@ -238,14 +238,14 @@ mod test {
         let schema_file = NamespaceDefinition::new(
             [
                 (
-                    foo_type.into(),
+                    foo_type.parse().unwrap(),
                     EntityType {
                         member_of_types: vec![],
                         shape: AttributesOrContext::default(),
                     },
                 ),
                 (
-                    bar_type.into(),
+                    bar_type.parse().unwrap(),
                     EntityType {
                         member_of_types: vec![],
                         shape: AttributesOrContext::default(),
