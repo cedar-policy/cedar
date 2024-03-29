@@ -16,9 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Implement [RFC 57](https://github.com/cedar-policy/rfcs/pull/57): policies can
-  now include multiplication of arbitrary expressions, not just multiplication of
-  an expression and a constant.
 - Moved `<PolicyId as FromStr>::Err` to `Infallible` (#588, resolving #551)
 - Improved "unexpected token" parse errors when the schema or policy parsers
   expect an identifier. (#698)
@@ -30,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deprecated error `TypeErrorKind::ImpossiblePolicy` in favor of warning
   `ValidationWarningKind::ImpossiblePolicy` so future improvements to Cedar
   typing precision will not result in breaking changes. (resolving #539)
+
+## [3.1.2] - 2024-03-29
+
+- Implement [RFC 57](https://github.com/cedar-policy/rfcs/pull/57): policies can
+  now include multiplication of arbitrary expressions, not just multiplication of
+  an expression and a constant.
 
 ## [3.1.1] - 2024-03-14
 
@@ -441,7 +444,8 @@ Cedar Language Version: 2.0.0
 Cedar Language Version: 2.0.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.1.1...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v3.1.2...main
+[3.1.2]: https://github.com/cedar-policy/cedar/compare/v3.1.1...v3.1.2
 [3.1.1]: https://github.com/cedar-policy/cedar/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/cedar-policy/cedar/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/cedar-policy/cedar/compare/v3.0.0...v3.0.1
