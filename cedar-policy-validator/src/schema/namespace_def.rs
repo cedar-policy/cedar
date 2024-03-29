@@ -371,6 +371,10 @@ impl ValidatorNamespaceDef {
                     "extension function escape (`__extn`)".to_owned(),
                 ))
             }
+            CedarValueJson::Null => Err(SchemaError::UnsupportedActionAttribute(
+                action_id.clone(),
+                "null".to_owned(),
+            )),
         }
     }
 
