@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.4.5 - Coming soon
+## 2.4.5
 
 ### Changed
 
