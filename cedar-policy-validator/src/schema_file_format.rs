@@ -32,7 +32,7 @@ use crate::{
     human_schema::{
         self, parser::parse_natural_schema_fragment, SchemaWarning, ToHumanSchemaStrError,
     },
-    HumanSchemaError, Result,
+    HumanSchemaError, Result, SchemaError,
 };
 
 #[cfg(feature = "wasm")]
@@ -130,6 +130,175 @@ impl SchemaFragment {
     pub fn as_natural_schema(&self) -> std::result::Result<String, ToHumanSchemaStrError> {
         let src = human_schema::json_schema_to_custom_schema_str(self)?;
         Ok(src)
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct CommonTypeResolver<'a> {
+    schema: &'a mut SchemaFragment,
+    graph: HashMap<Name, HashSet<Name>>,
+}
+
+impl<'a> CommonTypeResolver<'a> {
+    pub(crate) fn new(schema: &'a mut SchemaFragment) -> Self {
+        let mut graph = HashMap::new();
+        for (ns, def) in schema.0.iter() {
+            for (ty_name, ty) in def.common_types.iter() {
+                let name = Name::from(ty_name.clone()).prefix_namespace_if_unqualified(ns.clone());
+                graph.insert(name, HashSet::from_iter(ty.common_type_references()));
+            }
+        }
+        Self { schema, graph }
+    }
+
+    fn topo_sort(&self) -> std::result::Result<Vec<Name>, Name> {
+        // The in-degree map
+        // Note that the keys of this map may be a superset of all common type
+        // names
+        let mut indegrees: HashMap<&Name, usize> = HashMap::new();
+        for (ty_name, deps) in self.graph.iter() {
+            // Ensure that declared common types have values in `indegrees`
+            indegrees.entry(ty_name).or_insert(0);
+            for dep in deps {
+                match indegrees.entry(dep) {
+                    std::collections::hash_map::Entry::Occupied(mut o) => {
+                        o.insert(o.get() + 1);
+                    }
+                    std::collections::hash_map::Entry::Vacant(v) => {
+                        v.insert(1);
+                    }
+                }
+            }
+        }
+        let mut work_set: HashSet<&Name> = HashSet::new();
+        let mut res: Vec<Name> = Vec::new();
+
+        // Find all type names with zero in coming edges
+        for name in indegrees.keys().cloned() {
+            if let Some(degree) = indegrees.get(name) {
+                if *degree == 0 {
+                    work_set.insert(name);
+                    if self.graph.contains_key(name) {
+                        res.push(name.clone());
+                    }
+                }
+            }
+        }
+
+        while !work_set.is_empty() {
+            let name = work_set.iter().next().cloned().unwrap();
+            work_set.remove(name);
+            if let Some(deps) = self.graph.get(name) {
+                for dep in deps {
+                    if let Some(degree) = indegrees.get_mut(dep) {
+                        *degree -= 1;
+                        if *degree == 0 {
+                            work_set.insert(dep);
+                            if self.graph.contains_key(dep) {
+                                res.push(dep.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut set: HashSet<&Name> = HashSet::from_iter(self.graph.keys().clone());
+        for name in res.iter() {
+            set.remove(name);
+        }
+
+        if let Some(cycle) = set.into_iter().next() {
+            Err(cycle.clone())
+        } else {
+            res.reverse();
+            Ok(res)
+        }
+    }
+
+    fn resolve_type(
+        resolve_table: &HashMap<&Name, SchemaType>,
+        ty: SchemaType,
+        ns: &Option<Name>,
+    ) -> Result<SchemaType> {
+        match ty {
+            SchemaType::TypeDef { type_name } => {
+                let name = if type_name.is_unqualified() {
+                    type_name.prefix_namespace_if_unqualified(ns.clone())
+                } else {
+                    type_name.clone()
+                };
+                resolve_table
+                    .get(&name)
+                    .ok_or(SchemaError::UndeclaredCommonTypes(HashSet::from_iter(
+                        std::iter::once(name.to_string()),
+                    )))
+                    .cloned()
+            }
+            SchemaType::Type(SchemaTypeVariant::Set { element }) => {
+                Ok(SchemaType::Type(SchemaTypeVariant::Set {
+                    element: Box::new(Self::resolve_type(resolve_table, *element, ns)?),
+                }))
+            }
+            SchemaType::Type(SchemaTypeVariant::Record {
+                attributes,
+                additional_attributes,
+            }) => Ok(SchemaType::Type(SchemaTypeVariant::Record {
+                attributes: BTreeMap::from_iter(
+                    attributes
+                        .into_iter()
+                        .map(|(attr, attr_ty)| {
+                            Ok((
+                                attr,
+                                TypeOfAttribute {
+                                    required: attr_ty.required,
+                                    ty: Self::resolve_type(resolve_table, attr_ty.ty, ns)?,
+                                },
+                            ))
+                        })
+                        .collect::<Result<Vec<(_, _)>>>()?,
+                ),
+                additional_attributes,
+            })),
+            _ => Ok(ty),
+        }
+    }
+
+    pub(crate) fn resolve(&mut self) -> Result<()> {
+        let sorted_names = match self.topo_sort() {
+            Ok(sorted_name) => sorted_name,
+            Err(cycle) => return Err(SchemaError::DuplicateCommonType(cycle.to_string())),
+        };
+
+        let mut resolve_table = HashMap::new();
+
+        for name in sorted_names.iter() {
+            if name.is_unqualified() {
+                let ty = &self.schema.0.get(&None).unwrap().common_types[name.basename()];
+                let substituted_ty = Self::resolve_type(&resolve_table, ty.clone(), &None)?;
+                resolve_table.insert(name, substituted_ty.clone());
+                self.schema
+                    .0
+                    .get_mut(&None)
+                    .unwrap()
+                    .common_types
+                    .insert(name.basename().clone(), substituted_ty);
+            } else {
+                // TODO: use proper getter for namespace
+                let ns: Option<Name> = Some(name.namespace().parse().unwrap());
+                let ty = &self.schema.0.get(&ns).unwrap().common_types[name.basename()];
+                let substituted_ty = Self::resolve_type(&resolve_table, ty.clone(), &None)?;
+                resolve_table.insert(name, substituted_ty.clone());
+                self.schema
+                    .0
+                    .get_mut(&ns)
+                    .unwrap()
+                    .common_types
+                    .insert(name.basename().clone(), substituted_ty);
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -365,6 +534,24 @@ pub enum SchemaType {
         #[serde(rename = "type")]
         type_name: Name,
     },
+}
+
+impl SchemaType {
+    pub(crate) fn common_type_references(&self) -> Box<dyn Iterator<Item = Name>> {
+        match self {
+            SchemaType::Type(SchemaTypeVariant::Record { attributes, .. }) => attributes
+                .into_iter()
+                .map(|(_, ty)| ty.ty.common_type_references())
+                .fold(Box::new(std::iter::empty()), |it, tys| {
+                    Box::new(it.chain(tys))
+                }),
+            SchemaType::Type(SchemaTypeVariant::Set { element }) => {
+                element.common_type_references()
+            }
+            SchemaType::TypeDef { type_name } => Box::new(std::iter::once(type_name.clone())),
+            _ => Box::new(std::iter::empty()),
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for SchemaType {
@@ -1530,5 +1717,34 @@ mod test_duplicates_error {
             }
         }"#;
         serde_json::from_str::<SchemaFragment>(src).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod test_resolver {
+    use crate::{CommonTypeResolver, SchemaFragment};
+
+    #[test]
+    fn test_simple() {
+        let mut schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "b"
+                        },
+                        "b": {
+                            "type": "Boolean"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let mut resolver = CommonTypeResolver::new(&mut schema);
+        let new_schema = resolver.resolve();
+        assert!(new_schema.is_ok(), "{}", resolver.schema);
     }
 }
