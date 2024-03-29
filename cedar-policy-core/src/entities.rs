@@ -1358,10 +1358,11 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "in uid field of <unknown entity>, expected a literal entity reference, but got `null`",
+            ).help(
                 r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
-            ));
+            ).build());
         });
 
         let json = serde_json::json!(
@@ -1374,10 +1375,11 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"in uid field of <unknown entity>, expected a literal entity reference, but got `{"id":"bar","type":null}`"#,
+            ).help(
                 r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
-            ));
+            ).build());
         });
 
         let json = serde_json::json!(
@@ -1390,10 +1392,11 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"in uid field of <unknown entity>, expected a literal entity reference, but got `{"id":null,"type":"foo"}`"#,
+            ).help(
                 r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
-            ));
+            ).build());
         });
 
         let json = serde_json::json!(
@@ -1406,9 +1409,9 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "invalid type: null, expected a map"
-            ));
+            ).build());
         });
 
         let json = serde_json::json!(
@@ -1421,9 +1424,9 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"in attribute `attr` on `foo::"bar"`, found a `null`; JSON `null`s are not allowed in Cedar"#,
-            ));
+            ).build());
         });
 
         let json = serde_json::json!(
@@ -1436,9 +1439,9 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"in attribute `attr` on `foo::"bar"`, found a `null`; JSON `null`s are not allowed in Cedar"#,
-            ));
+            ).build());
         });
 
         let json = serde_json::json!(
@@ -1451,9 +1454,9 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"in attribute `attr` on `foo::"bar"`, found a `null`; JSON `null`s are not allowed in Cedar"#,
-            ));
+            ).build());
         });
 
         let json = serde_json::json!(
@@ -1466,9 +1469,9 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"in attribute `attr` on `foo::"bar"`, found a `null`; JSON `null`s are not allowed in Cedar"#,
-            ));
+            ).build());
         });
 
         let json = serde_json::json!(
@@ -1481,9 +1484,9 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"in attribute `__extn` on `foo::"bar"`, found a `null`; JSON `null`s are not allowed in Cedar"#,
-            ));
+            ).build());
         });
 
         let json = serde_json::json!(
@@ -1496,9 +1499,9 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"in attribute `__extn` on `foo::"bar"`, found a `null`; JSON `null`s are not allowed in Cedar"#,
-            ));
+            ).build());
         });
 
         let json = serde_json::json!(
@@ -1511,9 +1514,9 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"in attribute `__extn` on `foo::"bar"`, found a `null`; JSON `null`s are not allowed in Cedar"#,
-            ));
+            ).build());
         });
 
         let json = serde_json::json!(
@@ -1526,9 +1529,9 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 "invalid type: null, expected a sequence"
-            ));
+            ).build());
         });
 
         let json = serde_json::json!(
@@ -1541,10 +1544,11 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"in parents field of `foo::"bar"`, expected a literal entity reference, but got `null`"#,
+            ).help(
                 r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
-            ));
+            ).build());
         });
 
         let json = serde_json::json!(
@@ -1557,10 +1561,11 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"in parents field of `foo::"bar"`, expected a literal entity reference, but got `{"id":null,"type":"foo"}`"#,
+            ).help(
                 r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
-            ));
+            ).build());
         });
 
         let json = serde_json::json!(
@@ -1573,10 +1578,11 @@ mod json_parsing_tests {
             ]
         );
         assert_matches!(eparser.from_json_value(json.clone()), Err(EntitiesError::Deserialization(e)) => {
-            expect_err(&json, &e, &ExpectedErrorMessage::error_and_help(
+            expect_err(&json, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
                 r#"in parents field of `foo::"bar"`, expected a literal entity reference, but got `null`"#,
+            ).help(
                 r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#,
-            ));
+            ).build());
         });
     }
 
