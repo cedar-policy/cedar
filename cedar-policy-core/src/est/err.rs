@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::ast::{self, SlotId};
+use crate::ast;
 use crate::entities::JsonDeserializationError;
 use crate::parser::unescape;
 use smol_str::SmolStr;
@@ -40,7 +40,7 @@ pub enum EstToAstError {
     #[error("found template slot {slot} in a `{clausetype}` clause")]
     SlotsInConditionClause {
         /// Slot that was found in a when/unless clause
-        slot: SlotId,
+        slot: ast::SlotId,
         /// Clause type, e.g. "when" or "unless"
         clausetype: &'static str,
     },

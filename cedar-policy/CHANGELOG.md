@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.5 - Coming soon
+
+### Changed
+
+- Implement [RFC 57](https://github.com/cedar-policy/rfcs/pull/57): policies can
+  now include multiplication of arbitrary expressions, not just multiplication of
+  an expression and a constant.
+
 ## 2.4.4
 
 Cedar Language Version: 2.1.3
