@@ -763,15 +763,13 @@ mod parse_tests {
         let slot_in_when_clause =
             ExpectedErrorMessageBuilder::error("found template slot ?resource in a `when` clause")
                 .help("slots are currently unsupported in `when` clauses")
-                .exactly_one_underline(
-                    "when {\n                resource == ?resource\n            }",
-                )
+                .exactly_one_underline("?resource")
                 .build();
         let unexpected_template = ExpectedErrorMessageBuilder::error(
             "expected a static policy, got a template containing the slot ?resource",
         )
         .help("try removing the template slot(s) from this policy")
-        .exactly_one_underline("when {\n                resource == ?resource\n            }")
+        .exactly_one_underline("?resource")
         .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_when_clause);
@@ -802,15 +800,13 @@ mod parse_tests {
         let slot_in_when_clause =
             ExpectedErrorMessageBuilder::error("found template slot ?principal in a `when` clause")
                 .help("slots are currently unsupported in `when` clauses")
-                .exactly_one_underline(
-                    "when {\n                resource == ?principal\n            }",
-                )
+                .exactly_one_underline("?principal")
                 .build();
         let unexpected_template = ExpectedErrorMessageBuilder::error(
             "expected a static policy, got a template containing the slot ?principal",
         )
         .help("try removing the template slot(s) from this policy")
-        .exactly_one_underline("when {\n                resource == ?principal\n            }")
+        .exactly_one_underline("?principal")
         .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_when_clause);
@@ -870,13 +866,13 @@ mod parse_tests {
             "found template slot ?resource in a `unless` clause",
         )
         .help("slots are currently unsupported in `unless` clauses")
-        .exactly_one_underline("unless {\n                resource == ?resource\n            }")
+        .exactly_one_underline("?resource")
         .build();
         let unexpected_template = ExpectedErrorMessageBuilder::error(
             "expected a static policy, got a template containing the slot ?resource",
         )
         .help("try removing the template slot(s) from this policy")
-        .exactly_one_underline("unless {\n                resource == ?resource\n            }")
+        .exactly_one_underline("?resource")
         .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
@@ -908,13 +904,13 @@ mod parse_tests {
             "found template slot ?principal in a `unless` clause",
         )
         .help("slots are currently unsupported in `unless` clauses")
-        .exactly_one_underline("unless {\n                resource == ?principal\n            }")
+        .exactly_one_underline("?principal")
         .build();
         let unexpected_template = ExpectedErrorMessageBuilder::error(
             "expected a static policy, got a template containing the slot ?principal",
         )
         .help("try removing the template slot(s) from this policy")
-        .exactly_one_underline("unless {\n                resource == ?principal\n            }")
+        .exactly_one_underline("?principal")
         .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
@@ -975,33 +971,24 @@ mod parse_tests {
         let slot_in_when_clause =
             ExpectedErrorMessageBuilder::error("found template slot ?resource in a `when` clause")
                 .help("slots are currently unsupported in `when` clauses")
-                .exactly_one_underline(
-                    "when {\n                resource == ?resource\n            }",
-                )
+                .exactly_one_underline("?resource")
                 .build();
         let slot_in_unless_clause = ExpectedErrorMessageBuilder::error(
             "found template slot ?resource in a `unless` clause",
         )
         .help("slots are currently unsupported in `unless` clauses")
-        .exactly_one_underline("unless {\n                resource == ?resource\n            }")
+        .exactly_one_underline("?resource")
         .build();
-        let unexpected_template_in_when_clause = ExpectedErrorMessageBuilder::error(
+        let unexpected_template = ExpectedErrorMessageBuilder::error(
             "expected a static policy, got a template containing the slot ?resource",
         )
         .help("try removing the template slot(s) from this policy")
-        .exactly_one_underline("when {\n                resource == ?resource\n            }")
-        .build();
-        let unexpected_template_in_unless_clause = ExpectedErrorMessageBuilder::error(
-            "expected a static policy, got a template containing the slot ?resource",
-        )
-        .help("try removing the template slot(s) from this policy")
-        .exactly_one_underline("unless {\n                resource == ?resource\n            }")
+        .exactly_one_underline("?resource")
         .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
-            expect_some_error_matches(src, &e, &unexpected_template_in_when_clause);
-            expect_some_error_matches(src, &e, &unexpected_template_in_unless_clause);
+            expect_some_error_matches(src, &e, &unexpected_template);
         });
         assert_matches!(parse_policy_template(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_when_clause);
@@ -1010,8 +997,7 @@ mod parse_tests {
         assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_when_clause);
             expect_some_error_matches(src, &e, &slot_in_unless_clause);
-            expect_some_error_matches(src, &e, &unexpected_template_in_when_clause);
-            expect_some_error_matches(src, &e, &unexpected_template_in_unless_clause);
+            expect_some_error_matches(src, &e, &unexpected_template);
         });
         assert_matches!(parse_policy_template_to_est_and_ast(None, src), Err(e) => {
             expect_some_error_matches(src, &e, &slot_in_when_clause);

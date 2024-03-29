@@ -2720,7 +2720,7 @@ impl Template {
 
     /// Iterate over the open slots in this `Template`
     pub fn slots(&self) -> impl Iterator<Item = &SlotId> {
-        self.ast.slots().map(SlotId::ref_cast)
+        self.ast.slots().map(|slot| SlotId::ref_cast(&slot.id))
     }
 
     /// Get the head constraint on this policy's principal

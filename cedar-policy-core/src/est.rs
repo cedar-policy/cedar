@@ -260,10 +260,10 @@ impl Policy {
 
 impl Clause {
     fn filter_slots(e: ast::Expr, is_when: bool) -> Result<ast::Expr, FromJsonError> {
-        let first_slot = e.slots().next().cloned();
+        let first_slot = e.slots().next();
         if let Some(slot) = first_slot {
             Err(FromJsonError::SlotsInConditionClause {
-                slot,
+                slot: slot.id,
                 clausetype: if is_when { "when" } else { "unless" },
             })
         } else {
@@ -2894,7 +2894,7 @@ mod test {
             ast,
             Err(FromJsonError::TemplateToPolicy(
                 ast::UnexpectedSlotError::FoundSlot(s)
-            )) => assert_eq!(s, ast::SlotId::principal())
+            )) => assert_eq!(s.id, ast::SlotId::principal())
         );
     }
 
