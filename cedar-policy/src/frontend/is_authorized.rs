@@ -379,33 +379,54 @@ impl Schema {
     }
 }
 
+/// Parses the given JSON into an [`EntityUid`], or if it fails, adds an
+/// appropriate error to `errs` and returns `None`.
 fn parse_entity_uid(
     entity_uid_json: JsonValueWithNoDuplicateKeys,
     category: &str,
-) -> Result<EntityUid, String> {
-    EntityUid::from_json(entity_uid_json.into())
+    errs: &mut Vec<String>,
+) -> Option<EntityUid> {
+    match EntityUid::from_json(entity_uid_json.into())
         .map_err(|e| format!("Failed to parse {category}: {e}"))
+    {
+        Ok(euid) => Some(euid),
+        Err(e) => {
+            errs.push(e);
+            None
+        }
+    }
 }
 
-fn parse_action(entity_uid_json: JsonValueWithNoDuplicateKeys) -> Result<EntityUid, String> {
-    parse_entity_uid(entity_uid_json, "action")
-}
-
+/// Parses the given JSON context into a [`Context`], or if it fails, adds
+/// appropriate error(s) to `errs` and returns an empty context.
 fn parse_context(
     context_map: HashMap<String, JsonValueWithNoDuplicateKeys>,
     schema_ref: Option<&crate::Schema>,
     action_ref: Option<&EntityUid>,
-) -> Result<Context, Vec<String>> {
-    let context = serde_json::to_value(context_map)
-        .map_err(|e| vec!["Failed to parse context".into(), e.to_string()])?;
-    Context::from_json_value(
-        context,
-        match (schema_ref, action_ref) {
-            (Some(s), Some(a)) => Some((s, a)),
-            _ => None,
-        },
-    )
-    .map_err(|e| vec![e.to_string()])
+    errs: &mut Vec<String>,
+) -> Context {
+    match serde_json::to_value(context_map) {
+        Ok(json) => {
+            match Context::from_json_value(
+                json,
+                match (schema_ref, action_ref) {
+                    (Some(s), Some(a)) => Some((s, a)),
+                    _ => None,
+                },
+            ) {
+                Ok(context) => context,
+                Err(e) => {
+                    errs.push(e.to_string());
+                    Context::empty()
+                }
+            }
+        }
+        Err(e) => {
+            errs.push("Failed to parse context".into());
+            errs.push(e.to_string());
+            Context::empty()
+        }
+    }
 }
 
 impl AuthorizationCall {
@@ -423,49 +444,20 @@ impl AuthorizationCall {
                 None
             }
         };
-        let principal = match self
+        let principal = self
             .principal
-            .map(|p| parse_entity_uid(p, "principal"))
-            .transpose()
-        {
-            Ok(None) => None,
-            Ok(Some(euid)) => Some(euid),
-            Err(e) => {
-                errs.push(e);
-                None
-            }
-        };
-        let action = match parse_action(self.action) {
-            Ok(euid) => Some(euid),
-            Err(e) => {
-                errs.push(e);
-                None
-            }
-        };
-        let resource = match self
+            .and_then(|p| parse_entity_uid(p, "principal", &mut errs));
+        let action = parse_entity_uid(self.action, "action", &mut errs);
+        let resource = self
             .resource
-            .map(|r| parse_entity_uid(r, "resource"))
-            .transpose()
-        {
-            Ok(None) => None,
-            Ok(Some(euid)) => Some(euid),
-            Err(e) => {
-                errs.push(e);
-                None
-            }
-        };
-        let context = match parse_context(self.context, schema.as_ref(), action.as_ref()) {
-            Ok(context) => Some(context),
-            Err(e) => {
-                errs.extend(e);
-                None
-            }
-        };
-        let q = match Request::new(
+            .and_then(|r| parse_entity_uid(r, "resource", &mut errs));
+        let context = parse_context(self.context, schema.as_ref(), action.as_ref(), &mut errs);
+
+        let request = match Request::new(
             principal,
             action,
             resource,
-            context.unwrap_or_else(|| Context::empty()),
+            context,
             if self.enable_request_validation {
                 schema.as_ref()
             } else {
@@ -487,9 +479,10 @@ impl AuthorizationCall {
                 (None, None)
             }
         };
+
         if errs.is_empty() {
             // TODO: this ignores warnings
-            let Some(q) = q else {
+            let Some(q) = request else {
                 return Err(errs);
             };
             let Some(policies) = policies else {
@@ -520,44 +513,14 @@ impl AuthorizationCall {
                 None
             }
         };
-        let principal = match self
+        let principal = self
             .principal
-            .map(|p| parse_entity_uid(p, "principal"))
-            .transpose()
-        {
-            Ok(None) => None,
-            Ok(Some(euid)) => Some(euid),
-            Err(e) => {
-                errs.push(e);
-                None
-            }
-        };
-        let action = match parse_action(self.action) {
-            Ok(euid) => Some(euid),
-            Err(e) => {
-                errs.push(e);
-                None
-            }
-        };
-        let resource = match self
+            .and_then(|p| parse_entity_uid(p, "principal", &mut errs));
+        let action = parse_entity_uid(self.action, "action", &mut errs);
+        let resource = self
             .resource
-            .map(|r| parse_entity_uid(r, "resource"))
-            .transpose()
-        {
-            Ok(None) => None,
-            Ok(Some(euid)) => Some(euid),
-            Err(e) => {
-                errs.push(e);
-                None
-            }
-        };
-        let context = match parse_context(self.context, schema.as_ref(), &action) {
-            Ok(context) => Some(context),
-            Err(e) => {
-                errs.push(e);
-                None
-            }
-        };
+            .and_then(|r| parse_entity_uid(r, "resource", &mut errs));
+        let context = parse_context(self.context, schema.as_ref(), &action, &mut errs);
 
         let mut b = Request::builder();
         if principal.is_some() {
@@ -569,10 +532,8 @@ impl AuthorizationCall {
         if resource.is_some() {
             b = b.resource(resource);
         }
-        if let Some(context) = context {
-            b = b.context(context);
-        }
-        let q = if self.enable_request_validation {
+        b = b.context(context);
+        let request = if self.enable_request_validation {
             match schema.as_ref() {
                 Some(schema_ref) => match b.schema(schema_ref).build().map_err(|e| e.to_string()) {
                     Ok(req) => Some(req),
@@ -596,7 +557,7 @@ impl AuthorizationCall {
 
         if errs.is_empty() {
             // TODO: this ignores warnings
-            let Some(q) = q else {
+            let Some(q) = request else {
                 return Err(errs);
             };
             let Some(policies) = policies else {
