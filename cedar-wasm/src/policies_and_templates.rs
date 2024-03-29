@@ -165,7 +165,7 @@ mod test {
         }"#;
 
         let cedar_conversion_result: JsonToPolicyResult = policy_text_from_json(est_repr);
-        assert_matches(cedar_conversion_result, JsonToPolicyResult::Success { policy_text } => {
+        assert_matches!(cedar_conversion_result, JsonToPolicyResult::Success { policy_text } => {
             assert_eq!(
                 &policy_text,
                 "permit(principal in UserGroup::\"DeathRowRecords\", action == Action::\"pop\", resource);"
