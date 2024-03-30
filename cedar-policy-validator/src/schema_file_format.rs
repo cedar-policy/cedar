@@ -133,13 +133,18 @@ impl SchemaFragment {
     }
 }
 
+/// A common type reference resolver
 #[derive(Debug)]
 pub(crate) struct CommonTypeResolver<'a> {
+    /// The `SchemaFragment` to resolve
     schema: &'a mut SchemaFragment,
+    /// The dependency graph among common type names
+    /// A common type name is prefixed with the namespace id where it's declared
     graph: HashMap<Name, HashSet<Name>>,
 }
 
 impl<'a> CommonTypeResolver<'a> {
+    /// Construct a the resolver
     pub(crate) fn new(schema: &'a mut SchemaFragment) -> Self {
         let mut graph = HashMap::new();
         for (ns, def) in schema.0.iter() {
@@ -151,6 +156,12 @@ impl<'a> CommonTypeResolver<'a> {
         Self { schema, graph }
     }
 
+    /// Perform topological sort on the dependency graph
+    /// Let A -> B denote the RHS of type `A` refers to type `B` (i.e., `A`
+    /// depends on `B`)
+    /// topo_sort(A -> B -> C) produces [C, B, A]
+    /// If there is a cycle, a type name involving in this cycle is the error
+    /// It implements a variant of Kahn's algorithm
     fn topo_sort(&self) -> std::result::Result<Vec<Name>, Name> {
         // The in-degree map
         // Note that the keys of this map may be a superset of all common type
@@ -170,27 +181,40 @@ impl<'a> CommonTypeResolver<'a> {
                 }
             }
         }
+
+        // The set that contains type names with zero coming edges
         let mut work_set: HashSet<&Name> = HashSet::new();
         let mut res: Vec<Name> = Vec::new();
 
         // Find all type names with zero in coming edges
-        for name in indegrees.keys().cloned() {
-            if let Some(degree) = indegrees.get(name) {
-                if *degree == 0 {
-                    work_set.insert(name);
-                    if self.graph.contains_key(name) {
-                        res.push(name.clone());
-                    }
+        for (name, degree) in indegrees.iter() {
+            let name = *name;
+            if *degree == 0 {
+                work_set.insert(name);
+                // The result only contains *declared* type names
+                if self.graph.contains_key(name) {
+                    res.push(name.clone());
                 }
             }
         }
 
         while !work_set.is_empty() {
+            // Pop a node
             let name = work_set.iter().next().cloned().unwrap();
             work_set.remove(name);
+
             if let Some(deps) = self.graph.get(name) {
                 for dep in deps {
                     if let Some(degree) = indegrees.get_mut(dep) {
+                        // There will not be any underflows here because
+                        // in order for the in-degree to underflow, `dep`'s
+                        // in-degree must be 0 at this point
+                        // The only possibility where a node's in-degree
+                        // becomes 0 is through the subtraction below, which
+                        // means it has been visited and hence has 0 in-degrees
+                        // In other words, all its in-coming edges have been
+                        // "removed" and hence contradicts with the fact that
+                        // one of them is being "removed"
                         *degree -= 1;
                         if *degree == 0 {
                             work_set.insert(dep);
@@ -203,6 +227,8 @@ impl<'a> CommonTypeResolver<'a> {
             }
         }
 
+        // The set of nodes that have not been added to the result
+        // i.e., there are still in-coming edges and hence exists a cycle
         let mut set: HashSet<&Name> = HashSet::from_iter(self.graph.keys().clone());
         for name in res.iter() {
             set.remove(name);
@@ -211,11 +237,14 @@ impl<'a> CommonTypeResolver<'a> {
         if let Some(cycle) = set.into_iter().next() {
             Err(cycle.clone())
         } else {
+            // We need to reverse the result because, e.g.,
+            // `res` is now [A,B,C] for A -> B -> C because no one depends on A
             res.reverse();
             Ok(res)
         }
     }
 
+    // Substitute common type references in `ty` according to `resolve_table`
     fn resolve_type(
         resolve_table: &HashMap<&Name, SchemaType>,
         ty: SchemaType,
@@ -264,11 +293,11 @@ impl<'a> CommonTypeResolver<'a> {
         }
     }
 
+    // Resolve common type references in `self.schema`
     pub(crate) fn resolve(&mut self) -> Result<()> {
-        let sorted_names = match self.topo_sort() {
-            Ok(sorted_name) => sorted_name,
-            Err(cycle) => return Err(SchemaError::DuplicateCommonType(cycle.to_string())),
-        };
+        let sorted_names = self
+            .topo_sort()
+            .map_err(|name| SchemaError::CycleInCommonTypeReferences(name))?;
 
         let mut resolve_table = HashMap::new();
 
@@ -1745,6 +1774,6 @@ mod test_resolver {
         .unwrap();
         let mut resolver = CommonTypeResolver::new(&mut schema);
         let new_schema = resolver.resolve();
-        assert!(new_schema.is_ok(), "{}", resolver.schema);
+        assert!(new_schema.is_ok(), "{:?}", resolver);
     }
 }
