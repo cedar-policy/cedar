@@ -1119,7 +1119,10 @@ mod parser_tests {
 mod translator_tests {
     use cedar_policy_core::FromNormalizedStr;
 
-    use crate::{SchemaError, SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema};
+    use crate::{
+        types::{EntityLUB, Type},
+        SchemaFragment, SchemaTypeVariant, TypeOfAttribute, ValidatorSchema,
+    };
 
     #[test]
     fn use_reserved_namespace() {
@@ -1422,19 +1425,23 @@ mod translator_tests {
                 entity C;
             }
             namespace X {
-                type Y = X::Y;
-                entity Y;
+                type Y = X::Z;
+                entity Z;
             }
             "#,
         )
         .unwrap();
-        let validator_schema: Result<ValidatorSchema, _> = schema.try_into();
-        assert!(
-            validator_schema.is_err()
-                && matches!(
-                    validator_schema.unwrap_err(),
-                    SchemaError::UndeclaredCommonTypes(_)
-                )
+        let validator_schema: ValidatorSchema = schema.try_into().unwrap();
+        assert_eq!(
+            validator_schema
+                .get_entity_type(&"A::B".parse().unwrap())
+                .unwrap()
+                .attributes
+                .attrs["foo"]
+                .attr_type,
+            Type::EntityOrRecord(crate::types::EntityRecordKind::Entity(
+                EntityLUB::single_entity("X::Z".parse().unwrap())
+            ))
         );
     }
 

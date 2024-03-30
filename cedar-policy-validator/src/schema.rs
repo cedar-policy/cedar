@@ -86,6 +86,7 @@ impl ValidatorSchemaFragment {
         action_behavior: ActionBehavior,
         extensions: Extensions<'_>,
     ) -> Result<Self> {
+        let fragment = fragment.resolve_common_types()?;
         Ok(Self(
             fragment
                 .0

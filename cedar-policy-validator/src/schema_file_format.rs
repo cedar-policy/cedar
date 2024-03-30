@@ -52,6 +52,16 @@ pub struct SchemaFragment(
     pub  HashMap<Option<Name>, NamespaceDefinition>,
 );
 
+impl SchemaFragment {
+    /// Resolve common types in the schema
+    pub(crate) fn resolve_common_types(self) -> Result<Self> {
+        let mut schema = self.clone();
+        let mut resolver = CommonTypeResolver::new(&mut schema);
+        resolver.resolve()?;
+        Ok(schema)
+    }
+}
+
 fn deserialize_hash_map<'de, D, K, V>(
     key_parser: impl Fn(SmolStr) -> std::result::Result<K, ParseErrors>,
     deserializer: D,
@@ -302,29 +312,18 @@ impl<'a> CommonTypeResolver<'a> {
         let mut resolve_table = HashMap::new();
 
         for name in sorted_names.iter() {
-            if name.is_unqualified() {
-                let ty = &self.schema.0.get(&None).unwrap().common_types[name.basename()];
-                let substituted_ty = Self::resolve_type(&resolve_table, ty.clone(), &None)?;
-                resolve_table.insert(name, substituted_ty.clone());
-                self.schema
-                    .0
-                    .get_mut(&None)
-                    .unwrap()
-                    .common_types
-                    .insert(name.basename().clone(), substituted_ty);
+            let ns: Option<Name> = if name.is_unqualified() {
+                None
             } else {
-                // TODO: use proper getter for namespace
-                let ns: Option<Name> = Some(name.namespace().parse().unwrap());
-                let ty = &self.schema.0.get(&ns).unwrap().common_types[name.basename()];
-                let substituted_ty = Self::resolve_type(&resolve_table, ty.clone(), &None)?;
-                resolve_table.insert(name, substituted_ty.clone());
-                self.schema
-                    .0
-                    .get_mut(&ns)
-                    .unwrap()
-                    .common_types
-                    .insert(name.basename().clone(), substituted_ty);
-            }
+                Some(name.namespace().parse().unwrap())
+            };
+
+            let common_types = &mut self.schema.0.get_mut(&ns).unwrap().common_types;
+
+            let ty = &common_types[name.basename()];
+            let substituted_ty = Self::resolve_type(&resolve_table, ty.clone(), &ns)?;
+            resolve_table.insert(name, substituted_ty.clone());
+            common_types.insert(name.basename().clone(), substituted_ty);
         }
 
         Ok(())
@@ -1751,7 +1750,9 @@ mod test_duplicates_error {
 
 #[cfg(test)]
 mod test_resolver {
-    use crate::{CommonTypeResolver, SchemaFragment};
+    use std::collections::{BTreeMap, HashMap};
+
+    use crate::{CommonTypeResolver, SchemaFragment, SchemaType, TypeOfAttribute};
 
     #[test]
     fn test_simple() {
@@ -1773,7 +1774,150 @@ mod test_resolver {
         ))
         .unwrap();
         let mut resolver = CommonTypeResolver::new(&mut schema);
-        let new_schema = resolver.resolve();
-        assert!(new_schema.is_ok(), "{:?}", resolver);
+        let _ = resolver.resolve().unwrap();
+        assert_eq!(
+            resolver.schema.0[&None].common_types,
+            HashMap::from_iter([
+                (
+                    "a".parse().unwrap(),
+                    SchemaType::Type(crate::SchemaTypeVariant::Boolean)
+                ),
+                (
+                    "b".parse().unwrap(),
+                    SchemaType::Type(crate::SchemaTypeVariant::Boolean)
+                )
+            ])
+        );
+
+        let mut schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "b"
+                        },
+                        "b": {
+                            "type": "c"
+                        },
+                        "c": {
+                            "type": "Boolean"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let mut resolver = CommonTypeResolver::new(&mut schema);
+        let _ = resolver.resolve().unwrap();
+        assert_eq!(
+            resolver.schema.0[&None].common_types,
+            HashMap::from_iter([
+                (
+                    "a".parse().unwrap(),
+                    SchemaType::Type(crate::SchemaTypeVariant::Boolean)
+                ),
+                (
+                    "b".parse().unwrap(),
+                    SchemaType::Type(crate::SchemaTypeVariant::Boolean)
+                ),
+                (
+                    "c".parse().unwrap(),
+                    SchemaType::Type(crate::SchemaTypeVariant::Boolean)
+                )
+            ])
+        );
+    }
+
+    #[test]
+    fn test_set() {
+        let mut schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "Set",
+                            "element": {
+                                "type": "b"
+                            }
+                        },
+                        "b": {
+                            "type": "Boolean"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let mut resolver = CommonTypeResolver::new(&mut schema);
+        let _ = resolver.resolve().unwrap();
+        assert_eq!(
+            resolver.schema.0[&None].common_types,
+            HashMap::from_iter([
+                (
+                    "a".parse().unwrap(),
+                    SchemaType::Type(crate::SchemaTypeVariant::Set {
+                        element: Box::new(SchemaType::Type(crate::SchemaTypeVariant::Boolean))
+                    })
+                ),
+                (
+                    "b".parse().unwrap(),
+                    SchemaType::Type(crate::SchemaTypeVariant::Boolean)
+                )
+            ])
+        );
+    }
+
+    #[test]
+    fn test_record() {
+        let mut schema = serde_json::from_value::<SchemaFragment>(serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "a" : {
+                            "type": "Record",
+                            "attributes": {
+                                "foo": {
+                                    "type": "b"
+                                }
+                            }
+                        },
+                        "b": {
+                            "type": "Boolean"
+                        }
+                    }
+                }
+            }
+        ))
+        .unwrap();
+        let mut resolver = CommonTypeResolver::new(&mut schema);
+        let _ = resolver.resolve().unwrap();
+        assert_eq!(
+            resolver.schema.0[&None].common_types,
+            HashMap::from_iter([
+                (
+                    "a".parse().unwrap(),
+                    SchemaType::Type(crate::SchemaTypeVariant::Record {
+                        attributes: BTreeMap::from_iter([(
+                            "foo".into(),
+                            TypeOfAttribute {
+                                ty: SchemaType::Type(crate::SchemaTypeVariant::Boolean),
+                                required: true
+                            }
+                        )]),
+                        additional_attributes: false
+                    })
+                ),
+                (
+                    "b".parse().unwrap(),
+                    SchemaType::Type(crate::SchemaTypeVariant::Boolean)
+                )
+            ])
+        );
     }
 }
