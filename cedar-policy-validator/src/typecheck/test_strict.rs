@@ -28,7 +28,7 @@ use serde_json::json;
 use std::str::FromStr;
 
 use cedar_policy_core::{
-    ast::{EntityType, EntityUID, Expr, Policy, Template},
+    ast::{EntityType, EntityUID, Expr},
     parser::parse_policy_template,
 };
 
@@ -38,7 +38,7 @@ use crate::{
     IncompatibleTypes, SchemaFragment, TypeError, TypeErrorKind, ValidationMode,
 };
 
-use super::test_utils::{assert_typecheck_fails, with_typechecker_from_schema};
+use super::test_utils::with_typechecker_from_schema;
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_typechecks_strict(
