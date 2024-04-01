@@ -1470,6 +1470,19 @@ mod test_json_roundtrip {
     }
 
     #[test]
+    fn empty_namespace() {
+        let fragment = SchemaFragment(HashMap::from([(
+            None,
+            NamespaceDefinition {
+                common_types: HashMap::new(),
+                entity_types: HashMap::new(),
+                actions: HashMap::new(),
+            },
+        )]));
+        roundtrip(fragment);
+    }
+
+    #[test]
     fn nonempty_namespace() {
         let fragment = SchemaFragment(HashMap::from([(
             Some("a".parse().unwrap()),
@@ -1483,15 +1496,90 @@ mod test_json_roundtrip {
     }
 
     #[test]
-    fn empty_namespace() {
+    fn nonempty_entity_types() {
         let fragment = SchemaFragment(HashMap::from([(
             None,
             NamespaceDefinition {
                 common_types: HashMap::new(),
-                entity_types: HashMap::new(),
-                actions: HashMap::new(),
+                entity_types: HashMap::from([(
+                    "a".parse().unwrap(),
+                    EntityType {
+                        member_of_types: vec!["a".parse().unwrap()],
+                        shape: AttributesOrContext(SchemaType::Type(SchemaTypeVariant::Record {
+                            attributes: BTreeMap::new(),
+                            additional_attributes: false,
+                        })),
+                    },
+                )]),
+                actions: HashMap::from([(
+                    "action".into(),
+                    ActionType {
+                        attributes: None,
+                        applies_to: Some(ApplySpec {
+                            resource_types: Some(vec!["a".parse().unwrap()]),
+                            principal_types: Some(vec!["a".parse().unwrap()]),
+                            context: AttributesOrContext(SchemaType::Type(
+                                SchemaTypeVariant::Record {
+                                    attributes: BTreeMap::new(),
+                                    additional_attributes: false,
+                                },
+                            )),
+                        }),
+                        member_of: None,
+                    },
+                )]),
             },
         )]));
+        roundtrip(fragment);
+    }
+
+    #[test]
+    fn multiple_namespaces() {
+        let fragment = SchemaFragment(HashMap::from([
+            (
+                Some("foo".parse().unwrap()),
+                NamespaceDefinition {
+                    common_types: HashMap::new(),
+                    entity_types: HashMap::from([(
+                        "a".parse().unwrap(),
+                        EntityType {
+                            member_of_types: vec!["a".parse().unwrap()],
+                            shape: AttributesOrContext(SchemaType::Type(
+                                SchemaTypeVariant::Record {
+                                    attributes: BTreeMap::new(),
+                                    additional_attributes: false,
+                                },
+                            )),
+                        },
+                    )]),
+                    actions: HashMap::new(),
+                },
+            ),
+            (
+                None,
+                NamespaceDefinition {
+                    common_types: HashMap::new(),
+                    entity_types: HashMap::new(),
+                    actions: HashMap::from([(
+                        "action".into(),
+                        ActionType {
+                            attributes: None,
+                            applies_to: Some(ApplySpec {
+                                resource_types: Some(vec!["foo::a".parse().unwrap()]),
+                                principal_types: Some(vec!["foo::a".parse().unwrap()]),
+                                context: AttributesOrContext(SchemaType::Type(
+                                    SchemaTypeVariant::Record {
+                                        attributes: BTreeMap::new(),
+                                        additional_attributes: false,
+                                    },
+                                )),
+                            }),
+                            member_of: None,
+                        },
+                    )]),
+                },
+            ),
+        ]));
         roundtrip(fragment);
     }
 }
