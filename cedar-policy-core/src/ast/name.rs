@@ -192,7 +192,7 @@ impl<'de> serde::de::Visitor<'de> for NameVisitor {
         E: serde::de::Error,
     {
         Name::from_normalized_str(value)
-            .map_err(|err| serde::de::Error::custom(format!("invalid name: {err}")))
+            .map_err(|err| serde::de::Error::custom(format!("invalid name `{value}`: {err}")))
     }
 }
 
