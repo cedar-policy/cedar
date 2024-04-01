@@ -13,6 +13,7 @@ Cedar is a language for writing and enforcing authorization policies in your app
 
 Cedar is:
 
+
 ### Expressive
 
 Cedar is a simple yet expressive language that is purpose-built to support authorization use cases for common authorization models such as RBAC and ABAC.
