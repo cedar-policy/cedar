@@ -1099,8 +1099,11 @@ impl Attributes {
             self.attrs
                 .get(k)
                 .map(|self_ty| {
-                    (self_ty.is_required || !other_ty.is_required)
-                        && Type::is_subtype(schema, &self_ty.attr_type, &other_ty.attr_type, mode)
+                    (if mode.is_strict() {
+                        self_ty.is_required == other_ty.is_required
+                    } else {
+                        self_ty.is_required || !other_ty.is_required
+                    }) && Type::is_subtype(schema, &self_ty.attr_type, &other_ty.attr_type, mode)
                 })
                 .unwrap_or(false)
         })
@@ -1140,9 +1143,13 @@ impl Attributes {
     ) -> impl Iterator<Item = Option<(SmolStr, AttributeType)>> + 'a {
         attrs0.attrs.iter().map(move |(attr, ty0)| {
             let ty1 = attrs1.attrs.get(attr)?;
-            Type::least_upper_bound(schema, &ty0.attr_type, &ty1.attr_type, mode).map(|lub| {
+            Type::least_upper_bound(schema, &ty0.attr_type, &ty1.attr_type, mode).and_then(|lub| {
                 let is_lub_required = ty0.is_required && ty1.is_required;
-                (attr.clone(), AttributeType::new(lub, is_lub_required))
+                if mode.is_strict() && ty0.is_required != ty1.is_required {
+                    None
+                } else {
+                    Some((attr.clone(), AttributeType::new(lub, is_lub_required)))
+                }
             })
         })
     }

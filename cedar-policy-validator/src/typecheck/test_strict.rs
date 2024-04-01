@@ -27,14 +27,18 @@ use cool_asserts::assert_matches;
 use serde_json::json;
 use std::str::FromStr;
 
-use cedar_policy_core::ast::{EntityType, EntityUID, Expr};
-
-use crate::{
-    types::{EffectSet, OpenTag, RequestEnv, Type},
-    IncompatibleTypes, SchemaFragment, TypeErrorKind, ValidationMode,
+use cedar_policy_core::{
+    ast::{EntityType, EntityUID, Expr, Policy, Template},
+    parser::parse_policy_template,
 };
 
-use super::test_utils::with_typechecker_from_schema;
+use crate::{
+    typecheck::test_utils::assert_policy_typecheck_fails,
+    types::{AttributeType, EffectSet, OpenTag, RequestEnv, Type},
+    IncompatibleTypes, SchemaFragment, TypeError, TypeErrorKind, ValidationMode,
+};
+
+use super::test_utils::{assert_typecheck_fails, with_typechecker_from_schema};
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_typechecks_strict(
@@ -678,4 +682,40 @@ fn true_false_set() {
             Type::set(Type::set(Type::set(Type::primitive_boolean()))),
         )
     })
+}
+
+#[test]
+fn qualified_record_attr() {
+    let (schema, _) = SchemaFragment::from_str_natural(
+        r#"action A appliesTo { context: {num_of_things?: Long } };"#,
+    )
+    .unwrap();
+    let p = parse_policy_template(
+        None,
+        "permit(principal, action, resource) when { context == {num_of_things: 1}};",
+    )
+    .unwrap();
+    assert_policy_typecheck_fails(
+        schema,
+        p.clone(),
+        vec![TypeError::incompatible_types(
+            "context == {num_of_things: 1}".parse().unwrap(),
+            [
+                Type::record_with_attributes(
+                    [(
+                        "num_of_things".into(),
+                        AttributeType::new(Type::primitive_long(), false),
+                    )],
+                    OpenTag::ClosedAttributes,
+                ),
+                Type::record_with_attributes(
+                    [(
+                        "num_of_things".into(),
+                        AttributeType::new(Type::primitive_long(), true),
+                    )],
+                    OpenTag::ClosedAttributes,
+                ),
+            ],
+        )],
+    );
 }

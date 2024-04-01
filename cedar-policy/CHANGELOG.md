@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deprecated error `TypeErrorKind::ImpossiblePolicy` in favor of warning
   `ValidationWarningKind::ImpossiblePolicy` so future improvements to Cedar
   typing precision will not result in breaking changes. (resolving #539)
+- Changed policy validation to reject comparisons and conditionals between
+  record type that differ in if an attribute is required or optional.
 
 ## [3.1.2] - 2024-03-29
 
