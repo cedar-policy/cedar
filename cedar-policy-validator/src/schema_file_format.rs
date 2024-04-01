@@ -22,10 +22,11 @@ use cedar_policy_core::{
 };
 use serde::{
     de::{MapAccess, Visitor},
-    Deserialize, Deserializer, Serialize,
+    ser::SerializeMap,
+    Deserialize, Deserializer, Serialize, Serializer,
 };
 use serde_with::serde_as;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::{
@@ -43,7 +44,7 @@ extern crate tsify;
 /// schema fragment is split into multiple namespace definitions, eac including
 /// a namespace name which is applied to all entity types (and the implicit
 /// `Action` entity type for all actions) in the schema.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -95,6 +96,23 @@ where
         deserializer,
         "namespace",
     )
+}
+
+impl Serialize for SchemaFragment {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for (k, v) in &self.0 {
+            let k: SmolStr = match k {
+                None => "".into(),
+                Some(name) => name.to_smolstr(),
+            };
+            map.serialize_entry(&k, &v)?;
+        }
+        map.end()
+    }
 }
 
 impl SchemaFragment {
@@ -1437,6 +1455,44 @@ mod strengthened_types {
         });
         let schema: Result<SchemaType, _> = serde_json::from_value(src);
         assert_matches!(schema, Err(err) if &err.to_string() == "invalid extension type: unexpected token `::`");
+    }
+}
+
+/// Check that (de)serialization works as expected.
+#[cfg(test)]
+mod test_json_roundtrip {
+    use super::*;
+
+    fn roundtrip(schema: SchemaFragment) {
+        let json = serde_json::to_value(schema.clone()).unwrap();
+        let new_schema: SchemaFragment = serde_json::from_value(json).unwrap();
+        assert_eq!(schema, new_schema);
+    }
+
+    #[test]
+    fn nonempty_namespace() {
+        let fragment = SchemaFragment(HashMap::from([(
+            Some("a".parse().unwrap()),
+            NamespaceDefinition {
+                common_types: HashMap::new(),
+                entity_types: HashMap::new(),
+                actions: HashMap::new(),
+            },
+        )]));
+        roundtrip(fragment);
+    }
+
+    #[test]
+    fn empty_namespace() {
+        let fragment = SchemaFragment(HashMap::from([(
+            None,
+            NamespaceDefinition {
+                common_types: HashMap::new(),
+                entity_types: HashMap::new(),
+                actions: HashMap::new(),
+            },
+        )]));
+        roundtrip(fragment);
     }
 }
 
