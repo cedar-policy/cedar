@@ -26,7 +26,7 @@ jobs:
 
   build-cedar-java:
     needs: get-branch-name
-    uses: cedar-policy/cedar-java/.github/workflows/build_cedar_java_reusable.yml@main
+    uses: cedar-policy/cedar-java/.github/workflows/run_cedar_java_reusable.yml@main
     with:
       cedar_policy_ref: ${{ github.ref }}
       cedar_java_ref: ${{ needs.get-branch-name.outputs.branch_name }}
