@@ -53,37 +53,12 @@ jobs:
         working-directory: cedar-spec/cedar-drt/fuzz
         run: source ~/.profile && source ../set_env_vars.sh && RUSTFLAGS="--cfg=fuzzing -D warnings" cargo build
 
-  cedar-java:
-    name: CedarJava
-    runs-on: ubuntu-latest
+  build-cedar-java:
     needs: get-branch-name
-    strategy:
-      matrix:
-        toolchain:
-          - stable
-    steps:
-      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - name: Checkout cedar-java
-        uses: actions/checkout@v4
-        with:
-          repository: cedar-policy/cedar-java
-          ref: ${{ needs.get-branch-name.outputs.branch_name }}
-          path: ./cedar-java
-      - name: Prepare Rust Build
-        run: rustup update stable && rustup default stable
-      - name: Check FFI Formatting
-        working-directory: cedar-java/CedarJavaFFI
-        run: cargo fmt --all --check
-      - name: Install Zig
-        run: sudo snap install zig --beta --classic
-      - name: Build FFI and Java Libraries
-        working-directory: cedar-java/CedarJava
-        env:
-          MUST_RUN_CEDAR_INTEGRATION_TESTS: 1
-        run: ./gradlew build
-      - name: Generate Java Documentation
-        working-directory: cedar-java/CedarJava
-        run: ./gradlew javadoc
+    uses: cedar-policy/cedar-java/.github/workflows/build_cedar_java_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}
 
   build-cedar-examples-hello-world:
     needs: get-branch-name
