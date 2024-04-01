@@ -24,49 +24,12 @@ jobs:
       cedar_policy_ref: ${{ github.ref }}
       cedar_spec_ref: ${{ needs.get-branch-name.outputs.branch_name }}
 
-  cedar-java:
+  build-cedar-java:
     needs: get-branch-name
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-14]
-        include:
-          - os: ubuntu-latest
-            name: Build on Linux
-            zigInstall: sudo snap install zig --beta --classic
-          - os: macos-14
-            name: Build on macOS
-            zigInstall: brew install zig
-    runs-on: ${{ matrix.os }}
-    name: ${{ matrix.name }}
-    steps:
-      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - name: Install Zig
-        run: ${{ matrix.zigInstall }}
-      - name: Checkout cedar-java
-        uses: actions/checkout@v4
-        with:
-          repository: cedar-policy/cedar-java
-          ref: ${{ needs.get-branch-name.outputs.branch_name }}
-          path: ./cedar-java
-      - name: checkout cedar
-        uses: actions/checkout@v4
-        with:
-          path: cedar-java/cedar
-      - name: Check FFI Formatting
-        working-directory: cedar-java/CedarJavaFFI
-        run: cargo fmt --all --check
-      - name: Setup Java JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'corretto'
-          cache: 'gradle'
-      - name: Build FFI and Java Libraries
-        working-directory: cedar-java/CedarJava
-        run: ./gradlew build
-      - name: Generate Java Documentation
-        working-directory: cedar-java/CedarJava
-        run: ./gradlew javadoc
+    uses: cedar-policy/cedar-java/.github/workflows/build_cedar_java_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}
 
   build-cedar-examples-hello-world:
     needs: get-branch-name
