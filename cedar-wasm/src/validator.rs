@@ -24,10 +24,10 @@ pub fn wasm_validate(call: ValidationCall) -> ValidateResult {
     match validate(call) {
         ValidationAnswer::Success {
             validation_errors,
-            validation_warnings,
+            validation_warnings_bogus,
         } => ValidateResult::Success {
             validation_errors,
-            validation_warnings,
+            validation_warnings: validation_warnings_bogus,
         },
         ValidationAnswer::Failure { errors } => ValidateResult::Error { errors },
     }

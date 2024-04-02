@@ -47,7 +47,7 @@ pub fn validate(call: ValidationCall) -> ValidationAnswer {
                 .collect();
             ValidationAnswer::Success {
                 validation_errors,
-                validation_warnings,
+                validation_warnings_bogus: validation_warnings,
             }
         }
         Err(errors) => ValidationAnswer::Failure { errors },
@@ -156,7 +156,7 @@ pub enum ValidationAnswer {
         /// Errors from any issues found during validation
         validation_errors: Vec<ValidationError>,
         /// Warnings from any issues found during validation
-        validation_warnings: Vec<ValidationWarning>,
+        validation_warnings_bogus: Vec<ValidationWarning>,
     },
 }
 
@@ -455,7 +455,7 @@ mod test {
     fn assert_validates_with_errors(result: InterfaceResult, expected_num_errors: usize) {
         assert_matches!(result, InterfaceResult::Success { result } => {
             let parsed_result: ValidationAnswer = serde_json::from_str(result.as_str()).unwrap();
-            assert_matches!(parsed_result, ValidationAnswer::Success { validation_errors, validation_warnings: _ } => {
+            assert_matches!(parsed_result, ValidationAnswer::Success { validation_errors, validation_warnings_bogus: _ } => {
                 assert_eq!(validation_errors.len(), expected_num_errors);
             });
         });
