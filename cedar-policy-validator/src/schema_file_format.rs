@@ -49,7 +49,8 @@ extern crate tsify;
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct SchemaFragment(
     #[serde(deserialize_with = "deserialize_schema_fragment")]
-    pub  HashMap<Option<Name>, NamespaceDefinition>,
+    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, NamespaceDefinition>"))]
+    pub HashMap<Option<Name>, NamespaceDefinition>,
 );
 
 fn deserialize_hash_map<'de, D, K, V>(
