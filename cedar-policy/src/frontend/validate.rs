@@ -47,7 +47,7 @@ pub fn validate(call: ValidationCall) -> ValidationAnswer {
                 .collect();
             ValidationAnswer::Success {
                 validation_errors,
-                validation_warnings,
+                validation_warnings_breaking_api: validation_warnings,
             }
         }
         Err(errors) => ValidationAnswer::Failure { errors },
@@ -156,7 +156,7 @@ pub enum ValidationAnswer {
         /// Errors from any issues found during validation
         validation_errors: Vec<ValidationError>,
         /// Warnings from any issues found during validation
-        validation_warnings: Vec<ValidationWarning>,
+        validation_warnings_breaking_api: Vec<ValidationWarning>,
     },
 }
 
