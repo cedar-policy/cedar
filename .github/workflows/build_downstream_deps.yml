@@ -58,7 +58,7 @@ jobs:
     uses: cedar-policy/cedar-java/.github/workflows/run_cedar_java_reusable.yml@main
     with:
       cedar_policy_ref: ${{ github.ref }}
-      cedar_examples_ref: ${{ needs.get-branch-name.outputs.branch_name }}
+      cedar_java_ref: ${{ needs.get-branch-name.outputs.branch_name }}
 
   build-cedar-examples-hello-world:
     needs: get-branch-name
