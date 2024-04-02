@@ -1658,7 +1658,7 @@ impl From<cedar_policy_validator::SchemaError> for SchemaError {
 #[derive(Debug)]
 pub struct ValidationResult {
     validation_errors: Vec<ValidationError>,
-    validation_warnings: Vec<ValidationWarning>,
+    validation_warnings_breaking_api: Vec<ValidationWarning>,
 }
 
 impl ValidationResult {
@@ -1672,7 +1672,7 @@ impl ValidationResult {
     /// True when validation passes (i.e., there are no errors) and there are
     /// additionally no non-fatal warnings.
     pub fn validation_passed_without_warnings(&self) -> bool {
-        self.validation_errors.is_empty() && self.validation_warnings.is_empty()
+        self.validation_errors.is_empty() && self.validation_warnings_breaking_api.is_empty()
     }
 
     /// Get an iterator over the errors found by the validator.
@@ -1682,7 +1682,7 @@ impl ValidationResult {
 
     /// Get an iterator over the warnings found by the validator.
     pub fn validation_warnings(&self) -> impl Iterator<Item = &ValidationWarning> {
-        self.validation_warnings.iter()
+        self.validation_warnings_breaking_api.iter()
     }
 
     fn first_error_or_warning(&self) -> Option<&dyn Diagnostic> {
@@ -1690,7 +1690,7 @@ impl ValidationResult {
             .first()
             .map(|e| e as &dyn Diagnostic)
             .or_else(|| {
-                self.validation_warnings
+                self.validation_warnings_breaking_api
                     .first()
                     .map(|w| w as &dyn Diagnostic)
             })
@@ -1702,7 +1702,7 @@ impl<'a> From<cedar_policy_validator::ValidationResult<'a>> for ValidationResult
         let (errors, warnings) = r.into_errors_and_warnings();
         Self {
             validation_errors: errors.map(ValidationError::from).collect(),
-            validation_warnings: warnings.map(ValidationWarning::from).collect(),
+            validation_warnings_breaking_api: warnings.map(ValidationWarning::from).collect(),
         }
     }
 }
@@ -1745,7 +1745,7 @@ impl Diagnostic for ValidationResult {
             .iter()
             .map(|err| err as &dyn Diagnostic)
             .chain(
-                self.validation_warnings
+                self.validation_warnings_breaking_api
                     .iter()
                     .map(|warn| warn as &dyn Diagnostic),
             );

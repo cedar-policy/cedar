@@ -46,7 +46,7 @@ thread_local!(
 );
 
 /// Construct and ask the authorizer the request.
-fn is_authorized(call: AuthorizationCallBogus) -> AuthorizationAnswer {
+fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
     match call.get_components() {
         Ok((request, policies, entities)) => {
             AUTHORIZER.with(|authorizer| AuthorizationAnswer::Success {
