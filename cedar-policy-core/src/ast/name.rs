@@ -184,7 +184,7 @@ impl<'de> serde::de::Visitor<'de> for NameVisitor {
     type Value = Name;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("a name consisting of a path and id, separated by `::`")
+        formatter.write_str("a name consisting of an optional namespace and id")
     }
 
     fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
