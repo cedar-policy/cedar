@@ -5,14 +5,16 @@ use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 
 #[derive(Tsify, Debug, Serialize, Deserialize)]
-#[serde(tag = "success")]
-#[serde(rename_all = "camelCase")]
+#[serde(untagged)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 pub enum FormattingResult {
-    #[serde(rename = "true")]
-    Success { formatted_policy: String },
-    #[serde(rename = "false")]
-    Error { error: String },
+    #[serde(rename_all = "camelCase")]
+    Success {
+        formatted_policy: String,
+    },
+    Error {
+        errors: Vec<String>,
+    },
 }
 
 #[wasm_bindgen(js_name = "formatPolicies")]
@@ -25,7 +27,7 @@ pub fn wasm_format_policies(
         Ok(width) => width,
         Err(_) => {
             return FormattingResult::Error {
-                error: "Input size error (line width)".to_string(),
+                errors: vec!["Input size error (line width)".to_string()],
             }
         }
     };
@@ -33,7 +35,7 @@ pub fn wasm_format_policies(
         Ok(width) => width,
         Err(_) => {
             return FormattingResult::Error {
-                error: "Input size error (indent width)".to_string(),
+                errors: vec!["Input size error (indent width)".to_string()],
             }
         }
     };
@@ -46,7 +48,7 @@ pub fn wasm_format_policies(
             formatted_policy: prettified_policy,
         },
         Err(err) => FormattingResult::Error {
-            error: err.to_string(),
+            errors: vec![err.to_string()],
         },
     }
 }
