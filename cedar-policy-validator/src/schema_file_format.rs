@@ -1046,6 +1046,11 @@ mod strengthened_types {
         ActionEntityUID, ApplySpec, EntityType, NamespaceDefinition, SchemaFragment, SchemaType,
     };
 
+    /// Assert that `result` is an `Err`, and the error message matches `msg`
+    fn assert_error_matches<T: std::fmt::Debug>(result: Result<T, serde_json::Error>, msg: &str) {
+        assert_matches!(result, Err(err) => assert_eq!(&err.to_string(), msg));
+    }
+
     #[test]
     fn invalid_namespace() {
         let src = serde_json::json!(
@@ -1056,7 +1061,7 @@ mod strengthened_types {
            }
         });
         let schema: Result<SchemaFragment, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid namespace `\n`: unexpected end of input");
+        assert_error_matches(schema, "invalid namespace `\n`: unexpected end of input");
 
         let src = serde_json::json!(
         {
@@ -1066,7 +1071,7 @@ mod strengthened_types {
            }
         });
         let schema: Result<SchemaFragment, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid namespace `1`: unexpected token `1`");
+        assert_error_matches(schema, "invalid namespace `1`: unexpected token `1`");
 
         let src = serde_json::json!(
         {
@@ -1076,7 +1081,8 @@ mod strengthened_types {
            }
         });
         let schema: Result<SchemaFragment, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid namespace `*1`: unexpected token `*`");
+        assert_error_matches(schema, "invalid namespace `*1`: unexpected token `*`");
+
         let src = serde_json::json!(
         {
            "::" : {
@@ -1085,7 +1091,8 @@ mod strengthened_types {
            }
         });
         let schema: Result<SchemaFragment, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid namespace `::`: unexpected token `::`");
+        assert_error_matches(schema, "invalid namespace `::`: unexpected token `::`");
+
         let src = serde_json::json!(
         {
            "A::" : {
@@ -1094,7 +1101,7 @@ mod strengthened_types {
            }
         });
         let schema: Result<SchemaFragment, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid namespace `A::`: unexpected end of input");
+        assert_error_matches(schema, "invalid namespace `A::`: unexpected end of input");
     }
 
     #[test]
@@ -1110,7 +1117,7 @@ mod strengthened_types {
             }
         });
         let schema: Result<NamespaceDefinition, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid id ``: unexpected end of input");
+        assert_error_matches(schema, "invalid id ``: unexpected end of input");
 
         let src = serde_json::json!(
         {
@@ -1123,7 +1130,7 @@ mod strengthened_types {
             }
         });
         let schema: Result<NamespaceDefinition, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid id `~`: invalid token");
+        assert_error_matches(schema, "invalid id `~`: invalid token");
 
         let src = serde_json::json!(
         {
@@ -1136,7 +1143,7 @@ mod strengthened_types {
             }
         });
         let schema: Result<NamespaceDefinition, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid id `A::B`: unexpected token `::`");
+        assert_error_matches(schema, "invalid id `A::B`: unexpected token `::`");
     }
 
     #[test]
@@ -1149,7 +1156,7 @@ mod strengthened_types {
             "actions": {}
         });
         let schema: Result<NamespaceDefinition, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid id ``: unexpected end of input");
+        assert_error_matches(schema, "invalid id ``: unexpected end of input");
 
         let src = serde_json::json!(
         {
@@ -1159,7 +1166,7 @@ mod strengthened_types {
             "actions": {}
         });
         let schema: Result<NamespaceDefinition, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid id `*`: unexpected token `*`");
+        assert_error_matches(schema, "invalid id `*`: unexpected token `*`");
 
         let src = serde_json::json!(
         {
@@ -1169,7 +1176,7 @@ mod strengthened_types {
             "actions": {}
         });
         let schema: Result<NamespaceDefinition, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid id `A::B`: unexpected token `::`");
+        assert_error_matches(schema, "invalid id `A::B`: unexpected token `::`");
     }
 
     #[test]
@@ -1180,28 +1187,28 @@ mod strengthened_types {
         });
         let schema: Result<EntityType, _> = serde_json::from_value(src);
         println!("{:?}", schema);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid name ``: unexpected end of input");
+        assert_error_matches(schema, "invalid name ``: unexpected end of input");
 
         let src = serde_json::json!(
         {
            "memberOfTypes": ["*"]
         });
         let schema: Result<EntityType, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid name `*`: unexpected token `*`");
+        assert_error_matches(schema, "invalid name `*`: unexpected token `*`");
 
         let src = serde_json::json!(
         {
            "memberOfTypes": ["A::"]
         });
         let schema: Result<EntityType, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid name `A::`: unexpected end of input");
+        assert_error_matches(schema, "invalid name `A::`: unexpected end of input");
 
         let src = serde_json::json!(
         {
            "memberOfTypes": ["::A"]
         });
         let schema: Result<EntityType, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid name `::A`: unexpected token `::`");
+        assert_error_matches(schema, "invalid name `::A`: unexpected token `::`");
     }
 
     #[test]
@@ -1211,28 +1218,28 @@ mod strengthened_types {
            "resourceTypes": [""]
         });
         let schema: Result<ApplySpec, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid name ``: unexpected end of input");
+        assert_error_matches(schema, "invalid name ``: unexpected end of input");
 
         let src = serde_json::json!(
         {
            "resourceTypes": ["*"]
         });
         let schema: Result<ApplySpec, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid name `*`: unexpected token `*`");
+        assert_error_matches(schema, "invalid name `*`: unexpected token `*`");
 
         let src = serde_json::json!(
         {
            "resourceTypes": ["A::"]
         });
         let schema: Result<ApplySpec, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid name `A::`: unexpected end of input");
+        assert_error_matches(schema, "invalid name `A::`: unexpected end of input");
 
         let src = serde_json::json!(
         {
            "resourceTypes": ["::A"]
         });
         let schema: Result<ApplySpec, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid name `::A`: unexpected token `::`");
+        assert_error_matches(schema, "invalid name `::A`: unexpected token `::`");
     }
 
     #[test]
@@ -1243,7 +1250,7 @@ mod strengthened_types {
             "name": ""
         });
         let schema: Result<SchemaType, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid entity type ``: unexpected end of input");
+        assert_error_matches(schema, "invalid entity type ``: unexpected end of input");
 
         let src = serde_json::json!(
         {
@@ -1251,7 +1258,7 @@ mod strengthened_types {
             "name": "*"
         });
         let schema: Result<SchemaType, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid entity type `*`: unexpected token `*`");
+        assert_error_matches(schema, "invalid entity type `*`: unexpected token `*`");
 
         let src = serde_json::json!(
         {
@@ -1259,14 +1266,15 @@ mod strengthened_types {
             "name": "::A"
         });
         let schema: Result<SchemaType, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid entity type `::A`: unexpected token `::`");
+        assert_error_matches(schema, "invalid entity type `::A`: unexpected token `::`");
+
         let src = serde_json::json!(
         {
            "type": "Entity",
             "name": "A::"
         });
         let schema: Result<SchemaType, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid entity type `A::`: unexpected end of input");
+        assert_error_matches(schema, "invalid entity type `A::`: unexpected end of input");
     }
 
     #[test]
@@ -1277,7 +1285,7 @@ mod strengthened_types {
             "type": ""
         });
         let schema: Result<ActionEntityUID, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid name ``: unexpected end of input");
+        assert_error_matches(schema, "invalid name ``: unexpected end of input");
 
         let src = serde_json::json!(
         {
@@ -1285,7 +1293,7 @@ mod strengthened_types {
             "type": "*"
         });
         let schema: Result<ActionEntityUID, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid name `*`: unexpected token `*`");
+        assert_error_matches(schema, "invalid name `*`: unexpected token `*`");
 
         let src = serde_json::json!(
         {
@@ -1293,7 +1301,7 @@ mod strengthened_types {
             "type": "Action::"
         });
         let schema: Result<ActionEntityUID, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid name `Action::`: unexpected end of input");
+        assert_error_matches(schema, "invalid name `Action::`: unexpected end of input");
 
         let src = serde_json::json!(
         {
@@ -1301,7 +1309,7 @@ mod strengthened_types {
             "type": "::Action"
         });
         let schema: Result<ActionEntityUID, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid name `::Action`: unexpected token `::`");
+        assert_error_matches(schema, "invalid name `::Action`: unexpected token `::`");
     }
 
     #[test]
@@ -1311,27 +1319,28 @@ mod strengthened_types {
            "type": ""
         });
         let schema: Result<SchemaType, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid common type ``: unexpected end of input");
+        assert_error_matches(schema, "invalid common type ``: unexpected end of input");
 
         let src = serde_json::json!(
         {
            "type": "*"
         });
         let schema: Result<SchemaType, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid common type `*`: unexpected token `*`");
+        assert_error_matches(schema, "invalid common type `*`: unexpected token `*`");
 
         let src = serde_json::json!(
         {
            "type": "::A"
         });
         let schema: Result<SchemaType, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid common type `::A`: unexpected token `::`");
+        assert_error_matches(schema, "invalid common type `::A`: unexpected token `::`");
+
         let src = serde_json::json!(
         {
            "type": "A::"
         });
         let schema: Result<SchemaType, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid common type `A::`: unexpected end of input");
+        assert_error_matches(schema, "invalid common type `A::`: unexpected end of input");
     }
 
     #[test]
@@ -1342,7 +1351,7 @@ mod strengthened_types {
            "name": ""
         });
         let schema: Result<SchemaType, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid extension type ``: unexpected end of input");
+        assert_error_matches(schema, "invalid extension type ``: unexpected end of input");
 
         let src = serde_json::json!(
         {
@@ -1350,7 +1359,7 @@ mod strengthened_types {
            "name": "*"
         });
         let schema: Result<SchemaType, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid extension type `*`: unexpected token `*`");
+        assert_error_matches(schema, "invalid extension type `*`: unexpected token `*`");
 
         let src = serde_json::json!(
         {
@@ -1358,14 +1367,21 @@ mod strengthened_types {
            "name": "__cedar::decimal"
         });
         let schema: Result<SchemaType, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid extension type `__cedar::decimal`: unexpected token `::`");
+        assert_error_matches(
+            schema,
+            "invalid extension type `__cedar::decimal`: unexpected token `::`",
+        );
+
         let src = serde_json::json!(
         {
             "type": "Extension",
            "name": "__cedar::"
         });
         let schema: Result<SchemaType, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid extension type `__cedar::`: unexpected token `::`");
+        assert_error_matches(
+            schema,
+            "invalid extension type `__cedar::`: unexpected token `::`",
+        );
 
         let src = serde_json::json!(
         {
@@ -1373,7 +1389,10 @@ mod strengthened_types {
            "name": "::__cedar"
         });
         let schema: Result<SchemaType, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(err) if &err.to_string() == "invalid extension type `::__cedar`: unexpected token `::`");
+        assert_error_matches(
+            schema,
+            "invalid extension type `::__cedar`: unexpected token `::`",
+        );
     }
 }
 

@@ -154,6 +154,7 @@ impl std::fmt::Display for Name {
 }
 
 /// Serialize a `Name` using its `Display` implementation
+/// This serialization implementation is used in the JSON schema format.
 impl Serialize for Name {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -197,6 +198,7 @@ impl<'de> serde::de::Visitor<'de> for NameVisitor {
 }
 
 /// Deserialize a `Name` using `from_normalized_str`
+/// This deserialization implementation is used in the JSON schema format.
 impl<'de> Deserialize<'de> for Name {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

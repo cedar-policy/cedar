@@ -81,7 +81,8 @@ impl<'de> serde::de::Visitor<'de> for IdVisitor {
     }
 }
 
-/// Deserialize an `Id` using `from_normalized_str`
+/// Deserialize an `Id` using `from_normalized_str`.
+/// This deserialization implementation is used in the JSON schema format.
 impl<'de> Deserialize<'de> for Id {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

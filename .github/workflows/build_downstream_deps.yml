@@ -17,42 +17,13 @@ jobs:
     outputs:
       branch_name: ${{ steps.get_branch_name.outputs.branch_name }}
 
-  cedar-drt:
-    name: CedarDRT
-    runs-on: ubuntu-latest
+  build-cedar-drt:
     needs: get-branch-name
-    strategy:
-      matrix:
-        toolchain:
-          - stable
-    steps:
-      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - name: Install Lean
-        shell: bash
-        run: |
-            wget https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh
-            bash elan-init.sh -y
-      - name: Checkout cedar-spec
-        uses: actions/checkout@v4
-        with:
-          repository: cedar-policy/cedar-spec
-          ref: ${{ needs.get-branch-name.outputs.branch_name }}
-          path: ./cedar-spec
-      - name: checkout cedar
-        uses: actions/checkout@v4
-        with:
-          path: cedar-spec/cedar
-      - name: build cedar-lean
-        working-directory: cedar-spec/cedar-lean
-        shell: bash
-        run: source ~/.profile && lake build Cedar:static DiffTest:static Std:static
-      - name: build cedar-drt
-        working-directory: cedar-spec/cedar-drt
-        run: source ~/.profile && source ./set_env_vars.sh && RUSTFLAGS="-D warnings" cargo build
-      - name: build cedar-drt/fuzz
-        working-directory: cedar-spec/cedar-drt/fuzz
-        run: source ~/.profile && source ../set_env_vars.sh && RUSTFLAGS="--cfg=fuzzing -D warnings" cargo build
-
+    uses: cedar-policy/cedar-spec/.github/workflows/build_and_test_drt_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_spec_ref: ${{ needs.get-branch-name.outputs.branch_name }}
+          
   cedar-java:
     name: CedarJava
     runs-on: ubuntu-latest
