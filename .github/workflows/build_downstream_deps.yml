@@ -19,7 +19,7 @@ jobs:
 
   build-cedar-drt:
     needs: get-branch-name
-    uses: cedar-policy/cedar-spec/.github/workflows/build_and_test_drt_reusable.yml@khieta/ci-fix
+    uses: cedar-policy/cedar-spec/.github/workflows/build_and_test_drt_reusable.yml@main
     with:
       cedar_policy_ref: ${{ github.ref }}
       cedar_spec_ref: ${{ needs.get-branch-name.outputs.branch_name }}
