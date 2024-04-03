@@ -82,6 +82,10 @@ jobs:
       matrix:
         toolchain:
           - stable
+
+    env:
+      RUSTFLAGS: '-D warnings -F unsafe-code'
+
     steps:
       - uses: actions/checkout@v4
       - run: cd ./cedar-wasm && cargo install wasm-pack && ./build-wasm.sh

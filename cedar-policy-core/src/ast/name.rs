@@ -16,7 +16,8 @@
 
 use super::id::Id;
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use smol_str::ToSmolStr;
 use std::sync::Arc;
 
 use crate::parser::err::ParseErrors;
@@ -28,7 +29,7 @@ use super::PrincipalOrResource;
 /// This is the `Name` type used to name types, functions, etc.
 /// The name can include namespaces.
 /// Clone is O(1).
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Name {
     /// Basename
@@ -152,6 +153,17 @@ impl std::fmt::Display for Name {
     }
 }
 
+/// Serialize a `Name` using its `Display` implementation
+/// This serialization implementation is used in the JSON schema format.
+impl Serialize for Name {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.to_smolstr().serialize(serializer)
+    }
+}
+
 // allow `.parse()` on a string to make a `Name`
 impl std::str::FromStr for Name {
     type Err = ParseErrors;
@@ -164,6 +176,35 @@ impl std::str::FromStr for Name {
 impl FromNormalizedStr for Name {
     fn describe_self() -> &'static str {
         "Name"
+    }
+}
+
+struct NameVisitor;
+
+impl<'de> serde::de::Visitor<'de> for NameVisitor {
+    type Value = Name;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a name consisting of an optional namespace and id")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Name::from_normalized_str(value)
+            .map_err(|err| serde::de::Error::custom(format!("invalid name `{value}`: {err}")))
+    }
+}
+
+/// Deserialize a `Name` using `from_normalized_str`
+/// This deserialization implementation is used in the JSON schema format.
+impl<'de> Deserialize<'de> for Name {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(NameVisitor)
     }
 }
 
@@ -275,8 +316,6 @@ mod vars_test {
 
 #[cfg(test)]
 mod test {
-    use smol_str::ToSmolStr;
-
     use super::*;
 
     #[test]
