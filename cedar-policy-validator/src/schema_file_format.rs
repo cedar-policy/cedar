@@ -1048,6 +1048,7 @@ mod strengthened_types {
     };
 
     /// Assert that `result` is an `Err`, and the error message matches `msg`
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_error_matches<T: std::fmt::Debug>(result: Result<T, serde_json::Error>, msg: &str) {
         assert_matches!(result, Err(err) => assert_eq!(&err.to_string(), msg));
     }
@@ -1401,6 +1402,7 @@ mod strengthened_types {
 mod test_json_roundtrip {
     use super::*;
 
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn roundtrip(schema: SchemaFragment) {
         let json = serde_json::to_value(schema.clone()).unwrap();
         let new_schema: SchemaFragment = serde_json::from_value(json).unwrap();
