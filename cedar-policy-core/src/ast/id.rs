@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
 
 use crate::{parser::err::ParseErrors, FromNormalizedStr};
@@ -9,7 +9,7 @@ use crate::{parser::err::ParseErrors, FromNormalizedStr};
 /// `true | false | if | then | else | in | is | like | has`).
 //
 // For now, internally, `Id`s are just owned `SmolString`s.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
+#[derive(Serialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
 pub struct Id(SmolStr);
 
 impl Id {
@@ -60,6 +60,35 @@ impl std::str::FromStr for Id {
 impl FromNormalizedStr for Id {
     fn describe_self() -> &'static str {
         "Id"
+    }
+}
+
+struct IdVisitor;
+
+impl<'de> serde::de::Visitor<'de> for IdVisitor {
+    type Value = Id;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a valid id")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Id::from_normalized_str(value)
+            .map_err(|err| serde::de::Error::custom(format!("invalid id `{value}`: {err}")))
+    }
+}
+
+/// Deserialize an `Id` using `from_normalized_str`.
+/// This deserialization implementation is used in the JSON schema format.
+impl<'de> Deserialize<'de> for Id {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(IdVisitor)
     }
 }
 

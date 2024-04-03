@@ -17,9 +17,7 @@ jobs:
     outputs:
       branch_name: ${{ steps.get_branch_name.outputs.branch_name }}
 
-  cedar-drt:
-    name: CedarDRT
-    runs-on: ubuntu-latest
+  build-cedar-drt:
     needs: get-branch-name
     strategy:
       matrix:
