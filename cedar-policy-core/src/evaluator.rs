@@ -31,6 +31,7 @@ use itertools::Either;
 use nonempty::nonempty;
 use smol_str::SmolStr;
 
+#[cfg(not(target_arch = "wasm32"))]
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 
 // PANIC SAFETY `Name`s in here are valid `Name`s
