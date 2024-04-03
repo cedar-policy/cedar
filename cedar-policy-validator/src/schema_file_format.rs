@@ -1187,7 +1187,6 @@ mod strengthened_types {
            "memberOfTypes": [""]
         });
         let schema: Result<EntityType, _> = serde_json::from_value(src);
-        println!("{:?}", schema);
         assert_error_matches(schema, "invalid name ``: unexpected end of input");
 
         let src = serde_json::json!(
