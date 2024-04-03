@@ -362,10 +362,10 @@ pub struct AuthorizeArgs {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
 pub enum PolicyFormat {
-    /// The standard human-readable Cedar policy format, documented at https://docs.cedarpolicy.com/policies/syntax-policy.html
+    /// The standard human-readable Cedar policy format, documented at <https://docs.cedarpolicy.com/policies/syntax-policy.html>
     #[default]
     Human,
-    /// Cedar's JSON policy format, documented at https://docs.cedarpolicy.com/policies/json-format.html
+    /// Cedar's JSON policy format, documented at <https://docs.cedarpolicy.com/policies/json-format.html>
     Json,
 }
 

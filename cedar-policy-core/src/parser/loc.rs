@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 /// Represents a source location: index/range, and a reference to the source
 /// code which that index/range indexes into
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct Loc {
     /// `SourceSpan` indicating a specific source code location or range
     pub span: miette::SourceSpan,
