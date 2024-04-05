@@ -178,6 +178,7 @@ pub struct EntityType {
     #[serde(rename = "memberOfTypes")]
     pub member_of_types: Vec<Name>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
     pub shape: AttributesOrContext,
 }
 
@@ -194,6 +195,10 @@ pub struct AttributesOrContext(
 impl AttributesOrContext {
     pub fn into_inner(self) -> SchemaType {
         self.0
+    }
+
+    pub fn is_empty_record(&self) -> bool {
+        self.0.is_empty_record()
     }
 }
 
@@ -251,6 +256,7 @@ pub struct ApplySpec {
     #[serde(rename = "principalTypes")]
     pub principal_types: Option<Vec<Name>>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
     pub context: AttributesOrContext,
 }
 
@@ -601,7 +607,7 @@ pub enum SchemaTypeVariant {
     Record {
         attributes: BTreeMap<SmolStr, TypeOfAttribute>,
         #[serde(rename = "additionalAttributes")]
-        #[serde(skip_serializing_if = "is_false")]
+        #[serde(skip_serializing_if = "is_partial_schema_default")]
         additional_attributes: bool,
     },
     Entity {
@@ -613,9 +619,8 @@ pub enum SchemaTypeVariant {
 }
 
 // Only used for serialization
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_false(b: &bool) -> bool {
-    !*b
+fn is_partial_schema_default(b: &bool) -> bool {
+    *b == partial_schema_default()
 }
 
 // The possible tags for a SchemaType as written in a schema JSON document. Used
@@ -660,7 +665,10 @@ impl SchemaType {
     /// implementation to avoid printing unnecessary entity/action data.
     pub fn is_empty_record(&self) -> bool {
         match self {
-            Self::Type(SchemaTypeVariant::Record { attributes, .. }) => attributes.is_empty(),
+            Self::Type(SchemaTypeVariant::Record {
+                attributes,
+                additional_attributes,
+            }) => *additional_attributes == partial_schema_default() && attributes.is_empty(),
             _ => false,
         }
     }
@@ -735,14 +743,13 @@ pub struct TypeOfAttribute {
     #[serde(flatten)]
     pub ty: SchemaType,
     #[serde(default = "record_attribute_required_default")]
-    #[serde(skip_serializing_if = "is_true")]
+    #[serde(skip_serializing_if = "is_record_attribute_required_default")]
     pub required: bool,
 }
 
 // Only used for serialization
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_true(b: &bool) -> bool {
-    *b
+fn is_record_attribute_required_default(b: &bool) -> bool {
+    *b == record_attribute_required_default()
 }
 
 /// By default schema properties which enable parts of partial schema validation
