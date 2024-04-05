@@ -401,7 +401,7 @@ namespace Baz {action "Foo" appliesTo {
         };
         let fragment = SchemaFragment(HashMap::from([(None, namespace)]));
         let src = fragment.as_natural_schema().unwrap();
-        assert!(src.contains(r#"action "j" ;"#), "schema was: `{src}`")
+        assert!(src.contains(r#"action "j";"#), "schema was: `{src}`")
     }
 
     #[test]
