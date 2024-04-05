@@ -3380,41 +3380,48 @@ pub enum PolicyToJsonError {
     /// For linked policies, error linking the JSON representation
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Link(#[from] JsonLinkError),
+    Link(#[from] json_errors::JsonLinkError),
     /// Error in the JSON serialization
     #[error(transparent)]
-    JsonSerialization(#[from] PolicyJsonSerializationError),
+    JsonSerialization(#[from] json_errors::PolicyJsonSerializationError),
 }
 
 impl From<est::InstantiationError> for PolicyToJsonError {
     fn from(e: est::InstantiationError) -> Self {
-        JsonLinkError::from(e).into()
+        json_errors::JsonLinkError::from(e).into()
     }
 }
 
 impl From<serde_json::Error> for PolicyToJsonError {
     fn from(e: serde_json::Error) -> Self {
-        PolicyJsonSerializationError::from(e).into()
+        json_errors::PolicyJsonSerializationError::from(e).into()
     }
 }
 
-/// Error linking the JSON representation of a linked policy
-#[derive(Debug, Diagnostic, Error)]
-#[error(transparent)]
-#[diagnostic(transparent)]
-pub struct JsonLinkError {
-    /// Underlying error
-    #[from]
-    err: est::InstantiationError,
-}
+/// Error types related to JSON processing
+pub mod json_errors {
+    use miette::Diagnostic;
+    use thiserror::Error;
+    use cedar_policy_core::est;
 
-/// Error serializing a policy as JSON
-#[derive(Debug, Diagnostic, Error)]
-#[error(transparent)]
-pub struct PolicyJsonSerializationError {
-    /// Underlying error
-    #[from]
-    err: serde_json::Error,
+    /// Error linking the JSON representation of a linked policy
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct JsonLinkError {
+        /// Underlying error
+        #[from]
+        err: est::InstantiationError,
+    }
+
+    /// Error serializing a policy as JSON
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(transparent)]
+    pub struct PolicyJsonSerializationError {
+        /// Underlying error
+        #[from]
+        err: serde_json::Error,
+    }
 }
 
 /// Expressions to be evaluated
