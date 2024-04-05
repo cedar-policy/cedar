@@ -3400,9 +3400,9 @@ impl From<serde_json::Error> for PolicyToJsonError {
 
 /// Error types related to JSON processing
 pub mod json_errors {
+    use cedar_policy_core::est;
     use miette::Diagnostic;
     use thiserror::Error;
-    use cedar_policy_core::est;
 
     /// Error linking the JSON representation of a linked policy
     #[derive(Debug, Diagnostic, Error)]
